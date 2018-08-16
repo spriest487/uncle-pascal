@@ -17,10 +17,9 @@ end
 
 procedure Add(self: ^Vector; p: System.Byte)
 var
-  newElements: ^System.Byte
   i: System.Integer
 begin
-  newElements := System.GetMem(self.Length + 1)
+  let newElements := System.GetMem(self.Length + 1)
 
   if self.Elements <> 0 then
   begin

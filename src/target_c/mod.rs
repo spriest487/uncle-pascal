@@ -141,6 +141,14 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, "({})", args_str)
         }
 
+        &node::ExpressionValue::LetBinding { ref name, ref value } => {
+            let value_type = value.expr_type().unwrap().unwrap();
+
+            write!(out, ";{} {} =", type_to_c(&value_type), name)?;
+            write_expr(out, value)?;
+            write!(out, ";")
+        }
+
         &node::ExpressionValue::LiteralInteger(ref i) => {
             write!(out, "(({}) {})", type_to_c(&types::DeclaredType::Integer), i)
         }

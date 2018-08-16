@@ -22,6 +22,10 @@ pub enum ExpressionValue<TSymbol> {
     LiteralInteger(i64),
     LiteralString(String),
     Identifier(TSymbol),
+    LetBinding {
+        name: String,
+        value: Box<Expression<TSymbol>>
+    },
     Member {
         of: Box<Expression<TSymbol>>,
         name: String,
@@ -53,7 +57,6 @@ impl<TSymbol> fmt::Display for Expression<TSymbol>
         write!(f, "expression: {:?} ({})", self.value, self.context) //TODO better display
     }
 }
-
 
 #[allow(dead_code)]
 impl<TSymbol> Expression<TSymbol>
@@ -95,6 +98,16 @@ impl<TSymbol> Expression<TSymbol>
                 args: args.into_iter().collect(),
             },
             context,
+        }
+    }
+
+    pub fn let_binding(let_kw: source::Token, name: &str, value: Self) -> Self {
+        Expression {
+            value: ExpressionValue::LetBinding {
+                value: Box::new(value),
+                name: name.to_owned(),
+            },
+            context: let_kw,
         }
     }
 
@@ -206,6 +219,20 @@ impl<TSymbol> Expression<TSymbol>
         match &self.value {
             &ExpressionValue::If { ..} => true,
             _ => false,
+        }
+    }
+
+    pub fn is_let_binding(&self) -> bool {
+        match &self.value {
+            &ExpressionValue::LetBinding { .. } => true,
+            _ => false
+        }
+    }
+
+    pub fn unwrap_let_binding(self) -> (String, Self) {
+        match self.value {
+            ExpressionValue::LetBinding { name, value } => (name, *value),
+            _ => panic!("called unwrap_let_binding on {}", self)
         }
     }
 

@@ -4,10 +4,8 @@ program HelloWorld
 uses System, Vector
 
 function Greet(name: System.String): System.String
-var
-  msg: System.String
 begin
-  msg := 'hello world'
+  let msg := 'hello world'
   result := msg
 end
 

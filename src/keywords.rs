@@ -8,6 +8,7 @@ pub use self::Keyword::*;
 pub enum Keyword {
     Program,
     Var,
+    Let,
     Function,
     Procedure,
     Begin,
@@ -31,6 +32,7 @@ impl Keyword {
     pub fn try_parse(from: &str) -> Option<Self> {
         match from {
             "program" => Some(Program),
+            "let" => Some(Let),
             "var" => Some(Var),
             "function" => Some(Function),
             "procedure" => Some(Procedure),
@@ -59,6 +61,7 @@ impl ToSource for Keyword {
         match self {
             &Program => "program",
             &Var => "var",
+            &Let => "let",
             &Function => "function",
             &Procedure => "procedure",
             &Begin => "begin",

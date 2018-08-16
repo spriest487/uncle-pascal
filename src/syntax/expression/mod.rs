@@ -45,7 +45,7 @@ fn count_operators_at_base_level<'a, TIter>(tokens: TIter) -> Result<usize, Pars
             bracket_level += 1
         } else if *token.as_token() == tokens::BracketRight {
             if bracket_level == 0 {
-                return Err(ParseError::UnexpectedToken(token.clone(), None))
+                return Err(ParseError::UnexpectedToken(token.clone(), None));
             }
             bracket_level -= 1
         } else if bracket_level == 0 && token.is_any_operator() {
@@ -263,7 +263,7 @@ impl Expression {
                 }
 
                 /* finished reading the expression and there were no tokens left over */
-                None => break,
+                None => { break; }
             }
         };
 
@@ -362,6 +362,26 @@ impl Expression {
             let i = integer_token.unwrap_literal_integer();
             Expression::literal_int(i, integer_token.clone())
         }))
+    }
+
+    fn parse_let_binding<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+        where TIter: IntoIterator<Item=source::Token> + 'static,
+    {
+        let binding_tokens = keywords::Let
+            .and_then(Matcher::AnyIdentifier)
+            .and_then(tokens::Operator(operators::Assignment))
+            .match_sequence(in_tokens, context)?;
+
+        let name = binding_tokens.value[1].unwrap_identifier();
+
+        let value = Expression::parse(binding_tokens.next_tokens,
+                                      &binding_tokens.last_token)?;
+
+        let let_expr = Expression::let_binding(binding_tokens.value[0].clone(),
+                                               name,
+                                               value.value);
+
+        Ok(ParseOutput::new(let_expr, value.last_token, value.next_tokens))
     }
 
     fn parse_if<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -469,6 +489,10 @@ impl Expression {
                 }))
             }
 
+            Some(ref let_kw) if let_kw.is_keyword(keywords::Let) => {
+                Expression::parse_let_binding(all_tokens, context)
+            }
+
             Some(ref compound) if contains_operator ||
                 *compound.as_token() == tokens::BracketLeft => {
                 Expression::parse_compound(all_tokens, context)
@@ -538,6 +562,10 @@ impl node::ToSource for Expression {
 
             &node::ExpressionValue::Member { ref of, ref name } => {
                 format!("{}.{}", of, name)
+            }
+
+            &node::ExpressionValue::LetBinding { ref name, ref value } => {
+                format!("let {} := {}", name, value.to_source())
             }
 
             &node::ExpressionValue::LiteralInteger(i) => format!("{}", i),

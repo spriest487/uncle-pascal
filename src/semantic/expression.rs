@@ -78,6 +78,15 @@ impl Expression {
                 Ok(Expression::block(Block::annotate(block, scope)?))
             }
 
+            &node::ExpressionValue::LetBinding { ref name, ref value } => {
+                /* it's not our job to update the scope, the enclosing block
+                needs to do that (it's responsible for the scope passed to its
+                enclosed statements) */
+                let typed_value = Expression::annotate(value, scope)?;
+
+                Ok(Expression::let_binding(expr.context.clone(), name, typed_value))
+            }
+
             &node::ExpressionValue::LiteralString(ref s) => {
                 Ok(Expression::literal_string(s, expr.context.clone()))
             }
@@ -213,6 +222,17 @@ impl Expression {
                 Ok(Some(DeclaredType::String)),
             &node::ExpressionValue::LiteralInteger(_) =>
                 Ok(Some(DeclaredType::Integer)),
+
+            &node::ExpressionValue::LetBinding { ref value, .. } => {
+                let value_type = value.expr_type()?
+                    .ok_or_else(|| SemanticError::type_not_assignable(None, self.context.clone()))?;
+
+                if !value_type.valid_lhs_type() {
+                    return Err(SemanticError::type_not_assignable(None, self.context.clone()));
+                }
+
+                Ok(None)
+            },
 
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
                 let target_type = target.expr_type()?;
