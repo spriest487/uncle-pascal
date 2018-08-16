@@ -13,8 +13,8 @@ type Vector = record
   Length: System.Integer;
 end;
 
-//function malloc(System.Integer): System.Pointer; extern 'C';
-//function free(System.Pointer); extern 'C';
+//function malloc(System.Integer): System.Pointer;
+//function free(System.Pointer);
 
 function Greet(name: System.String): System.String;
 var

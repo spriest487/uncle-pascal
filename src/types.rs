@@ -15,10 +15,12 @@ impl fmt::Display for Symbol {
 }
 
 impl Symbol {
-    pub fn new(name: node::Identifier, decl_type: DeclaredType) -> Self {
+    pub fn new<T>(name: node::Identifier, decl_type: T) -> Self
+        where T: Into<DeclaredType>
+    {
         Self {
             name,
-            decl_type,
+            decl_type: decl_type.into(),
         }
     }
 }
@@ -30,19 +32,19 @@ impl node::Symbol for Symbol {
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct FunctionSignature {
     pub name: String,
-    pub decl_type: DeclaredType,
-    pub args_types: Vec<DeclaredType>,
+    pub return_type: DeclaredType,
+    pub arg_types: Vec<DeclaredType>,
 }
 
 impl fmt::Display for FunctionSignature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let args_str = self.args_types
+        let args_str = self.arg_types
             .iter()
             .map(|arg_type| format!("{}", arg_type))
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "function {}({}): {}", self.name, args_str, self.decl_type)
+        write!(f, "function {}({}): {}", self.name, args_str, self.return_type)
     }
 }
 
@@ -67,6 +69,7 @@ impl fmt::Display for DeclaredRecord {
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum DeclaredType {
     None,
+    Boolean,
     Integer,
     String,
     Pointer,
@@ -78,6 +81,7 @@ impl fmt::Display for DeclaredType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
             &DeclaredType::None => "<untyped>".to_owned(),
+            &DeclaredType::Boolean => "System.Boolean".to_owned(),
             &DeclaredType::Integer => "System.Integer".to_owned(),
             &DeclaredType::String => "System.String".to_owned(),
             &DeclaredType::Pointer => "System.Pointer".to_owned(),
@@ -95,6 +99,10 @@ impl From<FunctionSignature> for DeclaredType {
 
 pub mod builtin_names {
     use node::*;
+
+    pub fn system_boolean() -> Identifier {
+        Identifier::parse("System.Boolean")
+    }
 
     pub fn system_integer() -> Identifier {
         Identifier::parse("System.Integer")

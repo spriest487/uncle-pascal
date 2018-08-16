@@ -1,0 +1,25 @@
+use node;
+use syntax;
+use semantic::*;
+
+pub type Block = node::Block<Symbol>;
+
+impl Block {
+    pub fn annotate(block: &syntax::Block, scope: &Scope) -> Result<Self, SemanticError> {
+        let statements = block.statements.iter()
+            .map(|statement| {
+                Expression::annotate(statement, scope)
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(Self {
+            statements,
+        })
+    }
+
+    pub fn type_check(&self) -> Result<(), SemanticError> {
+        self.statements.iter()
+            .map(|statement| statement.type_check())
+            .collect()
+    }
+}

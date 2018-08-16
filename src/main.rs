@@ -20,6 +20,7 @@ enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError<tokenizer::SourceToken>),
     SemanticError(semantic::SemanticError),
+    WriterError(fmt::Error),
 }
 
 impl fmt::Display for CompileError {
@@ -28,6 +29,7 @@ impl fmt::Display for CompileError {
             &CompileError::TokenizeError(ref token) => write!(f, "{}", token),
             &CompileError::ParseError(ref err) => write!(f, "{}", err),
             &CompileError::SemanticError(ref err) => write!(f, "{}", err),
+            &CompileError::WriterError(ref err) => write!(f, "{}", err),
         }
     }
 }
@@ -50,6 +52,12 @@ impl From<semantic::SemanticError> for CompileError {
     }
 }
 
+impl From<fmt::Error> for CompileError {
+    fn from(err: fmt::Error) -> Self {
+        CompileError::WriterError(err)
+    }
+}
+
 fn compile(source: &str) -> Result<String, CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
@@ -63,12 +71,13 @@ fn compile(source: &str) -> Result<String, CompileError> {
     let program = syntax::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
 
-    let _typed_program = semantic::Program::annotate(&program.clone())?;
+    let typed_program = semantic::Program::annotate(&program.clone())?;
+    typed_program.type_check()?;
 
     //println!("{:?}", typed_program);
     //println!("{}", program.to_source());
 
-    Ok(target_c::write_c(&program))
+    Ok(target_c::write_c(&typed_program)?)
 }
 
 fn main() {

@@ -23,13 +23,28 @@ impl Default for Scope {
         scope.with_type(builtin_names::system_integer(), DeclaredType::Integer)
             .with_type(builtin_names::system_string(), DeclaredType::String)
             .with_type(builtin_names::system_pointer(), DeclaredType::Pointer)
+            .with_type(builtin_names::system_boolean(), DeclaredType::Boolean)
             .with_symbol(Symbol::new(
                 node::Identifier::parse("WriteLn"),
-                DeclaredType::from(FunctionSignature {
+                FunctionSignature {
                     name: "WriteLn".to_owned(),
-                    args_types: vec![DeclaredType::String],
-                    decl_type: DeclaredType::None,
-                })))
+                    arg_types: vec![DeclaredType::String],
+                    return_type: DeclaredType::None,
+                }))
+            .with_symbol(Symbol::new(
+                node::Identifier::parse("GetMem"),
+                FunctionSignature {
+                    name: "GetMem".to_owned(),
+                    arg_types: vec![DeclaredType::Integer],
+                    return_type: DeclaredType::Pointer,
+                }))
+            .with_symbol(Symbol::new(
+                node::Identifier::parse("Dispose"),
+                FunctionSignature {
+                    name: "Dispose".to_owned(),
+                    arg_types: vec![DeclaredType::Pointer],
+                    return_type: DeclaredType::None,
+                }))
     }
 }
 
