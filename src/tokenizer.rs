@@ -2,10 +2,6 @@ use std::{
     fmt,
     rc::*,
 };
-use regex::{
-    Regex,
-    Match,
-};
 
 use tokens;
 use operators;
@@ -29,22 +25,7 @@ impl fmt::Display for IllegalToken {
     }
 }
 
-enum TokenMatchParser {
-    Simple(tokens::Token),
-    ParseFn(Box<Fn(&Match, &CompileOptions) -> Option<tokens::Token>>),
-}
-
-impl TokenMatchParser {
-    fn try_parse(&self, token_match: &Match, opts: &CompileOptions) -> Option<tokens::Token> {
-        match self {
-            &TokenMatchParser::Simple(ref token) => Some(token.clone()),
-            &TokenMatchParser::ParseFn(ref parse_fn) => parse_fn(token_match, opts),
-        }
-    }
-}
-
 struct Tokenizer<'a> {
-    token_matchers: Vec<(Regex, TokenMatchParser)>,
     opts: &'a CompileOptions,
 
     out_buf: Vec<source::Token>,
@@ -52,60 +33,237 @@ struct Tokenizer<'a> {
 
 impl<'a> Tokenizer<'a> {
     pub fn new(opts: &'a CompileOptions) -> Self {
-        let token_patterns = vec![
-            //anything between two quote marks, with double quote as literal quote mark
-            simple_pattern(r"\*", operators::Multiply),
-            simple_pattern(r"[/]", operators::Divide),
-            simple_pattern(r"\(", tokens::BracketLeft),
-            simple_pattern(r"\)", tokens::BracketRight),
-            simple_pattern(r"\[", tokens::SquareBracketLeft),
-            simple_pattern(r"\]", tokens::SquareBracketRight),
-            simple_pattern(r":=", operators::Assignment),
-            simple_pattern(r">=", operators::Gte),
-            simple_pattern(r">", operators::Gt),
-            simple_pattern(r"<>", operators::NotEquals),
-            simple_pattern(r"<=", operators::Lte),
-            simple_pattern(r"<", operators::Lt),
-            simple_pattern(r"@", operators::AddressOf),
-            simple_pattern(r"\+", operators::Plus),
-            simple_pattern("=", operators::Equals),
-            simple_pattern(r"\^", operators::Deref),
-            simple_pattern(r":", tokens::Colon),
-            simple_pattern(r";", tokens::Semicolon),
-            simple_pattern(r",", tokens::Comma),
-            simple_pattern(r"\.", tokens::Period),
-            func_pattern(r"-?[0-9]+", parse_literal_integer), // decimal int
-            func_pattern(r"#[0-9]{1,3}", parse_literal_integer), // char
-            func_pattern(r"\$[0-9A-Fa-f]+", parse_literal_integer), //hex int
-            func_pattern(r"'(:?[^']|'{2})*'", parse_literal_string),
-            simple_pattern(r"\-", operators::Minus),
-            func_pattern(r"[a-zA-Z_][a-zA-Z0-9_]*", parse_name),
-        ];
-
-        /* compile token pattern regexes */
-        let token_matchers = token_patterns.into_iter()
-            .map(|(pattern, token_parser)| {
-                /* we expect tokens to match at the start of the stream. also, add
-                the case-insensitive flag if appropriate */
-                let whole_token_pattern = if opts.case_sensitive() {
-                    format!("^{}", pattern)
-                } else {
-                    format!("(?i)^{}", pattern)
-                };
-
-                let token_regex = Regex::new(&whole_token_pattern)
-                    .expect("token regex must be valid");
-
-                (token_regex, token_parser)
-            })
-            .collect::<Vec<_>>();
-
         Tokenizer {
-            token_matchers,
             opts,
 
             out_buf: Vec::with_capacity(64),
         }
+    }
+}
+
+struct Lexer<'a> {
+    line: Vec<char>,
+    line_num: usize,
+    col: usize,
+    file: Rc<String>,
+
+    opts: &'a CompileOptions,
+}
+
+fn find_ahead(s: &[char], predicate: impl Fn(char) -> bool) -> Option<usize> {
+    s.iter().enumerate()
+        .filter_map(|(col, c)| match predicate(c.clone()) {
+            true => Some(col),
+            false => None,
+        })
+        .next()
+}
+
+impl<'a> Lexer<'a> {
+    fn simple_token(&mut self, t: impl Into<tokens::Token>, advance: usize) -> TokenizeResult<source::Token> {
+        let result = self.make_token(t.into());
+        self.col += advance;
+        Ok(result)
+    }
+
+    fn illegal(&self) -> IllegalToken {
+        IllegalToken {
+            text: self.line[self.col].to_string(),
+            file: self.file.to_string(),
+            line: self.line_num,
+            col: self.col,
+        }
+    }
+
+    fn literal_hex(&mut self) -> TokenizeResult<source::Token> {
+        let line_after_sigil = &self.line[self.col + 1..];
+        let next_non_hex = find_ahead(line_after_sigil, |c| match c {
+            'a'...'f' |
+            'A'...'F' |
+            '0'...'9' => false,
+            _ => true,
+        });
+
+        /* this needs to include the $ because IntConstant::parse expects it */
+        let int_str = match next_non_hex {
+            Some(end) => &self.line[self.col..self.col + end + 1],
+            None => &self.line[self.col..],
+        };
+
+        match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
+            Some(int) => {
+                let token = self.make_token(tokens::LiteralInteger(int));
+                self.col += int_str.len();
+                Ok(token)
+            },
+            None => Err(self.illegal()),
+        }
+    }
+
+    fn literal_int(&mut self, sigil: bool) -> TokenizeResult<source::Token> {
+        let start = if sigil { self.col + 1 } else { self.col };
+
+        let next_non_num = find_ahead(&self.line[start..], |c| match c {
+            '0'...'9' => false,
+            _ => true,
+        });
+
+        let int_str = match next_non_num {
+            Some(end) => &self.line[self.col..self.col + end],
+            None => &self.line[self.col..],
+        };
+
+        match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
+            Some(int) => {
+                let token = self.make_token(tokens::LiteralInteger(int));
+                self.col += int_str.len();
+                Ok(token)
+            },
+            None => Err(self.illegal()),
+        }
+    }
+
+    fn literal_string(&mut self) -> TokenizeResult<source::Token> {
+        let mut contents = String::new();
+
+        let mut next_col = self.col + 1;
+        loop {
+            match self.line.get(next_col) {
+                /* todo: better error for unterminated string literal */
+                None => return Err(self.illegal()),
+
+                Some('\'') => {
+                    /* depends on the token after this one */
+                    match self.line.get(next_col + 1) {
+                        /* it's quoted quote, add it to the contents and advance an extra col */
+                        Some('\'') => {
+                            contents.push('\'');
+                            next_col += 1;
+                        },
+
+                        /* it's something else, this string ends here */
+                        _ => {
+                            break;
+                        },
+                    }
+                }
+
+                Some(c) => {
+                    contents.push(*c);
+                },
+            }
+
+            next_col += 1;
+        };
+
+        let token = self.make_token(tokens::LiteralString(contents));
+        self.col = next_col + 1;
+        Ok(token)
+    }
+
+    fn word(&mut self) -> TokenizeResult<source::Token> {
+        let mut token_str = String::new();
+
+        let mut next_col = self.col;
+        loop {
+            match self.line.get(next_col) {
+                Some(c) => match c {
+                    '0'...'9' => if token_str.len() > 0 {
+                        token_str.push(*c);
+                    } else {
+                        //can't start with a number
+                        return Err(self.illegal());
+                    }
+
+                    'a'...'z' |
+                    'A'...'Z' |
+                    '_' => {
+                        token_str.push(*c);
+                    }
+
+                    _ => break,
+                }
+
+                None => break,
+            }
+
+            next_col += 1;
+        }
+
+        let token = if let Some(keyword) = keywords::Keyword::try_parse(&token_str, self.opts) {
+            self.make_token(tokens::Keyword(keyword))
+        } else if let Some(op) = operators::Operator::try_parse_text(&token_str, self.opts) {
+            self.make_token(tokens::Operator(op))
+        } else {
+            self.make_token(tokens::Identifier(token_str))
+        };
+
+        self.col = next_col;
+
+        Ok(token)
+    }
+
+    fn make_token(&self, token: tokens::Token) -> source::Token {
+        source::Token::new(token, source::Location {
+            file: self.file.clone(),
+            line: self.line_num,
+            col: self.col,
+        })
+    }
+
+    fn next_token(&mut self) -> TokenizeResult<Option<source::Token>> {
+        let next = loop {
+            let next = match self.line.get(self.col) {
+                Some(c) => *c,
+                //end if stream
+                None => return Ok(None),
+            };
+
+            // skip chars until we find something other than whitespace
+            if !next.is_ascii_whitespace() {
+                break next;
+            } else {
+                self.col += 1;
+            }
+        };
+
+        let token = match next {
+            '+' => self.simple_token(operators::Plus, 1),
+            '-' => self.simple_token(operators::Minus, 1),
+            '*' => self.simple_token(operators::Multiply, 1),
+            '/' => self.simple_token(operators::Divide, 1),
+            '(' => self.simple_token(tokens::BracketLeft, 1),
+            ')' => self.simple_token(tokens::BracketRight, 1),
+            '[' => self.simple_token(tokens::SquareBracketLeft, 1),
+            ']' => self.simple_token(tokens::SquareBracketRight, 1),
+            '@' => self.simple_token(operators::AddressOf, 1),
+            ',' => self.simple_token(tokens::Comma, 1),
+            '.' => self.simple_token(tokens::Period, 1),
+            ';' => self.simple_token(tokens::Semicolon, 1),
+            '^' => self.simple_token(operators::Deref, 1),
+            '>' => match self.line.get(self.col + 1) {
+                Some('=') => self.simple_token(operators::Gte, 2),
+                _ => self.simple_token(operators::Gt, 1),
+            }
+            '<' => match self.line.get(self.col + 1) {
+                Some('=') => self.simple_token(operators::Lte, 2),
+                Some('>') => self.simple_token(operators::NotEquals, 2),
+                _ => self.simple_token(operators::Lt, 1),
+            }
+            ':' => match self.line.get(self.col + 1) {
+                Some('=') => self.simple_token(operators::Assignment, 2),
+                _ => self.simple_token(tokens::Colon, 1),
+            },
+            '=' => self.simple_token(operators::Equals, 1),
+            '$' => self.literal_hex(),
+            '#' => self.literal_int(true),
+            '0'...'9' => self.literal_int(false),
+            '\'' => self.literal_string(),
+            'a'...'z' | '_' | 'A'...'Z' => self.word(),
+            _ => Err(self.illegal()),
+        };
+
+        Ok(Some(token?))
     }
 }
 
@@ -114,84 +272,24 @@ impl<'a> Tokenizer<'a> {
                   file_name: &str,
                   line_num: usize,
                   line: &str) -> TokenizeResult<&mut Vec<source::Token>> {
-        let file_name = Rc::new(file_name.to_string());
+        let mut lexer = Lexer {
+            opts: self.opts,
+            file: Rc::new(file_name.to_string()),
+            line: line.chars().collect(),
+            line_num,
+            col: 0,
+        };
+
         self.out_buf.clear();
-
-        let mut col = 0;
         loop {
-            col = match line[col..].find(|c| !char::is_whitespace(c)) {
-                Some(next_col) => col + next_col,
+            match lexer.next_token()? {
+                Some(token) => self.out_buf.push(token),
                 None => break,
-            };
-
-            let token = self.token_matchers.iter()
-                .filter_map(|(pattern, token_matcher)| {
-                    let token_str = &line[col..];
-                    let token_match = pattern.find(token_str)?;
-
-                    let matched = token_matcher.try_parse(&token_match, self.opts)?;
-                    col += token_match.end();
-                    Some(matched)
-                })
-                .next()
-                .map(|token| source::Token::new(token, source::Location {
-                    file: file_name.clone(),
-                    line: line_num,
-                    col,
-                }))
-                .ok_or_else(|| IllegalToken {
-                    text: line[col..].to_string(),
-                    file: file_name.to_string(),
-                    col,
-                    line: line_num,
-                })?;
-
-            self.out_buf.push(token);
+            }
         }
 
         Ok(&mut self.out_buf)
     }
-}
-
-fn parse_literal_string(token_match: &Match, _opts: &CompileOptions) -> Option<tokens::Token> {
-    //group 1 must be the inner content of the string (eg, minus the outer quotes)
-    let matched_text = token_match.as_str();
-    let inner_text = matched_text[1..matched_text.len() - 1]
-        .replace("''", "'");
-
-    Some(tokens::LiteralString(inner_text))
-}
-
-fn parse_literal_integer(token_match: &Match,
-                         _opts: &CompileOptions)
-                         -> Option<tokens::Token> {
-    let int_text = token_match.as_str();
-
-    let val = IntConstant::parse_str(int_text)?;
-
-    Some(tokens::LiteralInteger(val))
-}
-
-fn parse_name(token_match: &Match, opts: &CompileOptions) -> Option<tokens::Token> {
-    let text = token_match.as_str();
-
-    Some(keywords::Keyword::try_parse(text, opts)
-        .map(|kw| tokens::Keyword(kw))
-        .or_else(|| operators::Operator::try_parse_text(text, opts)
-            .map(|op| tokens::Operator(op)))
-        .unwrap_or_else(|| tokens::Identifier(text.to_string())))
-}
-
-fn simple_pattern<T>(pattern: &str, token: T) -> (String, TokenMatchParser)
-    where T: Into<tokens::Token>
-{
-    (pattern.to_owned(), TokenMatchParser::Simple(token.into()))
-}
-
-fn func_pattern<TFn>(pattern: &str, f: TFn) -> (String, TokenMatchParser)
-    where TFn: Fn(&Match, &CompileOptions) -> Option<tokens::Token> + 'static
-{
-    (pattern.to_owned(), TokenMatchParser::ParseFn(Box::new(f)))
 }
 
 pub type TokenizeResult<T> = Result<T, IllegalToken>;
