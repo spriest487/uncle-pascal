@@ -1,5 +1,6 @@
 extern crate regex;
 extern crate getopts;
+extern crate linked_hash_set;
 
 use std::{
     rc::*,

@@ -1,3 +1,5 @@
+mod module_globals;
+
 use std::{
     fmt::{self, Write},
 };
@@ -20,6 +22,7 @@ use types::{
     FunctionSignature,
     Symbol,
 };
+use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
 
 pub fn type_to_c(pascal_type: &DeclaredType) -> String {
@@ -107,7 +110,9 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
     }
 }
 
-pub fn write_expr(out: &mut String, expr: &semantic::Expression)
+pub fn write_expr(out: &mut String,
+                  expr: &semantic::Expression,
+                  globals: &mut ModuleGlobals)
                   -> fmt::Result {
     match &expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
@@ -135,9 +140,9 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 //            println!("  BINARY RHS: {:?}", rhs);
 
             write!(out, "(")?;
-            write_expr(out, lhs.as_ref())?;
+            write_expr(out, lhs.as_ref(), globals)?;
             write!(out, " {} ", c_op)?;
-            write_expr(out, rhs.as_ref())?;
+            write_expr(out, rhs.as_ref(), globals)?;
             write!(out, ")")
         }
 
@@ -166,7 +171,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
             write!(out, "(")?;
             write!(out, "{}", c_op)?;
-            write_expr(out, rhs)?;
+            write_expr(out, rhs, globals)?;
             write!(out, ")")
         }
 
@@ -174,14 +179,14 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             let args_str = args.iter()
                 .map(|arg_expr| -> Result<String, fmt::Error> {
                     let mut expr_out = String::new();
-                    write_expr(&mut expr_out, arg_expr)?;
+                    write_expr(&mut expr_out, arg_expr, globals)?;
 
                     Ok(expr_out)
                 })
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ");
 
-            write_expr(out, target)?;
+            write_expr(out, target, globals)?;
             write!(out, "({})", args_str)
         }
 
@@ -190,7 +195,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
             write!(out, "{} {} =", type_to_c(&value_type), name)?;
 
-            write_expr(out, value)
+            write_expr(out, value, globals)
         }
 
         ExpressionValue::LiteralInteger(i) => {
@@ -198,7 +203,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         ExpressionValue::LiteralString(s) => {
-            write!(out, "(({})\"{}\")", type_to_c(&DeclaredType::Byte.pointer()), s)
+            let name = globals.string_literal_name(s);
+            write!(out, "{}", name)
         }
 
         ExpressionValue::LiteralNil => {
@@ -207,15 +213,15 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
         ExpressionValue::If { condition, then_branch, else_branch } => {
             write!(out, "if (")?;
-            write_expr(out, condition)?;
+            write_expr(out, condition, globals)?;
             write!(out, ") {{")?;
 
-            write_expr(out, then_branch)?;
+            write_expr(out, then_branch, globals)?;
             writeln!(out, "; }}")?;
 
             if let &Some(ref else_expr) = else_branch {
                 write!(out, " else {{")?;
-                write_expr(out, else_expr)?;
+                write_expr(out, else_expr, globals)?;
                 writeln!(out, "; }}")?;
             }
             Ok(())
@@ -226,7 +232,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 ExpressionValue::BinaryOperator { lhs, op, .. }
                 if *op == operators::Assignment => {
                     let mut iter_expr_out = String::new();
-                    write_expr(&mut iter_expr_out, lhs)?;
+                    write_expr(&mut iter_expr_out, lhs, globals)?;
                     iter_expr_out
                 }
                 ExpressionValue::LetBinding { ref name, .. } => {
@@ -236,11 +242,11 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             };
 
             write!(out, "for (")?;
-            write_expr(out, from)?;
+            write_expr(out, from, globals)?;
             write!(out, "; {} < ", iter_expr)?;
-            write_expr(out, to)?;
+            write_expr(out, to, globals)?;
             writeln!(out, "; {} += 1) {{", iter_expr)?;
-            write_expr(out, body)?;
+            write_expr(out, body, globals)?;
             writeln!(out, ";}}")
         }
 
@@ -265,7 +271,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                     }
 
                     _ => {
-                        write_expr(&mut member_out, of)?;
+                        write_expr(&mut member_out, of, globals)?;
                         break;
                     }
                 }
@@ -288,17 +294,19 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         ExpressionValue::Block(block) => {
-            write_block(out, block)
+            write_block(out, block, globals)
         }
     }
 }
 
-pub fn write_block(out: &mut String, block: &semantic::Block)
+pub fn write_block(out: &mut String,
+                   block: &semantic::Block,
+                   globals: &mut ModuleGlobals)
                    -> fmt::Result {
     writeln!(out, "{{")?;
 
     for statement in block.statements.iter() {
-        write_statement(out, statement)?;
+        write_statement(out, statement, globals)?;
         writeln!(out, ";")?;
     }
 
@@ -316,7 +324,9 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
     writeln!(out, "}}")
 }
 
-fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::Result {
+fn write_statement(out: &mut String,
+                   statement: &semantic::Expression,
+                   globals: &mut ModuleGlobals) -> fmt::Result {
     let mut bindings = Vec::new();
     let mut next_binding = 1;
 
@@ -397,7 +407,7 @@ fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::R
                 .expect("temproary rc values should never have no type"));
 
             write!(out, "{} {} =", val_c_type, tmp_name)?;
-            write_expr(out, tmp_val)?;
+            write_expr(out, tmp_val, globals)?;
             writeln!(out, ";")?;
         }
     }
@@ -412,7 +422,7 @@ fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::R
             };
 
             let mut lhs_expr = String::new();
-            write_expr(&mut lhs_expr, &lhs)?;
+            write_expr(&mut lhs_expr, &lhs, globals)?;
 
             if is_class_assignment {
                 writeln!(out, "if ({} && {}->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
@@ -421,7 +431,7 @@ fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::R
             }
 
             // do the thing
-            write_expr(out, &stmt_simplified)?;
+            write_expr(out, &stmt_simplified, globals)?;
             writeln!(out, ";")?;
 
             if is_class_assignment {
@@ -433,7 +443,7 @@ fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::R
         }
 
         _ => {
-            write_expr(out, &stmt_simplified)?;
+            write_expr(out, &stmt_simplified, globals)?;
             writeln!(out, ";")?;
         }
     }
@@ -504,7 +514,9 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     writeln!(out)
 }
 
-pub fn write_function(out: &mut String, function: &semantic::Function)
+pub fn write_function(out: &mut String,
+                      function: &semantic::Function,
+                      globals: &mut ModuleGlobals)
                       -> fmt::Result {
     let return_type_c = function.return_type.as_ref()
         .map(type_to_c);
@@ -566,7 +578,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
                 }
             }
 
-            write_block(out, block)?;
+            write_block(out, block, globals)?;
 
             //release all local vars except the result
             let result_id = Identifier::from("result");
@@ -593,10 +605,12 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     Ok(())
 }
 
-pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Result {
+pub fn write_decl(out: &mut String,
+                  decl: &semantic::UnitDeclaration,
+                  globals: &mut ModuleGlobals) -> fmt::Result {
     match decl {
         UnitDeclaration::Function(ref func_decl) =>
-            write_function(out, func_decl),
+            write_function(out, func_decl, globals),
         UnitDeclaration::Type(ref type_decl) =>
             match type_decl {
                 node::TypeDecl::Record(record_decl) =>
@@ -651,31 +665,29 @@ pub fn write_static_init<'a>(out: &mut String,
 
 pub fn write_c(module: &ProgramModule)
                -> Result<String, fmt::Error> {
-    let mut output = String::new();
+    let mut globals = ModuleGlobals::new();
 
-    output.write_str(HEADER)?;
+    let mut c_decls = String::new();
 
     for unit in module.units.iter() {
-        writeln!(output, "/* {} interface */", unit.name)?;
+        writeln!(c_decls, "/* {} interface */", unit.name)?;
 
         for decl in unit.interface.iter() {
-            write_decl(&mut output, decl)?;
+            write_decl(&mut c_decls, decl, &mut globals)?;
         }
     }
 
     for unit in module.units.iter() {
-        writeln!(output, "/* {} implementation */", unit.name)?;
+        writeln!(c_decls, "/* {} implementation */", unit.name)?;
         for decl in unit.implementation.iter() {
-            write_decl(&mut output, decl)?;
+            write_decl(&mut c_decls, decl, &mut globals)?;
         }
     }
 
-    writeln!(output, "/* program decls */")?;
+    writeln!(c_decls, "/* program decls */")?;
     for decl in module.program.decls.iter() {
-        write_decl(&mut output, decl)?;
+        write_decl(&mut c_decls, decl, &mut globals)?;
     }
-
-    writeln!(output, "/* program vars */")?;
 
     let var_decls: Vec<_> = module.program.decls.iter()
         .filter_map(|decl| match decl {
@@ -685,25 +697,38 @@ pub fn write_c(module: &ProgramModule)
         .flat_map(|decl_group| decl_group.decls.iter())
         .collect();
 
-    writeln!(output, "/* program main */")?;
+    /* write main function */
+    let mut c_main = String::new();
 
-    writeln!(output, "int main(int argc, char* argv[]) {{")?;
-
-    default_initialize_vars(&mut output, var_decls.iter().cloned())?;
+    writeln!(c_main, "/* program block */")?;
 
     // System.String is compiler magic so we have to manually initialize the class
-    writeln!(output, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+    writeln!(c_main, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+
+    // declare initialize string literals before main, initialize them in main
+    globals.declare_string_literals(&mut c_decls)?;
+    globals.init_string_literals(&mut c_main)?;
+
+    default_initialize_vars(&mut c_main, var_decls.iter().cloned())?;
 
     for unit in module.units.iter() {
-        write_static_init(&mut output, &unit.interface)?;
-        write_static_init(&mut output, &unit.implementation)?;
+        write_static_init(&mut c_main, &unit.interface)?;
+        write_static_init(&mut c_main, &unit.implementation)?;
     }
-    write_static_init(&mut output, &module.program.decls)?;
+    write_static_init(&mut c_main, &module.program.decls)?;
 
-    write_block(&mut output, &module.program.program_block)?;
-    release_vars(&mut output, var_decls)?;
+    write_block(&mut c_main, &module.program.program_block, &mut globals)?;
+    release_vars(&mut c_main, var_decls)?;
 
-    writeln!(output, "  return 0;")?;
+    // combine sections into whole program
+    let mut output = String::new();
+
+    output.write_str(HEADER)?;
+    output.write_str(&c_decls)?;
+
+    writeln!(output, "int main(int argc, char* argv[]) {{")?;
+    output.write_str(&c_main)?;
+    writeln!(output, "return 0;")?;
     writeln!(output, "}}")?;
 
     output.write_str(RT)?;

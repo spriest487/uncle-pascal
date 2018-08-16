@@ -570,8 +570,17 @@ impl Expression {
             &node::ExpressionValue::PrefixOperator { ref op, ref rhs } =>
                 prefix_op_type(*op, rhs, &self.context),
 
-            &node::ExpressionValue::LiteralString(_) =>
-                Ok(Some(DeclaredType::Byte.pointer())),
+            &node::ExpressionValue::LiteralString(_) => {
+                //todo: forward class decl or typename ref or something
+                Ok(Some(DeclaredType::Record(types::DeclaredRecord {
+                    name: Identifier::from("System.String"),
+                    kind: types::RecordKind::Class,
+                    members: vec![
+                        types::Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
+                        types::Symbol::new(Identifier::from("Length"), DeclaredType::NativeInt),
+                    ]
+                })))
+            }
 
             &node::ExpressionValue::LiteralInteger(int_const) =>
                 Ok(Some(match int_const {
