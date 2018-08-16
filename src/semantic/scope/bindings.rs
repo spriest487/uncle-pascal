@@ -7,6 +7,9 @@ pub enum BindingKind {
     Mutable,
     Uninitialized,
     Immutable,
+    Global,
+    Function,
+    Internal,
 }
 
 impl fmt::Display for BindingKind {
@@ -15,6 +18,9 @@ impl fmt::Display for BindingKind {
             BindingKind::Mutable => write!(f, "mutable"),
             BindingKind::Uninitialized => write!(f, "uninitialized"),
             BindingKind::Immutable => write!(f, "immutable"),
+            BindingKind::Global => write!(f, "global"),
+            BindingKind::Function => write!(f, "function"),
+            BindingKind::Internal => write!(f, "internal"),
         }
     }
 }
@@ -23,28 +29,37 @@ impl BindingKind {
     pub fn mutable(&self) -> bool {
         match self {
             | BindingKind::Uninitialized
-            | BindingKind::Mutable =>
-                true,
+            | BindingKind::Global
+            | BindingKind::Mutable
+            => true,
 
-            | BindingKind::Immutable =>
-                false
+            | BindingKind::Immutable
+            | BindingKind::Function
+            | BindingKind::Internal
+            => false
         }
     }
 
     pub fn initialized(&self) -> bool {
         match self {
             | BindingKind::Immutable
-            | BindingKind::Mutable =>
-                true,
+            | BindingKind::Mutable
+            | BindingKind::Global
+            | BindingKind::Function
+            | BindingKind::Internal
+            => true,
 
-            | BindingKind::Uninitialized =>
-                false
+            | BindingKind::Uninitialized
+            => false
         }
     }
 
     pub fn initialize(self) -> Self {
         match self {
+            | BindingKind::Global
             | BindingKind::Mutable
+            | BindingKind::Function
+            | BindingKind::Internal
             | BindingKind::Immutable =>
                 self,
             | BindingKind::Uninitialized =>

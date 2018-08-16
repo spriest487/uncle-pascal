@@ -10,15 +10,17 @@ use node::{
     TypeDecl,
     RecordKind,
 };
-use target_c::{
-    ast::{
-        TranslationResult,
-        Declaration,
-        Block,
-        Class,
-        Interface,
-        Expression,
-    },
+use target_c::ast::{
+    TranslationResult,
+    Declaration,
+    Block,
+    Class,
+    Interface,
+    Expression,
+    Name,
+    Variable,
+    CType,
+    CastKind,
 };
 use semantic::{
     self,
@@ -70,11 +72,11 @@ impl TranslationUnit {
         Ok(())
     }
 
-    fn string_literal_index_to_name(index: usize) -> String {
-        format!("System_Internal_StringLiteral_{}", index)
+    fn string_literal_index_to_name(index: usize) -> Name {
+        Name::internal_symbol(format!("StringLiteral_{}", index))
     }
 
-    pub fn string_literal_name(&mut self, string_literal: &str) -> String {
+    pub fn string_literal_name(&mut self, string_literal: &str) -> Name {
         self.string_literals.insert_if_absent(string_literal.to_string());
 
         let index = self.string_literals.iter()
@@ -90,10 +92,19 @@ impl TranslationUnit {
         Self::string_literal_index_to_name(index)
     }
 
-    pub fn declare_string_literals(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn declare_string_literals(&self, out: &mut impl fmt::Write) -> fmt::Result {
         for (index, _) in self.string_literals.iter().enumerate() {
             let name = Self::string_literal_index_to_name(index);
-            writeln!(out, "static System_String* {};", name)?;
+
+            let var = Variable {
+                name,
+                ctype: CType::Struct(Name::user_type(&Identifier::from("System.String")))
+                    .into_pointer(),
+                default_value: None,
+                array_size: None,
+            };
+
+            var.write_impl(out)?;
         }
 
         Ok(())
@@ -102,10 +113,36 @@ impl TranslationUnit {
     pub fn init_string_literals(&self, mut out: impl fmt::Write) -> fmt::Result {
         for (index, literal) in self.string_literals.iter().enumerate() {
             let name = Self::string_literal_index_to_name(index);
-            writeln!(out, "{} = System_StringFromBytes((System_Byte*)\"{}\", (System_NativeInt){});",
-                     name,
-                     literal,
-                     literal.len())?;
+
+            let byte_type = CType::Named(Name::user_type(&Identifier::from("System.Byte")));
+
+            /* StringFromBytes takes ^Byte currently, so we have to do two casts (one into
+             `const Byte*`, the next into `Byte*` */
+            let literal_as_bytes = Expression::cast(
+                byte_type.clone().into_const().into_pointer(),
+                Expression::string_literal(literal),
+                CastKind::Reinterpret,
+            );
+
+            let literal_as_mut_bytes = Expression::cast(
+                byte_type.into_pointer(),
+                literal_as_bytes,
+                CastKind::Const,
+            );
+
+            let init_expr = Expression::binary_op(
+                name,
+                "=",
+                Expression::function_call(
+                    Name::user_symbol(&Identifier::from("System.StringFromBytes")),
+                    vec![
+                        literal_as_mut_bytes,
+                        Expression::SizeLiteral(literal.len())
+                    ],
+                ),
+            );
+
+            write!(out, "{};", init_expr)?;
         }
 
         Ok(())
@@ -206,6 +243,19 @@ impl TranslationUnit {
             .cloned()
             .collect();
 
+        /* initialize the global var storing the ID of the System.Dispose interface for
+        destructor lookups */
+        let dispose_id = result.interfaces.iter()
+            .find(|iface| iface.pascal_name == Identifier::from("System.Disposable"))
+            .map(|iface| iface.id)
+            .unwrap();
+
+        result.initialization.push(Block::new(vec![
+            Expression::binary_op(Name::internal_symbol("DisposeInterfaceID"),
+                                  "=",
+                                  Expression::SizeLiteral(dispose_id))
+        ]));
+
         /* zero-initialize global variables */
         result.initialization.push(Block::new(global_vars.iter()
             .map(|var_decl| {
@@ -249,11 +299,11 @@ impl TranslationUnit {
         Ok(())
     }
 
-    pub fn method_call_name(&self, interface: &Identifier, method: &str) -> Option<&str> {
+    pub fn method_call_name(&self, interface: &Identifier, method: &str) -> Option<&Name> {
         self.interfaces.iter()
             .find(|iface| iface.pascal_name == *interface)
             .and_then(|iface| iface.methods.get(method))
-            .map(|method| method.name.as_str())
+            .map(|method| &method.name)
     }
 
     pub fn write_internal_class_init(&self, out: &mut fmt::Write) -> fmt::Result {

@@ -27,6 +27,9 @@ function Animal.SayName(bird: Bird)
 function Animal.CountLegs(bird: Bird): Int32
     result := 2
 
+function Disposable.Dispose(bird: Bird)
+    WriteLn(bird.Name + ' says goodbye!')
+
 begin
     let penny: Cat = (Name: 'Penny')
     let polly: Bird = (Name: 'Polly')

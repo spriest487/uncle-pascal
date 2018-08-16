@@ -8,16 +8,14 @@ struct System_Internal_Class {
     std::string Name;
 
     System_Internal_InterfaceImpl* Interfaces;
-    System_NativeUInt InterfaceCount;
-
-    System_Internal_Destructor Destructor;
+    PascalType_System_NativeUInt InterfaceCount;
 };
 
-static const void* System_Internal_FindVTable(
+static const void* System_Internal_TryFindVTable(
         System_Internal_Object* obj,
-        System_NativeUInt interfaceID) {
+        PascalType_System_NativeUInt interfaceID) {
     auto objClass = obj->Class;
-    for (System_NativeUInt i = 0; i < objClass->InterfaceCount; ++i) {
+    for (PascalType_System_NativeUInt i = 0; i < objClass->InterfaceCount; ++i) {
         auto iface = &objClass->Interfaces[i];
 
         if (iface->ID == interfaceID) {
@@ -25,10 +23,22 @@ static const void* System_Internal_FindVTable(
         }
     }
 
-    std::fprintf(stderr, "missing vtable of interface $%td for class %s\n",
-        interfaceID,
-        obj->Class->Name.c_str());
-    std::abort();
+    return nullptr;
+}
+
+static const void* System_Internal_FindVTable(
+        System_Internal_Object* obj,
+        PascalType_System_NativeUInt interfaceID) {
+    auto vtable = System_Internal_TryFindVTable(obj, interfaceID);
+
+    if (!vtable) {
+        std::fprintf(stderr, "missing vtable of interface $%td for class %s\n",
+            interfaceID,
+            obj->Class->Name.c_str());
+        std::abort();
+    }
+
+    return vtable;
 }
 
 static void System_Internal_Raise(const char* file, int line, int col, const char* msg) {
@@ -36,9 +46,13 @@ static void System_Internal_Raise(const char* file, int line, int col, const cha
     std::exit(1);
 }
 
-static System_Byte* System_GetMem(System_NativeInt bytes) {
+static void System_Internal_ZeroMemory(void* mem, PascalType_System_NativeUInt len) {
+    std::memset(mem, 0, len);
+}
+
+static PascalType_System_Byte* Pascal_System_GetMem(PascalType_System_NativeInt bytes) {
     if (bytes > 0) {
-        auto mem = static_cast<System_Byte*>(std::malloc(static_cast<std::size_t>(bytes)));
+        auto mem = static_cast<PascalType_System_Byte*>(std::malloc(static_cast<std::size_t>(bytes)));
         if (!mem) {
             fputs("memory allocation failed\n", stderr);
             abort();
@@ -49,16 +63,15 @@ static System_Byte* System_GetMem(System_NativeInt bytes) {
     }
 }
 
-static void System_FreeMem(System_Byte* p) {
+static void Pascal_System_FreeMem(PascalType_System_Byte* p) {
     std::free(p);
 }
 
 static std::unordered_map<std::string, std::unique_ptr<System_Internal_Class>> System_Internal_Classes;
 
 static void System_Internal_InitClass(const char* name,
-        System_Internal_Destructor destructor,
         System_Internal_InterfaceImpl* interfaces,
-        System_NativeUInt interfaceCount) {
+        PascalType_System_NativeUInt interfaceCount) {
     auto nameStr = std::string(name);
     if (System_Internal_Classes.find(nameStr) != System_Internal_Classes.end()) {
         std::fprintf(stderr, "attempting to initialize class with duplicate name");
@@ -67,7 +80,6 @@ static void System_Internal_InitClass(const char* name,
 
     auto classObj = std::make_unique<System_Internal_Class>();
     classObj->Name = nameStr;
-    classObj->Destructor = destructor;
 
     classObj->Interfaces = interfaces,
     classObj->InterfaceCount = interfaceCount;
@@ -87,11 +99,13 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
     return nullptr;
 }
 
-static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName) {
-    auto obj = reinterpret_cast<System_Internal_Object*>(System_GetMem(size));
+static System_Internal_Object* System_Internal_Rc_GetMem(
+        PascalType_System_NativeInt size,
+        const char* constructorName) {
+    auto obj = reinterpret_cast<System_Internal_Object*>(Pascal_System_GetMem(size));
 
     /* class-type objects are zero-initialized*/
-    std::memset(obj, 0, static_cast<std::size_t>(size));
+    System_Internal_ZeroMemory(obj, static_cast<std::size_t>(size));
 
     obj->Class = System_Internal_FindClass(constructorName);
     if (!obj->Class) {
@@ -130,26 +144,36 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
             std::abort();
         }
 
-        auto& className = obj->Class->Name;
-        if (obj->Class->Destructor) {
-            obj->Class->Destructor(obj);
+        /* if the class implements System.Dispose, */
+        auto disposeImpl = static_cast<const PascalType_System_Disposable_VTable*>(
+            System_Internal_TryFindVTable(obj, System_Internal_DisposeInterfaceID)
+        );
+
+        if (!disposeImpl) {
+            disposeImpl->member_Dispose(obj);
+
+            if (obj->StrongCount > 0) {
+                std::fprintf(stderr, "Dispose() increased refcount for object @ %p\n", obj);
+                std::abort();
+            }
         }
 
         std::free(obj);
 
 #ifdef UNCLEPASCAL_RC_DEBUG
+        auto& className = obj->Class->Name;
         fprintf(stderr, "rc deallocated %s @ %p\n", className.c_str(), obj);
 #endif
     }
 }
 
 /* procedure System.WriteLn(line: System.String) */
-void System_WriteLn(System_String* lineRc) {
-    auto line = static_cast<System_String*>(lineRc);
+void Pascal_System_WriteLn(PascalType_System_String* lineRc) {
+    auto line = static_cast<struct PascalType_System_String*>(lineRc);
 
     if (line) {
-        for (int c = 0; c < line->Length; ++c) {
-            fputc(line->Chars[c], stdout);
+        for (int c = 0; c < line->member_Length; ++c) {
+            fputc(line->member_Chars[c], stdout);
         }
         fputc('\n', stdout);
     } else {
@@ -157,23 +181,25 @@ void System_WriteLn(System_String* lineRc) {
     }
 }
 
-System_String* System_ReadLn() {
+struct PascalType_System_String* Pascal_System_ReadLn() {
     std::string line;
     if (std::cin >> line) {
-        return System_StringFromBytes(
-            (System_Byte*)line.data(), 
-            (System_NativeInt)line.size());
+        return Pascal_System_StringFromBytes(
+            (PascalType_System_Byte*)line.data(),
+            (PascalType_System_NativeInt)line.size());
     } else {
         // failed, empty string
-        return System_StringCreate();
+        return Pascal_System_StringCreate();
     }
 }
 
-System_Boolean System_StringToInt(System_String* str, System_Int32& result) {
+PascalType_System_Boolean Pascal_System_StringToInt(
+        PascalType_System_String* str,
+        PascalType_System_Int32& result) {
     auto stream = std::stringstream();
     stream.str(std::string(
-        reinterpret_cast<const char*>(str->Chars),
-        static_cast<std::size_t>(str->Length)));
+        reinterpret_cast<const char*>(str->member_Chars),
+        static_cast<std::size_t>(str->member_Length)));
 
     if (stream >> result) {
         return true;
@@ -182,10 +208,11 @@ System_Boolean System_StringToInt(System_String* str, System_Int32& result) {
     }
 }
 
-System_String* System_StringFromInt(System_Int32 i) {
+PascalType_System_String* Pascal_System_StringFromInt(
+        PascalType_System_Int32 i) {
     auto chars = std::to_string(i);
 
-    return System_StringFromBytes(
-        reinterpret_cast<System_Byte*>(const_cast<char*>(chars.data())),
-        static_cast<System_NativeUInt>(chars.size()));
+    return Pascal_System_StringFromBytes(
+        reinterpret_cast<PascalType_System_Byte*>(const_cast<char*>(chars.data())),
+        static_cast<PascalType_System_NativeUInt>(chars.size()));
 }

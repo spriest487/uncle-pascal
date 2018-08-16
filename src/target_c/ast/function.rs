@@ -3,26 +3,24 @@ use std::fmt::{
 };
 use semantic;
 use node::{
-    Identifier,
     FunctionArgModifier,
     FunctionModifier,
     FunctionLocalDecl,
 };
-use target_c::{
-    ast::{
-        CType,
-        TranslationResult,
-        Block,
-        TranslationUnit,
-        Expression,
-        Variable,
-    },
-    identifier_to_c,
+use target_c::ast::{
+    CType,
+    TranslationResult,
+    Block,
+    TranslationUnit,
+    Expression,
+    Variable,
+    Name,
+    CastKind,
 };
 
 #[derive(Clone)]
 pub struct FunctionArg {
-    pub name: String,
+    pub name: Name,
     pub ctype: CType,
 }
 
@@ -63,7 +61,7 @@ impl fmt::Display for CallingConvention {
 }
 
 pub struct FunctionDecl {
-    pub name: String,
+    pub name: Name,
     pub return_type: CType,
     pub calling_convention: CallingConvention,
     pub args: Vec<FunctionArg>,
@@ -94,7 +92,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
                 };
 
                 FunctionArg {
-                    name: arg_decl.name.clone(),
+                    name: Name::local(&arg_decl.name),
                     ctype,
                 }
             })
@@ -134,21 +132,11 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn interface_call_name(interface: &Identifier,
-                               func_name: &str,
-                               for_type: &Identifier) -> String {
-        identifier_to_c(&interface.child(func_name).append(for_type))
-    }
-
-    pub fn virtual_call_name(decl: &semantic::FunctionDecl) -> String {
+    pub fn virtual_call_name(decl: &semantic::FunctionDecl) -> Name {
         let implements = decl.implements.as_ref().unwrap();
         let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
 
-        let qualified_name = implements.interface.child(&decl.name)
-            .append(&for_type_name)
-            .child("VirtualCall");
-
-        identifier_to_c(&qualified_name)
+        Name::interface_call(&implements.interface, &for_type_name, &decl.name)
     }
 
     pub fn virtual_call_adaptor(decl: &semantic::FunctionDecl) -> Option<FunctionDecl> {
@@ -159,43 +147,44 @@ impl FunctionDecl {
         let real_func = adaptor.name.clone();
 
         adaptor.name = Self::virtual_call_name(decl);
-        adaptor.args[0].ctype = CType::Struct("System_Internal_Object".to_string())
+        adaptor.args[0].ctype = CType::Struct(Name::internal_type("Object".to_string()))
             .into_pointer();
 
         let adaptor_cast = Expression::function_call(
             real_func,
             vec![
-                Expression::static_cast(
+                Expression::cast(
                     real_self_type,
-                    Expression::raw(&adaptor.args[0].name),
+                    Expression::Name(adaptor.args[0].name.clone()),
+                    CastKind::Static,
                 )
             ],
         );
 
         adaptor.definition = FunctionDefinition::Defined(Block {
             statements: vec![
-                Expression::raw(format!("return {}", adaptor_cast))
+                Expression::return_value(adaptor_cast)
             ]
         });
 
         Some(adaptor)
     }
 
-    pub fn translate_name(decl: &semantic::FunctionDecl) -> String {
+    pub fn translate_name(decl: &semantic::FunctionDecl) -> Name {
         match decl.implements.as_ref() {
             Some(implements) => {
                 let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
 
-                Self::interface_call_name(
+                Name::method(
                     &implements.interface,
-                    &decl.name,
                     &for_type_name,
+                    &decl.name,
                 )
             }
 
             None => {
                 let qualified = decl.scope().namespace_qualify(&decl.name);
-                identifier_to_c(&qualified)
+                Name::user_symbol(&qualified)
             }
         }
     }
@@ -218,7 +207,7 @@ impl FunctionDecl {
         if !decl.return_type.is_void() {
             let result_decl = Variable {
                 default_value: None,
-                name: "result".to_string(),
+                name: Name::local("result"),
                 ctype: decl.return_type.clone(),
                 array_size: None,
             };
@@ -246,16 +235,18 @@ impl FunctionDecl {
             .collect();
 
         for arg in rc_args.iter() {
-            body.statements.insert(0, Expression::Raw(
-                format!("System_Internal_Rc_Retain({})", arg.name)
+            body.statements.insert(0, Expression::function_call(
+                Name::internal_symbol("Rc_Retain"),
+                vec![Expression::Name(Name::local(&arg.name))],
             ));
-            body.statements.push(Expression::Raw(
-                format!("System_Internal_Rc_Release({})", arg.name)
+            body.statements.push(Expression::function_call(
+                Name::internal_symbol("Rc_Release"),
+                vec![Expression::Name(Name::local(&arg.name))],
             ));
         }
 
         if !decl.return_type.is_void() {
-            body.statements.push(Expression::from("return result"));
+            body.statements.push(Expression::return_value(Name::local("result")));
         }
 
         Ok(FunctionDecl {
@@ -307,7 +298,7 @@ impl FunctionDecl {
                 writeln!(out, "ffi::{}({});",
                          extern_name,
                          self.args.iter()
-                             .map(|arg| arg.name.clone())
+                             .map(|arg| arg.name.to_string())
                              .collect::<Vec<_>>()
                              .join(", "))?;
                 writeln!(out, "}}")?;

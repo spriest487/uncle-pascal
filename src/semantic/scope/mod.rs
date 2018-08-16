@@ -421,7 +421,7 @@ impl Scope {
                 Some(ScopedSymbol::Local {
                     name: name.clone(),
                     decl_type: Type::Function(Box::new(func.decl.signature())),
-                    binding_kind: BindingKind::Immutable,
+                    binding_kind: BindingKind::Function,
                 })
             }
             _ => None
@@ -655,18 +655,6 @@ impl Scope {
             }
             _ => None,
         }
-    }
-
-    /**
-         find the implementation of the magic interface function
-        `System.Disposable#Dispose` to act as the destructor for the class type
-        named by `name`
-     */
-    pub fn get_destructor(&self, ty: &Type) -> Option<(&Identifier, &FunctionDecl)> {
-        let destructor_interface = Identifier::from("System.Disposable");
-        let destructor_fn = "Dispose";
-
-        self.get_interface_impl(ty, &destructor_interface, destructor_fn)
     }
 
     /**

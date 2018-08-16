@@ -3,21 +3,20 @@ use node::{
     Identifier,
     FunctionArgModifier,
 };
-use target_c::{
-    identifier_to_c,
-    ast::{
-        TranslationResult,
-        Struct,
-        StructMember,
-        Variable,
-        CType,
-        FunctionDecl,
-        FunctionArg,
-        FunctionDefinition,
-        Expression,
-        Block,
-        CallingConvention,
-    },
+use target_c::ast::{
+    Name,
+    TranslationResult,
+    Struct,
+    StructMember,
+    Variable,
+    CType,
+    FunctionDecl,
+    FunctionArg,
+    FunctionDefinition,
+    Expression,
+    Block,
+    CallingConvention,
+    CastKind,
 };
 use semantic::{
     self,
@@ -44,7 +43,7 @@ impl Interface {
                 );
 
                 StructMember::Field(Variable {
-                    name: method_name.clone(),
+                    name: Name::member(&method_name),
                     ctype: func_type,
                     default_value: None,
                     array_size: None,
@@ -54,8 +53,7 @@ impl Interface {
 
         let pascal_name = decl.qualified_name();
 
-        let vtable_name = format!("{}_VTable", identifier_to_c(&pascal_name));
-
+        let vtable_name = Name::interface_vtable(&pascal_name);
         let methods = decl.methods.iter()
             .map(|(method_name, method)| {
                 let method_func = Self::virtual_method_call(
@@ -64,7 +62,7 @@ impl Interface {
                     &vtable_name,
                     method_name,
                     method,
-                    decl.scope()
+                    decl.scope(),
                 );
 
                 (method_name.clone(), method_func)
@@ -87,13 +85,11 @@ impl Interface {
 
     fn virtual_method_call(iface_id: usize,
                            iface_pascal_name: &Identifier,
-                           vtable_name: &str,
+                           vtable_name: &Name,
                            method_name: &str,
                            method: &semantic::FunctionSignature,
                            scope: &Scope) -> FunctionDecl {
-        let name = identifier_to_c(&iface_pascal_name
-            .child(&method_name)
-            .child("VirtualCall"));
+        let name = Name::abstract_call(&iface_pascal_name, &method_name);
 
         let calling_convention = CallingConvention::from_modifiers(&method.modifiers);
 
@@ -115,27 +111,30 @@ impl Interface {
                 };
 
                 FunctionArg {
-                    name: format!("arg{}", arg_num),
+                    name: Name::local(format!("arg{}", arg_num)),
                     ctype,
                 }
             })
             .collect();
 
-        let find_vtable = Expression::function_call("System_Internal_FindVTable", vec![
-            Expression::raw("arg0"),
-            Expression::raw(iface_id.to_string()),
+        let find_vtable = Expression::function_call(Name::internal_symbol("FindVTable"), vec![
+            Expression::Name(Name::local("arg0")),
+            Expression::SizeLiteral(iface_id),
         ]);
 
-        let vtable_ptr_type = CType::Struct(vtable_name.to_string()).into_const().into_pointer();
-        let ptr_to_vtable = Expression::static_cast(vtable_ptr_type.clone(), find_vtable);
-        let vtable_var = Expression::local_decl(vtable_ptr_type, "vtable", ptr_to_vtable);
+        let vtable_ptr_type = CType::Struct(vtable_name.clone()).into_const().into_pointer();
+        let ptr_to_vtable = Expression::cast(vtable_ptr_type.clone(), find_vtable, CastKind::Static);
+        let vtable_var = Expression::local_decl(vtable_ptr_type, "vtable", Some(ptr_to_vtable));
 
         let all_args: Vec<_> = (0..method.args.len())
-            .map(|arg_num| Expression::raw(format!("arg{}", arg_num)))
+            .map(|arg_num| Expression::Name(Name::local(format!("arg{}", arg_num))))
             .collect();
 
         let invoke_vtable_impl = Expression::function_call(
-            Expression::member(Expression::unary_op("*", "vtable", true), method_name.to_string()),
+            Expression::member(
+                Expression::unary_op("*", Name::local("vtable"), true),
+                method_name.clone(),
+            ),
             all_args,
         );
 

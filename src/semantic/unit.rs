@@ -30,7 +30,7 @@ impl Unit {
             }
 
             node::UnitDecl::Var(parsed_var) => {
-                let global_binding_kind = BindingKind::Mutable;
+                let global_binding_kind = BindingKind::Global;
                 let (var, new_scope) = VarDecl::annotate(parsed_var, scope, global_binding_kind)?;
 
                 Ok((Some(node::UnitDecl::Var(var)), new_scope))

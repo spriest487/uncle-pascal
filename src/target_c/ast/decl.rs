@@ -1,19 +1,16 @@
-use std::{
-    fmt,
-};
-use target_c::{
-    identifier_to_c,
-    ast::{
-        CType,
-        FunctionDecl,
-        TranslationResult,
-        TranslationUnit,
-        Expression,
-        CallingConvention,
-        FunctionDefinition,
-        FunctionArg,
-        Block,
-    },
+use std::fmt;
+use target_c::ast::{
+    Name,
+    CType,
+    FunctionDecl,
+    TranslationResult,
+    TranslationUnit,
+    Expression,
+    CallingConvention,
+    FunctionDefinition,
+    FunctionArg,
+    Block,
+    CastKind,
 };
 use semantic;
 use node::{
@@ -25,7 +22,7 @@ use node::{
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Variable {
-    pub name: String,
+    pub name: Name,
     pub ctype: CType,
     pub array_size: Option<usize>,
     pub default_value: Option<Expression>,
@@ -40,8 +37,8 @@ pub enum StructMember {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Struct {
-    pub name: Option<String>,
-    pub extends: Option<String>,
+    pub name: Option<Name>,
+    pub extends: Option<Name>,
     pub members: Vec<StructMember>,
 }
 
@@ -49,7 +46,7 @@ pub enum Declaration {
     Variable(Variable),
     Function(FunctionDecl),
     Struct(Struct),
-    UsingAlias(String, String),
+    UsingAlias(Name, CType),
 }
 
 impl Declaration {
@@ -75,20 +72,20 @@ impl Declaration {
                     }
 
                     | TypeDecl::Enumeration(enum_decl) => {
-                        let name = identifier_to_c(&enum_decl.qualified_name());
+                        let name = Name::internal_type(&enum_decl.qualified_name());
                         Ok(vec!(Declaration::UsingAlias(
                             name,
-                            "System_UInt64".to_string(),
+                            CType::Named(Name::internal_type("UInt64")),
                         )))
                     }
 
                     | TypeDecl::Set(set_decl) => {
                         //todo
-                        let name = identifier_to_c(&set_decl.qualified_name());
+                        let name = Name::user_type(&set_decl.qualified_name());
                         Ok(vec!(Declaration::UsingAlias(
                             name,
-                            "std::unordered_set<System_UInt64>".to_string(),
-                        )))
+                            CType::Named(Name::internal_type("Set<System_UInt64>".to_string()),
+                            ))))
                     }
 
                     | TypeDecl::Alias { .. } => {
@@ -181,14 +178,14 @@ impl Struct {
         assert!(record_decl.members.len() > 0 || record_decl.variant_part.is_some(),
                 "structs must have at least one member");
 
-        let name = identifier_to_c(&record_decl.scope().namespace_qualify(&record_decl.name));
+        let name = Name::user_type(&record_decl.scope().namespace_qualify(&record_decl.name));
 
         let mut members: Vec<_> = record_decl.members.iter()
             .map(|member_decl| {
                 let ctype = CType::translate(&member_decl.decl_type, record_decl.scope());
 
                 Ok(StructMember::Field(Variable {
-                    name: member_decl.name.clone(),
+                    name: Name::member(&member_decl.name),
                     default_value: None,
                     array_size: None,
                     ctype,
@@ -198,7 +195,7 @@ impl Struct {
 
         if let Some(variant_part) = &record_decl.variant_part {
             let tag = Variable {
-                name: variant_part.tag.name.clone(),
+                name: Name::member(&variant_part.tag.name),
                 ctype: CType::translate(&variant_part.tag.decl_type, record_decl.scope()),
                 default_value: None,
                 array_size: None,
@@ -212,7 +209,7 @@ impl Struct {
                     let case_struct_members: Vec<_> = case.members.iter()
                         .map(|member| {
                             StructMember::Field(Variable {
-                                name: member.name.clone(),
+                                name: Name::member(&member.name),
                                 ctype: CType::translate(&member.decl_type, record_decl.scope()),
                                 default_value: None,
                                 array_size: None,
@@ -235,7 +232,7 @@ impl Struct {
 
         let extends = match record_decl.kind {
             RecordKind::Record => None,
-            RecordKind::Class => Some("System_Internal_Object".to_string()),
+            RecordKind::Class => Some(Name::internal_type("Object")),
         };
 
         let constructor_decl = Struct::constructor_decl(&name, &record_decl);
@@ -275,67 +272,81 @@ impl Struct {
     }
 
     // todo: this should probably be based on semantic::RecordDecl instead
-    fn constructor_decl(struct_name: &str, record: &semantic::RecordDecl) -> FunctionDecl {
-        let name = format!("{}_Internal_Constructor", struct_name);
+    fn constructor_decl(struct_name: &Name, record: &semantic::RecordDecl) -> FunctionDecl {
+        let name = Name::constructor(&record.qualified_name());
+        let result_name = Name::local("result");
 
         let all_fields: Vec<_> = record.all_members().collect();
 
         /* the args of a constructor are Options of each individual member */
         let args: Vec<_> = all_fields.iter().enumerate()
             .map(|(mem_num, member)| FunctionArg {
-                name: format!("arg{}", mem_num),
+                name: Name::local(format!("arg{}", mem_num)),
                 ctype: {
                     let member_type = CType::translate(&member.decl_type, record.scope());
-                    CType::Named(format!("System_Internal_Option<{}>", member_type))
+                    CType::Named(Name::internal_type(format!("Option<{}>", member_type)))
                 },
             })
             .collect();
 
-        let struct_type = CType::Struct(struct_name.to_string());
-        let (return_type, member_access) = match record.kind {
-            RecordKind::Class => (struct_type.into_pointer(), "->"),
-            RecordKind::Record => (struct_type, "."),
+        let struct_type = CType::Struct(struct_name.clone());
+        let (return_type, result_val) = match record.kind {
+            RecordKind::Class => {
+                let deref_result = Expression::Name(result_name.clone()).deref();
+                (struct_type.into_pointer(), deref_result)
+            }
+            RecordKind::Record => {
+                (struct_type, Expression::Name(result_name.clone()))
+            }
         };
 
         let mut statements = Vec::new();
-        statements.push(Expression::raw(format!("{} result", return_type)));
+        statements.push(Expression::local_decl(return_type.clone(), "result", None));
         match record.kind {
             /* rc-allocate new class instance */
             RecordKind::Class => {
                 statements.push(Expression::binary_op(
-                    "result", "=",
-                    Expression::static_cast(
+                    result_name.clone(), "=",
+                    Expression::cast(
                         return_type.clone(),
-                        Expression::function_call("System_Internal_Rc_GetMem", vec![
-                            Expression::function_call("sizeof", vec![Expression::from(struct_name)]),
+                        Expression::function_call(Name::internal_symbol("Rc_GetMem"), vec![
+                            Expression::function_call(Name::internal_symbol("SizeOf"), vec![
+                                Expression::Name(struct_name.clone())
+                            ]),
                             Expression::string_literal(&record.qualified_name().to_string())
                         ]),
+                        CastKind::Static,
                     ),
                 ));
             }
 
             /* zero-initialize a new record on the stack */
             RecordKind::Record => {
-                statements.push(Expression::function_call("std::memset", vec![
-                    Expression::raw("&result"),
-                    Expression::raw(0),
-                    Expression::function_call("sizeof", vec![Expression::from(struct_name)])
-                ]));
+                statements.push(Expression::function_call(
+                    Name::internal_symbol("ZeroMemory"),
+                    vec![
+                        Expression::unary_op("&", result_name.clone(), true),
+                        Expression::function_call(Name::internal_symbol("SizeOf"), vec![
+                            Expression::Name(result_name.clone())
+                        ])
+                    ],
+                ));
             }
         }
 
         for (mem_num, member) in all_fields.iter().enumerate() {
-            let result_member = format!("result{}{}", member_access, member.name);
-            let arg_name = format!("arg{}", mem_num);
-            statements.push(Expression::from(format!(
-                "if ({}) {} = *{}",
-                arg_name,
-                result_member,
-                arg_name
-            )));
+            let result_member = Expression::member(result_val.clone(), &member.name);
+            let arg_name = Name::local(format!("arg{}", mem_num));
+
+            let deref_arg = Expression::unary_op("*", arg_name.clone(), true);
+            let assign_member = Expression::binary_op(result_member, "=", deref_arg);
+
+            let assign_if_present = Expression::if_then(arg_name, assign_member);
+
+            statements.push(assign_if_present);
         }
 
-        statements.push(Expression::raw("return result"));
+        statements.push(Expression::return_value(result_name));
 
         let definition = FunctionDefinition::Defined(Block::new(statements));
 
@@ -381,10 +392,10 @@ impl Variable {
         let name = match local {
             false => {
                 let full_id = var_decl.scope().namespace_qualify(&var_decl.name);
-                identifier_to_c(&full_id)
+                Name::user_symbol(&full_id)
             }
             true => {
-                var_decl.name.clone()
+                Name::local(&var_decl.name)
             }
         };
 

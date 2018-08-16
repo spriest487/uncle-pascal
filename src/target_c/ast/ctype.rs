@@ -2,10 +2,13 @@ use std::fmt;
 
 use types::Type;
 use semantic::Scope;
-use node::FunctionArgModifier;
-use target_c::{
-    identifier_to_c,
-    ast::CallingConvention,
+use node::{
+    FunctionArgModifier,
+    Identifier,
+};
+use target_c::ast::{
+    CallingConvention,
+    Name,
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -17,7 +20,7 @@ pub struct CArray {
 #[derive(Debug, PartialEq, Clone)]
 pub enum CType {
     Void,
-    Named(String),
+    Named(Name),
     Pointer(Box<CType>),
     Ref(Box<CType>),
     Const(Box<CType>),
@@ -27,29 +30,29 @@ pub enum CType {
         arg_types: Vec<CType>,
         calling_convention: CallingConvention,
     },
-    Struct(String),
+    Struct(Name),
 }
 
-impl<'a> From<&'a str> for CType {
-    fn from(s: &str) -> Self {
-        CType::Named(s.to_string())
+impl From<Name> for CType {
+    fn from(name: Name) -> Self {
+        CType::Named(name)
     }
 }
 
 impl CType {
     pub fn translate(pascal_type: &Type, scope: &Scope) -> Self {
         match pascal_type {
-            Type::Nil => unimplemented!("nil type (c++ backend)"),
-            Type::Byte => CType::from("System_Byte"),
-            Type::Int32 => CType::from("System_Int32"),
-            Type::UInt32 => CType::from("System_UInt32"),
-            Type::Int64 => CType::from("System_Int64"),
-            Type::UInt64 => CType::from("System_UInt64"),
-            Type::NativeInt => CType::from("System_NativeInt"),
-            Type::NativeUInt => CType::from("System_NativeUInt"),
-            Type::Float64 => CType::from("System_Float64"),
-            Type::Boolean => CType::from("System_Boolean"),
-            Type::RawPointer => CType::from("System_Pointer"),
+            Type::Nil => unreachable!("nil type (c++ backend)"),
+            Type::Byte => CType::from(Name::user_type(&Identifier::from("System.Byte"))),
+            Type::Int32 => CType::from(Name::user_type(&Identifier::from("System.Int32"))),
+            Type::UInt32 => CType::from(Name::user_type(&Identifier::from("System.UInt32"))),
+            Type::Int64 => CType::from(Name::user_type(&Identifier::from("System.Int64"))),
+            Type::UInt64 => CType::from(Name::user_type(&Identifier::from("System.UInt64"))),
+            Type::NativeInt => CType::from(Name::user_type(&Identifier::from("System.NativeInt"))),
+            Type::NativeUInt => CType::from(Name::user_type(&Identifier::from("System.NativeUInt"))),
+            Type::Float64 => CType::from(Name::user_type(&Identifier::from("System.Float64"))),
+            Type::Boolean => CType::from(Name::user_type(&Identifier::from("System.Boolean"))),
+            Type::RawPointer => CType::from(Name::user_type(&Identifier::from("System.Pointer"))),
             Type::UntypedRef => CType::Void,
             Type::Pointer(target) => {
                 CType::translate(target.as_ref(), scope)
@@ -82,36 +85,35 @@ impl CType {
                 let (class_id, _) = scope.get_class(name)
                     .expect("referenced class must exist");
 
-                CType::Struct(identifier_to_c(&class_id))
+                CType::Struct(Name::user_type(&class_id))
                     .into_pointer()
             }
             Type::Record(name) => {
                 let (record_id, _) = scope.get_record(name)
                     .expect("referenced record must exist");
 
-                CType::Struct(identifier_to_c(&record_id))
+                CType::Struct(Name::user_type(&record_id))
             }
 
             Type::Enumeration(enum_id) => {
                 let (enum_id, _) = scope.get_enumeration(enum_id)
                     .expect("referenced enumeration must exist");
-                CType::Named(identifier_to_c(&enum_id))
+                CType::Named(Name::user_type(&enum_id))
             }
 
             Type::AnyImplementation(_interface_id) => {
-                CType::Named("System_Internal_Object".to_string())
+                CType::Struct(Name::internal_type("Object"))
                     .into_pointer()
             }
 
             Type::Set(set_id) => {
                 let (set_id, _) = scope.get_set(set_id)
                     .expect("referenced set must exist");
-                CType::Named(identifier_to_c(&set_id))
+                CType::Named(Name::user_type(&set_id))
             }
 
-            Type::DynamicArray(dynamic_array_type) => {
-                let element_type = CType::translate(&dynamic_array_type.element, scope);
-                CType::Named(format!("std::shared_ptr<{}[]>", element_type))
+            Type::DynamicArray(_dynamic_array_type) => {
+                unimplemented!("dynamic arrays (c++ backend)")
             }
 
             Type::Array(array) => {
@@ -236,7 +238,7 @@ mod test {
                 count: 3,
                 element: Box::new(CType::Array(CArray {
                     count: 4,
-                    element: Box::new(CType::from("System_Int32")),
+                    element: Box::new(CType::from(Name::internal_type("Int32"))),
                 })),
             })),
         });

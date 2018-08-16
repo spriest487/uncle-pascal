@@ -10,7 +10,6 @@ pub use self::ast::{
     TranslationUnit
 };
 
-use node::Identifier;
 use std::{
     path::Path,
     fs,
@@ -27,13 +26,6 @@ use opts::CompileOptions;
 
 const HEADER: &str = include_str!("header.h");
 const RT: &str = include_str!("rt.h");
-
-pub fn identifier_to_c(id: &Identifier) -> String {
-    let mut parts = id.namespace.clone();
-    parts.push(id.name.clone());
-
-    parts.join("_")
-}
 
 pub fn pas_to_c(module: &ProgramModule,
                 out_path: &Path,
@@ -103,9 +95,6 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
     let mut out = String::new();
 
     out.write_str(HEADER)?;
-
-    // forward declare System.String
-    writeln!(out, "struct System_String;")?;
 
     // declare initialize string literal global vars
     unit.declare_string_literals(&mut out)?;

@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <utility>
 #include <memory>
@@ -13,25 +14,31 @@
 
 template<typename T>
 using System_Internal_Option = std::experimental::optional<T>;
+#define System_Internal_None std::experimental::nullopt
 #else
 #include <optional>
 
 template<typename T>
 using System_Internal_Option = std::optional<T>;
+#define System_Internal_None std::nullopt
 #endif
 
+#define System_Internal_SizeOf(x) (sizeof(x))
 
-typedef std::uint8_t System_Byte;
-typedef std::int32_t System_Int32;
-typedef std::uint32_t System_UInt32;
-typedef std::int64_t System_Int64;
-typedef std::uint64_t System_UInt64;
-typedef std::ptrdiff_t System_NativeInt;
-typedef std::size_t System_NativeUInt;
-typedef double System_Float64;
+typedef std::uint8_t PascalType_System_Byte;
+typedef std::int32_t PascalType_System_Int32;
+typedef std::uint32_t PascalType_System_UInt32;
+typedef std::int64_t PascalType_System_Int64;
+typedef std::uint64_t PascalType_System_UInt64;
+typedef std::ptrdiff_t PascalType_System_NativeInt;
+typedef std::size_t PascalType_System_NativeUInt;
+typedef double PascalType_System_Float64;
 
-typedef void* System_Pointer;
-typedef std::uint8_t System_Boolean;
+typedef void* PascalType_System_Pointer;
+typedef std::uint8_t PascalType_System_Boolean;
+
+template<typename T>
+using System_Internal_Set = std::unordered_set<T>;
 
 template<typename E>
 struct System_Internal_Array {
@@ -48,38 +55,42 @@ struct System_Internal_Class;
 
 struct System_Internal_Object {
     System_Internal_Class* Class;
-    System_NativeUInt StrongCount;
+    PascalType_System_NativeUInt StrongCount;
 };
 
 struct System_Internal_InterfaceImpl {
-    System_NativeUInt ID;
+    PascalType_System_NativeUInt ID;
     const void* VTable;
 };
 
-typedef void (*System_Internal_Destructor)(System_Internal_Object*);
-
 static void System_Internal_InitClass(const char* name,
-    System_Internal_Destructor destructor,
     System_Internal_InterfaceImpl* interfaces,
-    System_NativeUInt interfaceCount);
+    PascalType_System_NativeUInt interfaceCount);
 
 static System_Internal_Class* System_Internal_FindClass(const char* name);
-static const void* System_Internal_FindVTable(System_Internal_Object* obj, System_NativeUInt interfaceID);
+static const void* System_Internal_FindVTable(System_Internal_Object* obj,
+    PascalType_System_NativeUInt interfaceID);
 
 static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);
-static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName);
+static System_Internal_Object* System_Internal_Rc_GetMem(
+    PascalType_System_NativeInt size,
+    const char* constructorName);
 
 static void System_Internal_Raise(const char* file, int line, int col, const char* msg);
 
-static System_Byte* System_GetMem(System_NativeInt bytes);
-static void System_FreeMem(System_Byte* p);
+static void System_Internal_ZeroMemory(void* mem, PascalType_System_NativeUInt len);
 
-struct System_String;
-static System_String* System_CreateString(void);
+static PascalType_System_Byte* System_GetMem(PascalType_System_NativeInt bytes);
+static void System_FreeMem(PascalType_System_Byte* p);
+
+struct PascalType_System_String;
+static PascalType_System_String* System_CreateString(void);
 
 /* procedure System.WriteLn(line: System.String) */
-static void System_WriteLn(System_String* lineRc);
+static void System_WriteLn(struct PascalType_System_String* lineRc);
 
 /* function System.ReadLn(): System.String */
-static System_String* System_ReadLn(void);
+static struct PascalType_System_String* System_ReadLn(void);
+
+static PascalType_System_NativeUInt System_Internal_DisposeInterfaceID;

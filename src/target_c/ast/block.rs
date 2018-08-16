@@ -6,6 +6,7 @@ use target_c::ast::{
     TranslationResult,
     Expression,
     Variable,
+    Name,
 };
 use node::ExpressionValue;
 
@@ -32,9 +33,10 @@ impl Block {
         for stmt in block.statements.iter() {
             if let ExpressionValue::LetBinding(binding) = &stmt.value {
                 if binding.value.expr_type().unwrap().unwrap().is_class() {
-                    statements.push(Expression::Raw({
-                        format!("System_Internal_Rc_Release({})", binding.name)
-                    }));
+                    statements.push(Expression::function_call(
+                        Name::internal_symbol("Rc_Release"),
+                        vec![Expression::Name(Name::local(&binding.name))]
+                    ));
                 }
             }
         }
@@ -51,8 +53,9 @@ impl Block {
 
             // release all rc local vars for this block
             for decl in locals.iter().rev().filter(|decl| decl.decl_type.is_class()) {
-                statements.push(Expression::Raw(
-                    format!("System_Internal_Rc_Release({})", decl.name)
+                statements.push(Expression::function_call(
+                    Name::internal_symbol("Rc_Release"),
+                    vec![Expression::Name(Name::local(&decl.name))]
                 ));
             }
         }

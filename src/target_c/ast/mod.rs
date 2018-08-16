@@ -8,6 +8,7 @@ pub mod block;
 pub mod class;
 pub mod interface;
 pub mod expression;
+pub mod name;
 
 pub use self::function::*;
 pub use self::ctype::*;
@@ -17,6 +18,7 @@ pub use self::block::*;
 pub use self::class::*;
 pub use self::interface::*;
 pub use self::expression::*;
+pub use self::name::*;
 
 pub type TranslationResult<T> = Result<T, TranslationError>;
 

@@ -50,9 +50,6 @@ enum SemanticErrorKind {
     },
     InvalidWithType(Option<Type>),
     InvalidFunctionType(Option<Type>),
-    InvalidConstructorType(Option<Type>),
-    InvalidDestructorReturn(Type),
-    InvalidDestructorArgs(Vec<Type>),
     InvalidConstantValue(ExpressionValue<SemanticContext>),
     InvalidArrayIndex(Option<Type>),
     InvalidArrayType(Option<Type>),
@@ -172,18 +169,6 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "`{}` is not a valid constant value", expr)
             }
 
-            SemanticErrorKind::InvalidConstructorType(actual) => {
-                let actual_name = actual.as_ref().map(|t| t.to_string())
-                    .unwrap_or_else(|| "none".to_string());
-
-                write!(f, "return type of constructor function must be a class, found `{}`",
-                       actual_name)
-            }
-
-            SemanticErrorKind::InvalidDestructorReturn(actual) => {
-                write!(f, "destructor must have no return type but `{}` was found", actual)
-            }
-
             SemanticErrorKind::InvalidSelfArg(arg_sig) => {
                 write!(f, "the argument signature `{}` is not valid as the self-param of an interface (must have the unmodified type `Self`)",
                        arg_sig)
@@ -196,20 +181,6 @@ impl fmt::Display for SemanticErrorKind {
                        func_name,
                        expected_sig,
                 )
-            }
-
-            SemanticErrorKind::InvalidDestructorArgs(arg_types) => {
-                let arg_names = if arg_types.len() > 0 {
-                    arg_types.iter()
-                        .map(|arg_type| format!("`{}`", arg_type))
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                } else {
-                    "(nothing)".to_string()
-                };
-
-                write!(f, "destructor must have one argument of a class type from its own module, but found {}",
-                       arg_names)
             }
 
             SemanticErrorKind::InvalidTypecast { target_type, from_type } => {
@@ -510,30 +481,6 @@ impl SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidConstantValue(value_expr.value),
             context: value_expr.context,
-        }
-    }
-
-    pub fn invalid_constructor_type(actual: Option<Type>, context: SemanticContext) -> Self {
-        SemanticError {
-            kind: SemanticErrorKind::InvalidConstructorType(actual),
-            context,
-        }
-    }
-
-    pub fn invalid_destructor_return(return_type: Type, context: SemanticContext)
-                                     -> SemanticError {
-        SemanticError {
-            kind: SemanticErrorKind::InvalidDestructorReturn(return_type),
-            context,
-        }
-    }
-
-    pub fn invalid_destructor_args(args: impl IntoIterator<Item=Type>,
-                                   context: SemanticContext)
-                                   -> SemanticError {
-        SemanticError {
-            kind: SemanticErrorKind::InvalidDestructorArgs(args.into_iter().collect()),
-            context,
         }
     }
 
