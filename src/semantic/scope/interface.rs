@@ -16,6 +16,7 @@ use semantic::{
     FunctionDecl,
     SemanticResult,
     SemanticError,
+    FunctionSignature,
 };
 
 #[derive(Clone, Debug, Default)]
@@ -47,6 +48,18 @@ impl Interface {
         Some(member.impls_by_type.entry(for_type))
     }
 
+    /**
+        get the signature for the abstract form of a method e.g. the signature accepting
+        any implemention of the interface as the first arg instead of a specific type
+    */
+    pub fn get_method_sig(&self, func: &str) -> Option<&FunctionSignature> {
+        self.decl.methods.get(func)
+    }
+
+    /**
+        get the function decl for the function which implements an interface method for
+        a particular type
+    */
     pub fn get_impl(&self, for_type: &Identifier, func: &str) -> Option<&FunctionDecl> {
         self.methods.get(func)
             .and_then(|member| member.impls_by_type.get(for_type))

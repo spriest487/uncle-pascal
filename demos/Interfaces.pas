@@ -32,7 +32,7 @@ begin
     let polly: Bird = (Name: 'Polly')
 
     penny.SayName()
-    //Animal.SayName(polly)
+    Animal.SayName(polly)
 
     let animal1: Animal = penny
     let animal2: Animal = polly

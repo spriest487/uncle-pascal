@@ -73,7 +73,13 @@ pub fn annotate_call(call: &syntax::FunctionCall,
         return Ok((ufcs_call, scope));
     }
 
-    if let Some(interface_call) = ufcs_candidate.as_ref().and_then(find_interface_call) {
+    let find_method = ufcs_candidate.as_ref()
+        .and_then(|candidate| {
+            find_interface_call(candidate)
+                .or_else(|| find_explicit_interface_call(candidate, args))
+        });
+
+    if let Some(interface_call) = find_method {
         return annotate_method(interface_call, args);
     }
 
@@ -131,27 +137,40 @@ pub fn annotate_call(call: &syntax::FunctionCall,
 fn annotate_method(call_site: MethodCallSite,
                    args: &[syntax::Expression])
                    -> SemanticResult<(Expression, Rc<Scope>)> {
-    let self_type = call_site.self_arg.expr_type()?.unwrap();
+    let scope = call_site.scope_after_target;
 
-    /* make a copy of the expected sig minus the first argument to compare against,
-     because the first argument is already the target of this expression */
-    let rest_args_sig = FunctionSignature {
-        args: call_site.method_sig.args[1..].iter().cloned().collect(),
-        ..call_site.method_sig.clone()
+    let (args, scope) = match call_site.self_arg {
+        Some(self_arg) => {
+            /* make a copy of the expected sig minus the first argument to compare against,
+            because the first argument is already the target of this expression */
+            let rest_args_sig = FunctionSignature {
+                args: call_site.method_sig.args[1..].iter().cloned().collect(),
+                ..call_site.method_sig.clone()
+            };
+
+            let (mut args, scope) = annotate_args(args, &rest_args_sig, &call_site.target_context, scope)?;
+            args.insert(0, self_arg);
+
+            (args, scope)
+        }
+
+        None => {
+            annotate_args(args, &call_site.method_sig, &call_site.target_context, scope)?
+        }
     };
 
-    let scope = call_site.scope_after_target;
-    let context = call_site.self_arg.context.clone();
-
-    let (mut args, scope) = annotate_args(args, &rest_args_sig, &context, scope)?;
-    args.insert(0, call_site.self_arg);
+    /*
+        arg 0 is always the self-arg at this point, regardless of how the function was actually
+        called
+    */
+    let self_type = args[0].expr_type().unwrap().unwrap();
 
     let method_call = Expression::method_call(
         call_site.interface_id,
         call_site.method_name,
         self_type,
         args,
-        context,
+        call_site.target_context,
     );
 
     Ok((method_call, scope))
@@ -171,11 +190,15 @@ struct UfcsCallSite {
 }
 
 struct MethodCallSite {
-    self_arg: Expression,
+    /// not present if the interface was invoked directly and the first arg was passed normally
+    self_arg: Option<Expression>,
+
     interface_id: Identifier,
     method_name: String,
     method_sig: FunctionSignature,
+
     scope_after_target: Rc<Scope>,
+    target_context: SemanticContext,
 }
 
 fn find_ufcs_candidate(target: &syntax::Expression,
@@ -241,6 +264,53 @@ fn find_ufcs_call(candidate: &UfcsCandidate) -> Option<UfcsCallSite> {
     }
 }
 
+/* find an interface call of the form `InterfaceName.MethodName(self, args..)`.
+ interpreting the target of the ufcs call as an interface typename  */
+fn find_explicit_interface_call(candidate: &UfcsCandidate,
+                                args: &[syntax::Expression])
+                                -> Option<MethodCallSite> {
+    let scope = candidate.scope_after_target.clone();
+
+    let target_id = match &candidate.target.value {
+        ExpressionValue::Identifier(target_id) => target_id,
+        _ => return None,
+    };
+
+    let (iface_id, iface) = scope.get_interface(target_id)?;
+
+    let method_sig = {
+        /* even though we're not returning the self-arg, we need to typecheck it ahead of
+        time to figure out what type the interface is being invoked on */
+        args.get(0)
+            .and_then(|first_arg| {
+                let expected_type = Type::AnyImplementation(iface_id.clone());
+                Expression::annotate(first_arg, Some(&expected_type), scope.clone()).ok()
+            })
+            .and_then(|(self_arg, _)| {
+                let self_type = self_arg.expr_type().ok()??;
+                let self_type_name = scope.full_type_name(&self_type)?;
+
+                let method_func = iface.get_impl(&self_type_name, &candidate.func_name)?;
+                Some(method_func.signature())
+            })
+    }.or_else(|| {
+        /* if the self-type doesn't make sense or is missing, we'd rather fail with a
+        bad argument error, so proceed with the abstract signature and this fail later */
+        iface.get_method_sig(&candidate.func_name).cloned()
+    })?;
+
+    Some(MethodCallSite {
+        scope_after_target: scope.clone(),
+        target_context: candidate.target.context.clone(),
+
+        interface_id: iface_id.clone(),
+        method_name: candidate.func_name.clone(),
+        method_sig,
+        self_arg: None,
+    })
+}
+
+/* find an interface call of the form `target.MethodName(self, args..)` */
 fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
     let target_type = candidate.target.expr_type().ok()??;
     let scope = &candidate.scope_after_target;
@@ -258,10 +328,12 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
         let method = interface.decl.methods.get(&candidate.func_name)?;
 
         return Some(MethodCallSite {
-            interface_id: interface_id.clone(),
             scope_after_target: scope.clone(),
+            target_context: candidate.target.context.clone(),
+
+            interface_id: interface_id.clone(),
             method_name: candidate.func_name.clone(),
-            self_arg: candidate.target.clone(),
+            self_arg: Some(candidate.target.clone()),
             method_sig: method.clone(),
         });
     }
@@ -288,11 +360,13 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
     let (interface_id, method) = interface_funcs[0];
 
     Some(MethodCallSite {
-        self_arg: candidate.target.clone(),
+        self_arg: Some(candidate.target.clone()),
         interface_id: interface_id.clone(),
         method_name: method.name.to_string(),
         method_sig: method.signature(),
+
         scope_after_target: scope.clone(),
+        target_context: candidate.target.context.clone(),
     })
 }
 
@@ -356,7 +430,7 @@ pub fn call_type(call: &FunctionCall,
         }
 
         node::FunctionCall::Method { interface_id, func_name, for_type, .. } => {
-            let (interface_id, interface) = context.scope.get_interface(interface_id)
+            let (_interface_id, interface) = context.scope.get_interface(interface_id)
                 .ok_or_else(|| {
                     SemanticError::unknown_type(interface_id.clone(), context.clone())
                 })?;
@@ -371,11 +445,41 @@ pub fn call_type(call: &FunctionCall,
                     /* already checked this is valid */
                     let self_type_name = context.scope.full_type_name(for_type).unwrap();
 
-                    let impl_func = interface.get_impl(&self_type_name, func_name)
-                        .ok_or_else(|| {
-                            let missing = interface_id.child(func_name);
-                            SemanticError::unknown_symbol(missing, context.clone())
-                        })?;
+                    let impl_func = match interface.get_impl(&self_type_name, func_name) {
+                        Some(impl_func) => impl_func,
+                        None => {
+                            match interface.get_method_sig(func_name) {
+                                None => {
+                                    /*
+                                        it doesn't exist at all
+                                        todo: more specific error for missing function names
+                                    */
+                                    let missing_func = Identifier::from(func_name);
+                                    return Err(SemanticError::unknown_symbol(
+                                        missing_func,
+                                        context.clone()
+                                    ));
+                                }
+
+                                Some(abstract_sig) => {
+                                    /*
+                                        it exists, but an implementation doesn't exist for the
+                                        provided self-type. raise an error with the abstract sig
+                                        as a suggestion
+                                    */
+                                    let arg_types: Vec<_> = call.args().iter()
+                                        .map(|arg| arg.expr_type())
+                                        .collect::<SemanticResult<_>>()?;
+
+                                    return Err(SemanticError::wrong_arg_types(
+                                        abstract_sig.clone(),
+                                        arg_types,
+                                        context.clone(),
+                                    ));
+                                }
+                            }
+                        }
+                    };
 
                     impl_func.signature()
                 }
