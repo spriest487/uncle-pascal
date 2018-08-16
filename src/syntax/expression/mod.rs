@@ -434,27 +434,16 @@ impl Expression {
     }
 
     fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
-        let for_do_pair = tokens.match_block(keywords::For, keywords::Do)?;
+        let for_kw = tokens.match_one(keywords::For)?;
+        let from_expr: Expression = tokens.parse()?;
 
-        /* can't nest for loops in either the from or the to expression, so
-        it's safe just to look for the next "to" */
-        let mut for_cond_tokens = TokenStream::new(for_do_pair.inner, &for_do_pair.open);
-        let split_at_to = for_cond_tokens.split_at_match(keywords::To)?;
+        tokens.match_one(keywords::To)?;
+        let to_expr: Expression = tokens.parse()?;
 
-        // the part before the "to" becomes the "from" expr
-        let from_tokens = TokenStream::new(split_at_to.before_split,
-                                           &split_at_to.split_at.clone());
-        let from_expr: Expression = from_tokens.parse_to_end()?;
-
-        // the part between the "to" and the "do" becomes the "to" expr
-        let to_expr: Expression = for_cond_tokens.parse_to_end()?;
-
+        tokens.match_one(keywords::Do)?;
         let body_expr: Expression = tokens.parse()?;
 
-        Ok(Expression::for_loop(from_expr,
-                                to_expr,
-                                body_expr,
-                                for_do_pair.open))
+        Ok(Expression::for_loop(from_expr, to_expr, body_expr, ParsedContext::from(for_kw)))
     }
 
     fn parse_base(tokens: &mut TokenStream) -> ExpressionResult {

@@ -106,15 +106,6 @@ impl TokenStream {
         }
     }
 
-    pub fn rewind(&mut self, rewind_from: TokenStream) {
-        self.context = rewind_from.context.clone();
-
-        let rewind_tokens: Vec<_> = rewind_from.collect();
-        for token in rewind_tokens.into_iter().rev() {
-            self.lookahead_buffer.push_front(token);
-        }
-    }
-
     pub fn finish(mut self) -> ParseResult<()> {
         match self.next() {
             Some(unexpected) => {
@@ -133,7 +124,6 @@ impl TokenStream {
                     return Err(ParseError::UnexpectedToken(token, Some(matcher)));
                 }
 
-                self.context = token.clone();
                 Ok(token)
             }
 
@@ -334,23 +324,6 @@ impl TokenStream {
             groups: groups.groups,
             separators: groups.separators,
         })
-    }
-
-    /* read the whole input stream without advancing the current position or context,
-     and return all remaining tokens ahead of the current point */
-    pub fn look_ahead_to_end(&mut self) -> Vec<source::Token> {
-        let mut all_tokens: Vec<_> = self.lookahead_buffer.iter().cloned().collect();
-
-        loop {
-            match self.tokens.next() {
-                Some(next_token) => {
-                    all_tokens.push(next_token.clone());
-                    self.lookahead_buffer.push_back(next_token);
-                }
-
-                None => break all_tokens,
-            }
-        }
     }
 
     pub fn look_ahead(&mut self) -> LookAheadTokenStream {
@@ -669,7 +642,6 @@ mod test {
     use operators;
     use syntax::*;
     use tokens::AsToken;
-    use consts::IntConstant;
 
     fn tokens_to_source(tokens: Vec<tokens::Token>) -> Vec<source::Token> {
         tokens.into_iter()
@@ -804,33 +776,5 @@ mod test {
 
         assert_eq!(1, groups_match.groups.len());
         assert_eq!(4, groups_match.separators.len());
-    }
-
-    #[test]
-    fn rewind_retains_original_sequence() {
-        let sequence = tokens_to_source(vec![
-            tokens::LiteralInteger(IntConstant::from(1)),
-            tokens::LiteralInteger(IntConstant::from(2)),
-            tokens::LiteralInteger(IntConstant::from(3)),
-            tokens::LiteralInteger(IntConstant::from(4)),
-            tokens::LiteralInteger(IntConstant::from(5)),
-        ]);
-
-        let mut tokens = TokenStream::from(sequence.clone());
-
-        let consumed = vec![
-            tokens.next().unwrap(),
-            tokens.next().unwrap(),
-            tokens.next().unwrap()
-        ];
-        tokens.look_ahead_to_end();
-
-        assert_eq!(2, tokens.lookahead_buffer.len());
-
-        tokens.rewind(TokenStream::from(consumed));
-        assert_eq!(5, tokens.lookahead_buffer.len());
-
-        assert_eq!(&sequence[0], tokens.context());
-        assert_eq!(sequence, tokens.collect::<Vec<_>>());
     }
 }
