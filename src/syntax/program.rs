@@ -58,8 +58,8 @@ impl Program {
         let program_statement = tokens.match_sequence(keywords::Program
             .and_then(Matcher::AnyIdentifier))?;
 
-        let name = program_statement[0].as_token().unwrap_identifier().to_owned();
-        let end_name = tokens.match_or_endl(tokens::Semicolon)?;
+        let name = program_statement[1].as_token().unwrap_identifier().to_owned();
+        tokens.match_or_endl(tokens::Semicolon)?;
 
         let uses = Unit::parse_uses(&mut tokens)?;
         let decls = Unit::parse_decls(&mut tokens)?;

@@ -34,7 +34,7 @@ impl Block {
 
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Block> {
         let statement_groups = tokens.match_groups(keywords::Begin,
-                                                   keywords::Else,
+                                                   keywords::End,
                                                    tokens::Semicolon)?;
 
         let statements: Vec<_> = statement_groups.groups

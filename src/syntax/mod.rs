@@ -4,7 +4,6 @@ pub mod type_decl;
 pub mod program;
 pub mod block;
 pub mod expression;
-pub mod iter;
 pub mod matcher;
 pub mod unit;
 pub mod token_stream;
@@ -15,7 +14,6 @@ pub use self::var_decl::*;
 pub use self::type_decl::*;
 pub use self::program::*;
 pub use self::expression::*;
-pub use self::iter::*;
 pub use self::matcher::*;
 pub use self::unit::*;
 pub use self::token_stream::TokenStream;
@@ -153,40 +151,5 @@ impl fmt::Display for ParseError {
     }
 }
 
-pub struct ParseOutput<TValue> {
-    pub value: TValue,
-    pub last_token: source::Token,
-    pub next_tokens: Box<Iterator<Item=source::Token>>,
-}
-
-impl<TValue> ParseOutput<TValue> {
-    pub fn new<TNext>(value: TValue,
-                      last_token: source::Token,
-                      next_tokens: TNext) -> Self
-        where TNext: IntoIterator<Item=source::Token> + 'static
-    {
-        Self {
-            value,
-            last_token,
-            next_tokens: Box::from(next_tokens.into_iter()),
-        }
-    }
-
-    pub fn finish(mut self) -> Result<TValue, ParseError> {
-        let unexpected = self.next_tokens.next();
-        match unexpected {
-            Some(token) => Err(ParseError::UnexpectedToken(token, None)),
-            None => Ok(self.value)
-        }
-    }
-
-    pub fn map<TOut>(self, f: impl FnOnce(TValue) -> TOut) -> ParseOutput<TOut>
-    {
-        let mapped = f(self.value);
-
-        ParseOutput::new(mapped, self.last_token, self.next_tokens)
-    }
-}
 
 pub type ParseResult<TValue> = Result<TValue, ParseError>;
-pub type ParseOutputResult<TValue> = Result<ParseOutput<TValue>, ParseError>;

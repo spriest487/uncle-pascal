@@ -15,10 +15,10 @@ impl Unit {
 
         let uses = Unit::parse_uses(&mut tokens)?;
 
-        let interface_kw = tokens.match_one(keywords::Interface)?;
+        tokens.match_one(keywords::Interface)?;
         let interface_decls = Unit::parse_decls(&mut tokens)?;
 
-        let impl_kw = tokens.match_one(keywords::Implementation)?;
+        tokens.match_one(keywords::Implementation)?;
         let impl_decls = Unit::parse_decls(&mut tokens)?;
 
         tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
@@ -40,6 +40,7 @@ impl Unit {
             //no uses
             return Ok(Vec::new());
         }
+        tokens.advance(1);
 
         let mut units = Vec::new();
         loop {

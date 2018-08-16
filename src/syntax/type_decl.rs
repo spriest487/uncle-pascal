@@ -45,7 +45,7 @@ impl TypeDecl {
             decls.push(type_decl);
 
             /* the decl must be terminated either by a semicolon or a newline */
-            let separator = tokens.match_or_endl(tokens::Semicolon)?;
+            tokens.match_or_endl(tokens::Semicolon)?;
 
             /* but if the token after that is another identifier, there's another decl
             in this type decl block */
@@ -82,22 +82,7 @@ impl RecordDecl {
             let decl = VarDecl::parse(&mut decls_tokens)?;
             decls.push(decl);
 
-            /* after each field decl we expect to find either a semicolon, a newline
-             or the end of the decl tokens stream */
-            match decls_tokens.peek() {
-                None => break,
-                Some(token_after) => {
-                    let skip = if token_after.is_token(&tokens::Semicolon) {
-                        1
-                    } else if token_after.is_any_identifier()
-                        && token_after.location.line > decls_tokens.context().location.line {
-                        0
-                    } else {
-                        let expected = Matcher::AnyIdentifier.or(tokens::Semicolon);
-                        return Err(ParseError::UnexpectedToken(token_after, Some(expected)));
-                    };
-                }
-            }
+            decls_tokens.match_or_endl(tokens::Semicolon)?;
         }
 
         //after the "end", there should always be a semicolon
