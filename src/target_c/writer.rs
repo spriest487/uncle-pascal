@@ -393,12 +393,32 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
                  function.return_type.as_ref().expect("constructor must have return type"))?;
     }
 
+    //retain rc args
+    let rc_args: Vec<_> = function.args.decls.iter()
+        .filter_map(|arg| {
+            if let types::DeclaredType::Record(record) = &arg.decl_type {
+                if record.kind == types::RecordKind::Class {
+                    return Some(arg);
+                }
+            }
+            None
+        }).collect();
+
+    for arg in rc_args.iter() {
+        writeln!(out, "System_Internal_Rc_Retain(&{});", identifier_to_c(&arg.name))?;
+    }
+
     write_block(out, &function.body)?;
 
     //release all local vars except the result
     let result_id = node::Identifier::from("result");
     release_vars(out, function.local_vars.decls.iter()
         .filter(|decl| decl.name != result_id))?;
+
+    //release args
+    for arg in rc_args.iter() {
+        writeln!(out, "System_Internal_Rc_Release(&{});", arg.name)?;
+    }
 
     match return_type_c {
         Some(_) => writeln!(out, "return result;")?,
