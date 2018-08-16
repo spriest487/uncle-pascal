@@ -159,6 +159,6 @@ System_String* System_StringFromInt(System_Int32 i) {
     auto chars = std::to_string(i);
 
     return System_StringFromBytes(
-        reinterpret_cast<System_Byte*>(chars.data()),
+        reinterpret_cast<System_Byte*>(const_cast<char*>(chars.data())),
         static_cast<System_NativeUInt>(chars.size()));
 }

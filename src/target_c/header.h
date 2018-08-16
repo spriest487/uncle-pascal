@@ -8,7 +8,7 @@
 #include <utility>
 #include <memory>
 
-typedef std::int8_t System_Byte;
+typedef std::uint8_t System_Byte;
 typedef std::int32_t System_Int32;
 typedef std::uint32_t System_UInt32;
 typedef std::int64_t System_Int64;
