@@ -82,33 +82,37 @@ impl Parse for Vec<UnitReference> {
             });
 
             match tokens.look_ahead().next() {
-                //end of uses (either unexpected token on new line, or explicit semicolon)
-                Some(ref t) if (t.is_token(&tokens::Semicolon) ||
-                    t.location.line > tokens.context().location.line) => {
-
-                    //skip the semicolon if there was one
-                    if t.is_token(&tokens::Semicolon) {
-                        tokens.next();
-                    }
-
+                // end of uses (explicit semicolon)
+                Some(ref t) if t.is_token(&tokens::Semicolon) => {
+                    tokens.advance(1);
                     break Ok(units);
                 }
 
+                // list continues (after an explicit semicolon)
                 Some(ref comma) if comma.is_token(&tokens::Comma) => {
-                    //continue looking for unit names after this comma in next iter
-                    tokens.next();
+                    tokens.advance(1);
                 }
 
+                // another name without a comma, but it's on a new line so that's fine
+                Some(ref t) if t.is_any_identifier()
+                    && t.location.line > tokens.context().location.line => {
+                }
+
+                // list ends (EOF or unexpected token but it's on a new line,
+                // so we just infer the end of the list)
+                None => {
+                    break Ok(units)
+                },
+                Some(ref t) if t.location.line > tokens.context().location.line => {
+                    break Ok(units);
+                }
+
+                // unexpect tokens on the same line, this is illegal
                 Some(unexpected) => {
                     let expected = Some(Matcher::from(tokens::Comma));
                     let err = ParseError::UnexpectedToken(unexpected, expected);
 
                     break Err(err);
-                }
-
-                None => {
-                    let context = tokens.context().clone();
-                    break Err(ParseError::UnexpectedEOF(tokens::Comma.into(), context));
                 }
             }
         }

@@ -31,6 +31,7 @@ pub enum Operator {
     Deref,
     AddressOf,
     And,
+    Not,
     Or,
     Gt,
     Gte,
@@ -39,11 +40,12 @@ pub enum Operator {
     RangeInclusive,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 18] = [
+pub static PRECEDENCE: [(Operator, Position); 19] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
     (Minus, Position::Prefix),
+    (Not, Position::Prefix),
 
     (Multiply, Position::Binary),
     (Divide, Position::Binary),
@@ -118,6 +120,7 @@ impl fmt::Display for Operator {
             Multiply => "*",
             Divide => "/",
             And => "and",
+            Not => "not",
             Or => "or",
             Gt => ">",
             Gte => ">=",

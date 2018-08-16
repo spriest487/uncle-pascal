@@ -45,6 +45,7 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
         Type::Float64 => "System_Float64".to_string(),
         Type::Boolean => "System_Boolean".to_string(),
         Type::RawPointer => "System_Pointer".to_string(),
+        Type::UntypedRef => "void*".to_string(),
         Type::Pointer(target) => {
             let target_c = type_to_c(target.as_ref(), scope);
             format!("{}*", target_c)
@@ -193,6 +194,7 @@ pub fn write_expr(out: &mut String,
                 operators::Gt => ">",
                 operators::Gte => ">=",
 
+                operators::Not |
                 operators::RangeInclusive |
                 operators::AddressOf |
                 operators::Deref => panic!("bad binary operator type: {}", op),
@@ -215,6 +217,7 @@ pub fn write_expr(out: &mut String,
                 operators::Minus => "-",
                 operators::Deref => "*",
                 operators::AddressOf => "&",
+                operators::Not => "!",
 
                 operators::RangeInclusive |
                 operators::And |
@@ -651,9 +654,10 @@ pub fn write_function(out: &mut String,
     write!(out, "{} ", identifier_to_c(&function.name))?;
 
     write!(out, "({})", function.args.iter()
-        .map(|arg_decl| {
+        .map(|arg_decl|  {
             let c_arg_type_base = type_to_c(&arg_decl.decl_type, &arg_decl.scope());
-            let c_type = match arg_decl.modifier {
+
+            let c_type = match &arg_decl.modifier {
                 None => c_arg_type_base,
                 Some(FunctionArgModifier::Const) => format!("{} const", c_arg_type_base),
                 Some(FunctionArgModifier::Var) |
@@ -691,13 +695,9 @@ pub fn write_function(out: &mut String,
             }
 
             let rc_args: Vec<_> = function.args.iter()
-                .filter(|arg| arg.modifier != Some(FunctionArgModifier::Out))
                 .filter(|arg| {
-                    if let Type::Class(_) = &arg.decl_type {
-                        true
-                    } else {
-                        false
-                    }
+                    arg.modifier != Some(FunctionArgModifier::Out)
+                        && arg.decl_type.is_class()
                 })
                 .collect();
 

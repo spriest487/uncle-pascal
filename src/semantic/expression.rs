@@ -470,6 +470,7 @@ fn binary_op_type(lhs: &Expression,
             }
         }
 
+        operators::Not |
         operators::AddressOf |
         operators::Deref => {
             let operand_types = vec![lhs_type, rhs.expr_type()?];
@@ -508,6 +509,11 @@ fn prefix_op_type(op: operators::Operator,
                 Ok(rhs_type.clone()),
             _ =>
                 invalid_op_err(),
+        }
+
+        operators::Not => match &rhs_type {
+            Some(Type::Boolean) => Ok(Some(Type::Boolean)),
+            _ => invalid_op_err(),
         }
 
         operators::RangeInclusive |

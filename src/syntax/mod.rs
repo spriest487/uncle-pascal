@@ -152,6 +152,8 @@ mod test {
                 ExpressionValue::Constant(ConstantExpression::Integer(int)) => {
                     assert_eq!(dim_val, int.as_i128())
                 }
+
+                _ => panic!("expression was not a constant"),
             }
         };
 

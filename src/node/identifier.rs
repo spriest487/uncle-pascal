@@ -5,7 +5,7 @@ use std::{
 };
 
 use tokens::{self, AsToken};
-use node::{self, Symbol};
+use node::Symbol;
 use syntax::*;
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
@@ -86,15 +86,8 @@ impl FromIterator<String> for Identifier {
     }
 }
 
-impl Identifier {
-    pub fn child_of_namespace(ns: Option<&Identifier>, name: &str) -> Self {
-        match ns {
-            Some(ns_id) => ns_id.child(name),
-            None => Identifier::from(name),
-        }
-    }
-
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<node::Identifier> {
+impl Parse for Identifier {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut parts = Vec::new();
 
         loop {
@@ -117,7 +110,7 @@ impl Identifier {
                 ))
             }
 
-            match tokens.look_ahead().next()  {
+            match tokens.look_ahead().next() {
                 //there's a dot, we expect another part, so keep going
                 Some(ref period) if *period.as_token() == tokens::Period => {
                     tokens.next();
@@ -135,6 +128,16 @@ impl Identifier {
             name,
             namespace: parts,
         })
+    }
+}
+
+
+impl Identifier {
+    pub fn child_of_namespace(ns: Option<&Identifier>, name: &str) -> Self {
+        match ns {
+            Some(ns_id) => ns_id.child(name),
+            None => Identifier::from(name),
+        }
     }
 
     pub fn parts(&self) -> impl Iterator<Item=&String> {

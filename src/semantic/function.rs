@@ -8,7 +8,7 @@ use syntax;
 use semantic::*;
 use types::{
     Type,
-    FunctionSignature
+    FunctionSignature,
 };
 
 const RESULT_VAR_NAME: &str = "result";
@@ -39,20 +39,20 @@ impl FunctionDecl {
             return Err(SemanticError::illegal_name(function.name.to_string(), context));
         };
 
-        let args: Vec<_> = function.args.iter()
+        let args: Vec<FunctionArg> = function.args.iter()
             .map(|arg| {
                 let arg_context = SemanticContext {
-                    token: arg.context.token().clone(),
+                    token: context.token().clone(),
                     scope: scope.clone(),
                 };
 
                 let arg_type = arg.decl_type.resolve(scope.clone())?;
 
-                Ok(FunctionArg {
+                Ok(node::FunctionArg {
                     name: arg.name.clone(),
                     decl_type: arg_type,
                     context: arg_context,
-                    modifier: arg.modifier,
+                    modifier: arg.modifier.clone(),
                 })
             })
             .collect::<SemanticResult<_>>()?;
@@ -83,8 +83,8 @@ impl FunctionDecl {
                 let local_scope = Rc::new({
                     let mut local_scope = scope.as_ref().clone();
                     for arg in args.iter() {
-                        local_scope = local_scope.with_symbol_local(&arg.name,
-                                                                    arg.decl_type.clone());
+                        let arg_type: Type = arg.decl_type.clone();
+                        local_scope = local_scope.with_symbol_local(&arg.name, arg_type);
                     }
                     for parsed_const in function_body.local_consts.decls.iter() {
                         //consts can reference each other so we annotate them one by one
@@ -173,7 +173,7 @@ impl FunctionDecl {
 
         match self.args.iter().next().map(|arg| &arg.decl_type) {
             Some(Type::Record(arg_record)) =>
-                arg_record.name == class_type.name.to_string(),
+                arg_record.name == class_type.name,
             _ =>
                 false,
         }

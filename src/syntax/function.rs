@@ -6,6 +6,7 @@ use tokens::AsToken;
 use node::{
     self,
     Identifier,
+    TypeName,
     FunctionKind,
     FunctionModifier,
     FunctionArgModifier,
@@ -140,21 +141,32 @@ impl FunctionDecl {
     }
 
     pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionArg>> {
-        if tokens.look_ahead().match_one(tokens::BracketLeft).is_none() {
+        match tokens.look_ahead().match_one(tokens::BracketLeft) {
+            None => {
+                // no args list
+                return Ok(Vec::new())
+            },
+            Some(_) => {
+                // continue to read args list in brackets
+                tokens.advance(1)
+            },
+        }
+
+        // cover the case of an empty argument list with brackets: `procedure x()`
+        if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
+            tokens.advance(1);
             return Ok(Vec::new());
         }
 
-        let arg_groups = tokens.match_groups(tokens::BracketLeft,
-                                             tokens::BracketRight,
-                                             tokens::Semicolon)?;
-
         let mut args = Vec::new();
-        for arg_group in arg_groups.groups {
-            let mut arg_group_tokens = TokenStream::new(arg_group.tokens, &arg_group.context);
+        loop {
+            let context = tokens.look_ahead().next().ok_or_else(|| {
+                ParseError::UnexpectedEOF(Matcher::AnyIdentifier, tokens.context().clone())
+            })?;
 
             /* the modifier comes first if there is one, and applies to all args in this group - e.g.
             `const x, y: Integer` means x and y are consts of type Integer */
-            let modifier = arg_group_tokens.look_ahead().match_one(keywords::Var
+            let modifier = tokens.look_ahead().match_one(keywords::Var
                 .or(keywords::Const)
                 .or(keywords::Out))
                 .map(|t| match t.unwrap_keyword() {
@@ -164,25 +176,70 @@ impl FunctionDecl {
                     _ => unreachable!()
                 });
             if modifier.is_some() {
-                arg_group_tokens.advance(1);
+                tokens.advance(1);
             }
 
-            /* the actual arg group (names, colon, type) works the same as a var decl so we can
-            just parse it like that */
-            let group_args: Vec<VarDecl> = arg_group_tokens.parse()?;
-            for group_arg in group_args {
-                args.push(FunctionArg {
-                    context: group_arg.context,
-                    decl_type: group_arg.decl_type,
-                    name: group_arg.name,
+            /* can declare multiple args at once with the same type like a var section -
+            the modifier applies to all of them e.g. `out x, y: Integer` -> two Integer out args */
+            let mut names = Vec::new();
+            loop {
+                let name = tokens.match_one(Matcher::AnyIdentifier)?
+                    .unwrap_identifier()
+                    .to_string();
+
+                // each time a name is followed by a comma, expect another name after it
+                names.push(name);
+                match tokens.look_ahead().match_one(tokens::Comma) {
+                    Some(_) => tokens.advance(1),
+                    None => break,
+                }
+            };
+
+            let decl_type: TypeName = match modifier {
+                // "var" might omit the typename to form an untyped reference
+                Some(FunctionArgModifier::Var) => {
+                    match tokens.look_ahead().match_one(tokens::Colon) {
+                        Some(_colon) => {
+                            tokens.advance(1);
+                            let decl_type = tokens.parse()?;
+                            decl_type
+                        }
+
+                        None => {
+                            TypeName::UntypedRef { context: context.clone().into() }
+                        },
+                    }
+                }
+
+                // no "var", definitely has a colon + typename
+                _ => {
+                    tokens.match_one(tokens::Colon)?;
+                    tokens.parse()?
+                }
+            };
+
+            args.extend(names.into_iter().map(|name| {
+                node::FunctionArg {
+                    name,
+                    context: context.clone().into(),
+                    decl_type: decl_type.clone(),
                     modifier,
-                })
+                }
+            }));
+
+            match tokens.look_ahead().match_one(tokens::BracketRight) {
+                Some(_) => {
+                    // found end bracket, advance past it and finish
+                    tokens.advance(1);
+                    break Ok(args);
+                }
+
+                None => {
+                    // no end bracket, expect a semicolon and keep reading args
+                    tokens.match_one(tokens::Semicolon)?;
+                }
             }
-
-            arg_group_tokens.finish()?;
         }
-
-        Ok(args)
     }
 }
 

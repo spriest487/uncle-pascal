@@ -56,12 +56,19 @@ pub enum TypeName {
         arg_types: Vec<TypeName>,
         modifiers: Vec<FunctionModifier>,
     },
+    UntypedRef {
+        context: ParsedContext,
+    }
 }
 
 impl ToSource for TypeName {
     fn to_source(&self) -> String {
         let mut result = String::new();
         match self {
+            TypeName::UntypedRef { .. } => {
+                result.push_str("<untyped ref>");
+            }
+
             TypeName::Scalar { name, indirection, array_dimensions, .. } => {
                 if array_dimensions.len() > 0 {
                     result.push_str("array [");
@@ -251,6 +258,9 @@ impl TypeName {
                     indirection: indirection + 1,
                 },
 
+            TypeName::UntypedRef { .. } =>
+                unimplemented!("pointer to untyped ref"),
+
             TypeName::Function { .. } =>
                 unimplemented!("pointer to function")
         }
@@ -299,6 +309,10 @@ impl TypeName {
                 };
 
                 Ok(Type::Function(Box::new(sig)))
+            }
+
+            TypeName::UntypedRef { .. } => {
+                Ok(Type::UntypedRef)
             }
         }
     }

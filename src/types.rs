@@ -82,6 +82,7 @@ pub enum Type {
     RawPointer,
     Pointer(Box<Type>),
     Float64,
+    UntypedRef,
     Function(Box<FunctionSignature>),
     Record(Identifier),
     Class(Identifier),
@@ -111,6 +112,7 @@ impl Type {
                 Type::NativeInt => "System.NativeInt".to_string(),
                 Type::NativeUInt => "System.NativeUInt".to_string(),
                 Type::Float64 => "System.Float64".to_string(),
+                Type::UntypedRef => "(untyped reference)".to_string(),
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig.to_source()),
@@ -207,6 +209,7 @@ impl Type {
             Type::Record(_) |
             Type::Class(_) |
             Type::RawPointer |
+            Type::UntypedRef |
             Type::Int32 |
             Type::UInt32 |
             Type::Int64 |

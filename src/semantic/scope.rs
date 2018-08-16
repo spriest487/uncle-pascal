@@ -613,6 +613,7 @@ impl Scope {
             Type::Pointer(_) |
             Type::Function(_) |
             Type::NativeInt |
+            Type::UntypedRef |
             Type::NativeUInt =>
                 size_of::<usize>() as usize,
 
