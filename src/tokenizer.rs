@@ -29,7 +29,7 @@ impl fmt::Display for IllegalToken {
 
 enum TokenMatchParser {
     Simple(tokens::Token),
-    ParseFn(Box<Fn(&regex::Captures) -> Option<tokens::Token>>)
+    ParseFn(Box<Fn(&regex::Captures) -> Option<tokens::Token>>),
 }
 
 impl TokenMatchParser {
@@ -67,29 +67,59 @@ fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
 
 fn token_patterns() -> Vec<(String, TokenMatchParser)> {
     vec![
-        (r"[a-zA-Z]((\.?[a-zA-Z0-9_])?)+".to_owned(), TokenMatchParser::ParseFn(Box::from(parse_name))),
-        (r"'(([^']|'{2})*)'".to_owned(), {
-            //anything between two quote marks, with double quote as literal quote mark
-            let parse_fn = Box::from(parse_literal_string);
-            TokenMatchParser::ParseFn(parse_fn)
-        }),
-        (r"\(".to_owned(), TokenMatchParser::Simple(tokens::Token::BracketLeft)),
-        (r"\)".to_owned(), TokenMatchParser::Simple(tokens::Token::BracketRight)),
-        (r":=".to_owned(), {
-            let op = tokens::Token::BinaryOperator(operators::BinaryOperator::Assignment);
-            TokenMatchParser::Simple(op)
-        }),
-        (r":".to_owned(), TokenMatchParser::Simple(tokens::Token::Colon)),
-        (r";".to_owned(), TokenMatchParser::Simple(tokens::Token::Semicolon)),
-        (r",".to_owned(), TokenMatchParser::Simple(tokens::Token::Comma)),
-        (r"\.".to_owned(), TokenMatchParser::Simple(tokens::Token::Period)),
-        (r"\+".to_owned(), TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Plus))),
-        (r"\-".to_owned(), TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Minus))),
-        ("=".to_owned(), TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Equals))),
-        (r"[1-9][0-9]*".to_owned(), {
-            let parse_fn = Box::from(parse_literal_integer);
-            TokenMatchParser::ParseFn(parse_fn)
-        }),
+        (
+            r"[a-zA-Z]((\.?[a-zA-Z0-9_])?)+".to_owned(),
+            TokenMatchParser::ParseFn(Box::from(parse_name))
+        ),
+        (
+            r"'(([^']|'{2})*)'".to_owned(),
+            {
+                //anything between two quote marks, with double quote as literal quote mark
+                let parse_fn = Box::from(parse_literal_string);
+                TokenMatchParser::ParseFn(parse_fn)
+            }
+        ),
+        (
+            r"\(".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::BracketLeft)),
+        (
+            r"\)".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::BracketRight)),
+        (
+            r":=".to_owned(),
+            {
+                let op = tokens::Token::BinaryOperator(operators::BinaryOperator::Assignment);
+                TokenMatchParser::Simple(op)
+            }
+        ),
+        (
+            r":".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::Colon)),
+        (
+            r";".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::Semicolon)),
+        (
+            r",".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::Comma)),
+        (
+            r"\.".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::Period)),
+        (
+            r"\+".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Plus))),
+        (
+            r"\-".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Minus))),
+        (
+            "=".to_owned(),
+            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Equals))),
+        (
+            r"[1-9][0-9]*".to_owned(),
+            {
+                let parse_fn = Box::from(parse_literal_integer);
+                TokenMatchParser::ParseFn(parse_fn)
+            }
+        ),
     ]
 }
 
@@ -128,8 +158,7 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
             if token_source.chars().all(char::is_whitespace) {
                 /* token is purely whitespace, ignore it */
                 None
-            }
-            else {
+            } else {
                 let first_matching_token = patterns.iter()
                     .find(|pattern| pattern.0.is_match(&token_source))
                     .and_then(|pattern| {
@@ -157,7 +186,7 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
 }
 
 pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
-    let lines : Vec<String> = source.replace("\r\n", "\n")
+    let lines: Vec<String> = source.replace("\r\n", "\n")
         .split("\n")
         .map(str::to_owned)
         .collect();
