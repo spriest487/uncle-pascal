@@ -13,9 +13,8 @@ var
   ints2: array[-1..1, -2..2] of Int32
 
 begin
-  let x = 1
   let y = 2
-  x := x + y
+  let x = 1 + y
 
   let vec = Vector.Create()
   vec.Add(1)

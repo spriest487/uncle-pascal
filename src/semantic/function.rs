@@ -63,7 +63,7 @@ impl FunctionDecl {
             modifiers: function.modifiers.clone(),
             context,
             args,
-            return_type
+            return_type,
         })
     }
 
@@ -187,7 +187,11 @@ impl Function {
         /* include args in local scope before variables */
         for arg in decl.args.iter() {
             let arg_type: Type = arg.decl_type.clone();
-            local_scope = local_scope.with_symbol_local(&arg.name, arg_type);
+            let binding_kind = match arg.modifier {
+                Some(node::FunctionArgModifier::Const) => BindingKind::Immutable,
+                _ => BindingKind::Mutable,
+            };
+            local_scope = local_scope.with_symbol_local(&arg.name, arg_type, binding_kind);
         }
 
         /* annotate variables and add them to the local scope */
@@ -209,7 +213,8 @@ impl Function {
 
         for local_var in all_local_vars.decls.iter() {
             local_scope = local_scope.with_symbol_local(&local_var.name,
-                                                        local_var.decl_type.clone());
+                                                        local_var.decl_type.clone(),
+                                                        BindingKind::Mutable);
         }
 
         local_decls.push(node::FunctionLocalDecl::Vars(all_local_vars));

@@ -67,20 +67,25 @@ pub enum SemanticErrorKind {
     TypeNotAssignable(Option<Type>),
     ValueNotAssignable(Expression),
     TypesNotComparable(Option<Type>, Option<Type>),
+    PrivateMemberAccessForbidden {
+        base_type: Identifier,
+        member_name: String,
+        from_ns: Option<Identifier>,
+    },
 }
 
 impl fmt::Display for SemanticErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &SemanticErrorKind::UnknownType(ref missing_type) => {
+            SemanticErrorKind::UnknownType(missing_type) => {
                 write!(f, "type `{}` was not found", missing_type)
             }
 
-            &SemanticErrorKind::UnknownSymbol(ref missing_sym) => {
+            SemanticErrorKind::UnknownSymbol(missing_sym) => {
                 write!(f, "symbol `{}` was not found", missing_sym)
             }
 
-            &SemanticErrorKind::MemberAccessOfNonRecord(ref actual, ref name) => {
+            SemanticErrorKind::MemberAccessOfNonRecord(actual, name) => {
                 write!(f, "cannot access member {} of {} because it is not a record",
                        name,
                        actual.as_ref()
@@ -88,18 +93,28 @@ impl fmt::Display for SemanticErrorKind {
                            .unwrap_or_else(|| "none".to_string()))
             }
 
-            &SemanticErrorKind::UnexpectedType { ref expected, ref actual } => {
+            SemanticErrorKind::PrivateMemberAccessForbidden { base_type, from_ns, member_name } => {
+                write!(f, "member `{}` of type `{}` cannot be accessed from unit `{}`",
+                    member_name,
+                    base_type,
+                    from_ns.as_ref()
+                           .map(|ns| ns.to_string())
+                           .unwrap_or_else(|| "(root)".to_string()),
+                )
+            }
+
+            SemanticErrorKind::UnexpectedType { expected, actual } => {
                 write!(f, "expected type `{}`, found `{}`",
-                    Type::name(expected.as_ref()),
-                    Type::name(actual.as_ref()))
+                       Type::name(expected.as_ref()),
+                       Type::name(actual.as_ref()))
             }
 
-            &SemanticErrorKind::InvalidWithType(ref actual) => {
+            SemanticErrorKind::InvalidWithType(actual) => {
                 write!(f, "{} is not a valid value for a `with` expression (expected record or class)",
-                    Type::name(actual.as_ref()))
+                       Type::name(actual.as_ref()))
             }
 
-            &SemanticErrorKind::InvalidFunctionType(ref actual) => {
+            SemanticErrorKind::InvalidFunctionType(actual) => {
                 let actual_name = actual.as_ref()
                     .map(|t| match t {
                         Type::Record(name) => format!("record `{}`", name),
@@ -112,11 +127,11 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "{} is not a callable function", actual_name)
             }
 
-            &SemanticErrorKind::InvalidConstantValue(ref expr) => {
+            SemanticErrorKind::InvalidConstantValue(expr) => {
                 write!(f, "`{}` is not a valid constant value", expr.to_source())
             }
 
-            SemanticErrorKind::InvalidConstructorType(ref actual) => {
+            SemanticErrorKind::InvalidConstructorType(actual) => {
                 let actual_name = actual.as_ref().map(|t| t.to_string())
                     .unwrap_or_else(|| "none".to_string());
 
@@ -142,20 +157,20 @@ impl fmt::Display for SemanticErrorKind {
                        arg_names)
             }
 
-            &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
+            SemanticErrorKind::WrongNumberOfArgs { expected_sig, actual } => {
                 write!(f, "wrong number of arguments passed to function (expected {}, found {})",
                        expected_sig.arg_types.len(), actual)
             }
 
-            &SemanticErrorKind::IllegalName(ref name) => {
+            SemanticErrorKind::IllegalName(name) => {
                 write!(f, "illegal name `{}`", name)
             }
 
-            &SemanticErrorKind::EmptyRecord(ref name) => {
+            SemanticErrorKind::EmptyRecord(name) => {
                 write!(f, "record type `{}` must have at least one member", name)
             }
 
-            &SemanticErrorKind::InvalidOperator { ref op, ref args } => {
+            SemanticErrorKind::InvalidOperator { op, args } => {
                 let args_list = args.iter()
                     .map(|arg| format!("`{}`", Type::name(arg.as_ref())))
                     .collect::<Vec<_>>()
@@ -164,16 +179,16 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
             }
 
-            &SemanticErrorKind::TypeNotAssignable(ref t) => {
+            SemanticErrorKind::TypeNotAssignable(t) => {
                 write!(f, "type `{}` cannot be assigned to",
                        Type::name(t.as_ref()))
             }
 
-            &SemanticErrorKind::ValueNotAssignable(ref expr) => {
+            SemanticErrorKind::ValueNotAssignable(expr) => {
                 write!(f, "expression `{}` cannot be assigned to", expr.to_source())
             }
 
-            &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
+            SemanticErrorKind::TypesNotComparable(a, b) => {
                 write!(f, "`{}` cannot be used in comparison operations with `{}`",
                        Type::name(a.as_ref()),
                        Type::name(b.as_ref()))
@@ -235,6 +250,21 @@ impl SemanticError {
         }
     }
 
+    pub fn private_member_access_forbidden(base_type: impl Into<Identifier>,
+                                           from_ns: impl Into<Option<Identifier>>,
+                                           member_name: impl ToString,
+                                           context: impl Into<SemanticContext>)
+                                           -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::PrivateMemberAccessForbidden {
+                base_type: base_type.into(),
+                from_ns: from_ns.into(),
+                member_name: member_name.to_string(),
+            },
+            context: context.into(),
+        }
+    }
+
     pub fn wrong_num_args(sig: FunctionSignature,
                           actual: usize,
                           context: SemanticContext) -> Self {
@@ -250,7 +280,7 @@ impl SemanticError {
     pub fn invalid_with_type(actual: Option<Type>, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidWithType(actual),
-            context
+            context,
         }
     }
 

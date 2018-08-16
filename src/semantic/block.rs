@@ -29,7 +29,7 @@ impl Block {
                 local_scope = Rc::new(local_scope
                     .as_ref()
                     .clone()
-                    .with_symbol_local(&name, inferred_type));
+                    .with_symbol_local(&name, inferred_type, BindingKind::Immutable));
             }
             statements.push(statement);
         }

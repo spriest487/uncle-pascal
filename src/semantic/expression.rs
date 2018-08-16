@@ -230,7 +230,7 @@ fn annotate_for_loop(from: &syntax::Expression,
                 None, from_expr.context.clone()))?;
 
         let body_scope = Rc::new(scope.as_ref().clone()
-            .with_symbol_local(&from_name, from_type));
+            .with_symbol_local(&from_name, from_type, BindingKind::Immutable));
 
         Expression::annotate(body, body_scope)?
     } else {
@@ -319,7 +319,7 @@ fn annotate_ufcs(target: &Expression,
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
     match ufcs_function {
-        ScopedSymbol::Local { name: ufcs_func_name, decl_type: Type::Function(sig) } => {
+        ScopedSymbol::Local { name: ufcs_func_name, decl_type: Type::Function(sig), .. } => {
             let first_arg_type = sig.arg_types.first()?;
 
             if first_arg_type.remove_indirection() != target_type.remove_indirection() {
@@ -432,11 +432,19 @@ fn function_call_type(target: &Expression,
     }
 }
 
-fn is_lvalue(expr: &Expression) -> bool {
+fn is_assignable(expr: &Expression) -> bool {
     match &expr.value {
         ExpressionValue::Identifier(name) => {
-            let is_declared_func = expr.scope().get_function(&name).is_some();
-            !is_declared_func
+            /* we have to differentiate actual named functions
+            (always immutable) from function-valued bindings */
+            if expr.scope().get_function(&name).is_some() {
+                return false;
+            }
+
+            match expr.scope().get_symbol(name) {
+                Some(binding) => binding.is_writeable(expr.scope().local_namespace()),
+                None => false,
+            }
         }
         ExpressionValue::PrefixOperator { op, .. } => match op {
             operators::Deref => true,
@@ -445,7 +453,7 @@ fn is_lvalue(expr: &Expression) -> bool {
 
         ExpressionValue::ArrayElement { of, .. } |
         ExpressionValue::Member { of, .. } => {
-            is_lvalue(of)
+            is_assignable(of)
         }
 
         ExpressionValue::Raise(_) |
@@ -493,7 +501,7 @@ fn binary_op_type(lhs: &Expression,
         }
 
         operators::Assignment => {
-            if !is_lvalue(lhs) {
+            if !is_assignable(lhs) {
                 Err(SemanticError::value_not_assignable(lhs.clone()))
             } else {
                 expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
@@ -568,15 +576,29 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
     let base_type = of.expr_type()?
         .map(|dt| dt.remove_indirection().clone());
 
-    /* treat records and classes the same for this purpose */
-    let base_decl = match &base_type {
-        Some(Type::Record(name)) => of.scope().get_record(name),
-        Some(Type::Class(name)) => of.scope().get_class(name),
-        _ => None,
+    /* treat records and classes the same for this purpose, except that
+     class members are always private i.e. inaccessible outside the unit that
+     the class is declared in */
+    let (base_decl, private_members) = match &base_type {
+        Some(Type::Record(name)) => (of.scope().get_record(name), false),
+        Some(Type::Class(name)) => (of.scope().get_class(name), true),
+        _ => (None, false),
     };
 
     match base_decl {
-        Some((_record_id, record)) => {
+        Some((record_id, record)) => {
+            if private_members {
+                let from_ns = of.scope().local_namespace();
+                if from_ns != record_id.parent().as_ref() {
+                    return Err(SemanticError::private_member_access_forbidden(
+                        record_id.clone(),
+                        of.scope().local_namespace().cloned(),
+                        name,
+                        of.context.clone()
+                    ));
+                }
+            }
+
             match record.get_member(name) {
                 Some(member) =>
                     Ok(Some(member.decl_type.clone())),

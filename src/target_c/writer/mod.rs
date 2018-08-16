@@ -11,6 +11,7 @@ use semantic::{
     SemanticContext,
     ProgramModule,
     Scope,
+    BindingKind,
 };
 use node::{
     self,
@@ -507,7 +508,7 @@ fn write_statement(out: &mut String,
             let context = semantic::SemanticContext::new(
                 context.token().clone(),
                 Rc::new(statement.scope().clone()
-                    .with_symbol_local(&name, binding_type)),
+                    .with_symbol_local(&name, binding_type, BindingKind::Immutable)),
             );
             let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
 
@@ -548,8 +549,12 @@ fn write_statement(out: &mut String,
 
         /* the temp binding needs to be added to scope in case anything typechecks again after
         this point*/
-        let binding_scope = subexpr.scope().clone()
-            .with_symbol_local(&name, call_func.return_type.as_ref().cloned().unwrap());
+        let binding_scope = {
+            let decl_type = call_func.return_type.as_ref().cloned().unwrap();
+
+            subexpr.scope().clone()
+                .with_symbol_local(&name, decl_type, BindingKind::Immutable)
+        };
 
         let binding_context = SemanticContext::new(subexpr.context.token().clone(), binding_scope);
 
@@ -558,7 +563,7 @@ fn write_statement(out: &mut String,
         let binding_expr = semantic::Expression::identifier(Identifier::from(&name),
                                                             binding_context);
 
-        /* store the original expression value for later when we write out the temp bindings */
+        /* store the original expression value for later when we wriite out the temp bindings */
         bindings.push((name, subexpr));
         binding_expr
     });

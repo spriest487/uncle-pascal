@@ -10,7 +10,6 @@ use node::{
     self,
     Identifier,
     UnitReferenceKind,
-    TypeName,
     RecordKind,
     ConstantExpression,
 };
@@ -19,6 +18,27 @@ use consts::{
     SetConstant,
 };
 use semantic::*;
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum BindingKind {
+    Mutable,
+    Immutable,
+}
+
+impl fmt::Display for BindingKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BindingKind::Mutable => write!(f, "mutable"),
+            BindingKind::Immutable => write!(f, "immutable"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct SymbolBinding {
+    decl_type: Type,
+    kind: BindingKind,
+}
 
 #[derive(Clone, Debug)]
 pub enum Named {
@@ -29,12 +49,7 @@ pub enum Named {
     Const(ConstantExpression),
     Enumeration(EnumerationDecl),
     Set(SetDecl),
-    Symbol(Type),
-}
-
-#[derive(Clone, Debug)]
-pub struct TypeNotFound {
-    not_found_names: Vec<TypeName>
+    Symbol(SymbolBinding),
 }
 
 #[derive(Clone)]
@@ -54,11 +69,13 @@ pub enum ScopedSymbol {
     Local {
         name: Identifier,
         decl_type: Type,
+        binding_kind: BindingKind,
     },
 
     RecordMember {
         record_id: Identifier,
         record_type: Identifier,
+        binding_kind: BindingKind,
         name: String,
         member_type: Type,
     },
@@ -83,18 +100,56 @@ impl ScopedSymbol {
                 record_id.child(name),
         }
     }
+
+    pub fn is_readable(&self, from_ns: Option<&Identifier>) -> bool {
+        match self {
+            ScopedSymbol::Local { .. } => true,
+            ScopedSymbol::RecordMember { record_id, .. } => {
+                record_id.parent().as_ref() == from_ns
+            }
+        }
+    }
+
+    pub fn is_writeable(&self, from_ns: Option<&Identifier>) -> bool {
+        match self {
+            ScopedSymbol::Local { binding_kind, .. } =>
+                match binding_kind {
+                    BindingKind::Mutable => true,
+                    BindingKind::Immutable => false,
+                },
+
+            ScopedSymbol::RecordMember { record_id, binding_kind, .. } => {
+                let same_ns = record_id.parent().as_ref() == from_ns;
+                same_ns && *binding_kind == BindingKind::Mutable
+            }
+        }
+    }
+
+    pub fn binding_kind(&self) -> BindingKind {
+        match self {
+            ScopedSymbol::Local { binding_kind, .. } => *binding_kind,
+            ScopedSymbol::RecordMember { binding_kind, .. } => *binding_kind,
+        }
+    }
 }
 
 impl fmt::Display for ScopedSymbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ScopedSymbol::Local { name, decl_type } =>
-                write!(f, "{} ({})", name, decl_type),
+            ScopedSymbol::Local { name, decl_type, binding_kind } =>
+                write!(f, "{} ({} {})", name, binding_kind, decl_type),
 
-            ScopedSymbol::RecordMember { record_id, name, member_type, record_type } => {
-                write!(f, "{} ({} member of record {})",
+            ScopedSymbol::RecordMember {
+                record_id,
+                name,
+                member_type,
+                record_type,
+                binding_kind
+            } => {
+                write!(f, "{} ({} member of {} record {})",
                        record_id.child(name),
                        member_type,
+                       binding_kind,
                        record_type.name)
             }
         }
@@ -158,8 +213,13 @@ impl fmt::Debug for Scope {
         writeln!(f, "\t]")?;
 
         writeln!(f, "\tsymbols: [")?;
-        for (name, sym_type) in symbols {
-            writeln!(f, "\t\t{}: {}", name, sym_type)?;
+        for (name, binding) in symbols {
+            let kind = match binding.kind {
+                BindingKind::Immutable => "immutable",
+                BindingKind::Mutable => "mutable",
+            };
+
+            writeln!(f, "\t\t{}: {} ({})", name, binding.decl_type, kind)?;
         }
         writeln!(f, "\t]")?;
 
@@ -308,13 +368,16 @@ impl Scope {
         self
     }
 
-    pub fn with_symbol_local(mut self, name: &str, decl_type: Type) -> Self {
-        self.names.insert(Identifier::from(name), Named::Symbol(decl_type));
-        self
-    }
+    pub fn with_symbol_local(mut self,
+                             name: &str,
+                             decl_type: Type,
+                             kind: BindingKind) -> Self {
+        let binding = SymbolBinding {
+            decl_type,
+            kind,
+        };
 
-    pub fn with_symbol_absolute(mut self, name: impl Into<Identifier>, decl_type: Type) -> Self {
-        self.names.insert(name.into(), Named::Symbol(decl_type));
+        self.names.insert(Identifier::from(name), Named::Symbol(binding));
         self
     }
 
@@ -335,7 +398,7 @@ impl Scope {
 
     pub fn with_vars_local<'a>(mut self, vars: impl IntoIterator<Item=&'a VarDecl>) -> Self {
         for var in vars {
-            self = self.with_symbol_local(&var.name, var.decl_type.clone());
+            self = self.with_symbol_local(&var.name, var.decl_type.clone(), BindingKind::Mutable);
         }
         self
     }
@@ -383,10 +446,11 @@ impl Scope {
 
     fn get_symbol_global(&self, name: &Identifier) -> Option<ScopedSymbol> {
         match self.names.get(&name) {
-            Some(Named::Symbol(symbol_type)) => {
+            Some(Named::Symbol(binding)) => {
                 Some(ScopedSymbol::Local {
                     name: name.clone(),
-                    decl_type: symbol_type.clone(),
+                    decl_type: binding.decl_type.clone(),
+                    binding_kind: binding.kind,
                 })
             }
 
@@ -394,6 +458,7 @@ impl Scope {
                 Some(ScopedSymbol::Local {
                     name: name.clone(),
                     decl_type: Type::Function(Box::new(func.signature())),
+                    binding_kind: BindingKind::Immutable,
                 })
             }
             _ => None
@@ -426,6 +491,7 @@ impl Scope {
                 Some(ScopedSymbol::Local {
                     name: func_id,
                     decl_type: Type::Function(Box::from(func.signature())),
+                    binding_kind: BindingKind::Immutable,
                 })
             })
     }
@@ -494,7 +560,7 @@ impl Scope {
                 Some(names.iter()
                     .map(|name| Identifier::child_of_namespace(set_ns.as_ref(), name))
                     .collect())
-            },
+            }
 
             node::SetEnumeration::Named(enum_name) => {
                 let (enum_name, named_enum) = self.get_enumeration(enum_name)?;
@@ -564,6 +630,7 @@ impl Scope {
             name: member_name.to_owned(),
             record_type: record_id,
             member_type: member.decl_type.clone(),
+            binding_kind: parent_sym.binding_kind(),
         })
     }
 
