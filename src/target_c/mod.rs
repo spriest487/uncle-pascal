@@ -4,6 +4,7 @@ use semantic;
 use operators;
 use node;
 use types;
+use ProgramModule;
 
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
@@ -293,7 +294,18 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     writeln!(out)
 }
 
-pub fn write_c(program: &semantic::Program)
+pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Result {
+    match decl {
+        &node::UnitDeclaration::Function(ref func_decl) =>
+            write_function(out, func_decl),
+        &node::UnitDeclaration::Record(ref record_decl) =>
+            write_record_decl(out, record_decl),
+        &node::UnitDeclaration::Vars(ref vars_decl) =>
+            write_vars(out, vars_decl),
+    }
+}
+
+pub fn write_c(module: &ProgramModule)
     -> Result<String, fmt::Error> {
     let mut output = String::new();
 
@@ -329,22 +341,34 @@ static void System_FreeMem(System_Byte* p) {{
     free(p);
 }}")?;
 
-    for decl in program.decls.iter() {
-        match decl {
-            &node::UnitDeclaration::Function(ref func_decl) =>
-                write_function(&mut output, func_decl)?,
-            &node::UnitDeclaration::Record(ref record_decl) =>
-                write_record_decl(&mut output, record_decl)?,
-            &node::UnitDeclaration::Vars(ref vars_decl) =>
-                write_vars(&mut output, vars_decl)?,
+    for unit in module.units.iter() {
+        writeln!(output, "/* {} interface */", unit.name)?;
+        for decl in unit.interface.iter() {
+            write_decl(&mut output, decl)?;
         }
     }
 
-    let var_decls = program.decls.iter()
+    for unit in module.units.iter() {
+        writeln!(output, "/* {} implementation */", unit.name)?;
+        for decl in unit.implementation.iter() {
+            write_decl(&mut output, decl)?;
+        }
+    }
+
+    writeln!(output, "/* program decls */")?;
+    for decl in module.program.decls.iter() {
+        write_decl(&mut output, decl)?;
+    }
+
+    writeln!(output, "/* program vars */")?;
+
+    let var_decls = module.program.decls.iter()
         .filter_map(|decl| match decl {
             &node::UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
             _ => None
         });
+
+    writeln!(output, "/* program main */")?;
 
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
 
@@ -352,7 +376,7 @@ static void System_FreeMem(System_Byte* p) {{
         default_initialize_vars(&mut output, vars_decl)?;
     }
 
-    write_block(&mut output, &program.program_block)?;
+    write_block(&mut output, &module.program.program_block)?;
     writeln!(output, "  return 0;")?;
     writeln!(output, "}}")?;
 

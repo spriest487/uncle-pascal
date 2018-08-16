@@ -95,9 +95,9 @@ fn load_source<TPath: AsRef<Path>>(path: TPath) -> Result<Vec<source::Token>, Co
     Ok(tokens)
 }
 
-struct ProgramModule {
-    program: semantic::Program,
-    units: Vec<semantic::Unit>,
+pub struct ProgramModule {
+    pub program: semantic::Program,
+    pub units: Vec<semantic::Unit>,
 }
 
 fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
@@ -164,7 +164,7 @@ fn pas_to_c(in_path: &str,
         .unwrap_or_else(|| current_dir().unwrap());
 
     let module = compile_program(&src_path)?;
-    let c_unit = target_c::write_c(&module.program)?;
+    let c_unit = target_c::write_c(&module)?;
 
     if clang {
         invoke_clang(&c_unit, &src_path)?;
