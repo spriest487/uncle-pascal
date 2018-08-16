@@ -80,7 +80,7 @@ impl<C> ToSource for ExpressionValue<C>
             ExpressionValue::Constant(ConstantExpression::Float(f)) => format!("{}", f),
 
             ExpressionValue::Constant(ConstantExpression::String(s)) =>
-                format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
+                format!("{}", tokens::LiteralString(s.clone()).to_source()),
 
             ExpressionValue::Constant(ConstantExpression::Boolean(b)) =>
                 format!("{}", if *b { "true" } else { "false" }),
@@ -132,6 +132,10 @@ impl<C> ToSource for ExpressionValue<C>
 
             ExpressionValue::With { value, body } => {
                 format!("with {} do {}", value.to_source(), body.to_source())
+            }
+
+            ExpressionValue::Raise(error) => {
+                format!("raise {}", error.to_source())
             }
         }
     }

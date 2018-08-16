@@ -8,6 +8,11 @@ struct System_Internal_Class {
     System_Internal_Destructor Destructor;
 };
 
+static void System_Internal_Raise(const char* file, int line, int col, const char* msg) {
+    std::fprintf(stderr, "Error raised in %s @ %d:%d: %s\n", file, line, col, msg);
+    std::exit(1);
+}
+
 static System_Byte* System_GetMem(System_NativeInt bytes) {
     if (bytes > 0) {
         auto mem = static_cast<System_Byte*>(std::malloc(static_cast<std::size_t>(bytes)));

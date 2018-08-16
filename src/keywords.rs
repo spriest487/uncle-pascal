@@ -41,6 +41,7 @@ pub enum Keyword {
     Try,
     Except,
     Finally,
+    Raise,
     With,
 }
 
@@ -81,6 +82,7 @@ impl Keyword {
             "try" => Some(Try),
             "except" => Some(Except),
             "finally" => Some(Finally),
+            "raise" => Some(Raise),
             "with" => Some(With),
             _ => None,
         }
@@ -131,6 +133,7 @@ impl ToSource for Keyword {
             Try => "try",
             Except => "except",
             Finally => "finally",
+            Raise => "raise",
             With => "with",
         }.to_string()
     }

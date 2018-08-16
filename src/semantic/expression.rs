@@ -448,6 +448,7 @@ fn is_lvalue(expr: &Expression) -> bool {
             is_lvalue(of)
         }
 
+        ExpressionValue::Raise(_) |
         ExpressionValue::With { .. } |
         ExpressionValue::SetConstructor(_) |
         ExpressionValue::FunctionCall { .. } |
@@ -737,6 +738,11 @@ impl Expression {
                 // don't need to change the scope - block + let bindings will take care of it
                 Expression::annotate(&body_block, scope.clone())
             }
+
+            ExpressionValue::Raise(error) => {
+                let error = Expression::annotate(error.as_ref(), scope)?;
+                Ok(Expression::raise(error, expr_context))
+            }
         }
     }
 
@@ -816,6 +822,11 @@ impl Expression {
 
             ExpressionValue::SetConstructor(_members) => {
                 unimplemented!("set constructor typechecking")
+            }
+
+            ExpressionValue::Raise(error) => {
+                error.expr_type()?;
+                Ok(None)
             }
         }
     }

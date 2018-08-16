@@ -14,6 +14,7 @@ use semantic::{
 };
 use node::{
     self,
+    ToSource,
     Context,
     ExpressionValue,
     Identifier,
@@ -388,7 +389,7 @@ pub fn write_expr(out: &mut String,
             write!(out, "{}", identifier_to_c(sym))
         }
 
-        ExpressionValue::ArrayElement { /*of, index_expr*/ .. } => {
+        ExpressionValue::ArrayElement { /*of, index_expr*/.. } => {
             unimplemented!("array element access (c++ backend)")
         }
 
@@ -438,6 +439,19 @@ pub fn write_expr(out: &mut String,
 
         ExpressionValue::With { .. } => {
             unreachable!("with statements should be removed during semantic analysis");
+        }
+
+        ExpressionValue::Raise(error) => {
+            let location = &expr.context.token().location;
+            let file = location.file.replace("\"", "\\\"");
+            let msg = error.to_source().replace("\"", "\\\"");
+            /* with absolutely no exception support the best thing we can do is convert
+            the error to a string */
+            write!(out, "System_Internal_Raise(\"{}\", {}, {}, \"{}\")",
+                   file,
+                   location.line,
+                   location.col,
+                   msg)
         }
     }
 }

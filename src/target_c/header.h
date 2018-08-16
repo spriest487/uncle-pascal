@@ -37,6 +37,8 @@ struct System_Internal_Object {
 
 typedef void (*System_Internal_Destructor)(System_Internal_Object*);
 
+static void System_Internal_Raise(const char* file, int line, int col, const char* msg);
+
 static System_Byte* System_GetMem(System_NativeInt bytes);
 static void System_FreeMem(System_Byte* p);
 

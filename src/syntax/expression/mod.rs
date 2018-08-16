@@ -53,6 +53,7 @@ fn match_statement_keyword() -> Matcher {
         .or(keywords::While)
         .or(keywords::For)
         .or(keywords::Try)
+        .or(keywords::Raise)
 }
 
 /* this matcher should cover anything which can appear at the start of an expr */
@@ -411,6 +412,13 @@ fn parse_with_statement(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(Expression::with_statement(value, body, context))
 }
 
+fn parse_raise(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(keywords::Raise)?;
+    let error = Expression::parse(tokens)?;
+
+    Ok(Expression::raise(error, context))
+}
+
 struct CompoundExpressionParser<'tokens> {
     tokens: &'tokens mut TokenStream,
     last_was_operand: bool,
@@ -614,6 +622,7 @@ impl Parse for Expression {
             Some(keywords::While) => parse_while_loop(tokens),
             Some(keywords::Try) => parse_try_except(tokens),
             Some(keywords::With) => parse_with_statement(tokens),
+            Some(keywords::Raise) => parse_raise(tokens),
             Some(keywords::Begin) => {
                 let parsed_block = Block::parse(tokens)?;
                 Ok(Expression::block(parsed_block))

@@ -204,6 +204,14 @@ pub enum ExpressionValue<TContext> {
         value: Box<Expression<TContext>>,
         body: Box<Expression<TContext>>,
     },
+
+    /**
+        raises an error.
+        `raise 'dead'`
+
+        this statement terminates the program
+    */
+    Raise(Box<Expression<TContext>>)
 }
 
 
@@ -415,6 +423,13 @@ impl<TContext> Expression<TContext>
                 value: Box::new(value),
                 body: Box::new(body),
             },
+            context: context.into(),
+        }
+    }
+
+    pub fn raise(error: Self, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Raise(Box::new(error)),
             context: context.into(),
         }
     }
@@ -719,6 +734,11 @@ pub fn transform_expressions<TContext>(
             let body = transform_expressions(*body, replace);
 
             replace(Expression::with_statement(value, body, root_expr.context))
+        }
+
+        ExpressionValue::Raise(error) => {
+            let error = transform_expressions(*error, replace);
+            replace(Expression::raise(error, root_expr.context))
         }
     }
 }
