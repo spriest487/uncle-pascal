@@ -5,3 +5,4 @@ authors = ["spriest487@googlemail.com"]
 
 [dependencies]
 regex = "0.2.5"
+getopts = "0.2.17"

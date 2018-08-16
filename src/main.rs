@@ -1,7 +1,12 @@
 extern crate regex;
+extern crate getopts;
 
 use std::rc::*;
 use std::fmt;
+use std::io::{self, Read, Write};
+use std::process;
+use std::fs;
+use std::path;
 
 mod keywords;
 mod types;
@@ -14,13 +19,12 @@ mod semantic;
 mod node;
 mod source;
 
-
-
 enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
     WriterError(fmt::Error),
+    IOError(io::Error),
 }
 
 impl fmt::Display for CompileError {
@@ -30,6 +34,7 @@ impl fmt::Display for CompileError {
             &CompileError::ParseError(ref err) => write!(f, "{}", err),
             &CompileError::SemanticError(ref err) => write!(f, "{}", err),
             &CompileError::WriterError(ref err) => write!(f, "{}", err),
+            &CompileError::IOError(ref err) => write!(f, "{}", err),
         }
     }
 }
@@ -58,6 +63,10 @@ impl From<fmt::Error> for CompileError {
     }
 }
 
+impl From<io::Error> for CompileError {
+    fn from(err: io::Error) -> Self { CompileError::IOError(err) }
+}
+
 fn compile(filename: &str, source: &str) -> Result<String, CompileError> {
     let tokens = tokenizer::tokenize(filename, source)?;
 
@@ -76,16 +85,89 @@ fn compile(filename: &str, source: &str) -> Result<String, CompileError> {
     Ok(target_c::write_c(&typed_program)?)
 }
 
-fn main() {
-    let hello_world_pas = include_str!("../HelloWorld.pas");
+fn print_usage(program: &str, opts: getopts::Options) {
+    let brief = format!("Usage: {} FILE [options]", program);
+    print!("{}", opts.usage(&brief));
+}
 
-    match compile("HelloWorld.pas", hello_world_pas) {
-        Ok(c_unit) => {
-            println!("{}", c_unit);
-        }
+fn compile_file(src_path: &str, clang: bool) -> Result<(), CompileError> {
+    let mut file = fs::File::open(src_path)?;
+
+    let mut source = String::new();
+    file.read_to_string(&mut source)?;
+
+    let c_unit = compile(src_path, &source)?;
+
+    if clang {
+        invoke_clang(&c_unit, src_path)?;
+    }
+    else {
+        println!("{}", c_unit);
+    }
+    Ok(())
+}
+
+fn main() {
+    let args = std::env::args().collect::<Vec<String>>();
+    let program = args[0].clone();
+
+    let mut opts = getopts::Options::new();
+    opts.optflag("c", "invoke-clang", "invoke clang to compile the generated C unit");
+
+    match opts.parse(&args[1..]) {
+        Ok(matched) => {
+            if matched.free.len() != 1 {
+                print_usage(&program, opts);
+                std::process::exit(1);
+            } else {
+                let source_path = &matched.free[0];
+                let clang = matched.opt_present("c");
+
+                match compile_file(source_path, clang) {
+                    Err(err) => {
+                        println!("error: {}", err);
+                        std::process::exit(1);
+                    }
+                    _ => ()
+                }
+            }
+        },
         Err(err) => {
             println!("error: {}", err);
+            print_usage(&program, opts);
+
             std::process::exit(1);
         }
     }
+}
+
+fn invoke_clang(c_src: &str, source_path: &str) -> Result<(), CompileError> {
+    let os_ext = if cfg!(windows) {
+        "exe"
+    } else {
+        ""
+    };
+
+    let target_path = path::PathBuf::from(source_path)
+        .with_extension(os_ext);
+
+    let name = target_path.file_name()
+        .unwrap()
+        .to_string_lossy();
+
+    let mut clang = process::Command::new("clang")
+        .arg("-x").arg("c")
+        .arg("-o").arg(name.to_string())
+        .arg("-")
+        .stdout(process::Stdio::inherit())
+        .stdin(process::Stdio::piped())
+        .spawn()?;
+
+    {
+        let clang_in = clang.stdin.as_mut().unwrap();
+        clang_in.write_all(c_src.to_owned().as_bytes())?;
+    }
+    clang.wait()?;
+
+    Ok(())
 }
