@@ -33,7 +33,6 @@ pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
-    UnresolvedUnit(String),
     PreprocessorError(pp::PreprocessorError),
     WriterError(fmt::Error),
     TranslationError(target_c::TranslationError),
@@ -48,7 +47,6 @@ impl fmt::Display for CompileError {
             CompileError::SemanticError(err) => write!(f, "semantic error: {}", err),
             CompileError::WriterError(err) => write!(f, "output error: {}", err),
             CompileError::IOError(err) => write!(f, "io error: {}", err),
-            CompileError::UnresolvedUnit(unit) => write!(f, "unresolved unit: {}", unit),
             CompileError::PreprocessorError(err) => write!(f, "preprocessor error: {}", err),
             CompileError::TranslationError(err) => write!(f, "output error: {}", err),
         }
@@ -157,26 +155,6 @@ fn pretty_path(path: &Path) -> String {
     }
 }
 
-fn scope_from_uses(uses: &[syntax::UnitReference],
-                   unit_scopes: &HashMap<String, Rc<semantic::Scope>>)
-                   -> Result<semantic::Scope, CompileError> {
-    let mut scope = semantic::Scope::default();
-    for unit_ref in uses.iter() {
-        let ref_name = unit_ref.name.to_string();
-
-        match unit_scopes.get(&ref_name) {
-            Some(ref_scope) => {
-                scope = scope.reference(&ref_scope, unit_ref.kind.clone());
-            }
-            None => return Err({
-                CompileError::UnresolvedUnit(ref_name.clone())
-            })
-        }
-    }
-
-    Ok(scope)
-}
-
 fn default_refs(default_context: source::Token) -> Vec<syntax::UnitReference> {
     vec![syntax::UnitReference {
         name: node::Identifier::from("System"),
@@ -246,9 +224,7 @@ fn compile_program(program_path: &Path,
             /* each unit imports all the units before it in the programs' units
             clause (used units can't import any new units not referenced in the main
             uses clause) */
-            let unit_scope = Rc::new(scope_from_uses(&parsed_unit.uses, &unit_scopes)?);
-
-            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, unit_scope)?;
+            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, &unit_scopes)?;
 
             unit_scopes.insert(unit.name.clone(), unit_scope);
             loaded_units.push(unit);
@@ -260,9 +236,7 @@ fn compile_program(program_path: &Path,
         }
     }
 
-    let program_scope = Rc::new(scope_from_uses(&parsed_program.uses, &unit_scopes)?);
-
-    let program = semantic::Program::annotate(&parsed_program, program_scope)?;
+    let program = semantic::Program::annotate(&parsed_program, &unit_scopes)?;
 
     Ok(semantic::ProgramModule {
         program,

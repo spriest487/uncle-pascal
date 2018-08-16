@@ -121,7 +121,7 @@ impl RecordDecl {
         };
 
         if decl.members.len() == 0 && decl.variant_part.is_none() {
-            return Err(SemanticError::empty_record(scope.qualify_local_name(&decl.name), context));
+            return Err(SemanticError::empty_record(scope.namespace_qualify(&decl.name), context));
         }
 
         let members = decl.members.iter()
@@ -149,7 +149,7 @@ impl RecordDecl {
     }
 
     pub fn qualified_name(&self) -> Identifier {
-        self.scope().qualify_local_name(&self.name)
+        self.scope().namespace_qualify(&self.name)
     }
 }
 
@@ -168,7 +168,7 @@ impl EnumerationDecl {
     }
 
     pub fn qualified_name(&self) -> Identifier {
-        self.context.scope.qualify_local_name(&self.name)
+        self.context.scope.namespace_qualify(&self.name)
     }
 }
 
@@ -201,6 +201,6 @@ impl SetDecl {
     }
 
     pub fn qualified_name(&self) -> Identifier {
-        self.context.scope.qualify_local_name(&self.name)
+        self.context.scope.namespace_qualify(&self.name)
     }
 }

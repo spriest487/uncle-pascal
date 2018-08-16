@@ -41,6 +41,7 @@ use types::*;
 
 #[derive(Clone, Debug)]
 pub enum SemanticErrorKind {
+    UnresolvedUnit(String),
     UnknownType(Identifier),
     UnknownSymbol(Identifier),
     UnexpectedType {
@@ -88,6 +89,10 @@ pub enum SemanticErrorKind {
 impl fmt::Display for SemanticErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            SemanticErrorKind::UnresolvedUnit(unit) => {
+                write!(f, "unit reference `{}` could not be resolved", unit)
+            }
+
             SemanticErrorKind::UnknownType(missing_type) => {
                 write!(f, "type `{}` was not found", missing_type)
             }
@@ -250,6 +255,13 @@ pub struct SemanticError {
 }
 
 impl SemanticError {
+    pub fn unresolved_unit(unit: impl ToString, context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::UnresolvedUnit(unit.to_string()),
+            context: context.into(),
+        }
+    }
+
     pub fn illegal_name(name: String, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::IllegalName(name),
@@ -481,9 +493,7 @@ impl SemanticContext {
 
 impl fmt::Debug for SemanticContext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} in {}", self.token, self.scope.local_namespace()
-            .map(|id| id.to_string())
-            .unwrap_or("module root".to_string()))
+        write!(f, "{} in {}", self.token, self.scope.namespace_description())
     }
 }
 

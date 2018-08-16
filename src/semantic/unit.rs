@@ -1,4 +1,7 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    collections::HashMap,
+};
 use node;
 use syntax;
 use semantic::*;
@@ -110,12 +113,39 @@ impl Unit {
             .collect()
     }
 
-    pub fn annotate(unit: &syntax::Unit, scope: Rc<Scope>) -> Result<(Self, Rc<Scope>), SemanticError> {
-        let unit_scope = Rc::new(scope.as_ref().clone().with_local_namespace(&unit.name));
+    pub fn reference_uses(mut scope: Scope,
+                          uses: &[UnitReference],
+                          available_units: &HashMap<String, impl AsRef<Scope>>)
+                          -> SemanticResult<Scope> {
+        for unit_ref in uses.iter() {
+            let ref_name = unit_ref.name.to_string();
+
+            match available_units.get(&ref_name) {
+                Some(ref_scope) => {
+                    scope = scope.reference(ref_scope.as_ref(), unit_ref.kind.clone());
+                }
+                None => return Err(SemanticError::unresolved_unit(
+                    ref_name.clone(),
+                    unit_ref.context.clone(),
+                ))
+            }
+        }
+
+        Ok(scope)
+    }
+
+    pub fn annotate(unit: &syntax::Unit,
+                    available_units: &HashMap<String, impl AsRef<Scope>>)
+                    -> Result<(Self, Rc<Scope>), SemanticError> {
+        let unit_scope = Scope::new_unit(unit.name.as_str());
+        let uses = Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope.clone()));
+
+        let unit_scope = Self::reference_uses(unit_scope, &uses, available_units)?;
 
         let (interface_decls, interface_scope) = Unit::annotate_decls(
             unit.interface.iter(),
-            unit_scope.clone())?;
+            Rc::new(unit_scope)
+        )?;
 
         let (impl_decls, impl_scope) = Unit::annotate_impls(
             unit.implementation.iter(),
@@ -134,7 +164,7 @@ impl Unit {
             interface: interface_decls,
             implementation: impl_decls,
             name: unit.name.clone(),
-            uses: Self::annotate_uses(unit.uses.iter(), unit_scope),
+            uses,
             initialization,
             finalization,
         };

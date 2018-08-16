@@ -434,11 +434,11 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
     match base_decl {
         Some((record_id, record)) => {
             if private_members {
-                let from_ns = of.scope().local_namespace();
+                let from_ns = of.scope().unit_namespace();
                 if from_ns != record_id.parent().as_ref() {
                     return Err(SemanticError::private_member_access_forbidden(
                         record_id.clone(),
-                        of.scope().local_namespace().cloned(),
+                        of.scope().unit_namespace().cloned(),
                         name,
                         of.context.clone(),
                     ));

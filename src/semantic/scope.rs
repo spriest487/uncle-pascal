@@ -89,8 +89,34 @@ pub enum Named {
 }
 
 #[derive(Clone)]
+enum ScopeNamespace {
+    /**
+        either the root (program/module) or a local scope inside the root.
+        we can access anything else declared in the root namespace and public members of
+        other namespaces.
+        qualifying a name adds no prefix.
+    */
+    Root,
+
+    /**
+        the global scope of a unit.
+        we can access anything (public or private) that is also declared in this unit,
+        or public members of any other unit.
+        qualifying a name adds the namespace of this unit as a prefix.
+    */
+    Unit(Identifier),
+
+    /**
+        a local scope inside a unit - a function body.
+        visibility and access from this scope is the same as the Unit namespace.
+        qualifying a name adds no prefix.
+    */
+    Local(Identifier),
+}
+
+#[derive(Clone)]
 pub struct Scope {
-    local_namespace: Option<Identifier>,
+    namespace: ScopeNamespace,
     names: HashMap<Identifier, Named>,
 
     /* map of imported name => global name
@@ -116,6 +142,7 @@ pub enum ScopedSymbol {
         member_type: Type,
     },
 }
+
 
 impl ScopedSymbol {
     pub fn decl_type(&self) -> &Type {
@@ -201,18 +228,9 @@ impl node::ToSource for ScopedSymbol {
     }
 }
 
-impl Default for Scope {
-    fn default() -> Self {
-        Scope::new().reference(&Scope::system(), UnitReferenceKind::Namespaced)
-    }
-}
-
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Scope `{}` {{", match self.local_namespace {
-            Some(ref ns) => ns.to_string(),
-            None => "(root)".to_owned(),
-        })?;
+        writeln!(f, "{} {{", self.namespace_description())?;
 
         let mut types = Vec::new();
         let mut symbols = Vec::new();
@@ -295,21 +313,24 @@ impl fmt::Debug for Scope {
 }
 
 impl Scope {
-    pub fn new() -> Self {
-        Scope {
-            local_namespace: None,
+    pub fn new_root() -> Self {
+        let root = Scope {
             names: HashMap::new(),
             imported_names: HashMap::new(),
-        }
-    }
+            namespace: ScopeNamespace::Root,
+        };
 
-    pub fn local_namespace(&self) -> Option<&Identifier> {
-        self.local_namespace.as_ref()
+        root.reference(&Scope::system(), UnitReferenceKind::Namespaced)
     }
 
     pub fn system() -> Self {
-        Scope::new()
-            .with_local_namespace("System")
+        let system = Scope {
+            names: HashMap::new(),
+            imported_names: HashMap::new(),
+            namespace: ScopeNamespace::Unit(Identifier::from("System")),
+        };
+
+        system
             /* standard primitives */
             .with_type_alias("Byte", Type::Byte)
 //            .with_alias("System.Int16", DeclaredType::Int16)
@@ -325,27 +346,69 @@ impl Scope {
             .with_type_alias("Boolean", Type::Boolean)
     }
 
-    pub fn qualify_local_name(&self, name: &str) -> Identifier {
-        match &self.local_namespace {
-            &Some(ref local_name) => local_name.child(&name),
-            &None => Identifier::from(name)
+    pub fn new_unit(namespace: impl Into<Identifier>) -> Self {
+        let scope = Scope {
+            namespace: ScopeNamespace::Unit(namespace.into()),
+            names: HashMap::new(),
+            imported_names: HashMap::new(),
+        };
+
+        scope.reference(&Scope::system(), UnitReferenceKind::Namespaced)
+    }
+
+    pub fn new_local(parent: &Self) -> Self {
+        let parent_ns = match &parent.namespace {
+            | ScopeNamespace::Local(ns)
+            | ScopeNamespace::Unit(ns) => {
+                ScopeNamespace::Local(ns.clone())
+            }
+
+            | ScopeNamespace::Root =>
+                ScopeNamespace::Root,
+        };
+
+        let child = Scope {
+            namespace: parent_ns,
+            names: HashMap::new(),
+            imported_names: HashMap::new(),
+        };
+
+        child.reference(parent, UnitReferenceKind::All)
+    }
+
+    pub fn namespace_description(&self) -> String {
+        match &self.namespace {
+            ScopeNamespace::Unit(ns) => format!("Unit namespace `{}`", ns),
+            ScopeNamespace::Local(ns) => format!("Local namespace (in `{}`)", ns),
+            ScopeNamespace::Root => "Root namespace".to_string(),
+        }
+    }
+
+    pub fn namespace_qualify(&self, name: &str) -> Identifier {
+        match &self.namespace {
+            | ScopeNamespace::Local(_)
+            | ScopeNamespace::Root
+            => Identifier::from(name),
+
+            | ScopeNamespace::Unit(ns)
+            => ns.child(name),
         }
     }
 
     pub fn with_type_alias(mut self, name: &str, named_type: Type) -> Self {
-        let full_name = self.qualify_local_name(name);
+        let full_name = self.namespace_qualify(name);
         self.names.insert(full_name, Named::TypeAlias(named_type));
         self
     }
 
     pub fn with_function(mut self, decl: FunctionDecl) -> Self {
-        let name = self.qualify_local_name(&decl.name);
+        let name = self.namespace_qualify(&decl.name);
         self.names.insert(name, Named::Function(decl));
         self
     }
 
     pub fn with_class(mut self, decl: RecordDecl) -> Self {
-        let name = self.qualify_local_name(&decl.name);
+        let name = self.namespace_qualify(&decl.name);
         assert_eq!(RecordKind::Class, decl.kind);
         self.names.insert(name, Named::Class(decl));
         self
@@ -353,19 +416,19 @@ impl Scope {
 
     pub fn with_enumeration(mut self, decl: EnumerationDecl) -> Self {
         for (ord, name) in decl.names.iter().enumerate() {
-            let const_name = self.qualify_local_name(&decl.name);
+            let const_name = self.namespace_qualify(&decl.name);
             let enum_const = EnumConstant::new(ord as u64, name, const_name);
             let val = ConstantExpression::Enum(enum_const);
             self.names.insert(Identifier::from(name), Named::Const(val));
         }
 
-        let qualified_name = self.qualify_local_name(&decl.name);
+        let qualified_name = self.namespace_qualify(&decl.name);
         self.names.insert(qualified_name, Named::Enumeration(decl));
         self
     }
 
     pub fn with_set(mut self, decl: SetDecl) -> Self {
-        let qualified_name = self.qualify_local_name(&decl.name);
+        let qualified_name = self.namespace_qualify(&decl.name);
 
         /* it would make more sense to add the values first so we didn't
         have to copy the set decl, but in the weird case that a set constant
@@ -375,7 +438,7 @@ impl Scope {
 
         if let node::SetEnumeration::Inline(names) = &decl.enumeration {
             for name in names.iter() {
-                let name_qualified = self.qualify_local_name(name);
+                let name_qualified = self.namespace_qualify(name);
                 let name_const = SetConstant::new(iter::once(name), qualified_name.clone());
                 let name_expr = ConstantExpression::Set(name_const);
 
@@ -387,7 +450,7 @@ impl Scope {
     }
 
     pub fn with_record(mut self, decl: RecordDecl) -> Self {
-        let name = self.qualify_local_name(&decl.name);
+        let name = self.namespace_qualify(&decl.name);
         assert_eq!(RecordKind::Record, decl.kind);
         self.names.insert(name, Named::Record(decl));
         self
@@ -399,7 +462,9 @@ impl Scope {
             kind,
         };
 
-        self.names.insert(Identifier::from(name), Named::Symbol(binding));
+        let full_name = self.namespace_qualify(name);
+
+        self.names.insert(full_name, Named::Symbol(binding));
         self
     }
 
@@ -420,29 +485,9 @@ impl Scope {
         self
     }
 
-    pub fn with_local_namespace(mut self, name: &str) -> Self {
-        self.local_namespace = match self.local_namespace {
-            Some(current_name) => Some(current_name.child(name)),
-            None => Some(Identifier::from(name)),
-        };
-
-        self
-    }
-
     pub fn with_const(mut self, name: &str, val: ConstantExpression) -> Self {
-        let name = self.qualify_local_name(name);
+        let name = self.namespace_qualify(name);
         self.names.insert(name, Named::Const(val));
-        self
-    }
-
-    pub fn with_vars_local<'a>(mut self, vars: impl IntoIterator<Item=&'a VarDecl>) -> Self {
-        for var in vars {
-            let binding_kind = match var.default_value.is_some() {
-                | true => BindingKind::Mutable,
-                | false => BindingKind::Uninitialized,
-            };
-            self = self.with_binding(&var.name, var.decl_type.clone(), binding_kind);
-        }
         self
     }
 
@@ -508,9 +553,20 @@ impl Scope {
         }
     }
 
+    pub fn unit_namespace(&self) -> Option<&Identifier> {
+        match &self.namespace {
+            | ScopeNamespace::Unit(ns)
+            | ScopeNamespace::Local(ns)
+            => Some(ns),
+
+            | ScopeNamespace::Root
+            => None
+        }
+    }
+
     pub fn get_symbol(&self, name: &Identifier) -> Option<ScopedSymbol> {
         /* todo: can this use find_named? */
-        self.local_namespace.as_ref()
+        self.unit_namespace().as_ref()
             .and_then(|local_namespace| {
                 let name_in_local_ns = local_namespace.append(name);
                 self.get_symbol_global(&name_in_local_ns)
@@ -566,7 +622,7 @@ impl Scope {
     }
 
     fn find_named(&self, name: &Identifier) -> Option<(Identifier, &Named)> {
-        self.local_namespace.as_ref()
+        self.unit_namespace().as_ref()
             .and_then(|local_name| {
                 /* local name? */
                 let name_in_local_ns = local_name.append(name);
@@ -833,7 +889,27 @@ mod test {
         let token = tokens::Keyword(keywords::Program);
         SemanticContext {
             token: source::Token::new(token, location),
-            scope: Rc::new(Scope::new()),
+            scope: Rc::new(Scope::new_root()),
+        }
+    }
+
+    #[test]
+    fn resolves_consts_in_referenced_units() {
+        let const_val = ConstantExpression::Integer(IntConstant::from(3));
+
+        let imported = Scope::new_unit("NS1")
+            .with_const("CONST1", const_val.clone());
+
+        let scope = Scope::new_unit("NS2")
+            .reference(&imported, UnitReferenceKind::Namespaced);
+
+        let expected_id = Identifier::from("NS1.CONST1");
+        match scope.get_const(&expected_id) {
+            Some((result_id, result_val)) => {
+                assert_eq!(expected_id, result_id);
+                assert_eq!(const_val, *result_val);
+            }
+            None => panic!("name {} must be found in scope {:?}", expected_id, scope)
         }
     }
 
@@ -847,8 +923,7 @@ mod test {
             variant_part: None,
         };
 
-        let scope = Scope::default()
-            .with_local_namespace("Hello")
+        let scope = Scope::new_unit("Hello")
             .with_record(record_decl);
 
         let (result_id, result) = scope.get_record(&Identifier::from("Hello.World"))
@@ -857,26 +932,5 @@ mod test {
             });
         assert_eq!("World", &result.name);
         assert_eq!(Identifier::from("Hello.World"), result_id);
-    }
-
-    #[test]
-    fn resolves_consts_in_referenced_units() {
-        let const_val = ConstantExpression::Integer(IntConstant::from(3));
-
-        let imported = Scope::default()
-            .with_local_namespace("NS1")
-            .with_const("CONST1", const_val.clone());
-
-        let scope = Scope::default()
-            .reference(&imported, UnitReferenceKind::Namespaced);
-
-        let expected_id = Identifier::from("NS1.CONST1");
-        match scope.get_const(&expected_id) {
-            Some((result_id, result_val)) => {
-                assert_eq!(expected_id, result_id);
-                assert_eq!(const_val, *result_val);
-            }
-            None => panic!("name {} must be found in scope {:?}", expected_id, scope)
-        }
     }
 }

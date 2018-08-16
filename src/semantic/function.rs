@@ -126,7 +126,7 @@ impl FunctionDecl {
             let is_valid_destructed_type = |ty: &Type| {
                 match ty {
                     Type::Class(class_name) => {
-                        class_name.parent().as_ref() == self.scope().local_namespace()
+                        class_name.parent().as_ref() == self.scope().unit_namespace()
                     }
                     _ => false,
                 }
@@ -158,8 +158,7 @@ impl Function {
             .unwrap_or(Ok(()))?;
 
         let mut local_decls = Vec::new();
-
-        let mut local_scope = scope.clone();
+        let mut local_scope = Rc::new(Scope::new_local(scope.as_ref()));
 
         for local_decl in function.local_decls.iter() {
             match local_decl {
@@ -214,7 +213,7 @@ impl Function {
         }
 
         /* add a "result" var if this function returns something */
-        if let &Some(ref result_var_type) = &decl.return_type {
+        if let Some(ref result_var_type) = &decl.return_type {
             /* todo: we should be able to mark `result` as uninitialized! */
             local_scope = Rc::new(local_scope.as_ref().clone().with_binding(
                 RESULT_VAR_NAME,
@@ -281,7 +280,7 @@ mod test {
 
     #[test]
     fn sig_of_func_includes_modifier() {
-        let scope = Scope::default()
+        let scope = Scope::new_root()
             .with_type_alias("int", Type::Int32);
 
         let fn_src = "procedure a(out y: int; var x: int; const z: int)";

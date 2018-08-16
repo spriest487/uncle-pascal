@@ -154,7 +154,7 @@ impl Struct {
         assert!(record_decl.members.len() > 0 || record_decl.variant_part.is_some(),
                 "structs must have at least one member");
 
-        let name = identifier_to_c(&record_decl.scope().qualify_local_name(&record_decl.name));
+        let name = identifier_to_c(&record_decl.scope().namespace_qualify(&record_decl.name));
 
         let mut members: Vec<_> = record_decl.members.iter()
             .map(|member_decl| {
@@ -272,7 +272,7 @@ impl Variable {
                      -> TranslationResult<Variable> {
         let name = match local {
             false => {
-                let full_id = var_decl.scope().qualify_local_name(&var_decl.name);
+                let full_id = var_decl.scope().namespace_qualify(&var_decl.name);
                 identifier_to_c(&full_id)
             }
             true => {

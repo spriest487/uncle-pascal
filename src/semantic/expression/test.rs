@@ -42,7 +42,7 @@ fn parse_func_decl(src: &str, scope: Rc<Scope>) -> FunctionDecl {
 
 #[test]
 fn assignment_to_wrong_type_is_err() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::RawPointer, BindingKind::Uninitialized);
 
     let (expr, _) = parse_expr("x := 1", Rc::new(scope));
@@ -62,8 +62,7 @@ fn assignment_to_wrong_type_is_err() {
 
 #[test]
 fn func_call_on_obj_uses_ufcs_from_target_ns() {
-    let scope = Scope::default()
-        .with_local_namespace("System");
+    let scope = Scope::new_unit("System");
 
     let scope = scope.clone()
         .with_function(
@@ -92,7 +91,7 @@ fn func_call_on_obj_uses_ufcs_from_target_ns() {
 
 #[test]
 fn type_of_pointer_deref_is_pointer_minus_indirection() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Byte.pointer(), BindingKind::Immutable);
 
     let (expr, _) = parse_expr("^x", Rc::new(scope));
@@ -101,7 +100,7 @@ fn type_of_pointer_deref_is_pointer_minus_indirection() {
 
 #[test]
 fn type_of_pointer_plus_offset_is_pointer() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Byte.pointer(), BindingKind::Immutable);
 
     let (expr, _) = parse_expr("x + 1", Rc::new(scope));
@@ -110,12 +109,12 @@ fn type_of_pointer_plus_offset_is_pointer() {
 
 #[test]
 fn out_param_initializes_value() {
-    let mut scope = Scope::default()
+    let mut scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     scope = scope.with_function(parse_func_decl(
         "procedure SetX(out xout: System.Int32)",
-        Rc::new(Scope::default()),
+        Rc::new(Scope::new_root()),
     ));
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -125,7 +124,7 @@ fn out_param_initializes_value() {
 
 #[test]
 fn assignment_initializes_value() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -135,7 +134,7 @@ fn assignment_initializes_value() {
 
 #[test]
 fn initialization_in_both_branches_of_if_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -145,7 +144,7 @@ fn initialization_in_both_branches_of_if_propagates() {
 
 #[test]
 fn initialization_in_one_branches_of_if_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -155,7 +154,7 @@ fn initialization_in_one_branches_of_if_propagates() {
 
 #[test]
 fn initialization_in_if_without_else_doesnt_propagate() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -165,7 +164,7 @@ fn initialization_in_if_without_else_doesnt_propagate() {
 
 #[test]
 fn binding_in_single_branch_of_if_doesnt_propagate() {
-    let scope = Scope::default();
+    let scope = Scope::new_root();
 
     let (_, scope) = parse_expr("if true then let y = 1", Rc::new(scope));
     assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
@@ -173,7 +172,7 @@ fn binding_in_single_branch_of_if_doesnt_propagate() {
 
 #[test]
 fn initialization_in_block_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -183,7 +182,7 @@ fn initialization_in_block_propagates() {
 
 #[test]
 fn binding_in_block_doesnt_propagate() {
-    let scope = Scope::default();
+    let scope = Scope::new_root();
 
     let (_, scope) = parse_expr("begin let y = 0 end", Rc::new(scope));
     assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
@@ -191,7 +190,7 @@ fn binding_in_block_doesnt_propagate() {
 
 #[test]
 fn binding_in_while_body_doesnt_propagate() {
-    let scope = Scope::default();
+    let scope = Scope::new_root();
 
     let (_, scope) = parse_expr("while false do let y = 0", Rc::new(scope));
     assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
@@ -199,7 +198,7 @@ fn binding_in_while_body_doesnt_propagate() {
 
 #[test]
 fn initialization_in_while_body_doesnt_propagate() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -209,10 +208,10 @@ fn initialization_in_while_body_doesnt_propagate() {
 
 #[test]
 fn initialization_in_while_condition_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_function(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Boolean",
-            Rc::new(Scope::default()),
+            Rc::new(Scope::new_root()),
         ))
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
@@ -223,10 +222,10 @@ fn initialization_in_while_condition_propagates() {
 
 #[test]
 fn initialization_in_for_from_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_function(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Int32",
-            Rc::new(Scope::default()),
+            Rc::new(Scope::new_root()),
         ))
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
@@ -237,10 +236,10 @@ fn initialization_in_for_from_propagates() {
 
 #[test]
 fn initialization_in_for_to_propagates() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_function(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Int32",
-            Rc::new(Scope::default()),
+            Rc::new(Scope::new_root()),
         ))
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
@@ -251,7 +250,7 @@ fn initialization_in_for_to_propagates() {
 
 #[test]
 fn initialization_in_for_body_doesnt_propagate() {
-    let scope = Scope::default()
+    let scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -261,7 +260,7 @@ fn initialization_in_for_body_doesnt_propagate() {
 
 #[test]
 fn binding_in_for_range_doesnt_propagate() {
-    let scope = Scope::default();
+    let scope = Scope::new_root();
 
     let (_, scope) = parse_expr("for let i = 0 to 3 do begin end", Rc::new(scope));
     assert_eq!(None, scope.get_symbol(&Identifier::from("i")));
@@ -269,7 +268,7 @@ fn binding_in_for_range_doesnt_propagate() {
 
 #[test]
 fn binding_in_for_body_doesnt_propagate() {
-    let scope = Scope::default();
+    let scope = Scope::new_root();
 
     let (_, scope) = parse_expr("for let i = 0 to 3 do let y = 1", Rc::new(scope));
     assert_eq!(None, scope.get_symbol(&Identifier::from("y")));

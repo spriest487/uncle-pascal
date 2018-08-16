@@ -213,7 +213,7 @@ mod test {
             ],
         });
 
-        let scope = Scope::default();
+        let scope = Scope::new_root();
         let c_type = CType::translate(&pas_type, &scope);
 
         let expected = CType::Array(CArray {

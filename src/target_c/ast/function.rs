@@ -66,7 +66,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
             .map(|return_type| CType::translate(return_type, pascal_decl.scope()))
             .unwrap_or_else(|| CType::Void);
 
-        let qualified_name = pascal_decl.scope().qualify_local_name(&pascal_decl.name);
+        let qualified_name = pascal_decl.scope().namespace_qualify(&pascal_decl.name);
         let name = identifier_to_c(&qualified_name);
 
         let calling_convention = if pascal_decl.modifiers.contains(&FunctionModifier::Stdcall) {

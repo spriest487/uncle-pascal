@@ -148,7 +148,7 @@ pub fn is_assignable(expr: &Expression) -> bool {
             }
 
             match expr.scope().get_symbol(name) {
-                Some(binding) => binding.mutable(expr.scope().local_namespace()),
+                Some(binding) => binding.mutable(expr.scope().unit_namespace()),
                 None => false,
             }
         }

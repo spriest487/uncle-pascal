@@ -16,7 +16,7 @@ pub struct Class {
 
 impl Class {
     pub fn translate(class: &semantic::RecordDecl) -> TranslationResult<Self> {
-        let full_name = class.scope().qualify_local_name(&class.name);
+        let full_name = class.scope().namespace_qualify(&class.name);
 
         let destructor = class.scope().get_destructor(&full_name)
             .map(|(dtor_id, _dtor_func)| identifier_to_c(dtor_id));
