@@ -4,7 +4,6 @@ use node;
 use types::*;
 
 pub mod scope;
-pub mod type_check;
 pub mod expression;
 pub mod var_decl;
 pub mod block;
@@ -13,7 +12,6 @@ pub mod type_decl;
 pub mod program;
 
 pub use self::scope::*;
-pub use self::type_check::*;
 pub use self::var_decl::*;
 pub use self::expression::*;
 pub use self::block::*;
