@@ -4,12 +4,15 @@ extern crate getopts;
 use std::{
     rc::*,
     fmt,
-    io::{self, Read},
+    io::{self},
     fs,
     path::*,
     ffi::OsStr,
     env::current_dir,
-    collections::hash_map::{Entry, HashMap},
+    collections::{
+        hash_map::{Entry, HashMap},
+        HashSet,
+    },
 };
 
 mod keywords;
@@ -22,12 +25,14 @@ mod target_c;
 mod semantic;
 mod node;
 mod source;
+mod pp;
 
 pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
     UnresolvedUnit(String),
+    PreprocessorError(pp::PreprocessorError),
     WriterError(fmt::Error),
     IOError(io::Error),
 }
@@ -41,6 +46,7 @@ impl fmt::Display for CompileError {
             CompileError::WriterError(err) => write!(f, "output error: {}", err),
             CompileError::IOError(err) => write!(f, "io error: {}", err),
             CompileError::UnresolvedUnit(unit) => write!(f, "unresolved unit: {}", unit),
+            CompileError::PreprocessorError(err) => write!(f, "preprocessor error: {}", err),
         }
     }
 }
@@ -73,6 +79,21 @@ impl From<io::Error> for CompileError {
     fn from(err: io::Error) -> Self { CompileError::IOError(err) }
 }
 
+impl From<pp::PreprocessorError> for CompileError {
+    fn from(err: pp::PreprocessorError) -> Self {
+        match err {
+            pp::PreprocessorError::IOError(io_err) =>
+                CompileError::IOError(io_err),
+            pp::PreprocessorError::SymbolNotDefined { name, filename, line } =>
+                CompileError::PreprocessorError(pp::PreprocessorError::SymbolNotDefined {
+                    name,
+                    filename,
+                    line,
+                })
+        }
+    }
+}
+
 fn empty_context() -> source::Token {
     source::Token {
         token: Rc::from(tokens::Keyword(keywords::Program)),
@@ -80,17 +101,18 @@ fn empty_context() -> source::Token {
     }
 }
 
-fn load_source<TPath: AsRef<Path>>(path: TPath) -> Result<Vec<source::Token>, CompileError> {
-    let mut file = fs::File::open(&path)?;
-
-    let mut source = String::new();
-    file.read_to_string(&mut source)?;
+fn load_source<TPath: AsRef<Path>>(path: TPath,
+                                   pp_symbols: HashSet<String>)
+                                   -> Result<Vec<source::Token>, CompileError> {
+    let file = fs::File::open(&path)?;
 
     let display_filename = path.as_ref()
         .file_name()
         .map(OsStr::to_string_lossy)
         .map(|s| String::from(s))
         .unwrap_or_else(|| "(unknown)".to_owned());
+
+    let source = pp::preprocess(file, &display_filename, pp_symbols)?;
 
     let tokens = tokenizer::tokenize(&display_filename, &source)?;
 
@@ -118,8 +140,10 @@ fn pretty_path(path: &Path) -> String {
     }
 }
 
-fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
-    let tokens = load_source(program_path)?;
+fn compile_program(program_path: &Path,
+                   pp_symbols: HashSet<String>)
+                   -> Result<ProgramModule, CompileError> {
+    let tokens = load_source(program_path, pp_symbols.clone())?;
 
     let source_dir = program_path.canonicalize()?
         .parent()
@@ -144,7 +168,7 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
                      unit_id,
                      pretty_path(&unit_path));
 
-            let unit_source = load_source(unit_path)?;
+            let unit_source = load_source(unit_path, pp_symbols.clone())?;
             let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
 
             let unit_imports = parsed_unit.uses.iter()
@@ -211,7 +235,10 @@ fn main() {
 
                 let src_path = &matched.free[0];
 
-                let build_result = compile_program(&PathBuf::from(src_path))
+                //todo: -D preprocessor options
+                let pp_symbols = HashSet::new();
+
+                let build_result = compile_program(&PathBuf::from(src_path), pp_symbols)
                     .and_then(|module| target_c::pas_to_c(&module, &out_file));
 
                 if let Err(err) = build_result {

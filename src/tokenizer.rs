@@ -105,12 +105,6 @@ pub type TokenizeResult<T> = Result<T, IllegalToken>;
 fn parse_line(file_name: &str,
               line_num: usize,
               line: &str) -> TokenizeResult<Vec<source::Token>> {
-    /* remove line comments before tokenization */
-    let line_without_comment = match line.find("//") {
-        Some(comment_pos) => line.chars().take(comment_pos).collect(),
-        None => line.to_owned(),
-    };
-
     /* make a combined regex of all the possible token match patterns */
     let all_tokens_pattern = token_patterns().into_iter()
         .map(|(pattern, _)| pattern)
@@ -135,7 +129,7 @@ fn parse_line(file_name: &str,
 
     let file_name_shared = Rc::new(String::from(file_name));
 
-    let parsed_tokens = all_tokens_regex.captures_iter(&line_without_comment)
+    let parsed_tokens = all_tokens_regex.captures_iter(&line)
         .filter_map(|capture| {
             let token_match = capture.get(0).unwrap();
             let token_source = token_match.as_str().trim();
