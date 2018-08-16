@@ -1,14 +1,70 @@
 use syntax::*;
 use tokens;
 use keywords;
+use node;
 use ToSource;
 
-#[derive(Clone, Debug)]
-pub struct Block {
-    pub statements: Vec<Expression>
-}
+pub type Block = node::Block<node::Identifier>;
 
 impl Block {
+    fn parse_block_expr<TIter>(tokens: TIter, context: &TIter::Item)
+                               -> ParseResult<Option<Expression>, TIter::Item>
+        where TIter: IntoIterator + 'static,
+              TIter::Item: tokens::AsToken + 'static
+    {
+        let mut next_expr_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(tokens.into_iter());
+        let mut last_expr_token = context.clone();
+
+        /* take tokens until the next semicolon, but if a new begin/end block
+                        begins inside this expression, include the whole contents of the block in
+                        this expression, including any semicolons */
+
+        let mut expr_tokens = Vec::new();
+        loop {
+            let mut peekable_expr_tokens = next_expr_tokens.peekable();
+
+            match peekable_expr_tokens.peek().cloned() {
+                None => {
+                    next_expr_tokens = Box::new(peekable_expr_tokens);
+                    break
+                }
+
+                Some(next_token) => {
+                    if Matcher::Keyword(keywords::Begin).is_match(&next_token) {
+                        let expr_inner_block = Matcher::Keyword(keywords::Begin)
+                            .terminated_by(Matcher::Keyword(keywords::End))
+                            .match_block(peekable_expr_tokens, &last_expr_token)?;
+
+                        expr_tokens.push(expr_inner_block.value.open.clone());
+                        expr_tokens.extend(expr_inner_block.value.inner.iter().cloned());
+                        expr_tokens.push(expr_inner_block.value.close.clone());
+
+                        next_expr_tokens = expr_inner_block.next_tokens;
+                    } else {
+                        //skip 1 because we already peeked this value
+                        next_expr_tokens = Box::new(peekable_expr_tokens.skip(1));
+
+                        if Matcher::Exact(tokens::Semicolon).is_match(&next_token) {
+                            break;
+                        } else {
+                            expr_tokens.push(next_token);
+                        }
+                    }
+                }
+            }
+        }
+
+        if expr_tokens.len() > 0 {
+            Ok(ParseOutput::new(None, last_expr_token, next_expr_tokens))
+        }
+        else {
+            last_expr_token = expr_tokens[expr_tokens.len() - 1].clone();
+            let expr = Expression::parse(expr_tokens, context)?;
+
+            Ok(ParseOutput::new(Some(expr), last_expr_token, next_expr_tokens))
+        }
+    }
+
     pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<Block, TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
@@ -40,7 +96,7 @@ impl Block {
                         let nested_block = Block::parse(nested_begin.next_tokens,
                                                         &nested_begin.last_token)?;
 
-                        statements.push(Expression::Block(nested_block.value));
+                        statements.push(Expression::block(nested_block.value));
 
                         next_expr_tokens = nested_block.next_tokens;
                         last_expr_token = nested_block.last_token;
@@ -48,56 +104,11 @@ impl Block {
 
                     //not a nested block, parse one expr until next semicolon
                     None => {
-                        next_expr_tokens = nested_begin.next_tokens;
+                        let parsed_expr = Block::parse_block_expr(nested_begin.next_tokens, &last_expr_token)?;
+                        parsed_expr.value.map(|expr| statements.push(expr));
 
-                        /* take tokens until the next semicolon, but if a new begin/end block
-                        begins inside this expression, include the whole contents of the block in
-                        this expression, including any semicolons */
-
-                        let mut expr_tokens = Vec::new();
-                        loop {
-                            let mut peekable_expr_tokens = next_expr_tokens.peekable();
-
-                            match peekable_expr_tokens.peek().cloned() {
-                                None => {
-                                    next_expr_tokens = Box::new(peekable_expr_tokens);
-                                    break
-                                },
-
-                                Some(next_token) => {
-                                    if Matcher::Keyword(keywords::Begin).is_match(&next_token) {
-                                        let expr_inner_block = Matcher::Keyword(keywords::Begin)
-                                            .terminated_by(Matcher::Keyword(keywords::End))
-                                            .match_block(peekable_expr_tokens, &nested_begin.last_token)?;
-
-                                        expr_tokens.push(expr_inner_block.value.open.clone());
-                                        expr_tokens.extend(expr_inner_block.value.inner.iter().cloned());
-                                        expr_tokens.push(expr_inner_block.value.close.clone());
-
-                                        next_expr_tokens = expr_inner_block.next_tokens;
-                                    } else {
-                                        //skip 1 because we already peeked this value
-                                        next_expr_tokens = Box::new(peekable_expr_tokens.skip(1));
-
-                                        if Matcher::Exact(tokens::Semicolon).is_match(&next_token) {
-                                            break;
-                                        }
-                                        else {
-                                            expr_tokens.push(next_token);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if expr_tokens.len() == 0 {
-                            break;
-                        }
-
-                        last_expr_token = expr_tokens[expr_tokens.len() - 1].clone();
-
-                        let expr = Expression::parse(expr_tokens, &nested_begin.last_token)?;
-                        statements.push(expr);
+                        next_expr_tokens = parsed_expr.next_tokens;
+                        last_expr_token = parsed_expr.last_token;
                     }
                 }
             }

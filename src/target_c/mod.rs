@@ -1,6 +1,6 @@
 use syntax;
-use types;
 use operators;
+use node;
 
 //pub fn type_to_c(pascal_type: &types::Type) -> String {
 //    match pascal_type {
@@ -9,7 +9,7 @@ use operators;
 //    }.to_owned()
 //}
 
-pub fn write_identifier(id: &types::Identifier) -> String {
+pub fn write_identifier(id: &node::Identifier) -> String {
     let mut parts = id.namespace.clone();
     parts.push(id.name.clone());
 
@@ -18,7 +18,7 @@ pub fn write_identifier(id: &types::Identifier) -> String {
 
 pub fn write_expr(expr: &syntax::Expression) -> String {
     match expr {
-        &syntax::Expression::BinaryOperator { ref lhs, ref op, ref rhs } => {
+        &node::Expression::BinaryOperator { ref lhs, ref op, ref rhs } => {
             let c_op = match op {
                 &operators::Assignment => "=",
                 &operators::Equals => "==",
@@ -29,7 +29,7 @@ pub fn write_expr(expr: &syntax::Expression) -> String {
             format!("({} {} {})", write_expr(lhs), c_op, write_expr(rhs))
         }
 
-        &syntax::Expression::FunctionCall { ref target, ref args } => {
+        &node::Expression::FunctionCall { ref target, ref args } => {
             let args_str = args.iter().map(|arg_expr| write_expr(arg_expr))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -37,15 +37,15 @@ pub fn write_expr(expr: &syntax::Expression) -> String {
             format!("{}({})", write_identifier(target), args_str)
         }
 
-        &syntax::Expression::LiteralInteger(ref i) => {
+        &node::Expression::LiteralInteger(ref i) => {
             format!("((int64_t) {})", i)
         }
 
-        &syntax::Expression::LiteralString(ref s) => {
+        &node::Expression::LiteralString(ref s) => {
             format!("((const char*)\"{}\")", s)
         }
 
-        &syntax::Expression::If { ref condition, ref then_branch, ref else_branch } => {
+        &node::Expression::If { ref condition, ref then_branch, ref else_branch } => {
             let then_branch = format!("if ({}) {}", write_expr(condition), write_expr(then_branch));
 
             match else_branch {
@@ -54,11 +54,11 @@ pub fn write_expr(expr: &syntax::Expression) -> String {
             }
         }
 
-        &syntax::Expression::Identifier(ref id) => {
+        &node::Expression::Identifier(ref id) => {
             write_identifier(id)
         }
 
-        &syntax::Expression::Block(ref block) => {
+        &node::Expression::Block(ref block) => {
             write_block(block)
         }
     }

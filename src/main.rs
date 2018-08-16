@@ -10,6 +10,7 @@ mod tokenizer;
 mod syntax;
 mod target_c;
 mod semantic;
+mod node;
 
 pub trait ToSource {
     fn to_source(&self) -> String;
@@ -59,7 +60,7 @@ fn compile(source: &str) -> Result<String, CompileError> {
         col: 0,
     };
 
-    let program = syntax::program::Program::parse(tokens.into_iter(), &empty_context)?
+    let program = syntax::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
 
     let typed_program = semantic::Program::annotate(&program.clone())?;

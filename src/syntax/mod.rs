@@ -1,6 +1,5 @@
 pub mod function;
 pub mod var_decl;
-pub mod type_decl;
 pub mod program;
 pub mod block;
 pub mod expression;
@@ -10,7 +9,6 @@ pub mod matcher;
 pub use self::function::*;
 pub use self::block::*;
 pub use self::var_decl::*;
-pub use self::type_decl::*;
 pub use self::program::*;
 pub use self::expression::*;
 pub use self::iter::*;

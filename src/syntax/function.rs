@@ -3,18 +3,10 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
-use types;
+use node;
 use ToSource;
 
-#[derive(Debug, Clone)]
-pub struct Function {
-    pub name: String,
-    pub return_type: types::Identifier,
-
-    pub local_vars: Vars,
-
-    pub body: Block,
-}
+pub type Function = node::Function<node::Identifier>;
 
 impl Function {
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self, TIter::Item>
@@ -56,7 +48,7 @@ impl Function {
 
         let function = Function {
             name: fn_name.as_token().unwrap_identifier().to_owned(),
-            return_type: types::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
+            return_type: node::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
             local_vars: local_vars.value,
 

@@ -1,20 +1,12 @@
-use types;
 use tokens;
 use tokens::AsToken;
 use keywords;
+use node;
 use syntax::*;
 use ToSource;
 
-#[derive(Clone, Debug)]
-pub struct VarDecl {
-    pub name: String,
-    pub decl_type: types::Identifier,
-}
-
-#[derive(Clone, Debug, Default)]
-pub struct Vars {
-    pub decls: Vec<VarDecl>,
-}
+pub type VarDecl = node::VarDecl<node::Identifier>;
+pub type Vars = node::Vars<node::Identifier>;
 
 impl ToSource for Vars {
     fn to_source(&self) -> String {
@@ -53,7 +45,7 @@ impl Vars {
                     let decl = match_decl.match_sequence(peekable_tokens, &last_context)?;
 
                     let name = decl.value[0].as_token().unwrap_identifier().to_owned();
-                    let decl_type = types::Identifier::parse(decl.value[2].as_token().unwrap_identifier());
+                    let decl_type = node::Identifier::parse(decl.value[2].as_token().unwrap_identifier());
                     decls.push(VarDecl { name, decl_type });
 
                     next_tokens = WrapIter::new(decl.next_tokens);

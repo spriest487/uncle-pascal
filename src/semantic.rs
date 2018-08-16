@@ -1,12 +1,13 @@
 use std::fmt;
 
+use node;
 use types::*;
 use std::collections::hash_map::*;
 use syntax;
 
 #[derive(Clone, Debug)]
 pub enum SemanticError {
-    UnknownType(Identifier),
+    UnknownType(node::Identifier),
 }
 
 impl fmt::Display for SemanticError {
@@ -27,7 +28,7 @@ enum Named {
 
 #[derive(Clone, Debug)]
 struct Scope {
-    names: HashMap<Identifier, Named>
+    names: HashMap<node::Identifier, Named>
 }
 
 impl Default for Scope {
@@ -43,17 +44,17 @@ impl Default for Scope {
 }
 
 impl Scope {
-    fn with_type(mut self, name: Identifier, named_type: DeclaredType) -> Self {
+    fn with_type(mut self, name: node::Identifier, named_type: DeclaredType) -> Self {
         self.names.insert(name, Named::Type(named_type));
         self
     }
 
-    fn with_symbol(mut self, name: Identifier, named_symbol: DeclaredType) -> Self {
+    fn with_symbol(mut self, name: node::Identifier, named_symbol: DeclaredType) -> Self {
         self.names.insert(name, Named::Symbol(named_symbol));
         self
     }
 
-    fn find_type(&self, name: &Identifier) -> Option<&DeclaredType> {
+    fn find_type(&self, name: &node::Identifier) -> Option<&DeclaredType> {
         self.names.get(name).and_then(|named| match named {
             &Named::Type(ref named_type) => Some(named_type),
             _ => None,
@@ -78,7 +79,7 @@ pub struct Function {
     name: String,
     return_type: DeclaredType,
     local_vars: Vec<Symbol>,
-    //_body: _,
+    //body: Block,
 }
 
 impl Function {

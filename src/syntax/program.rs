@@ -1,11 +1,14 @@
 use syntax::*;
-use types;
 use tokens;
 use tokens::AsToken;
 use keywords;
+use node;
 use ToSource;
 
-fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<types::Identifier>, TIter::Item>
+pub type Program = node::Program<node::Identifier>;
+pub type RecordDecl = node::RecordDecl<node::Identifier>;
+
+fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<node::Identifier>, TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -32,7 +35,7 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
         .map(|source_tokens| {
             if source_tokens.len() == 1 &&
                 source_tokens[0].as_token().is_any_identifier() {
-                Ok(types::Identifier::parse(source_tokens[0].as_token().unwrap_identifier()))
+                Ok(node::Identifier::parse(source_tokens[0].as_token().unwrap_identifier()))
             } else {
                 Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
                                                 Some(Matcher::AnyIdentifier)))
@@ -121,19 +124,6 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
     Ok(ParseOutput::new(decls, last_parsed, tokens))
 }
 
-#[derive(Clone, Debug)]
-pub struct Program {
-    pub name: types::Identifier,
-
-    pub uses: Vec<types::Identifier>,
-
-    pub functions: Vec<Function>,
-    pub type_decls: Vec<RecordDecl>,
-    pub vars: Vars,
-
-    pub program_block: Block,
-}
-
 impl Program {
     pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<Self, TIter::Item>
         where TIter: Iterator + 'static,
@@ -144,10 +134,11 @@ impl Program {
             .and_then(Matcher::Exact(tokens::Semicolon))
             .match_sequence(tokens, context)?;
 
-        let name = types::Identifier::parse(program_statement.value
+        let name = program_statement.value
             .get(1).unwrap()
             .as_token()
-            .unwrap_identifier());
+            .unwrap_identifier()
+            .to_owned();
 
         let uses = parse_uses(program_statement.next_tokens,
                               &program_statement.last_token)?;

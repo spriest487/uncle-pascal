@@ -1,35 +1,13 @@
 use std::fmt;
 
-use operators;
-use types;
 use syntax::*;
 use tokens;
 use keywords;
 use tokens::AsToken;
 use ToSource;
+use node;
 
-#[allow(dead_code)]
-#[derive(Clone, Debug)]
-pub enum Expression {
-    BinaryOperator{
-        lhs: Box<Expression>,
-        op: operators::BinaryOperator,
-        rhs: Box<Expression>,
-    },
-    FunctionCall{
-        target: types::Identifier,
-        args: Vec<Expression>,
-    },
-    LiteralInteger(i64),
-    LiteralString(String),
-    Identifier(types::Identifier),
-    If {
-        condition: Box<Expression>,
-        then_branch: Box<Expression>,
-        else_branch: Option<Box<Expression>>,
-    },
-    Block(Block)
-}
+pub type Expression = node::Expression<node::Identifier>;
 
 fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
     where TIter: IntoIterator + 'static,
@@ -42,11 +20,7 @@ fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Exp
     let op = split_at_op.value.split_at.as_token().unwrap_binary_operator().clone();
     let rhs_expr = Expression::parse(split_at_op.next_tokens, &split_at_op.last_token)?;
 
-    Ok(Expression::BinaryOperator {
-        lhs: Box::from(lhs_expr),
-        op,
-        rhs: Box::from(rhs_expr),
-    })
+    Ok(Expression::binary_op(lhs_expr, op, rhs_expr))
 }
 
 fn parse_identifier<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -59,7 +33,7 @@ fn parse_identifier<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Ex
 
     let name = identifier.as_token().unwrap_identifier();
 
-    Ok(Expression::Identifier(types::Identifier::parse(name)))
+    Ok(Expression::identifier(node::Identifier::parse(name)))
 }
 
 fn parse_literal_string<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -70,9 +44,9 @@ fn parse_literal_string<TIter>(in_tokens: TIter, context: &TIter::Item) -> Resul
         .match_one(in_tokens, context)?
         .finish()?;
 
-    let string_value = string_token.as_token().unwrap_literal_string().to_owned();
+    let string_value = string_token.as_token().unwrap_literal_string();
 
-    Ok(Expression::LiteralString(string_value))
+    Ok(Expression::literal_string(string_value))
 }
 
 fn parse_literal_integer<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -83,7 +57,7 @@ fn parse_literal_integer<TIter>(in_tokens: TIter, context: &TIter::Item) -> Resu
         .match_one(in_tokens, context)?
         .finish()?;
 
-    Ok(Expression::LiteralInteger(integer_token.as_token().unwrap_literal_integer()))
+    Ok(Expression::literal_int(integer_token.as_token().unwrap_literal_integer()))
 }
 
 fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -107,10 +81,9 @@ fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result
         })
         .collect::<Result<Vec<_>, _>>();
 
-    Ok(Expression::FunctionCall {
-        target: types::Identifier::parse(func_name.value.as_token().unwrap_identifier()),
-        args: all_args?
-    })
+    let call_target = node::Identifier::parse(func_name.value.as_token().unwrap_identifier());
+
+    Ok(Expression::function_call(call_target, all_args?))
 }
 
 fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -130,26 +103,19 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
                                                           &cond_tokens.last_token)?;
 
     if let Some(_) = peek_then_else.value {
-        let then_else = match_then_else.match_block(peek_then_else.next_tokens, &peek_then_else.last_token)?;
+        let then_else = match_then_else.match_block(peek_then_else.next_tokens,
+                                                    &peek_then_else.last_token)?;
 
         let then_branch = Expression::parse(then_else.value.inner, &then_else.value.open)?;
         let else_branch = Expression::parse(then_else.next_tokens, &then_else.value.close)?;
 
-        Ok(Expression::If {
-            condition: Box::from(condition),
-            then_branch: Box::from(then_branch),
-            else_branch: Some(Box::from(else_branch)),
-        })
+        Ok(Expression::if_then_else(condition, then_branch, Some(else_branch)))
     } else {
-        let then = Matcher::Keyword(keywords::Then)
-            .match_one(peek_then_else.next_tokens, &peek_then_else.last_token)?;
+        let then = Matcher::Keyword(keywords::Then).match_one(peek_then_else.next_tokens,
+                                                              &peek_then_else.last_token)?;
         let then_branch = Expression::parse(then.next_tokens, &then.last_token)?;
 
-        Ok(Expression::If {
-            condition: Box::from(condition),
-            then_branch: Box::from(then_branch),
-            else_branch: None
-        })
+        Ok(Expression::if_then_else(condition, then_branch, None))
     }
 }
 
@@ -181,7 +147,7 @@ impl Expression {
                     let block = Block::parse(expr_first.next_tokens, &expr_first.last_token)?
                         .finish()?;
 
-                    Ok(Expression::Block(block))
+                    Ok(Expression::block(block))
                 }
 
                 Some(ref identifier) if identifier.is_any_identifier() => {
@@ -203,7 +169,7 @@ impl Expression {
                 _ => {
                     let unexpected = expr_first.next_tokens.next().unwrap().clone();
                     Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
-                },
+                }
             }
         })
     }
@@ -212,27 +178,27 @@ impl Expression {
 impl ToSource for Expression {
     fn to_source(&self) -> String {
         match self {
-            &Expression::BinaryOperator{ref lhs, ref op, ref rhs} => {
+            &node::Expression::BinaryOperator { ref lhs, ref op, ref rhs } => {
                 format!("({} {} {})", lhs.to_source(), op, rhs.to_source())
             }
 
-            &Expression::Identifier(ref id) => format!("{}", id),
+            &node::Expression::Identifier(ref id) => format!("{}", id),
 
-            &Expression::FunctionCall { ref target, ref args } => {
+            &node::Expression::FunctionCall { ref target, ref args } => {
                 let args_str = args.iter()
                     .map(|arg| arg.to_source())
                     .collect::<Vec<_>>()
                     .join(", ");
 
                 format!("{}({})", target, args_str)
-            },
+            }
 
-            &Expression::LiteralInteger(i) => format!("{}", i),
+            &node::Expression::LiteralInteger(i) => format!("{}", i),
 
-            &Expression::LiteralString(ref s) =>
+            &node::Expression::LiteralString(ref s) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
 
-            &Expression::If { ref condition, ref then_branch, ref else_branch } => {
+            &node::Expression::If { ref condition, ref then_branch, ref else_branch } => {
                 let mut lines = Vec::new();
                 lines.push(format!("if {} then", condition.to_source()));
                 lines.push(format!("\t{}", then_branch.to_source()));
@@ -244,7 +210,7 @@ impl ToSource for Expression {
                 lines.join("\n")
             }
 
-            &Expression::Block(ref block) => {
+            &node::Expression::Block(ref block) => {
                 block.to_source()
             }
         }
