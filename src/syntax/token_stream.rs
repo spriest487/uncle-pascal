@@ -213,10 +213,10 @@ impl TokenStream {
     }
 
     pub fn match_groups_inner(&mut self,
-                          open: impl Into<Matcher>,
-                          close: impl Into<Matcher>,
-                          separator: impl Into<Matcher>)
-                          -> ParseResult<GroupsMatch> {
+                              open: impl Into<Matcher>,
+                              close: impl Into<Matcher>,
+                              separator: impl Into<Matcher>)
+                              -> ParseResult<GroupsMatch> {
         let match_open = open.into();
         let match_close = close.into();
         let match_separator = separator.into();
@@ -406,23 +406,20 @@ impl TokenStream {
             peek_pos += 1;
 
             match next {
-                /* found a nested block opener */
-                Some(ref nested_open) if open_matcher.is_match(nested_open) => {
-                    open_count += 1;
-                }
-
-                /* found a close token */
-                Some(ref close) if close_matcher.is_match(close) => {
+                Some(inner_token) => if close_matcher.is_match(&inner_token) {
                     open_count -= 1;
 
                     if open_count == 0 {
-                        /* it's the final one */
-                        break Some(close.clone());
+                        break Some(inner_token);
+                    } else {
+                        inner_tokens.push(inner_token);
                     }
-                }
+                } else {
+                    if open_matcher.is_match(&inner_token) {
+                        open_count += 1;
+                    }
 
-                Some(inner_token) => {
-                    inner_tokens.push(inner_token)
+                    inner_tokens.push(inner_token);
                 }
 
                 None => break None,
