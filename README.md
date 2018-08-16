@@ -2,11 +2,11 @@
 
 ## urgent/in progress
 * => function syntax
-* add Name node in C++ AST for renaming (--> remove pascal names from C++ output)
 * shadowing breaks initialization checks which are done by name
 * RC struct members on the stack
 * Type hints for expr_type to help infer types for constant expressions and make
     dealing with uints less painful
+* namespace methods under the type name e.g. Vector.Add(vec1), vec.Add() instead of global
 
 ## fixes
 * variant fields with the same name
