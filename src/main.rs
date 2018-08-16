@@ -183,7 +183,8 @@ fn compile_program(program_path: &Path,
         .canonicalize()?;
 
     let search_dirs = if let Ok(current_dir) = current_dir() {
-        vec![source_dir, current_dir]
+        let units_dir = current_dir.join("units");
+        vec![source_dir, units_dir]
     } else {
         vec![source_dir]
     };
