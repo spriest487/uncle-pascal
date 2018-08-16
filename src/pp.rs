@@ -93,16 +93,16 @@ struct DirectiveParser {
 impl DirectiveParser {
     fn new() -> Self {
         Self {
-            define_pattern: Regex::new(r"^define\s+(\w+)$").unwrap(),
-            undef_pattern: Regex::new(r"^undef\s+(\w+)$").unwrap(),
-            ifdef_pattern: Regex::new(r"^ifdef\s+(\w+)$").unwrap(),
-            ifndef_pattern: Regex::new(r"^ifndef\s+(\w+)$").unwrap(),
-            endif_pattern: Regex::new("^endif$").unwrap(),
-            else_pattern: Regex::new("^else$").unwrap(),
-            elseif_pattern: Regex::new(r"^elseif\s+(\w+)$").unwrap(),
-            mode_pattern: Regex::new(r"^mode\s+(\w+)$").unwrap(),
-            switch_pattern: Regex::new(r"^([a-zA-Z]+)([+-])$").unwrap(),
-            linklib_pattern: Regex::new(r"linklib\s+(\w+)$").unwrap(),
+            define_pattern: Regex::new(r"(?i)^define\s+(\w+)$").unwrap(),
+            undef_pattern: Regex::new(r"(?i)^undef\s+(\w+)$").unwrap(),
+            ifdef_pattern: Regex::new(r"(?i)^ifdef\s+(\w+)$").unwrap(),
+            ifndef_pattern: Regex::new(r"(?i)^ifndef\s+(\w+)$").unwrap(),
+            endif_pattern: Regex::new("(?i)^endif$").unwrap(),
+            else_pattern: Regex::new("(?i)^else$").unwrap(),
+            elseif_pattern: Regex::new(r"(?i)^elseif\s+(\w+)$").unwrap(),
+            mode_pattern: Regex::new(r"(?i)^mode\s+(\w+)$").unwrap(),
+            switch_pattern: Regex::new(r"(?i)^([a-zA-Z]+)([+-])$").unwrap(),
+            linklib_pattern: Regex::new(r"(?i)linklib\s+(\w+)$").unwrap(),
         }
     }
 
@@ -330,7 +330,6 @@ impl Preprocessor {
             .skip(2)
             .take(self.comment_block.len() - 3)
             .collect::<String>()
-            .to_ascii_lowercase()
             .trim()
             .to_string();
 
