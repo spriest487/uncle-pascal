@@ -21,14 +21,14 @@ pub struct TokenStream {
     tokens: Box<Iterator<Item=source::Token>>,
     context: source::Token,
 
-    peeked: VecDeque<source::Token>,
+    lookahead_buffer: VecDeque<source::Token>,
 }
 
 impl Iterator for TokenStream {
     type Item = source::Token;
 
     fn next(&mut self) -> Option<<Self as Iterator>::Item> {
-        self.peeked.pop_front()
+        self.lookahead_buffer.pop_front()
             .or_else(|| self.tokens.next())
             .map(|next_token| {
                 self.context = next_token.clone();
@@ -57,7 +57,7 @@ impl From<Vec<source::Token>> for TokenStream {
             tokens: boxed,
             context,
 
-            peeked: VecDeque::new(),
+            lookahead_buffer: VecDeque::new(),
         }
     }
 }
@@ -77,7 +77,7 @@ impl TokenStream {
             tokens: boxed,
             context: context.clone(),
 
-            peeked: VecDeque::new(),
+            lookahead_buffer: VecDeque::new(),
         }
     }
 
@@ -99,9 +99,9 @@ impl TokenStream {
             }
 
             if self.next().is_none() {
-                panic!("must not run out of tokens while advancing (at {}, peeked {})",
+                panic!("must not run out of tokens while advancing (at {}, lookahead count: {})",
                        self.context,
-                       self.peeked.len());
+                       self.lookahead_buffer.len());
             };
         }
     }
@@ -111,7 +111,7 @@ impl TokenStream {
 
         let rewind_tokens: Vec<_> = rewind_from.collect();
         for token in rewind_tokens.into_iter().rev() {
-            self.peeked.push_front(token);
+            self.lookahead_buffer.push_front(token);
         }
     }
 
@@ -125,11 +125,11 @@ impl TokenStream {
     }
 
     pub fn peek(&mut self) -> Option<source::Token> {
-        self.peeked.front()
+        self.lookahead_buffer.front()
             .cloned()
             .or_else(|| {
                 let peeked = self.tokens.next()?;
-                self.peeked.push_back(peeked.clone());
+                self.lookahead_buffer.push_back(peeked.clone());
 
                 Some(peeked)
             })
@@ -349,14 +349,14 @@ impl TokenStream {
 
     /* read the whole input stream without advancing the current position or context,
      and return all remaining tokens ahead of the current point */
-    pub fn peek_to_end(&mut self) -> Vec<source::Token> {
-        let mut all_tokens: Vec<_> = self.peeked.iter().cloned().collect();
+    pub fn look_ahead_to_end(&mut self) -> Vec<source::Token> {
+        let mut all_tokens: Vec<_> = self.lookahead_buffer.iter().cloned().collect();
 
         loop {
             match self.tokens.next() {
                 Some(next_token) => {
                     all_tokens.push(next_token.clone());
-                    self.peeked.push_back(next_token);
+                    self.lookahead_buffer.push_back(next_token);
                 }
 
                 None => break all_tokens,
@@ -364,8 +364,8 @@ impl TokenStream {
         }
     }
 
-    pub fn peeked(&mut self) -> PeekedTokenStream {
-        PeekedTokenStream::new(self)
+    pub fn look_ahead(&mut self) -> LookAheadTokenStream {
+        LookAheadTokenStream::new(self)
     }
 
     pub fn split_at_match(&mut self, matcher: impl Into<Matcher>)
@@ -415,24 +415,24 @@ pub trait Parse where Self: Sized {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
 }
 
-pub struct PeekedTokenStream<'tokens> {
+pub struct LookAheadTokenStream<'tokens> {
     tokens: &'tokens mut TokenStream,
-    peek_pos: usize,
+    pos: usize,
 }
 
-impl<'tokens> PeekedTokenStream<'tokens> {
+impl<'tokens> LookAheadTokenStream<'tokens> {
     pub fn new(tokens: &'tokens mut TokenStream) -> Self {
         Self {
             tokens,
-            peek_pos: 0,
+            pos: 0,
         }
     }
 
     pub fn context(&self) -> &source::Token {
-        if self.peek_pos == 0 {
+        if self.pos == 0 {
             self.tokens.context()
         } else {
-            &self.tokens.peeked[self.peek_pos - 1]
+            &self.tokens.lookahead_buffer[self.pos - 1]
         }
     }
 
@@ -568,7 +568,7 @@ impl<'tokens> PeekedTokenStream<'tokens> {
                 Some(next_token) => {
                     if match_open.is_match(&next_token) {
                         /* go back, we need to block match starting from this open token */
-                        self.peek_pos -= 1;
+                        self.pos -= 1;
 
                         match self.match_block(match_open.clone(), match_close.clone()) {
                             /* add the whole contents of the inner group to the last group */
@@ -618,19 +618,19 @@ impl<'tokens> PeekedTokenStream<'tokens> {
     }
 }
 
-impl<'tokens> Iterator for PeekedTokenStream<'tokens> {
+impl<'tokens> Iterator for LookAheadTokenStream<'tokens> {
     type Item = source::Token;
 
     fn next(&mut self) -> Option<source::Token> {
-        let next = if self.peek_pos < self.tokens.peeked.len() {
-            self.tokens.peeked.get(self.peek_pos).cloned()
+        let next = if self.pos < self.tokens.lookahead_buffer.len() {
+            self.tokens.lookahead_buffer.get(self.pos).cloned()
         } else {
             let next_token = self.tokens.tokens.next()?;
-            self.tokens.peeked.push_back(next_token.clone());
+            self.tokens.lookahead_buffer.push_back(next_token.clone());
             Some(next_token)
         };
 
-        self.peek_pos += 1;
+        self.pos += 1;
         next
     }
 }
@@ -798,12 +798,12 @@ mod test {
             tokens.next().unwrap(),
             tokens.next().unwrap()
         ];
-        tokens.peek_to_end();
+        tokens.look_ahead_to_end();
 
-        assert_eq!(2, tokens.peeked.len());
+        assert_eq!(2, tokens.lookahead_buffer.len());
 
         tokens.rewind(TokenStream::from(consumed));
-        assert_eq!(5, tokens.peeked.len());
+        assert_eq!(5, tokens.lookahead_buffer.len());
 
         assert_eq!(&sequence[0], tokens.context());
         assert_eq!(sequence, tokens.collect::<Vec<_>>());

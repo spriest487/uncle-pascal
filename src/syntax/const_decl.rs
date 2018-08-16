@@ -27,7 +27,7 @@ impl Parse for ConstDecls {
 
         let mut decls = Vec::new();
         loop {
-            if tokens.peeked().match_one(Matcher::AnyIdentifier).is_none() {
+            if tokens.look_ahead().match_one(Matcher::AnyIdentifier).is_none() {
                 break;
             }
 

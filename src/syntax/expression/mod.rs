@@ -43,7 +43,7 @@ impl CompoundExpressionPart {
 fn any_operators_at_base_level(tokens: &mut TokenStream) -> ParseResult<bool> {
     let mut bracket_level = 0;
 
-    for token in tokens.peeked() {
+    for token in tokens.look_ahead() {
         if *token.as_token() == tokens::BracketLeft {
             bracket_level += 1
         } else if *token.as_token() == tokens::BracketRight {
@@ -141,7 +141,7 @@ impl Expression {
 
     fn parse_operand(tokens: &mut TokenStream) -> ExpressionResult {
         /* if there's brackets around it, we know exactly where it begins and ends */
-        let outer_brackets = tokens.peeked().match_block(tokens::BracketLeft, tokens::BracketRight);
+        let outer_brackets = tokens.look_ahead().match_block(tokens::BracketLeft, tokens::BracketRight);
 
         match outer_brackets {
             Some(brackets_block) => {
@@ -198,7 +198,7 @@ impl Expression {
         let mut parsed_parts: Vec<CompoundExpressionPart> = Vec::new();
 
         {
-            let mut tokens_ahead = tokens.peeked();
+            let mut tokens_ahead = tokens.look_ahead();
             let parts = tokens_ahead.match_groups_inner(tokens::BracketLeft,
                                                         tokens::BracketRight,
                                                         Matcher::AnyOperator);
@@ -397,7 +397,7 @@ impl Expression {
         let cond_tokens = TokenStream::from(tokens.match_until(keywords::Then)?);
         let condition: Expression = cond_tokens.parse_to_end()?;
 
-        if let Some(then_tokens) = tokens.peeked().match_block(keywords::Then, keywords::Else) {
+        if let Some(then_tokens) = tokens.look_ahead().match_block(keywords::Then, keywords::Else) {
             let then_len = then_tokens.len();
 
             let then_stream = TokenStream::new(then_tokens.inner, &then_tokens.open);
@@ -452,7 +452,7 @@ impl Expression {
             .or(keywords::Nil)
             .or(Matcher::any_operator_in_position(operators::Position::Prefix));
 
-        let expr_first = tokens.peeked().match_one(match_expr_start.clone());
+        let expr_first = tokens.look_ahead().match_one(match_expr_start.clone());
 
         let contains_operator = any_operators_at_base_level(tokens)?;
 

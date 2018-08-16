@@ -29,7 +29,7 @@ impl Parse for Vec<TypeDecl> {
 
             let decl_name = match_name[0].unwrap_identifier();
 
-            let peek_kind = tokens.peeked().match_one(any_valid_type_decl_first());
+            let peek_kind = tokens.look_ahead().match_one(any_valid_type_decl_first());
 
             let type_decl = match peek_kind {
                 Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
@@ -56,7 +56,7 @@ impl Parse for Vec<TypeDecl> {
 
             /* but if the token after that is another identifier, there's another decl
             in this type decl block */
-            let next_identifier = tokens.peeked().match_one(tokens::Semicolon.or(Matcher::AnyIdentifier));
+            let next_identifier = tokens.look_ahead().match_one(tokens::Semicolon.or(Matcher::AnyIdentifier));
             if next_identifier.is_none() {
                 break Ok(decls);
             }

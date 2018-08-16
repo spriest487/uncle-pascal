@@ -836,7 +836,7 @@ pub(crate) mod test {
                 }) => {
                 assert_eq!(operators::Assignment, op);
                 assert_eq!(Some(Type::RawPointer), args[0]);
-                assert_eq!(Some(Type::Int64), args[1]);
+                assert_eq!(Some(Type::Int32), args[1]);
             }
             _ => panic!("expected invalid types in assignment")
         }

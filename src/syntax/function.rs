@@ -53,7 +53,7 @@ impl Parse for FunctionDecl {
         //body (if present) appears after separator or newline
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let peek_after_sig = tokens.peeked().match_one(keywords::Var
+        let peek_after_sig = tokens.look_ahead().match_one(keywords::Var
             .or(keywords::Const)
             .or(keywords::Begin));
 
@@ -68,7 +68,7 @@ impl Parse for FunctionDecl {
                 let mut local_vars = VarDecls::default();
 
                 loop {
-                    match tokens.peeked().match_one(keywords::Var.or(keywords::Const)) {
+                    match tokens.look_ahead().match_one(keywords::Var.or(keywords::Const)) {
                         Some(t) => if t.is_keyword(keywords::Var) {
                             let vars: VarDecls = tokens.parse()?;
                             local_vars.decls.extend(vars.decls);
@@ -118,7 +118,7 @@ impl FunctionDecl {
         let mut modifiers = Vec::new();
 
         loop {
-            let next_mod_tokens = tokens.peeked().match_sequence(tokens::Semicolon
+            let next_mod_tokens = tokens.look_ahead().match_sequence(tokens::Semicolon
                 .and_then(Matcher::AnyIdentifier));
 
             match next_mod_tokens {
@@ -140,7 +140,7 @@ impl FunctionDecl {
     }
 
     pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionArg>> {
-        if tokens.peeked().match_one(tokens::BracketLeft).is_none() {
+        if tokens.look_ahead().match_one(tokens::BracketLeft).is_none() {
             return Ok(Vec::new());
         }
 
@@ -154,7 +154,7 @@ impl FunctionDecl {
 
             /* the modifier comes first if there is one, and applies to all args in this group - e.g.
             `const x, y: Integer` means x and y are consts of type Integer */
-            let modifier = arg_group_tokens.peeked().match_one(keywords::Var
+            let modifier = arg_group_tokens.look_ahead().match_one(keywords::Var
                 .or(keywords::Const)
                 .or(keywords::Out))
                 .map(|t| match t.unwrap_keyword() {

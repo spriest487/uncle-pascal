@@ -103,7 +103,7 @@ impl ToSource for TypeName {
 }
 
 fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
-    let array_kw = tokens.peeked().match_one(keywords::Array);
+    let array_kw = tokens.look_ahead().match_one(keywords::Array);
     let array_dimensions = match array_kw {
         Some(_) => {
             tokens.advance(1);
@@ -139,7 +139,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
     let mut indirection = 0;
 
     loop {
-        let pointer_sigil = tokens.peeked().match_one(operators::Deref);
+        let pointer_sigil = tokens.look_ahead().match_one(operators::Deref);
         if pointer_sigil.is_some() {
             indirection += 1;
             tokens.advance(1);
@@ -189,7 +189,7 @@ impl Parse for TypeName {
             .or(operators::Deref)
             .or(Matcher::AnyIdentifier);
 
-        match tokens.peeked().match_one(match_name_first_token) {
+        match tokens.look_ahead().match_one(match_name_first_token) {
             Some(ref t) if t.is_keyword(keywords::Function) || t.is_keyword(keywords::Procedure) => {
                 parse_as_function_type(tokens)
             }
