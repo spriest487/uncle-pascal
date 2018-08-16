@@ -3,7 +3,7 @@ use std::fmt;
 
 use semantic::*;
 use node;
-use types::DeclaredType;
+use types::*;
 
 #[derive(Clone, Debug)]
 pub enum Named {

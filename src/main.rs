@@ -79,18 +79,18 @@ fn empty_context() -> source::Token {
 }
 
 fn load_source<TPath: AsRef<Path>>(path: TPath) -> Result<Vec<source::Token>, CompileError> {
-    let filename = path.as_ref()
-        .file_name()
-        .map(OsStr::to_string_lossy)
-        .map(|s| String::from(s))
-        .unwrap();
-
-    let mut file = fs::File::open(path)?;
+    let mut file = fs::File::open(&path)?;
 
     let mut source = String::new();
     file.read_to_string(&mut source)?;
 
-    let tokens = tokenizer::tokenize(&filename, &source)?;
+    let display_filename = path.as_ref()
+        .file_name()
+        .map(OsStr::to_string_lossy)
+        .map(|s| String::from(s))
+        .unwrap_or_else(|| "(unknown)".to_owned());
+
+    let tokens = tokenizer::tokenize(&display_filename, &source)?;
 
     Ok(tokens)
 }
@@ -98,6 +98,18 @@ fn load_source<TPath: AsRef<Path>>(path: TPath) -> Result<Vec<source::Token>, Co
 pub struct ProgramModule {
     pub program: semantic::Program,
     pub units: Vec<semantic::Unit>,
+}
+
+fn pretty_path(path: &Path) -> String {
+    let canon = path.canonicalize()
+        .map(|canon_path| canon_path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| "(unknown)".to_owned());
+
+    if cfg!(windows) && canon.starts_with(r"\\?\") {
+        canon[4..].to_owned()
+    } else {
+        canon
+    }
 }
 
 fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
@@ -123,7 +135,7 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
 
             println!("Compiling unit `{}` in `{}`...",
                      unit_id,
-                     unit_path.to_string_lossy());
+                     pretty_path(&unit_path));
 
             let unit_source = load_source(unit_path)?;
             let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
@@ -169,11 +181,10 @@ fn pas_to_c(in_path: &str,
         fs::create_dir_all(out_path)?;
 
         let out_file_path = out_path
+            .canonicalize()?
             .join(format!("{}.c", module.program.name));
 
-        println!("Writing output to `{}`...", out_file_path
-            .canonicalize()?
-            .to_string_lossy());
+        println!("Writing output to `{}`...", pretty_path(&out_file_path));
 
         let mut out_file = fs::File::create(out_file_path)?;
         out_file.write_all(c_unit.as_bytes())?;

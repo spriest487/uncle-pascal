@@ -28,11 +28,11 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
                 .join(", ");
 
             format!("({} (*{})({}))", return_type, name, arg_types)
-        },
+        }
         &types::DeclaredType::Record(ref decl) => {
             //TODO: should be identifier
             format!("struct {}", decl.name)
-        },
+        }
     }.to_owned()
 }
 
@@ -85,7 +85,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 }
 
 pub fn write_expr(out: &mut String, expr: &semantic::Expression)
-    -> fmt::Result {
+                  -> fmt::Result {
     match &expr.value {
         &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } => {
             let c_op = match op {
@@ -173,7 +173,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. } => {
                     assert_eq!(operators::Assignment, *op);
                     lhs.clone()
-                },
+                }
                 _ => panic!("for loop 'from' clause must be an assignment")
             };
 
@@ -204,12 +204,12 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                         write!(out, "(*")?;
                         deref_levels += 1;
                         of_type = Some(*of_target);
-                    },
+                    }
 
                     _ => {
                         write_expr(out, of)?;
-                        break
-                    },
+                        break;
+                    }
                 }
             }
 
@@ -227,7 +227,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 }
 
 pub fn write_block(out: &mut String, block: &semantic::Block)
-    -> fmt::Result {
+                   -> fmt::Result {
     writeln!(out, "{{")?;
 
     for statement in block.statements.iter() {
@@ -238,10 +238,14 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
     writeln!(out, "}}")
 }
 
-pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
+pub fn write_vars(out: &mut String, ns: Option<&node::Identifier>, vars: &semantic::Vars) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
-            writeln!(out, "{} {};", type_to_c(&decl.decl_type), decl.name)
+            let full_name = match ns {
+                Some(parent_ns) => identifier_to_c(&parent_ns.child(&decl.name)),
+                None => decl.name.clone(),
+            };
+            writeln!(out, "{} {};", type_to_c(&decl.decl_type), full_name)
         })
         .collect()
 }
@@ -255,10 +259,15 @@ pub fn default_initialize_vars(out: &mut String, vars: &semantic::Vars) -> fmt::
         .collect()
 }
 
-pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -> fmt::Result {
+pub fn write_record_decl(out: &mut String, ns: Option<&node::Identifier>, record_decl: &semantic::RecordDecl) -> fmt::Result {
     assert!(record_decl.members.len() > 0, "structs must have at least one member");
 
-    writeln!(out, "struct {} {{", record_decl.name)?;
+    let full_name = match ns {
+        Some(parent_ns) => identifier_to_c(&parent_ns.child(record_decl.name.as_str())),
+        None => record_decl.name.clone(),
+    };
+
+    writeln!(out, "struct {} {{", full_name)?;
     for member in record_decl.members.iter() {
         writeln!(out, "{} {};", type_to_c(&member.decl_type), member.name)?;
     }
@@ -266,13 +275,18 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     writeln!(out)
 }
 
-pub fn write_function(out: &mut String, function: &semantic::Function)
-    -> fmt::Result {
+pub fn write_function(out: &mut String, ns: Option<&node::Identifier>, function: &semantic::Function)
+                      -> fmt::Result {
     let return_type = function.return_type.as_ref()
         .map(type_to_c);
 
+    let full_name = match ns {
+        Some(parent_ns) => identifier_to_c(&parent_ns.child(function.name.as_str())),
+        None => function.name.clone(),
+    };
+
     write!(out, "{} ", return_type.clone().unwrap_or_else(|| "void".to_owned()))?;
-    write!(out, "{} ", function.name)?;
+    write!(out, "{} ", full_name)?;
 
     writeln!(out, "({}) {{", function.args.decls.iter()
         .map(|arg_decl| {
@@ -281,7 +295,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
         .collect::<Vec<_>>()
         .join(", "))?;
 
-    write_vars(out, &function.local_vars)?;
+    write_vars(out, None, &function.local_vars)?;
     default_initialize_vars(out, &function.local_vars)?;
 
     match return_type {
@@ -294,19 +308,19 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     writeln!(out)
 }
 
-pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Result {
+pub fn write_decl(out: &mut String, ns: Option<&node::Identifier>, decl: &semantic::UnitDeclaration) -> fmt::Result {
     match decl {
         &node::UnitDeclaration::Function(ref func_decl) =>
-            write_function(out, func_decl),
+            write_function(out, ns, func_decl),
         &node::UnitDeclaration::Record(ref record_decl) =>
-            write_record_decl(out, record_decl),
+            write_record_decl(out, ns, record_decl),
         &node::UnitDeclaration::Vars(ref vars_decl) =>
-            write_vars(out, vars_decl),
+            write_vars(out, ns, vars_decl),
     }
 }
 
 pub fn write_c(module: &ProgramModule)
-    -> Result<String, fmt::Error> {
+               -> Result<String, fmt::Error> {
     let mut output = String::new();
 
     writeln!(output, "#include <stdint.h>")?;
@@ -323,7 +337,7 @@ pub fn write_c(module: &ProgramModule)
 
 
     writeln!(output,
-r"static void System_WriteLn(System_String ln) {{
+             r"static void System_WriteLn(System_String ln) {{
     if (!ln) abort();
 
     puts(ln);
@@ -343,21 +357,25 @@ static void System_FreeMem(System_Byte* p) {{
 
     for unit in module.units.iter() {
         writeln!(output, "/* {} interface */", unit.name)?;
+        let ns = node::Identifier::from(unit.name.as_str());
+
         for decl in unit.interface.iter() {
-            write_decl(&mut output, decl)?;
+            write_decl(&mut output, Some(&ns), decl)?;
         }
     }
 
     for unit in module.units.iter() {
         writeln!(output, "/* {} implementation */", unit.name)?;
+        let ns = node::Identifier::from(unit.name.as_str());
+
         for decl in unit.implementation.iter() {
-            write_decl(&mut output, decl)?;
+            write_decl(&mut output, Some(&ns), decl)?;
         }
     }
 
     writeln!(output, "/* program decls */")?;
     for decl in module.program.decls.iter() {
-        write_decl(&mut output, decl)?;
+        write_decl(&mut output, None, decl)?;
     }
 
     writeln!(output, "/* program vars */")?;
