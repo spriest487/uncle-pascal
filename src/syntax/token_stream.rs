@@ -32,6 +32,19 @@ impl TokenStream {
         }
     }
 
+    pub fn from_vec(tokens: Vec<source::Token>) -> Self {
+        if tokens.len() == 0 {
+            panic!("length of tokenstream must be at least 1");
+        }
+
+        let context = tokens[0].clone();
+
+        TokenStream {
+            tokens: Box::new(tokens.into_iter()).peekable(),
+            context,
+        }
+    }
+
     pub fn context(&self) -> &source::Token {
         &self.context
     }

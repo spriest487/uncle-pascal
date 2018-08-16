@@ -157,12 +157,10 @@ impl Expression {
         }
     }
 
-    fn parse_compound<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static,
-    {
+    fn parse_compound(tokens: &mut TokenStream) -> Result<(Expression, TokenStream), ParseError> {
         /* group tokens into operators and operands - we don't know where this expression
          will end so we need to take the entire stream */
-        let all_tokens: Vec<_> = in_tokens.into_iter().collect();
+        let all_tokens: Vec<_> = tokens.into_iter().collect();
         let mut last_token = context.clone();
 
 //        println!("ALL TOKENS: {}", source::tokens_to_source(&all_tokens));
@@ -199,16 +197,14 @@ impl Expression {
 //                        return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
                     }
 
-                    let context = next_operand_tokens[0].clone();
-                    let operand_expr = Expression::parse_operand(next_operand_tokens,
-                                                                 &context)?;
+                    let mut operand_stream = TokenStream::from_vec(next_operand_tokens);
 
-                    let mut after_expr = operand_expr.next_tokens.peekable();
+                    let operand_expr = Expression::parse_operand(&mut operand_stream)?;
 
                     parts.push(CompoundExpressionPart::Operand(operand_expr.value));
                     next_operand_tokens = Vec::new();
 
-                    if let Some(token_after) = after_expr.peek().cloned() {
+                    if let Some(token_after) = operand_stream.peek() {
                         let all_tokens_after = all_tokens.iter()
                             .filter(|t| t.location.ge(&token_after.location))
                             .cloned()
@@ -285,13 +281,14 @@ impl Expression {
 //                return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
             }
 
+            let mut last_operand_stream = TokenStream::new(next_operand_tokens,
+                                                           &last_operand.context);
+
             let last_operand_context = next_operand_tokens[0].clone();
-            let last_operand_expr = Expression::parse(next_operand_tokens,
-                                                      &last_operand_context)?;
+            let last_operand_expr = Expression::parse(&mut last_operand_stream)?;
             parts.push(CompoundExpressionPart::Operand(last_operand_expr.value));
 
-            let mut after_last_operand = last_operand_expr.next_tokens.peekable();
-            if after_last_operand.peek().is_some() {
+            if last_operand_stream.peek().is_some() {
                 tokens_after = after_last_operand.collect();
             }
         }
@@ -317,20 +314,21 @@ impl Expression {
             }
 
             //nope, this expr ends at the close bracket
-            _ => Ok(ParseOutput::new(base.value, base.last_token, peek_after))
+            _ => Ok(base.value)
         }
     }
 
-    fn parse_fn_call_after(base: ParseOutput<Expression>) -> ExpressionResult {
-        let mut peek_after = base.next_tokens.peekable();
-        match peek_after.peek().cloned() {
+    fn parse_fn_call_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
+        match tokens_after.peek() {
             Some(ref open_bracket) if *open_bracket.as_token() == tokens::BracketLeft => {
-                let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
-                    .match_groups(tokens::Comma, peek_after, &base.last_token)?;
+                let args = tokens_after.match_groups(tokens::BracketLeft,
+                                                     tokens::BracketRight,
+                                                     tokens::Comma)?;
 
                 let all_args = args.value.groups
                     .into_iter()
                     .map(|arg_group| {
+                        let arg_group_stream = 
                         let arg_expr = Expression::parse_compound(arg_group.tokens, &arg_group.context)?;
                         arg_expr.finish()
                     })
@@ -341,7 +339,8 @@ impl Expression {
                 Ok(ParseOutput::new(fn_call, args.last_token, args.next_tokens))
             }
 
-            _ => Ok(ParseOutput::new(base.value, base.last_token, peek_after))
+            // not a function call
+            _ => Ok(base)
         }
     }
 
