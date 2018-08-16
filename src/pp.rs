@@ -1,9 +1,10 @@
 use std::{
     io::{self, Read, BufRead},
     fmt::{self, Write},
-    collections::HashSet,
 };
 use regex::*;
+use CompileOptions;
+use CompileMode;
 
 #[derive(Debug)]
 pub enum PreprocessorError {
@@ -69,6 +70,8 @@ enum Directive {
     EndIf,
     Else,
     ElseIf(String),
+    Mode(CompileMode),
+    Switches(Vec<(String, bool)>),
 }
 
 struct DirectiveParser {
@@ -79,18 +82,49 @@ struct DirectiveParser {
     endif_pattern: Regex,
     else_pattern: Regex,
     elseif_pattern: Regex,
+    mode_pattern: Regex,
+    switch_pattern: Regex,
 }
 
 impl DirectiveParser {
     fn new() -> Self {
         Self {
-            define_pattern: Regex::new(r#"^define\s+(\w+)$"#).unwrap(),
-            undef_pattern: Regex::new(r#"^undef\s+(\w+)$"#).unwrap(),
-            ifdef_pattern: Regex::new(r#"^ifdef\s+(\w+)$"#).unwrap(),
-            ifndef_pattern: Regex::new(r#"^ifndef\s+(\w+)$"#).unwrap(),
+            define_pattern: Regex::new(r"^define\s+(\w+)$").unwrap(),
+            undef_pattern: Regex::new(r"^undef\s+(\w+)$").unwrap(),
+            ifdef_pattern: Regex::new(r"^ifdef\s+(\w+)$").unwrap(),
+            ifndef_pattern: Regex::new(r"^ifndef\s+(\w+)$").unwrap(),
             endif_pattern: Regex::new("^endif$").unwrap(),
             else_pattern: Regex::new("^else$").unwrap(),
-            elseif_pattern: Regex::new(r#"^elseif\s+(\w+)$"#).unwrap(),
+            elseif_pattern: Regex::new(r"^elseif\s+(\w+)$").unwrap(),
+            mode_pattern: Regex::new(r"^mode\s+(\w+)$").unwrap(),
+            switch_pattern: Regex::new(r"^([a-zA-Z])([+-])$").unwrap(),
+        }
+    }
+
+    fn match_switches(&self, s: &str) -> Option<Vec<(String, bool)>> {
+        let switches: Vec<_> = s.split(',')
+            .map(|switch| {
+                if let Some(switch_capture) = self.switch_pattern.captures(&switch.trim()) {
+                    let switch_name = switch_capture[1].to_string();
+                    let switch_val = match &switch_capture[1] {
+                        "+" => true,
+                        "-" => false,
+                        _ => unreachable!("excluded by pattern"),
+                    };
+
+                    Some((switch_name, switch_val))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if switches.iter().any(|switch| switch.is_none()) {
+            None
+        } else {
+            Some(switches.into_iter()
+                .map(|switch| switch.unwrap())
+                .collect())
         }
     }
 
@@ -119,6 +153,19 @@ impl DirectiveParser {
             let symbol = elseif_captures[1].to_string();
 
             Some(Directive::ElseIf(symbol))
+        } else if let Some(mode_captures) = self.mode_pattern.captures(s) {
+            let mode = match mode_captures[1].to_uppercase().as_str() {
+                "FPC" => CompileMode::Fpc,
+                "UNCLE" => CompileMode::Uncle,
+                unrecognized @ _ => {
+                    eprintln!("unrecognized mode: {}", unrecognized);
+                    return None;
+                }
+            };
+
+            Some(Directive::Mode(mode))
+        } else if let Some(switches) = self.match_switches(s) {
+            Some(Directive::Switches(switches))
         } else {
             None
         }
@@ -135,18 +182,25 @@ pub struct Preprocessor {
 
     condition_stack: Vec<SymbolCondition>,
 
-    symbols: HashSet<String>,
-
     filename: String,
 
     output: String,
     comment_block: String,
 
     current_line: usize,
+
+    opts: CompileOptions,
+}
+
+#[derive(Clone, Debug)]
+pub struct PreprocessedUnit {
+    pub source: String,
+
+    pub opts: CompileOptions,
 }
 
 impl Preprocessor {
-    pub fn new(filename: &str, symbols: HashSet<String>) -> Self {
+    pub fn new(filename: &str, opts: CompileOptions) -> Self {
         Preprocessor {
             filename: filename.to_string(),
 
@@ -154,7 +208,7 @@ impl Preprocessor {
 
             condition_stack: Vec::new(),
 
-            symbols,
+            opts,
 
             output: String::new(),
             comment_block: String::new(),
@@ -163,7 +217,7 @@ impl Preprocessor {
         }
     }
 
-    pub fn preprocess(mut self, source: impl Read) -> Result<String, PreprocessorError> {
+    pub fn preprocess(mut self, source: impl Read) -> Result<PreprocessedUnit, PreprocessorError> {
         let read_buf = io::BufReader::new(source);
         for (line_num, line) in read_buf.lines().enumerate() {
             self.current_line = line_num + 1;
@@ -178,7 +232,10 @@ impl Preprocessor {
             });
         }
 
-        Ok(self.output)
+        Ok(PreprocessedUnit {
+            source: self.output,
+            opts: self.opts,
+        })
     }
 
     fn process_line(&mut self, mut line: String) -> Result<(), PreprocessorError> {
@@ -220,7 +277,7 @@ impl Preprocessor {
     fn push_condition(&mut self, symbol: String, positive: bool) -> Result<(), PreprocessorError> {
         self.condition_stack.push(SymbolCondition {
             value: {
-                let has_symbol = self.symbols.contains(&symbol);
+                let has_symbol = self.opts.symbols.contains(&symbol);
 
                 if positive { has_symbol } else { !has_symbol }
             },
@@ -257,14 +314,14 @@ impl Preprocessor {
         match self.directive_parser.parse(&directive_name) {
             Some(Directive::Define(symbol)) => {
                 if self.condition_active() {
-                    self.symbols.insert(symbol);
+                    self.opts.symbols.insert(symbol);
                 }
 
                 Ok(())
             }
 
             Some(Directive::Undef(symbol)) => {
-                if !self.condition_active() || self.symbols.remove(&symbol) {
+                if !self.condition_active() || self.opts.symbols.remove(&symbol) {
                     Ok(())
                 } else {
                     Err(PreprocessorError::SymbolNotDefined {
@@ -303,6 +360,22 @@ impl Preprocessor {
 
             Some(Directive::EndIf) => {
                 self.pop_condition()
+            }
+
+            Some(Directive::Switches(switches)) => {
+                for (name, on) in switches {
+                    if on {
+                        self.opts.switches.remove(&name);
+                    } else {
+                        self.opts.switches.insert(name);
+                    }
+                }
+                Ok(())
+            }
+
+            Some(Directive::Mode(mode)) => {
+                self.opts.mode = mode;
+                Ok(())
             }
 
             None => return Err(PreprocessorError::IllegalDirective {

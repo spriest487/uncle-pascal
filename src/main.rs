@@ -90,6 +90,19 @@ impl From<pp::PreprocessorError> for CompileError {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum CompileMode {
+    Uncle,
+    Fpc,
+}
+
+#[derive(Clone, Debug)]
+pub struct CompileOptions {
+    pub mode: CompileMode,
+    pub switches: HashSet<String>,
+    pub symbols: HashSet<String>,
+}
+
 fn empty_context() -> source::Token {
     source::Token {
         token: Rc::from(tokens::Keyword(keywords::Program)),
@@ -98,7 +111,7 @@ fn empty_context() -> source::Token {
 }
 
 fn load_source<TPath: AsRef<Path>>(path: TPath,
-                                   pp_symbols: HashSet<String>)
+                                   opts: CompileOptions)
                                    -> Result<Vec<source::Token>, CompileError> {
     let display_filename = path.as_ref()
         .file_name()
@@ -106,12 +119,12 @@ fn load_source<TPath: AsRef<Path>>(path: TPath,
         .map(|s| String::from(s))
         .unwrap_or_else(|| "(unknown)".to_owned());
 
-    let preprocessor = pp::Preprocessor::new(&display_filename, pp_symbols);
+    let preprocessor = pp::Preprocessor::new(&display_filename, opts);
 
     let file = fs::File::open(&path)?;
-    let source = preprocessor.preprocess(file)?;
+    let preprocessed = preprocessor.preprocess(file)?;
 
-    let tokens = tokenizer::tokenize(&display_filename, &source)?;
+    let tokens = tokenizer::tokenize(&display_filename, &preprocessed.source)?;
 
     Ok(tokens)
 }
@@ -158,9 +171,9 @@ fn scope_from_uses(uses: &[node::UnitReference],
 }
 
 fn compile_program(program_path: &Path,
-                   pp_symbols: HashSet<String>)
+                   opts: CompileOptions)
                    -> Result<ProgramModule, CompileError> {
-    let tokens = load_source(program_path, pp_symbols.clone())?;
+    let tokens = load_source(program_path, opts.clone())?;
 
     let source_dir = program_path.canonicalize()?
         .parent()
@@ -186,7 +199,7 @@ fn compile_program(program_path: &Path,
                      unit_id,
                      pretty_path(&unit_path));
 
-            let unit_source = load_source(unit_path, pp_symbols.clone())?;
+            let unit_source = load_source(unit_path, opts.clone())?;
             let unit_tokens = syntax::TokenStream::new(unit_source, &empty_context());
             let parsed_unit = syntax::Unit::parse(unit_tokens)?;
 
@@ -236,10 +249,14 @@ fn main() {
 
                 let src_path = &matched.free[0];
 
-                //todo: -D preprocessor options
-                let pp_symbols = HashSet::new();
+                //todo: options from command line
+                let opts = CompileOptions {
+                    mode: CompileMode::Uncle,
+                    symbols: HashSet::new(),
+                    switches: HashSet::new(),
+                };
 
-                let build_result = compile_program(&PathBuf::from(src_path), pp_symbols)
+                let build_result = compile_program(&PathBuf::from(src_path), opts)
                     .and_then(|module| target_c::pas_to_c(&module, &out_file));
 
                 if let Err(err) = build_result {
