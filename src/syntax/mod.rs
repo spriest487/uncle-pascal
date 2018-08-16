@@ -18,16 +18,22 @@ pub use self::matcher::*;
 
 use std::fmt;
 
-use tokens;
+use source;
+
+pub trait ToContext {
+    type Context;
+
+    fn to_context(&self) -> Self::Context;
+}
 
 #[derive(Clone, Debug)]
-pub enum ParseError<TToken> {
-    UnexpectedToken(TToken, Option<Matcher>),
-    UnexpectedEOF(Matcher, TToken),
+pub enum ParseError {
+    UnexpectedToken(source::Token, Option<Matcher>),
+    UnexpectedEOF(Matcher, source::Token),
 }
 
 #[allow(dead_code)]
-impl<T> ParseError<T> {
+impl ParseError {
     pub fn is_eof(&self) -> bool {
         match self {
             &ParseError::UnexpectedEOF(_, _) => true,
@@ -36,9 +42,7 @@ impl<T> ParseError<T> {
     }
 }
 
-impl<TToken> fmt::Display for ParseError<TToken>
-    where TToken: tokens::AsToken + fmt::Display
-{
+impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &ParseError::UnexpectedToken(ref source_token, ref expected) => {
@@ -54,17 +58,17 @@ impl<TToken> fmt::Display for ParseError<TToken>
     }
 }
 
-pub struct ParseOutput<TToken, TValue> {
+pub struct ParseOutput<TValue> {
     pub value: TValue,
-    pub last_token: TToken,
-    pub next_tokens: Box<Iterator<Item=TToken>>,
+    pub last_token: source::Token,
+    pub next_tokens: Box<Iterator<Item=source::Token>>,
 }
 
-impl<TToken, TValue> ParseOutput<TToken, TValue>
-    where TToken: 'static
-{
-    pub fn new<TNext>(value: TValue, last_token: TToken, next_tokens: TNext) -> Self
-        where TNext: IntoIterator<Item=TToken> + 'static
+impl<TValue> ParseOutput<TValue> {
+    pub fn new<TNext>(value: TValue,
+                      last_token: source::Token,
+                      next_tokens: TNext) -> Self
+        where TNext: IntoIterator<Item=source::Token> + 'static
     {
         Self {
             value,
@@ -73,7 +77,7 @@ impl<TToken, TValue> ParseOutput<TToken, TValue>
         }
     }
 
-    pub fn finish(mut self) -> Result<TValue, ParseError<TToken>> {
+    pub fn finish(mut self) -> Result<TValue, ParseError> {
         let unexpected = self.next_tokens.next();
         match unexpected {
             Some(token) => Err(ParseError::UnexpectedToken(token, None)),
@@ -81,7 +85,7 @@ impl<TToken, TValue> ParseOutput<TToken, TValue>
         }
     }
 
-    pub fn map<TFn, TOut>(self, mut f: TFn) -> ParseOutput<TToken, TOut>
+    pub fn map<TFn, TOut>(self, mut f: TFn) -> ParseOutput<TOut>
         where TFn: FnMut(TValue) -> TOut
     {
         let mapped = f(self.value);
@@ -90,4 +94,4 @@ impl<TToken, TValue> ParseOutput<TToken, TValue>
     }
 }
 
-type ParseResult<TValue, TToken> = Result<ParseOutput<TToken, TValue>, ParseError<TToken>>;
+type ParseResult<TValue> = Result<ParseOutput<TValue>, ParseError>;

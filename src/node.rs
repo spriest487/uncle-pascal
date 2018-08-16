@@ -1,7 +1,11 @@
 use std::fmt;
 
-use node;
 use operators;
+use source;
+
+pub trait ToSource {
+    fn to_source(&self) -> String;
+}
 
 pub trait Symbol {
     type Type;
@@ -13,7 +17,7 @@ pub struct Identifier {
     pub name: String,
 }
 
-impl node::Symbol for Identifier {
+impl Symbol for Identifier {
     type Type = Self;
 }
 
@@ -102,13 +106,25 @@ impl Identifier {
 }
 
 #[derive(Clone, Debug)]
+pub struct UnitReference {
+    pub name: Identifier,
+    pub context: source::Token,
+}
+
+impl fmt::Display for UnitReference {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} ({})", self.name, self.context)
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct Program<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
 {
     pub name: String,
 
-    pub uses: Vec<node::Identifier>,
+    pub uses: Vec<UnitReference>,
 
     pub functions: Vec<Function<TSymbol>>,
     pub type_decls: Vec<RecordDecl<TSymbol>>,
@@ -118,7 +134,7 @@ pub struct Program<TSymbol>
 }
 
 #[derive(Clone, Debug)]
-pub enum Expression<TSymbol>
+pub enum ExpressionValue<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
 {
@@ -144,6 +160,24 @@ pub enum Expression<TSymbol>
         from: Box<Expression<TSymbol>>,
         to: Box<Expression<TSymbol>>,
         body: Box<Expression<TSymbol>>,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub struct Expression<TSymbol>
+    where TSymbol: Symbol + Clone + fmt::Debug,
+          TSymbol::Type: Clone + fmt::Debug
+{
+    pub value: ExpressionValue<TSymbol>,
+    pub context: source::Token,
+}
+
+impl<TSymbol> fmt::Display for Expression<TSymbol>
+    where TSymbol: Symbol + Clone + fmt::Debug,
+          TSymbol::Type: Clone + fmt::Debug
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "expression: {:?} ({})", self.value, self.context) //TODO better display
     }
 }
 
@@ -152,86 +186,118 @@ impl<TSymbol> Expression<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
 {
-    pub fn binary_op(lhs: Self, op: operators::BinaryOperator, rhs: Self) -> Self {
-        Expression::BinaryOperator {
-            lhs: Box::new(lhs),
-            op,
-            rhs: Box::new(rhs),
+    pub fn binary_op(lhs: Self,
+                     op: operators::BinaryOperator,
+                     rhs: Self,
+                     context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::BinaryOperator {
+                lhs: Box::new(lhs),
+                op,
+                rhs: Box::new(rhs),
+            },
+            context,
         }
     }
 
-    pub fn function_call<TIter>(target: TSymbol, args: TIter) -> Self
+    pub fn function_call<TIter>(target: TSymbol,
+                                args: TIter,
+                                context: source::Token) -> Self
         where TIter: IntoIterator<Item=Self>
     {
-        Expression::FunctionCall {
-            target,
-            args: args.into_iter().collect(),
+        Expression {
+            value: ExpressionValue::FunctionCall {
+                target,
+                args: args.into_iter().collect(),
+            },
+            context,
         }
     }
 
-    pub fn literal_int(i: i64) -> Self {
-        Expression::LiteralInteger(i)
-    }
-
-    pub fn literal_string(s: &str) -> Self {
-        Expression::LiteralString(s.to_owned())
-    }
-
-    pub fn identifier(id: TSymbol) -> Self {
-        Expression::Identifier(id)
-    }
-
-    pub fn if_then_else(condition: Self, then_branch: Self, else_branch: Option<Self>) -> Self {
-        Expression::If {
-            condition: Box::new(condition),
-            then_branch: Box::new(then_branch),
-            else_branch: else_branch.map(Box::new),
+    pub fn literal_int(i: i64, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::LiteralInteger(i),
+            context,
         }
     }
 
-    pub fn for_loop(from: Self, to: Self, body: Self) -> Self {
-        Expression::ForLoop {
-            from: Box::new(from),
-            to: Box::new(to),
-            body: Box::new(body),
+    pub fn literal_string(s: &str, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::LiteralString(s.to_owned()),
+            context,
+        }
+    }
+
+    pub fn identifier(id: TSymbol, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::Identifier(id),
+            context,
+        }
+    }
+
+    pub fn if_then_else(condition: Self,
+                        then_branch: Self,
+                        else_branch: Option<Self>,
+                        context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::If {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch: else_branch.map(Box::new),
+            },
+            context,
+        }
+    }
+
+    pub fn for_loop(from: Self, to: Self, body: Self, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::ForLoop {
+                from: Box::new(from),
+                to: Box::new(to),
+                body: Box::new(body),
+            },
+            context,
         }
     }
 
     pub fn block(block: Block<TSymbol>) -> Self {
-        Expression::Block(block)
+        Expression {
+            context: block.context.clone(),
+            value: ExpressionValue::Block(block),
+        }
     }
 
     pub fn unwrap_function_call(self) -> (TSymbol, Vec<Self>) {
-        match self {
-            Expression::FunctionCall { target, args } => (target, args),
+        match self.value {
+            ExpressionValue::FunctionCall { target, args } => (target, args),
             _ => panic!("called unwrap_function_call on something other than a function call expr"),
         }
     }
 
     pub fn is_function_call(&self) -> bool {
-        match self {
-            &Expression::FunctionCall { .. } => true,
+        match &self.value {
+            &ExpressionValue::FunctionCall { .. } => true,
             _ => false,
         }
     }
 
     pub fn unwrap_literal_string(self) -> String {
-        match self {
-            Expression::LiteralString(s) => s,
+        match self.value {
+            ExpressionValue::LiteralString(s) => s,
             _ => panic!("called unwrap_literal_string on something other than a string literal expr")
         }
     }
 
     pub fn is_literal_string(&self) -> bool {
-        match self {
-            &Expression::LiteralString(_) => true,
+        match &self.value {
+            &ExpressionValue::LiteralString(_) => true,
             _ => false,
         }
     }
 
     pub fn is_operation(&self, op: &operators::BinaryOperator) -> bool {
-        match self {
-            &Expression::BinaryOperator { op : ref expr_op, .. } => {
+        match &self.value {
+            &ExpressionValue::BinaryOperator { op: ref expr_op, .. } => {
                 expr_op == op
             }
             _ => false
@@ -245,6 +311,8 @@ pub struct Function<TSymbol>
           TSymbol::Type: Clone + fmt::Debug
 {
     pub name: String,
+    pub context: source::Token,
+
     pub return_type: Option<TSymbol::Type>,
 
     pub args: Vars<TSymbol>,
@@ -258,7 +326,8 @@ pub struct Block<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
 {
-    pub statements: Vec<Expression<TSymbol>>
+    pub context: source::Token,
+    pub statements: Vec<Expression<TSymbol>>,
 }
 
 #[derive(Clone, Debug)]
@@ -267,6 +336,7 @@ pub struct RecordDecl<TSymbol>
           TSymbol::Type: Clone + fmt::Debug
 {
     pub name: String,
+    pub context: source::Token,
     pub members: Vec<VarDecl<TSymbol>>,
 }
 
@@ -276,6 +346,8 @@ pub struct VarDecl<TSymbol>
           TSymbol::Type: Clone + fmt::Debug
 {
     pub name: String,
+    pub context: source::Token,
+
     pub decl_type: TSymbol::Type,
 }
 

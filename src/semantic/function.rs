@@ -12,7 +12,8 @@ impl Function {
             Some(ref func_return_type) => {
                 let found_type = scope.get_type(func_return_type)
                     .cloned()
-                    .ok_or_else(|| SemanticError::UnknownType(func_return_type.clone()))?;
+                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.clone(),
+                        function.context.clone()))?;
 
                 Some(found_type)
             }
@@ -22,7 +23,8 @@ impl Function {
 
         /* there can't already be a local symbol called "result" */
         function.local_vars.decls.iter().find(|decl| decl.name == RESULT_VAR_NAME)
-            .map(|_| Err(SemanticError::IllegalName(RESULT_VAR_NAME.to_owned())))
+            .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
+                function.context.clone())))
             .unwrap_or(Ok(()))?;
 
         let mut local_vars = Vars::annotate(&function.local_vars, &scope)?;
@@ -30,6 +32,7 @@ impl Function {
         if let &Some(ref result_var_type) = &return_type {
             local_vars.decls.push(VarDecl {
                 name: RESULT_VAR_NAME.to_owned(),
+                context: function.context.clone(),
                 decl_type: result_var_type.clone()
             });
         }
@@ -44,6 +47,7 @@ impl Function {
 
         Ok(Function {
             name: function.name.clone(),
+            context: function.context.clone(),
             return_type,
             local_vars,
             args,

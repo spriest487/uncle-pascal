@@ -4,10 +4,11 @@ use syntax::*;
 use keywords;
 use operators;
 use tokens;
+use source;
 
-pub struct SplitResult<TToken> {
-    pub split_at: TToken,
-    pub before_split: Vec<TToken>,
+pub struct SplitResult {
+    pub split_at: source::Token,
+    pub before_split: Vec<source::Token>,
 }
 
 #[allow(dead_code)]
@@ -149,9 +150,10 @@ pub trait Matchable {
 
     fn match_one<TIter>(&self,
                         in_tokens: TIter,
-                        context: &TIter::Item) -> ParseResult<TIter::Item, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken {
+                        context: &source::Token)
+                        -> ParseResult<source::Token>
+        where TIter: IntoIterator<Item=source::Token> + 'static
+    {
         let mut tokens = in_tokens.into_iter();
         match tokens.next() {
             Some(ref token) if self.as_matcher().is_match(token) => {
@@ -169,9 +171,9 @@ pub trait Matchable {
     }
 
     fn match_peek<TIter>(&self, in_tokens: TIter,
-                         context: &TIter::Item) -> ParseResult<Option<TIter::Item>, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken {
+                         context: &source::Token)
+                         -> ParseResult<Option<source::Token>>
+        where TIter: IntoIterator<Item=source::Token> + 'static {
         let mut peekable = in_tokens.into_iter().peekable();
 
         match peekable.peek().cloned() {
@@ -193,10 +195,9 @@ pub trait Matchable {
 
     fn split_at_match<TIter>(&self,
                              in_tokens: TIter,
-                             context: &TIter::Item)
-                             -> ParseResult<SplitResult<TIter::Item>, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken
+                             context: &source::Token)
+                             -> ParseResult<SplitResult>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut before_split = Vec::new();
         let split_at;
@@ -227,10 +228,10 @@ pub trait Matchable {
         }, split_at, tokens))
     }
 
-    fn match_until<TIter>(&self, in_tokens: TIter, context: &TIter::Item)
-                          -> ParseResult<Vec<TIter::Item>, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static,
+    fn match_until<TIter>(&self, in_tokens: TIter,
+                          context: &source::Token)
+                          -> ParseResult<Vec<source::Token>>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut tokens_until = Vec::new();
         let mut peekable_tokens = in_tokens.into_iter().peekable();
@@ -297,9 +298,10 @@ impl SequenceMatcher {
         self
     }
 
-    pub fn match_sequence<TIter>(&self, in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<TIter::Item>, TIter::Item>
-        where TIter: IntoIterator,
-              TIter::Item: tokens::AsToken + Clone + 'static
+    pub fn match_sequence<TIter>(&self, in_tokens: TIter,
+                                 context: &source::Token)
+                                 -> ParseResult<Vec<source::Token>>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let tokens: Vec<_> = in_tokens.into_iter().collect();
 
@@ -340,29 +342,27 @@ impl SequenceMatcher {
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockMatch<TToken>
-    where TToken: Clone + fmt::Debug
-{
-    pub open: TToken,
-    pub close: TToken,
-    pub inner: Vec<TToken>,
+pub struct BlockMatch {
+    pub open: source::Token,
+    pub close: source::Token,
+    pub inner: Vec<source::Token>,
 }
 
 #[derive(Clone, Debug)]
-pub struct GroupMatch<TItem> {
-    pub tokens: Vec<TItem>,
-    pub context: TItem,
+pub struct GroupMatch {
+    pub tokens: Vec<source::Token>,
+    pub context: source::Token,
 }
 
 #[derive(Clone, Debug)]
-pub struct GroupsMatch<TItem> {
-    pub open: TItem,
-    pub close: TItem,
-    pub groups: Vec<GroupMatch<TItem>>,
+pub struct GroupsMatch {
+    pub open: source::Token,
+    pub close: source::Token,
+    pub groups: Vec<GroupMatch>,
 }
 
-type BlockMatchResult<TToken> = Result<ParseOutput<TToken, BlockMatch<TToken>>, ParseError<TToken>>;
-type BlockMatchPeekResult<TToken> = Result<ParseOutput<TToken, Option<BlockMatch<TToken>>>, ParseError<TToken>>;
+type BlockMatchResult = Result<ParseOutput<BlockMatch>, ParseError>;
+type BlockMatchPeekResult = Result<ParseOutput<Option<BlockMatch>>, ParseError>;
 
 #[derive(Clone, Debug)]
 pub struct BlockMatcher {
@@ -371,10 +371,9 @@ pub struct BlockMatcher {
 }
 
 impl BlockMatcher {
-    pub fn match_block_peek<TIter>(&self, in_tokens: TIter, context: &TIter::Item)
-                                   -> BlockMatchPeekResult<TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn match_block_peek<TIter>(&self, in_tokens: TIter, context: &source::Token)
+        -> BlockMatchPeekResult
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let open_token = self.open.match_peek(in_tokens, context)?;
         if open_token.value.is_none() {
@@ -423,7 +422,7 @@ impl BlockMatcher {
 
         match final_close_token {
             Some(close_token) => {
-                let matched_block: BlockMatch<TIter::Item> = BlockMatch {
+                let matched_block = BlockMatch {
                     open: open_token.value.unwrap(),
                     close: close_token.clone(),
                     inner: inner_tokens,
@@ -437,9 +436,9 @@ impl BlockMatcher {
         }
     }
 
-    pub fn match_block<TIter>(&self, in_tokens: TIter, context: &TIter::Item) -> BlockMatchResult<TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn match_block<TIter>(&self, in_tokens: TIter,
+                              context: &source::Token) -> BlockMatchResult
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let open_token = self.open.match_one(in_tokens, context)?;
 
@@ -458,7 +457,7 @@ impl BlockMatcher {
                     open_count -= 1;
 
                     if open_count == 0 {
-                        let block: BlockMatch<TIter::Item> = BlockMatch {
+                        let block = BlockMatch {
                             open: open_token.value,
                             close: close.clone(),
                             inner: inner_tokens,
@@ -484,10 +483,9 @@ impl BlockMatcher {
     pub fn match_groups<TIter, TSepMatcher>(&self,
                                             separator_matcher: TSepMatcher,
                                             in_tokens: TIter,
-                                            context: &TIter::Item)
-                                            -> ParseResult<GroupsMatch<TIter::Item>, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static,
+                                            context: &source::Token)
+                                            -> ParseResult<GroupsMatch>
+        where TIter: IntoIterator<Item=source::Token> + 'static,
               TSepMatcher: Into<Matcher>
     {
         //match the outer block

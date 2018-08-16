@@ -4,14 +4,13 @@ use keywords;
 use tokens;
 use tokens::AsToken;
 use node;
-use ToSource;
+use source;
 
 pub type Function = node::Function<node::Identifier>;
 
 impl Function {
-    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         //match the name
         let name_match = keywords::Function.or(keywords::Procedure)
@@ -19,7 +18,7 @@ impl Function {
             .match_sequence(in_tokens, context)?;
 
         let func_or_proc = name_match.value[0].clone();
-        let fn_name = &name_match.value[1].clone();
+        let fn_name = name_match.value[1].clone();
         let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
                                                        &name_match.last_token)?;
 
@@ -48,7 +47,11 @@ impl Function {
                 let name = String::from(fn_arg.value[0].unwrap_identifier());
                 let decl_type = node::Identifier::parse(fn_arg.value[2].unwrap_identifier());
 
-                Ok(VarDecl { name, decl_type })
+                Ok(VarDecl {
+                    name,
+                    context: fn_arg.value[0].clone(),
+                    decl_type,
+                })
             })
             .collect::<Result<_, _>>()?;
 
@@ -82,13 +85,15 @@ impl Function {
             }
         };
 
-        let body_block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
+        let body_block = Block::parse(local_vars.next_tokens,
+                                      &local_vars.last_token)?;
 
         let last_semicolon = tokens::Semicolon.match_one(body_block.next_tokens,
                                                          &body_block.last_token)?;
 
         let function = Function {
-            name: fn_name.as_token().unwrap_identifier().to_owned(),
+            name: fn_name.unwrap_identifier().to_owned(),
+            context: fn_name,
             return_type: return_type.value,
 
             local_vars: local_vars.value,
@@ -103,7 +108,7 @@ impl Function {
     }
 }
 
-impl ToSource for Function {
+impl node::ToSource for Function {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
         lines.push(format!("function {};", self.name));
@@ -125,12 +130,11 @@ mod test {
 
     static NO_CONTEXT: tokenizer::SourceToken = tokenizer::SourceToken {
         token: tokens::Keyword(keywords::Program),
-        line: 0,
-        col: 0,
+        location: SourceLocation::new("test", 0, 0),
     };
 
     fn parse_func(src: &str) -> Function {
-        let tokens = tokenizer::tokenize(src).unwrap();
+        let tokens = tokenizer::tokenize("test", src).unwrap();
 
         let result = Function::parse(tokens, &NO_CONTEXT);
         assert!(result.is_ok());

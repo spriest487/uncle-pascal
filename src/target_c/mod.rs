@@ -23,7 +23,10 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
 
             format!("({} (*{})({}))", return_type, name, arg_types)
         },
-        &types::DeclaredType::Record(ref decl) => decl.name.clone(), //TODO: should be identifier
+        &types::DeclaredType::Record(ref decl) => {
+            //TODO: should be identifier
+            format!("struct {}", decl.name)
+        },
     }.to_owned()
 }
 
@@ -55,7 +58,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 
     match &target.decl_type {
         &types::DeclaredType::Record(ref _record) => {
-            writeln!(out, "memset(&{}, 0, sizeof({});", id, id)
+            writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
         &types::DeclaredType::String => {
@@ -74,9 +77,10 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
     }
 }
 
-pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result {
-    match expr {
-        &node::Expression::BinaryOperator { ref lhs, ref op, ref rhs } => {
+pub fn write_expr(out: &mut String, expr: &semantic::Expression)
+    -> fmt::Result {
+    match &expr.value {
+        &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } => {
             let c_op = match op {
                 &operators::Assignment => "=",
                 &operators::Equals => "==",
@@ -92,7 +96,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             write!(out, ")")
         }
 
-        &node::Expression::FunctionCall { ref target, ref args } => {
+        &node::ExpressionValue::FunctionCall { ref target, ref args } => {
             let args_str = args.iter()
                 .map(|arg_expr| -> Result<String, fmt::Error> {
                     let mut expr_out = String::new();
@@ -107,15 +111,15 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             write!(out, "{}({})", target_name, args_str)
         }
 
-        &node::Expression::LiteralInteger(ref i) => {
+        &node::ExpressionValue::LiteralInteger(ref i) => {
             write!(out, "(({}) {})", type_to_c(&types::DeclaredType::Integer), i)
         }
 
-        &node::Expression::LiteralString(ref s) => {
+        &node::ExpressionValue::LiteralString(ref s) => {
             write!(out, "(({})\"{}\")", type_to_c(&types::DeclaredType::String), s)
         }
 
-        &node::Expression::If { ref condition, ref then_branch, ref else_branch } => {
+        &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
             write!(out, "if (")?;
             write_expr(out, condition)?;
             write!(out, ") ")?;
@@ -129,9 +133,9 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             Ok(())
         }
 
-        &node::Expression::ForLoop { ref from, ref to, ref body } => {
-            let iter_expr = match from.as_ref() {
-                &node::Expression::BinaryOperator { ref lhs, ref op, .. } => {
+        &node::ExpressionValue::ForLoop { ref from, ref to, ref body } => {
+            let iter_expr = match &from.as_ref().value {
+                &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. } => {
                     assert_eq!(operators::Assignment, *op);
                     lhs.clone()
                 },
@@ -148,20 +152,21 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             write_expr(out, iter_expr.as_ref())?;
             writeln!(out, ") {{")?;
             write_expr(out, body)?;
-            writeln!(out, "}}")
+            writeln!(out, ";}}")
         }
 
-        &node::Expression::Identifier(ref sym) => {
+        &node::ExpressionValue::Identifier(ref sym) => {
             write!(out, "{}", symbol_to_c(sym))
         }
 
-        &node::Expression::Block(ref block) => {
+        &node::ExpressionValue::Block(ref block) => {
             write_block(out, block)
         }
     }
 }
 
-pub fn write_block(out: &mut String, block: &semantic::Block) -> fmt::Result {
+pub fn write_block(out: &mut String, block: &semantic::Block)
+    -> fmt::Result {
     writeln!(out, "{{")?;
 
     for statement in block.statements.iter() {
@@ -200,7 +205,8 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     writeln!(out)
 }
 
-pub fn write_function(out: &mut String, function: &semantic::Function) -> fmt::Result {
+pub fn write_function(out: &mut String, function: &semantic::Function)
+    -> fmt::Result {
     let return_type = function.return_type.as_ref()
         .map(type_to_c)
         .unwrap_or_else(|| "void".to_owned());
@@ -222,7 +228,8 @@ pub fn write_function(out: &mut String, function: &semantic::Function) -> fmt::R
     writeln!(out)
 }
 
-pub fn write_c(program: &semantic::Program) -> Result<String, fmt::Error> {
+pub fn write_c(program: &semantic::Program)
+    -> Result<String, fmt::Error> {
     let mut output = String::new();
 
     writeln!(output, "#include <stdint.h>")?;
@@ -235,13 +242,13 @@ pub fn write_c(program: &semantic::Program) -> Result<String, fmt::Error> {
     writeln!(output, "typedef void* System_Pointer;")?;
 
     writeln!(output,
-r"static void WriteLn(System_String ln) {{
+r"static void System_WriteLn(System_String ln) {{
     if (!ln) abort();
 
     puts(ln);
 }}
 
-static System_Pointer GetMem(System_Integer bytes) {{
+static System_Pointer System_GetMem(System_Integer bytes) {{
     if (bytes > 0) {{
         return malloc((size_t) bytes);
     }} else {{
@@ -249,7 +256,7 @@ static System_Pointer GetMem(System_Integer bytes) {{
     }}
 }}
 
-static void FreeMem(System_Pointer p) {{
+static void System_FreeMem(System_Pointer p) {{
     free(p);
 }}")?;
 

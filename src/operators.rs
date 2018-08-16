@@ -1,5 +1,5 @@
 use std::fmt;
-use ToSource;
+use node::ToSource;
 
 pub use self::BinaryOperator::*;
 

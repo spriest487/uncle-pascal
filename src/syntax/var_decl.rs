@@ -3,12 +3,12 @@ use tokens::AsToken;
 use keywords;
 use node;
 use syntax::*;
-use ToSource;
+use source;
 
 pub type VarDecl = node::VarDecl<node::Identifier>;
 pub type Vars = node::Vars<node::Identifier>;
 
-impl ToSource for Vars {
+impl node::ToSource for Vars {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
             .map(|decl| {
@@ -22,28 +22,32 @@ impl ToSource for Vars {
 }
 
 impl VarDecl {
-    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<VarDecl, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecl>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
-        let decl = Matcher::AnyIdentifier
+        let decl_tokens = Matcher::AnyIdentifier
             .and_then(tokens::Colon)
             .and_then(Matcher::AnyIdentifier)
             .match_sequence(in_tokens, context)?;
 
-        let name = decl.value[0].as_token().unwrap_identifier().to_owned();
-        let decl_type = node::Identifier::parse(decl.value[2].as_token().unwrap_identifier());
+        let name_token = decl_tokens.value[0].clone();
 
-        Ok(ParseOutput::new(VarDecl { name, decl_type },
-                            decl.last_token,
-                            decl.next_tokens))
+        let name = name_token.as_token().unwrap_identifier().to_owned();
+        let decl_type = node::Identifier::parse(decl_tokens.value[2].as_token().unwrap_identifier());
+
+        let decl = VarDecl {
+            name,
+            decl_type,
+            context: name_token.clone(),
+        };
+
+        Ok(ParseOutput::new(decl, decl_tokens.last_token, decl_tokens.next_tokens))
     }
 }
 
 impl Vars {
-    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vars, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Vars>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let var_kw = keywords::Var.match_one(in_tokens, context)?;
 
@@ -78,15 +82,15 @@ impl Vars {
 mod test {
     use super::*;
     use tokenizer::*;
+    use source::*;
 
-    static NO_CONTEXT : SourceToken = SourceToken {
+    static NO_CONTEXT: Token = Token {
         token: tokens::Keyword(keywords::Program),
-        line: 0,
-        col: 0
+        location: source::SourceLocation::new("test", 0, 0),
     };
 
     fn parse_vars(src: &str) -> Vars {
-        let vars = Vars::parse(tokenize(src).unwrap(), &NO_CONTEXT);
+        let vars = Vars::parse(tokenize("test", src).unwrap(), &NO_CONTEXT);
 
         assert!(vars.is_ok(), "test source `{}` must parse correctly", src);
 

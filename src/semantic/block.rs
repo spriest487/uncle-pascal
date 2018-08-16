@@ -5,7 +5,8 @@ use semantic::*;
 pub type Block = node::Block<ScopedSymbol>;
 
 impl Block {
-    pub fn annotate(block: &syntax::Block, scope: &Scope) -> Result<Self, SemanticError> {
+    pub fn annotate(block: &syntax::Block, scope: &Scope)
+        -> Result<Self, SemanticError> {
         let statements = block.statements.iter()
             .map(|statement| {
                 Expression::annotate(statement, scope)
@@ -14,6 +15,7 @@ impl Block {
 
         Ok(Self {
             statements,
+            context: block.context.clone(),
         })
     }
 

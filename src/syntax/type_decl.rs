@@ -7,11 +7,8 @@ use operators;
 pub type RecordDecl = node::RecordDecl<node::Identifier>;
 
 impl RecordDecl {
-    pub fn parse<TIter>(in_tokens: TIter,
-                    context: &TIter::Item)
-                    -> ParseResult<Self, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Self>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let match_name = keywords::Type
             .and_then(Matcher::AnyIdentifier)
@@ -69,6 +66,7 @@ impl RecordDecl {
 
         let record = RecordDecl {
             name: type_name,
+            context: match_name.value[0].clone(),
             members: decls,
         };
 

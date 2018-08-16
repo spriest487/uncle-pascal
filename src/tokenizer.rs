@@ -1,33 +1,16 @@
 use std::fmt;
+use std::rc::*;
 use regex;
 
 use tokens;
 use operators;
 use keywords;
-
-#[derive(Clone, Debug)]
-pub struct SourceToken {
-    pub token: tokens::Token,
-
-    pub line: usize,
-    pub col: usize,
-}
-
-impl fmt::Display for SourceToken {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} @ {}:{}", self.token, self.line, self.col)
-    }
-}
-
-impl tokens::AsToken for SourceToken {
-    fn as_token(&self) -> &tokens::Token {
-        &self.token
-    }
-}
+use source;
 
 #[derive(Clone, Debug)]
 pub struct IllegalToken {
     pub text: String,
+    pub file: String,
 
     pub line: usize,
     pub col: usize,
@@ -35,7 +18,7 @@ pub struct IllegalToken {
 
 impl fmt::Display for IllegalToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "illegal token: {} @ {}:{}", self.text, self.line, self.col)
+        write!(f, "illegal token in {}: {} @ {}:{}", self.file, self.text, self.line, self.col)
     }
 }
 
@@ -144,7 +127,9 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
 
 pub type TokenizeResult<T> = Result<T, IllegalToken>;
 
-fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
+fn parse_line(file_name: &str,
+              line_num: usize,
+              line: &str) -> TokenizeResult<Vec<source::Token>> {
     /* remove line comments before tokenization */
     let line_without_comment = match line.find("//") {
         Some(comment_pos) => line.chars().take(comment_pos).collect(),
@@ -171,6 +156,8 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
         })
         .collect::<Vec<_>>();
 
+    let file_name_shared = Rc::new(String::from(file_name));
+
     let parsed_tokens = all_tokens_regex.captures_iter(&line_without_comment)
         .filter_map(|capture| {
             let token_match = capture.get(0).unwrap();
@@ -194,13 +181,17 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
                         function associated with this pattern */
                         pattern.1.try_parse(&pattern_captures)
                     })
-                    .map(|token| SourceToken {
-                        token,
-                        col,
-                        line: line_num,
+                    .map(|token| source::Token {
+                        token: Rc::from(token),
+                        location: source::Location {
+                            file: file_name_shared.clone(),
+                            line: line_num,
+                            col
+                        }
                     })
                     .ok_or_else(|| IllegalToken {
                         text: token_source.to_owned(),
+                        file: String::from(file_name),
                         col,
                         line: line_num,
                     });
@@ -213,7 +204,8 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
     Ok(parsed_tokens)
 }
 
-pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
+pub fn tokenize(file_name: &str,
+                source: &str) -> TokenizeResult<Vec<source::Token>> {
     let lines: Vec<_> = source.replace("\r\n", "\n")
         .split("\n")
         .map(str::to_owned)
@@ -221,7 +213,7 @@ pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
 
     let parsed_lines: TokenizeResult<Vec<_>> = lines.into_iter()
         .enumerate()
-        .map(|(line_num, line)| parse_line(line_num + 1, &line))
+        .map(|(line_num, line)| parse_line(file_name, line_num + 1, &line))
         .collect();
 
     Ok(parsed_lines?.into_iter()
@@ -238,7 +230,7 @@ mod test {
     fn tokenizes_literal_string() {
         let s = "  'hello world!'  "  ;
 
-        let result = tokenizer::tokenize(s).unwrap();
+        let result = tokenizer::tokenize("test", s).unwrap();
         assert_eq!(1, result.len());
 
         assert_eq!(tokens::LiteralString("hello world!".to_owned()), result[0].token);

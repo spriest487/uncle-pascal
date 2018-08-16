@@ -1,15 +1,15 @@
 use syntax::*;
+use source;
 use tokens;
 use tokens::AsToken;
 use keywords;
 use node;
-use ToSource;
 
 pub type Program = node::Program<node::Identifier>;
 
-fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<node::Identifier>, TIter::Item>
-    where TIter: IntoIterator + 'static,
-          TIter::Item: tokens::AsToken + 'static
+fn parse_uses<TIter>(in_tokens: TIter, context: &source::Token)
+                     -> ParseResult<Vec<node::UnitReference>>
+    where TIter: IntoIterator<Item=source::Token> + 'static
 {
     let uses_kw = keywords::Uses.match_peek(in_tokens, context)?;
 
@@ -26,12 +26,16 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
 
     let uses_tokens = tokens::Semicolon.split_at_match(after_uses, &uses_kw.last_token)?;
 
-    let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.value.before_split
+    let uses_identifiers: Result<Vec<_>, ParseError> = uses_tokens.value.before_split
         .split(|source_token| tokens::Comma.eq(source_token.as_token()))
         .map(|source_tokens| {
-            if source_tokens.len() == 1 &&
-                source_tokens[0].as_token().is_any_identifier() {
-                Ok(node::Identifier::parse(source_tokens[0].as_token().unwrap_identifier()))
+            if source_tokens.len() == 1 && source_tokens[0].is_any_identifier() {
+                let name = node::Identifier::parse(source_tokens[0].unwrap_identifier());
+
+                Ok(node::UnitReference {
+                    name,
+                    context: context.clone(),
+                })
             } else {
                 Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
                                                 Some(Matcher::AnyIdentifier)))
@@ -50,11 +54,11 @@ struct ProgramDecls {
     vars: Vars,
 }
 
-fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<ProgramDecls, TIter::Item>
-    where TIter: IntoIterator + 'static,
-          TIter::Item: tokens::AsToken + 'static
+fn parse_decls<TIter>(in_tokens: TIter, context: &source::Token)
+                      -> ParseResult<ProgramDecls>
+    where TIter: IntoIterator<Item=source::Token> + 'static
 {
-    let mut tokens: Box<Iterator<Item=TIter::Item>> = Box::from(in_tokens.into_iter());
+    let mut tokens: Box<Iterator<Item=source::Token>> = Box::from(in_tokens.into_iter());
 
     let mut program_functions = Vec::new();
 
@@ -127,9 +131,9 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
 }
 
 impl Program {
-    pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<Self, TIter::Item>
-        where TIter: Iterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(tokens: TIter,
+                        context: &source::Token) -> ParseResult<Self>
+        where TIter: Iterator<Item=source::Token> + 'static
     {
         let program_statement = keywords::Program
             .and_then(Matcher::AnyIdentifier)
@@ -167,7 +171,7 @@ impl Program {
     }
 }
 
-impl ToSource for Program {
+impl node::ToSource for Program {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
         lines.push(format!("program {};", self.name));

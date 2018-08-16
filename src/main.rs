@@ -1,5 +1,6 @@
 extern crate regex;
 
+use std::rc::*;
 use std::fmt;
 
 mod keywords;
@@ -11,14 +12,13 @@ mod syntax;
 mod target_c;
 mod semantic;
 mod node;
+mod source;
 
-pub trait ToSource {
-    fn to_source(&self) -> String;
-}
+
 
 enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
-    ParseError(syntax::ParseError<tokenizer::SourceToken>),
+    ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
     WriterError(fmt::Error),
 }
@@ -40,8 +40,8 @@ impl From<tokenizer::IllegalToken> for CompileError {
     }
 }
 
-impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
-    fn from(err: syntax::ParseError<tokenizer::SourceToken>) -> Self {
+impl From<syntax::ParseError> for CompileError {
+    fn from(err: syntax::ParseError) -> Self {
         CompileError::ParseError(err)
     }
 }
@@ -58,14 +58,13 @@ impl From<fmt::Error> for CompileError {
     }
 }
 
-fn compile(source: &str) -> Result<String, CompileError> {
-    let tokens = tokenizer::tokenize(source)?;
+fn compile(filename: &str, source: &str) -> Result<String, CompileError> {
+    let tokens = tokenizer::tokenize(filename, source)?;
 
     //no context!
-    let empty_context = tokenizer::SourceToken {
-        token: tokens::Keyword(keywords::Program),
-        line: 0,
-        col: 0,
+    let empty_context = source::Token {
+        token: Rc::from(tokens::Keyword(keywords::Program)),
+        location: source::Location::new("test", 0, 0),
     };
 
     let program = syntax::Program::parse(tokens.into_iter(), &empty_context)?
@@ -74,16 +73,13 @@ fn compile(source: &str) -> Result<String, CompileError> {
     let typed_program = semantic::Program::annotate(&program.clone())?;
     typed_program.type_check()?;
 
-    //println!("{:?}", typed_program);
-    //println!("{}", program.to_source());
-
     Ok(target_c::write_c(&typed_program)?)
 }
 
 fn main() {
     let hello_world_pas = include_str!("../HelloWorld.pas");
 
-    match compile(hello_world_pas) {
+    match compile("HelloWorld.pas", hello_world_pas) {
         Ok(c_unit) => {
             println!("{}", c_unit);
         }

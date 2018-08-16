@@ -14,10 +14,12 @@ impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope) -> Result<Self, SemanticError> {
         let var_type = scope.get_type(&decl.decl_type)
             .cloned()
-            .ok_or_else(|| SemanticError::UnknownType(decl.decl_type.clone()))?;
+            .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.clone(),
+                                                       decl.context.clone()))?;
 
         Ok(VarDecl {
             name: decl.name.clone(),
+            context: decl.context.clone(),
             decl_type: var_type,
         })
     }

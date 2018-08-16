@@ -2,14 +2,13 @@ use syntax::*;
 use tokens;
 use keywords;
 use node;
-use ToSource;
+use source;
 
 pub type Block = node::Block<node::Identifier>;
 
 impl Block {
-    pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<Block, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static
+    pub fn parse<TIter>(tokens: TIter, context: &source::Token) -> ParseResult<Block>
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let statement_groups = keywords::Begin.terminated_by(keywords::End)
             .match_groups(tokens::Semicolon, tokens, context)?;
@@ -22,7 +21,8 @@ impl Block {
             .collect::<Result<_, _>>()?;
 
         let block = Block {
-            statements
+            statements,
+            context: context.clone(),
         };
 
         Ok(ParseOutput::new(block,
@@ -31,7 +31,7 @@ impl Block {
     }
 }
 
-impl ToSource for Block {
+impl node::ToSource for Block {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
         lines.push("begin".to_owned());

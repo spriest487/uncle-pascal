@@ -2,7 +2,7 @@ use std::fmt;
 
 use keywords;
 use operators;
-use ToSource;
+use node::ToSource;
 
 pub use self::Token::*;
 
