@@ -54,6 +54,33 @@ impl ArrayType {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
+pub struct FunctionSignature {
+    pub return_type: Option<Type>,
+    pub arg_types: Vec<Type>,
+}
+
+impl ToSource for FunctionSignature {
+    fn to_source(&self) -> String {
+        let mut source = String::new();
+        source.push_str(if self.return_type.is_some() {
+            "function"
+        } else {
+            "procedure"
+        });
+
+        if self.arg_types.len() > 0 {
+            source.push('(');
+            for arg in self.arg_types.iter() {
+//                source.push_str(&arg.to_source());
+            }
+            source.push(')');
+        }
+
+        source
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
     Byte,
@@ -67,6 +94,7 @@ pub enum Type {
     RawPointer,
     Pointer(Box<Type>),
     Function(Identifier),
+    FunctionPointer(FunctionSignature),
     Record(Identifier),
     Class(Identifier),
     Array(ArrayType),
@@ -94,7 +122,8 @@ impl Type {
                 Type::NativeUInt => "System.NativeUInt".to_string(),
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
-                Type::Function(sig) => format!("{}", sig),
+                Type::Function(name) => format!("{}", name),
+                Type::Function(sig) => format!("{}", sig.to_source()),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),
                 Type::Array(array) => {
@@ -109,12 +138,6 @@ impl Type {
             }
         }
     }
-//
-//    pub fn annotate(parsed_type: &ParsedType, scope: &Scope) -> SemanticResult<Self> {
-//
-//    }
-//
-
 
     pub fn is_record(&self) -> bool {
         match self {
