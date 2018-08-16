@@ -672,7 +672,7 @@ impl Expression {
 
     pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
-            Some(Type::Record(name)) => {
+            Some(Type::Class(name)) => {
                 let class_decl = self.context.scope.get_class(&name)
                     .expect("record must exist in scope of expression it's used in");
 
