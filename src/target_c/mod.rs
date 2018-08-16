@@ -93,8 +93,14 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &operators::NotEquals => "!=",
                 &operators::Minus => "-",
                 &operators::Plus => "+",
+
+                &operators::AddressOf |
                 &operators::Deref => panic!("bad binary operator type: {}", op),
             };
+
+//            println!("BINARY OP {} @ {}", op, expr.context.location);
+//            println!("  BINARY LHS: {:?}", lhs);
+//            println!("  BINARY RHS: {:?}", rhs);
 
             write!(out, "(")?;
             write_expr(out, lhs)?;
@@ -108,11 +114,15 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &operators::Plus => "+",
                 &operators::Minus => "-",
                 &operators::Deref => "*",
+                &operators::AddressOf => "&",
 
                 &operators::Equals |
                 &operators::NotEquals |
                 &operators::Assignment => panic!("bad prefix operator type: {}", op),
             };
+
+//            println!("PREFIX OP {} @ {}", op, expr.context.location);
+//            println!("  PREFIX RHS: {:?}", rhs);
 
             write!(out, "(")?;
             write!(out, "{}", c_op)?;
@@ -184,7 +194,28 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         &node::ExpressionValue::Member { ref of, ref name } => {
-            write_expr(out, of)?;
+            //panic!("of: {:?}, name: {}", of, name);
+            let mut of_type = of.expr_type();
+            let mut deref_levels = 0;
+            loop {
+                match of_type {
+                    Some(types::DeclaredType::Pointer(of_target)) => {
+                        write!(out, "(*")?;
+                        deref_levels += 1;
+                        of_type = Some(*of_target);
+                    },
+
+                    _ => {
+                        write_expr(out, of)?;
+                        break
+                    },
+                }
+            }
+
+            for _ in 0..deref_levels {
+                write!(out, ")")?;
+            }
+
             write!(out, ".{}", name)
         }
 

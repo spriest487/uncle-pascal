@@ -37,7 +37,7 @@ pub enum ScopedSymbol {
         record_id: node::Identifier,
         record_type: DeclaredRecord,
         name: String,
-    }
+    },
 }
 
 impl ScopedSymbol {
@@ -109,29 +109,29 @@ impl Default for Scope {
                 names: HashMap::new(),
                 children: HashMap::new(),
             }
-            .with_type("Byte".to_owned(), DeclaredType::Byte)
-            .with_type("Integer".to_owned(), DeclaredType::Integer)
-            .with_type("String".to_owned(), DeclaredType::String)
-            .with_type("Pointer".to_owned(), DeclaredType::RawPointer)
-            .with_type("Boolean".to_owned(), DeclaredType::Boolean)
-            .with_symbol("WriteLn".to_owned(),
-                         DeclaredType::from(FunctionSignature {
-                             name: "WriteLn".to_owned(),
-                             arg_types: vec![DeclaredType::String],
-                             return_type: None,
-                         }))
-            .with_symbol("GetMem".to_owned(),
-                         DeclaredType::from(FunctionSignature {
-                             name: "GetMem".to_owned(),
-                             arg_types: vec![DeclaredType::Integer],
-                             return_type: Some(DeclaredType::Byte.pointer()),
-                         }))
-            .with_symbol("FreeMem".to_owned(),
-                         DeclaredType::from(FunctionSignature {
-                             name: "FreeMem".to_owned(),
-                             arg_types: vec![DeclaredType::Byte.pointer()],
-                             return_type: None,
-                         }));
+                .with_type("Byte".to_owned(), DeclaredType::Byte)
+                .with_type("Integer".to_owned(), DeclaredType::Integer)
+                .with_type("String".to_owned(), DeclaredType::String)
+                .with_type("Pointer".to_owned(), DeclaredType::RawPointer)
+                .with_type("Boolean".to_owned(), DeclaredType::Boolean)
+                .with_symbol("WriteLn".to_owned(),
+                             DeclaredType::from(FunctionSignature {
+                                 name: "WriteLn".to_owned(),
+                                 arg_types: vec![DeclaredType::String],
+                                 return_type: None,
+                             }))
+                .with_symbol("GetMem".to_owned(),
+                             DeclaredType::from(FunctionSignature {
+                                 name: "GetMem".to_owned(),
+                                 arg_types: vec![DeclaredType::Integer],
+                                 return_type: Some(DeclaredType::Byte.pointer()),
+                             }))
+                .with_symbol("FreeMem".to_owned(),
+                             DeclaredType::from(FunctionSignature {
+                                 name: "FreeMem".to_owned(),
+                                 arg_types: vec![DeclaredType::Byte.pointer()],
+                                 return_type: None,
+                             }));
 
         let scope = Self {
             names: HashMap::new(),
@@ -172,24 +172,10 @@ impl Scope {
             /* the identifier is qualified with a namespace, and exists either in a child scope,
             or as a member of a record in the local scope or a child scope */
             Some(parent_id) => {
-                let child_name = name.name.clone();
-
                 /* find a matching record in any scope - this is a recursive search which first
                  looks for the parent of the symbol name as a record name, then the parent of
                  that, etc */
-                let record_member = match self.get_symbol(&parent_id) {
-                    Some(ref sym) if sym.decl_type().is_record() => {
-                        let record_decl = sym.decl_type().unwrap_record();
-
-                        Some(ScopedSymbol::RecordMember {
-                            record_id: parent_id.clone(),
-                            name: child_name,
-                            record_type: record_decl,
-                        })
-                    }
-
-                    _ => None,
-                };
+                let record_member = self.find_record_member(&parent_id, &name.name);
 
                 /* if it's not a record member, look for variables in all child scopes instead */
                 record_member.or_else(|| -> Option<ScopedSymbol> {
@@ -206,14 +192,14 @@ impl Scope {
                                     name: name.clone(),
                                     decl_type: decl_type.clone(),
                                 }
-                            },
+                            }
                             ScopedSymbol::Child { ref scope, ref name, ref decl_type } => {
                                 ScopedSymbol::Child {
                                     scope: parent_id.append(scope),
                                     name: name.clone(),
-                                    decl_type: decl_type.clone()
+                                    decl_type: decl_type.clone(),
                                 }
-                            },
+                            }
                             ScopedSymbol::RecordMember { ref record_id, ref name, ref record_type } => {
                                 ScopedSymbol::RecordMember {
                                     record_id: parent_id.append(record_id),
@@ -236,6 +222,28 @@ impl Scope {
                 _ => None
             }
         }
+    }
+
+    fn find_record_member(&self,
+                          parent_id: &node::Identifier,
+                          child_name: &str) -> Option<ScopedSymbol> {
+        let parent_sym = self.get_symbol(&parent_id)?;
+
+        let record_decl = match parent_sym.decl_type() {
+            DeclaredType::Record(record_type) =>
+                Some(record_type),
+
+            DeclaredType::Pointer(ref ptr_to_record) if ptr_to_record.is_record() =>
+                Some(ptr_to_record.clone().unwrap_record()),
+
+            _ => None
+        }?;
+
+        Some(ScopedSymbol::RecordMember {
+            record_id: parent_id.clone(),
+            name: child_name.to_owned(),
+            record_type: record_decl,
+        })
     }
 
     pub fn get_type(&self, name: &node::Identifier) -> Option<&DeclaredType> {

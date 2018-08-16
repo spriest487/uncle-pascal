@@ -3,11 +3,6 @@ program HelloWorld
 
 uses System
 
-type String = record
-  Chars: System.Pointer
-  Length: System.Integer
-end
-
 type Vector = record
   Elements: ^System.Byte
   Length: System.Integer
@@ -24,21 +19,21 @@ var
   newElements: ^System.Byte
   i: System.Integer
 begin
-  newElements := System.GetMem((^self).Length + 1)
+  newElements := System.GetMem(self.Length + 1)
 
-  if (^self).Elements <> 0 then
+  if self.Elements <> 0 then
   begin
-    for i := 0 to (^self).Length - 1 do
-      ^(newElements + i) := ^((^self).Elements + i)
+    for i := 0 to self.Length do
+      ^(newElements + i) := ^(self.Elements + i)
 
 
-    System.FreeMem((^self).Elements)
+    System.FreeMem(self.Elements)
   end
 
-  (^self).Length := (^self).Length + 1
-  (^self).Elements := newElements
+  self.Length := self.Length + 1
+  self.Elements := newElements
 
-//  ^((^self).Elements + (^self).Length - 1) := p
+  ^(self.Elements + (self.Length - 1)) := p
 end
 
 function Greet(name: System.String): System.String
@@ -61,12 +56,12 @@ begin
   x := x + y
 
   vec := Vector_Create()
-//  Vector_Add(vec, 12345)
-//  Vector_Add(vec, 12345)
-//  Vector_Add(vec, 12345)
-//  Vector_Add(vec, 12345)
+  Vector_Add(@vec, 1)
+  Vector_Add(@vec, 2)
+  Vector_Add(@vec, 3)
+  Vector_Add(@vec, 4)
 
-  //System.WriteLn('hello world')
+  System.WriteLn('hello world')
 
   if x = 1 then begin
     System.WriteLn('one')

@@ -26,10 +26,12 @@ pub enum Operator {
     Plus,
     Minus,
     Deref,
+    AddressOf,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 8] = [
+pub static PRECEDENCE: [(Operator, Position); 9] = [
     (Deref, Position::Prefix),
+    (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
     (Minus, Position::Prefix),
 
@@ -61,6 +63,7 @@ impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
             &Deref => "^",
+            &AddressOf => "@",
             &Assignment => ":=",
             &Equals => "=",
             &NotEquals => "<>",

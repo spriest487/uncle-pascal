@@ -16,6 +16,9 @@ fn expect_assignable(target: Option<DeclaredType>,
         (Some(DeclaredType::RawPointer), Some(DeclaredType::Integer)) => Ok(()),
         (Some(DeclaredType::Pointer(_)), Some(DeclaredType::Integer)) => Ok(()),
 
+        //TODO: we should only allow literal ints to be assigned if they're in range for bytes
+        (Some(DeclaredType::Byte), Some(DeclaredType::Integer)) => Ok(()),
+
         (ref x, ref y) if x == y => Ok(()),
 
         (x, y) => Err(SemanticError::unexpected_type(x, y, context.clone()))
@@ -38,8 +41,21 @@ impl Expression {
         match &expr.value {
             &node::ExpressionValue::Identifier(ref name) => {
                 scope.get_symbol(name)
-                    .map(|symbol| {
-                        Expression::identifier(symbol, expr.context.clone())
+                    .map(|symbol| match symbol {
+                        /* transform identifiers that reference record members into
+                        record member expressions */
+                        ScopedSymbol::RecordMember { record_id, name, .. } => {
+                            let record_sym = scope.get_symbol(&record_id).unwrap();
+
+                            let base = Expression::identifier(record_sym, expr.context.clone());
+
+                            Expression::member(base, &name)
+                        },
+
+                        symbol @ ScopedSymbol::Child { .. } |
+                        symbol @ ScopedSymbol::Local { .. } => {
+                            Expression::identifier(symbol, expr.context.clone())
+                        }
                     })
                     .ok_or_else(|| {
                         SemanticError::unknown_symbol(name.clone(), expr.context.clone())
@@ -106,7 +122,7 @@ impl Expression {
 
             &node::ExpressionValue::Member { ref of, ref name } => {
                 let typed_of = Expression::annotate(of, scope)?;
-                Ok(Expression::member(typed_of, name, expr.context.clone()))
+                Ok(Expression::member(typed_of, name))
             }
         }
     }
@@ -121,6 +137,7 @@ impl Expression {
                 &operators::Plus |
                 &operators::Minus => lhs.expr_type(),
 
+                &operators::AddressOf |
                 &operators::Deref => panic!("invalid operator {} in binary operator expression", op)
             },
             &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
@@ -128,6 +145,11 @@ impl Expression {
                     &operators::Deref => match rhs.expr_type() {
                         Some(DeclaredType::Pointer(pointed_to)) => Some(*pointed_to),
                         _ => panic!("operand of deref `{:?}` wasn't a pointer", rhs),
+                    },
+
+                    &operators::AddressOf => match rhs.expr_type() {
+                        Some(rhs_type) => Some(rhs_type.pointer()),
+                        None => panic!("operand of address-of `{:?}` wasn't an addressable type", rhs),
                     },
 
                     &operators::Plus |
@@ -156,9 +178,9 @@ impl Expression {
             &node::ExpressionValue::If { .. } => None,
 
             &node::ExpressionValue::Member { ref of, ref name } => {
-                let base_type = of.expr_type().map(|dt| dt.remove_indirection());
+                let base_type = of.expr_type().map(|dt| dt.remove_indirection().clone());
                 match base_type {
-                    Some(DeclaredType::Record(record)) => {
+                    Some(DeclaredType::Record(ref record)) => {
                         match record.get_member(&name) {
                             Some(member) => Some(member.decl_type.clone()),
                             None => panic!("trying to get type of a field that doesn't exist")
@@ -205,6 +227,21 @@ impl Expression {
                         _ => invalid_op_err(),
                     },
 
+                    &operators::AddressOf => match rhs_type {
+                        Some(DeclaredType::Pointer(_)) |
+                        Some(DeclaredType::Byte) |
+                        Some(DeclaredType::Record(_)) |
+                        Some(DeclaredType::String) |
+                        Some(DeclaredType::RawPointer) |
+                        Some(DeclaredType::Integer) |
+                        Some(DeclaredType::Boolean) =>
+                            Ok(()),
+
+                        Some(DeclaredType::Function(_)) |
+                        None =>
+                            invalid_op_err(),
+                    }
+
                     &operators::Plus |
                     &operators::Minus => match rhs_type {
                         Some(DeclaredType::Integer) |
@@ -212,7 +249,10 @@ impl Expression {
                         _ => invalid_op_err(),
                     }
 
-                    _ => invalid_op_err(),
+                    &operators::Assignment |
+                    &operators::Equals |
+                    &operators::NotEquals =>
+                        invalid_op_err(),
                 }?;
 
                 Ok(())
@@ -223,7 +263,7 @@ impl Expression {
             &node::ExpressionValue::LiteralInteger(_) => Ok(()),
 
             &node::ExpressionValue::Member { ref of, ref name } => {
-                let base_type = of.expr_type().map(|dt| dt.remove_indirection());
+                let base_type = of.expr_type().map(|dt| dt.remove_indirection().clone());
                 match base_type {
                     Some(DeclaredType::Record(record)) => {
                         match record.get_member(&name) {

@@ -119,7 +119,9 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn member(of: Self, name: &str, context: source::Token) -> Self {
+    pub fn member(of: Self, name: &str) -> Self {
+        let context = of.context.clone();
+
         Expression {
             value: ExpressionValue::Member {
                 of: Box::from(of),
@@ -129,12 +131,12 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn member_deep<TNames>(of: Self, names: TNames, context: source::Token) -> Self
+    pub fn member_deep<TNames>(of: Self, names: TNames) -> Self
         where TNames: IntoIterator<Item=String>
     {
         let mut member = of;
         for name in names {
-            member = Expression::member(member, &name, context.clone());
+            member = Expression::member(member, &name);
         }
 
         member

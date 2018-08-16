@@ -99,7 +99,7 @@ impl fmt::Display for DeclaredType {
             &DeclaredType::RawPointer => "System.Pointer".to_owned(),
             &DeclaredType::Pointer(ref target) => format!("^{}", target),
             &DeclaredType::Function(ref sig) => format!("{}", sig),
-            &DeclaredType::Record(ref record) => format!("{}", record),
+            &DeclaredType::Record(ref record) => format!("record {}", record.name),
         })
     }
 }
@@ -123,11 +123,11 @@ impl DeclaredType {
         DeclaredType::Pointer(Box::from(self))
     }
 
-    pub fn remove_indirection(self) -> DeclaredType {
+    pub fn remove_indirection(&self) -> &DeclaredType {
         let mut next = self;
         loop {
             match next {
-                DeclaredType::Pointer(target) => next = *target,
+                &DeclaredType::Pointer(ref target) => next = target.as_ref(),
                 _ => break next
             }
         }

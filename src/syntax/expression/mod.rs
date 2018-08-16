@@ -182,12 +182,12 @@ impl Expression {
 
             if finish_operand {
                 if next_operand_tokens.len() > 0 {
+//                    println!("FINISHED OPERAND! {}", source::tokens_to_source(&next_operand_tokens));
                     if next_operand_tokens.len() == all_tokens.len() {
                         //stop trying
-                        return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
+//                        return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
                     }
 
-                    println!("FINISHED OPERAND! {}", source::tokens_to_source(&next_operand_tokens));
                     let context = next_operand_tokens[0].clone();
                     let operand_expr = Expression::parse_operand(next_operand_tokens,
                                                                  &context)?;
@@ -268,8 +268,10 @@ impl Expression {
         };
 
         if next_operand_tokens.len() > 0 {
+//            println!("LAST OPERAND: {}", source::tokens_to_source(&next_operand_tokens));
+
             if next_operand_tokens.len() == all_tokens.len() {
-                return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
+//                return Err(ParseError::UnrecognizedSequence(all_tokens.clone()))
             }
 
             let last_operand_context = next_operand_tokens[0].clone();
@@ -295,10 +297,8 @@ impl Expression {
                 let member_name = node::Identifier::parse(peek_after.skip(1),
                                                           period)?;
 
-                let member_context = base.value.context.clone();
-                let member = Expression::member_deep(base.value,
-                                                     member_name.value,
-                                                     member_context);
+                println!("found member name {} for base expr {:?}", member_name.value, base.value);
+                let member = Expression::member_deep(base.value, member_name.value);
 
                 Ok(ParseOutput::new(member, member_name.last_token, member_name.next_tokens))
             }
@@ -499,8 +499,18 @@ impl Expression {
     {
         let base = Expression::parse_base(in_tokens, context)?;
 
-        let with_member_access = Expression::parse_member_access_after(base)?;
-        Expression::parse_fn_call_after(with_member_access)
+        match &base.value.value {
+            &node::ExpressionValue::Identifier(_) |
+            &node::ExpressionValue::BinaryOperator { .. } |
+            &node::ExpressionValue::PrefixOperator { .. } |
+            &node::ExpressionValue::Member { .. } |
+            &node::ExpressionValue::FunctionCall { .. } => {
+                let with_member_access = Expression::parse_member_access_after(base)?;
+                Expression::parse_fn_call_after(with_member_access)
+            }
+
+            _ => Ok(base)
+        }
     }
 }
 

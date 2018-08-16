@@ -60,72 +60,37 @@ fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
         .unwrap_or_else(|| tokens::Identifier(text)))
 }
 
+fn simple_pattern<T>(pattern: &str, token: T) -> (String, TokenMatchParser)
+    where T: Into<tokens::Token>
+{
+    (pattern.to_owned(), TokenMatchParser::Simple(token.into()))
+}
+
+fn func_pattern<TFn>(pattern: &str, f: TFn) -> (String, TokenMatchParser)
+    where TFn: Fn(&regex::Captures) -> Option<tokens::Token> + 'static
+{
+    (pattern.to_owned(), TokenMatchParser::ParseFn(Box::new(f)))
+}
+
 fn token_patterns() -> Vec<(String, TokenMatchParser)> {
     vec![
-        (
-            r"[a-zA-Z](([a-zA-Z0-9_])?)+".to_owned(),
-            TokenMatchParser::ParseFn(Box::from(parse_name))
-        ),
-        (
-            r"'(([^']|'{2})*)'".to_owned(),
-            {
-                //anything between two quote marks, with double quote as literal quote mark
-                let parse_fn = Box::from(parse_literal_string);
-                TokenMatchParser::ParseFn(parse_fn)
-            }
-        ),
-        (
-            r"\(".to_owned(),
-            TokenMatchParser::Simple(tokens::BracketLeft)),
-        (
-            r"\)".to_owned(),
-            TokenMatchParser::Simple(tokens::BracketRight)),
-        (
-            r":=".to_owned(),
-            {
-                let op = tokens::Operator(operators::Assignment);
-                TokenMatchParser::Simple(op)
-            }
-        ),
-        (
-            r"<>".to_owned(),
-            {
-                let op = tokens::Operator(operators::NotEquals);
-                TokenMatchParser::Simple(op)
-            }
-        ),
-        (
-            r":".to_owned(),
-            TokenMatchParser::Simple(tokens::Colon)),
-        (
-            r";".to_owned(),
-            TokenMatchParser::Simple(tokens::Semicolon)),
-        (
-            r",".to_owned(),
-            TokenMatchParser::Simple(tokens::Comma)),
-        (
-            r"\.".to_owned(),
-            TokenMatchParser::Simple(tokens::Period)),
-        (
-            r"\+".to_owned(),
-            TokenMatchParser::Simple(tokens::Operator(operators::Plus))),
-        (
-            r"\-".to_owned(),
-            TokenMatchParser::Simple(tokens::Operator(operators::Minus))),
-        (
-            "=".to_owned(),
-            TokenMatchParser::Simple(tokens::Operator(operators::Equals))),
-        (
-            "\\^".to_owned(),
-            TokenMatchParser::Simple(tokens::Operator(operators::Deref))
-            ),
-        (
-            r"[0-9]+".to_owned(),
-            {
-                let parse_fn = Box::from(parse_literal_integer);
-                TokenMatchParser::ParseFn(parse_fn)
-            }
-        ),
+        func_pattern(r"[a-zA-Z](([a-zA-Z0-9_])?)+", parse_name),
+        //anything between two quote marks, with double quote as literal quote mark
+        func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
+        simple_pattern(r"\(", tokens::BracketLeft),
+        simple_pattern(r"\)", tokens::BracketRight),
+        simple_pattern(r":=", operators::Assignment),
+        simple_pattern(r"<>", operators::NotEquals),
+        simple_pattern(r"@", operators::AddressOf),
+        simple_pattern(r"\+", operators::Plus),
+        simple_pattern(r"\-", operators::Minus),
+        simple_pattern("=", operators::Equals),
+        simple_pattern(r"\^", operators::Deref),
+        simple_pattern(r":", tokens::Colon),
+        simple_pattern(r";", tokens::Semicolon),
+        simple_pattern(r",", tokens::Comma),
+        simple_pattern(r"\.", tokens::Period),
+        func_pattern(r"[0-9]+", parse_literal_integer)
     ]
 }
 

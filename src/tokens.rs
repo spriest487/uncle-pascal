@@ -153,3 +153,9 @@ impl<T> ToSource for Vec<T>
             .join(" ")
     }
 }
+
+impl From<operators::Operator> for Token {
+    fn from(op: operators::Operator) -> Self {
+        Operator(op)
+    }
+}
