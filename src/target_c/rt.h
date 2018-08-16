@@ -143,14 +143,19 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
     }
 #endif
 
-    obj->StrongCount -= 1;
-    if (obj->StrongCount == 0) {
+    if (obj->StrongCount > 1) {
+        /* object is still alive, reduce its refcount */
+        obj->StrongCount -= 1;
+    } else {
+        /* releasing the last ref to an object, destroy it now */
+#ifdef UNCLEPASCAL_RC_DEBUG
         if (!obj->Class) {
             std::fprintf(stderr, "missing class reference for object @ %p\n", obj);
             std::abort();
         }
+#endif
 
-        /* if the class implements System.Dispose, */
+        /* we need to call System.Disposable.Dispose() if this class implements it */
         auto disposeImpl = static_cast<const PascalType_System_Disposable_VTable*>(
             System_Internal_TryFindVTable(obj, System_Internal_DisposeInterfaceID)
         );
@@ -158,7 +163,9 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
         if (disposeImpl) {
             disposeImpl->member_Dispose(obj);
 
-            if (obj->StrongCount > 0) {
+            /* increasing the refcount during destruction is fine, but if it's
+            not 1 by the time the destructor exits, it will leak */
+            if (obj->StrongCount > 1) {
                 std::fprintf(stderr, "Dispose() increased refcount for object @ %p\n", obj);
                 std::abort();
             }
