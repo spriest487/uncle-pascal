@@ -48,7 +48,9 @@ fn any_operators_at_base_level(tokens: &mut TokenStream) -> ParseResult<bool> {
             bracket_level += 1
         } else if *token.as_token() == tokens::BracketRight {
             if bracket_level == 0 {
-                return Err(ParseError::UnexpectedToken(token.clone(), None));
+                /* this bracket must be outside the expression because we don't
+                know where it started, so stop checking here */
+                break;
             }
             bracket_level -= 1
         } else if bracket_level == 0 && token.is_any_operator() {

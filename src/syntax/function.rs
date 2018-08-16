@@ -3,6 +3,8 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
+use operators;
+
 use node::{
     self,
     TypeName,
@@ -217,13 +219,28 @@ impl FunctionDecl {
                 }
             };
 
+            /* default values are only allowed if the arg declaration is declaring
+            a single argument */
+            let default_value = match names.len() {
+                1 => match tokens.look_ahead().match_one(operators::Equals) {
+                    Some(_) => {
+                        tokens.advance(1);
+                        let val_expr: Expression = tokens.parse()?;
+                        Some(val_expr)
+                    }
+                    None => None,
+                }
+
+                _ => None,
+            };
+
             args.extend(names.into_iter().map(|name| {
                 node::FunctionArg {
                     name,
                     context: context.clone().into(),
                     decl_type: decl_type.clone(),
                     modifier,
-                    default_value: None,
+                    default_value: default_value.clone(),
                 }
             }));
 
