@@ -140,7 +140,7 @@ pub fn binary_type(lhs: &Expression,
 
 pub fn is_assignable(expr: &Expression) -> bool {
     match &expr.value {
-        ExpressionValue::Identifier(name) => {
+        | ExpressionValue::Identifier(name) => {
             /* we have to differentiate actual named functions
             (always immutable) from function-valued bindings */
             if expr.scope().get_function(&name).is_some() {
@@ -152,29 +152,30 @@ pub fn is_assignable(expr: &Expression) -> bool {
                 None => false,
             }
         }
-        ExpressionValue::PrefixOperator { op, .. } => match op {
+
+        | ExpressionValue::PrefixOperator { op, .. } => match op {
             operators::Deref => true,
             _ => false,
         },
 
-        ExpressionValue::ArrayElement { of, .. } |
-        ExpressionValue::Member { of, .. } => {
-            is_assignable(of)
-        }
+        | ExpressionValue::ArrayElement { of, .. }
+        | ExpressionValue::Member { of, .. }
+        => is_assignable(of),
 
-        ExpressionValue::TypeCast { .. } |
-        ExpressionValue::Raise(_) |
-        ExpressionValue::With { .. } |
-        ExpressionValue::SetConstructor(_) |
-        ExpressionValue::FunctionCall { .. } |
-        ExpressionValue::Constant(_) |
-        ExpressionValue::BinaryOperator { .. } |
-        ExpressionValue::Block(_) |
-        ExpressionValue::ForLoop { .. } |
-        ExpressionValue::If { .. } |
-        ExpressionValue::While { .. } |
-        ExpressionValue::LetBinding { .. } =>
-            false
+        | ExpressionValue::ObjectConstructor(_)
+        | ExpressionValue::TypeCast { .. }
+        | ExpressionValue::Raise(_)
+        | ExpressionValue::With { .. }
+        | ExpressionValue::SetConstructor(_)
+        | ExpressionValue::FunctionCall { .. }
+        | ExpressionValue::Constant(_)
+        | ExpressionValue::BinaryOperator { .. }
+        | ExpressionValue::Block(_)
+        | ExpressionValue::ForLoop { .. }
+        | ExpressionValue::If { .. }
+        | ExpressionValue::While { .. }
+        | ExpressionValue::LetBinding { .. }
+        => false
     }
 }
 

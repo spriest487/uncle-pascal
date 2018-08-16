@@ -120,7 +120,11 @@ impl Expression {
             }
 
             ExpressionValue::SetConstructor(_members) => {
-                unimplemented!("set constructor semantic analysis")
+                unimplemented!("set constructor typechecking");
+            }
+
+            ExpressionValue::ObjectConstructor(_members) => {
+                unimplemented!("object constructor typechecking");
             }
 
             ExpressionValue::With { value, body } => {
@@ -192,6 +196,10 @@ impl Expression {
 
             ExpressionValue::ArrayElement { of, index_expr } => {
                 arrays::element_type(of, index_expr, &self.context)
+            }
+
+            ExpressionValue::ObjectConstructor(_members) => {
+                unimplemented!("object constructor type checking")
             }
 
             ExpressionValue::SetConstructor(_members) => {

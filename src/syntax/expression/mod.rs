@@ -15,6 +15,7 @@ use operators;
 
 pub type Expression = node::Expression<ParsedContext>;
 pub type LetBinding = node::LetBinding<ParsedContext>;
+pub type ObjectConstructorMember = node::ObjectConstructorMember<ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -441,6 +442,40 @@ fn parse_raise(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(Expression::raise(error, context))
 }
 
+fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(tokens::BracketLeft)?;
+
+    let members = tokens.match_repeating(|i, tokens: &mut TokenStream| {
+        if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
+            return Ok(None)
+        }
+
+        if i > 0 {
+            tokens.match_or_endl(tokens::Semicolon)?;
+        }
+
+        /* the last member might be followed by a separator too, which is legal */
+        if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
+            return Ok(None)
+        }
+
+        let name = tokens.match_one(Matcher::AnyIdentifier)?
+            .unwrap_identifier()
+            .to_string();
+
+        tokens.match_one(tokens::Colon)?;
+        let value = Expression::parse(tokens)?;
+
+        Ok(Some(ObjectConstructorMember {
+            name,
+            value,
+        }))
+    })?;
+
+    tokens.match_one(tokens::BracketRight)?;
+    Ok(Expression::object_constructor(members, context))
+}
+
 struct CompoundExpressionParser<'tokens> {
     tokens: &'tokens mut TokenStream,
     last_was_operand: bool,
@@ -491,11 +526,27 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         self.last_was_operand = true;
 
         match self.tokens.look_ahead().match_one(match_operand_start()) {
-            /* this operand is enclosed in brackets, we expect to find an
-            entire valid subexpression then a close bracket */
             Some(ref t) if t.is_token(&tokens::BracketLeft) => {
-                let subexpr = parse_bracket_group(self.tokens)?;
-                self.add_operand(subexpr);
+                /* if it closes immediately, or has at least one member in the
+                name: value pattern, it's a object constructor */
+                let empty_obj = tokens::BracketLeft
+                    .and_then(tokens::BracketRight);
+                let obj_member = tokens::BracketLeft
+                    .and_then(Matcher::AnyIdentifier)
+                    .and_then(tokens::Colon);
+
+                if self.tokens.look_ahead().match_sequence(empty_obj).is_some()
+                    || self.tokens.look_ahead().match_sequence(obj_member).is_some() {
+                    let constructor = parse_object_constructor(self.tokens)?;
+                    self.add_operand(constructor);
+                } else {
+                    /*
+                        this is a subexpression enclosed in brackets
+                        parse everything until the closing bracket as part of this operand
+                    */
+                    let subexpr = parse_bracket_group(self.tokens)?;
+                    self.add_operand(subexpr);
+                }
             }
 
             Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {

@@ -632,6 +632,10 @@ impl Expression {
                 Ok(Expression::Block(block))
             }
 
+            ExpressionValue::ObjectConstructor(_members) => {
+                unimplemented!("object constructor (c++ backend)");
+            }
+
             ExpressionValue::SetConstructor(_member_groups) => {
                 unimplemented!("set constructor (c++ backend)");
             }

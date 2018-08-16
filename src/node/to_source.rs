@@ -147,6 +147,16 @@ impl<C> ToSource for ExpressionValue<C>
                     .join(", "))
             }
 
+            ExpressionValue::ObjectConstructor(members) => {
+                format!("({})", members.iter()
+                    .map(|member| {
+                        let value_src = member.value.to_source();
+                        format!("{}: {}", member.name, value_src)
+                    })
+                    .collect::<Vec<_>>()
+                    .join("; "))
+            }
+
             ExpressionValue::With { value, body } => {
                 format!("with {} do {}", value.to_source(), body.to_source())
             }

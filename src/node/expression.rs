@@ -19,6 +19,14 @@ pub struct SetMemberGroup<TContext>
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct ObjectConstructorMember<TContext>
+    where TContext: Context
+{
+    pub name: String,
+    pub value: Expression<TContext>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TContext>
     where TContext: Context
 {
@@ -204,6 +212,18 @@ pub enum ExpressionValue<TContext>
     SetConstructor(Vec<SetMemberGroup<TContext>>),
 
     /**
+        an object constructor, the type of which must be inferred from the
+        context it appears in.
+
+        members not appearing in the expression are default-initialized.
+        ```
+        let point: Point2D = (X: 1, X: 10)
+        let zeroPoint: Point2D = ()
+        ```
+    */
+    ObjectConstructor(Vec<ObjectConstructorMember<TContext>>),
+
+    /**
         `with (value) do (body)`, where `value` is a class or record.
         `body` is evaluated in the scope of `value`, e.g.
         `with dog do WriteLn(Name)`
@@ -242,6 +262,7 @@ pub struct LetBinding<TContext>
 {
     pub name: String,
     pub value: Box<Expression<TContext>>,
+//    pub explicit_type: Option<TContext::Type>,
     pub mutable: bool,
 }
 
@@ -440,6 +461,15 @@ impl<TContext> Expression<TContext>
                            -> Self {
         Expression {
             value: ExpressionValue::SetConstructor(members),
+            context: context.into(),
+        }
+    }
+
+    pub fn object_constructor(members: impl IntoIterator<Item=ObjectConstructorMember<TContext>>,
+                              context: impl Into<TContext>)
+                              -> Self {
+        Expression {
+            value: ExpressionValue::ObjectConstructor(members.into_iter().collect()),
             context: context.into(),
         }
     }
@@ -738,10 +768,16 @@ pub fn try_visit_expressions<TContext, TErr>(
             try_visit_expressions(expr.as_ref(), &mut visit)?;
         }
 
+        | ExpressionValue::ObjectConstructor(obj) => {
+            for member in obj.iter() {
+                try_visit_expressions(&member.value, &mut visit)?;
+            }
+        }
+
         | ExpressionValue::Identifier(_)
         | ExpressionValue::Constant(_)
-        | ExpressionValue::SetConstructor(_) =>
-            {}
+        | ExpressionValue::SetConstructor(_)
+        => {}
     }
 
     visit(&root_expr)
@@ -852,6 +888,20 @@ pub fn transform_expressions<TContext>(
                 .collect();
 
             replace(Expression::set_constructor(members, root_expr.context))
+        }
+
+        ExpressionValue::ObjectConstructor(members) => {
+            let members: Vec<_> = members.into_iter()
+                .map(|member| {
+                    let value = transform_expressions(member.value, replace);
+                    ObjectConstructorMember {
+                        name: member.name,
+                        value,
+                    }
+                })
+                .collect();
+
+            replace(Expression::object_constructor(members, root_expr.context))
         }
 
         ExpressionValue::With { value, body } => {
