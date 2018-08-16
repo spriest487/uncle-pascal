@@ -19,6 +19,7 @@ pub type LetBinding = node::LetBinding<ParsedContext>;
 pub type ObjectConstructorMember = node::ObjectConstructorMember<ParsedContext>;
 pub type ObjectConstructor = node::ObjectConstructor<ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
+pub type FunctionCall = node::FunctionCall<ParsedContext>;
 
 #[derive(Debug, Clone)]
 struct OperatorToken {

@@ -94,6 +94,11 @@ impl Declaration {
                         //should be removed during typechecking, can be ignored here
                         Ok(vec![])
                     }
+
+                    | TypeDecl::Interface(_) => {
+                        // we don't store any information about interfaces in the C++ output yet
+                        Ok(vec![])
+                    }
                 }
 
             UnitDecl::Var(ref var_decl) => {
@@ -113,7 +118,7 @@ impl Declaration {
                           TranslationResult<Vec<Declaration>> {
         match decl {
             node::Implementation::Function(func_impl) => {
-                let definition = FunctionDecl::from_function(func_impl, unit)?;
+                let definition = FunctionDecl::translate(func_impl, unit)?;
                 Ok(vec!(Declaration::Function(definition)))
             }
             node::Implementation::Decl(decl) => {

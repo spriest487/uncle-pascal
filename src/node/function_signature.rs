@@ -1,9 +1,9 @@
-use std::{
-    fmt,
-};
+use std::fmt;
 use node::{
     ToSource,
     FunctionArgModifier,
+    FunctionArg,
+    Context,
 };
 
 #[derive(PartialEq, Clone, Debug, Hash)]
@@ -65,6 +65,17 @@ impl<TType> ToSource for FunctionArgSignature<TType>
     }
 }
 
+impl<TContext> From<FunctionArg<TContext>> for FunctionArgSignature<TContext::Type>
+    where TContext: Context
+{
+    fn from(arg: FunctionArg<TContext>) -> Self {
+        FunctionArgSignature {
+            decl_type: arg.decl_type,
+            modifier: arg.modifier,
+        }
+    }
+}
+
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub struct FunctionSignature<TType> {
     pub return_type: Option<TType>,
@@ -76,23 +87,22 @@ impl<TType> ToSource for FunctionSignature<TType>
     where TType: ToSource
 {
     fn to_source(&self) -> String {
-        let mut source = String::new();
-        source.push_str(if self.return_type.is_some() {
-            "function"
-        } else {
-            "procedure"
-        });
+        let mut source = "function".to_string();
 
         if self.args.len() > 0 {
             source.push('(');
             source.push_str(&self.args.iter()
-                .enumerate()
-                .map(|(arg_index, arg_type)| {
-                    format!("arg{}: {}", arg_index, arg_type.to_source())
+                .map(|arg_type| {
+                    format!("{}", arg_type.to_source())
                 })
                 .collect::<Vec<_>>()
                 .join(";"));
             source.push(')');
+        }
+
+        if let Some(return_type) = self.return_type.as_ref() {
+            source.push_str(": ");
+            source.push_str(&return_type.to_source());
         }
 
         for modifier in self.modifiers.iter() {

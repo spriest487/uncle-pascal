@@ -17,6 +17,10 @@ type
         Length: NativeInt
     end
 
+    Disposable = interface
+        function Dispose(self: Self)
+    end
+
 { io }
 
 function WriteLn(line: String)
@@ -26,7 +30,7 @@ function ReadLn(): String
 
 function StringCreate: String
 function StringFromBytes(bytes: ^Byte; len: NativeInt): String
-destructor DestroyString(string: String)
+function Disposable.Dispose(string: String)
 
 function StringFromInt(i: Int32): String
 function StringToInt(s: String; out val: Int32): Boolean
@@ -75,14 +79,19 @@ begin
         result.Chars[c] := bytes[c]
 end
 
-destructor DestroyString(string: String)
+function Disposable.Dispose(string: String)
+begin
     if string.Length > 0 then
     begin
+        if string.Chars <> nil then 
+            raise 'Empty string should not be initialized'
+
         FreeMem(string.Chars)
 
         string.Chars := nil
         string.Length := 0
     end
+end
 
 function StringConcat(a: String; b: String): String
     if a.Length = 0 and b.Length = 0 then

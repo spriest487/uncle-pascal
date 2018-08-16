@@ -3,21 +3,20 @@ use std::{
 };
 use node::{
     self,
-    FunctionArgSignature,
     FunctionArgModifier,
 };
 use syntax;
 use semantic::*;
-use types::{
-    Type,
-    FunctionSignature,
-};
+use types::Type;
 
 const RESULT_VAR_NAME: &str = "result";
 
 pub type FunctionDecl = node::FunctionDecl<SemanticContext>;
 pub type Function = node::Function<SemanticContext>;
 pub type FunctionArg = node::FunctionArg<SemanticContext>;
+pub type FunctionSignature = node::FunctionSignature<Type>;
+pub type FunctionArgSignature = node::FunctionArgSignature<Type>;
+pub type InterfaceImplementation = node::InterfaceImplementation<SemanticContext>;
 
 impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
@@ -67,89 +66,68 @@ impl FunctionDecl {
             })
             .collect::<SemanticResult<_>>()?;
 
+        let implements = match function.implements.as_ref() {
+            Some(implements) => {
+                /* check the interface exists */
+                let (interface_id, interface) = scope.get_interface(&implements.interface)
+                    .ok_or_else(|| {
+                        SemanticError::unknown_type(implements.interface.clone(), context.clone())
+                    })?;
+
+                /* check the function exists on that interface*/
+                let self_type = args[0].decl_type.clone();
+
+                let expected_sig = interface.decl.get_implementation_sig(&function.name, self_type)
+                    .ok_or_else(|| {
+                        let missing_func = interface_id.child(&function.name);
+                        SemanticError::unknown_symbol(missing_func, context.clone())
+                    })?;
+
+                /* check it has the right signature */
+                let actual_sig = FunctionSignature {
+                    return_type: return_type.clone(),
+                    args: args.iter().cloned().map(FunctionArgSignature::from).collect(),
+                    modifiers: function.modifiers.clone(),
+                };
+
+                if expected_sig != actual_sig {
+                    return Err(SemanticError::interface_sig_mismatch(
+                        expected_sig,
+                        actual_sig,
+                        interface_id.clone(),
+                        &function.name,
+                        context,
+                    ));
+                }
+
+                let for_type = implements.for_type.resolve(scope.clone())?;
+
+                Some(InterfaceImplementation {
+                    interface: interface_id.clone(),
+                    for_type,
+                })
+            }
+
+            None => None,
+        };
+
         let func_decl = FunctionDecl {
             name: function.name.clone(),
-            kind: function.kind.clone(),
+            implements,
             modifiers: function.modifiers.clone(),
             context,
             args,
             return_type,
         };
 
-        let scope = scope.as_ref().clone()
-            .with_function(func_decl.clone());
+        let scope = Rc::new(scope.as_ref().clone()
+            .with_function_decl(func_decl.clone())?);
 
-        Ok((func_decl, Rc::new(scope)))
-    }
-
-    pub fn is_destructor_of(&self, class_type: &RecordDecl) -> bool {
-        if self.kind != node::FunctionKind::Destructor {
-            return false;
-        }
-
-        match self.args.iter().next().map(|arg| &arg.decl_type) {
-            Some(Type::Record(arg_record)) =>
-                arg_record.name == class_type.name,
-            _ =>
-                false,
-        }
+        Ok((func_decl, scope))
     }
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
-    }
-
-    pub fn signature(&self) -> FunctionSignature {
-        FunctionSignature {
-            args: self.args.iter()
-                .map(|decl| FunctionArgSignature {
-                    decl_type: decl.decl_type.clone(),
-                    modifier: decl.modifier.clone(),
-                })
-                .collect(),
-            return_type: self.return_type.clone(),
-            modifiers: self.modifiers.clone(),
-        }
-    }
-
-    pub fn type_check(&self) -> Result<(), SemanticError> {
-        let returns_class = self.return_type.as_ref()
-            .map(|ty| ty.is_class())
-            .unwrap_or(false);
-
-        // make sure constructors return something constructible
-        if self.kind == node::FunctionKind::Constructor && !returns_class {
-            return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
-                                                               self.context.clone()));
-        }
-
-        //make sure destructors take one arg of a type in their module, and return nothing
-        if self.kind == node::FunctionKind::Destructor {
-            if let Some(return_type) = &self.return_type {
-                return Err(SemanticError::invalid_destructor_return(return_type.clone(),
-                                                                    self.context.clone()));
-            }
-
-            let is_valid_destructed_type = |ty: &Type| {
-                match ty {
-                    Type::Class(class_name) => {
-                        class_name.parent().as_ref() == self.scope().unit_namespace()
-                    }
-                    _ => false,
-                }
-            };
-
-            if self.args.len() != 1
-                || !is_valid_destructed_type(&self.args[0].decl_type) {
-                let arg_types = self.args.iter()
-                    .map(|arg_decl| &arg_decl.decl_type)
-                    .cloned();
-
-                return Err(SemanticError::invalid_destructor_args(arg_types, self.context.clone()));
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -234,19 +212,6 @@ impl Function {
         /* we don't keep anything from the local scope after the function */
         let (block, after_block_scope) = Block::annotate(&function.block, local_scope)?;
 
-//        if decl.return_type.is_some() {
-//            let result = after_block_scope
-//                .get_symbol(&Identifier::from(RESULT_VAR_NAME))
-//                .unwrap();
-//
-//            if !result.initialized() {
-//                return Err(SemanticError::output_uninitialized(
-//                    RESULT_VAR_NAME,
-//                    block.context.clone()
-//                ));
-//            }
-//        }
-
         let function = Function {
             decl,
             block,
@@ -254,6 +219,9 @@ impl Function {
         };
 
         function.check_outputs_initialized(after_block_scope.as_ref())?;
+
+        let scope = Rc::new(scope.as_ref().clone()
+            .with_function_def(function.clone())?);
 
         Ok((function, scope))
     }
@@ -283,7 +251,7 @@ impl Function {
             if !out_var.initialized() {
                 return Err(SemanticError::output_uninitialized(
                     output_name,
-                    self.block.context.clone()
+                    self.block.context.clone(),
                 ));
             }
         }
@@ -292,7 +260,6 @@ impl Function {
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
-        self.decl.type_check()?;
         self.block.type_check()?;
 
         Ok(())
@@ -308,6 +275,35 @@ impl Function {
 impl FunctionArg {
     pub fn scope(&self) -> &Scope {
         &self.context.scope
+    }
+}
+
+impl FunctionSignature {
+    pub fn annotate(sig: &syntax::FunctionSignature, scope: Rc<Scope>) -> SemanticResult<Self> {
+        let return_type = match sig.return_type.as_ref() {
+            Some(return_type) => Some(return_type.resolve(scope.clone())?),
+            None => None,
+        };
+
+        let args = sig.args.iter()
+            .map(|sig_arg| {
+                let decl_type = sig_arg.decl_type.resolve(scope.clone())?;
+                let modifier = sig_arg.modifier.clone();
+
+                Ok(FunctionArgSignature {
+                    decl_type,
+                    modifier,
+                })
+            })
+            .collect::<SemanticResult<_>>()?;
+
+        let modifiers = sig.modifiers.clone();
+
+        Ok(FunctionSignature {
+            args,
+            return_type,
+            modifiers,
+        })
     }
 }
 

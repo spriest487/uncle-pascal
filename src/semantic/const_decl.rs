@@ -1,7 +1,15 @@
 use std::rc::Rc;
 
-use semantic::*;
+use semantic::{
+    Expression,
+    Scope,
+    SemanticError,
+    SemanticContext,
+    SemanticResult,
+    expect_valid_op,
+};
 use syntax;
+use operators;
 use node::{self};
 
 pub type ConstDecl = node::ConstDecl<SemanticContext>;
@@ -19,14 +27,13 @@ impl ConstDecl {
 
         let (value, _) = Expression::annotate(&decl.value, explicit_type.as_ref(), scope.clone())?;
         let const_value = value.to_const_value()?;
-        let actual_type = const_value.value_type();
 
-        let valid_assignment = explicit_type.as_ref()
-            .map(|ty| ty.assignable_from(&actual_type))
-            .unwrap_or(true);
-        if !valid_assignment {
-            return Err(SemanticError::invalid_const_value(value))?;
-        }
+        if let Some(expected) = explicit_type.as_ref() {
+            expect_valid_op(operators::Assignment, Some(expected), &value, &value.context)
+                .map_err(|_| {
+                    SemanticError::invalid_const_value(value.clone())
+                })?;
+        };
 
         let result_scope = scope.as_ref().clone()
             .with_const(&decl.name, const_value);

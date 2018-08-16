@@ -41,7 +41,7 @@ use std::fmt;
 use types::*;
 
 #[derive(Clone, Debug)]
-pub enum SemanticErrorKind {
+enum SemanticErrorKind {
     UnresolvedUnit(String),
     UnknownType(Identifier),
     UnknownSymbol(Identifier),
@@ -57,6 +57,13 @@ pub enum SemanticErrorKind {
     InvalidConstantValue(ExpressionValue<SemanticContext>),
     InvalidArrayIndex(Option<Type>),
     InvalidArrayType(Option<Type>),
+    InvalidSelfArg(syntax::FunctionArgSignature),
+    InterfaceSignatureMismatch {
+        expected_sig: FunctionSignature,
+        actual_sig: FunctionSignature,
+        interface: Identifier,
+        func_name: String,
+    },
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -92,6 +99,13 @@ pub enum SemanticErrorKind {
     NotConstructable(Type),
     UnableToInferType(syntax::Expression),
     OutputUninitialized(String),
+    NameInUse(Identifier),
+    MultipleFunctionDef {
+        decl: FunctionDecl,
+        previous_decl: FunctionDecl,
+
+        for_interface: Option<Identifier>,
+    },
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -169,6 +183,20 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::InvalidDestructorReturn(actual) => {
                 write!(f, "destructor must have no return type but `{}` was found", actual)
+            }
+
+            SemanticErrorKind::InvalidSelfArg(arg_sig) => {
+                write!(f, "the argument signature `{}` is not valid as the self-param of an interface (must have the unmodified type `Self`)",
+                       arg_sig.to_source())
+            }
+
+            SemanticErrorKind::InterfaceSignatureMismatch { expected_sig, actual_sig, interface, func_name } => {
+                write!(f, "the function signature `{}` did not match the signature declared for {}#{}: `{}`",
+                       actual_sig,
+                       interface,
+                       func_name,
+                       expected_sig,
+                )
             }
 
             SemanticErrorKind::InvalidDestructorArgs(arg_types) => {
@@ -272,6 +300,28 @@ impl fmt::Display for SemanticErrorKind {
             SemanticErrorKind::OutputUninitialized(var_name) => {
                 write!(f, "the output variable `{}` is not initialized when this function returns", var_name)
             }
+
+            SemanticErrorKind::NameInUse(name) => {
+                write!(f, "name `{}` is already in use in this scope", name)
+            }
+
+            SemanticErrorKind::MultipleFunctionDef { decl, previous_decl, for_interface } => {
+                match for_interface.as_ref() {
+                    Some(interface) => {
+                        write!(f, "interface member `{}.{}` ({}) is already defined (previous definition: {})`",
+                               interface,
+                               decl.name,
+                               decl.signature().to_source(),
+                               previous_decl.context.token())
+                    }
+                    None => {
+                        write!(f, "function `{}` ({}) is already defined (previous definition: {})`",
+                               decl.name,
+                               decl.signature().to_source(),
+                               previous_decl.context.token())
+                    }
+                }
+            }
         }
     }
 }
@@ -294,6 +344,28 @@ impl SemanticError {
         SemanticError {
             kind: SemanticErrorKind::IllegalName(name),
             context,
+        }
+    }
+
+    pub fn name_in_use(name: impl Into<Identifier>, context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::NameInUse(name.into()),
+            context: context.into(),
+        }
+    }
+
+    pub fn multiple_function_def(decl: impl Into<FunctionDecl>,
+                                 previous_decl: impl Into<FunctionDecl>,
+                                 interface: Option<impl Into<Identifier>>)
+                                 -> Self {
+        let decl = decl.into();
+        SemanticError {
+            context: decl.context.clone(),
+            kind: SemanticErrorKind::MultipleFunctionDef {
+                decl,
+                previous_decl: previous_decl.into(),
+                for_interface: interface.map(|i| i.into())
+            },
         }
     }
 
@@ -346,6 +418,31 @@ impl SemanticError {
                 base_type: base_type.into(),
                 from_ns: from_ns.into(),
                 member_name: member_name.to_string(),
+            },
+            context: context.into(),
+        }
+    }
+
+    pub fn invalid_self_arg(arg: impl Into<syntax::FunctionArgSignature>,
+                            context: impl Into<SemanticContext>)
+                            -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidSelfArg(arg.into()),
+            context: context.into(),
+        }
+    }
+
+    pub fn interface_sig_mismatch(expected_sig: impl Into<FunctionSignature>,
+                                  actual_sig: impl Into<FunctionSignature>,
+                                  interface: impl Into<Identifier>,
+                                  func_name: impl ToString,
+                                  context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InterfaceSignatureMismatch {
+                expected_sig: expected_sig.into(),
+                actual_sig: actual_sig.into(),
+                interface: interface.into(),
+                func_name: func_name.to_string(),
             },
             context: context.into(),
         }

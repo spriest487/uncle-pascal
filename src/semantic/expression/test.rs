@@ -6,6 +6,7 @@ use tokenizer::*;
 use semantic::*;
 use syntax;
 use node::{
+    self,
     ExpressionValue,
     UnitReferenceKind,
 };
@@ -67,7 +68,7 @@ fn assignment_to_wrong_type_is_err() {
 fn func_call_on_obj_uses_ufcs_from_target_ns() {
     let system_scope = Scope::new_unit("System");
     let func = parse_func_decl("function TestAdd(x, y: Int64): Int64", Rc::new(system_scope.clone()));
-    let system_scope = system_scope.with_function(func);
+    let system_scope = system_scope.with_function_decl(func).unwrap();
 
     let expr_scope = Scope::new_unit("FromNs")
         .with_binding("a", Type::Int64, BindingKind::Mutable)
@@ -76,7 +77,7 @@ fn func_call_on_obj_uses_ufcs_from_target_ns() {
     let (expr, _) = parse_expr(r"a.TestAdd(1)", Rc::new(expr_scope));
 
     match expr.value {
-        ExpressionValue::FunctionCall { target, args } => {
+        ExpressionValue::FunctionCall(node::FunctionCall::Function { target, args }) => {
             assert!(target.is_identifier(&Identifier::from("System.TestAdd")),
                     "expected identifier, found {:?}", target.to_source());
 
@@ -114,10 +115,10 @@ fn out_param_initializes_value() {
     let mut scope = Scope::new_root()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
-    scope = scope.with_function(parse_func_decl(
+    scope = scope.with_function_decl(parse_func_decl(
         "procedure SetX(out xout: System.Int32)",
         Rc::new(Scope::new_root()),
-    ));
+    )).unwrap();
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
     let (_, scope) = parse_expr("SetX(x)", Rc::new(scope));
@@ -211,10 +212,11 @@ fn initialization_in_while_body_doesnt_propagate() {
 #[test]
 fn initialization_in_while_condition_propagates() {
     let scope = Scope::new_root()
-        .with_function(parse_func_decl(
+        .with_function_decl(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Boolean",
             Rc::new(Scope::new_root()),
         ))
+        .unwrap()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -225,10 +227,11 @@ fn initialization_in_while_condition_propagates() {
 #[test]
 fn initialization_in_for_from_propagates() {
     let scope = Scope::new_root()
-        .with_function(parse_func_decl(
+        .with_function_decl(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Int32",
             Rc::new(Scope::new_root()),
         ))
+        .unwrap()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
@@ -239,10 +242,11 @@ fn initialization_in_for_from_propagates() {
 #[test]
 fn initialization_in_for_to_propagates() {
     let scope = Scope::new_root()
-        .with_function(parse_func_decl(
+        .with_function_decl(parse_func_decl(
             "function GetX(out xOut: System.Int32): System.Int32",
             Rc::new(Scope::new_root()),
         ))
+        .unwrap()
         .with_binding("x", Type::Int32, BindingKind::Uninitialized);
 
     assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());

@@ -6,6 +6,7 @@ pub mod translation_unit;
 pub mod decl;
 pub mod block;
 pub mod class;
+pub mod interface;
 pub mod expression;
 
 pub use self::function::*;
@@ -14,6 +15,7 @@ pub use self::translation_unit::*;
 pub use self::decl::*;
 pub use self::block::*;
 pub use self::class::*;
+pub use self::interface::*;
 pub use self::expression::*;
 
 pub type TranslationResult<T> = Result<T, TranslationError>;

@@ -37,7 +37,7 @@ impl<'a> From<&'a str> for CType {
 impl CType {
     pub fn translate(pascal_type: &Type, scope: &Scope) -> Self {
         match pascal_type {
-            Type::Nil => panic!("cannot output `nil` as a type in C"),
+            Type::Nil => unimplemented!("nil type (c++ backend)"),
             Type::Byte => CType::from("System_Byte"),
             Type::Int32 => CType::from("System_Int32"),
             Type::UInt32 => CType::from("System_UInt32"),
@@ -93,6 +93,11 @@ impl CType {
                 let (enum_id, _) = scope.get_enumeration(enum_id)
                     .expect("referenced enumeration must exist");
                 CType::Named(identifier_to_c(&enum_id))
+            }
+
+            Type::AnyImplementation(_interface_id) => {
+                CType::Named("System_Internal_Object".to_string())
+                    .into_pointer()
             }
 
             Type::Set(set_id) => {

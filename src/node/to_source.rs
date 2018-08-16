@@ -61,13 +61,21 @@ impl<C> ToSource for ExpressionValue<C>
 
             ExpressionValue::Identifier(id) => id.to_source(),
 
-            ExpressionValue::FunctionCall { target, args } => {
-                let args_str = args.iter()
+            ExpressionValue::FunctionCall(call) => {
+                let args_str = call.args().iter()
                     .map(|arg| arg.to_source())
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                format!("{}({})", target.to_source(), args_str)
+                match call {
+                    FunctionCall::Function { target, .. } => {
+                        format!("{}({})", target.to_source(), args_str)
+                    }
+
+                    FunctionCall::Method { interface_id, func_name, .. } => {
+                        format!("{}.{}({})", interface_id, func_name, args_str)
+                    }
+                }
             }
 
             ExpressionValue::TypeCast { target_type, from_value } => {
@@ -289,7 +297,8 @@ impl<C> ToSource for TypeDecl<C>
             TypeDecl::Enumeration(enum_decl) => enum_decl.to_source(),
             TypeDecl::Set(set_decl) => set_decl.to_source(),
 
-            TypeDecl::Record(record_decl) => record_decl.to_source()
+            TypeDecl::Record(record_decl) => record_decl.to_source(),
+            TypeDecl::Interface(interface_decl) => interface_decl.to_source(),
         }
     }
 }
@@ -306,6 +315,35 @@ impl<C> ToSource for RecordDecl<C>
         }
 
         lines.push("end".to_owned());
+        lines.join("\n")
+    }
+}
+
+impl<C> ToSource for InterfaceDecl<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push(format!("type {} = interface", self.name));
+
+        for (name, sig) in self.functions.iter() {
+            let mut func_str = format!("\tfunction {}({})", name, sig.args.iter()
+                .map(|arg| arg.to_source())
+                .collect::<Vec<_>>()
+                .join(";"));
+
+            if let Some(return_type) = sig.return_type.as_ref() {
+                func_str = format!("{}: {}", func_str, return_type.to_source());
+            }
+            func_str.push_str(";");
+
+            for modifier in sig.modifiers.iter() {
+                func_str = format!("; {}", modifier.to_source());
+            }
+
+            lines.push(func_str)
+        }
+        lines.push("end".to_string());
         lines.join("\n")
     }
 }

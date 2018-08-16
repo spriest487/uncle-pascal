@@ -1,28 +1,30 @@
 use std::fmt;
 
-use semantic;
+use semantic::{
+    self,
+    Scope,
+};
+use node::Identifier;
+use types::Type;
 use target_c::{
-    identifier_to_c,
     ast::{
-        TranslationResult
+        TranslationResult,
+        FunctionDecl,
     }
 };
 
 pub struct Class {
-//    name: String,
     pascal_name: String,
     destructor: Option<String>,
 }
 
 impl Class {
-    pub fn translate(class: &semantic::RecordDecl) -> TranslationResult<Self> {
-        let full_name = class.scope().namespace_qualify(&class.name);
-
-        let destructor = class.scope().get_destructor(&full_name)
-            .map(|(dtor_id, _dtor_func)| identifier_to_c(dtor_id));
+    pub fn translate(class: &semantic::RecordDecl, unit_scope: &Scope) -> TranslationResult<Self> {
+        let (full_name, _) = unit_scope.get_class(&Identifier::from(&class.name)).unwrap();
+        let destructor = unit_scope.get_destructor(&Type::Class(full_name.clone()))
+            .map(|(_, dtor_func)| FunctionDecl::translate_name(dtor_func));
 
         Ok(Class {
-//            name: identifier_to_c(&full_name),
             pascal_name: full_name.to_string(),
             destructor,
         })

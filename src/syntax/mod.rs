@@ -89,6 +89,8 @@ pub enum ParseError {
     UnexpectedToken(source::Token, Option<Matcher>),
     UnexpectedEOF(Matcher, source::Token),
     ArrayDimensionOutOfBounds(source::Token),
+    MissingInterfaceArgs(source::Token),
+    DuplicateName(String, source::Token),
     EmptyOperand {
         operator: source::Token,
         before: bool,
@@ -99,8 +101,8 @@ pub enum ParseError {
 impl ParseError {
     pub fn is_eof(&self) -> bool {
         match self {
-            &ParseError::UnexpectedEOF(_, _) => true,
-            _ => false
+            | ParseError::UnexpectedEOF(_, _) => true,
+            | _ => false
         }
     }
 }
@@ -124,8 +126,17 @@ impl fmt::Display for ParseError {
                 write!(f, "missing operand {} {}", position, operator)
             }
 
+
+            ParseError::MissingInterfaceArgs(context) => {
+                write!(f, "interface implementation function missing Self argument at {}", context)
+            }
+
             ParseError::ArrayDimensionOutOfBounds(token) => {
                 write!(f, "array dimension constant {} is too large for target machine's native signed int size", token)
+            }
+
+            ParseError::DuplicateName(name, context) => {
+                write!(f, "name `{}` declared at {} is already in use", name, context)
             }
         }
     }

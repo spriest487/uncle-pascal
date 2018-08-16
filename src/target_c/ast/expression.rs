@@ -11,6 +11,7 @@ use target_c::{
         Block,
         CType,
         Variable,
+        FunctionDecl,
     },
 };
 use semantic::{
@@ -25,6 +26,7 @@ use node::{
     Identifier,
     ExpressionValue,
     ConstantExpression,
+    FunctionCall,
 };
 use types::Type;
 use consts::{
@@ -225,20 +227,35 @@ impl Expression {
          because local vars and func args are already managed elsewhere */
         let stmt_simplified = node::transform_expressions(stmt_after_let, &mut |subexpr: semantic::Expression| {
             // call expression...
-            let call_target = match subexpr.value.clone() {
-                ExpressionValue::FunctionCall { target, .. } => {
-                    target
+            let call_func = match subexpr.value.clone() {
+                ExpressionValue::FunctionCall(FunctionCall::Function { target, .. }) => {
+                    target.function_type()
+                        .expect("called function must have a valid type")
+                        .expect("called function target must be of function type")
                 }
+                ExpressionValue::FunctionCall(FunctionCall::Method { interface_id, func_name, for_type, .. }) => {
+                    // todo: getting the sig for an interface call is duplicated in call_type
+                    match for_type {
+                       Type::AnyImplementation(_) => {
+                           let (_, interface) = subexpr.scope().get_interface(&interface_id).unwrap();
+                           interface.decl.functions.get(&func_name).cloned().unwrap()
+                       }
+
+                       _ => {
+                           let (_, func) = subexpr.scope().get_interface_impl(&for_type, &interface_id, &func_name)
+                               .expect("interface call target must exist");
+
+                           func.signature()
+                       }
+                    }
+                }
+
                 _ => return subexpr,
             };
 
-            // calling a function...
-            let call_func = call_target.function_type()
-                .expect("called function must have a valid type")
-                .expect("called function target must be of function type");
 
             // returning an instance of an rc class..
-            if !call_func.return_type.as_ref().map(|t| t.is_class()).unwrap_or(false) {
+            if !call_func.return_type.as_ref().map(|t| t.is_ref_counted()).unwrap_or(false) {
                 return subexpr;
             }
 
@@ -275,17 +292,17 @@ impl Expression {
             /* if assigning a new value to an rc variable, release the old value first */
             ExpressionValue::BinaryOperator { lhs, op, .. } => {
                 let mut translated_exprs = Vec::new();
-                let is_class_assignment = match lhs.class_type().unwrap() {
-                    Some(_) => *op == operators::Assignment,
-                    _ => false,
-                };
+
+                let lhs_type = lhs.expr_type().unwrap().unwrap();
+
+                let is_rc_assignment = lhs_type.is_ref_counted() && *op == operators::Assignment;
 
                 let mut lhs_expr = Self::translate_expression(lhs, unit)?;
 
                 /*
                     release the old value of the variable, if it's initialized
                  */
-                if is_class_assignment {
+                if is_rc_assignment {
                     /* if it's an assignment to a variable which is already initialized */
                     if let ExpressionValue::Identifier(name) = &lhs.value {
                         if lhs.scope().get_symbol(name).unwrap().initialized() {
@@ -304,7 +321,7 @@ impl Expression {
                 // do the thing
                 translated_exprs.push(Expression::translate_expression(&stmt_simplified, unit)?);
 
-                if is_class_assignment {
+                if is_rc_assignment {
                     /* retain rc variables: if it came from a function call, it'll be released once
                     (from the code above which releases all rc results from functions), and if it's an
                     existing value we now have two references to it */
@@ -442,17 +459,40 @@ impl Expression {
                 Ok(Expression::unary_op(c_op, Expression::translate_expression(rhs, unit)?))
             }
 
-            ExpressionValue::FunctionCall { target, args } => {
-                let args: Vec<_> = args.iter()
+            ExpressionValue::FunctionCall(call) => {
+                let args: Vec<_> = call.args().iter()
                     .map(|arg_expr| {
                         Expression::translate_expression(arg_expr, unit)
                     })
                     .collect::<TranslationResult<_>>()?;
 
-                Ok(Expression::function_call(
-                    Expression::translate_expression(target, unit)?,
-                    args,
-                ))
+                let target = match call {
+                    FunctionCall::Function { target, .. } => {
+                        Expression::translate_expression(target, unit)?
+                    }
+
+                    FunctionCall::Method { interface_id, func_name, for_type, .. } => {
+                        match for_type {
+                            Type::AnyImplementation(_) => {
+                                unimplemented!("virtual function call (c++ backend)")
+                            },
+
+                            _ => {
+                                let type_name = expr.scope().full_type_name(for_type).unwrap();
+                                let call_name = FunctionDecl::interface_call_name(
+                                    interface_id,
+                                    func_name,
+                                    &type_name
+                                );
+
+
+                                Expression::raw(call_name)
+                            }
+                        }
+                    }
+                };
+
+                Ok(Expression::function_call(target, args))
             }
 
             ExpressionValue::TypeCast { target_type, from_value } => {

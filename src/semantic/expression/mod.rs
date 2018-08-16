@@ -9,6 +9,8 @@ mod constructors;
 #[cfg(test)]
 pub(crate) mod test;
 
+pub use self::ops::expect_valid as expect_valid_op;
+
 use std::{
     rc::Rc,
 };
@@ -24,7 +26,6 @@ use node::{
 use operators;
 use types::{
     Type,
-    FunctionSignature,
 };
 use consts::IntConstant;
 
@@ -112,8 +113,8 @@ impl Expression {
                 Ok((op_expr, scope))
             }
 
-            ExpressionValue::FunctionCall { target, args } => {
-                function::annotate_call(target, args, expr_context)
+            ExpressionValue::FunctionCall(call) => {
+                function::annotate_call(call, expr_context)
             }
 
             ExpressionValue::TypeCast { target_type, from_value } =>
@@ -165,8 +166,8 @@ impl Expression {
             ExpressionValue::LetBinding(binding) =>
                 bindings::let_type(binding, &self.context),
 
-            ExpressionValue::FunctionCall { target, args } =>
-                function::call_type(target, args, &self.context),
+            ExpressionValue::FunctionCall(call) =>
+                function::call_type(call, &self.context),
 
             ExpressionValue::TypeCast { target_type, from_value } =>
                 type_cast_type(target_type, from_value, &self.context),
@@ -522,3 +523,4 @@ fn expect_initialized(expr: &Expression) -> SemanticResult<()> {
         Ok(())
     }
 }
+

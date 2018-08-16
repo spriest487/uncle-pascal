@@ -1,7 +1,8 @@
 use std::{
     rc::Rc,
-    collections::HashMap,
 };
+use linked_hash_map::LinkedHashMap;
+
 use node;
 use syntax;
 use semantic::*;
@@ -24,8 +25,6 @@ impl Unit {
 
             node::UnitDecl::Function(parsed_func) => {
                 let (func_decl, scope) = FunctionDecl::annotate(parsed_func, scope)?;
-
-                func_decl.type_check()?;
 
                 Ok((Some(node::UnitDecl::Function(func_decl)), scope))
             }
@@ -115,14 +114,14 @@ impl Unit {
 
     pub fn reference_uses(mut scope: Scope,
                           uses: &[UnitReference],
-                          available_units: &HashMap<String, impl AsRef<Scope>>)
+                          available_units: &LinkedHashMap<String, ModuleUnit>)
                           -> SemanticResult<Scope> {
         for unit_ref in uses.iter() {
             let ref_name = unit_ref.name.to_string();
 
             match available_units.get(&ref_name) {
                 Some(ref_scope) => {
-                    scope = scope.reference(ref_scope.as_ref(), unit_ref.kind.clone());
+                    scope = scope.reference(ref_scope.global_scope.as_ref(), unit_ref.kind.clone());
                 }
                 None => return Err(SemanticError::unresolved_unit(
                     ref_name.clone(),
@@ -135,7 +134,7 @@ impl Unit {
     }
 
     pub fn annotate(unit: &syntax::Unit,
-                    available_units: &HashMap<String, impl AsRef<Scope>>)
+                    available_units: &LinkedHashMap<String, ModuleUnit>)
                     -> Result<(Self, Rc<Scope>), SemanticError> {
         let unit_scope = Scope::new_unit(unit.name.as_str());
         let uses = Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope.clone()));

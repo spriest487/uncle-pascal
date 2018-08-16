@@ -1,6 +1,7 @@
 extern crate regex;
 extern crate getopts;
 extern crate linked_hash_set;
+extern crate linked_hash_map;
 
 use std::{
     rc::*,
@@ -10,10 +11,9 @@ use std::{
     path::*,
     ffi::OsStr,
     env::current_dir,
-    collections::{
-        hash_map::HashMap,
-    },
 };
+
+use linked_hash_map::LinkedHashMap;
 
 mod keywords;
 mod types;
@@ -188,19 +188,18 @@ fn compile_program(program_path: &Path,
     let token_stream = syntax::TokenStream::new(module_source.tokens, &empty_context());
     let parsed_program = syntax::Program::parse(token_stream)?;
 
-    let mut loaded_units: Vec<semantic::Unit> = Vec::new();
-    let mut unit_scopes: HashMap<String, Rc<semantic::Scope>> = HashMap::new();
+    let mut loaded_units: LinkedHashMap<String, semantic::ModuleUnit> = LinkedHashMap::new();
 
     let uses = default_units.iter()
         .chain(parsed_program.uses.iter());
 
     for unit_ref in uses {
-        let unit_id = unit_ref.name.to_string();
+        let referenced_unit_id = unit_ref.name.to_string();
 
-        if !loaded_units.iter().any(|unit| unit.name == unit_id) {
+        if !loaded_units.iter().any(|(unit_id, _)| *unit_id == referenced_unit_id) {
             let unit_path = search_dirs.iter()
                 .filter_map(|dir| {
-                    let unit_path = dir.join(format!("{}.pas", unit_id));
+                    let unit_path = dir.join(format!("{}.pas", referenced_unit_id));
                     match unit_path.exists() {
                         true => Some(unit_path),
                         false => None,
@@ -208,12 +207,12 @@ fn compile_program(program_path: &Path,
                 })
                 .next()
                 .ok_or_else(|| {
-                    let msg = format!("unit {}.pas could not be located", unit_id);
+                    let msg = format!("unit {}.pas could not be located", referenced_unit_id);
                     io::Error::new(io::ErrorKind::NotFound, msg)
                 })?;
 
             println!("Compiling unit `{}` in `{}`...",
-                     unit_id,
+                     referenced_unit_id,
                      pretty_path(&unit_path));
 
             let unit_source = load_source(unit_path, module_source.opts.clone())?;
@@ -224,10 +223,12 @@ fn compile_program(program_path: &Path,
             /* each unit imports all the units before it in the programs' units
             clause (used units can't import any new units not referenced in the main
             uses clause) */
-            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, &unit_scopes)?;
+            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, &loaded_units)?;
 
-            unit_scopes.insert(unit.name.clone(), unit_scope);
-            loaded_units.push(unit);
+            loaded_units.insert(unit.name.clone(), semantic::ModuleUnit {
+                unit,
+                global_scope: unit_scope.clone()
+            });
 
             /* add linked libs from all units to main module */
             for linked_lib in unit_source.opts.link_libs() {
@@ -236,10 +237,11 @@ fn compile_program(program_path: &Path,
         }
     }
 
-    let program = semantic::Program::annotate(&parsed_program, &unit_scopes)?;
+    let (program, global_scope) = semantic::Program::annotate(&parsed_program, &loaded_units)?;
 
     Ok(semantic::ProgramModule {
         program,
+        global_scope,
         units: loaded_units,
         opts: module_source.opts,
     })

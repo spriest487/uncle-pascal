@@ -20,7 +20,9 @@ use std::{
 
 use pretty_path;
 use CompileError;
-use semantic::ProgramModule;
+use semantic::{
+    ProgramModule,
+};
 use opts::CompileOptions;
 
 const HEADER: &str = include_str!("header.h");
@@ -121,7 +123,7 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
     writeln!(out, "int main(int argc, char* argv[]) {{")?;
 
     // init the string class and string literals
-    writeln!(out, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+    writeln!(out, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_Disposable_Dispose_System_String);")?;
     unit.init_string_literals(&mut out)?;
 
     // init other classes

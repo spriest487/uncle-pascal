@@ -1,11 +1,13 @@
 use std::fmt;
 
 use node::{
-    self,
     Identifier,
     ToSource,
 };
-use semantic::IndexRange;
+use semantic::{
+    IndexRange,
+    FunctionSignature,
+};
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub struct DynamicArrayType {
@@ -44,8 +46,6 @@ impl ArrayType {
     }
 }
 
-pub type FunctionSignature = node::FunctionSignature<Type>;
-
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
@@ -68,6 +68,7 @@ pub enum Type {
     DynamicArray(DynamicArrayType),
     Enumeration(Identifier),
     Set(Identifier),
+    AnyImplementation(Identifier),
 }
 
 impl ToSource for Type {
@@ -99,6 +100,7 @@ impl Type {
                 Type::Set(set_id) => format!("{}", set_id),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),
+                Type::AnyImplementation(interface) => format!("{}", interface),
                 Type::DynamicArray(array) => format!("array of {}", array.element.to_source()),
                 Type::Array(array) => {
                     let mut name = "array ".to_string();
@@ -131,6 +133,7 @@ impl Type {
         match self {
             Type::Class(_) |
             Type::DynamicArray(_) => true,
+            Type::AnyImplementation(_) => true,
             _ => false,
         }
     }
@@ -206,45 +209,30 @@ impl Type {
 
     pub fn valid_lhs_type(&self) -> bool {
         match self {
-            Type::Pointer(_) |
-            Type::Byte |
-            Type::Record(_) |
-            Type::Class(_) |
-            Type::RawPointer |
-            Type::UntypedRef |
-            Type::Int32 |
-            Type::UInt32 |
-            Type::Int64 |
-            Type::UInt64 |
-            Type::NativeInt |
-            Type::NativeUInt |
-            Type::Float64 |
-            Type::Function(_) |
-            Type::Enumeration(_) |
-            Type::Set(_) |
-            Type::DynamicArray(_) |
-            Type::Boolean => true,
-
-            Type::Array { .. } |
-            Type::Nil
-            => false
-        }
-    }
-
-    pub fn assignable_from(&self, other: &Type) -> bool {
-        if !self.valid_lhs_type() {
-            return false;
-        }
-
-        match (self, other) {
-            // nil can be assigned to any pointer, and nothing else
-            |(Type::RawPointer, Type::Nil)
-            |(Type::Pointer(_), Type::Nil)
+            | Type::Pointer(_)
+            | Type::Byte
+            | Type::Record(_)
+            | Type::Class(_)
+            | Type::RawPointer
+            | Type::UntypedRef
+            | Type::Int32
+            | Type::UInt32
+            | Type::Int64
+            | Type::UInt64
+            | Type::NativeInt
+            | Type::NativeUInt
+            | Type::Float64
+            | Type::Function(_)
+            | Type::Enumeration(_)
+            | Type::Set(_)
+            | Type::DynamicArray(_)
+            | Type::AnyImplementation(_)
+            | Type::Boolean
             => true,
 
-            | (_, Type::Nil) => false,
-            | (ref a, ref b) if b.promotes_to(a) => true,
-            | (ref x, ref y) => x == y,
+            | Type::Array { .. }
+            | Type::Nil
+            => false
         }
     }
 
@@ -252,14 +240,14 @@ impl Type {
     pub fn can_offset_by(&self, other: &Type) -> bool {
         match (self, other) {
             // numbers can be offset, as long as the rhs is promotable to the lhs type
-            (a, b) if a.is_numeric() && b.promotes_to(a) =>
-                true,
+            | (a, b) if a.is_numeric() && b.promotes_to(a)
+            => true,
 
             //pointers can be offset, as long as the rhs is promotable to NativeInt
-            (ptr, off) if ptr.is_pointer() && off.promotes_to(&Type::NativeInt) =>
-                true,
-            _ =>
-                false,
+            | (ptr, off) if ptr.is_pointer() && off.promotes_to(&Type::NativeInt)
+            => true,
+
+            | _ => false,
         }
     }
 

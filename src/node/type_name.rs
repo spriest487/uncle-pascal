@@ -44,12 +44,15 @@ use semantic::{
 };
 
 #[derive(Clone, Debug)]
+pub struct ScalarTypeName {
+    pub name: Identifier,
+    pub context: ParsedContext,
+    pub indirection: usize,
+}
+
+#[derive(Clone, Debug)]
 pub enum TypeName {
-    Scalar {
-        context: ParsedContext,
-        name: Identifier,
-        indirection: usize,
-    },
+    Scalar(ScalarTypeName),
     Array {
         context: ParsedContext,
         element: Box<TypeName>,
@@ -73,9 +76,9 @@ pub enum TypeName {
 impl PartialEq for TypeName {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            TypeName::Scalar { name, indirection, .. } => {
+            TypeName::Scalar(ScalarTypeName { name, indirection, .. }) => {
                 match other {
-                    TypeName::Scalar { name: other_name, indirection: other_indirection, .. } => {
+                    TypeName::Scalar(ScalarTypeName { name: other_name, indirection: other_indirection, .. }) => {
                         other_name == name && other_indirection == indirection
                     }
 
@@ -136,7 +139,7 @@ impl ToSource for TypeName {
                 result.push_str("<untyped ref>");
             }
 
-            TypeName::Scalar { name, indirection, .. } => {
+            TypeName::Scalar(ScalarTypeName { name, indirection, .. }) => {
                 for _ in 0..*indirection {
                     result.push_str("^");
                 }
@@ -262,11 +265,11 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
         } else {
             let name = Identifier::parse(tokens)?;
 
-            break Ok(TypeName::Scalar {
+            break Ok(TypeName::Scalar(ScalarTypeName {
                 context: ParsedContext::from(context.unwrap()),
                 name,
                 indirection,
-            });
+            }));
         }
     }
 }
@@ -332,21 +335,38 @@ impl Parse for TypeName {
 
 impl TypeName {
     pub fn with_name(name: impl Into<Identifier>, context: impl Into<ParsedContext>) -> Self {
-        TypeName::Scalar {
+        TypeName::Scalar(ScalarTypeName {
             context: context.into(),
             name: name.into(),
             indirection: 0,
+        })
+    }
+
+    pub fn as_scalar(&self) -> Option<&ScalarTypeName> {
+        match self {
+            | TypeName::Scalar(scalar) => Some(scalar),
+            | _ => None,
+        }
+    }
+
+    pub fn context(&self) -> &ParsedContext {
+        match self {
+            | TypeName::UntypedRef { context} => context,
+            | TypeName::Scalar(scalar) => &scalar.context,
+            | TypeName::Function { context, .. } => context,
+            | TypeName::DynamicArray { context, .. } => context,
+            | TypeName::Array { context, .. } => context,
         }
     }
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::Scalar { name, indirection, context } =>
-                TypeName::Scalar {
+            TypeName::Scalar(ScalarTypeName { name, indirection, context }) =>
+                TypeName::Scalar(ScalarTypeName{
                     context,
                     name,
                     indirection: indirection + 1,
-                },
+                }),
 
             TypeName::DynamicArray { .. } |
             TypeName::Array { .. } =>
@@ -362,7 +382,7 @@ impl TypeName {
 
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
-            TypeName::Scalar { context, name, indirection } => {
+            TypeName::Scalar(ScalarTypeName { context, name, indirection }) => {
                 let result = scope.get_type_alias(name)
                     .ok_or_else(|| {
                         let err_context = SemanticContext::new(context.token.clone(),

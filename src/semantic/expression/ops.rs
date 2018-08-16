@@ -233,14 +233,33 @@ pub fn expect_valid(operator: operators::Operator,
     let string_class = Type::Class(Identifier::from("System.String"));
 
     match (target, actual) {
-        (None, _) =>
+        | (None, _) =>
             Err(SemanticError::type_not_assignable(None, context.clone())),
-        (_, None) =>
+        | (_, None) =>
             Err(SemanticError::unexpected_type(target.cloned(), None, context.clone())),
 
-        (Some(a), Some(b)) => {
+        | (Some(a), Some(b)) => {
             let valid = match operator {
-                operators::Assignment => a.assignable_from(&b),
+                operators::Assignment => match (a, &b) {
+                    | (a, _) if !a.valid_lhs_type() => {
+                        return Err(SemanticError::type_not_assignable(Some(a.clone()), context.clone()))
+                    }
+
+                    // nil can be assigned to any pointer, and nothing else
+                    | (Type::RawPointer, Type::Nil)
+                    | (Type::Pointer(_), Type::Nil)
+                    => true,
+
+                    // class instances can be assigned to interface vars they implement
+                    | (Type::AnyImplementation(interface_id), Type::Class(ref class_id)) => {
+                        let scope = actual_expr.scope();
+                        scope.type_implements(&Type::Class(class_id.clone()), interface_id)
+                    }
+
+                    | (ref a, ref b) if b.promotes_to(a) => true,
+
+                    | _ => false,
+                }
 
                 operators::Plus => {
                     /* special case for string concat sugar */

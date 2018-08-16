@@ -13,8 +13,8 @@ type
     Length: Index
   end
 
-constructor New: Vector
-destructor Destroy(self: Vector)
+function New: Vector
+function Disposable.Dispose(self: Vector)
 
 function Add(self: Vector; p: Element)
 function AddAll(self: Vector; other: Vector)
@@ -27,7 +27,7 @@ function New: Vector
         Length: 0
     )
 
-destructor Destroy(self: Vector)
+function Disposable.Dispose(self: Vector)
     FreeMem(self.Elements)
 
 function Add(self: Vector; p: Element)

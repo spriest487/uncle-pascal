@@ -3,12 +3,11 @@ use std::fmt::{
 };
 use semantic;
 use node::{
+    Identifier,
     FunctionArgModifier,
     FunctionModifier,
-    FunctionKind,
     FunctionLocalDecl,
 };
-use types::Type;
 use target_c::{
     ast::{
         CType,
@@ -66,8 +65,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
             .map(|return_type| CType::translate(return_type, pascal_decl.scope()))
             .unwrap_or_else(|| CType::Void);
 
-        let qualified_name = pascal_decl.scope().namespace_qualify(&pascal_decl.name);
-        let name = identifier_to_c(&qualified_name);
+        let name = Self::translate_name(pascal_decl);
 
         let calling_convention = if pascal_decl.modifiers.contains(&FunctionModifier::Stdcall) {
             // todo: semantic error earlier?
@@ -133,9 +131,36 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn from_function(function: &semantic::Function,
-                         unit: &mut TranslationUnit)
-                         -> TranslationResult<Self> {
+    pub fn interface_call_name(interface: &Identifier,
+                               func_name: &str,
+                               for_type: &Identifier) -> String {
+        let qualified_impl = interface.child(func_name);
+
+        format!("{}_{}", identifier_to_c(&qualified_impl), identifier_to_c(&for_type))
+    }
+
+    pub fn translate_name(decl: &semantic::FunctionDecl) -> String {
+        match decl.implements.as_ref() {
+            Some(implements) => {
+                let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
+
+                Self::interface_call_name(
+                    &implements.interface,
+                    &decl.name,
+                    &for_type_name,
+                )
+            }
+
+            None => {
+                let qualified = decl.scope().namespace_qualify(&decl.name);
+                identifier_to_c(&qualified)
+            }
+        }
+    }
+
+    pub fn translate(function: &semantic::Function,
+                     unit: &mut TranslationUnit)
+                     -> TranslationResult<Self> {
         let local_vars: Vec<_> = function.local_decls.iter()
             .filter_map(|decl| match decl {
                 FunctionLocalDecl::Var(var) => Some(var),
@@ -148,48 +173,18 @@ impl FunctionDecl {
 
         let mut body = Block::translate(&function.block, Some(&local_vars), unit)?;
 
-        let result_default = match function.decl.kind {
-            /*
-                in a constructor, the result is initialized with an allocated and
-                zero-initialized instance of the class
-            */
-            FunctionKind::Constructor => {
-                // need the name of the class, not the actual c type (which is a pointer)
-                let class_name = match function.decl.return_type.as_ref() {
-                    Some(Type::Class(name)) => {
-                        name
-                    }
-                    _ => panic!("constructor must return a class type"),
-                };
-
-                let class_c_name = identifier_to_c(class_name);
-
-                let rc_alloc = Expression::function_call("System_Internal_Rc_GetMem", vec![
-                    Expression::function_call("sizeof", vec![Expression::raw(&class_c_name)]),
-                    Expression::string_literal(&class_name.to_string())
-                ]);
-
-                Some(Expression::static_cast(
-                    CType::Struct(class_c_name).into_pointer(),
-                    rc_alloc,
-                ))
-            }
-
-            _ => None,
-        };
-
         if !decl.return_type.is_void() {
             let result_decl = Variable {
-                default_value: result_default,
+                default_value: None,
                 name: "result".to_string(),
                 ctype: decl.return_type.clone(),
             };
 
             body.statements.insert(0, result_decl.decl_statement());
 
-            if function.decl.kind != FunctionKind::Constructor {
-                body.statements.insert(1, Expression::from("memset(&result, 0, sizeof(result)); "));
-            }
+            /* it shouldn't be necessary to zero-initialize the result, because the typechecker
+            should check that result is always initialized by the program */
+            // body.statements.insert(1, Expression::from("memset(&result, 0, sizeof(result)); "));
         }
 
         /*
@@ -207,15 +202,13 @@ impl FunctionDecl {
             })
             .collect();
 
-        if function.decl.kind == FunctionKind::Function {
-            for arg in rc_args.iter() {
-                body.statements.insert(0, Expression::Raw(
-                    format!("System_Internal_Rc_Retain({});", arg.name)
-                ));
-                body.statements.push(Expression::Raw(
-                    format!("System_Internal_Rc_Release({})", arg.name)
-                ));
-            }
+        for arg in rc_args.iter() {
+            body.statements.insert(0, Expression::Raw(
+                format!("System_Internal_Rc_Retain({});", arg.name)
+            ));
+            body.statements.push(Expression::Raw(
+                format!("System_Internal_Rc_Release({})", arg.name)
+            ));
         }
 
         if !decl.return_type.is_void() {

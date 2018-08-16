@@ -1,7 +1,14 @@
 use std::rc::Rc;
-use node::{self, Identifier};
+use linked_hash_map::LinkedHashMap;
+
+use node::{
+    self,
+    Identifier,
+    TypeName,
+};
 use semantic::*;
 use syntax;
+use types::Type;
 
 pub type TypeDecl = node::TypeDecl<SemanticContext>;
 pub type RecordDecl = node::RecordDecl<SemanticContext>;
@@ -9,6 +16,7 @@ pub type RecordMember = node::RecordMember<SemanticContext>;
 pub type RecordVariantPart = node::RecordVariantPart<SemanticContext>;
 pub type RecordVariantCase = node::RecordVariantCase<SemanticContext>;
 pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
+pub type InterfaceDecl = node::InterfaceDecl<SemanticContext>;
 pub type SetDecl = node::SetDecl<SemanticContext>;
 
 impl TypeDecl {
@@ -52,6 +60,12 @@ impl TypeDecl {
                 let scope = scope.as_ref().clone().with_type_alias(alias, aliased_type);
 
                 Ok((None, Rc::new(scope)))
+            }
+
+            node::TypeDecl::Interface(interface_decl) => {
+                let (interface_decl, scope) = InterfaceDecl::annotate(interface_decl, scope)?;
+
+                Ok((Some(node::TypeDecl::Interface(interface_decl)), scope))
             }
         }
     }
@@ -191,7 +205,7 @@ impl SetDecl {
                         SemanticError::unknown_type(enum_name.clone(), context.clone())
                     })?;
 
-                node::SetEnumeration::Named(enum_id)
+                node::SetEnumeration::Named(enum_id.clone())
             }
 
             inline @ node::SetEnumeration::Inline(_) => inline.clone(),
@@ -206,5 +220,99 @@ impl SetDecl {
 
     pub fn qualified_name(&self) -> Identifier {
         self.context.scope.namespace_qualify(&self.name)
+    }
+}
+
+impl InterfaceDecl {
+    fn valid_self_arg(arg: &syntax::FunctionArgSignature) -> bool {
+        /* the first parameter should have no modifiers and use the magic typename "Self" */
+        let scalar = match arg.decl_type.as_scalar() {
+            Some(scalar) => scalar,
+            None => return false,
+        };
+
+        if scalar.name.namespace.len() > 0 || scalar.name.name != "Self" {
+            return false;
+        }
+
+        if arg.modifier.is_some() {
+            return false;
+        }
+
+        true
+    }
+
+    pub fn get_implementation_sig(&self, name: &str, self_type: Type) -> Option<FunctionSignature> {
+        let mut sig = self.functions.get(name).cloned()?;
+        sig.args[0] = FunctionArgSignature {
+            decl_type: self_type,
+            modifier: None,
+        };
+
+        Some(sig)
+    }
+
+    pub fn qualified_name(&self) -> Identifier {
+        self.scope().namespace_qualify(&self.name)
+    }
+
+    pub fn annotate(interface_decl: &syntax::InterfaceDecl,
+                    scope: Rc<Scope>)
+                    -> SemanticResult<(Self, Rc<Scope>)> {
+        let context = SemanticContext {
+            token: interface_decl.context.token().clone(),
+            scope: scope.clone(),
+        };
+
+        let mut functions = LinkedHashMap::new();
+
+        let full_name = scope.namespace_qualify(&interface_decl.name);
+
+        for (func_name, parsed_sig) in interface_decl.functions.iter() {
+            assert!(!functions.contains_key(func_name),
+                    "interface should not contain duplicate functions");
+            assert_eq!(1, parsed_sig.args.len(),
+                       "arg list length should be 1 for parsed interface funcs");
+
+            if !Self::valid_self_arg(&parsed_sig.args[0]) {
+                return Err(SemanticError::invalid_self_arg(parsed_sig.args[0].clone(), context));
+            }
+
+            /* hack: replace `Self` with `var` as a placeholder so this passes typechecking
+            (the actual type we'll store is this interface itself, which isn't in scope yet, can
+            we forward declare it?) */
+            let mut untyped_sig = parsed_sig.clone();
+            untyped_sig.args[0] = syntax::FunctionArgSignature {
+                decl_type: TypeName::UntypedRef {
+                    context: parsed_sig.args[0].decl_type.context().clone()
+                },
+                modifier: None,
+            };
+
+            let mut func_sig = FunctionSignature::annotate(&untyped_sig, scope.clone())?;
+
+            /* add the proper type for `Self` */
+            func_sig.args[0] = FunctionArgSignature {
+                decl_type: Type::AnyImplementation(full_name.clone()),
+                modifier: None,
+            };
+
+            functions.insert(func_name.to_string(), func_sig);
+        }
+
+        let interface = InterfaceDecl {
+            name: interface_decl.name.clone(),
+            functions,
+            context,
+        };
+
+        let scope = Rc::new(scope.as_ref().clone()
+            .with_interface(interface.clone())?);
+
+        Ok((interface, scope))
+    }
+
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
     }
 }

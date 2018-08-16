@@ -20,10 +20,16 @@ fn parse_expr(src: &str) -> Expression {
 fn parses_simple_fn_call() {
     let expr = parse_expr("a()");
     assert!(expr.is_function_call());
-    let (target, args) = expr.unwrap_function_call();
+    let call = expr.unwrap_function_call();
 
-    assert!(target.is_identifier(&node::Identifier::from("a")));
-    assert_eq!(0, args.len());
+    match call {
+        node::FunctionCall::Function { target, args } => {
+            assert!(target.is_identifier(&node::Identifier::from("a")));
+            assert_eq!(0, args.len());
+        }
+
+        _ => panic!("expected a simple function call")
+    }
 }
 
 #[test]
@@ -195,14 +201,16 @@ fn parses_nested_function_calls() {
     let expr = parse_expr("test(hello('world'), goodbye(cruel('world')))");
 
     assert!(expr.is_function_call(), "result should be a function call expr");
-    let (test_id, test_args) = expr.unwrap_function_call();
+    let (test_id, test_args) = expr.unwrap_function_call()
+        .unwrap_function();
 
     assert!(test_id.is_identifier(&node::Identifier::from("test")));
     assert_eq!(2, test_args.len());
 
     let hello_func = test_args[0].clone();
     assert!(hello_func.is_function_call(), "first argument should be a function call expr");
-    let (hello_id, hello_args) = hello_func.unwrap_function_call();
+    let (hello_id, hello_args) = hello_func.unwrap_function_call()
+        .unwrap_function();
     assert!(hello_id.is_identifier(&node::Identifier::from("hello")));
     assert_eq!(1, hello_args.len());
     assert!(hello_args[0].is_any_literal_string());
@@ -210,12 +218,14 @@ fn parses_nested_function_calls() {
 
     let goodbye_func = test_args[1].clone();
     assert!(goodbye_func.is_function_call(), "second argument should be a function call expr");
-    let (goodbye_id, goodbye_args) = goodbye_func.unwrap_function_call();
+    let (goodbye_id, goodbye_args) = goodbye_func.unwrap_function_call()
+        .unwrap_function();
     assert!(goodbye_id.is_identifier(&node::Identifier::from("goodbye")));
     assert_eq!(1, goodbye_args.len());
     assert!(goodbye_args[0].is_function_call());
 
-    let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call();
+    let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call()
+        .unwrap_function();
     assert!(cruel_id.is_identifier(&node::Identifier::from("cruel")));
     assert_eq!(1, cruel_args.len());
     assert!(cruel_args[0].is_any_literal_string());

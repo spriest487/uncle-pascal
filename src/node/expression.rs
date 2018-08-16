@@ -52,6 +52,43 @@ impl<TContext> PartialEq for ObjectConstructorMember<TContext>
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum FunctionCall<TContext>
+    where TContext: Context,
+{
+    Function {
+        target: Box<Expression<TContext>>,
+
+        args: Vec<Expression<TContext>>,
+    },
+    Method {
+        interface_id: Identifier,
+        func_name: String,
+        for_type: TContext::Type,
+
+        args: Vec<Expression<TContext>>,
+    },
+}
+
+impl<TContext> FunctionCall<TContext>
+    where TContext: Context
+{
+    pub fn args(&self) -> &[Expression<TContext>] {
+        match self {
+            FunctionCall::Function { args, .. } => args,
+            FunctionCall::Method { args, .. } => args,
+        }
+    }
+
+    pub fn unwrap_function(self) -> (Expression<TContext>, Vec<Expression<TContext>>) {
+        match self {
+            FunctionCall::Function { target, args } => (*target, args),
+            FunctionCall::Method { interface_id, func_name, .. } =>
+                panic!("called unwrap_function on method call {}.{}", interface_id, func_name)
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TContext>
     where TContext: Context
 {
@@ -84,10 +121,9 @@ pub enum ExpressionValue<TContext>
         `x()`
         `x` where x is a function taking no arguments, or where all arguments have defaults
     */
-    FunctionCall {
-        target: Box<Expression<TContext>>,
-        args: Vec<Expression<TContext>>,
-    },
+    FunctionCall(FunctionCall<TContext>),
+
+//    VirtualCall(VirtualCall<TContext>),
 
     /**
         conversion between castable types.
@@ -386,10 +422,26 @@ impl<TContext> Expression<TContext>
         let context = target.context.clone();
 
         Expression {
-            value: ExpressionValue::FunctionCall {
+            value: ExpressionValue::FunctionCall(FunctionCall::Function {
                 target: Box::new(target),
                 args: args.into_iter().collect(),
-            },
+            }),
+            context: context.into(),
+        }
+    }
+
+    pub fn method_call(interface_id: impl Into<Identifier>,
+                       func_name: impl ToString,
+                       for_type: impl Into<TContext::Type>,
+                       args: impl IntoIterator<Item=Self>,
+                       context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::FunctionCall(FunctionCall::Method {
+                interface_id: interface_id.into(),
+                func_name: func_name.to_string(),
+                for_type: for_type.into(),
+                args: args.into_iter().collect(),
+            }),
             context: context.into(),
         }
     }
@@ -603,9 +655,9 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn unwrap_function_call(self) -> (Self, Vec<Self>) {
+    pub fn unwrap_function_call(self) -> FunctionCall<TContext> {
         match self.value {
-            ExpressionValue::FunctionCall { target, args } => (*target, args),
+            ExpressionValue::FunctionCall(call) => call,
             _ => panic!("called unwrap_function_call on something other than a function call expr"),
         }
     }
@@ -809,12 +861,31 @@ pub fn transform_expressions<TContext>(
             replace(Expression::const_value(const_expr, root_expr.context))
         }
 
-        ExpressionValue::FunctionCall { target, args } => {
-            let target = transform_expressions(*target, replace);
-            let args: Vec<_> = args.into_iter().map(|arg| transform_expressions(arg, replace))
-                .collect();
+        ExpressionValue::FunctionCall(call) => {
+            match call {
+                FunctionCall::Function { target, args } => {
+                    let args: Vec<_> = args.into_iter()
+                        .map(|arg| transform_expressions(arg, replace))
+                        .collect();
 
-            replace(Expression::function_call(target, args))
+                    let target = transform_expressions(*target, replace);
+                    replace(Expression::function_call(target, args))
+                }
+
+                FunctionCall::Method { interface_id, func_name, for_type, args } => {
+                    let args: Vec<_> = args.into_iter()
+                        .map(|arg| transform_expressions(arg, replace))
+                        .collect();
+
+                    replace(Expression::method_call(
+                        interface_id,
+                        func_name,
+                        for_type,
+                        args,
+                        root_expr.context,
+                    ))
+                }
+            }
         }
 
         ExpressionValue::TypeCast { target_type, from_value } => {

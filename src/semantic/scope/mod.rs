@@ -1,3 +1,21 @@
+mod bindings;
+mod scoped_symbol;
+mod interface;
+
+#[cfg(test)]
+mod test;
+
+pub use self::bindings::{
+    BindingKind,
+    SymbolBinding,
+};
+pub use self::scoped_symbol::{
+    ScopedSymbol
+};
+use self::interface::{
+    Interface,
+};
+
 use std::{
     collections::hash_map::*,
     mem::size_of,
@@ -19,71 +37,43 @@ use consts::{
 };
 use semantic::*;
 
-#[derive(Copy, Clone, Debug, PartialEq)]
-pub enum BindingKind {
-    Mutable,
-    Uninitialized,
-    Immutable,
+#[derive(Clone, Debug)]
+pub struct NamedFunction {
+    decl: FunctionDecl,
+    defined: bool,
 }
 
-impl fmt::Display for BindingKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            BindingKind::Mutable => write!(f, "mutable"),
-            BindingKind::Uninitialized => write!(f, "uninitialized"),
-            BindingKind::Immutable => write!(f, "immutable"),
-        }
-    }
-}
-
-impl BindingKind {
-    pub fn mutable(&self) -> bool {
-        match self {
-            | BindingKind::Uninitialized
-            | BindingKind::Mutable =>
-                true,
-
-            | BindingKind::Immutable =>
-                false
-        }
+fn expect_overload_ok(new: &NamedFunction,
+                      previous: &NamedFunction,
+                      interface: Option<&Identifier>)
+                      -> SemanticResult<()> {
+    /* can't have two different declarations with different signatures */
+    if new.decl.signature() != previous.decl.signature() {
+        return Err(SemanticError::name_in_use(&new.decl.name, new.decl.context.clone()));
     }
 
-    pub fn initialized(&self) -> bool {
-        match self {
-            | BindingKind::Immutable
-            | BindingKind::Mutable =>
-                true,
-
-            | BindingKind::Uninitialized =>
-                false
-        }
+    /* we can forward-declare implementations as many times as we like, but we can
+        never define them multiple times */
+    if new.defined && previous.defined {
+        return Err(SemanticError::multiple_function_def(
+            new.decl.clone(),
+            previous.decl.clone(),
+            interface.cloned(),
+        ));
     }
 
-    pub fn initialize(self) -> Self {
-        match self {
-            | BindingKind::Mutable
-            | BindingKind::Immutable =>
-                self,
-            | BindingKind::Uninitialized =>
-                BindingKind::Mutable,
-        }
-    }
+    Ok(())
 }
 
 #[derive(Clone, Debug)]
-pub struct SymbolBinding {
-    decl_type: Type,
-    kind: BindingKind,
-}
-
-#[derive(Clone, Debug)]
-pub enum Named {
+enum Named {
     TypeAlias(Type),
     Record(RecordDecl),
     Class(RecordDecl),
-    Function(FunctionDecl),
+    Function(NamedFunction),
     Const(ConstantExpression),
     Enumeration(EnumerationDecl),
+    Interface(Interface),
     Set(SetDecl),
     Symbol(SymbolBinding),
 }
@@ -123,193 +113,6 @@ pub struct Scope {
      e.g. uses System.* adds String => System.String
      */
     imported_names: HashMap<Identifier, Identifier>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum ScopedSymbol {
-    /* symbol refers to a name that is in the current scope */
-    Local {
-        name: Identifier,
-        decl_type: Type,
-        binding_kind: BindingKind,
-    },
-
-    RecordMember {
-        record_id: Identifier,
-        record_type: Identifier,
-        binding_kind: BindingKind,
-        name: String,
-        member_type: Type,
-    },
-}
-
-
-impl ScopedSymbol {
-    pub fn decl_type(&self) -> &Type {
-        match self {
-            ScopedSymbol::Local { decl_type, .. } =>
-                decl_type,
-
-            ScopedSymbol::RecordMember { member_type, .. } =>
-                member_type,
-        }
-    }
-
-    pub fn name(&self) -> Identifier {
-        match self {
-            ScopedSymbol::Local { name, .. } =>
-                name.clone(),
-            ScopedSymbol::RecordMember { record_id, name, .. } =>
-                record_id.child(name),
-        }
-    }
-
-    pub fn initialized(&self) -> bool {
-        match self {
-            | ScopedSymbol::RecordMember { binding_kind, .. }
-            | ScopedSymbol::Local { binding_kind, .. } =>
-                binding_kind.initialized(),
-        }
-    }
-
-    pub fn mutable(&self, from_ns: Option<&Identifier>) -> bool {
-        match self {
-            ScopedSymbol::Local { binding_kind, .. } => binding_kind.mutable(),
-            ScopedSymbol::RecordMember { record_id, binding_kind, .. } => {
-                let same_ns = record_id.parent().as_ref() == from_ns;
-                same_ns && binding_kind.mutable()
-            }
-        }
-    }
-
-    pub fn binding_kind(&self) -> BindingKind {
-        match self {
-            ScopedSymbol::Local { binding_kind, .. } => *binding_kind,
-            ScopedSymbol::RecordMember { binding_kind, .. } => *binding_kind,
-        }
-    }
-}
-
-impl fmt::Display for ScopedSymbol {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ScopedSymbol::Local { name, decl_type, binding_kind } =>
-                write!(f, "{} ({} {})", name, binding_kind, decl_type),
-
-            ScopedSymbol::RecordMember {
-                record_id,
-                name,
-                member_type,
-                record_type,
-                binding_kind
-            } => {
-                write!(f, "{} ({} member of {} record {})",
-                       record_id.child(name),
-                       member_type,
-                       binding_kind,
-                       record_type.name)
-            }
-        }
-    }
-}
-
-impl node::Symbol for ScopedSymbol {
-    type Type = Type;
-}
-
-impl node::ToSource for ScopedSymbol {
-    fn to_source(&self) -> String {
-        match self {
-            ScopedSymbol::Local { name, .. } =>
-                name.to_source(),
-            ScopedSymbol::RecordMember { record_id, name, .. } =>
-                format!("{}.{}", record_id.to_source(), name),
-        }
-    }
-}
-
-impl fmt::Debug for Scope {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{} {{", self.namespace_description())?;
-
-        let mut types = Vec::new();
-        let mut symbols = Vec::new();
-        let mut functions = Vec::new();
-        let mut classes = Vec::new();
-        let mut records = Vec::new();
-        let mut consts = Vec::new();
-        let mut enums = Vec::new();
-        let mut sets = Vec::new();
-
-        for (name, named) in self.names.iter() {
-            match named {
-                Named::TypeAlias(ty) => types.push((name, ty)),
-                Named::Symbol(sym) => symbols.push((name, sym)),
-                Named::Function(func) => functions.push((name, func)),
-                Named::Class(decl) => classes.push((name, decl)),
-                Named::Record(decl) => records.push((name, decl)),
-                Named::Const(val) => consts.push((name, val)),
-                Named::Enumeration(decl) => enums.push((name, decl)),
-                Named::Set(decl) => sets.push((name, decl)),
-            }
-        }
-
-        writeln!(f, "\ttypes: [")?;
-        for (name, declared_type) in types {
-            writeln!(f, "\t\t{}: {}", name, declared_type)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tsymbols: [")?;
-        for (name, binding) in symbols {
-            writeln!(f, "\t\t{}: {} ({})", name, binding.decl_type, binding.kind)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tfunctions: [")?;
-        for (name, func) in functions {
-            writeln!(f, "\t\t{}: {}", name, func.name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tclasses: [")?;
-        for (name, class) in classes {
-            writeln!(f, "\t\t{}: {}", name, class.name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\trecords: [")?;
-        for (name, record) in records {
-            writeln!(f, "\t\t{}: {}", name, record.name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tenumerations: [")?;
-        for (name, enum_decl) in enums {
-            writeln!(f, "\t\t{}: {}", name, enum_decl.name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tsets: [")?;
-        for (name, set_decl) in sets {
-            writeln!(f, "\t\t{}: {}", name, set_decl.name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\tconsts: [")?;
-        for (name, val) in consts {
-            writeln!(f, "\t\t{}: {}", name, val.to_source())?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "\timported names: [")?;
-        for (name, global_name) in self.imported_names.iter() {
-            writeln!(f, "\t\t{}: {}", name, global_name)?;
-        }
-        writeln!(f, "\t]")?;
-
-        writeln!(f, "}}")
-    }
 }
 
 impl Scope {
@@ -378,9 +181,9 @@ impl Scope {
 
     pub fn namespace_description(&self) -> String {
         match &self.namespace {
-            ScopeNamespace::Unit(ns) => format!("Unit namespace `{}`", ns),
-            ScopeNamespace::Local(ns) => format!("Local namespace (in `{}`)", ns),
-            ScopeNamespace::Root => "Root namespace".to_string(),
+            ScopeNamespace::Unit(ns) => format!("unit namespace `{}`", ns),
+            ScopeNamespace::Local(ns) => format!("local namespace (in `{}`)", ns),
+            ScopeNamespace::Root => "root namespace".to_string(),
         }
     }
 
@@ -401,10 +204,68 @@ impl Scope {
         self
     }
 
-    pub fn with_function(mut self, decl: FunctionDecl) -> Self {
-        let name = self.namespace_qualify(&decl.name);
-        self.names.insert(name, Named::Function(decl));
-        self
+    pub fn with_function_def(self, func: Function) -> SemanticResult<Self> {
+        self.with_function(func.decl, true)
+    }
+
+    pub fn with_function_decl(self, func: FunctionDecl) -> SemanticResult<Self> {
+        self.with_function(func, false)
+    }
+
+    fn with_function(mut self, decl: FunctionDecl, defined: bool) -> SemanticResult<Self> {
+        let new_func = NamedFunction {
+            decl,
+            defined,
+        };
+
+        match new_func.decl.implements.clone() {
+            Some(implements) => {
+                let implemented_for = self.full_type_name(&implements.for_type)
+                    .expect("typechecker should reject invalid impl types");
+
+                self.names.get_mut(&implements.interface)
+                    /* the interface we are implementing must have already been declared somewhere */
+                    .and_then(|named| match named {
+                        Named::Interface(iface) => Some(iface),
+                        _ => None
+                    })
+                    .ok_or_else(|| SemanticError::unknown_symbol(
+                        implements.interface.clone(),
+                        new_func.decl.context.clone(),
+                    ))
+                    .and_then(|interface| {
+                        interface.add_impl(implemented_for, new_func.clone())
+                    })?;
+
+
+                Ok(self)
+            }
+
+            /* normal function decl or definition */
+            None => {
+                let name = self.namespace_qualify(&new_func.decl.name);
+
+                /* it's fine to declare a function with the same signature many times, but we can't
+                define it more than once, and we can't declare it with a different signature */
+                match self.names.entry(name.clone()) {
+                    /* this is the first decl */
+                    Entry::Vacant(slot) => {
+                        slot.insert(Named::Function(new_func));
+                    }
+
+                    Entry::Occupied(mut slot) => {
+                        let previous_decl = match slot.get_mut() {
+                            Named::Function(previous) => previous,
+                            _ => return Err(SemanticError::name_in_use(name, new_func.decl.context)),
+                        };
+                        expect_overload_ok(&new_func, previous_decl, None)?;
+
+                        previous_decl.defined = previous_decl.defined || defined;
+                    }
+                }
+                Ok(self)
+            }
+        }
     }
 
     pub fn with_class(mut self, decl: RecordDecl) -> Self {
@@ -412,6 +273,20 @@ impl Scope {
         assert_eq!(RecordKind::Class, decl.kind);
         self.names.insert(name, Named::Class(decl));
         self
+    }
+
+    pub fn with_interface(mut self, decl: InterfaceDecl) -> SemanticResult<Self> {
+        let name = self.namespace_qualify(&decl.name);
+
+        match self.names.entry(name.clone()) {
+            Entry::Vacant(slot) => {
+                slot.insert(Named::Interface(Interface::new(decl)));
+            }
+
+            Entry::Occupied(_) => return Err(SemanticError::name_in_use(name, decl.context)),
+        }
+
+        Ok(self)
     }
 
     pub fn with_enumeration(mut self, decl: EnumerationDecl) -> Self {
@@ -470,7 +345,7 @@ impl Scope {
 
     pub fn initialize_symbol(mut self, name: &Identifier) -> Self {
         let find_symbol = self.find_named(name)
-            .map(|(full_name, named)| (full_name, named.clone()));
+            .map(|(full_name, named)| (full_name.clone(), named.clone()));
 
         match find_symbol {
             Some((full_name, Named::Symbol(mut binding))) => {
@@ -545,7 +420,7 @@ impl Scope {
             Some(Named::Function(func)) => {
                 Some(ScopedSymbol::Local {
                     name: name.clone(),
-                    decl_type: Type::Function(Box::new(func.signature())),
+                    decl_type: Type::Function(Box::new(func.decl.signature())),
                     binding_kind: BindingKind::Immutable,
                 })
             }
@@ -588,7 +463,7 @@ impl Scope {
                 let (func_id, func) = self.get_function(name)?;
 
                 Some(ScopedSymbol::Local {
-                    name: func_id,
+                    name: func_id.clone(),
                     decl_type: Type::Function(Box::from(func.signature())),
                     binding_kind: BindingKind::Immutable,
                 })
@@ -621,57 +496,71 @@ impl Scope {
             })
     }
 
-    fn find_named(&self, name: &Identifier) -> Option<(Identifier, &Named)> {
+    /* workaround until HashMap::get_key_value is stable */
+    fn named_key_value(&self, name: &Identifier) -> Option<(&Identifier, &Named)> {
+        let named = self.names.get(name)?;
+        let key = self.names.keys().find(|k| *k == name).unwrap();
+        Some((key, named))
+    }
+
+    fn find_named(&self, name: &Identifier) -> Option<(&Identifier, &Named)> {
         self.unit_namespace().as_ref()
             .and_then(|local_name| {
                 /* local name? */
                 let name_in_local_ns = local_name.append(name);
-                self.names.get(&name_in_local_ns).map(|named| (name_in_local_ns, named))
+                self.named_key_value(&name_in_local_ns)
             })
             .or_else(|| {
                 /* name imported from another unit? */
                 let global_name = self.imported_names.get(name)?;
-                self.names.get(global_name).map(|named| (global_name.clone(), named))
+                self.named_key_value(&global_name)
             })
             .or_else(|| {
                 /* fully-qualified global name? */
-                self.names.get(name).map(|named| (name.clone(), named))
+                self.named_key_value(name)
             })
     }
 
     pub fn get_type_alias(&self, alias: &Identifier) -> Option<Type> {
         let result = match self.find_named(alias) {
-            Some((class_name, Named::Class(_))) =>
-                Type::Class(class_name),
-            Some((record_name, Named::Record(_))) =>
-                Type::Record(record_name),
-            Some((enumeration_name, Named::Enumeration(_))) =>
-                Type::Enumeration(enumeration_name),
-            Some((set_name, Named::Set(_))) =>
-                Type::Set(set_name),
-            Some((_, Named::TypeAlias(ty))) =>
-                ty.clone(),
+            | Some((class_name, Named::Class(_)))
+            => Type::Class(class_name.clone()),
 
-            None |
-            Some((_, Named::Const(_))) |
-            Some((_, Named::Function(_))) |
-            Some((_, Named::Symbol(_))) =>
-                return None,
+            | Some((record_name, Named::Record(_)))
+            => Type::Record(record_name.clone()),
+
+            | Some((interface_name, Named::Interface(_)))
+            => Type::AnyImplementation(interface_name.clone()),
+
+            | Some((enumeration_name, Named::Enumeration(_)))
+            => Type::Enumeration(enumeration_name.clone()),
+
+            | Some((set_name, Named::Set(_)))
+            => Type::Set(set_name.clone()),
+
+            | Some((_, Named::TypeAlias(ty)))
+            => ty.clone(),
+
+            | None
+            | Some((_, Named::Const(_)))
+            | Some((_, Named::Function(_)))
+            | Some((_, Named::Symbol(_)))
+            => return None,
         };
 
         Some(result)
     }
 
-    pub fn get_enumeration(&self, name: &Identifier) -> Option<(Identifier, &EnumerationDecl)> {
+    pub fn get_enumeration(&self, name: &Identifier) -> Option<(&Identifier, &EnumerationDecl)> {
         match self.find_named(name) {
-            Some((ref id, Named::Enumeration(decl))) => Some((id.clone(), decl)),
+            Some((id, Named::Enumeration(decl))) => Some((id, decl)),
             _ => None,
         }
     }
 
-    pub fn get_set(&self, name: &Identifier) -> Option<(Identifier, &SetDecl)> {
+    pub fn get_set(&self, name: &Identifier) -> Option<(&Identifier, &SetDecl)> {
         match self.find_named(name) {
-            Some((ref id, Named::Set(decl))) => Some((id.clone(), decl)),
+            Some((id, Named::Set(decl))) => Some((id, decl)),
             _ => None,
         }
     }
@@ -698,27 +587,27 @@ impl Scope {
         }
     }
 
-    pub fn get_function(&self, name: &Identifier) -> Option<(Identifier, &FunctionDecl)> {
+    pub fn get_function(&self, name: &Identifier) -> Option<(&Identifier, &FunctionDecl)> {
         match self.find_named(name) {
-            Some((ref id, Named::Function(decl))) => Some((id.clone(), decl)),
+            Some((id, Named::Function(named_func))) => Some((id, &named_func.decl)),
             _ => None,
         }
     }
 
-    pub fn get_record(&self, name: &Identifier) -> Option<(Identifier, &RecordDecl)> {
+    pub fn get_record(&self, name: &Identifier) -> Option<(&Identifier, &RecordDecl)> {
         match self.find_named(name) {
-            Some((ref id, Named::Record(decl))) => {
+            Some((id, Named::Record(decl))) => {
                 assert_eq!(RecordKind::Record, decl.kind);
-                Some((id.clone(), decl))
+                Some((id, decl))
             }
             _ => None,
         }
     }
 
-    pub fn get_const(&self, name: &Identifier) -> Option<(Identifier, &ConstantExpression)> {
+    pub fn get_const(&self, name: &Identifier) -> Option<(&Identifier, &ConstantExpression)> {
         match self.find_named(name) {
-            Some((ref id, Named::Const(const_expr))) => {
-                Some((id.clone(), const_expr))
+            Some((id, Named::Const(const_expr))) => {
+                Some((id, const_expr))
             }
             _ => None,
         }
@@ -752,39 +641,56 @@ impl Scope {
         Some(ScopedSymbol::RecordMember {
             record_id: parent_sym.name(),
             name: member_name.to_owned(),
-            record_type: record_id,
+            record_type: record_id.clone(),
             member_type: member.decl_type.clone(),
             binding_kind: parent_sym.binding_kind(),
         })
     }
 
-    pub fn get_class(&self, name: &Identifier) -> Option<(Identifier, &RecordDecl)> {
+    pub fn get_class(&self, name: &Identifier) -> Option<(&Identifier, &RecordDecl)> {
         match self.find_named(name)? {
-            (ref id, Named::Class(decl)) => {
+            (id, Named::Class(decl)) => {
                 assert_eq!(RecordKind::Class, decl.kind);
-                Some((id.clone(), decl))
+                Some((id, decl))
             }
             _ => None,
         }
     }
 
-    /* given the fully qualified name of a class, find the destructor
-    function for that class. None if the class doesn't exist or doesn't have
-    a destructor */
-    pub fn get_destructor(&self, name: &Identifier) -> Option<(&Identifier, &FunctionDecl)> {
-        let (_, class) = self.get_class(name)?;
+    /**
+         find the implementation of the magic interface function
+        `System.Disposable#Dispose` to act as the destructor for the class type
+        named by `name`
+     */
+    pub fn get_destructor(&self, ty: &Type) -> Option<(&Identifier, &FunctionDecl)> {
+        let destructor_interface = Identifier::from("System.Disposable");
+        let destructor_fn = "Dispose";
 
-        self.names.iter()
-            .filter_map(|(name, named)| match named {
-                Named::Function(func) => {
-                    match func.is_destructor_of(class) {
-                        true => Some((name, func)),
-                        false => None,
-                    }
-                }
-                _ => None
-            })
-            .next()
+        self.get_interface_impl(ty, &destructor_interface, destructor_fn)
+    }
+
+    /**
+        for a local interface name, impl type and func name, get the qualified interface name and
+        func decl matching those parameters if it exists
+    */
+    pub fn get_interface_impl(&self,
+                              of_type: &Type,
+                              interface: &Identifier,
+                              function: &str)
+                              -> Option<(&Identifier, &FunctionDecl)> {
+        let (interface_id, interface) = self.get_interface(interface)?;
+        let of_type = self.full_type_name(of_type)?;
+
+        let method_decl = interface.get_impl(&of_type, function)?;
+
+        Some((interface_id, method_decl))
+    }
+
+    pub fn get_interface(&self, name: &Identifier) -> Option<(&Identifier, &Interface)> {
+        match self.find_named(name) {
+            | Some((name, Named::Interface(iface_decl))) => Some((name, iface_decl)),
+            | _ => None,
+        }
     }
 
     pub fn align_of(&self, ty: &Type) -> usize {
@@ -817,120 +723,230 @@ impl Scope {
         };
 
         match ty {
-            Type::Nil |
-            Type::RawPointer |
-            Type::Pointer(_) |
-            Type::Function(_) |
-            Type::NativeInt |
-            Type::UntypedRef |
-            Type::NativeUInt =>
-                size_of::<usize>(),
+            | Type::AnyImplementation(_)
+            | Type::Nil
+            | Type::RawPointer
+            | Type::Pointer(_)
+            | Type::Function(_)
+            | Type::NativeInt
+            | Type::UntypedRef
+            | Type::NativeUInt
+            => size_of::<usize>(),
 
-            Type::Int64 |
-            Type::UInt64 |
-            Type::Float64 =>
-                8,
+            | Type::Int64
+            | Type::UInt64
+            | Type::Float64
+            => 8,
 
-            Type::Set(id) => {
+            | Type::Set(id) => {
                 let (_, set_decl) = self.get_set(id)
                     .expect("set type passed to size_of must exist");
                 set_size(set_decl)
             }
 
-            Type::Enumeration(id) => {
+            | Type::Enumeration(id) => {
                 let (_, enum_decl) = self.get_enumeration(id)
                     .expect("enum type passed to size_of must exist");
                 enum_size(enum_decl)
             }
 
-            Type::UInt32 |
-            Type::Int32 =>
-                4,
+            | Type::UInt32
+            | Type::Int32
+            => 4,
 
-            Type::Byte =>
-                1,
+            | Type::Byte => 1,
 
-            Type::Boolean =>
-                1,
+            | Type::Boolean => 1,
 
-            Type::Record(name) => {
+            | Type::Record(name) => {
                 let (_, record_decl) = self.get_record(name).expect("record type passed to size_of must exist");
                 self.size_of_record(record_decl)
             }
 
-            Type::Class(name) => {
+            | Type::Class(name) => {
                 let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
                 self.size_of_record(class_decl)
             }
 
-            Type::DynamicArray(_array) => {
+            | Type::DynamicArray(_array) => {
                 /* dynamic arrays are heap-allocated and so they *should* just
                 be a single pointer... currently this is probably not true */
                 size_of::<usize>()
             }
 
-            Type::Array(array) =>
+            | Type::Array(array) =>
                 array.total_elements() as usize * self.size_of(&array.element),
+        }
+    }
+
+    /**
+        for a given type, return pairs of (interface ID, method) for all interface method
+        implementations that exist for the type
+    */
+    pub fn get_interface_impls(&self, ty: &Type) -> Vec<(&Identifier, &FunctionDecl)> {
+        let type_name = match self.full_type_name(ty) {
+            Some(name) => name,
+            None => return vec![],
+        };
+
+        self.names.iter()
+            .filter_map(|(name, named)| {
+                match named {
+                    Named::Interface(iface) => Some((name, iface)),
+                    _ => None
+                }
+            })
+            .flat_map(|(iface_name, iface)| {
+                iface.impls_for_type(&type_name)
+                    .into_iter()
+                    .map(move |impl_fn| (iface_name, impl_fn))
+            })
+            .collect()
+    }
+
+    pub fn type_implements(&self, ty: &Type, interface_id: &Identifier) -> bool {
+        if let Type::AnyImplementation(ty_interface) = ty {
+            return interface_id == ty_interface;
+        }
+
+        self.full_type_name(ty)
+            .and_then(|type_name| {
+                let (_, iface) = self.get_interface(interface_id)?;
+
+                /*
+                   checking that all members are implemented should be done separately,
+                   so just check if we have any at all
+                */
+                let implemented = iface.impls_for_type(&type_name).len() > 0;
+                Some(implemented)
+            })
+            .unwrap_or(false)
+    }
+
+    pub fn full_type_name(&self, ty: &Type) -> Option<Identifier> {
+        match ty {
+            | Type::Class(name) => Some(self.get_class(&name)?.0.clone()),
+            | Type::Record(name) => Some(self.get_record(&name)?.0.clone()),
+            | Type::Set(name) => Some(self.get_set(&name)?.0.clone()),
+            | Type::Enumeration(name) => Some(self.get_enumeration(&name)?.0.clone()),
+
+            | Type::Boolean
+            | Type::Byte
+            | Type::Int32
+            | Type::UInt32
+            | Type::Int64
+            | Type::UInt64
+            | Type::Float64 =>
+                return Some(Identifier::from(&Type::name(Some(ty)))),
+
+            _ =>
+                return None,
         }
     }
 }
 
-#[cfg(test)]
-mod test {
-    use std::rc::Rc;
-    use super::*;
-    use source;
-    use tokens;
-    use keywords;
-    use consts::IntConstant;
+impl fmt::Debug for Scope {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{} {{", self.namespace_description())?;
 
-    fn fake_context() -> SemanticContext {
-        let location = source::Location::new("test", 0, 0);
-        let token = tokens::Keyword(keywords::Program);
-        SemanticContext {
-            token: source::Token::new(token, location),
-            scope: Rc::new(Scope::new_root()),
-        }
-    }
+        let mut types = Vec::new();
+        let mut symbols = Vec::new();
+        let mut functions = Vec::new();
+        let mut classes = Vec::new();
+        let mut interfaces = Vec::new();
+        let mut records = Vec::new();
+        let mut consts = Vec::new();
+        let mut enums = Vec::new();
+        let mut sets = Vec::new();
 
-    #[test]
-    fn resolves_consts_in_referenced_units() {
-        let const_val = ConstantExpression::Integer(IntConstant::from(3));
-
-        let imported = Scope::new_unit("NS1")
-            .with_const("CONST1", const_val.clone());
-
-        let scope = Scope::new_unit("NS2")
-            .reference(&imported, UnitReferenceKind::Namespaced);
-
-        let expected_id = Identifier::from("NS1.CONST1");
-        match scope.get_const(&expected_id) {
-            Some((result_id, result_val)) => {
-                assert_eq!(expected_id, result_id);
-                assert_eq!(const_val, *result_val);
+        for (name, named) in self.names.iter() {
+            match named {
+                Named::TypeAlias(ty) => types.push((name, ty)),
+                Named::Symbol(sym) => symbols.push((name, sym)),
+                Named::Function(func) => functions.push((name, func)),
+                Named::Class(decl) => classes.push((name, decl)),
+                Named::Record(decl) => records.push((name, decl)),
+                Named::Const(val) => consts.push((name, val)),
+                Named::Enumeration(decl) => enums.push((name, decl)),
+                Named::Set(decl) => sets.push((name, decl)),
+                Named::Interface(iface) => interfaces.push((name, iface)),
             }
-            None => panic!("name {} must be found in scope {:?}", expected_id, scope)
         }
-    }
 
-    #[test]
-    fn add_record_adds_record_in_local_ns() {
-        let record_decl = RecordDecl {
-            context: fake_context(),
-            members: vec![],
-            name: "World".to_string(),
-            kind: RecordKind::Record,
-            variant_part: None,
-        };
+        writeln!(f, "\ttypes: [")?;
+        for (name, declared_type) in types {
+            writeln!(f, "\t\t{}: {}", name, declared_type)?;
+        }
+        writeln!(f, "\t]")?;
 
-        let scope = Scope::new_unit("Hello")
-            .with_record(record_decl);
+        writeln!(f, "\tsymbols: [")?;
+        for (name, binding) in symbols {
+            writeln!(f, "\t\t{}: {} ({})", name, binding.decl_type, binding.kind)?;
+        }
+        writeln!(f, "\t]")?;
 
-        let (result_id, result) = scope.get_record(&Identifier::from("Hello.World"))
-            .unwrap_or_else(|| {
-                panic!("get_record should return a result in scope {:?}", scope)
-            });
-        assert_eq!("World", &result.name);
-        assert_eq!(Identifier::from("Hello.World"), result_id);
+        writeln!(f, "\tfunctions: [")?;
+        for (name, func) in functions {
+            let defined = if func.defined { "defined" } else { "undefined" };
+            writeln!(f, "\t\t{}: {} ({})", name, func.decl.name, defined)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tclasses: [")?;
+        for (name, class) in classes {
+            writeln!(f, "\t\t{}: {}", name, class.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tinterfaces: [")?;
+        for (name, iface) in interfaces {
+            writeln!(f, "\t\t{}: {}", name, iface.decl.name)?;
+
+            for (func_name, impl_func) in iface.members.iter() {
+                for (impl_ty, impl_fn) in impl_func.impls_by_type.iter() {
+                    writeln!(
+                        f,
+                        "\t\t\t* `{}` implemented for {} in {} ({})",
+                        func_name,
+                        impl_ty,
+                        impl_fn.decl.scope().namespace_description(),
+                        if impl_fn.defined { "defined" } else { "undefined" },
+                    )?;
+                }
+            }
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\trecords: [")?;
+        for (name, record) in records {
+            writeln!(f, "\t\t{}: {}", name, record.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tenumerations: [")?;
+        for (name, enum_decl) in enums {
+            writeln!(f, "\t\t{}: {}", name, enum_decl.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tsets: [")?;
+        for (name, set_decl) in sets {
+            writeln!(f, "\t\t{}: {}", name, set_decl.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tconsts: [")?;
+        for (name, val) in consts {
+            writeln!(f, "\t\t{}: {}", name, val.to_source())?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\timported names: [")?;
+        for (name, global_name) in self.imported_names.iter() {
+            writeln!(f, "\t\t{}: {}", name, global_name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "}}")
     }
 }

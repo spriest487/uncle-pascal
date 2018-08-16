@@ -4,6 +4,8 @@ pub mod expression;
 pub mod to_source;
 pub mod function_signature;
 
+use linked_hash_map::LinkedHashMap;
+
 use std::{
     fmt,
     iter,
@@ -173,13 +175,6 @@ impl<TContext> Unit<TContext>
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub enum FunctionKind {
-    Function,
-    Constructor,
-    Destructor,
-}
-
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionArgModifier {
     Const,
@@ -209,6 +204,14 @@ pub struct FunctionArg<TContext>
 }
 
 #[derive(Debug, Clone)]
+pub struct InterfaceImplementation<TContext>
+    where TContext: Context
+{
+    pub interface: Identifier,
+    pub for_type: TContext::Type
+}
+
+#[derive(Debug, Clone)]
 pub struct FunctionDecl<TContext>
     where TContext: Context
 {
@@ -216,7 +219,7 @@ pub struct FunctionDecl<TContext>
     pub context: TContext,
 
     pub return_type: Option<TContext::Type>,
-    pub kind: FunctionKind,
+    pub implements: Option<InterfaceImplementation<TContext>>,
     pub modifiers: Vec<FunctionModifier>,
 
     pub args: Vec<FunctionArg<TContext>>,
@@ -232,6 +235,19 @@ impl<TContext> FunctionDecl<TContext>
                 _ => None,
             })
             .next()
+    }
+
+    pub fn signature(&self) -> FunctionSignature<TContext::Type> {
+        FunctionSignature {
+            args: self.args.iter()
+                .map(|decl| FunctionArgSignature {
+                    decl_type: decl.decl_type.clone(),
+                    modifier: decl.modifier.clone(),
+                })
+                .collect(),
+            return_type: self.return_type.clone(),
+            modifiers: self.modifiers.clone(),
+        }
     }
 }
 
@@ -267,6 +283,15 @@ impl<TContext> Function<TContext>
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct InterfaceDecl<TContext>
+    where TContext: Context
+{
+    pub name: String,
+    pub context: TContext,
+    pub functions: LinkedHashMap<String, FunctionSignature<TContext::Type>>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Block<TContext>
     where TContext: Context
@@ -282,6 +307,7 @@ pub enum TypeDecl<TContext>
     Record(RecordDecl<TContext>),
     Enumeration(EnumerationDecl<TContext>),
     Set(SetDecl<TContext>),
+    Interface(InterfaceDecl<TContext>),
     Alias {
         context: TContext,
 

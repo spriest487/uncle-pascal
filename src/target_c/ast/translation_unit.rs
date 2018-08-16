@@ -3,6 +3,9 @@ use linked_hash_set::LinkedHashSet;
 use node::{
     Identifier,
     Implementation,
+    UnitDecl,
+    TypeDecl,
+    RecordKind,
 };
 use target_c::{
     ast::{
@@ -10,15 +13,20 @@ use target_c::{
         Declaration,
         Block,
         Class,
+        Interface,
         Expression,
     },
 };
-use semantic;
+use semantic::{
+    self,
+    Scope,
+};
 
 pub struct TranslationUnit {
     decls: Vec<Declaration>,
 
     classes: Vec<Class>,
+    interfaces: Vec<Interface>,
     string_literals: LinkedHashSet<String>,
 
     initialization: Vec<Block>,
@@ -42,18 +50,32 @@ impl TranslationUnit {
         &self.classes
     }
 
+//    pub fn interfaces(&self) -> &[Interface] {
+//        &self.interfaces
+//    }
+
     fn add_implementation_decl(&mut self,
-                               decl: &semantic::Implementation)
+                               decl: &semantic::Implementation,
+                               unit_scope: &Scope)
                                -> TranslationResult<()> {
         let impl_decl = Declaration::translate_impl(decl, self)?;
         self.decls.extend(impl_decl);
 
         match decl {
             Implementation::Decl(decl) => {
-                if let Some(class_record) = decl.as_class_decl() {
-                    self.classes.push(Class::translate(class_record)?);
+                match decl {
+                    UnitDecl::Type(TypeDecl::Record(class_record))
+                    if class_record.kind == RecordKind::Class => {
+                        self.add_class(class_record, unit_scope)?;
+                    }
+
+                    UnitDecl::Type(TypeDecl::Interface(interface_decl)) => {
+                        self.add_interface(interface_decl, unit_scope)?;
+                    }
+
+                    _ => {},
                 }
-            },
+            }
             _ => {}
         }
 
@@ -101,7 +123,21 @@ impl TranslationUnit {
         Ok(())
     }
 
-    fn add_unit(&mut self, unit: &semantic::Unit) -> TranslationResult<()> {
+    fn add_class(&mut self, class_record: &semantic::RecordDecl, unit_scope: &Scope) -> TranslationResult<()> {
+        let class = Class::translate(class_record, unit_scope)?;
+        self.classes.push(class);
+        Ok(())
+    }
+
+    fn add_interface(&mut self, iface_decl: &semantic::InterfaceDecl, unit_scope: &Scope) -> TranslationResult<()> {
+        let interface = Interface::translate(iface_decl, unit_scope)?;
+        self.interfaces.push(interface);
+        Ok(())
+    }
+
+    fn add_unit(&mut self, module_unit: &semantic::ModuleUnit) -> TranslationResult<()> {
+        let unit = &module_unit.unit;
+
         for decl in unit.interface.iter() {
             let new_decls = Declaration::translate_decl(decl, self)?;
             self.decls.extend(new_decls);
@@ -136,12 +172,9 @@ impl TranslationUnit {
                 class.qualified_name() != string_name
             });
 
-        self.classes.extend(class_decls
-            .map(|class_record| {
-                Class::translate(class_record)
-            })
-            .collect::<TranslationResult<Vec<_>>>()?
-        );
+        for class in class_decls {
+            self.add_class(class, module_unit.global_scope.as_ref())?;
+        }
 
         Ok(())
     }
@@ -151,6 +184,7 @@ impl TranslationUnit {
             decls: Vec::new(),
 
             classes: Vec::new(),
+            interfaces: Vec::new(),
 
             string_literals: LinkedHashSet::new(),
 
@@ -158,16 +192,16 @@ impl TranslationUnit {
             finalization: Vec::new(),
         };
 
-        for unit in module.units.iter() {
+        for (_, unit) in module.units.iter() {
             result.add_unit(unit)?;
         }
 
         for impl_decl in module.program.decls.iter() {
-            result.add_implementation_decl(impl_decl)?;
+            result.add_implementation_decl(impl_decl, module.global_scope.as_ref())?;
         }
 
-        let global_vars: Vec<_> = module.units.iter()
-            .flat_map(|unit| unit.vars())
+        let global_vars: Vec<_> = module.units.values()
+            .flat_map(|module_unit| module_unit.unit.vars())
             .chain(module.program.vars())
             .cloned()
             .collect();

@@ -1,3 +1,5 @@
+use linked_hash_map::LinkedHashMap;
+
 use syntax::*;
 use node::{self, Identifier, RecordKind, TypeName};
 use keywords;
@@ -11,10 +13,12 @@ pub type RecordVariantCase = node::RecordVariantCase<ParsedContext>;
 pub type RecordMember = node::RecordMember<ParsedContext>;
 pub type EnumerationDecl = node::EnumerationDecl<ParsedContext>;
 pub type SetDecl = node::SetDecl<ParsedContext>;
+pub type InterfaceDecl = node::InterfaceDecl<ParsedContext>;
 
 fn any_valid_type_decl_first() -> Matcher {
     keywords::Record
         .or(keywords::Class)
+        .or(keywords::Interface)
         .or(keywords::Function)
         .or(keywords::Procedure)
         .or(keywords::Array)
@@ -60,6 +64,11 @@ impl Parse for Vec<TypeDecl> {
                 Some(ref t) if t.is_token(&tokens::BracketLeft) => {
                     let enum_decl = EnumerationDecl::parse_with_name(decl_name, tokens)?;
                     node::TypeDecl::Enumeration(enum_decl)
+                }
+
+                Some(ref t) if t.is_token(&tokens::Keyword(keywords::Interface)) => {
+                    let interface_decl = InterfaceDecl::parse_with_name(decl_name, tokens)?;
+                    node::TypeDecl::Interface(interface_decl)
                 }
 
                 _ => {
@@ -293,6 +302,52 @@ impl RecordDecl {
             context: match_kw.clone().into(),
             members,
             variant_part,
+        })
+    }
+}
+
+impl InterfaceDecl {
+    pub fn parse_with_name(name: &str, tokens: &mut TokenStream) -> ParseResult<InterfaceDecl> {
+        let context = tokens.match_one(keywords::Interface)?;
+
+        let mut functions = LinkedHashMap::new();
+        loop {
+            if functions.len() > 0 {
+                if tokens.look_ahead().match_one(keywords::End).is_some() {
+                    break;
+                }
+
+                tokens.match_or_endl(tokens::Semicolon)?;
+            }
+
+            let match_func = keywords::Function
+                .or(keywords::Procedure);
+
+            match tokens.look_ahead().match_one(match_func) {
+                Some(_) => {
+                    let decl = FunctionDecl::parse(tokens)?;
+
+                    if functions.contains_key(&decl.name) {
+                        return Err(ParseError::DuplicateName(decl.name, decl.context.token));
+                    }
+
+                    if decl.args.len() < 1 {
+                        return Err(ParseError::MissingInterfaceArgs(decl.context.token));
+                    }
+
+                    let sig = decl.signature();
+                    functions.insert(decl.name, sig);
+                },
+                None => break,
+            }
+        }
+
+        tokens.match_one(keywords::End)?;
+
+        Ok(InterfaceDecl {
+            name: name.to_string(),
+            functions: functions.into_iter().collect(),
+            context: ParsedContext::from(context),
         })
     }
 }

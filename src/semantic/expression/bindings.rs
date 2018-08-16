@@ -15,7 +15,10 @@ use semantic::{
     BindingKind,
 };
 use types::Type;
-use super::expect_initialized;
+use super::{
+    expect_initialized,
+    ops::expect_valid,
+};
 
 pub type LetBinding = node::LetBinding<SemanticContext>;
 
@@ -35,22 +38,18 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
 
     expect_initialized(&value)?;
 
-    let bound_type: Type = value.expr_type()?
-        .ok_or_else(|| {
-            SemanticError::type_not_assignable(None, context.clone())
-        })?;
-
-    if let Some(expected_type) = explicit_type.as_ref() {
-        if !bound_type.assignable_from(expected_type) {
-            /* todo: better error message for this
-            (complaining about 'operator :=' doesn't really match what the user typed) */
-            return Err(SemanticError::invalid_operator(
-                operators::Assignment,
-                vec![Some(expected_type.clone()), Some(bound_type)].clone(),
-                context.clone()
-            ));
+    let bound_type = match explicit_type.as_ref() {
+        Some(expected_type) => {
+            expect_valid(operators::Assignment, Some(expected_type), &value, &context)?;
+            expected_type.clone()
         }
-    }
+        None => {
+            //infer from value expression (must be something!)
+            value.expr_type()?.ok_or_else(|| {
+                SemanticError::type_not_assignable(None, context.clone())
+            })?
+        }
+    };
 
     let binding_kind = match parsed_binding.mutable {
         true => BindingKind::Mutable,
@@ -59,13 +58,13 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
 
     binding_scope = Rc::new(binding_scope.as_ref()
         .clone()
-        .with_binding(&parsed_binding.name, bound_type, binding_kind));
+        .with_binding(&parsed_binding.name, bound_type.clone(), binding_kind));
 
     let binding = LetBinding {
         name: parsed_binding.name.clone(),
         mutable: parsed_binding.mutable,
         value: Box::new(value),
-        explicit_type,
+        explicit_type: Some(bound_type),
     };
 
     Ok((Expression::let_binding(binding, context), binding_scope))

@@ -9,12 +9,11 @@ use semantic::{
     SemanticError,
     Scope,
     FunctionDecl,
-};
-use types::{
-    Type,
     FunctionSignature,
 };
+use types::Type;
 use node::{
+    self,
     Context,
     Identifier,
     ExpressionValue,
@@ -28,6 +27,8 @@ use super::{
     match_indirection,
     expect_initialized,
 };
+
+pub type FunctionCall = node::FunctionCall<SemanticContext>;
 
 pub fn annotate_args(args: &[syntax::Expression],
                      sig: &FunctionSignature,
@@ -50,18 +51,31 @@ pub fn annotate_args(args: &[syntax::Expression],
     Ok((typed_args, scope))
 }
 
-pub fn annotate_call(target: &syntax::Expression,
-                     args: &[syntax::Expression],
+pub fn annotate_call(call: &syntax::FunctionCall,
                      context: SemanticContext)
                      -> SemanticResult<(Expression, Rc<Scope>)> {
     let scope = context.scope.clone();
+    let (target, args) = match call {
+        node::FunctionCall::Function { target, args } =>
+            (target, args),
+        node::FunctionCall::Method { .. } =>
+            unreachable!("interface calls can't be parsed"),
+    };
 
-    /* expressions of the form x.a() should first check if a is function in the same namespace as
-    type A, taking an A as the first param, and invoke it using UFCS instead if so */
-    if let Some(ufcs_call) = find_ufcs_call(target, &context) {
+    /*
+        UFCS resolution:
+        expressions of the form x.a() should first check if a is function in the same namespace as
+        type A, taking x as the first param, or an interface method implemented for x named a()
+    */
+    let ufcs_candidate = find_ufcs_candidate(target, &context);
+    if let Some(ufcs_call) = ufcs_candidate.as_ref().and_then(find_ufcs_call) {
         let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
         return Ok((ufcs_call, scope));
-    };
+    }
+
+    if let Some(interface_call) = ufcs_candidate.as_ref().and_then(find_interface_call) {
+        return annotate_method(interface_call, args);
+    }
 
     /*
         handle typecasting - if the func name is just an identifier,
@@ -114,6 +128,41 @@ pub fn annotate_call(target: &syntax::Expression,
     Ok((func_call, scope))
 }
 
+fn annotate_method(call_site: InterfaceCallSite,
+                   args: &[syntax::Expression])
+                   -> SemanticResult<(Expression, Rc<Scope>)> {
+    let self_type = call_site.self_arg.expr_type()?.unwrap();
+
+    /* make a copy of the expected sig minus the first argument to compare against,
+     because the first argument is already the target of this expression */
+    let rest_args_sig = FunctionSignature {
+        args: call_site.method_sig.args[1..].iter().cloned().collect(),
+        ..call_site.method_sig.clone()
+    };
+
+    let scope = call_site.scope_after_target;
+    let context = call_site.self_arg.context.clone();
+
+    let (mut args, scope) = annotate_args(args, &rest_args_sig, &context, scope)?;
+    args.insert(0, call_site.self_arg);
+
+    let method_call = Expression::method_call(
+        call_site.interface_id,
+        call_site.method_name,
+        self_type,
+        args,
+        context,
+    );
+
+    Ok((method_call, scope))
+}
+
+struct UfcsCandidate {
+    target: Expression,
+    scope_after_target: Rc<Scope>,
+    func_name: String,
+}
+
 struct UfcsCallSite {
     target: Expression,
     function: FunctionDecl,
@@ -121,25 +170,29 @@ struct UfcsCallSite {
     scope_after_target: Rc<Scope>,
 }
 
-fn find_ufcs_call(target: &syntax::Expression,
-                  context: &SemanticContext)
-                  -> Option<UfcsCallSite> {
-    struct UfcsCandidate {
-        target: Expression,
-        scope_after_target: Rc<Scope>,
-        func_name: String,
-    }
+struct InterfaceCallSite {
+    self_arg: Expression,
+    interface_id: Identifier,
+    method_name: String,
+    method_sig: FunctionSignature,
+    scope_after_target: Rc<Scope>,
+}
 
-    let candidate = match &target.value {
+fn find_ufcs_candidate(target: &syntax::Expression,
+                       context: &SemanticContext)
+                       -> Option<UfcsCandidate> {
+    /* find the function name and target expression name that this expression, if it's a qualified
+    identifier or member-of expression, could possibly resolve to */
+    match &target.value {
         ExpressionValue::Member { of, name } => {
             let (base_expr, scope) = Expression::annotate(of, None, context.scope.clone())
                 .ok()?;
 
-            UfcsCandidate {
+            Some(UfcsCandidate {
                 target: base_expr,
                 func_name: name.clone(),
                 scope_after_target: scope,
-            }
+            })
         }
 
         ExpressionValue::Identifier(name) => {
@@ -150,36 +203,97 @@ fn find_ufcs_call(target: &syntax::Expression,
                 scope: context.scope.clone(),
             });
 
-            UfcsCandidate {
+            Some(UfcsCandidate {
                 target: base_expr,
                 func_name: func_name.to_string(),
                 scope_after_target: context.scope.clone(),
-            }
+            })
         }
 
-        _ => return None,
-    };
+        _ => None,
+    }
+}
 
-    /* look for matching UFCS func in NS of target type */
+fn find_ufcs_call(candidate: &UfcsCandidate) -> Option<UfcsCallSite> {
     let target_type = candidate.target.expr_type().ok()??;
 
     let ufcs_ns = ufcs_ns_of_type(&target_type, candidate.scope_after_target.as_ref())?;
+
+    /*
+        first check if there's a function with this name and a matching self-arg
+        todo: match the whole args list for better overload resolution
+     */
     let ufcs_name = ufcs_ns.child(&candidate.func_name);
 
     let (ufcs_fn_id, ufcs_fn) = candidate.scope_after_target.get_function(&ufcs_name)?;
     let first_arg = ufcs_fn.args.first()?;
 
-    if first_arg.decl_type.remove_indirection() != target_type.remove_indirection()
-        || first_arg.modifier.is_some() {
-        None
-    } else {
+    if first_arg.decl_type.remove_indirection() == target_type.remove_indirection()
+        && first_arg.modifier.is_none() {
         Some(UfcsCallSite {
             scope_after_target: candidate.scope_after_target.clone(),
-            target: candidate.target,
+            target: candidate.target.clone(),
             function: ufcs_fn.clone(),
-            function_id: ufcs_fn_id,
+            function_id: ufcs_fn_id.clone(),
         })
+    } else {
+        None
     }
+}
+
+fn find_interface_call(candidate: &UfcsCandidate) -> Option<InterfaceCallSite> {
+    let target_type = candidate.target.expr_type().ok()??;
+    let scope = &candidate.scope_after_target;
+
+    /* interface types are easy, just look up the interface  */
+    if let Type::AnyImplementation(interface_id) = &target_type {
+        let (interface_id, interface) = match scope.get_interface(interface_id) {
+            Some((interface_id, interface)) => (interface_id, interface),
+            None => {
+                eprintln!("unknown interface type passed to get_interface_impls: {}", interface_id);
+                return None;
+            }
+        };
+
+        let method = interface.decl.functions.get(&candidate.func_name)?;
+
+        return Some(InterfaceCallSite {
+            interface_id: interface_id.clone(),
+            scope_after_target: scope.clone(),
+            method_name: candidate.func_name.clone(),
+            self_arg: candidate.target.clone(),
+            method_sig: method.clone(),
+        });
+    }
+
+    let interface_impls = scope.get_interface_impls(&target_type);
+    let interface_funcs: Vec<_> = interface_impls.into_iter()
+        .filter_map(|(iface_id, method)| {
+            match method.name == candidate.func_name {
+                true => Some((iface_id, method)),
+                false => None,
+            }
+        })
+        .collect();
+
+    /* todo: disambiguate by signature, raise an error here instead of silently failing */
+    if interface_funcs.len() > 1 {
+        return None;
+    }
+
+    if interface_funcs.len() == 0 {
+        return None;
+    }
+
+    let (interface_id, method) = interface_funcs[0];
+
+    Some(InterfaceCallSite {
+        self_arg: candidate.target.clone(),
+        interface_id: interface_id.clone(),
+        method_name: method.name.to_string(),
+        method_sig: method.signature(),
+        scope_after_target: scope.clone(),
+    })
 }
 
 fn annotate_ufcs(ufcs_call: UfcsCallSite,
@@ -224,22 +338,49 @@ fn annotate_ufcs(ufcs_call: UfcsCallSite,
     Ok((func_call, scope_after))
 }
 
-pub fn call_type(target: &Expression,
-                 actual_args: &Vec<Expression>,
-                 context: &SemanticContext) -> SemanticResult<Option<Type>> {
-    let target_type = target.expr_type()?;
+pub fn call_type(call: &FunctionCall,
+                 context: &SemanticContext)
+                 -> SemanticResult<Option<Type>> {
+    let actual_args = call.args();
 
-    let sig = match &target_type {
-        | Some(Type::Function(sig)) => sig,
-        | _ => {
-            return Err(SemanticError::invalid_function_type(target_type.clone(), context.clone()));
+    let sig = match call {
+        node::FunctionCall::Function { target, .. } => {
+            let target_type = target.expr_type()?;
+
+            match &target_type {
+                | Some(Type::Function(sig)) => sig.as_ref().clone(),
+                | _ => {
+                    return Err(SemanticError::invalid_function_type(target_type.clone(), context.clone()));
+                }
+            }
         }
-    };
 
-    if actual_args.len() != sig.args.len() {
-        return Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
-                                                 actual_args.len(),
-                                                 context.clone()));
+        node::FunctionCall::Method { interface_id, func_name, for_type, .. } => {
+            let (interface_id, interface) = context.scope.get_interface(interface_id)
+                .ok_or_else(|| {
+                    SemanticError::unknown_type(interface_id.clone(), context.clone())
+                })?;
+
+            match for_type {
+                /* this must be the right type of pointer, or annotate() would have failed */
+                Type::AnyImplementation(_) => {
+                    interface.decl.functions.get(func_name).cloned().unwrap()
+                }
+
+                _ => {
+                    /* already checked this is valid */
+                    let self_type_name = context.scope.full_type_name(for_type).unwrap();
+
+                    let impl_func = interface.get_impl(&self_type_name, func_name)
+                        .ok_or_else(|| {
+                            let missing = interface_id.child(func_name);
+                            SemanticError::unknown_symbol(missing, context.clone())
+                        })?;
+
+                    impl_func.signature()
+                }
+            }
+        }
     };
 
     let wrong_args = || -> SemanticResult<Option<Type>> {
@@ -247,9 +388,10 @@ pub fn call_type(target: &Expression,
             .map(|arg| arg.expr_type())
             .collect::<SemanticResult<_>>()?;
 
-        Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
-                                           actual_arg_types,
-                                           context.clone(),
+        Err(SemanticError::wrong_arg_types(
+            sig.clone(),
+            actual_arg_types,
+            context.clone(),
         ))
     };
 
@@ -310,27 +452,13 @@ pub fn call_type(target: &Expression,
 
 fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
     let type_id = match ty.remove_indirection() {
-        | Type::Class(name) => scope.get_class(&name)?.0,
-        | Type::Record(name) => scope.get_record(&name)?.0,
-        | Type::Set(name) => scope.get_set(&name)?.0,
-        | Type::Enumeration(name) => scope.get_enumeration(&name)?.0,
         | Type::Array(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
         | Type::DynamicArray(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
 
-        | Type::Boolean
-        | Type::Byte
-        | Type::Int32
-        | Type::UInt32
-        | Type::Int64
-        | Type::UInt64
-        | Type::Float64 =>
-            return Some(Identifier::from("System")),
-
-        _ =>
-            return None,
-    };
+        ty @ _ => scope.full_type_name(ty),
+    }?;
 
     type_id.parent()
 }

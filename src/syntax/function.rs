@@ -7,8 +7,8 @@ use operators;
 
 use node::{
     self,
+    Identifier,
     TypeName,
-    FunctionKind,
     FunctionModifier,
     FunctionArgModifier,
     ExpressionValue,
@@ -17,42 +17,48 @@ use node::{
 pub type FunctionDecl = node::FunctionDecl<ParsedContext>;
 pub type Function = node::Function<ParsedContext>;
 pub type FunctionArg = node::FunctionArg<ParsedContext>;
+pub type FunctionSignature = node::FunctionSignature<TypeName>;
+pub type FunctionArgSignature = node::FunctionArgSignature<TypeName>;
+pub type InterfaceImplementation = node::InterfaceImplementation<ParsedContext>;
 
 impl Parse for FunctionDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         //match the name
-        let name_match = tokens.match_sequence(vec![
-            Self::match_any_function_keyword(),
-            Matcher::AnyIdentifier
-        ])?;
+        let context = tokens.match_one(Self::match_any_function_keyword())?;
+        let name = Identifier::parse(tokens)?;
 
-        let kind_kw = name_match[0].unwrap_keyword();
-        let kind = match kind_kw {
-            keywords::Constructor => FunctionKind::Constructor,
-            keywords::Destructor => FunctionKind::Destructor,
-            _ => FunctionKind::Function,
-        };
-
-        let fn_name = name_match[1].clone();
+        /* if the name follows the pattern "x.y" it's the implementation of y for interface x */
+        let implements_interface = name.parent();
 
         let args = Self::parse_argument_list(tokens)?;
+
+        let interface_impl = match implements_interface {
+            Some(interface) => {
+                /* the implementation gets its type from the first argument */
+                if args.len() == 0 {
+                    return Err(ParseError::MissingInterfaceArgs(context));
+                }
+
+                let for_type = args[0].decl_type.clone();
+
+                Some(InterfaceImplementation {
+                    interface,
+                    for_type,
+                })
+            }
+            None => None
+        };
 
         /* for compatibility, the `procedure` keyword indicates a function
         with no return type, but just omitting the return type has the same
         effect */
-        let return_type: Option<TypeName> = match kind_kw {
+        let return_type: Option<TypeName> = match context.unwrap_keyword() {
             // procedures return nothing
-            keywords::Procedure |
-            keywords::Destructor => None,
-
-            keywords::Constructor => {
-                tokens.match_one(tokens::Colon)?;
-                Some(tokens.parse()?)
-            }
+            | keywords::Procedure => None,
 
             /* keyword `function` - look for a return type of there's a colon
             after the end of the argument list, otherwise expect no return type */
-            _ => {
+            | _ => {
                 match tokens.look_ahead().match_one(tokens::Colon) {
                     Some(_) => {
                         tokens.advance(1);
@@ -66,16 +72,15 @@ impl Parse for FunctionDecl {
         let modifiers = Self::parse_modifiers(tokens)?;
 
         //body (if present) appears after separator or newline
-        tokens.
-            match_or_endl(tokens::Semicolon)?;
+        tokens.match_or_endl(tokens::Semicolon)?;
 
         Ok(FunctionDecl {
-            name: fn_name.unwrap_identifier().to_string(),
-            context: fn_name.into(),
+            name: name.name,
+            context: ParsedContext::from(context),
             return_type,
             modifiers,
             args,
-            kind,
+            implements: interface_impl,
         })
     }
 }
@@ -191,10 +196,7 @@ impl Parse for node::ExternalName {
 
 impl FunctionDecl {
     pub fn match_any_function_keyword() -> matcher::Matcher {
-        keywords::Function
-            .or(keywords::Procedure)
-            .or(keywords::Constructor)
-            .or(keywords::Destructor)
+        keywords::Function.or(keywords::Procedure)
     }
 
     pub fn parse_modifiers(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionModifier>> {

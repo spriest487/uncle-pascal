@@ -49,21 +49,19 @@ struct System_Internal_Object {
 };
 
 typedef void (*System_Internal_Destructor)(System_Internal_Object*);
+static void System_Internal_InitClass(const char* name, System_Internal_Destructor destructor);
+static System_Internal_Class* System_Internal_FindClass(const char* name);
+
+static void System_Internal_Rc_Retain(System_Internal_Object* obj);
+static void System_Internal_Rc_Release(System_Internal_Object* obj);
+static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName);
 
 static void System_Internal_Raise(const char* file, int line, int col, const char* msg);
 
 static System_Byte* System_GetMem(System_NativeInt bytes);
 static void System_FreeMem(System_Byte* p);
 
-static void System_Internal_InitClass(const char* name, System_Internal_Destructor destructor);
-static System_Internal_Class* System_Internal_FindClass(const char* name);
-
-static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName);
-static void System_Internal_Rc_Retain(System_Internal_Object* obj);
-static void System_Internal_Rc_Release(System_Internal_Object* obj);
-
 struct System_String;
-
 static System_String* System_CreateString(void);
 
 /* procedure System.WriteLn(line: System.String) */
