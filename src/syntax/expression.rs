@@ -4,6 +4,7 @@ use operators;
 use types;
 use syntax::*;
 use tokens;
+use keywords;
 use tokens::AsToken;
 use ToSource;
 
@@ -22,6 +23,11 @@ pub enum Expression {
     LiteralInteger(i64),
     LiteralString(String),
     Identifier(types::Identifier),
+    If {
+        condition: Box<Expression>,
+        then_branch: Box<Expression>,
+        else_branch: Option<Box<Expression>>,
+    }
 }
 
 fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -106,6 +112,46 @@ fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result
     })
 }
 
+fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+    where TIter: IntoIterator + 'static,
+          TIter::Item: tokens::AsToken + 'static
+{
+    let if_kw = Matcher::Keyword(keywords::If).match_one(in_tokens, context)?;
+
+    let cond_tokens = Matcher::Keyword(keywords::Then)
+        .match_until(if_kw.next_tokens, &if_kw.last_token)?;
+    let condition = Expression::parse(cond_tokens.value, &if_kw.last_token)?;
+
+    let match_then_else = Matcher::Keyword(keywords::Then)
+        .terminated_by(Matcher::Keyword(keywords::Else));
+
+    let peek_then_else = match_then_else.match_block_peek(cond_tokens.next_tokens,
+                                                          &cond_tokens.last_token)?;
+
+    if let Some(_) = peek_then_else.value {
+        let then_else = match_then_else.match_block(peek_then_else.next_tokens, &peek_then_else.last_token)?;
+
+        let then_branch = Expression::parse(then_else.value.inner, &then_else.value.open)?;
+        let else_branch = Expression::parse(then_else.next_tokens, &then_else.value.close)?;
+
+        Ok(Expression::If {
+            condition: Box::from(condition),
+            then_branch: Box::from(then_branch),
+            else_branch: Some(Box::from(else_branch)),
+        })
+    } else {
+        let then = Matcher::Keyword(keywords::Then)
+            .match_one(peek_then_else.next_tokens, &peek_then_else.last_token)?;
+        let then_branch = Expression::parse(then.next_tokens, &then.last_token)?;
+
+        Ok(Expression::If {
+            condition: Box::from(condition),
+            then_branch: Box::from(then_branch),
+            else_branch: None
+        })
+    }
+}
+
 impl Expression {
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
         where TIter: IntoIterator + 'static,
@@ -113,11 +159,13 @@ impl Expression {
     {
         let all_tokens = in_tokens.into_iter().collect::<Vec<_>>();
 
+        //TODO, make this not dumb, guess expr type before parsing
         parse_binary_op(all_tokens.clone(), context)
             .or_else(|_| parse_function_call(all_tokens.clone(), context))
             .or_else(|_| parse_identifier(all_tokens.clone(), context))
             .or_else(|_| parse_literal_string(all_tokens.clone(), context))
             .or_else(|_| parse_literal_integer(all_tokens.clone(), context))
+            .or_else(|_| parse_if(all_tokens.clone(), context))
     }
 }
 
@@ -143,6 +191,18 @@ impl ToSource for Expression {
 
             &Expression::LiteralString(ref s) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
+
+            &Expression::If { ref condition, ref then_branch, ref else_branch } => {
+                let mut lines = Vec::new();
+                lines.push(format!("if {} then", condition.to_source()));
+                lines.push(format!("\t{}", then_branch.to_source()));
+
+                if let &Some(ref else_expr) = else_branch {
+                    lines.push(format!("else\n\t{}", else_expr.to_source()))
+                }
+
+                lines.join("\n")
+            }
         }
     }
 }

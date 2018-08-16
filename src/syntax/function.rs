@@ -2,6 +2,7 @@ use syntax::*;
 use syntax::var_decl::*;
 use keywords;
 use tokens;
+use tokens::AsToken;
 use types;
 use ToSource;
 

@@ -21,6 +21,11 @@ begin
 
   WriteLn('hello world');
 
+  if x = 1 then
+    WriteLn('one')
+  else
+    WriteLn('not one');
+
   //WriteLn(IntToStr(x + y));
 
   //WriteLn(Greet());

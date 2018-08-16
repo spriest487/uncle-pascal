@@ -14,6 +14,9 @@ pub enum Keyword {
     Uses,
     Type,
     Record,
+    If,
+    Then,
+    Else,
 }
 
 impl Keyword {
@@ -27,6 +30,9 @@ impl Keyword {
             "uses" => Some(Uses),
             "type" => Some(Type),
             "record" => Some(Record),
+            "if" => Some(If),
+            "then" => Some(Then),
+            "else" => Some(Else),
             _ => None,
         }
     }
@@ -43,6 +49,9 @@ impl ToSource for Keyword {
             &Uses => "uses",
             &Type => "type",
             &Record => "record",
+            &If => "if",
+            &Then => "then",
+            &Else => "else",
         }.to_owned()
     }
 }

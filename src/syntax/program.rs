@@ -1,6 +1,7 @@
 use syntax::*;
 use types;
 use tokens;
+use tokens::AsToken;
 use keywords;
 use ToSource;
 
