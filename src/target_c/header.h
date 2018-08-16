@@ -34,7 +34,7 @@ static struct System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, 
 
     rc.RefCount->StrongCount = 0;
 
-    fprintf(stderr, "rc allocated %lld bytes for %s\n", size, constructorName);
+    fprintf(stderr, "rc allocated %lld bytes for %s @ %p + %p\n", size, constructorName, rc.RefCount, rc.Value);
     return rc;
 }
 
@@ -71,6 +71,8 @@ struct System_String {
 
 /* procedure System.WriteLn(line: System.String) */
 static void System_WriteLn(struct System_Internal_Rc lineRc) {
+    System_Internal_Rc_Retain(&lineRc);
+
     struct System_String* line = (struct System_String*)lineRc.Value;
 
     if (line) {
@@ -81,6 +83,8 @@ static void System_WriteLn(struct System_Internal_Rc lineRc) {
     } else {
         puts("");
     }
+
+    System_Internal_Rc_Release(&lineRc);
 }
 
 static System_Byte* System_GetMem(System_Integer bytes) {
@@ -120,18 +124,22 @@ static struct System_Internal_Rc System_StringFromBytes(System_Byte* bytes, Syst
 
 /* function System.StringFromBytes(a: System.String; b: System.String): System.String */
 static struct System_Internal_Rc System_StringConcat(struct System_Internal_Rc aRc, struct System_Internal_Rc bRc) {
+    System_Internal_Rc_Retain(&aRc);
+    System_Internal_Rc_Retain(&bRc);
+
     struct System_String* a = (struct System_String*)aRc.Value;
     struct System_String* b = (struct System_String*)bRc.Value;
 
     bool emptyA = !a || !a->Length;
     bool emptyB = !b || !b->Length;
 
+    struct System_Internal_Rc result;
     if (emptyA && emptyB) {
-        return System_StringFromBytes((System_Byte*)"", 0);
+        result = System_StringFromBytes((System_Byte*)"", 0);
     } else if (emptyA) {
-        return System_StringFromBytes(b->Chars, b->Length);
+        result = System_StringFromBytes(b->Chars, b->Length);
     } else if (emptyB) {
-        return System_StringFromBytes(a->Chars, a->Length);
+        result = System_StringFromBytes(a->Chars, a->Length);
     } else {
         System_Integer totalLength = a->Length + b->Length;
         System_Byte* chars = malloc((size_t)totalLength);
@@ -148,9 +156,12 @@ static struct System_Internal_Rc System_StringConcat(struct System_Internal_Rc a
             chars[c + a->Length] = b->Chars[c];
         }
 
-        struct System_Internal_Rc result = System_StringFromBytes(chars, totalLength);
+        result = System_StringFromBytes(chars, totalLength);
         free(chars);
-
-        return result;
     }
+
+    System_Internal_Rc_Release(&aRc);
+    System_Internal_Rc_Release(&bRc);
+
+    return result;
 }
