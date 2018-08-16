@@ -63,9 +63,9 @@ impl Unit {
                     let consts = ConstDecls::annotate(parsed_consts, Rc::new(scope.clone()))?;
 
                     for const_decl in consts.decls.iter() {
-                        let const_type = const_decl.value.expr_type()?
-                            .expect("constants always have a type");
-                        scope = scope.with_symbol_local(&const_decl.name, const_type);
+                        let val = const_decl.value.const_value(Rc::new(scope.clone()))?;
+
+                        scope = scope.with_const(&const_decl.name, val);
                     }
 
                     result.push(node::UnitDeclaration::Consts(consts));

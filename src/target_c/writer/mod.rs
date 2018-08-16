@@ -18,6 +18,7 @@ use node::{
     RecordKind,
     UnitDeclaration,
     FunctionArgModifier,
+    ConstantExpression,
 };
 use types::{
     Type,
@@ -231,21 +232,26 @@ pub fn write_expr(out: &mut String,
             write_expr(out, value, globals)
         }
 
-        ExpressionValue::LiteralInteger(i) => {
-            write!(out, "(({}) {})", type_to_c(&Type::Int64, expr.scope()), i)
-        }
+        ExpressionValue::Constant(const_expr) => {
+            match const_expr {
+                ConstantExpression::Integer(i) => {
+                    let int_type = expr.expr_type().unwrap().unwrap();
+                    write!(out, "(({}) {})", type_to_c(&int_type, expr.scope()), i)
+                }
 
-        ExpressionValue::LiteralString(s) => {
-            let name = globals.string_literal_name(s);
-            write!(out, "{}", name)
-        }
+                ConstantExpression::String(s) => {
+                    let name = globals.string_literal_name(s);
+                    write!(out, "{}", name)
+                }
 
-        ExpressionValue::LiteralBoolean(val) => {
-            write!(out, "{}", if *val { "true" } else { "false" })
-        }
+                ConstantExpression::Boolean(val) => {
+                    write!(out, "{}", if *val { "true" } else { "false" })
+                }
 
-        ExpressionValue::LiteralNil => {
-            out.write_str("NULL")
+                ConstantExpression::Nil => {
+                    out.write_str("NULL")
+                }
+            }
         }
 
         ExpressionValue::If { condition, then_branch, else_branch } => {

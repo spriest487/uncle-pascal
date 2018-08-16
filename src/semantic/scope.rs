@@ -11,6 +11,7 @@ use node::{
     UnitReferenceKind,
     TypeName,
     RecordKind,
+    ConstantExpression,
 };
 use semantic::*;
 
@@ -20,6 +21,7 @@ pub enum Named {
     Record(RecordDecl),
     Class(RecordDecl),
     Function(FunctionDecl),
+    Const(ConstantExpression),
     Symbol(Type),
 }
 
@@ -125,6 +127,7 @@ impl fmt::Debug for Scope {
         let mut functions = Vec::new();
         let mut classes = Vec::new();
         let mut records = Vec::new();
+        let mut consts = Vec::new();
 
         for (name, named) in self.names.iter() {
             match named {
@@ -133,6 +136,7 @@ impl fmt::Debug for Scope {
                 Named::Function(func) => functions.push((name, func)),
                 Named::Class(decl) => classes.push((name, decl)),
                 Named::Record(decl) => records.push((name, decl)),
+                Named::Const(val) => consts.push((name, val)),
             }
         }
 
@@ -163,6 +167,12 @@ impl fmt::Debug for Scope {
         writeln!(f, "\trecords: [")?;
         for (name, record) in records {
             writeln!(f, "\t\t{}: {}", name, record.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tconsts: [")?;
+        for (name, val) in consts {
+            writeln!(f, "\t\t{}: {}", name, val.to_source())?;
         }
         writeln!(f, "\t]")?;
 
@@ -257,6 +267,12 @@ impl Scope {
             None => Some(Identifier::from(name)),
         };
 
+        self
+    }
+
+    pub fn with_const(mut self, name: impl Into<Identifier>, val: ConstantExpression) -> Self {
+        let name = name.into();
+        self.names.insert(name, Named::Const(val));
         self
     }
 
@@ -384,6 +400,7 @@ impl Scope {
                     Some(Named::Alias(ty)) => ty.clone(),
 
                     None |
+                    Some(Named::Const(_)) |
                     Some(Named::Function(_)) |
                     Some(Named::Symbol(_)) => return Err(parsed_type.clone()),
                 };

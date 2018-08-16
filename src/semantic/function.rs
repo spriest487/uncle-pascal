@@ -94,9 +94,9 @@ impl FunctionDecl {
                                                                     arg.decl_type.clone());
                     }
                     for const_decl in local_consts.decls.iter() {
-                        let const_type = const_decl.value.expr_type()?
-                            .expect("constants always have a type");
-                        local_scope = local_scope.with_symbol_local(&const_decl.name, const_type);
+                        let val = const_decl.value.const_value(Rc::new(local_scope.clone()))?;
+
+                        local_scope = local_scope.with_const(&const_decl.name, val);
                     }
                     for var in local_vars.decls.iter() {
                         local_scope = local_scope.with_symbol_local(&var.name,

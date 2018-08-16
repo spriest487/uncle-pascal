@@ -19,10 +19,7 @@ pub enum ExpressionValue<TSymbol, TContext> {
         target: Box<Expression<TSymbol, TContext>>,
         args: Vec<Expression<TSymbol, TContext>>,
     },
-    LiteralInteger(IntConstant),
-    LiteralString(String),
-    LiteralNil,
-    LiteralBoolean(bool),
+    Constant(ConstantExpression),
     Identifier(TSymbol),
     LetBinding {
         name: String,
@@ -50,6 +47,14 @@ pub enum ExpressionValue<TSymbol, TContext> {
 pub struct Expression<TSymbol, TContext> {
     pub value: ExpressionValue<TSymbol, TContext>,
     pub context: TContext,
+}
+
+#[derive(Clone, Debug)]
+pub enum ConstantExpression {
+    Integer(IntConstant),
+    String(String),
+    Boolean(bool),
+    Nil,
 }
 
 impl<TSymbol, TContext> fmt::Display for Expression<TSymbol, TContext>
@@ -114,14 +119,14 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
 
     pub fn literal_int(i: IntConstant, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::LiteralInteger(i),
+            value: ExpressionValue::Constant(ConstantExpression::Integer(i)),
             context: context.into(),
         }
     }
 
     pub fn literal_string(s: &str, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::LiteralString(s.to_owned()),
+            value: ExpressionValue::Constant(ConstantExpression::String(s.to_owned())),
             context: context.into(),
         }
     }
@@ -205,14 +210,14 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
     pub fn literal_nil(context: impl Into<TContext>) -> Self {
         Expression {
             context: context.into(),
-            value: ExpressionValue::LiteralNil,
+            value: ExpressionValue::Constant(ConstantExpression::Nil),
         }
     }
 
     pub fn literal_bool(val: bool, context: impl Into<TContext>) -> Self {
         Expression {
             context: context.into(),
-            value: ExpressionValue::LiteralBoolean(val),
+            value: ExpressionValue::Constant(ConstantExpression::Boolean(val)),
         }
     }
 
@@ -253,28 +258,28 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
 
     pub fn unwrap_literal_string(self) -> String {
         match self.value {
-            ExpressionValue::LiteralString(s) => s,
+            ExpressionValue::Constant(ConstantExpression::String(s)) => s,
             _ => panic!("called unwrap_literal_string on something other than a string literal expr")
         }
     }
 
     pub fn is_any_literal_string(&self) -> bool {
         match &self.value {
-            &ExpressionValue::LiteralString(_) => true,
+            ExpressionValue::Constant(ConstantExpression::String(_)) => true,
             _ => false,
         }
     }
 
     pub fn is_literal_integer(&self, val: impl Into<IntConstant>) -> bool {
         match &self.value {
-            ExpressionValue::LiteralInteger(i) => *i == val.into(),
+            ExpressionValue::Constant(ConstantExpression::Integer(i)) => *i == val.into(),
             _ => false,
         }
     }
 
     pub fn is_any_literal_integer(&self) -> bool {
         match &self.value {
-            &ExpressionValue::LiteralInteger(_) => true,
+            &ExpressionValue::Constant(ConstantExpression::Integer(_)) => true,
             _ => false
         }
     }
@@ -406,19 +411,19 @@ pub fn transform_expressions<TSymbol, TContext>(
             replace(Expression::identifier(name, root_expr.context))
         }
 
-        ExpressionValue::LiteralInteger(i) => {
+        ExpressionValue::Constant(ConstantExpression::Integer(i)) => {
             replace(Expression::literal_int(i, root_expr.context))
         }
 
-        ExpressionValue::LiteralBoolean(b) => {
+        ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
             replace(Expression::literal_bool(b, root_expr.context))
         }
 
-        ExpressionValue::LiteralNil => {
+        ExpressionValue::Constant(ConstantExpression::Nil) => {
             replace(root_expr)
         }
 
-        ExpressionValue::LiteralString(s) => {
+        ExpressionValue::Constant(ConstantExpression::String(s)) => {
             replace(Expression::literal_string(&s, root_expr.context))
         }
 

@@ -66,15 +66,15 @@ impl<T, C> ToSource for Expression<T, C>
                 format!("let {} := {}", name, value.to_source())
             }
 
-            ExpressionValue::LiteralInteger(i) => format!("{}", i),
+            ExpressionValue::Constant(ConstantExpression::Integer(i)) => format!("{}", i),
 
-            ExpressionValue::LiteralString(s) =>
+            ExpressionValue::Constant(ConstantExpression::String(s)) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
 
-            ExpressionValue::LiteralBoolean(b) =>
+            ExpressionValue::Constant(ConstantExpression::Boolean(b)) =>
                 format!("{}", if *b { "true" } else { "false" }),
 
-            ExpressionValue::LiteralNil => "nil".to_string(),
+            ExpressionValue::Constant(ConstantExpression::Nil) => "nil".to_string(),
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
                 let mut lines = Vec::new();
@@ -128,6 +128,20 @@ impl<T, C> ToSource for ConstDecls<T, C>
             .join("\n");
 
         format!("const\n{}", decl_lines)
+    }
+}
+
+impl ToSource for ConstantExpression {
+    fn to_source(&self) -> String {
+        match self {
+            ConstantExpression::Integer(int) => int.to_string(),
+            ConstantExpression::Nil => "nil".to_string(),
+            ConstantExpression::Boolean(val) => match val {
+                true => "true".to_string(),
+                false => "false".to_string(),
+            }
+            ConstantExpression::String(s) => format!("'{}'", s),
+        }
     }
 }
 

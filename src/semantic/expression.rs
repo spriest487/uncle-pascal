@@ -5,6 +5,7 @@ use node::{
     self,
     Identifier,
     ExpressionValue,
+    ConstantExpression
 };
 use operators;
 use types;
@@ -23,7 +24,11 @@ fn expect_valid_operation(operator: operators::Operator,
     /* special case for assigning 0 to any numeric type, or assigning integers in
      the range 0...255 to bytes */
     match (operator, target, &actual_expr.value) {
-        (operators::Assignment, Some(lhs_type), ExpressionValue::LiteralInteger(int)) =>
+        (
+            operators::Assignment,
+            Some(lhs_type),
+            ExpressionValue::Constant(ConstantExpression::Integer(int))
+        ) =>
             if let Some(u8_val) = int.as_u8() {
                 let assigning_u8_to_byte = *lhs_type == Type::Byte;
                 let assigning_zero_to_num = u8_val == 0 && lhs_type.is_numeric();
@@ -412,10 +417,7 @@ fn is_lvalue(expr: &Expression) -> bool {
         },
 
         ExpressionValue::FunctionCall { .. } |
-        ExpressionValue::LiteralInteger(_) |
-        ExpressionValue::LiteralNil |
-        ExpressionValue::LiteralString(_) |
-        ExpressionValue::LiteralBoolean(_) |
+        ExpressionValue::Constant(_) |
         ExpressionValue::BinaryOperator { .. } |
         ExpressionValue::Block(_) |
         ExpressionValue::ForLoop { .. } |
@@ -574,19 +576,19 @@ impl Expression {
                 Ok(Expression::let_binding(name, typed_value, expr_context))
             }
 
-            ExpressionValue::LiteralString(s) => {
+            ExpressionValue::Constant(ConstantExpression::String(s)) => {
                 Ok(Expression::literal_string(s, expr_context))
             }
 
-            ExpressionValue::LiteralInteger(i) => {
+            ExpressionValue::Constant(ConstantExpression::Integer(i)) => {
                 Ok(Expression::literal_int(*i, expr_context))
             }
 
-            ExpressionValue::LiteralNil => {
+            ExpressionValue::Constant(ConstantExpression::Nil) => {
                 Ok(Expression::literal_nil(expr_context))
             }
 
-            ExpressionValue::LiteralBoolean(b) => {
+            ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
                 Ok(Expression::literal_bool(*b, expr_context))
             }
 
@@ -633,11 +635,11 @@ impl Expression {
             &ExpressionValue::PrefixOperator { ref op, ref rhs } =>
                 prefix_op_type(*op, rhs, &self.context),
 
-            &ExpressionValue::LiteralString(_) => {
+            &ExpressionValue::Constant(ConstantExpression::String(_)) => {
                 Ok(Some(Type::Class(Identifier::from("System.String"))))
             }
 
-            &ExpressionValue::LiteralInteger(int_const) =>
+            &ExpressionValue::Constant(ConstantExpression::Integer(int_const)) =>
                 Ok(Some(match int_const {
                     IntConstant::Char(_) => Type::Byte,
                     IntConstant::I32(_) => Type::Int32,
@@ -646,10 +648,10 @@ impl Expression {
                     IntConstant::U64(_) => Type::UInt64,
                 })),
 
-            &ExpressionValue::LiteralBoolean(_) =>
+            &ExpressionValue::Constant(ConstantExpression::Boolean(_)) =>
                 Ok(Some(Type::Boolean)),
 
-            &ExpressionValue::LiteralNil =>
+            &ExpressionValue::Constant(ConstantExpression::Nil) =>
                 Ok(Some(Type::Nil)),
 
             &ExpressionValue::LetBinding { ref value, .. } =>
@@ -709,6 +711,10 @@ impl Expression {
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+
+    pub fn const_value(&self, _scope: Rc<Scope>) -> SemanticResult<ConstantExpression> {
+        unimplemented!()
     }
 }
 
