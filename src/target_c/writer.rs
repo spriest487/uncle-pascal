@@ -397,7 +397,6 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
                  function.return_type.as_ref().expect("constructor must have return type"))?;
     }
 
-    //retain rc args
     let rc_args: Vec<_> = function.args.decls.iter()
         .filter_map(|arg| {
             if let types::DeclaredType::Record(record) = &arg.decl_type {
@@ -408,8 +407,16 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
             None
         }).collect();
 
-    for arg in rc_args.iter() {
-        writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
+    // retain rc args to non-destructor functions
+    // this is kind of a hack to make sure temporary values used as args get rc'd
+    // destructors musn't change the ref count of their only arg, the dead object, or bad things
+    // happen
+    // it's safe to do this with a constructor because the object under construction exists only
+    // in the result position
+    if function.kind == node::FunctionKind::Function {
+        for arg in rc_args.iter() {
+            writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
+        }
     }
 
     write_block(out, &function.body)?;
@@ -419,9 +426,11 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     release_vars(out, function.local_vars.decls.iter()
         .filter(|decl| decl.name != result_id))?;
 
-    //release args
-    for arg in rc_args.iter() {
-        writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
+    if function.kind == node::FunctionKind::Function {
+        //release args
+        for arg in rc_args.iter() {
+            writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
+        }
     }
 
     match return_type_c {
