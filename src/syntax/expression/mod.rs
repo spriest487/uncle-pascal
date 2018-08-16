@@ -241,7 +241,7 @@ impl Expression {
     fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
         let binding_tokens = tokens.match_sequence(keywords::Let
             .and_then(Matcher::AnyIdentifier)
-            .and_then(tokens::Operator(operators::Assignment)))?;
+            .and_then(tokens::Operator(operators::Equals)))?;
 
         let name = binding_tokens[1].unwrap_identifier();
 

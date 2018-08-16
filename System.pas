@@ -43,7 +43,7 @@ begin
     result.Chars := GetMem(len)
     result.Length := len
 
-    for let c := 0 to result.Length do
+    for let c = 0 to result.Length do
         ^(result.Chars + c) := ^(bytes + c)
 end
 
@@ -72,10 +72,10 @@ begin
         result.Length := a.Length + b.Length;
         result.Chars := GetMem(result.Length);
 
-        for let c := 0 to a.Length do
+        for let c = 0 to a.Length do
             ^(result.Chars + c) := ^(a.Chars + c);
 
-        for let c := 0 to b.Length do
+        for let c = 0 to b.Length do
             ^(result.Chars + a.Length + c) := ^(b.Chars + c);
     end;
 end

@@ -34,11 +34,11 @@ end
 
 procedure Add(self: Vector; p: Element)
 begin
-  let newElements := GetMem(self.Length + 1)
+  let newElements = GetMem(self.Length + 1)
 
   if self.Elements <> nil then
   begin
-    for let i := 0 to self.Length do
+    for let i = 0 to self.Length do
       ^(newElements + i) := ^(self.Elements + i)
 
     FreeMem(self.Elements)
@@ -52,7 +52,7 @@ end
 
 procedure AddAll(self: Vector; other: Vector)
 begin
-  for let i := 0 to other.Length do
+  for let i = 0 to other.Length do
     self.Add(^(other.Elements + i))
 end
 

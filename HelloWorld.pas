@@ -16,12 +16,12 @@ uses System.*, Vector.Vector
 function Greet(name: String): String
 begin
   {$ifdef friendly}
-  let greeting := 'hi '
+  let greeting = 'hi '
   {$else}
-  let greeting := 'hello '
+  let greeting = 'hello '
   {$endif}
 
-  let msg := greeting + name
+  let msg = greeting + name
 
   {$ifndef friendly}
   result := msg
@@ -36,17 +36,17 @@ var
   ints2: array[-1..1, -2..2] of Int32
 
 begin
-  let x := 1
-  let y := 2
+  let x = 1
+  let y = 2
   x := x + y
 
-  let vec := Vector.Create()
+  let vec = Vector.Create()
   vec.Add(1)
   vec.Add(2)
   Vector.Add(vec, 3)
   Vector.Add(vec, 4)
 
-  let name := 'wuuuorld'
+  let name = 'wuuuorld'
 
   WriteLn(Greet(name))
 
