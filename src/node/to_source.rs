@@ -68,6 +68,10 @@ impl<C> ToSource for ExpressionValue<C>
                 format!("{}.{}", of.to_source(), name)
             }
 
+            ExpressionValue::ArrayElement { of, index_expr } => {
+                format!("{}[{}]", of.to_source(), index_expr.to_source())
+            }
+
             ExpressionValue::LetBinding { name, value } => {
                 format!("let {} := {}", name, value.to_source())
             }

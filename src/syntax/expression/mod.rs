@@ -165,7 +165,7 @@ impl Expression {
         /* no args e.g. `a()` */
         if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
             tokens.advance(1);
-            return Ok(Expression::function_call(base, vec![]))
+            return Ok(Expression::function_call(base, vec![]));
         }
 
         /* parse args */
@@ -186,6 +186,14 @@ impl Expression {
         tokens.match_one(tokens::BracketRight)?;
 
         Ok(Expression::function_call(base, arg_exprs))
+    }
+
+    fn parse_array_element_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
+        tokens.match_one(tokens::SquareBracketLeft)?;
+        let index_expr = Expression::parse(tokens)?;
+        tokens.match_one(tokens::SquareBracketRight)?;
+
+        Ok(Expression::array_element(base, index_expr))
     }
 
     fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
@@ -296,7 +304,7 @@ impl Parse for Expression {
                 return Ok(Expression::block(parsed_block));
             }
 
-            _ => { /* it's a value expression, keep going */ },
+            _ => { /* it's a value expression, keep going */ }
         }
 
         let mut compound_parts = Vec::new();
@@ -355,7 +363,7 @@ impl Parse for Expression {
                         let expr = Expression::parse_literal_string(tokens)?;
                         CompoundExpressionPart::Operand(CompoundOperand {
                             expr,
-                            last_token: tokens.context().clone()
+                            last_token: tokens.context().clone(),
                         })
                     }
 
@@ -363,7 +371,7 @@ impl Parse for Expression {
                         let expr = Expression::parse_literal_integer(tokens)?;
                         CompoundExpressionPart::Operand(CompoundOperand {
                             expr,
-                            last_token: tokens.context().clone()
+                            last_token: tokens.context().clone(),
                         })
                     }
 
@@ -371,7 +379,7 @@ impl Parse for Expression {
                         let expr = Expression::parse_literal_float(tokens)?;
                         CompoundExpressionPart::Operand(CompoundOperand {
                             expr,
-                            last_token: tokens.context().clone()
+                            last_token: tokens.context().clone(),
                         })
                     }
 
@@ -379,7 +387,7 @@ impl Parse for Expression {
                         let expr = Expression::parse_literal_nil(tokens)?;
                         CompoundExpressionPart::Operand(CompoundOperand {
                             expr,
-                            last_token: tokens.context().clone()
+                            last_token: tokens.context().clone(),
                         })
                     }
 
@@ -388,7 +396,7 @@ impl Parse for Expression {
                         let expr = Expression::parse_literal_bool(tokens)?;
                         CompoundExpressionPart::Operand(CompoundOperand {
                             expr,
-                            last_token: tokens.context().clone()
+                            last_token: tokens.context().clone(),
                         })
                     }
 
@@ -439,7 +447,13 @@ impl Parse for Expression {
 
                     /* replace the last operand with a function call */
                     Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
-                        unimplemented!("array element access")
+                        let last_operand = pop_operand(&mut compound_parts);
+                        let element_expr = Self::parse_array_element_after(last_operand, tokens)?;
+
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr: element_expr,
+                            last_token: tokens.context().clone(),
+                        })
                     }
 
                     // binary operator
@@ -469,11 +483,11 @@ impl Parse for Expression {
             return Err(match tokens.look_ahead().next() {
                 Some(unexpected) => {
                     ParseError::UnexpectedToken(unexpected, Some(match_expr_start()))
-                },
+                }
                 None => {
                     ParseError::UnexpectedEOF(match_expr_start(), tokens.context().clone())
                 }
-            })
+            });
 
         }
 

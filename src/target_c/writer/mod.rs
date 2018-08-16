@@ -363,11 +363,15 @@ pub fn write_expr(out: &mut String,
             writeln!(out, ";}}")
         }
 
-        ExpressionValue::Identifier(ref sym) => {
+        ExpressionValue::Identifier(sym) => {
             write!(out, "{}", identifier_to_c(sym))
         }
 
-        ExpressionValue::Member { ref of, ref name } => {
+        ExpressionValue::ArrayElement { /*of, index_expr*/ .. } => {
+            unimplemented!("array element access (c++ backend)")
+        }
+
+        ExpressionValue::Member { of, name } => {
             let mut member_out = String::new();
             //panic!("of: {:?}, name: {}", of, name);
             let mut of_type: Type = of.expr_type()

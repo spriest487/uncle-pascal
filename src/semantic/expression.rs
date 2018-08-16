@@ -416,6 +416,7 @@ fn is_lvalue(expr: &Expression) -> bool {
             _ => false,
         },
 
+        ExpressionValue::ArrayElement { of, .. } |
         ExpressionValue::Member { of, .. } => {
             is_lvalue(of)
         }
@@ -530,9 +531,7 @@ fn prefix_op_type(op: operators::Operator,
     }
 }
 
-fn member_type(of: &Expression,
-               name: &str,
-               _context: &SemanticContext) -> SemanticResult<Option<Type>> {
+fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
     let base_type = of.expr_type()?
         .map(|dt| dt.remove_indirection().clone());
 
@@ -647,6 +646,12 @@ impl Expression {
                 let typed_of = Expression::annotate(of, scope)?;
                 Ok(Expression::member(typed_of, name))
             }
+
+            ExpressionValue::ArrayElement { of, index_expr } => {
+                let of = Expression::annotate(of.as_ref(), scope.clone())?;
+                let index_expr = Expression::annotate(index_expr.as_ref(), scope.clone())?;
+                Ok(Expression::array_element(of, index_expr))
+            }
         }
     }
 
@@ -692,8 +697,16 @@ impl Expression {
             ExpressionValue::ForLoop { from, to, body } =>
                 for_loop_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context),
 
-            ExpressionValue::Member { of, name } =>
-                member_type(of, name, &self.context)
+            ExpressionValue::Member { of, name } => {
+                member_type(of, name)
+            }
+
+            ExpressionValue::ArrayElement { of, index_expr } => {
+                let _of_type = of.expr_type()?;
+                let _index_type = index_expr.expr_type()?;
+
+                unimplemented!("array element typechecking")
+            }
         }
     }
 

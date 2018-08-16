@@ -35,6 +35,10 @@ pub enum ExpressionValue<TContext> {
         of: Box<Expression<TContext>>,
         name: String,
     },
+    ArrayElement {
+        of: Box<Expression<TContext>>,
+        index_expr: Box<Expression<TContext>>,
+    },
     If {
         condition: Box<Expression<TContext>>,
         then_branch: Box<Expression<TContext>>,
@@ -217,7 +221,19 @@ impl<TContext> Expression<TContext>
                 of: Box::from(of),
                 name: name.to_owned(),
             },
-            context: context.into(),
+            context,
+        }
+    }
+
+    pub fn array_element(of: Self, index_expr: Self) -> Self {
+        let context = of.context.clone();
+
+        Expression {
+            value: ExpressionValue::ArrayElement {
+                of: Box::new(of),
+                index_expr: Box::new(index_expr),
+            },
+            context,
         }
     }
 
@@ -473,6 +489,12 @@ pub fn transform_expressions<TContext>(
         ExpressionValue::Member { of, name } => {
             let of = transform_expressions(*of, replace);
             replace(Expression::member(of, &name))
+        }
+
+        ExpressionValue::ArrayElement { of, index_expr } => {
+            let of = transform_expressions(*of, replace);
+            let index_expr = transform_expressions(*index_expr, replace);
+            replace(Expression::array_element(of, index_expr))
         }
 
         ExpressionValue::Identifier(name) => {
