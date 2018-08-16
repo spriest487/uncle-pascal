@@ -1,12 +1,18 @@
 # TODO
 
+* object literals for classes and records (maybe get rid of constructors)
+* const decls should use the explicit type they're given
+* record members in local args shouldn't be initialized by default
+* `result` shouldn't be initialized by default and we should check this
+* check assignment to `out` params
+* RC struct members on the stack
+* implement `exit` and make arc work with alterate control flows 
+
 * set literals
 * sets supporting ..
 * sets of numeric types
-* const/var/out need to do stuff
 * implement Exit() or better replacement for result var
 * "uses" should be able to appear at any position in the decls
-* RC struct members on the stack
 * weak variables
 * variable length arrays
 * Interfaces and interface methods
