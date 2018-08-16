@@ -22,6 +22,48 @@ pub enum Matcher {
     OneOf(Vec<Matcher>),
 }
 
+impl From<tokens::Token> for Matcher {
+    fn from(token: tokens::Token) -> Self {
+        Matcher::Exact(token)
+    }
+}
+
+impl From<keywords::Keyword> for Matcher {
+    fn from(keyword: keywords::Keyword) -> Self {
+        Matcher::Keyword(keyword)
+    }
+}
+
+pub trait MatchOneOf {
+    fn or<T>(self, next: T) -> Matcher where T: Into<Matcher>;
+}
+
+pub trait MatchSequenceOf {
+    fn and_then<T>(self, next: T) -> SequenceMatcher where T: Into<Matcher>;
+}
+
+impl<TMatchable> MatchOneOf for TMatchable where TMatchable: Into<Matcher> {
+    fn or<T>(self, next: T) -> Matcher where T: Into<Matcher> {
+        self.into().or(next.into())
+    }
+}
+
+impl<TMatchable> MatchSequenceOf for TMatchable where TMatchable: Into<Matcher> {
+    fn and_then<T>(self, next: T) -> SequenceMatcher where T: Into<Matcher> {
+        self.into().and_then(next.into())
+    }
+}
+
+pub trait MatchBlockOf {
+    fn terminated_by<T>(self, end: T) -> BlockMatcher where T: Into<Matcher>;
+}
+
+impl<TMatchable> MatchBlockOf for TMatchable where TMatchable: Into<Matcher> {
+    fn terminated_by<T>(self, end: T) -> BlockMatcher where T: Into<Matcher> {
+        self.into().terminated_by(end.into())
+    }
+}
+
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -57,31 +99,37 @@ impl Matcher {
         }
     }
 
-    pub fn or(self, or: Matcher) -> Matcher {
+    pub fn or<TMatchable>(self, or: TMatchable) -> Matcher
+        where TMatchable: Into<Matcher>
+    {
         match self {
             Matcher::OneOf(mut options) => {
-                options.push(or);
+                options.push(or.into());
                 Matcher::OneOf(options)
             }
             _ => {
                 Matcher::OneOf(vec![
                     self,
-                    or,
+                    or.into(),
                 ])
             }
         }
     }
 
-    pub fn and_then(self, next_matcher: Matcher) -> SequenceMatcher {
+    pub fn and_then<TMatchable>(self, next_matcher: TMatchable) -> SequenceMatcher
+        where TMatchable: Into<Matcher>
+    {
         SequenceMatcher {
-            sequence: vec![self, next_matcher]
+            sequence: vec![self, next_matcher.into()]
         }
     }
 
-    pub fn terminated_by(self, close: Matcher) -> BlockMatcher {
+    pub fn terminated_by<TMatchable>(self, close: TMatchable) -> BlockMatcher
+        where TMatchable: Into<Matcher>
+    {
         BlockMatcher {
             open: self,
-            close,
+            close: close.into(),
         }
     }
 
@@ -200,8 +248,10 @@ pub struct SequenceMatcher {
 }
 
 impl SequenceMatcher {
-    pub fn and_then(mut self, next_matcher: Matcher) -> Self {
-        self.sequence.push(next_matcher);
+    pub fn and_then<TMatchable>(mut self, next_matcher: TMatchable) -> Self
+        where TMatchable: Into<Matcher>
+    {
+        self.sequence.push(next_matcher.into());
         self
     }
 

@@ -14,18 +14,16 @@ impl Function {
               TIter::Item: tokens::AsToken + 'static
     {
         //match the name
-        let name_match = Matcher::Keyword(keywords::Function)
-            .and_then(Matcher::AnyIdentifier)
+        let name_match = keywords::Function.and_then(Matcher::AnyIdentifier)
             .match_sequence(in_tokens, context)?;
 
         let fn_name = &name_match.value[1].clone();
-        let open_args = Matcher::Exact(tokens::BracketLeft)
+        let open_args = Matcher::from(tokens::BracketLeft)
             .match_peek(name_match.next_tokens, &name_match.last_token)?;
 
         let arg_groups = match open_args.value {
             Some(_) => {
-                Matcher::Exact(tokens::BracketLeft)
-                    .terminated_by(Matcher::Exact(tokens::BracketRight))
+                tokens::BracketLeft.terminated_by(tokens::BracketRight)
                     .match_groups(&Matcher::Exact(tokens::Comma),
                                   open_args.next_tokens,
                                   &open_args.last_token)?
@@ -41,7 +39,7 @@ impl Function {
         let args = arg_groups.value.into_iter()
             .map(|arg_tokens| {
                 let fn_arg = Matcher::AnyIdentifier
-                    .and_then(Matcher::Exact(tokens::Colon))
+                    .and_then(tokens::Colon)
                     .and_then(Matcher::AnyIdentifier)
                     .match_sequence(arg_tokens.items, &arg_tokens.context)?;
 
@@ -52,19 +50,18 @@ impl Function {
             })
             .collect::<Result<_, _>>()?;
 
-        let match_return = Matcher::Exact(tokens::Colon)
+        let match_return = Matcher::from(tokens::Colon)
             .and_then(Matcher::AnyIdentifier)
-            .and_then(Matcher::Exact(tokens::Semicolon))
+            .and_then(tokens::Semicolon)
             .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
 
         let fn_return_type = &match_return.value[1];
 
-        let peek_after_sig = Matcher::Keyword(keywords::Var)
-            .or(Matcher::Keyword(keywords::Begin))
+        let peek_after_sig = keywords::Var.or(keywords::Begin)
             .match_peek(match_return.next_tokens, &match_return.last_token)?;
 
         let local_vars = match peek_after_sig.value {
-            Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {
+            Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
                 Vars::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
             }
             _ => {
@@ -76,8 +73,7 @@ impl Function {
 
         let body_block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
 
-        let match_semicolon = Matcher::Exact(tokens::Semicolon);
-        let last_semicolon = match_semicolon
+        let last_semicolon = Matcher::from(tokens::Semicolon)
             .match_one(body_block.next_tokens, &body_block.last_token)?;
 
         let function = Function {
@@ -85,7 +81,7 @@ impl Function {
             return_type: node::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
             local_vars: local_vars.value,
-            args: Vars { decls: args }, //TODO: steal vars parsing and make a match_list for ; vs , arg list
+            args: Vars { decls: args },
 
             body: body_block.value,
         };
@@ -116,9 +112,9 @@ mod test {
     use tokenizer;
     use super::*;
 
-    static NO_CONTEXT : tokenizer::SourceToken = tokenizer::SourceToken {
+    static NO_CONTEXT: tokenizer::SourceToken = tokenizer::SourceToken {
         token: tokens::Keyword(keywords::Program),
-        line:0,
+        line: 0,
         col: 0,
     };
 
