@@ -33,26 +33,30 @@ static struct System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, 
     }
 
     rc.RefCount->StrongCount = 1;
+
+    fprintf(stderr, "rc allocated %lld bytes for %s\n", size, constructorName);
     return rc;
 }
 
 static void System_Internal_Rc_Release(struct System_Internal_Rc* rc) {
     if (!rc->Value) {
-        fputs("tried to release an invalid Rc\n", stderr);
+        fprintf(stderr, "tried to release an invalid rc @ %p + <invalid>\n", rc->RefCount);
         abort();
     }
 
-    if (rc->RefCount) {
-        rc->RefCount -= 1;
-        if (rc->RefCount < 0) {
-            fputs("released Rc that was already released\n", stderr);
-            abort();
-        }
+    if (!rc->RefCount || rc->RefCount->StrongCount <= 0) {
+        fprintf(stderr, "released rc that was already released @ %p + %p\n", rc->RefCount, rc->Value);
+        abort();
+    }
 
-        if (rc->RefCount == 0) {
-            free(rc->Value);
-            rc->RefCount = NULL;
-        }
+    rc->RefCount->StrongCount -= 1;
+    if (rc->RefCount->StrongCount == 0) {
+        fprintf(stderr, "rc deallocated @ %p + %p\n", rc->RefCount, rc->Value);
+
+        free(rc->Value);
+        free(rc->RefCount);
+        rc->RefCount = NULL;
+        rc->Value = NULL;
     }
 }
 
@@ -132,11 +136,11 @@ static struct System_Internal_Rc System_StringConcat(struct System_Internal_Rc a
             abort();
         }
 
-        for (System_Integer c = 0; c < totalLength; ++c) {
+        for (System_Integer c = 0; c < a->Length; ++c) {
             chars[c] = a->Chars[c];
         }
 
-        for (System_Integer c = 0; c < totalLength; ++c) {
+        for (System_Integer c = 0; c < b->Length; ++c) {
             chars[c + a->Length] = b->Chars[c];
         }
 

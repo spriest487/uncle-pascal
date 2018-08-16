@@ -230,7 +230,6 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
             match &of_type {
                 types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
-                    let of_type_c = type_to_c(&of_type);
                     let c_class_struct_name = format!("struct {}", identifier_to_c(&decl.name));
 
                     member_out.insert_str(0, &format!("(({}*)", c_class_struct_name));
@@ -272,8 +271,25 @@ pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
         .collect()
 }
 
-pub fn default_initialize_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
-    vars.decls.iter()
+pub fn release_vars<'a>(out: &mut String,
+                        vars: impl IntoIterator<Item=&'a semantic::VarDecl>)
+                        -> fmt::Result {
+    for decl in vars {
+        match &decl.decl_type {
+            types::DeclaredType::Record(record) if record.kind == types::RecordKind::Class => {
+                writeln!(out, "System_Internal_Rc_Release(&{});", decl.name)?;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
+}
+
+pub fn default_initialize_vars<'a>(out: &mut String,
+                                   decls: impl IntoIterator<Item=&'a semantic::VarDecl>)
+                                   -> fmt::Result {
+    decls.into_iter()
         .map(|decl| {
             default_initialize(out, &types::Symbol::new(decl.name.clone(),
                                                         decl.decl_type.clone()))
@@ -311,16 +327,28 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
         .join(", "))?;
 
     write_vars(out, &function.local_vars)?;
-    default_initialize_vars(out, &function.local_vars)?;
+    default_initialize_vars(out, function.local_vars.decls.iter())?;
 
     if function.constructor {
-        //the actual return type is an Rc
-        writeln!(out, "result = System_Internal_Rc_GetMem(sizeof({}), \"{}\");",
-                 return_type_c.as_ref().expect("constructor must have valid C return type"),
+        //the actual return type is an Rc, but we need to pass the class type to sizeof
+        let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
+            types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
+                identifier_to_c(&decl.name)
+            }
+            _ => panic!("constructor must return a class type"),
+        };
+
+        writeln!(out, "result = System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
+                 constructed_class_c_name,
                  function.return_type.as_ref().expect("constructor must have return type"))?;
     }
 
     write_block(out, &function.body)?;
+
+    //release all local vars except the result
+    let result_id = node::Identifier::from("result");
+    release_vars(out, function.local_vars.decls.iter()
+        .filter(|decl| decl.name != result_id))?;
 
     match return_type_c {
         Some(_) => writeln!(out, "return result;")?,
@@ -370,21 +398,23 @@ pub fn write_c(module: &ProgramModule)
 
     writeln!(output, "/* program vars */")?;
 
-    let var_decls = module.program.decls.iter()
+    let var_decls: Vec<_> = module.program.decls.iter()
         .filter_map(|decl| match decl {
             &node::UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
             _ => None
-        });
+        })
+        .flat_map(|decl_group| decl_group.decls.iter())
+        .collect();
 
     writeln!(output, "/* program main */")?;
 
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
 
-    for vars_decl in var_decls {
-        default_initialize_vars(&mut output, vars_decl)?;
-    }
+    default_initialize_vars(&mut output, var_decls.iter().cloned())?;
 
     write_block(&mut output, &module.program.program_block)?;
+    release_vars(&mut output, var_decls)?;
+
     writeln!(output, "  return 0;")?;
     writeln!(output, "}}")?;
 
