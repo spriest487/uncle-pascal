@@ -408,29 +408,22 @@ impl Expression {
 
     fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {
         let if_kw = tokens.match_one(keywords::If)?;
+        let condition_expr: Expression = tokens.parse()?;
 
-        /* the tokens between this "if" and the next "then" should contain exactly 1 expression
-        and nothing else */
-        let cond_tokens = TokenStream::from(tokens.match_until(keywords::Then)?);
-        let condition: Expression = cond_tokens.parse_to_end()?;
+        tokens.match_one(keywords::Then)?;
+        let then_expr: Expression = tokens.parse()?;
 
-        if let Some(then_tokens) = tokens.look_ahead().match_block(keywords::Then, keywords::Else) {
-            let then_len = then_tokens.len();
+        // else present?
+        let else_expr: Option<Expression> = match tokens.look_ahead().match_one(keywords::Else) {
+            Some(_) => {
+                tokens.advance(1);
+                Some(tokens.parse()?)
+            }
 
-            let then_stream = TokenStream::new(then_tokens.inner, &then_tokens.open);
-            let then_branch: Expression = then_stream.parse_to_end()?;
+            None => None,
+        };
 
-            //advance to after the "else"
-            tokens.advance(then_len);
-            let else_branch: Expression = tokens.parse()?;
-
-            Ok(Expression::if_then_else(condition, then_branch, Some(else_branch), if_kw))
-        } else {
-            tokens.match_one(keywords::Then)?;
-            let then_branch: Expression = tokens.parse()?;
-
-            Ok(Expression::if_then_else(condition, then_branch, None, if_kw))
-        }
+        Ok(Expression::if_then_else(condition_expr, then_expr, else_expr, if_kw))
     }
 
     fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
