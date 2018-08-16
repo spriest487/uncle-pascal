@@ -5,6 +5,7 @@ pub mod block;
 pub mod function;
 pub mod type_decl;
 pub mod program;
+pub mod unit;
 
 pub use self::scope::*;
 pub use self::var_decl::*;
@@ -13,6 +14,7 @@ pub use self::block::*;
 pub use self::function::*;
 pub use self::type_decl::*;
 pub use self::program::*;
+pub use self::unit::*;
 
 use std::fmt;
 

@@ -6,7 +6,11 @@ use std::fmt;
 use std::io::{self, Read, Write};
 use std::process;
 use std::fs;
-use std::path;
+use std::path::*;
+use std::collections::HashMap;
+use std::ffi::OsStr;
+use std::env::current_dir;
+use semantic::scope::Scope;
 
 mod keywords;
 mod types;
@@ -67,22 +71,82 @@ impl From<io::Error> for CompileError {
     fn from(err: io::Error) -> Self { CompileError::IOError(err) }
 }
 
-fn compile(filename: &str, source: &str) -> Result<String, CompileError> {
-    let tokens = tokenizer::tokenize(filename, source)?;
-
-    //no context!
-    let empty_context = source::Token {
+fn empty_context() -> source::Token {
+    source::Token {
         token: Rc::from(tokens::Keyword(keywords::Program)),
-        location: source::Location::new("test", 0, 0),
-    };
+        location: source::Location::new("", 0, 0),
+    }
+}
 
-    let program = syntax::Program::parse(tokens.into_iter(), &empty_context)?
-        .finish()?;
+fn load_source<TPath: AsRef<Path>>(path: TPath) -> Result<Vec<source::Token>, CompileError> {
+    let filename = path.as_ref()
+        .file_name()
+        .map(OsStr::to_string_lossy)
+        .map(|s| String::from(s))
+        .unwrap();
 
-    let typed_program = semantic::Program::annotate(&program.clone())?;
-    typed_program.type_check()?;
+    let mut file = fs::File::open(path)?;
 
-    Ok(target_c::write_c(&typed_program)?)
+    let mut source = String::new();
+    file.read_to_string(&mut source)?;
+
+    let tokens = tokenizer::tokenize(&filename, &source)?;
+
+    Ok(tokens)
+}
+
+struct ProgramModule {
+    program: semantic::Program,
+    units: Vec<semantic::Unit>,
+}
+
+fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
+    let tokens = load_source(program_path)?;
+
+    let source_dir = program_path.parent()
+        .unwrap()
+        .canonicalize()?;
+
+    let parsed_program = syntax::Program::parse(tokens.into_iter(), &empty_context())?;
+
+    let mut loaded_units = Vec::new();
+    let mut loaded_unit_scopes = HashMap::new();
+
+    for unit_ref in parsed_program.uses.iter() {
+        let unit_id = unit_ref.name.to_string();
+        if unit_id == "System" {
+            continue;
+        }
+
+        if !loaded_unit_scopes.contains_key(&unit_id) {
+            let unit_path = source_dir.join(format!("{}.pas", unit_id));
+
+            println!("Compiling unit `{}` in `{}`...",
+                     unit_id,
+                     unit_path.to_string_lossy());
+
+            let unit_source = load_source(unit_path)?;
+            let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
+
+            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit,
+                                                              Scope::default())?;
+
+            loaded_unit_scopes.insert(unit_id, unit_scope);
+            loaded_units.push(unit);
+        }
+    }
+
+    let program_scope = loaded_unit_scopes.into_iter()
+        .fold(Scope::default(), |scope, (unit_id, unit_scope)| {
+            scope.with_child(unit_id, unit_scope)
+        });
+
+    let program = semantic::Program::annotate(&parsed_program, program_scope)?;
+
+    Ok(ProgramModule {
+        program,
+        units: loaded_units,
+    })
 }
 
 fn print_usage(program: &str, opts: getopts::Options) {
@@ -90,18 +154,31 @@ fn print_usage(program: &str, opts: getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn compile_file(src_path: &str, clang: bool) -> Result<(), CompileError> {
-    let mut file = fs::File::open(src_path)?;
+fn pas_to_c(in_path: &str,
+            out_dir: Option<&str>,
+            clang: bool) -> Result<(), CompileError> {
+    let src_path = PathBuf::from(in_path)
+        .canonicalize()?;
 
-    let mut source = String::new();
-    file.read_to_string(&mut source)?;
+    let out_path = out_dir.map(|p| PathBuf::from(p))
+        .unwrap_or_else(|| current_dir().unwrap());
 
-    let c_unit = compile(src_path, &source)?;
+    let module = compile_program(&src_path)?;
+    let c_unit = target_c::write_c(&module.program)?;
 
     if clang {
-        invoke_clang(&c_unit, src_path)?;
+        invoke_clang(&c_unit, &src_path)?;
     } else {
-        println!("{}", c_unit);
+        let out_file_path = out_path
+            .join(format!("{}.c", module.program.name));
+            //.canonicalize()?;
+
+        println!("Writing output to `{}`...", out_file_path.to_string_lossy());
+
+        let mut out_file = fs::File::create(out_file_path)?;
+        out_file.write_all(c_unit.as_bytes())?;
+
+        println!("Done!");
     }
     Ok(())
 }
@@ -113,16 +190,18 @@ fn main() {
     let mut opts = getopts::Options::new();
     opts.optflag("c", "invoke-clang", "invoke clang to compile the generated C unit");
 
+    //TODO
+    let out_dir = None;
+
     match opts.parse(&args[1..]) {
         Ok(matched) => {
             if matched.free.len() != 1 {
                 print_usage(&program, opts);
                 std::process::exit(1);
             } else {
-                let source_path = &matched.free[0];
                 let clang = matched.opt_present("c");
 
-                match compile_file(source_path, clang) {
+                match pas_to_c(&matched.free[0], out_dir, clang) {
                     Err(err) => {
                         println!("error: {}", err);
                         std::process::exit(1);
@@ -140,14 +219,14 @@ fn main() {
     }
 }
 
-fn invoke_clang(c_src: &str, source_path: &str) -> Result<(), CompileError> {
+fn invoke_clang(c_src: &str, source_path: &Path) -> Result<(), CompileError> {
     let os_ext = if cfg!(windows) {
         "exe"
     } else {
         ""
     };
 
-    let target_path = path::PathBuf::from(source_path)
+    let target_path = PathBuf::from(source_path)
         .with_extension(os_ext);
 
     let name = target_path.file_name()

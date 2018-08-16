@@ -48,18 +48,6 @@ fn expect_comparable(target: Option<&DeclaredType>,
     }
 }
 
-fn expect_type_eq(expected: Option<&DeclaredType>,
-                  actual: Option<&DeclaredType>,
-                  context: &source::Token) -> Result<(), SemanticError> {
-    if expected != actual {
-        Err(SemanticError::unexpected_type(expected.cloned(),
-                                           actual.cloned(),
-                                           context.clone()))
-    } else {
-        Ok(())
-    }
-}
-
 impl Expression {
     pub fn annotate(expr: &syntax::Expression, scope: &Scope)
                     -> Result<Self, SemanticError> {

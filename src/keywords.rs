@@ -22,6 +22,9 @@ pub enum Keyword {
     For,
     To,
     Do,
+    Unit,
+    Interface,
+    Implementation,
 }
 
 impl Keyword {
@@ -43,6 +46,9 @@ impl Keyword {
             "for" => Some(For),
             "to" => Some(To),
             "do" => Some(Do),
+            "unit" => Some(Unit),
+            "interface" => Some(Interface),
+            "implementation" => Some(Implementation),
             _ => None,
         }
     }
@@ -67,6 +73,9 @@ impl ToSource for Keyword {
             &For => "for",
             &To => "to",
             &Do => "do",
+            &Unit => "unit",
+            &Interface => "interface",
+            &Implementation => "implementation",
         }.to_owned()
     }
 }

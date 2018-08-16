@@ -49,6 +49,17 @@ pub struct Program<TSymbol>
     pub program_block: Block<TSymbol>,
 }
 
+#[derive(Clone, Debug)]
+pub struct Unit<TSymbol>
+    where TSymbol: Symbol
+{
+    pub name: String,
+
+    pub uses: Vec<UnitReference>,
+
+    pub interface: Vec<UnitDeclaration<TSymbol>>,
+    pub implementation: Vec<UnitDeclaration<TSymbol>>,
+}
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl<TSymbol>

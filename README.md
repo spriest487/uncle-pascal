@@ -8,7 +8,6 @@
 * UFCS
 * Library compilation
 * Library imports
-* Unify type_check and expr_type somehow?
 * RC
 * Unsafe
 * Byte to int auto conversions + c target auto conversion casting

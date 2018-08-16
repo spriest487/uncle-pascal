@@ -6,6 +6,7 @@ pub mod block;
 pub mod expression;
 pub mod iter;
 pub mod matcher;
+pub mod unit;
 
 pub use self::function::*;
 pub use self::block::*;
@@ -15,6 +16,7 @@ pub use self::program::*;
 pub use self::expression::*;
 pub use self::iter::*;
 pub use self::matcher::*;
+pub use self::unit::*;
 
 use std::fmt;
 

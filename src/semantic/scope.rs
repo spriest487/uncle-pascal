@@ -104,45 +104,45 @@ impl node::Symbol for ScopedSymbol {
 
 impl Default for Scope {
     fn default() -> Self {
-        let system =
-            Scope {
-                names: HashMap::new(),
-                children: HashMap::new(),
-            }
-                .with_type("Byte".to_owned(), DeclaredType::Byte)
-                .with_type("Integer".to_owned(), DeclaredType::Integer)
-                .with_type("String".to_owned(), DeclaredType::String)
-                .with_type("Pointer".to_owned(), DeclaredType::RawPointer)
-                .with_type("Boolean".to_owned(), DeclaredType::Boolean)
-                .with_symbol("WriteLn".to_owned(),
-                             DeclaredType::from(FunctionSignature {
-                                 name: "WriteLn".to_owned(),
-                                 arg_types: vec![DeclaredType::String],
-                                 return_type: None,
-                             }))
-                .with_symbol("GetMem".to_owned(),
-                             DeclaredType::from(FunctionSignature {
-                                 name: "GetMem".to_owned(),
-                                 arg_types: vec![DeclaredType::Integer],
-                                 return_type: Some(DeclaredType::Byte.pointer()),
-                             }))
-                .with_symbol("FreeMem".to_owned(),
-                             DeclaredType::from(FunctionSignature {
-                                 name: "FreeMem".to_owned(),
-                                 arg_types: vec![DeclaredType::Byte.pointer()],
-                                 return_type: None,
-                             }));
-
-        let scope = Self {
-            names: HashMap::new(),
-            children: HashMap::new(),
-        };
-
-        scope.with_child("System".to_owned(), system)
+        Scope::new().with_child("System".to_owned(), Scope::system())
     }
 }
 
 impl Scope {
+    pub fn new() -> Self {
+        Scope {
+            names: HashMap::new(),
+            children: HashMap::new(),
+        }
+    }
+
+    pub fn system() -> Self {
+        Scope::new()
+            .with_type("Byte".to_owned(), DeclaredType::Byte)
+            .with_type("Integer".to_owned(), DeclaredType::Integer)
+            .with_type("String".to_owned(), DeclaredType::String)
+            .with_type("Pointer".to_owned(), DeclaredType::RawPointer)
+            .with_type("Boolean".to_owned(), DeclaredType::Boolean)
+            .with_symbol("WriteLn".to_owned(),
+                         DeclaredType::from(FunctionSignature {
+                             name: "WriteLn".to_owned(),
+                             arg_types: vec![DeclaredType::String],
+                             return_type: None,
+                         }))
+            .with_symbol("GetMem".to_owned(),
+                         DeclaredType::from(FunctionSignature {
+                             name: "GetMem".to_owned(),
+                             arg_types: vec![DeclaredType::Integer],
+                             return_type: Some(DeclaredType::Byte.pointer()),
+                         }))
+            .with_symbol("FreeMem".to_owned(),
+                         DeclaredType::from(FunctionSignature {
+                             name: "FreeMem".to_owned(),
+                             arg_types: vec![DeclaredType::Byte.pointer()],
+                             return_type: None,
+                         }))
+    }
+
     pub fn with_child(mut self, name: String, child: Scope) -> Self {
         self.children.insert(name, child);
         self
