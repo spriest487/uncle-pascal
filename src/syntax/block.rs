@@ -1,5 +1,6 @@
 use syntax::*;
 use tokens;
+use keywords;
 use ToSource;
 
 #[derive(Clone, Debug)]
@@ -16,7 +17,7 @@ impl Block {
             .terminated_by(Matcher::Keyword(keywords::End))
             .match_block(tokens, context)?;
 
-        let mut next_expr_tokens : Box<Iterator<Item=TIter::Item>> = Box::new(block_pair.value.inner.into_iter());
+        let mut next_expr_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(block_pair.value.inner.into_iter());
         let mut last_expr_token = block_pair.value.open;
 
         let mut statements = Vec::new();
@@ -44,16 +45,50 @@ impl Block {
                         next_expr_tokens = nested_block.next_tokens;
                         last_expr_token = nested_block.last_token;
                     }
+
                     //not a nested block, parse one expr until next semicolon
                     None => {
                         next_expr_tokens = nested_begin.next_tokens;
 
-                        let expr_tokens = next_expr_tokens
-                            .by_ref()
-                            .take_while(|t| {
-                                !Matcher::Exact(tokens::Semicolon).is_match(t)
-                            })
-                            .collect::<Vec<_>>();
+                        /* take tokens until the next semicolon, but if a new begin/end block
+                        begins inside this expression, include the whole contents of the block in
+                        this expression, including any semicolons */
+
+                        let mut expr_tokens = Vec::new();
+                        loop {
+                            let mut peekable_expr_tokens = next_expr_tokens.peekable();
+
+                            match peekable_expr_tokens.peek().cloned() {
+                                None => {
+                                    next_expr_tokens = Box::new(peekable_expr_tokens);
+                                    break
+                                },
+
+                                Some(next_token) => {
+                                    if Matcher::Keyword(keywords::Begin).is_match(&next_token) {
+                                        let expr_inner_block = Matcher::Keyword(keywords::Begin)
+                                            .terminated_by(Matcher::Keyword(keywords::End))
+                                            .match_block(peekable_expr_tokens, &nested_begin.last_token)?;
+
+                                        expr_tokens.push(expr_inner_block.value.open.clone());
+                                        expr_tokens.extend(expr_inner_block.value.inner.iter().cloned());
+                                        expr_tokens.push(expr_inner_block.value.close.clone());
+
+                                        next_expr_tokens = expr_inner_block.next_tokens;
+                                    } else {
+                                        //skip 1 because we already peeked this value
+                                        next_expr_tokens = Box::new(peekable_expr_tokens.skip(1));
+
+                                        if Matcher::Exact(tokens::Semicolon).is_match(&next_token) {
+                                            break;
+                                        }
+                                        else {
+                                            expr_tokens.push(next_token);
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         if expr_tokens.len() == 0 {
                             break;

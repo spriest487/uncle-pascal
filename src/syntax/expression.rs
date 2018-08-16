@@ -141,8 +141,6 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
             else_branch: Some(Box::from(else_branch)),
         })
     } else {
-        println!("no else branch starting from {}", cond_tokens.last_token);
-
         let then = Matcher::Keyword(keywords::Then)
             .match_one(peek_then_else.next_tokens, &peek_then_else.last_token)?;
         let then_branch = Expression::parse(then.next_tokens, &then.last_token)?;
