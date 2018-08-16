@@ -216,3 +216,52 @@ impl fmt::Display for Expression {
         write!(f, "expression: {}", self.to_source())
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokenizer::*;
+
+    fn parse_expr(src: &str) -> Expression {
+        let context = SourceToken { token: tokens::Keyword(keywords::Begin), line: 0, col: 0 };
+
+        let tokens = tokenize(src).unwrap();
+        let expr = Expression::parse(tokens, &context);
+
+        assert!(expr.is_ok(), "expression source `{}` should parse correctly", src);
+
+        expr.unwrap()
+    }
+
+    #[test]
+    fn parses_nested_function_calls() {
+        let expr = parse_expr("test(hello('world'), goodbye(cruel('world')))");
+
+        assert!(expr.is_function_call(), "result should be a function call expr");
+        let (test_id, test_args) = expr.unwrap_function_call();
+
+        assert_eq!(node::Identifier::parse("test"), test_id);
+        assert_eq!(2, test_args.len());
+
+        let hello_func = test_args[0].clone();
+        assert!(hello_func.is_function_call(), "first argument should be a function call expr");
+        let (hello_id, hello_args) = hello_func.unwrap_function_call();
+        assert_eq!(node::Identifier::parse("hello"), hello_id);
+        assert_eq!(1, hello_args.len());
+        assert!(hello_args[0].is_literal_string());
+        assert_eq!("world", hello_args[0].clone().unwrap_literal_string());
+
+        let goodbye_func = test_args[1].clone();
+        assert!(goodbye_func.is_function_call(), "second argument should be a function call expr");
+        let (goodbye_id, goodbye_args) = goodbye_func.unwrap_function_call();
+        assert_eq!(node::Identifier::parse("goodbye"), goodbye_id);
+        assert_eq!(1, goodbye_args.len());
+        assert!(goodbye_args[0].is_function_call());
+
+        let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call();
+        assert_eq!(node::Identifier::parse("cruel"), cruel_id);
+        assert_eq!(1, cruel_args.len());
+        assert!(cruel_args[0].is_literal_string());
+        assert_eq!("world", cruel_args[0].clone().unwrap_literal_string());
+    }
+}

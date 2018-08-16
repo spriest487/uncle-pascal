@@ -79,6 +79,7 @@ pub enum Expression<TSymbol>
     Block(Block<TSymbol>),
 }
 
+#[allow(dead_code)]
 impl<TSymbol> Expression<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
@@ -122,6 +123,34 @@ impl<TSymbol> Expression<TSymbol>
 
     pub fn block(block: Block<TSymbol>) -> Self {
         Expression::Block(block)
+    }
+
+    pub fn unwrap_function_call(self) -> (TSymbol, Vec<Self>) {
+        match self {
+            Expression::FunctionCall { target, args } => (target, args),
+            _ => panic!("called unwrap_function_call on something other than a function call expr"),
+        }
+    }
+
+    pub fn is_function_call(&self) -> bool {
+        match self {
+            &Expression::FunctionCall { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn unwrap_literal_string(self) -> String {
+        match self {
+            Expression::LiteralString(s) => s,
+            _ => panic!("called unwrap_literal_string on something other than a string literal expr")
+        }
+    }
+
+    pub fn is_literal_string(&self) -> bool {
+        match self {
+            &Expression::LiteralString(_) => true,
+            _ => false,
+        }
     }
 }
 
