@@ -61,9 +61,9 @@ impl Program {
         let name = program_statement[1].as_token().unwrap_identifier().to_owned();
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let uses = Unit::parse_uses(&mut tokens)?;
-        let decls = Unit::parse_decls(&mut tokens)?;
-        let program_block = Block::parse(&mut tokens)?;
+        let uses: Vec<node::UnitReference> = tokens.parse()?;
+        let decls: Vec<UnitDeclaration> = tokens.parse()?;
+        let program_block: Block = tokens.parse()?;
 
         tokens.match_one(tokens::Period)?;
         tokens.finish()?;

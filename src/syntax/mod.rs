@@ -16,7 +16,10 @@ pub use self::program::*;
 pub use self::expression::*;
 pub use self::matcher::*;
 pub use self::unit::*;
-pub use self::token_stream::TokenStream;
+pub use self::token_stream::{
+    TokenStream,
+    Parse,
+};
 
 use std::fmt;
 
@@ -54,26 +57,8 @@ impl ToSource for ParsedType {
     }
 }
 
-impl ParsedType {
-    pub fn with_name(name: impl Into<Identifier>) -> Self {
-        ParsedType {
-            name: name.into(),
-            indirection: 0,
-
-            array_dimensions: Vec::new(),
-        }
-    }
-
-    pub fn pointer(self) -> Self {
-        ParsedType {
-            name: self.name,
-            indirection: self.indirection + 1,
-
-            array_dimensions: self.array_dimensions,
-        }
-    }
-
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<ParsedType> {
+impl Parse for ParsedType {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<ParsedType> {
         let array_kw = tokens.match_peek(keywords::Array)?;
         let array_dimensions = match array_kw {
             Some(_) => {
@@ -122,6 +107,26 @@ impl ParsedType {
                     array_dimensions,
                 });
             }
+        }
+    }
+}
+
+impl ParsedType {
+    pub fn with_name(name: impl Into<Identifier>) -> Self {
+        ParsedType {
+            name: name.into(),
+            indirection: 0,
+
+            array_dimensions: Vec::new(),
+        }
+    }
+
+    pub fn pointer(self) -> Self {
+        ParsedType {
+            name: self.name,
+            indirection: self.indirection + 1,
+
+            array_dimensions: self.array_dimensions,
         }
     }
 }

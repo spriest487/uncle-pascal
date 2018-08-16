@@ -9,17 +9,17 @@ pub type Unit = node::Unit<ParsedSymbol>;
 pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol>;
 
 impl Unit {
-    pub fn parse(mut tokens: TokenStream) -> ParseResult<Unit> {
+    pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {
         let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let uses = Unit::parse_uses(&mut tokens)?;
+        let uses: Vec<node::UnitReference> = tokens.parse()?;
 
         tokens.match_one(keywords::Interface)?;
-        let interface_decls = Unit::parse_decls(&mut tokens)?;
+        let interface_decls: Vec<UnitDeclaration> = tokens.parse()?;
 
         tokens.match_one(keywords::Implementation)?;
-        let impl_decls = Unit::parse_decls(&mut tokens)?;
+        let impl_decls: Vec<UnitDeclaration> = tokens.parse()?;
 
         tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
         tokens.finish()?;
@@ -32,8 +32,10 @@ impl Unit {
             implementation: impl_decls,
         })
     }
+}
 
-    pub fn parse_uses(tokens: &mut TokenStream)-> ParseResult<Vec<node::UnitReference>> {
+impl Parse for Vec<node::UnitReference> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let uses_kw = tokens.match_peek(keywords::Uses)?;
 
         if uses_kw.is_none() {
@@ -109,8 +111,10 @@ impl Unit {
             }
         }
     }
+}
 
-    pub fn parse_decls(tokens: &mut TokenStream) -> ParseResult<Vec<UnitDeclaration>> {
+impl Parse for Vec<UnitDeclaration> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut decls = Vec::new();
 
         loop {
@@ -124,12 +128,12 @@ impl Unit {
             match peek_decl {
                 Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
                 => {
-                    let func = FunctionDecl::parse(tokens)?;
+                    let func: FunctionDecl = tokens.parse()?;
                     decls.push(node::UnitDeclaration::Function(func));
                 }
 
                 Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
-                    let type_decls = TypeDecl::parse(tokens)?;
+                    let type_decls: Vec<TypeDecl> = tokens.parse()?;
                     decls.extend(type_decls.into_iter().map(|type_decl| {
                         node::UnitDeclaration::Type(type_decl)
                     }));

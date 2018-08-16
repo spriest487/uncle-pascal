@@ -8,8 +8,8 @@ use operators;
 pub type RecordDecl = node::RecordDecl<ParsedSymbol>;
 pub type TypeDecl = node::TypeDecl<ParsedSymbol>;
 
-impl TypeDecl {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+impl Parse for Vec<TypeDecl> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(keywords::Type)?;
 
         let mut decls = Vec::new();
@@ -26,13 +26,13 @@ impl TypeDecl {
 
             let type_decl = match peek_kind {
                 Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
-                    let record_decl = RecordDecl::parse(decl_name, tokens)?;
+                    let record_decl = RecordDecl::parse_with_name(decl_name, tokens)?;
                     node::TypeDecl::Record(record_decl)
                 }
 
                 _ => {
                     let alias_context = tokens.context().clone();
-                    let aliased_type = ParsedType::parse(tokens)?;
+                    let aliased_type = tokens.parse()?;
 
                     node::TypeDecl::Alias {
                         alias: decl_name.to_string(),
@@ -58,7 +58,7 @@ impl TypeDecl {
 }
 
 impl RecordDecl {
-    fn parse(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
+    fn parse_with_name(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
         let match_kw = tokens.match_one(keywords::Record.or(keywords::Class))?;
 
         let kind = if match_kw.is_keyword(keywords::Class) {
@@ -79,7 +79,7 @@ impl RecordDecl {
                 break;
             }
 
-            let decl = VarDecl::parse(&mut decls_tokens)?;
+            let decl: VarDecl = decls_tokens.parse()?;
             decls.push(decl);
 
             decls_tokens.match_or_endl(tokens::Semicolon)?;

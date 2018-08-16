@@ -469,6 +469,24 @@ impl TokenStream {
             before_split,
         })
     }
+
+    pub fn parse<TParsed>(&mut self) -> ParseResult<TParsed>
+        where TParsed: Parse
+    {
+        TParsed::parse(self)
+    }
+
+    pub fn parse_to_end<TParsed>(mut self) -> ParseResult<TParsed>
+        where TParsed: Parse
+    {
+        let result = TParsed::parse(&mut self)?;
+        self.finish()?;
+        Ok(result)
+    }
+}
+
+pub trait Parse where Self: Sized {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
 }
 
 #[cfg(test)]

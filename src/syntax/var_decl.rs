@@ -7,8 +7,8 @@ use syntax::*;
 pub type VarDecl = node::VarDecl<ParsedSymbol>;
 pub type VarDecls = node::VarDecls<ParsedSymbol>;
 
-impl VarDecl {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecl> {
+impl Parse for VarDecl {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecl> {
         /* var names can't be fully-qualified, so we only need to match a
         single name token here */
         let id_tokens = tokens.match_sequence(Matcher::AnyIdentifier
@@ -17,7 +17,7 @@ impl VarDecl {
         let name_token = id_tokens[0].clone();
         let name = Identifier::from(name_token.as_token().unwrap_identifier());
 
-        let decl_type = ParsedType::parse(tokens)?;
+        let decl_type: ParsedType = tokens.parse()?;
 
         Ok(VarDecl {
             name,
@@ -27,15 +27,15 @@ impl VarDecl {
     }
 }
 
-impl VarDecls {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
+impl Parse for VarDecls {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
         tokens.match_one(keywords::Var)?;
 
         let mut decls = Vec::new();
         loop {
             match tokens.peek() {
                 Some(ref id) if id.as_token().is_any_identifier() => {
-                    let decl = VarDecl::parse(tokens)?;
+                    let decl: VarDecl = tokens.parse()?;
                     tokens.match_or_endl(tokens::Semicolon)?;
 
                     decls.push(decl);
@@ -59,16 +59,12 @@ impl VarDecls {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tokenizer::*;
 
     fn parse_vars(src: &str) -> VarDecls {
-        let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
-        let vars = VarDecls::parse(&mut tokens);
-        tokens.finish().expect("test source should not contain extra tokens");
-
-        assert!(vars.is_ok(), "test source `{}` must parse correctly", src);
-
-        vars.unwrap()
+        TokenStream::tokenize("test", src)
+            .unwrap()
+            .parse_to_end()
+            .unwrap()
     }
 
     #[test]

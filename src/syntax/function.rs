@@ -8,15 +8,8 @@ use node::{self, Identifier, FunctionKind};
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol>;
 
-impl FunctionDecl {
-    pub fn match_any_function_keyword() -> matcher::Matcher {
-        keywords::Function
-            .or(keywords::Procedure)
-            .or(keywords::Constructor)
-            .or(keywords::Destructor)
-    }
-
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+impl Parse for FunctionDecl {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         //match the name
         let name_match = tokens.match_sequence(vec![
             Self::match_any_function_keyword(),
@@ -102,6 +95,15 @@ impl FunctionDecl {
             kind,
             body,
         })
+    }
+}
+
+impl FunctionDecl {
+    pub fn match_any_function_keyword() -> matcher::Matcher {
+        keywords::Function
+            .or(keywords::Procedure)
+            .or(keywords::Constructor)
+            .or(keywords::Destructor)
     }
 }
 

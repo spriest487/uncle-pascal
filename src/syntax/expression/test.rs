@@ -6,7 +6,7 @@ use node::ToSource;
 fn try_parse_expr(src: &str) -> Result<(Expression, TokenStream), ParseError> {
     let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
 
-    let expr = Expression::parse(&mut tokens)?;
+    let expr: Expression = tokens.parse()?;
     Ok((expr, tokens))
 }
 
@@ -78,8 +78,7 @@ fn parses_multiple_line_compound_expr() {
         .unwrap();
     assert!(expr.is_binary_op(operators::Assignment));
 
-    let second_expr = Expression::parse(&mut remaining)
-        .unwrap();
+    let second_expr: Expression = remaining.parse().unwrap();
 
     assert!(second_expr.is_binary_op(operators::Assignment));
 }
@@ -245,14 +244,13 @@ fn parses_assignment_followed_by_prefix_operator() {
         ^a")
         .unwrap();
 
-    let expr = Expression::parse(&mut tokens).unwrap();
+    let expr: Expression = tokens.parse().unwrap();
 
     assert!(expr.is_binary_op(operators::Assignment));
     assert_eq!(Some(tokens::Operator(operators::Deref)),
                tokens.peek().map(|head| head.as_token().clone()));
 
-    let next_expr = Expression::parse(&mut tokens)
-        .unwrap();
+    let next_expr: Expression = tokens.parse().unwrap();
 
     assert!(next_expr.is_prefix_op(operators::Deref),
             "after parsing first expr, second expr should be ^a but was {}",
@@ -329,10 +327,10 @@ fn parses_fn_call_then_expr_on_next_line() {
 
     assert!(expr.is_function_call());
 
-    let next_expr = Expression::parse(&mut remaining)
+    let next_expr: Expression = remaining.parse()
         .expect("second expression must parse successfully");
-
-    remaining.finish().expect("second expression must parse with no trailing tokens");
+    remaining.finish()
+        .expect("second expression must parse with no trailing tokens");
 
     assert!(next_expr.is_if());
 }

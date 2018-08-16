@@ -629,7 +629,7 @@ pub(crate) mod test {
 
         let mut stream = syntax::TokenStream::from(tokens);
 
-        let parsed = syntax::Expression::parse(&mut stream)
+        let parsed: syntax::Expression = stream.parse()
             .expect(&format!("test expr `{}` must parse correctly", src));
 
         stream.finish().expect("expr must not contain trailing tokens");

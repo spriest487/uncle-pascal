@@ -12,7 +12,7 @@ impl Block {
         loop {
             match tokens.peek() {
                 Some(_) => {
-                    let expr = Expression::parse(tokens)?;
+                    let expr: Expression = tokens.parse()?;
 
                     /* if there's another expression in this group, it must
                     be on a different line */
@@ -31,8 +31,10 @@ impl Block {
 
         Ok(exprs)
     }
+}
 
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Block> {
+impl Parse for Block {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let statement_groups = tokens.match_groups(keywords::Begin,
                                                    keywords::End,
                                                    tokens::Semicolon)?;

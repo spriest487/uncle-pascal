@@ -211,7 +211,8 @@ fn compile_program(program_path: &Path,
                      pretty_path(&unit_path));
 
             let unit_source = load_source(unit_path, opts.clone())?;
-            let unit_tokens = syntax::TokenStream::new(unit_source, &empty_context());
+
+            let mut unit_tokens = syntax::TokenStream::new(unit_source, &empty_context());
             let parsed_unit = syntax::Unit::parse(unit_tokens)?;
 
             /* each unit imports all the units before it in the programs' units
