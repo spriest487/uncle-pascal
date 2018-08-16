@@ -97,7 +97,7 @@ impl DirectiveParser {
             else_pattern: Regex::new("^else$").unwrap(),
             elseif_pattern: Regex::new(r"^elseif\s+(\w+)$").unwrap(),
             mode_pattern: Regex::new(r"^mode\s+(\w+)$").unwrap(),
-            switch_pattern: Regex::new(r"^([a-zA-Z])([+-])$").unwrap(),
+            switch_pattern: Regex::new(r"^([a-zA-Z]+)([+-])$").unwrap(),
         }
     }
 
@@ -106,10 +106,10 @@ impl DirectiveParser {
             .map(|switch| {
                 if let Some(switch_capture) = self.switch_pattern.captures(&switch.trim()) {
                     let switch_name = switch_capture[1].to_string();
-                    let switch_val = match &switch_capture[1] {
+                    let switch_val = match &switch_capture[2] {
                         "+" => true,
                         "-" => false,
-                        _ => unreachable!("excluded by pattern"),
+                        _ => unreachable!("excluded by pattern: {}", &switch_capture[2]),
                     };
 
                     Some((switch_name, switch_val))
@@ -157,6 +157,7 @@ impl DirectiveParser {
             let mode = match mode_captures[1].to_uppercase().as_str() {
                 "FPC" => CompileMode::Fpc,
                 "UNCLE" => CompileMode::Uncle,
+                "DELPHI" => CompileMode::Delphi,
                 unrecognized @ _ => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;
@@ -363,26 +364,40 @@ impl Preprocessor {
             }
 
             Some(Directive::Switches(switches)) => {
-                for (name, on) in switches {
-                    if on {
-                        self.opts.switches.remove(&name);
-                    } else {
-                        self.opts.switches.insert(name);
+                if self.condition_active() {
+                    for (name, on) in switches {
+                        if on {
+                            self.opts.switches.remove(&name);
+                        } else {
+                            self.opts.switches.insert(name);
+                        }
                     }
                 }
                 Ok(())
             }
 
             Some(Directive::Mode(mode)) => {
-                self.opts.mode = mode;
+                if self.condition_active() {
+                    self.opts.mode = mode;
+                }
                 Ok(())
             }
 
-            None => return Err(PreprocessorError::IllegalDirective {
-                directive: directive_name,
-                filename: self.filename.clone(),
-                line: self.current_line,
-            })
+            None => {
+                if !self.condition_active() {
+                    Ok(())
+                } else if self.opts.mode != CompileMode::Uncle {
+                    // allow unknown directives for compatibility modes
+                    eprintln!("ignoring unknown directive for mode {}", self.opts.mode);
+                    Ok(())
+                } else {
+                    Err(PreprocessorError::IllegalDirective {
+                        directive: directive_name,
+                        filename: self.filename.clone(),
+                        line: self.current_line,
+                    })
+                }
+            }
         }
     }
 }

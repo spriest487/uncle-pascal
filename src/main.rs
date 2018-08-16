@@ -90,10 +90,21 @@ impl From<pp::PreprocessorError> for CompileError {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CompileMode {
     Uncle,
     Fpc,
+    Delphi,
+}
+
+impl fmt::Display for CompileMode {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            CompileMode::Uncle => "uncle",
+            CompileMode::Fpc => "fpc",
+            CompileMode::Delphi => "delphi",
+        })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -230,12 +241,36 @@ fn print_usage(program: &str, opts: getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
+fn opts_to_compile_opts(matches: &getopts::Matches) -> CompileOptions {
+    let mut opts = CompileOptions {
+        mode: CompileMode::Uncle,
+        symbols: HashSet::new(),
+        switches: HashSet::new(),
+    };
+
+    for defined in matches.opt_strs("D") {
+        opts.symbols.insert(defined);
+    }
+
+    if let Some(mode_opt) = matches.opt_str("mode") {
+        match mode_opt.as_str() {
+            "fpc" => opts.mode = CompileMode::Fpc,
+            "delphi" => opts.mode = CompileMode::Delphi,
+            unrecognized @ _ => eprintln!("unrecognized -mode option: {}", unrecognized),
+        }
+    }
+
+    opts
+}
+
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
     let program = args[0].clone();
 
     let mut opts = getopts::Options::new();
     opts.optopt("o", "outdir", "Output file (use .c extension to emit C intermediate files)", "");
+    opts.optmulti("D", "", "Define preprocessor symbol", "");
+    opts.optopt("M", "mode", "Compiler compatibility mode (uncle, fpc)", "");
 
     match opts.parse(&args[1..]) {
         Ok(matched) => {
@@ -250,11 +285,7 @@ fn main() {
                 let src_path = &matched.free[0];
 
                 //todo: options from command line
-                let opts = CompileOptions {
-                    mode: CompileMode::Uncle,
-                    symbols: HashSet::new(),
-                    switches: HashSet::new(),
-                };
+                let opts = opts_to_compile_opts(&matched);
 
                 let build_result = compile_program(&PathBuf::from(src_path), opts)
                     .and_then(|module| target_c::pas_to_c(&module, &out_file));
