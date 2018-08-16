@@ -63,7 +63,7 @@ fn compile(source: &str) -> Result<String, CompileError> {
     let program = syntax::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
 
-    let typed_program = semantic::Program::annotate(&program.clone())?;
+    let _typed_program = semantic::Program::annotate(&program.clone())?;
 
     //println!("{:?}", typed_program);
     //println!("{}", program.to_source());

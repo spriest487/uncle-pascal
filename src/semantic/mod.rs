@@ -176,7 +176,7 @@ impl Function {
 type RecordDecl = node::RecordDecl<Symbol>;
 
 impl RecordDecl {
-    fn annotate(decl: &syntax::RecordDecl) -> Result<Self, SemanticError> {
+    fn annotate(_decl: &syntax::RecordDecl) -> Result<Self, SemanticError> {
         unimplemented!()
     }
 }

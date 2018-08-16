@@ -121,7 +121,7 @@ impl Matcher {
                 Ok(ParseOutput::new(None,
                                     context.clone(),
                                     peekable))
-            },
+            }
 
             None => Err(ParseError::UnexpectedEOF(self.clone(), context.clone())),
         }
@@ -192,16 +192,6 @@ impl Matcher {
 
         Ok(ParseOutput::new(tokens_until, last_context, peekable_tokens))
     }
-
-    pub fn match_list(&self,
-                      inner_list_delimiter: &BlockMatcher,
-                      in_tokens: TIter, context: &TIter::Item)
-                      -> ParseResult<Vec<Vec<TIter::Item>>, TIter::Item>
-        where TIter: IntoIterator + 'static,
-              TIter::Item: tokens::AsToken + 'static,
-    {
-        unimplemented!()
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -216,10 +206,10 @@ impl SequenceMatcher {
     }
 
     pub fn match_sequence<TIter>(&self, in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<TIter::Item>, TIter::Item>
-        where TIter: Iterator,
+        where TIter: IntoIterator,
               TIter::Item: tokens::AsToken + Clone + 'static
     {
-        let tokens: Vec<_> = in_tokens.collect();
+        let tokens: Vec<_> = in_tokens.into_iter().collect();
 
         let expected_len = self.sequence.len();
 
@@ -310,8 +300,8 @@ impl BlockMatcher {
                         final_close_token = Some(close.clone());
                         break;
                     }
-                },
-                Some(_) => {},
+                }
+                Some(_) => {}
 
                 None => break,
             }
@@ -366,7 +356,7 @@ impl BlockMatcher {
                         let block: BlockMatch<TIter::Item> = BlockMatch {
                             open: open_token.value,
                             close: close.clone(),
-                            inner: inner_tokens
+                            inner: inner_tokens,
                         };
 
                         return Ok(ParseOutput::new(block, close.clone(), block_tokens));
@@ -384,6 +374,71 @@ impl BlockMatcher {
                 }
             }
         }
+    }
+
+    pub fn match_groups<TIter>(&self,
+                        separator_matcher: &Matcher,
+                        in_tokens: TIter,
+                        context: &TIter::Item)
+                        -> ParseResult<Vec<Vec<TIter::Item>>, TIter::Item>
+        where TIter: IntoIterator + 'static,
+              TIter::Item: tokens::AsToken + 'static,
+    {
+        //match the outer block
+        let outer_block = self.match_block(in_tokens, context)?;
+
+        //the groups are found in the inner tokens of the outer block
+        let mut group_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(outer_block.value.inner.into_iter());
+        let mut group_last_token = outer_block.value.open;
+
+        let mut groups = Vec::new();
+        let mut next_group = Vec::new();
+
+        loop {
+            let mut peek_group_tokens = group_tokens.peekable();
+
+            match peek_group_tokens.peek().cloned() {
+                /* ran out of inner tokens, this is the last group */
+                None => {
+                    if next_group.len() > 0 {
+                        groups.push(next_group);
+                    }
+
+                    break
+                }
+
+                Some(next_token) => {
+                    if self.open.is_match(&next_token) {
+                        /* this token is the start of an inner group, include the */
+                        let inner_block = self.match_block(peek_group_tokens,
+                                                                    &group_last_token)?;
+
+                        next_group.push(inner_block.value.open.clone());
+                        next_group.extend(inner_block.value.inner);
+                        next_group.push(inner_block.value.close.clone());
+
+                        group_tokens = inner_block.next_tokens;
+                        group_last_token = inner_block.value.close;
+                    } else {
+                        if separator_matcher.is_match(&next_token) {
+                            //finish the group
+                            if next_group.len() > 0 {
+                                groups.push(next_group);
+                                next_group = Vec::new();
+                            }
+                        } else {
+                            next_group.push(next_token.clone());
+                        }
+
+                        //skip 1 because we already peeked this value
+                        group_tokens = Box::new(peek_group_tokens.skip(1));
+                        group_last_token = next_token;
+                    }
+                }
+            }
+        }
+
+        Ok(ParseOutput::new(groups, outer_block.last_token, outer_block.next_tokens))
     }
 }
 
@@ -419,5 +474,87 @@ mod test {
             tokens::Keyword(keywords::End),
         ], block.value.inner);
         assert_eq!(tokens::Keyword(keywords::End), block.value.close);
+    }
+
+    #[test]
+    fn block_matches_empty_groups() {
+        let tokens = vec![tokens::BracketLeft, tokens::BracketRight];
+
+        let context = tokens[0].clone();
+        let result = Matcher::Exact(tokens::BracketLeft)
+            .terminated_by(Matcher::Exact(tokens::BracketRight))
+            .match_groups(&Matcher::Exact(tokens::Comma), tokens, &context);
+
+        assert!(result.is_ok());
+        let groups = result.unwrap().value;
+
+        assert_eq!(0, groups.len());
+    }
+
+    #[test]
+    fn block_matches_groups() {
+        let tokens = vec![
+            tokens::Keyword(keywords::Begin),
+            tokens::LiteralString("one".to_owned()),
+            tokens::LiteralString("two".to_owned()),
+            tokens::Semicolon,
+            tokens::LiteralString("three".to_owned()),
+            tokens::LiteralString("four".to_owned()),
+            tokens::Keyword(keywords::End),
+        ];
+
+        let matcher = Matcher::Keyword(keywords::Begin)
+            .terminated_by(Matcher::Keyword(keywords::End));
+
+        let context = tokens[0].clone();
+        let result = matcher.match_groups(&Matcher::Exact(tokens::Semicolon), tokens, &context);
+
+        assert!(result.is_ok());
+        let groups = result.unwrap().value;
+
+        assert_eq!(2, groups.len());
+        assert_eq!(vec![
+            tokens::LiteralString("one".to_owned()),
+            tokens::LiteralString("two".to_owned())
+        ], groups[0]);
+        assert_eq!(vec![
+            tokens::LiteralString("three".to_owned()),
+            tokens::LiteralString("four".to_owned())
+        ], groups[1]);
+    }
+
+    #[test]
+    fn block_matches_groups_and_skips_nested() {
+        let tokens = vec![
+            tokens::Keyword(keywords::Begin),
+            tokens::LiteralString("one".to_owned()),
+            tokens::LiteralString("two".to_owned()),
+            tokens::Keyword(keywords::Begin),
+            tokens::LiteralString("three".to_owned()),
+            tokens::Semicolon,
+            tokens::Keyword(keywords::End),
+            tokens::LiteralString("four".to_owned()),
+            tokens::Keyword(keywords::End),
+        ];
+
+        let matcher = Matcher::Keyword(keywords::Begin)
+            .terminated_by(Matcher::Keyword(keywords::End));
+
+        let context = tokens[0].clone();
+        let result = matcher.match_groups(&Matcher::Exact(tokens::Semicolon), tokens, &context);
+
+        assert!(result.is_ok());
+        let groups = result.unwrap().value;
+
+        assert_eq!(1, groups.len());
+        assert_eq!(vec![
+            tokens::LiteralString("one".to_owned()),
+            tokens::LiteralString("two".to_owned()),
+            tokens::Keyword(keywords::Begin),
+            tokens::LiteralString("three".to_owned()),
+            tokens::Semicolon,
+            tokens::Keyword(keywords::End),
+            tokens::LiteralString("four".to_owned()),
+        ], groups[0]);
     }
 }
