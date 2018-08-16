@@ -1,3 +1,4 @@
+pub mod function;
 pub mod program;
 
 use std::fmt;
@@ -56,6 +57,24 @@ impl<TValue> ParseOutput<TValue> {
             None => Ok(self.value)
         }
     }
+
+    pub fn unwrap(self) -> (TValue, WrapIter<tokenizer::SourceToken>) {
+        (self.value, WrapIter {
+            wrapped: self.next
+        })
+    }
+}
+
+pub struct WrapIter<TItem> {
+    wrapped: Box<Iterator<Item=TItem>>
+}
+
+impl<TItem> Iterator for WrapIter<TItem> {
+    type Item = TItem;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.wrapped.next()
+    }
 }
 
 type ParseResult<T> = Result<ParseOutput<T>, ParseError>;
@@ -110,6 +129,12 @@ impl TokenMatcher {
             sequence: vec![self, next_matcher]
         }
     }
+//
+//    pub fn or(self, or_matcher: TokenMatcher) -> OneOfMatcher {
+//        OneOfMatcher {
+//            matchers: vec![self, or_matcher]
+//        }
+//    }
 
     pub fn until_match<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
         where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
@@ -138,6 +163,22 @@ impl TokenMatcher {
         Ok(ParseOutput::new(until, tokens))
     }
 }
+//
+//#[derive(Clone, Debug)]
+//pub struct OneOfMatcher {
+//    matchers: Vec<TokenMatcher>,
+//}
+//
+//impl OneOfMatcher {
+//    pub fn or(mut self, matcher: TokenMatcher) -> Self {
+//        self.matchers.push(matcher);
+//        self
+//    }
+//
+//    pub fn match_token(&self, &token: tokens::Token) -> bool {
+//        self.matchers.iter().any(|m| m.match_token(token))
+//    }
+//}
 
 #[derive(Clone, Debug)]
 pub struct SequenceMatcher {
@@ -147,10 +188,7 @@ pub struct SequenceMatcher {
 impl SequenceMatcher {
     pub fn and_then(mut self, next_matcher: TokenMatcher) -> Self {
         self.sequence.push(next_matcher);
-
-        Self {
-            sequence: self.sequence
-        }
+        self
     }
 
     pub fn match_tokens<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>

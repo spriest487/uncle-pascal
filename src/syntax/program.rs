@@ -1,13 +1,8 @@
-use syntax;
+use syntax::*;
 use types;
 use tokens;
 use tokenizer;
 use keywords;
-
-mod function {
-    #[derive(Clone, Debug)]
-    pub struct Function {}
-}
 
 mod type_decl {
     use types;
@@ -21,14 +16,14 @@ mod type_decl {
     #[derive(Clone, Debug)]
     pub struct RecordDecl {
         name: types::Identifier,
-        members: Vec<VarDecl>,
+        members: Vec<RecordDecl>,
     }
 }
 
-fn parse_uses<I>(in_tokens: I) -> syntax::ParseResult<Vec<types::Identifier>>
+fn parse_uses<I>(in_tokens: I) -> ParseResult<Vec<types::Identifier>>
     where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
 {
-    let uses_matcher = syntax::TokenMatcher::Keyword(keywords::Uses);
+    let uses_matcher = TokenMatcher::Keyword(keywords::Uses);
 
     let mut tokens = in_tokens.into_iter();
 
@@ -39,30 +34,77 @@ fn parse_uses<I>(in_tokens: I) -> syntax::ParseResult<Vec<types::Identifier>>
 
     match find_keyword {
         Some(_) => {
-            let match_semicolon = syntax::TokenMatcher::Exact(tokens::Semicolon);
+            let match_semicolon = TokenMatcher::Exact(tokens::Semicolon);
             let uses_tokens = match_semicolon.until_match(tokens)?;
 
-            let match_comma = syntax::TokenMatcher::Exact(tokens::Comma);
-            let uses_identifiers: Result<Vec<_>, syntax::ParseError> = uses_tokens.value
+            let match_comma = TokenMatcher::Exact(tokens::Comma);
+            let uses_identifiers: Result<Vec<_>, ParseError> = uses_tokens.value
                 .split(|source_token| match_comma.match_token(&source_token.token))
                 .map(|source_tokens| {
                     if source_tokens.len() == 1 && source_tokens[0].token.is_any_identifier() {
                         Ok(types::Identifier::parse(source_tokens[0].token.unwrap_identifier()))
                     }
                     else {
-                        Err(syntax::ParseError::UnexpectedToken(source_tokens[0].clone(),
-                            Some(syntax::TokenMatcher::AnyIdentifier)))
+                        Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
+                            Some(TokenMatcher::AnyIdentifier)))
                     }
                 })
                 .collect();
 
-            Ok(syntax::ParseOutput::new(uses_identifiers?, uses_tokens.next))
+            Ok(ParseOutput::new(uses_identifiers?, uses_tokens.next))
         }
         None => {
             //no uses
-            Ok(syntax::ParseOutput::new(Vec::new(), tokens))
+            Ok(ParseOutput::new(Vec::new(), tokens))
         }
     }
+}
+
+struct ProgramDecls {
+    functions: Vec<function::Function>,
+    type_decls: Vec<type_decl::RecordDecl>,
+}
+
+fn parse_decls<I>(in_tokens: I) -> ParseResult<ProgramDecls>
+    where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
+{
+    let mut tokens: Box<Iterator<Item=tokenizer::SourceToken>> = Box::from(in_tokens.into_iter());
+
+    let mut decls = ProgramDecls {
+        functions: Vec::new(),
+        type_decls:Vec::new(),
+    };
+
+    loop {
+        let next = tokens.next().ok_or_else(||{
+            ParseError::UnexpectedEOF
+        })?;
+
+        match next.token {
+            tokens::Keyword(keywords::Function) => {
+                let (parsed_fn, after_fn) = function::Function::parse(tokens)?.unwrap();
+
+                decls.functions.push(parsed_fn);
+
+                tokens = Box::from(after_fn);
+            },
+            tokens::Keyword(keywords::Type) => { unimplemented!() },
+            _ => {
+                let expected = TokenMatcher::OneOf(vec![
+                    Box::from(TokenMatcher::Keyword(keywords::Function)),
+                    Box::from(TokenMatcher::Keyword(keywords::Type)),
+                ]);
+
+                return Err(ParseError::UnexpectedToken(next.clone(), Some(expected)));
+            }
+
+            tokens::Keyword(keywords::Begin) => {
+                break;
+            }
+        }
+    }
+
+    Ok(ParseOutput::new(decls, tokens.into_iter()))
 }
 
 #[derive(Clone, Debug)]
@@ -75,29 +117,27 @@ pub struct Program {
 }
 
 impl Program {
-    pub fn parse<I>(tokens: I) -> syntax::ParseResult<Self>
+    pub fn parse<I>(tokens: I) -> ParseResult<Self>
         where I: Iterator<Item=tokenizer::SourceToken>
     {
-        let parsed_start = syntax::TokenMatcher::Keyword(keywords::Program)
-            .and_then(syntax::TokenMatcher::AnyIdentifier)
-            .and_then(syntax::TokenMatcher::Exact(tokens::Semicolon))
-            .match_tokens(tokens)?;
+        let (program_statement, after_program_statment) = TokenMatcher::Keyword(keywords::Program)
+            .and_then(TokenMatcher::AnyIdentifier)
+            .and_then(TokenMatcher::Exact(tokens::Semicolon))
+            .match_tokens(tokens)?.unwrap();
 
-        let name = types::Identifier::parse(parsed_start.value
+        let name = types::Identifier::parse(program_statement
             .get(1).unwrap()
             .token.unwrap_identifier());
 
-        let parsed_uses = parse_uses(parsed_start.next)?;
+        let (uses, after_uses) = parse_uses(after_program_statment)?.unwrap();
+        let (decls, after_decls) = parse_decls(after_uses)?.unwrap();
 
-        let uses = parsed_uses.value;
-        let after_uses = parsed_uses.next;
-
-        Ok(syntax::ParseOutput::new(Self {
+        Ok(ParseOutput::new(Self {
             name,
             uses,
 
-            functions: Vec::new(),
-            type_decls: Vec::new(),
-        }, after_uses))
+            functions: decls.functions,
+            type_decls: decls.type_decls,
+        }, after_decls))
     }
 }

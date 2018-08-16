@@ -52,6 +52,9 @@ fn main() {
 
     match compile(hello_world_pas) {
         Ok(_) => println!("Success!"),
-        Err(err) => println!("Error: {}", err),
+        Err(err) => {
+            println!("Error: {}", err);
+            std::process::exit(1);
+        },
     }
 }
