@@ -81,7 +81,7 @@ impl Parse for Vec<UnitReference> {
                 kind: uses_kind,
             });
 
-            match tokens.peek() {
+            match tokens.look_ahead().next() {
                 //end of uses (either unexpected token on new line, or explicit semicolon)
                 Some(ref t) if (t.is_token(&tokens::Semicolon) ||
                     t.location.line > tokens.context().location.line) => {

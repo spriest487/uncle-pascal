@@ -71,7 +71,9 @@ impl Unit {
                     let mut consts = ConstDecls::default();
 
                     for parsed_const in parsed_consts.decls.iter() {
-                        let const_decl = ConstDecl::annotate(parsed_const, &mut scope)?;
+                        let (const_decl, new_scope) = ConstDecl::annotate(parsed_const, Rc::new(scope))?;
+                        scope = new_scope;
+
                         consts.decls.push(const_decl);
                     }
 

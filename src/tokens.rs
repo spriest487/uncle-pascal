@@ -202,3 +202,9 @@ impl From<operators::Operator> for Token {
         Operator(op)
     }
 }
+
+impl From<keywords::Keyword> for Token {
+    fn from(kw: keywords::Keyword) -> Self {
+        Keyword(kw)
+    }
+}

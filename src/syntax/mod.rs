@@ -8,19 +8,23 @@ pub mod matcher;
 pub mod unit;
 pub mod token_stream;
 pub mod const_decl;
+pub mod array;
 
-pub use self::function::*;
-pub use self::block::*;
-pub use self::var_decl::*;
-pub use self::type_decl::*;
-pub use self::program::*;
-pub use self::expression::*;
-pub use self::matcher::*;
-pub use self::unit::*;
-pub use self::const_decl::*;
-pub use self::token_stream::{
-    TokenStream,
-    Parse,
+pub use self::{
+    function::*,
+    block::*,
+    var_decl::*,
+    type_decl::*,
+    program::*,
+    expression::*,
+    matcher::*,
+    unit::*,
+    const_decl::*,
+    array::*,
+    token_stream::{
+        TokenStream,
+        Parse,
+    },
 };
 
 use std::fmt;
@@ -34,7 +38,7 @@ use node::{
     Context,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParsedContext {
     pub token: source::Token,
 }
@@ -131,8 +135,8 @@ pub type ParseResult<TValue> = Result<TValue, ParseError>;
 #[cfg(test)]
 mod test {
     use super::*;
-    use node::IndexRange;
     use opts::CompileOptions;
+    use node::{ ExpressionValue, ConstantExpression };
 
     #[test]
     fn parses_1d_array_type() {
@@ -143,9 +147,21 @@ mod test {
         let parsed = TypeName::parse(&mut tokens)
             .unwrap();
 
+        let assert_is_const_dim = |dim_expr: &Expression, dim_val: i128| {
+            match dim_expr.value {
+                ExpressionValue::Constant(ConstantExpression::Integer(int)) => {
+                    assert_eq!(dim_val, int.as_i128())
+                }
+            }
+        };
+
         match parsed {
-            TypeName::Scalar { array_dimensions, .. } =>
-                assert_eq!(array_dimensions, vec![IndexRange { from: 0,  to: 10 }]),
+            TypeName::Scalar { array_dimensions, .. } => {
+                assert_eq!(1, array_dimensions.len());
+
+                assert_is_const_dim(&array_dimensions[0].from, 0);
+                assert_is_const_dim(&array_dimensions[0].to, 10);
+            }
 
             _ =>
                 panic!("wrong type")

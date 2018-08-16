@@ -7,7 +7,7 @@ pub mod function_signature;
 use std::fmt;
 
 use source;
-pub use self::type_name::{TypeName, IndexRange};
+pub use self::type_name::TypeName;
 pub use self::identifier::*;
 pub use self::expression::*;
 pub use self::to_source::*;
@@ -157,7 +157,7 @@ pub struct FunctionDecl<TSymbol, TContext>
     pub body: Option<FunctionDeclBody<TSymbol, TContext>>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Block<TSymbol, TContext> {
     pub context: TContext,
     pub statements: Vec<Expression<TSymbol, TContext>>,

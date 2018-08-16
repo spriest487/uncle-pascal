@@ -39,7 +39,7 @@ pub enum Operator {
     RangeInclusive,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 17] = [
+pub static PRECEDENCE: [(Operator, Position); 18] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
@@ -58,6 +58,7 @@ pub static PRECEDENCE: [(Operator, Position); 17] = [
     (And, Position::Binary),
     (Or, Position::Binary),
     (Assignment, Position::Binary),
+    (RangeInclusive, Position::Binary),
 ];
 
 pub fn for_position(position: Position) -> impl Iterator<Item = Operator> {

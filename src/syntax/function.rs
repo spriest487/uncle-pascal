@@ -188,6 +188,7 @@ impl FunctionDecl {
 
 #[cfg(test)]
 mod test {
+    use std::rc::Rc;
     use tokenizer;
     use node::Identifier;
     use opts::CompileOptions;
@@ -201,12 +202,20 @@ mod test {
             .unwrap()
     }
 
+    fn make_type_name(name: &str) -> TypeName {
+        TypeName::with_name(name, source::Token::new(keywords::Program, source::Location {
+            line: 0,
+            col: 0,
+            file: Rc::new("test".to_string()),
+        }))
+    }
+
     #[test]
     fn parses_sig_with_empty_args() {
         let func = parse_func("function hello(): System.String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(TypeName::with_name("System.String")), func.return_type);
+        assert_eq!(Some(make_type_name("System.String")), func.return_type);
         assert_eq!(0, func.args.len());
     }
 
@@ -215,7 +224,7 @@ mod test {
         let func = parse_func("function hello: String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(TypeName::with_name("String")), func.return_type);
+        assert_eq!(Some(make_type_name("String")), func.return_type);
         assert_eq!(0, func.args.len());
     }
 
@@ -224,13 +233,13 @@ mod test {
         let func = parse_func("function hello(x: System.Float; y: Integer): String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(TypeName::with_name("String")), func.return_type);
+        assert_eq!(Some(make_type_name("String")), func.return_type);
         assert_eq!(2, func.args.len());
 
         assert_eq!("x", func.args[0].name);
-        assert_eq!(TypeName::with_name("System.Float"), func.args[0].decl_type);
+        assert_eq!(make_type_name("System.Float"), func.args[0].decl_type);
 
         assert_eq!("y", func.args[1].name);
-        assert_eq!(TypeName::with_name("Integer"), func.args[1].decl_type);
+        assert_eq!(make_type_name("Integer"), func.args[1].decl_type);
     }
 }

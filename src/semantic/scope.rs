@@ -450,60 +450,26 @@ impl Scope {
             })
     }
 
-    pub fn get_type(&self, parsed_type: &TypeName) -> Result<Type, Identifier> {
-        match parsed_type {
-            TypeName::Scalar { name, indirection, array_dimensions } => {
-                let mut result = match self.find_named(name) {
-                    Some((class_name, Named::Class(_))) =>
-                        Type::Class(class_name),
-                    Some((record_name, Named::Record(_))) =>
-                        Type::Record(record_name),
-                    Some((enumeration_name, Named::Enumeration(_))) =>
-                        Type::Enumeration(enumeration_name),
-                    Some((set_name, Named::Set(_))) =>
-                        Type::Set(set_name),
-                    Some((_, Named::Alias(ty))) =>
-                        ty.clone(),
+    pub fn get_alias(&self, alias: &Identifier) -> Option<Type> {
+        let result = match self.find_named(alias) {
+            Some((class_name, Named::Class(_))) =>
+                Type::Class(class_name),
+            Some((record_name, Named::Record(_))) =>
+                Type::Record(record_name),
+            Some((enumeration_name, Named::Enumeration(_))) =>
+                Type::Enumeration(enumeration_name),
+            Some((set_name, Named::Set(_))) =>
+                Type::Set(set_name),
+            Some((_, Named::Alias(ty))) =>
+                ty.clone(),
 
-                    None |
-                    Some((_, Named::Const(_))) |
-                    Some((_, Named::Function(_))) |
-                    Some((_, Named::Symbol(_))) => return Err(name.clone()),
-                };
+            None |
+            Some((_, Named::Const(_))) |
+            Some((_, Named::Function(_))) |
+            Some((_, Named::Symbol(_))) => return None,
+        };
 
-                for _ in 0..*indirection {
-                    result = result.pointer();
-                }
-
-                if array_dimensions.len() > 0 {
-                    result = Type::Array(ArrayType {
-                        element: Box::new(result),
-                        first_dim: array_dimensions[0].clone(),
-                        rest_dims: array_dimensions[1..].iter().cloned().collect(),
-                    })
-                }
-
-                Ok(result)
-            }
-
-            TypeName::Function { arg_types, return_type, modifiers } => {
-                let found_return_type = match return_type {
-                    Some(ty) => Some(self.get_type(ty.as_ref())?),
-                    None => None,
-                };
-
-                let mut found_arg_types = Vec::new();
-                for ty in arg_types.iter() {
-                    found_arg_types.push(self.get_type(ty)?);
-                }
-
-                Ok(Type::Function(Box::new(FunctionSignature {
-                    return_type: found_return_type,
-                    arg_types: found_arg_types,
-                    modifiers: modifiers.clone(),
-                })))
-            }
-        }
+        Some(result)
     }
 
     pub fn get_enumeration(&self, name: &Identifier) -> Option<(Identifier, &EnumerationDecl)> {

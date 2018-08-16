@@ -61,10 +61,10 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn new(token: tokens::Token, location: Location) -> Self {
+    pub fn new(token: impl Into<tokens::Token>, location: impl Into<Location>) -> Self {
         Self {
-            token: Rc::new(token),
-            location,
+            token: Rc::new(token.into()),
+            location: location.into(),
         }
     }
 }

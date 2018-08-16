@@ -99,6 +99,8 @@ impl Parse for VarDecls {
 
 #[cfg(test)]
 mod test {
+    use std::rc::Rc;
+
     use super::*;
     use opts::CompileOptions;
 
@@ -107,6 +109,14 @@ mod test {
             .unwrap()
             .parse_to_end()
             .unwrap()
+    }
+
+    fn make_type_name(name: &str) -> TypeName {
+        TypeName::with_name(name, source::Token::new(keywords::Program, source::Location {
+            line: 0,
+            col: 0,
+            file: Rc::new("test".to_string()),
+        }))
     }
 
     #[test]
@@ -122,7 +132,7 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(TypeName::with_name("Integer"), vars.decls[0].decl_type);
+        assert_eq!(make_type_name("Integer"), vars.decls[0].decl_type);
     }
 
     #[test]
@@ -132,10 +142,10 @@ mod test {
         assert_eq!(2, vars.decls.len());
 
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(TypeName::with_name("System.Integer"), vars.decls[0].decl_type);
+        assert_eq!(make_type_name("System.Integer"), vars.decls[0].decl_type);
 
         assert_eq!("y", vars.decls[1].name);
-        assert_eq!(TypeName::with_name("System.String"), vars.decls[1].decl_type);
+        assert_eq!(make_type_name("System.String"), vars.decls[1].decl_type);
     }
 
     #[test]
@@ -144,6 +154,6 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(TypeName::with_name("T.B").pointer(), vars.decls[0].decl_type);
+        assert_eq!(make_type_name("T.B").pointer(), vars.decls[0].decl_type);
     }
 }

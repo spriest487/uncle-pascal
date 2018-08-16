@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    rc::Rc,
+    fmt,
+};
 
 use syntax::{
     TokenStream,
@@ -7,12 +10,17 @@ use syntax::{
     MatchOneOf,
     Parse,
     ParseError,
+    ParsedContext,
     FunctionDecl,
+    IndexRange,
+    Expression,
 };
 use node::{
     Identifier,
     ToSource,
     FunctionModifier,
+    FunctionSignature,
+    ExpressionValue,
 };
 use tokens::{
     self,
@@ -21,41 +29,40 @@ use tokens::{
 use keywords;
 use operators;
 use source;
-use consts::IntConstant;
+use types::{
+    Type,
+    ArrayType,
+};
+use semantic::{
+    self,
+    Scope,
+    SemanticResult,
+    SemanticError,
+    SemanticContext,
+};
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub struct IndexRange {
-    pub from: i32,
-    pub to: i32,
-}
-
-impl IndexRange {
-    pub fn elements(&self) -> u32 {
-        assert!(self.to >= self.from, "array upper bound must be >= lower bound");
-        self.to.wrapping_sub(self.from) as u32
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum TypeName {
     Scalar {
+        context: ParsedContext,
         name: Identifier,
         indirection: usize,
 
         array_dimensions: Vec<IndexRange>,
     },
     Function {
+        context: ParsedContext,
         return_type: Option<Box<TypeName>>,
         arg_types: Vec<TypeName>,
         modifiers: Vec<FunctionModifier>,
-    }
+    },
 }
 
 impl ToSource for TypeName {
     fn to_source(&self) -> String {
         let mut result = String::new();
         match self {
-            TypeName::Scalar { name, indirection, array_dimensions } => {
+            TypeName::Scalar { name, indirection, array_dimensions, .. } => {
                 if array_dimensions.len() > 0 {
                     result.push_str("array [");
                     result.push_str(&array_dimensions.iter()
@@ -72,7 +79,7 @@ impl ToSource for TypeName {
                 result.push_str(&name.to_string())
             }
 
-            TypeName::Function { return_type, arg_types, modifiers } => {
+            TypeName::Function { return_type, arg_types, modifiers, .. } => {
                 if return_type.is_some() {
                     result.push_str("function");
                 } else {
@@ -100,33 +107,49 @@ impl ToSource for TypeName {
     }
 }
 
-fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
+fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> ParseResult<TypeName> {
     let array_kw = tokens.look_ahead().match_one(keywords::Array);
+
     let array_dimensions = match array_kw {
         Some(_) => {
             tokens.advance(1);
 
-            let dims_groups = tokens.match_groups(tokens::SquareBracketLeft,
-                                                  tokens::SquareBracketRight,
-                                                  tokens::Comma)?;
+            tokens.match_one(tokens::SquareBracketLeft)?;
+            let mut dims = Vec::new();
+            loop {
+                let dim_expr: Expression = tokens.parse()?;
+                let (from, to) =  match dim_expr.value {
+                    ExpressionValue::BinaryOperator { lhs, op: operators::RangeInclusive, rhs } => {
+                        (lhs, rhs)
+                    }
+                    _ => {
+                        /* todo: add specific ParseError for this
+                           an expression here parsed successfully but it wasn't anything
+                           in the form x..y, so we already know it's invalid before typechecking.
+                           we store the from and to separately in IndexRange because we know we
+                           can check this here
+                        */
+                        let context = dim_expr.context.token.clone();
+                        let expected = operators::RangeInclusive;
+                        return Err(ParseError::UnexpectedToken(context, Some(expected.into())));
+                    },
+                };
 
-            let dims = dims_groups.groups.into_iter()
-                .map(|dim_group| {
-                    let mut dim_tokens = TokenStream::new(dim_group.tokens, &dim_group.context);
-                    let from = dim_tokens.match_one(Matcher::AnyLiteralInteger)
-                        .and_then(int_token_to_array_dim)?;
-                    dim_tokens.match_one(operators::RangeInclusive)?;
-                    let to = dim_tokens.match_one(Matcher::AnyLiteralInteger)
-                        .and_then(int_token_to_array_dim)?;
+                dims.push(IndexRange {
+                    from: *from,
+                    to: *to
+                });
 
-                    Ok(IndexRange {
-                        from,
-                        to,
-                    })
-                })
-                .collect::<ParseResult<_>>()?;
+                // if there's a comma, there's another dimension following
+                match tokens.look_ahead().match_one(tokens::Comma) {
+                    Some(_) => tokens.advance(1),
+                    None => break,
+                }
+            }
 
+            tokens.match_one(tokens::SquareBracketRight)?;
             tokens.match_one(keywords::Of)?;
+
             dims
         }
 
@@ -144,6 +167,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
             let name = Identifier::parse(tokens)?;
 
             break Ok(TypeName::Scalar {
+                context: ParsedContext::from(context),
                 name,
                 indirection,
 
@@ -153,7 +177,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
     }
 }
 
-fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
+fn parse_as_function_type(tokens: &mut TokenStream, context: source::Token) -> ParseResult<TypeName> {
     let kind_kw = tokens.match_one(keywords::Function.or(keywords::Procedure))?;
 
     let arg_list = FunctionDecl::parse_argument_list(tokens)?;
@@ -172,6 +196,7 @@ fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
     let modifiers = FunctionDecl::parse_modifiers(tokens)?;
 
     Ok(TypeName::Function {
+        context: ParsedContext::from(context),
         return_type,
         arg_types,
         modifiers,
@@ -180,37 +205,34 @@ fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
 
 impl Parse for TypeName {
     fn parse(tokens: &mut TokenStream) -> ParseResult<TypeName> {
-        let match_name_first_token = keywords::Array
+        let expected = keywords::Array
             .or(keywords::Function)
             .or(keywords::Procedure)
             .or(operators::Deref)
             .or(Matcher::AnyIdentifier);
 
-        match tokens.look_ahead().match_one(match_name_first_token) {
+        let match_name_first_token = tokens.look_ahead().match_one(expected.clone());
+
+        match match_name_first_token {
             Some(ref t) if t.is_keyword(keywords::Function) || t.is_keyword(keywords::Procedure) => {
-                parse_as_function_type(tokens)
+                parse_as_function_type(tokens, t.clone())
             }
 
-            _ => {
-                parse_as_data_type(tokens)
+            Some(t) => {
+                parse_as_data_type(tokens, t)
+            }
+
+            None => {
+                Err(ParseError::UnexpectedEOF(expected, tokens.context().clone()))
             }
         }
     }
 }
 
-/* check int tokens used as array dimensions are int32s */
-fn int_token_to_array_dim(token: source::Token) -> ParseResult<i32> {
-    let val = match token.as_token() {
-        tokens::LiteralInteger(IntConstant::I32(val)) => Some(*val),
-        _ => None,
-    };
-
-    val.ok_or_else(|| ParseError::ArrayDimensionOutOfBounds(token))
-}
-
 impl TypeName {
-    pub fn with_name(name: impl Into<Identifier>) -> Self {
+    pub fn with_name(name: impl Into<Identifier>, context: impl Into<ParsedContext>) -> Self {
         TypeName::Scalar {
+            context: context.into(),
             name: name.into(),
             indirection: 0,
 
@@ -220,8 +242,9 @@ impl TypeName {
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::Scalar { name, indirection, array_dimensions } =>
+            TypeName::Scalar { name, indirection, array_dimensions, context } =>
                 TypeName::Scalar {
+                    context,
                     name,
                     array_dimensions,
 
@@ -230,6 +253,53 @@ impl TypeName {
 
             TypeName::Function { .. } =>
                 unimplemented!("pointer to function")
+        }
+    }
+
+    pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
+        match self {
+            TypeName::Scalar { context, name, indirection, array_dimensions } => {
+                let mut result = scope.get_alias(name)
+                    .ok_or_else(|| {
+                        let err_context = SemanticContext::new(context.token.clone(),
+                                                               scope.clone());
+                        SemanticError::unknown_type(name.clone(), err_context)
+                    })?;
+
+                for _ in 0..*indirection {
+                    result = result.pointer();
+                }
+
+                if array_dimensions.len() > 0 {
+                    result = Type::Array(ArrayType {
+                        element: Box::new(result),
+                        first_dim: semantic::IndexRange::annotate(&array_dimensions[0],
+                                                                  scope.clone())?,
+                        rest_dims: array_dimensions[1..].iter()
+                            .map(|index_range| {
+                                semantic::IndexRange::annotate(index_range, scope.clone())
+                            })
+                            .collect::<SemanticResult<_>>()?,
+                    })
+                }
+
+                Ok(result)
+            }
+
+            TypeName::Function { return_type, arg_types, modifiers, .. } => {
+                let sig = FunctionSignature {
+                    arg_types: arg_types.iter()
+                        .map(|arg_type| arg_type.resolve(scope.clone()))
+                        .collect::<Result<_, _>>()?,
+                    return_type: match return_type.as_ref() {
+                        None => None,
+                        Some(return_typename) => Some(return_typename.resolve(scope)?),
+                    },
+                    modifiers: modifiers.clone(),
+                };
+
+                Ok(Type::Function(Box::new(sig)))
+            }
         }
     }
 }

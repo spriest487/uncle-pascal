@@ -1,6 +1,11 @@
 use std::fmt;
 
-use node::{self, Identifier, ToSource, IndexRange};
+use node::{
+    self,
+    Identifier,
+    ToSource,
+};
+use semantic::IndexRange;
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct Symbol {

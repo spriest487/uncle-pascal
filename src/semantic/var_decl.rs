@@ -22,10 +22,7 @@ impl VarDecl {
             scope: scope.clone(),
             token: decl.context.token().clone(),
         };
-        let var_type = scope.get_type(&decl.decl_type)
-            .map_err(|not_found| {
-                SemanticError::unknown_type(not_found, var_context.clone())
-            })?;
+        let var_type = decl.decl_type.resolve(scope.clone())?;
 
         let default_value = match decl.default_value.as_ref() {
             Some(default_expr) => {

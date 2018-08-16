@@ -10,7 +10,7 @@ use consts::{
 };
 use types::Type;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TSymbol, TContext> {
     PrefixOperator {
         op: operators::Operator,
@@ -49,13 +49,13 @@ pub enum ExpressionValue<TSymbol, TContext> {
 }
 
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Expression<TSymbol, TContext> {
     pub value: ExpressionValue<TSymbol, TContext>,
     pub context: TContext,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ConstantExpression {
     Integer(IntConstant),
     Float(FloatConstant),

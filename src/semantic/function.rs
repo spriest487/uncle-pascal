@@ -27,13 +27,7 @@ impl FunctionDecl {
 
         let return_type = match &function.return_type {
             Some(func_return_type) => {
-                let found_type = scope.get_type(&func_return_type);
-
-                let return_type = found_type.map_err(|not_found| {
-                    SemanticError::unknown_type(not_found, context.clone())
-                })?;
-
-                Some(return_type)
+                Some(func_return_type.resolve(scope.clone())?)
             }
 
             None => None
@@ -52,10 +46,7 @@ impl FunctionDecl {
                     scope: scope.clone(),
                 };
 
-                let arg_type = scope.get_type(&arg.decl_type)
-                    .map_err(|not_found| {
-                        SemanticError::unknown_type(not_found, arg_context.clone())
-                    })?;
+                let arg_type = arg.decl_type.resolve(scope.clone())?;
 
                 Ok(FunctionArg {
                     name: arg.name.clone(),
@@ -96,8 +87,11 @@ impl FunctionDecl {
                                                                     arg.decl_type.clone());
                     }
                     for parsed_const in function_body.local_consts.decls.iter() {
-                        let const_decl = ConstDecl::annotate(parsed_const, &mut local_scope)?;
+                        //consts can reference each other so we annotate them one by one
+                        let (const_decl, new_scope) = ConstDecl::annotate(parsed_const,
+                                                                          Rc::new(local_scope))?;
                         local_consts.decls.push(const_decl);
+                        local_scope = new_scope;
                     }
                     for var in local_vars.decls.iter() {
                         local_scope = local_scope.with_symbol_local(&var.name,

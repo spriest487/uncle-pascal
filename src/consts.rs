@@ -83,13 +83,26 @@ impl IntConstant {
         }
     }
 
-    fn as_i128(&self) -> i128 {
+    pub fn as_i128(&self) -> i128 {
         match self {
             IntConstant::Char(i) => *i as i128,
             IntConstant::I32(i) => *i as i128,
             IntConstant::U32(i) => *i as i128,
             IntConstant::I64(i) => *i as i128,
             IntConstant::U64(i) => *i as i128,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            IntConstant::Char(i) => Some(*i as i64),
+            IntConstant::I32(i) => Some(*i as i64),
+            IntConstant::U32(i) => Some(*i as i64),
+            IntConstant::I64(i) => Some(*i),
+            IntConstant::U64(i) => match *i > i64::max_value() as u64 {
+                true => None,
+                false => Some(*i as i64),
+            },
         }
     }
 }

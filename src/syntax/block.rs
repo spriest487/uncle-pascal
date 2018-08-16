@@ -10,13 +10,13 @@ impl Block {
         let mut exprs = Vec::new();
 
         loop {
-            match tokens.peek() {
+            match tokens.look_ahead().next() {
                 Some(_) => {
                     let expr: Expression = tokens.parse()?;
 
                     /* if there's another expression in this group, it must
                     be on a different line */
-                    if let Some(token_after) = tokens.peek() {
+                    if let Some(token_after) = tokens.look_ahead().next() {
                         if token_after.location.line <= tokens.context().location.line {
                             return Err(ParseError::UnexpectedToken(token_after.clone(), None));
                         }

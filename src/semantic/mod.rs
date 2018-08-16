@@ -8,6 +8,7 @@ pub mod type_decl;
 pub mod program;
 pub mod unit;
 pub mod module;
+pub mod array;
 
 pub use self::{
     block::*,
@@ -20,6 +21,7 @@ pub use self::{
     var_decl::*,
     module::*,
     const_decl::*,
+    array::*,
 };
 
 use std::{
@@ -326,6 +328,15 @@ pub type SemanticResult<T> = Result<T, SemanticError>;
 pub struct SemanticContext {
     token: source::Token,
     scope: Rc<Scope>,
+}
+
+impl SemanticContext {
+    pub fn new(token: impl Into<source::Token>, scope: impl Into<Rc<Scope>>) -> Self {
+        Self {
+            token: token.into(),
+            scope: scope.into(),
+        }
+    }
 }
 
 impl fmt::Debug for SemanticContext {

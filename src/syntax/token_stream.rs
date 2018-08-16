@@ -149,7 +149,7 @@ impl TokenStream {
     pub fn match_or_endl(&mut self, matcher: impl Into<Matcher>) -> ParseResult<()> {
         let matcher = matcher.into();
 
-        match self.peek() {
+        match self.look_ahead().next() {
             // EOF counts as an endl
             None => Ok(()),
 
@@ -173,7 +173,7 @@ impl TokenStream {
         let mut result = Vec::new();
 
         loop {
-            match self.peek() {
+            match self.look_ahead().next() {
                 Some(ref matching) if until.is_match(matching) => {
                     break Ok(result);
                 }
@@ -216,7 +216,7 @@ impl TokenStream {
         };
 
         loop {
-            match self.peek() {
+            match self.look_ahead().next() {
                 /* ran out of inner tokens, this is the last group */
                 None => {
                     if next_group.tokens.len() > 0 {

@@ -32,10 +32,7 @@ impl TypeDecl {
                     token: context.token().clone(),
                 };
 
-                let aliased_type = scope.get_type(&of)
-                    .map_err(|not_found| {
-                        SemanticError::unknown_type(not_found, context.clone())
-                    })?;
+                let aliased_type = of.resolve(scope.clone())?;
 
                 Ok(node::TypeDecl::Alias {
                     alias: alias.clone(),
