@@ -8,8 +8,9 @@ use ToSource;
 use node;
 
 pub type Expression = node::Expression<node::Identifier>;
+pub type ExpressionResult<TToken> = Result<Expression, ParseError<TToken>>;
 
-fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -23,7 +24,7 @@ fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Exp
     Ok(Expression::binary_op(lhs_expr, op, rhs_expr))
 }
 
-fn parse_identifier<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_identifier<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -36,7 +37,7 @@ fn parse_identifier<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Ex
     Ok(Expression::identifier(node::Identifier::parse(name)))
 }
 
-fn parse_literal_string<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_literal_string<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -49,7 +50,7 @@ fn parse_literal_string<TIter>(in_tokens: TIter, context: &TIter::Item) -> Resul
     Ok(Expression::literal_string(string_value))
 }
 
-fn parse_literal_integer<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_literal_integer<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -60,24 +61,19 @@ fn parse_literal_integer<TIter>(in_tokens: TIter, context: &TIter::Item) -> Resu
     Ok(Expression::literal_int(integer_token.as_token().unwrap_literal_integer()))
 }
 
-fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
     let func_name = Matcher::AnyIdentifier.match_one(in_tokens, context)?;
 
-    let args = Matcher::Exact(tokens::BracketLeft)
-        .terminated_by(Matcher::Exact(tokens::BracketRight))
-        .match_block(func_name.next_tokens, &func_name.last_token)?;
+    let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
+        .match_groups(tokens::Comma, func_name.next_tokens, &func_name.last_token)?;
 
-    //crude arg match: split on all commas in args list
-    let all_args = args.value.inner
-        .split(|t| Matcher::Exact(tokens::Comma).is_match(t))
-        .map(|arg_tokens| {
-            let all_arg_tokens = arg_tokens.iter().cloned().collect::<Vec<_>>();
-
-            //TODO; context is wrong here?
-            Expression::parse(all_arg_tokens, context)
+    let all_args = args.value.groups
+        .into_iter()
+        .map(|arg_group| {
+            Expression::parse(arg_group.tokens, &arg_group.context)
         })
         .collect::<Result<Vec<_>, _>>();
 
@@ -90,14 +86,12 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
-    let if_kw = Matcher::Keyword(keywords::If).match_one(in_tokens, context)?;
+    let if_kw = keywords::If.match_one(in_tokens, context)?;
 
-    let cond_tokens = Matcher::Keyword(keywords::Then)
-        .match_until(if_kw.next_tokens, &if_kw.last_token)?;
+    let cond_tokens = keywords::Then.match_until(if_kw.next_tokens, &if_kw.last_token)?;
     let condition = Expression::parse(cond_tokens.value, &if_kw.last_token)?;
 
-    let match_then_else = Matcher::Keyword(keywords::Then)
-        .terminated_by(Matcher::Keyword(keywords::Else));
+    let match_then_else = keywords::Then.terminated_by(keywords::Else);
 
     let peek_then_else = match_then_else.match_block_peek(cond_tokens.next_tokens,
                                                           &cond_tokens.last_token)?;
@@ -111,8 +105,8 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
 
         Ok(Expression::if_then_else(condition, then_branch, Some(else_branch)))
     } else {
-        let then = Matcher::Keyword(keywords::Then).match_one(peek_then_else.next_tokens,
-                                                              &peek_then_else.last_token)?;
+        let then = keywords::Then.match_one(peek_then_else.next_tokens,
+                                            &peek_then_else.last_token)?;
         let then_branch = Expression::parse(then.next_tokens, &then.last_token)?;
 
         Ok(Expression::if_then_else(condition, then_branch, None))
@@ -130,7 +124,7 @@ impl Expression {
             .or(Matcher::AnyIdentifier)
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
-            .or(Matcher::Exact(tokens::BracketLeft));
+            .or(tokens::BracketLeft);
 
         let all_tokens = in_tokens.into_iter().collect::<Vec<_>>();
 

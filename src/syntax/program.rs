@@ -12,8 +12,7 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
-    let uses_matcher = Matcher::Keyword(keywords::Uses);
-    let uses_kw = uses_matcher.match_peek(in_tokens, context)?;
+    let uses_kw = keywords::Uses.match_peek(in_tokens, context)?;
 
     if uses_kw.value.is_none() {
         //no uses
@@ -26,12 +25,10 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
     let mut after_uses = uses_kw.next_tokens;
     after_uses.next();
 
-    let match_semicolon = Matcher::Exact(tokens::Semicolon);
-    let uses_tokens = match_semicolon.split_at_match(after_uses, &uses_kw.last_token)?;
+    let uses_tokens = tokens::Semicolon.split_at_match(after_uses, &uses_kw.last_token)?;
 
-    let match_comma = Matcher::Exact(tokens::Comma);
     let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.value.before_split
-        .split(|source_token| match_comma.is_match(source_token))
+        .split(|source_token| tokens::Comma.eq(source_token.as_token()))
         .map(|source_tokens| {
             if source_tokens.len() == 1 &&
                 source_tokens[0].as_token().is_any_identifier() {
@@ -69,10 +66,10 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
     let mut last_parsed = context.clone();
 
     loop {
-        let match_decl_first = Matcher::Keyword(keywords::Function)
+        let match_decl_first = keywords::Function
             //.or(Matcher::Keyword(keywords::Uses)) TODO?
-            .or(Matcher::Keyword(keywords::Var))
-            .or(Matcher::Keyword(keywords::Begin));
+            .or(keywords::Var)
+            .or(keywords::Begin);
 
         let peek_decl = match_decl_first.match_peek(tokens, &last_parsed)?;
         tokens = Box::from(peek_decl.next_tokens);
@@ -129,9 +126,9 @@ impl Program {
         where TIter: Iterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
-        let program_statement = Matcher::Keyword(keywords::Program)
+        let program_statement = keywords::Program
             .and_then(Matcher::AnyIdentifier)
-            .and_then(Matcher::Exact(tokens::Semicolon))
+            .and_then(tokens::Semicolon)
             .match_sequence(tokens, context)?;
 
         let name = program_statement.value
@@ -147,8 +144,8 @@ impl Program {
 
         let program_block = Block::parse(decls.next_tokens, &decls.last_token)?;
 
-        let last_period = Matcher::Exact(tokens::Period)
-            .match_one(program_block.next_tokens, &program_block.last_token)?;
+        let last_period = tokens::Period.match_one(program_block.next_tokens,
+                                                   &program_block.last_token)?;
 
         let program = Program {
             name,

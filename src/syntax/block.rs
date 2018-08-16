@@ -11,14 +11,13 @@ impl Block {
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
-        let statement_groups = Matcher::Keyword(keywords::Begin)
-            .terminated_by(Matcher::Keyword(keywords::End))
-            .match_groups(&Matcher::Exact(tokens::Semicolon), tokens, context)?;
+        let statement_groups = keywords::Begin.terminated_by(keywords::End)
+            .match_groups(tokens::Semicolon, tokens, context)?;
 
         let statements = statement_groups.value.groups
             .into_iter()
             .map(|statement_group| {
-                Expression::parse(statement_group.items, &statement_group.context)
+                Expression::parse(statement_group.tokens, &statement_group.context)
             })
             .collect::<Result<_, _>>()?;
 

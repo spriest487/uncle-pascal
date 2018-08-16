@@ -18,13 +18,13 @@ impl Function {
             .match_sequence(in_tokens, context)?;
 
         let fn_name = &name_match.value[1].clone();
-        let open_args = Matcher::from(tokens::BracketLeft)
-            .match_peek(name_match.next_tokens, &name_match.last_token)?;
+        let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
+                                                       &name_match.last_token)?;
 
         let arg_groups = match open_args.value {
             Some(_) => {
                 tokens::BracketLeft.terminated_by(tokens::BracketRight)
-                    .match_groups(&Matcher::Exact(tokens::Comma),
+                    .match_groups(tokens::Comma,
                                   open_args.next_tokens,
                                   &open_args.last_token)?
                     .map(|groups_match| groups_match.groups)
@@ -41,7 +41,7 @@ impl Function {
                 let fn_arg = Matcher::AnyIdentifier
                     .and_then(tokens::Colon)
                     .and_then(Matcher::AnyIdentifier)
-                    .match_sequence(arg_tokens.items, &arg_tokens.context)?;
+                    .match_sequence(arg_tokens.tokens, &arg_tokens.context)?;
 
                 let name = String::from(fn_arg.value[0].unwrap_identifier());
                 let decl_type = node::Identifier::parse(fn_arg.value[2].unwrap_identifier());
@@ -50,7 +50,7 @@ impl Function {
             })
             .collect::<Result<_, _>>()?;
 
-        let match_return = Matcher::from(tokens::Colon)
+        let match_return = tokens::Colon
             .and_then(Matcher::AnyIdentifier)
             .and_then(tokens::Semicolon)
             .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
@@ -73,8 +73,8 @@ impl Function {
 
         let body_block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
 
-        let last_semicolon = Matcher::from(tokens::Semicolon)
-            .match_one(body_block.next_tokens, &body_block.last_token)?;
+        let last_semicolon = tokens::Semicolon.match_one(body_block.next_tokens,
+                                                         &body_block.last_token)?;
 
         let function = Function {
             name: fn_name.as_token().unwrap_identifier().to_owned(),

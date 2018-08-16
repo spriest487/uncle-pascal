@@ -26,8 +26,7 @@ impl Vars {
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
-        let match_kw = Matcher::Keyword(keywords::Var);
-        let var_kw = match_kw.match_one(in_tokens.into_iter(), context)?;
+        let var_kw = keywords::Var.match_one(in_tokens, context)?;
 
         let mut next_tokens = WrapIter::new(var_kw.next_tokens);
         let mut last_context = var_kw.last_token;
@@ -38,9 +37,9 @@ impl Vars {
             match peekable_tokens.peek().cloned() {
                 Some(ref id) if id.as_token().is_any_identifier() => {
                     let match_decl = Matcher::AnyIdentifier
-                        .and_then(Matcher::Exact(tokens::Colon))
+                        .and_then(tokens::Colon)
                         .and_then(Matcher::AnyIdentifier)
-                        .and_then(Matcher::Exact(tokens::Semicolon));
+                        .and_then(tokens::Semicolon);
 
                     let decl = match_decl.match_sequence(peekable_tokens, &last_context)?;
 
@@ -57,10 +56,10 @@ impl Vars {
                 }
                 None => {
                     return Err(ParseError::UnexpectedEOF(Matcher::AnyIdentifier, last_context));
-                },
+                }
             }
         }
 
-        Ok(ParseOutput::new(Vars{ decls}, last_context, next_tokens))
+        Ok(ParseOutput::new(Vars { decls }, last_context, next_tokens))
     }
 }
