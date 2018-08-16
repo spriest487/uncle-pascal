@@ -287,10 +287,18 @@ impl fmt::Display for SemanticError {
 
 pub type SemanticResult<T> = Result<T, SemanticError>;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct SemanticContext {
     token: source::Token,
     scope: Rc<Scope>,
+}
+
+impl fmt::Debug for SemanticContext {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} in {}", self.token, self.scope.local_name()
+            .map(|id| id.to_string())
+            .unwrap_or("module root".to_string()))
+    }
 }
 
 impl Context for SemanticContext {

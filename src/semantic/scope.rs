@@ -309,6 +309,14 @@ impl Scope {
             .or_else(|| {
                 self.get_symbol_global(name)
             })
+            .or_else(|| {
+                let func = self.get_function(name)?;
+
+                Some(ScopedSymbol::Local {
+                    name: func.name.clone(),
+                    decl_type: Type::Function(func.name.clone()),
+                })
+            })
     }
 
     fn find_named(&self, name: &Identifier) -> Option<&Named> {
@@ -415,8 +423,7 @@ impl Scope {
         }?;
 
         let member = record_decl.members.iter()
-            .find(|m| m.name.to_string() == *member_name)
-            .unwrap();
+            .find(|m| m.name.to_string() == *member_name)?;
 
         Some(ScopedSymbol::RecordMember {
             record_id: parent_id.clone(),
