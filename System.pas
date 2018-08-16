@@ -19,11 +19,18 @@ type
 
 procedure WriteLn(line: String)
 
+constructor StringCreate: String
+constructor StringFromBytes(bytes: ^Byte; len: NativeInt): String
+destructor DestroyString(string: String)
+
 function StringFromInt(i: Int32): String
 function StringToInt(s: String; outVal: ^Int32): Boolean
+function StringConcat(a: String; b: String): String
 
 function GetMem(len: NativeInt): ^Byte
 procedure FreeMem(mem: ^Byte)
+
+implementation
 
 constructor StringCreate: String
 begin
@@ -72,7 +79,5 @@ begin
             ^(result.Chars + a.Length + c) := ^(b.Chars + c);
     end;
 end
-
-implementation
 
 end.

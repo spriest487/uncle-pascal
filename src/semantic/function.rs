@@ -14,7 +14,7 @@ use types::{
 const RESULT_VAR_NAME: &str = "result";
 
 pub type FunctionDecl = node::FunctionDecl<SemanticContext>;
-pub type FunctionDeclBody = node::FunctionDeclBody<SemanticContext>;
+pub type Function = node::Function<SemanticContext>;
 pub type FunctionArg = node::FunctionArg<SemanticContext>;
 
 impl FunctionDecl {
@@ -50,122 +50,21 @@ impl FunctionDecl {
                     default_value: match arg.default_value.as_ref() {
                         Some(default_expr) => {
                             Some(Expression::annotate(default_expr, scope.clone())?)
-                        },
+                        }
                         None => None
-                    }
+                    },
                 })
             })
             .collect::<SemanticResult<_>>()?;
 
-        let body = match &function.body {
-            Some(function_body) => {
-                /* there can't already be a local symbol called "result" */
-                let result_id = RESULT_VAR_NAME;
-                function_body.local_vars.decls.iter().find(|decl| decl.name == result_id)
-                    .map(|_| Err({
-                        SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(), context.clone())
-                    }))
-                    .unwrap_or(Ok(()))?;
-
-                let mut local_vars = VarDecls::annotate(&function_body.local_vars, scope.clone())?;
-//                let mut local_consts = ConstDecls::annotate(&function_body.local_consts, scope.clone())?;
-                let mut local_consts = ConstDecls::default();
-
-                if let &Some(ref result_var_type) = &return_type {
-                    local_vars.decls.push(VarDecl {
-                        name: result_id.to_string(),
-                        context: context.clone(),
-                        decl_type: result_var_type.clone(),
-                        default_value: None,
-                    });
-                }
-
-                let local_scope = Rc::new({
-                    let mut local_scope = scope.as_ref().clone();
-                    for arg in args.iter() {
-                        let arg_type: Type = arg.decl_type.clone();
-                        local_scope = local_scope.with_symbol_local(&arg.name, arg_type);
-                    }
-                    for parsed_const in function_body.local_consts.decls.iter() {
-                        //consts can reference each other so we annotate them one by one
-                        let (const_decl, new_scope) = ConstDecl::annotate(parsed_const,
-                                                                          Rc::new(local_scope))?;
-                        local_consts.decls.push(const_decl);
-                        local_scope = new_scope;
-                    }
-                    for var in local_vars.decls.iter() {
-                        local_scope = local_scope.with_symbol_local(&var.name,
-                                                                    var.decl_type.clone());
-                    }
-                    local_scope
-                });
-
-                let body_block = Block::annotate(&function_body.block, local_scope.clone())?;
-
-                Some(FunctionDeclBody {
-                    block: body_block,
-                    local_vars,
-                    local_consts,
-                })
-            }
-            None => None,
-        };
-
         Ok(FunctionDecl {
             name: function.name.clone(),
-            context,
-            kind: function.kind,
-            return_type,
+            kind: function.kind.clone(),
             modifiers: function.modifiers.clone(),
+            context,
             args,
-            body,
+            return_type
         })
-    }
-
-    pub fn type_check(&self) -> Result<(), SemanticError> {
-        let returns_class = self.return_type.as_ref()
-            .map(|ty| ty.is_class())
-            .unwrap_or(false);
-
-        // make sure constructors return something constructible
-        if self.kind == node::FunctionKind::Constructor && !returns_class {
-            return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
-                                                               self.context.clone()));
-        }
-
-        //make sure destructors take one arg of a type in their module, and return nothing
-        if self.kind == node::FunctionKind::Destructor {
-            if let Some(return_type) = &self.return_type {
-                return Err(SemanticError::invalid_destructor_return(return_type.clone(),
-                                                                    self.context.clone()));
-            }
-
-            let is_valid_destructed_type = |ty: &Type| {
-                match ty {
-                    Type::Class(class_name) => {
-                        class_name.parent().as_ref() == self.scope().local_namespace()
-                    },
-                    _ => false,
-                }
-            };
-
-            if self.args.len() != 1
-                || !is_valid_destructed_type(&self.args[0].decl_type) {
-                let arg_types = self.args.iter()
-                    .map(|arg_decl| &arg_decl.decl_type)
-                    .cloned();
-
-                return Err(SemanticError::invalid_destructor_args(arg_types, self.context.clone()));
-            }
-        }
-
-        //todo: check args are all valid types
-
-        if let Some(body) = &self.body {
-            body.block.type_check()?;
-        }
-
-        Ok(())
     }
 
     pub fn is_destructor_of(&self, class_type: &RecordDecl) -> bool {
@@ -193,6 +92,138 @@ impl FunctionDecl {
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
         }
+    }
+
+    pub fn type_check(&self) -> Result<(), SemanticError> {
+        let returns_class = self.return_type.as_ref()
+            .map(|ty| ty.is_class())
+            .unwrap_or(false);
+
+        // make sure constructors return something constructible
+        if self.kind == node::FunctionKind::Constructor && !returns_class {
+            return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
+                                                               self.context.clone()));
+        }
+
+        //make sure destructors take one arg of a type in their module, and return nothing
+        if self.kind == node::FunctionKind::Destructor {
+            if let Some(return_type) = &self.return_type {
+                return Err(SemanticError::invalid_destructor_return(return_type.clone(),
+                                                                    self.context.clone()));
+            }
+
+            let is_valid_destructed_type = |ty: &Type| {
+                match ty {
+                    Type::Class(class_name) => {
+                        class_name.parent().as_ref() == self.scope().local_namespace()
+                    }
+                    _ => false,
+                }
+            };
+
+            if self.args.len() != 1
+                || !is_valid_destructed_type(&self.args[0].decl_type) {
+                let arg_types = self.args.iter()
+                    .map(|arg_decl| &arg_decl.decl_type)
+                    .cloned();
+
+                return Err(SemanticError::invalid_destructor_args(arg_types, self.context.clone()));
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl Function {
+    pub fn annotate(function: &syntax::Function, scope: Rc<Scope>) -> SemanticResult<Function> {
+        let decl = FunctionDecl::annotate(&function.decl, scope.clone())?;
+
+        /* there can't already be a local symbol called "result" */
+        function.local_vars().find(|decl| decl.name == RESULT_VAR_NAME)
+            .map(|_| Err({
+                SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(), decl.context.clone())
+            }))
+            .unwrap_or(Ok(()))?;
+
+        let mut local_decls = Vec::new();
+
+        let mut local_scope = scope.as_ref().clone();
+
+        for local_decl in function.local_decls.iter() {
+            match local_decl {
+                node::FunctionLocalDecl::Vars(_) => {
+                    /* local vars are skipped here, other decls can't refer to them
+                    so it's easiest just to process them last */
+                }
+
+                node::FunctionLocalDecl::Consts(parsed_local_consts) => {
+                    let mut local_consts = ConstDecls::default();
+
+                    //consts can reference each other so we annotate them one by one
+                    for parsed_const in parsed_local_consts.decls.iter() {
+                        let (const_decl, new_scope) = ConstDecl::annotate(
+                            parsed_const,
+                            Rc::new(local_scope))?;
+
+                        local_consts.decls.push(const_decl);
+                        local_scope = new_scope;
+                    }
+
+                    local_decls.push(node::FunctionLocalDecl::Consts(local_consts))
+                }
+
+                node::FunctionLocalDecl::NestedFunction(parsed_local_func) => {
+                    let func_scope = Rc::new(local_scope.clone());
+                    let local_func = FunctionDecl::annotate(&parsed_local_func, func_scope)?;
+                    let local_func = Box::new(local_func);
+
+                    let func_decl = node::FunctionLocalDecl::NestedFunction(local_func);
+                    local_decls.push(func_decl);
+                }
+            }
+        }
+
+        /* include args in local scope before variables */
+        for arg in decl.args.iter() {
+            let arg_type: Type = arg.decl_type.clone();
+            local_scope = local_scope.with_symbol_local(&arg.name, arg_type);
+        }
+
+        /* annotate variables and add them to the local scope */
+        let mut all_local_vars = VarDecls::default();
+        for parsed_local_var in function.local_vars() {
+            let local_var = VarDecl::annotate(parsed_local_var, Rc::new(local_scope.clone()))?;
+            local_scope = local_scope.with_symbol_local(&local_var.name,
+                                                        local_var.decl_type.clone());
+            all_local_vars.decls.push(local_var);
+        }
+
+        /* add a "result" var if this function returns something */
+        if let &Some(ref result_var_type) = &decl.return_type {
+            local_scope = local_scope.with_symbol_local(RESULT_VAR_NAME, result_var_type.clone());
+        }
+
+        let block = Block::annotate(&function.block, Rc::new(local_scope.clone()))?;
+
+        Ok(Function {
+            decl,
+            block,
+            local_decls,
+        })
+    }
+
+    pub fn type_check(&self) -> Result<(), SemanticError> {
+        self.decl.type_check()?;
+        self.block.type_check()?;
+
+        Ok(())
+    }
+}
+
+impl Function {
+    pub fn scope(&self) -> &Scope {
+        self.decl.scope()
     }
 }
 

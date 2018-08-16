@@ -159,22 +159,40 @@ impl ToSource for ConstantExpression {
     }
 }
 
-impl<C> ToSource for FunctionDecl<C>
+impl<C> ToSource for FunctionLocalDecl<C>
     where C: Context
 {
     fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("function {};", self.name));
-
-        if let Some(body) = &self.body {
-            if body.local_vars.decls.len() > 0 {
-                lines.push(body.local_vars.to_source());
-            }
-
-            lines.push(body.block.to_source() + ";");
+        match self {
+            FunctionLocalDecl::Vars(vars) => vars.to_source(),
+            FunctionLocalDecl::NestedFunction(func) => func.to_source(),
+            FunctionLocalDecl::Consts(consts) => consts.to_source(),
         }
+    }
+}
 
-        lines.join("\n")
+
+impl<C> ToSource for Function<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        let mut out = Vec::new();
+        out.push(self.decl.to_source());
+        for decl in self.local_decls.iter() {
+            out.push(decl.to_source());
+        }
+        out.push(self.block.to_source() + ";");
+
+        out.join("\n")
+    }
+}
+
+impl<C> ToSource for FunctionDecl<C>
+    where C: Context
+{
+    // todo: this is incomplete
+    fn to_source(&self) -> String {
+        format!("function {};", self.name)
     }
 }
 
@@ -194,16 +212,19 @@ impl<C> ToSource for Program<C>
 
         for decl in self.decls.iter() {
             match decl {
-                UnitDeclaration::Type(type_decl) =>
+                Implementation::Function(func) =>
+                    lines.push(func.to_source()),
+
+                Implementation::Decl(UnitDecl::Type(type_decl)) =>
                     lines.push(type_decl.to_source()),
 
-                UnitDeclaration::Function(func_decl) =>
+                Implementation::Decl(UnitDecl::Function(func_decl)) =>
                     lines.push(func_decl.to_source()),
 
-                UnitDeclaration::Vars(var_decls) =>
+                Implementation::Decl(UnitDecl::Vars(var_decls)) =>
                     lines.push(var_decls.to_source()),
 
-                UnitDeclaration::Consts(const_decls) =>
+                Implementation::Decl(UnitDecl::Consts(const_decls)) =>
                     lines.push(const_decls.to_source()),
             }
         }
@@ -266,21 +287,21 @@ impl<C> ToSource for SetDecl<C>
     }
 }
 
-impl<C> ToSource for UnitDeclaration<C>
+impl<C> ToSource for UnitDecl<C>
     where C: Context
 {
     fn to_source(&self) -> String {
         match self {
-            UnitDeclaration::Type(type_decl) =>
+            UnitDecl::Type(type_decl) =>
                 type_decl.to_source(),
 
-            UnitDeclaration::Function(func_decl) =>
+            UnitDecl::Function(func_decl) =>
                 func_decl.to_source(),
 
-            UnitDeclaration::Vars(var_decls) =>
+            UnitDecl::Vars(var_decls) =>
                 var_decls.to_source(),
 
-            UnitDeclaration::Consts(const_decls) =>
+            UnitDecl::Consts(const_decls) =>
                 const_decls.to_source(),
         }
     }

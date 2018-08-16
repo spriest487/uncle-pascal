@@ -158,28 +158,6 @@ impl TokenStream {
         }
     }
 
-    pub fn match_until(&mut self, until: impl Into<Matcher>) -> ParseResult<Vec<source::Token>> {
-        let until = until.into();
-        let mut result = Vec::new();
-
-        loop {
-            match self.look_ahead().next() {
-                Some(ref matching) if until.is_match(matching) => {
-                    break Ok(result);
-                }
-
-                Some(not_matching) => {
-                    self.next();
-                    result.push(not_matching)
-                }
-
-                None => {
-                    break Err(ParseError::UnexpectedEOF(until, self.context.clone()));
-                }
-            }
-        }
-    }
-
     pub fn match_sequence(&mut self,
                           sequence: impl IntoIterator<Item=Matcher>)
                           -> Result<Vec<source::Token>, ParseError> {
@@ -327,7 +305,11 @@ impl TokenStream {
     }
 
     pub fn look_ahead(&mut self) -> LookAheadTokenStream {
-        LookAheadTokenStream::new(self)
+        LookAheadTokenStream {
+            tokens: self,
+            pos: 0,
+            limit: None,
+        }
     }
 
     pub fn split_at_match(&mut self, matcher: impl Into<Matcher>)
@@ -384,14 +366,6 @@ pub struct LookAheadTokenStream<'tokens> {
 }
 
 impl<'tokens> LookAheadTokenStream<'tokens> {
-    pub fn new(tokens: &'tokens mut TokenStream) -> Self {
-        Self {
-            tokens,
-            pos: 0,
-            limit: None,
-        }
-    }
-
     pub fn limit(mut self, limit: usize) -> Self {
         self.limit = Some(limit);
         self

@@ -6,7 +6,8 @@ use operators;
 use tokens::AsToken;
 
 pub type Unit = node::Unit<ParsedContext>;
-pub type UnitDeclaration = node::UnitDeclaration<ParsedContext>;
+pub type UnitDecl = node::UnitDecl<ParsedContext>;
+pub type Implementation = node::Implementation<ParsedContext>;
 pub type UnitReference = node::UnitReference<ParsedContext>;
 
 impl Unit {
@@ -18,10 +19,10 @@ impl Unit {
 
         let uses: Vec<UnitReference> = tokens.parse()?;
 
-        let interface_decls: Vec<UnitDeclaration> = tokens.parse()?;
+        let interface_decls: Vec<UnitDecl> = tokens.parse()?;
 
         tokens.match_one(keywords::Implementation)?;
-        let impl_decls: Vec<UnitDeclaration> = tokens.parse()?;
+        let impl_decls: Vec<Implementation> = tokens.parse()?;
 
         tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
         tokens.finish()?;
@@ -95,14 +96,13 @@ impl Parse for Vec<UnitReference> {
 
                 // another name without a comma, but it's on a new line so that's fine
                 Some(ref t) if t.is_any_identifier()
-                    && t.location.line > tokens.context().location.line => {
-                }
+                    && t.location.line > tokens.context().location.line => {}
 
                 // list ends (EOF or unexpected token but it's on a new line,
                 // so we just infer the end of the list)
                 None => {
-                    break Ok(units)
-                },
+                    break Ok(units);
+                }
                 Some(ref t) if t.location.line > tokens.context().location.line => {
                     break Ok(units);
                 }
@@ -119,45 +119,96 @@ impl Parse for Vec<UnitReference> {
     }
 }
 
-impl Parse for Vec<UnitDeclaration> {
+fn decl_first_matcher() -> Matcher {
+    FunctionDecl::match_any_function_keyword()
+        .or(keywords::Type)
+        .or(keywords::Var)
+        .or(keywords::Const)
+}
+
+impl Parse for Vec<Implementation> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let mut impls = Vec::new();
+        loop {
+            match tokens.look_ahead().match_one(decl_first_matcher()) {
+                Some(ref kw) if FunctionDecl::match_any_function_keyword().is_match(kw) => {
+                    let func_definition: Function = tokens.parse()?;
+
+                    impls.push(node::Implementation::Function(func_definition))
+                }
+
+                Some(_) => {
+                    impls.extend(UnitDecl::parse_one(tokens)?
+                        .into_iter()
+                        .map(|decl| node::Implementation::Decl(decl)))
+                }
+
+                None => break,
+            }
+        }
+
+        Ok(impls)
+    }
+}
+
+impl UnitDecl {
+    /* parse one decl section. this still returns a Vec of decls because of the way
+        the nodes are currently structured i.e. we create one TypeDecl for each type
+        in a type... section  */
+    fn parse_one(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        let peek_decl = tokens.look_ahead().match_one(decl_first_matcher());
+
+        match peek_decl {
+            Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
+            => {
+                let func: FunctionDecl = tokens.parse()?;
+
+                Ok(vec![node::UnitDecl::Function(func)])
+            }
+
+            Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
+                let type_decls: Vec<TypeDecl> = tokens.parse()?;
+
+                Ok(type_decls.into_iter()
+                    .map(|type_decl| {
+                        node::UnitDecl::Type(type_decl)
+                    })
+                    .collect())
+            }
+
+            Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
+                let vars = VarDecls::parse(tokens)?;
+                Ok(vec![node::UnitDecl::Vars(vars)])
+            }
+
+            Some(ref const_kw) if const_kw.is_keyword(keywords::Const) => {
+                let consts = ConstDecls::parse(tokens)?;
+                Ok(vec![node::UnitDecl::Consts(consts)])
+            }
+
+            Some(unexpected) => {
+                let expected = decl_first_matcher();
+                Err(ParseError::UnexpectedToken(unexpected, Some(expected)))
+            }
+
+            None => {
+                Err(ParseError::UnexpectedEOF(decl_first_matcher(), tokens.context().clone()))
+            },
+        }
+    }
+}
+
+impl Parse for Vec<UnitDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut decls = Vec::new();
 
         loop {
-            let match_decl_first = FunctionDecl::match_any_function_keyword()
-                .or(keywords::Type)
-                .or(keywords::Var)
-                .or(keywords::Const)
-                .or(keywords::Begin);
-
-            let peek_decl = tokens.look_ahead().match_one(match_decl_first);
-
-            match peek_decl {
-                Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
-                => {
-                    let func: FunctionDecl = tokens.parse()?;
-                    decls.push(node::UnitDeclaration::Function(func));
-                }
-
-                Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
-                    let type_decls: Vec<TypeDecl> = tokens.parse()?;
-                    decls.extend(type_decls.into_iter().map(|type_decl| {
-                        node::UnitDeclaration::Type(type_decl)
-                    }));
-                }
-
-                Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                    let vars = VarDecls::parse(tokens)?;
-                    decls.push(node::UnitDeclaration::Vars(vars));
-                }
-
-                Some(ref const_kw) if const_kw.is_keyword(keywords::Const) => {
-                    let consts = ConstDecls::parse(tokens)?;
-                    decls.push(node::UnitDeclaration::Consts(consts));
-                }
-
-                _ => break Ok(decls),
+            match tokens.look_ahead().match_one(decl_first_matcher()) {
+                Some(_) => decls.extend(UnitDecl::parse_one(tokens)?),
+                None => break,
             }
         }
+
+        Ok(decls)
     }
 }

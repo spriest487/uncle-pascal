@@ -1,4 +1,5 @@
 unit Vector
+
 interface
 
 uses System.*
@@ -11,6 +12,14 @@ type
     Elements: ^Element
     Length: Index
   end
+
+constructor Create: Vector
+destructor Destroy(self: Vector)
+
+procedure Add(self: Vector; p: Element)
+procedure AddAll(self: Vector; other: Vector)
+
+implementation
 
 constructor Create: Vector
 begin
@@ -47,5 +56,4 @@ begin
     self.Add(^(other.Elements + i))
 end
 
-implementation
 end.

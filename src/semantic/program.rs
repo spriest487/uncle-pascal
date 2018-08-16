@@ -7,7 +7,7 @@ pub type Program = node::Program<SemanticContext>;
 
 impl Program {
     pub fn annotate(program: &syntax::Program, scope: Scope) -> Result<Self, SemanticError> {
-        let (decls, program_scope) = Unit::annotate_decls(program.decls.iter(), scope)?;
+        let (decls, program_scope) = Unit::annotate_impls(program.decls.iter(), scope)?;
         let program_scope = Rc::new(program_scope);
 
         let program_block = Block::annotate(&program.program_block, program_scope.clone())?;

@@ -14,7 +14,7 @@ use node::{
 };
 
 pub type FunctionDecl = node::FunctionDecl<ParsedContext>;
-pub type FunctionDeclBody = node::FunctionDeclBody<ParsedContext>;
+pub type Function = node::Function<ParsedContext>;
 pub type FunctionArg = node::FunctionArg<ParsedContext>;
 
 impl Parse for FunctionDecl {
@@ -55,47 +55,6 @@ impl Parse for FunctionDecl {
         //body (if present) appears after separator or newline
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let peek_after_sig = tokens.look_ahead().match_one(keywords::Var
-            .or(keywords::Const)
-            .or(keywords::Begin));
-
-        let body = match peek_after_sig {
-            // forward decl
-            None => None,
-
-            // decl with body
-            Some(_) => {
-                /* parse consts and vars until we run out of those */
-                let mut local_consts = ConstDecls::default();
-                let mut local_vars = VarDecls::default();
-
-                loop {
-                    match tokens.look_ahead().match_one(keywords::Var.or(keywords::Const)) {
-                        Some(t) => if t.is_keyword(keywords::Var) {
-                            let vars: VarDecls = tokens.parse()?;
-                            local_vars.decls.extend(vars.decls);
-                        } else {
-                            let consts: ConstDecls = tokens.parse()?;
-                            local_consts.decls.extend(consts.decls);
-                        }
-
-                        None => break,
-                    }
-                }
-
-                let block = Block::parse(tokens)?;
-
-                // body is followed by semicolon or newline
-                tokens.match_or_endl(tokens::Semicolon)?;
-
-                Some(FunctionDeclBody {
-                    block,
-                    local_vars,
-                    local_consts,
-                })
-            }
-        };
-
         Ok(FunctionDecl {
             name: fn_name.unwrap_identifier().to_string(),
             context: fn_name.into(),
@@ -103,7 +62,55 @@ impl Parse for FunctionDecl {
             modifiers,
             args,
             kind,
-            body,
+        })
+    }
+}
+
+impl Parse for Function {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let decl: FunctionDecl = tokens.parse()?;
+
+        let nested_func_keyword = keywords::Function
+            .or(keywords::Procedure);
+
+        let any_decl_kw = keywords::Var
+            .or(keywords::Const)
+            .or(nested_func_keyword.clone());
+
+        let mut local_decls = Vec::new();
+        loop {
+            match tokens.look_ahead().match_one(any_decl_kw.clone()) {
+                Some(ref kw) if nested_func_keyword.clone().is_match(kw.as_token()) => {
+                    let func_decl: FunctionDecl = tokens.parse()?;
+
+                    local_decls.push(node::FunctionLocalDecl::NestedFunction({
+                        Box::new(func_decl)
+                    }));
+                }
+
+                Some(ref kw) if kw.is_keyword(keywords::Var) => {
+                    let vars: VarDecls = tokens.parse()?;
+
+                    local_decls.push(node::FunctionLocalDecl::Vars(vars));
+                }
+
+                Some(ref kw) if kw.is_keyword(keywords::Const) => {
+                    let consts: ConstDecls = tokens.parse()?;
+
+                    local_decls.push(node::FunctionLocalDecl::Consts(consts));
+                }
+
+                _ => break,
+            }
+        }
+
+        let block: Block = tokens.parse()?;
+        tokens.match_or_endl(tokens::Semicolon)?;
+
+        Ok(Function {
+            decl,
+            block,
+            local_decls,
         })
     }
 }

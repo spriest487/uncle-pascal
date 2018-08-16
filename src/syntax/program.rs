@@ -15,7 +15,7 @@ impl Program {
         tokens.match_or_endl(tokens::Semicolon)?;
 
         let uses: Vec<UnitReference> = tokens.parse()?;
-        let decls: Vec<UnitDeclaration> = tokens.parse()?;
+        let decls: Vec<Implementation> = tokens.parse()?;
         let program_block: Block = tokens.parse()?;
 
         tokens.match_one(tokens::Period)?;

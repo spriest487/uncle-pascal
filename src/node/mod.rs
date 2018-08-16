@@ -60,7 +60,7 @@ impl<TContext> fmt::Display for UnitReference<TContext>
 }
 
 #[derive(Clone, Debug)]
-pub enum UnitDeclaration<TContext>
+pub enum UnitDecl<TContext>
     where TContext: Context
 {
     Function(FunctionDecl<TContext>),
@@ -70,13 +70,21 @@ pub enum UnitDeclaration<TContext>
 }
 
 #[derive(Clone, Debug)]
+pub enum Implementation<TContext>
+    where TContext: Context
+{
+    Function(Function<TContext>),
+    Decl(UnitDecl<TContext>),
+}
+
+#[derive(Clone, Debug)]
 pub struct Program<TContext>
     where TContext: Context
 {
     pub name: String,
 
     pub uses: Vec<UnitReference<TContext>>,
-    pub decls: Vec<UnitDeclaration<TContext>>,
+    pub decls: Vec<Implementation<TContext>>,
 
     pub program_block: Block<TContext>,
 }
@@ -89,8 +97,8 @@ pub struct Unit<TContext>
 
     pub uses: Vec<UnitReference<TContext>>,
 
-    pub interface: Vec<UnitDeclaration<TContext>>,
-    pub implementation: Vec<UnitDeclaration<TContext>>,
+    pub interface: Vec<UnitDecl<TContext>>,
+    pub implementation: Vec<Implementation<TContext>>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -98,15 +106,6 @@ pub enum FunctionKind {
     Function,
     Constructor,
     Destructor,
-}
-
-#[derive(Debug, Clone)]
-pub struct FunctionDeclBody<TContext>
-    where TContext: Context
-{
-    pub local_vars: VarDecls<TContext>,
-    pub local_consts: ConstDecls<TContext>,
-    pub block: Block<TContext>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -149,9 +148,39 @@ pub struct FunctionDecl<TContext>
     pub modifiers: Vec<FunctionModifier>,
 
     pub args: Vec<FunctionArg<TContext>>,
+}
 
-    // a function without a body is a forward declaration
-    pub body: Option<FunctionDeclBody<TContext>>,
+#[derive(Debug, Clone)]
+pub enum FunctionLocalDecl<TContext>
+    where TContext: Context,
+{
+    Vars(VarDecls<TContext>),
+    Consts(ConstDecls<TContext>),
+    NestedFunction(Box<FunctionDecl<TContext>>),
+}
+
+#[derive(Debug, Clone)]
+pub struct Function<TContext>
+    where TContext: Context
+{
+    pub decl: FunctionDecl<TContext>,
+    pub local_decls: Vec<FunctionLocalDecl<TContext>>,
+    pub block: Block<TContext>,
+}
+
+impl<TContext> Function<TContext>
+    where TContext: Context
+{
+    pub fn local_vars(&self) -> impl Iterator<Item=&VarDecl<TContext>> {
+        self.local_decls.iter()
+            .filter_map(|decl| match decl {
+                FunctionLocalDecl::Vars(vars) => Some(vars.decls.iter()),
+
+                FunctionLocalDecl::NestedFunction(_) |
+                FunctionLocalDecl::Consts(_) => None,
+            })
+            .flat_map(|var_decls| var_decls)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

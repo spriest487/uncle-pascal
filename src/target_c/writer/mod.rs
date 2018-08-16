@@ -18,8 +18,10 @@ use node::{
     Identifier,
     FunctionKind,
     RecordKind,
-    UnitDeclaration,
+    UnitDecl,
+    Implementation,
     FunctionArgModifier,
+    FunctionLocalDecl,
     ConstantExpression,
 };
 use types::{
@@ -629,10 +631,9 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     writeln!(out)
 }
 
-pub fn write_function(out: &mut String,
-                      function: &semantic::FunctionDecl,
-                      globals: &mut ModuleGlobals)
-                      -> fmt::Result {
+pub fn write_function_decl(out: &mut String,
+                           function: &semantic::FunctionDecl,
+                           _globals: &mut ModuleGlobals) -> fmt::Result {
     let return_type_c = function.return_type.as_ref()
         .map(|return_type| type_to_c(return_type, function.scope()));
 
@@ -642,7 +643,7 @@ pub fn write_function(out: &mut String,
     write!(out, "{} ", identifier_to_c(&qualified_name))?;
 
     write!(out, "({})", function.args.iter()
-        .map(|arg_decl|  {
+        .map(|arg_decl| {
             let c_arg_type_base = type_to_c(&arg_decl.decl_type, &arg_decl.scope());
 
             let c_type = match &arg_decl.modifier {
@@ -655,81 +656,107 @@ pub fn write_function(out: &mut String,
             format!("{} {}", c_type, arg_decl.name)
         })
         .collect::<Vec<_>>()
-        .join(", "))?;
+        .join(", "))
+}
 
-    match &function.body {
-        None => writeln!(out, ";")?,
+pub fn write_function(out: &mut String,
+                      function: &semantic::Function,
+                      globals: &mut ModuleGlobals)
+                      -> fmt::Result {
+    write_function_decl(out, &function.decl, globals)?;
+    writeln!(out, "{{")?;
 
-        Some(node::FunctionDeclBody { block, local_vars, local_consts }) => {
-            writeln!(out, "{{")?;
-
-            write_consts(out, local_consts, globals)?;
-            write_vars(out, local_vars)?;
-            default_initialize_vars(out, local_vars.decls.iter())?;
-
-            if function.kind == FunctionKind::Constructor {
-                //the actual return type is an Rc, but we need to pass the class type to sizeof
-                let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
-                    Type::Class(name) => {
-                        identifier_to_c(&name)
-                    }
-                    _ => panic!("constructor must return a class type"),
-                };
-
-                writeln!(out, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
-                         constructed_class_c_name,
-                         constructed_class_c_name,
-                         function.return_type.as_ref().expect("constructor must have return type"))?;
+    let mut all_local_vars = Vec::new();
+    for local_decl in function.local_decls.iter() {
+        match local_decl {
+            FunctionLocalDecl::Consts(local_consts) => {
+                write_consts(out, local_consts, globals)?;
             }
 
-            let rc_args: Vec<_> = function.args.iter()
-                .filter(|arg| {
-                    arg.modifier != Some(FunctionArgModifier::Out)
-                        && arg.decl_type.is_class()
-                })
-                .collect();
-
-            // retain rc args to non-destructor functions
-            // this is kind of a hack to make sure temporary values used as args get rc'd
-            // destructors musn't change the ref count of their only arg, the dead object, or bad things
-            // happen
-            // it's safe to do this with a constructor because the object under construction exists only
-            // in the result position
-            if function.kind == FunctionKind::Function {
-                for arg in rc_args.iter() {
-                    writeln!(out, "System_Internal_Rc_Retain({});", arg.name)?;
-                }
+            FunctionLocalDecl::Vars(local_vars) => {
+                write_vars(out, local_vars)?;
+                default_initialize_vars(out, local_vars.decls.iter())?;
+                all_local_vars.extend(local_vars.decls.iter());
             }
 
-            write_block(out, block, globals)?;
-
-            //release all local vars except the result
-            let result_name = "result";
-            release_vars(out, local_vars.decls.iter()
-                .filter(|decl| decl.name != result_name))?;
-
-            if function.kind == FunctionKind::Function {
-                //release args
-                for arg in rc_args.iter() {
-                    writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
-                }
-            }
-
-            match return_type_c {
-                Some(_) => writeln!(out, "return result;")?,
-                None => (),
-            }
-
-            writeln!(out, "}}")?;
-            writeln!(out)?;
+            FunctionLocalDecl::NestedFunction(_) =>
+                unimplemented!("nested functions"),
         }
     }
 
-    Ok(())
+
+    if function.decl.kind == FunctionKind::Constructor {
+        //the actual return type is an Rc, but we need to pass the class type to sizeof
+        let constructed_class_c_name = match function.decl.return_type.as_ref().unwrap() {
+            Type::Class(name) => {
+                identifier_to_c(&name)
+            }
+            _ => panic!("constructor must return a class type"),
+        };
+
+        writeln!(out, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
+                 constructed_class_c_name,
+                 constructed_class_c_name,
+                 function.decl.return_type.as_ref().expect("constructor must have return type"))?;
+    }
+
+    let rc_args: Vec<_> = function.decl.args.iter()
+        .filter(|arg| {
+            arg.modifier != Some(FunctionArgModifier::Out)
+                && arg.decl_type.is_class()
+        })
+        .collect();
+
+    // retain rc args to non-destructor functions
+    // this is kind of a hack to make sure temporary values used as args get rc'd
+    // destructors musn't change the ref count of their only arg, the dead object, or bad things
+    // happen
+    // it's safe to do this with a constructor because the object under construction exists only
+    // in the result position
+    if function.decl.kind == FunctionKind::Function {
+        for arg in rc_args.iter() {
+            writeln!(out, "System_Internal_Rc_Retain({});", arg.name)?;
+        }
+    }
+
+    write_block(out, &function.block, globals)?;
+    release_vars(out, all_local_vars.into_iter()
+        .filter(|var| var.name != "result"))?;
+
+    if function.decl.kind == FunctionKind::Function {
+        //release args
+        for arg in rc_args.iter() {
+            writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
+        }
+    }
+
+    let return_type_c = function.decl.return_type.as_ref()
+        .map(|return_type| type_to_c(return_type, function.scope()));
+
+    match return_type_c {
+        Some(_) => writeln!(out, "return result;")?,
+        None => (),
+    }
+
+    writeln!(out, "}}")?;
+    writeln!(out)
+}
+
+pub fn write_impl_decl(out: &mut String,
+                       impl_decl: &semantic::Implementation,
+                       unit_name: Option<&Identifier>,
+                       globals: &mut ModuleGlobals) -> fmt::Result {
+    match impl_decl {
+        Implementation::Function(func_impl) =>
+            write_function(out, func_impl, globals),
+        Implementation::Decl(decl) => {
+            write_decl(out, decl, unit_name, globals)
+        }
+    }
 }
 
 pub fn write_decl(out: &mut String,
-                  decl: &semantic::UnitDeclaration,
+                  decl: &semantic::UnitDecl,
                   unit_name: Option<&Identifier>,
                   globals: &mut ModuleGlobals) -> fmt::Result {
     let qualify_name = |name: &str| {
@@ -740,10 +767,10 @@ pub fn write_decl(out: &mut String,
     };
 
     match decl {
-        UnitDeclaration::Function(ref func_decl) =>
-            write_function(out, func_decl, globals),
+        UnitDecl::Function(ref func_decl) =>
+            write_function_decl(out, func_decl, globals),
 
-        UnitDeclaration::Type(ref type_decl) =>
+        UnitDecl::Type(ref type_decl) =>
             match type_decl {
                 node::TypeDecl::Record(record_decl) =>
                     write_record_decl(out, record_decl),
@@ -767,21 +794,33 @@ pub fn write_decl(out: &mut String,
                 }
             }
 
-        UnitDeclaration::Vars(ref vars_decl) =>
+        UnitDecl::Vars(ref vars_decl) =>
             write_vars(out, vars_decl),
 
-        UnitDeclaration::Consts(ref consts_decl) =>
+        UnitDecl::Consts(ref consts_decl) =>
             write_consts(out, consts_decl, globals),
     }
 }
 
+fn write_static_init_impls<'a>(out: &mut String,
+                                   impls: &'a [semantic::Implementation]) -> fmt::Result {
+    let decls: Vec<_> = impls.iter()
+        .filter_map(|impl_decl| match impl_decl {
+            Implementation::Decl(decl) => Some(decl.clone()),
+            _ => None,
+        })
+        .collect();
+
+    write_static_init(out, decls.as_slice())
+}
+
 pub fn write_static_init<'a>(out: &mut String,
-                             decls: &'a Vec<semantic::UnitDeclaration>)
+                             decls: &'a [semantic::UnitDecl])
                              -> fmt::Result {
     let classes = decls.iter()
         .filter_map(|decl| {
             match decl {
-                UnitDeclaration::Type(node::TypeDecl::Record(record))
+                UnitDecl::Type(node::TypeDecl::Record(record))
                 if record.kind == RecordKind::Class => {
                     Some(record)
                 }
@@ -798,7 +837,7 @@ pub fn write_static_init<'a>(out: &mut String,
 
         let destructor = decls.iter()
             .filter_map(|decl| match decl {
-                UnitDeclaration::Function(func_decl)
+                UnitDecl::Function(func_decl)
                 if func_decl.is_destructor_of(&class)
                 => Some(func_decl),
                 _ => None
@@ -809,7 +848,7 @@ pub fn write_static_init<'a>(out: &mut String,
             Some(destructor) => {
                 let qualified_name = destructor.scope().qualify_local_name(&destructor.name);
                 format!("(System_Internal_Destructor)&{}", identifier_to_c(&qualified_name))
-            },
+            }
             None => "nullptr".to_string(),
         };
 
@@ -837,20 +876,20 @@ pub fn write_c(module: &ProgramModule)
 
     for unit in module.units.iter() {
         writeln!(c_decls, "/* {} implementation */", unit.name)?;
-        for decl in unit.implementation.iter() {
+        for imp_decl in unit.implementation.iter() {
             let unit_name = Identifier::from(&unit.name);
-            write_decl(&mut c_decls, decl, Some(&unit_name), &mut globals)?;
+            write_impl_decl(&mut c_decls, imp_decl, Some(&unit_name), &mut globals)?;
         }
     }
 
     writeln!(c_decls, "/* program decls */")?;
-    for decl in module.program.decls.iter() {
-        write_decl(&mut c_decls, decl, None, &mut globals)?;
+    for impl_decl in module.program.decls.iter() {
+        write_impl_decl(&mut c_decls, impl_decl, None, &mut globals)?;
     }
 
     let var_decls: Vec<_> = module.program.decls.iter()
         .filter_map(|decl| match decl {
-            UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
+            Implementation::Decl(UnitDecl::Vars(ref vars_decl)) => Some(vars_decl),
             _ => None
         })
         .flat_map(|decl_group| decl_group.decls.iter())
@@ -891,9 +930,9 @@ pub fn write_c(module: &ProgramModule)
     // init other classes
     for unit in module.units.iter() {
         write_static_init(&mut output, &unit.interface)?;
-        write_static_init(&mut output, &unit.implementation)?;
+        write_static_init_impls(&mut output, &unit.implementation)?;
     }
-    write_static_init(&mut output, &module.program.decls)?;
+    write_static_init_impls(&mut output, &module.program.decls)?;
 
     output.write_str(&c_main)?;
 

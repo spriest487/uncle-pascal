@@ -4,82 +4,112 @@ use syntax;
 use semantic::*;
 
 pub type Unit = node::Unit<SemanticContext>;
-pub type UnitDeclaration = node::UnitDeclaration<SemanticContext>;
+pub type UnitDecl = node::UnitDecl<SemanticContext>;
+pub type Implementation = node::Implementation<SemanticContext>;
 pub type UnitReference = node::UnitReference<SemanticContext>;
 
 impl Unit {
+    fn annotate_decl(decl: &syntax::UnitDecl, mut scope: Scope) -> SemanticResult<(UnitDecl, Scope)> {
+        match decl {
+            node::UnitDecl::Type(parsed_type_decl) => {
+                let type_decl = TypeDecl::annotate(parsed_type_decl, Rc::new(scope.clone()))?;
+                match &type_decl {
+                    node::TypeDecl::Record(record_decl) => {
+                        scope = match record_decl.kind {
+                            RecordKind::Record => {
+                                scope.with_record(record_decl.clone())
+                            }
+                            RecordKind::Class => {
+                                scope.with_class(record_decl.clone())
+                            }
+                        }
+                    }
+
+                    node::TypeDecl::Enumeration(enum_decl) => {
+                        scope = scope.with_enumeration(enum_decl.clone());
+                    }
+
+                    node::TypeDecl::Set(set_decl) => {
+                        scope = scope.with_set(set_decl.clone());
+                    }
+
+                    node::TypeDecl::Alias { alias, of, .. } => {
+                        let alias_name = node::Identifier::from(alias);
+
+                        scope = scope.with_alias(alias_name, of.clone());
+                    }
+                }
+
+                Ok((node::UnitDecl::Type(type_decl), scope))
+            }
+
+            node::UnitDecl::Function(parsed_func) => {
+                let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
+
+                scope = scope.with_function(func_decl.clone());
+
+                func_decl.type_check()?;
+
+                Ok((node::UnitDecl::Function(func_decl), scope))
+            }
+
+            node::UnitDecl::Vars(parsed_vars) => {
+                let vars = VarDecls::annotate(parsed_vars, Rc::new(scope.clone()))?;
+
+                scope = scope.with_vars_local(vars.decls.iter());
+
+                Ok((node::UnitDecl::Vars(vars), scope))
+            }
+
+            node::UnitDecl::Consts(parsed_consts) => {
+                let mut consts = ConstDecls::default();
+
+                for parsed_const in parsed_consts.decls.iter() {
+                    let (const_decl, new_scope) = ConstDecl::annotate(parsed_const, Rc::new(scope))?;
+                    scope = new_scope;
+
+                    consts.decls.push(const_decl);
+                }
+
+                Ok((node::UnitDecl::Consts(consts), scope))
+            }
+        }
+    }
+
+    pub fn annotate_impls<'a>(decls: impl IntoIterator<Item=&'a syntax::Implementation>,
+                              mut scope: Scope)
+                              -> SemanticResult<(Vec<Implementation>, Scope)> {
+        let mut result = Vec::new();
+        for decl in decls {
+            match decl {
+                node::Implementation::Decl(parsed_decl) => {
+                    let (decl, new_scope) = Self::annotate_decl(parsed_decl, scope)?;
+                    scope = new_scope;
+                    result.push(node::Implementation::Decl(decl));
+                }
+
+                node::Implementation::Function(parsed_func) => {
+                    let func = Function::annotate(parsed_func, Rc::new(scope.clone()))?;
+
+                    scope = scope.with_function(func.decl.clone());
+                    result.push(node::Implementation::Function(func));
+                }
+            }
+        }
+        Ok((result, scope))
+    }
+
     pub fn annotate_decls<'a, TDecls>(decls: TDecls,
                                       mut scope: Scope)
-                                      -> Result<(Vec<UnitDeclaration>, Scope), SemanticError>
-        where TDecls: IntoIterator<Item=&'a syntax::UnitDeclaration>,
+                                      -> SemanticResult<(Vec<UnitDecl>, Scope)>
+        where TDecls: IntoIterator<Item=&'a syntax::UnitDecl>,
     {
         let mut result = Vec::new();
 
-        for decl in decls {
-            match decl {
-                node::UnitDeclaration::Type(parsed_type_decl) => {
-                    let type_decl = TypeDecl::annotate(parsed_type_decl, Rc::new(scope.clone()))?;
-                    match &type_decl {
-                        node::TypeDecl::Record(record_decl) => {
-                            scope = match record_decl.kind {
-                                RecordKind::Record => {
-                                    scope.with_record(record_decl.clone())
-                                }
-                                RecordKind::Class => {
-                                    scope.with_class(record_decl.clone())
-                                }
-                            }
-                        }
-
-                        node::TypeDecl::Enumeration(enum_decl) => {
-                            scope = scope.with_enumeration(enum_decl.clone());
-                        }
-
-                        node::TypeDecl::Set(set_decl) => {
-                            scope = scope.with_set(set_decl.clone());
-                        }
-
-                        node::TypeDecl::Alias { alias, of, .. } => {
-                            let alias_name = node::Identifier::from(alias);
-
-                            scope = scope.with_alias(alias_name, of.clone());
-                        }
-                    }
-
-                    result.push(node::UnitDeclaration::Type(type_decl));
-                }
-
-                node::UnitDeclaration::Function(parsed_func) => {
-                    let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
-
-                    scope = scope.with_function(func_decl.clone());
-
-                    func_decl.type_check()?;
-
-                    result.push(node::UnitDeclaration::Function(func_decl));
-                }
-
-                node::UnitDeclaration::Vars(parsed_vars) => {
-                    let vars = VarDecls::annotate(parsed_vars, Rc::new(scope.clone()))?;
-
-                    scope = scope.with_vars_local(vars.decls.iter());
-
-                    result.push(node::UnitDeclaration::Vars(vars));
-                }
-
-                node::UnitDeclaration::Consts(parsed_consts) => {
-                    let mut consts = ConstDecls::default();
-
-                    for parsed_const in parsed_consts.decls.iter() {
-                        let (const_decl, new_scope) = ConstDecl::annotate(parsed_const, Rc::new(scope))?;
-                        scope = new_scope;
-
-                        consts.decls.push(const_decl);
-                    }
-
-                    result.push(node::UnitDeclaration::Consts(consts));
-                }
-            }
+        for parsed_decl in decls {
+            let (decl, new_scope) = Self::annotate_decl(parsed_decl, scope)?;
+            result.push(decl);
+            scope = new_scope;
         }
 
         Ok((result, scope))
@@ -111,7 +141,7 @@ impl Unit {
             unit.interface.iter(),
             unit_scope.clone())?;
 
-        let (impl_decls, _) = Unit::annotate_decls(
+        let (impl_decls, _) = Unit::annotate_impls(
             unit.implementation.iter(),
             interface_scope.clone())?;
 
