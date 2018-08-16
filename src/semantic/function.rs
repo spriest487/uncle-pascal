@@ -68,6 +68,7 @@ impl Function {
         Ok(Function {
             name: qualified_name,
             context: function.context.clone(),
+            constructor: function.constructor,
             return_type,
             local_vars,
             args,
@@ -86,6 +87,15 @@ impl Function {
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
+        // make sure constructors return something constructible
+        if self.constructor {
+            match self.return_type.as_ref() {
+                Some(DeclaredType::Pointer(pointed_type)) if pointed_type.is_record() => {},
+                _ => return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
+                                                                        self.context.clone()))
+            }
+        }
+
         //todo: check args are all valid types
 
         self.body.type_check()

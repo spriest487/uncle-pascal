@@ -98,12 +98,6 @@ pub enum DeclaredType {
     Record(DeclaredRecord),
 }
 
-impl fmt::Display for DeclaredType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", DeclaredType::name(Some(self)))
-    }
-}
-
 impl DeclaredType {
     pub fn name(decl_type: Option<&Self>) -> String {
         match decl_type {
@@ -201,6 +195,15 @@ impl DeclaredType {
         }
     }
 
+    /* if this is a typed pointer, what does it dereference to? None if this is a raw pointer
+     or not a pointer */
+    pub fn deref_type(&self) -> Option<&DeclaredType> {
+        match self {
+            DeclaredType::Pointer(ptr_type) => Some(ptr_type.as_ref()),
+            _ => None,
+        }
+    }
+
     pub fn valid_lhs_type(&self) -> bool {
         match self {
             &DeclaredType::Pointer(_) |
@@ -286,6 +289,12 @@ impl DeclaredType {
         };
 
         can_compare(self, other) || can_compare(other, self)
+    }
+}
+
+impl fmt::Display for DeclaredType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", DeclaredType::name(Some(self)))
     }
 }
 

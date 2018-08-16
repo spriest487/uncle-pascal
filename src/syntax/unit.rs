@@ -118,6 +118,7 @@ impl Unit {
 
         loop {
             let match_decl_first = keywords::Function
+                .or(keywords::Constructor)
                 .or(keywords::Procedure)
                 .or(keywords::Type)
                 .or(keywords::Var)
@@ -128,7 +129,9 @@ impl Unit {
 
             match peek_decl.value {
                 Some(ref func_kw) if func_kw.is_keyword(keywords::Function) ||
-                    func_kw.is_keyword(keywords::Procedure) => {
+                    func_kw.is_keyword(keywords::Procedure) ||
+                    func_kw.is_keyword(keywords::Constructor)
+                => {
                     let func = Function::parse(tokens, &peek_decl.last_token)?;
                     decls.push(node::UnitDeclaration::Function(func.value));
 

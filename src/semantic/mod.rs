@@ -30,6 +30,7 @@ pub enum SemanticErrorKind {
         actual: Option<DeclaredType>,
     },
     InvalidFunctionType(Option<DeclaredType>),
+    InvalidConstructorType(Option<DeclaredType>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -78,6 +79,14 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "type `{}` is not a callable function", actual_name)
             }
 
+            SemanticErrorKind::InvalidConstructorType(ref actual) => {
+                let actual_name = actual.as_ref().map(|t| t.to_string())
+                    .unwrap_or_else(|| "none".to_string());
+
+                write!(f, "return type of constructor function must be pointer to a record, found `{}`",
+                    actual_name)
+            }
+
             &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
                 write!(f, "wrong number if arguments to function `{}`, expected {}, found {}",
                        expected_sig.name, expected_sig.arg_types.len(), actual)
@@ -93,7 +102,7 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::InvalidOperator { ref op, ref args } => {
                 let args_list = args.iter()
-                    .map(|arg| DeclaredType::name(arg.as_ref()))
+                    .map(|arg| format!("`{}`", DeclaredType::name(arg.as_ref())))
                     .collect::<Vec<_>>()
                     .join(", ");
 
@@ -182,6 +191,13 @@ impl SemanticError {
     pub fn invalid_function_type(actual: Option<DeclaredType>, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
+            context,
+        }
+    }
+
+    pub fn invalid_constructor_type(actual: Option<DeclaredType>, context: source::Token) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidConstructorType(actual),
             context,
         }
     }

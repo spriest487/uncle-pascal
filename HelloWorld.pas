@@ -10,7 +10,7 @@ begin
 end
 
 var
-  vec: Vector.Vector
+  vec: ^Vector.Vector
 
 begin
   let x := 1
@@ -20,8 +20,8 @@ begin
   vec := Vector.Create()
   vec.Add(1)
   vec.Add(2)
-  Vector.Add(@vec, 3)
-  Vector.Add(@vec, 4)
+  Vector.Add(vec, 3)
+  Vector.Add(vec, 4)
 
   System.WriteLn(Greet('wuuuorld'))
 

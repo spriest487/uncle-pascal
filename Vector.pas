@@ -9,7 +9,7 @@ type Vector = record
   Length: System.Integer
 end
 
-function Create: Vector
+constructor Create: ^Vector
 begin
   result.Elements := nil
   result.Length := 0

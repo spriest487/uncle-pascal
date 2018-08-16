@@ -68,6 +68,7 @@ pub struct FunctionDecl<TSymbol>
     pub context: source::Token,
 
     pub return_type: Option<TSymbol::Type>,
+    pub constructor: bool,
 
     pub args: VarDecls<TSymbol>,
     pub local_vars: VarDecls<TSymbol>,

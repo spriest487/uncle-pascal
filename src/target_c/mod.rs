@@ -275,10 +275,10 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
 
 pub fn write_function(out: &mut String, function: &semantic::Function)
                       -> fmt::Result {
-    let return_type = function.return_type.as_ref()
+    let return_type_c = function.return_type.as_ref()
         .map(type_to_c);
 
-    write!(out, "{} ", return_type.clone().unwrap_or_else(|| "void".to_owned()))?;
+    write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
     write!(out, "{} ", identifier_to_c(&function.name))?;
 
     writeln!(out, "({}) {{", function.args.decls.iter()
@@ -292,9 +292,24 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write_vars(out, &function.local_vars)?;
     default_initialize_vars(out, &function.local_vars)?;
 
+    if function.constructor {
+        let return_struct_type = function.return_type.as_ref()
+            .expect("constructor must always have a return type")
+            .deref_type()
+            .cloned()
+            .expect("constructor return type must always be a pointer");
+        let return_struct_c_type = type_to_c(&return_struct_type);
+
+        writeln!(out, "result = malloc(sizeof({}));", return_struct_c_type)?;
+        writeln!(out, "if (!result) {{")?;
+        writeln!(out, "    fputs(\"memory allocation failed in {} constructor\", stderr);", return_struct_type)?;
+        writeln!(out, "    abort();")?;
+        writeln!(out, "}}")?;
+    }
+
     write_block(out, &function.body)?;
 
-    match return_type {
+    match return_type_c {
         Some(_) => writeln!(out, "return result;")?,
         None => (),
     }

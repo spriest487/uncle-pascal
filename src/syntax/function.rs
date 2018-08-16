@@ -13,11 +13,13 @@ impl Function {
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         //match the name
-        let name_match = keywords::Function.or(keywords::Procedure)
+        let name_match = keywords::Function
+            .or(keywords::Procedure)
+            .or(keywords::Constructor)
             .and_then(Matcher::AnyIdentifier)
             .match_sequence(in_tokens, context)?;
 
-        let func_or_proc = name_match.value[0].clone();
+        let func_decl_kind = name_match.value[0].clone();
         let fn_name = name_match.value[1].clone();
         let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
                                                        &name_match.last_token)?;
@@ -44,15 +46,19 @@ impl Function {
             })
             .collect::<Result<_, _>>()?;
 
-        let return_type = if func_or_proc.is_keyword(keywords::Function) {
+        let is_constructor = func_decl_kind.is_keyword(keywords::Constructor);
+
+        let return_type = if func_decl_kind.is_keyword(keywords::Procedure) {
+            // procedures return nothing
+            ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
+        } else {
+            //functions and constructors must return something
             let colon = tokens::Colon.match_one(arg_groups.next_tokens,
                                                 &arg_groups.last_token)?;
 
             let type_id = ParsedType::parse(colon.next_tokens, &colon.last_token)?;
 
             ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
-        } else {
-            ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
         };
 
         let semicolon_after_sig = tokens::Semicolon.match_or_endl(return_type.next_tokens,
@@ -83,6 +89,8 @@ impl Function {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name,
             return_type: return_type.value,
+
+            constructor: is_constructor,
 
             local_vars: local_vars.value,
             args: VarDecls { decls: args },
