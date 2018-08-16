@@ -2,7 +2,10 @@ use std::{
     rc::Rc,
 };
 use types::Type;
-use node;
+use node::{
+    self,
+    Identifier,
+};
 use syntax;
 use semantic::*;
 
@@ -58,5 +61,9 @@ impl VarDecl {
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+
+    pub fn qualified_name(&self) -> Identifier {
+        self.scope().namespace_qualify(&self.name)
     }
 }

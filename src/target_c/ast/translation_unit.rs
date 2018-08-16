@@ -258,9 +258,19 @@ impl TranslationUnit {
 
         /* zero-initialize global variables */
         result.initialization.push(Block::new(global_vars.iter()
-            .map(|var_decl| {
-                let name = &var_decl.name;
-                Expression::Raw(format!("memset(&{}, 0, sizeof({}))", name, name))
+            .map(|var_decl: &semantic::VarDecl| {
+                let name = Name::user_symbol(&var_decl.qualified_name());
+
+                Expression::function_call(
+                    Expression::Name(Name::internal_symbol("ZeroMemory")),
+                    vec![
+                        Expression::unary_op("&", name.clone(), true),
+                        Expression::function_call(
+                            Name::internal_symbol("SizeOf"),
+                            vec![Expression::Name(name)]
+                        )
+                    ]
+                )
             })
             .collect()));
 
@@ -270,8 +280,11 @@ impl TranslationUnit {
             let mut release_global_vars = Vec::new();
             // release all rc local vars for this block
             for decl in global_vars.iter().rev().filter(|decl| decl.decl_type.is_class()) {
-                release_global_vars.push(Expression::Raw(
-                    format!("System_Internal_Rc_Release({})", decl.name)
+                let name = Name::user_symbol(&decl.qualified_name());
+
+                release_global_vars.push(Expression::function_call(
+                    Name::internal_symbol("Rc_Release"),
+                    vec![Expression::Name(name)],
                 ));
             }
 
