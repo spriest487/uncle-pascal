@@ -129,7 +129,7 @@ impl Interface {
 
         let vtable_ptr_type = CType::Struct(vtable_name.clone()).into_const().into_pointer();
         let ptr_to_vtable = Expression::cast(vtable_ptr_type.clone(), find_vtable, CastKind::Static);
-        let vtable_var = Expression::local_decl(vtable_ptr_type, "vtable", Some(ptr_to_vtable));
+        let vtable_var = Expression::local_decl(vtable_ptr_type, Name::local("vtable"), Some(ptr_to_vtable));
 
         let all_args: Vec<_> = (0..method.args.len())
             .map(|arg_num| Expression::Name(Name::local(format!("arg{}", arg_num))))

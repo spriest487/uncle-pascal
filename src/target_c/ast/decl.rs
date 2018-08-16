@@ -352,7 +352,7 @@ impl Struct {
         };
 
         let mut statements = Vec::new();
-        statements.push(Expression::local_decl(return_type.clone(), "result", None));
+        statements.push(Expression::local_decl(return_type.clone(), Name::local("result"), None));
         match record.kind {
             /* rc-allocate new class instance */
             RecordKind::Class => {

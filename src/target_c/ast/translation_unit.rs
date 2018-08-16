@@ -145,7 +145,7 @@ impl TranslationUnit {
             );
 
             let init_expr = Expression::binary_op(
-                name,
+                name.clone(),
                 "=",
                 Expression::function_call(
                     Name::user_symbol(&Identifier::from("System.StringFromBytes")),
@@ -156,7 +156,7 @@ impl TranslationUnit {
                 ),
             );
 
-            write!(out, "{};", init_expr)?;
+            writeln!(out, "{};", init_expr)?;
         }
 
         Ok(())

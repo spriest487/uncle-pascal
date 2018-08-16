@@ -10,7 +10,6 @@ use target_c::ast::{
     TranslationUnit,
     Block,
     CType,
-    Variable,
 };
 use semantic::{
     self,
@@ -35,12 +34,12 @@ use consts::{
 };
 use operators;
 
-struct BoundName {
-    name: String,
-    bound_type: Type,
+pub(super) struct BoundName {
+    pub name: String,
+    pub bound_type: Type,
 }
 
-enum RcStatement {
+pub(super) enum RcStatement {
     Block(Vec<RcStatement>),
 
     Statement {
@@ -60,13 +59,6 @@ impl fmt::Debug for RcStatement {
                 }
                 write!(f, "]")
             }
-//
-//            RcStatement::LetBinding { bound_name, init } => {
-//                writeln!(f, "RcStatement {{")?;
-//                writeln!(f, "\tbound name: `{}`", bound_name)?;
-//                writeln!(f, "\tinit expr: `{:?}`", init)?;
-//                write!(f, "}}")
-//            }
 
             RcStatement::Statement { body, rc_bindings, bound_name } => {
                 writeln!(f, "RcStatement {{")?;
@@ -246,11 +238,11 @@ impl Expression {
     }
 
     pub fn local_decl(ctype: impl Into<CType>,
-                      name: impl Into<String>,
+                      name: impl Into<Name>,
                       value: Option<Self>) -> Self {
         Expression::LocalDecl {
             ctype: ctype.into(),
-            name: Name::local(name),
+            name: name.into(),
             value: value.map(Box::new),
         }
     }
@@ -266,26 +258,13 @@ impl Expression {
         Expression::Return(Box::new(value.into()))
     }
 
-    fn extract_stmt_rc_bindings(stmt: semantic::Expression, id_offset: usize) -> RcStatement {
+    pub(super) fn extract_stmt_rc_bindings(stmt: semantic::Expression, id_offset: usize) -> RcStatement {
         /* for blocks, do this recursively for all statements in the block and return
         that instead */
         if stmt.is_block() {
-            let statements = stmt.unwrap_block().statements.into_iter()
-                .map(|block_stmt| Self::extract_stmt_rc_bindings(block_stmt, 0))
-                .collect();
-
-            return RcStatement::Block(statements);
+            let block = stmt.unwrap_block();
+            return RcStatement::Block(Block::extract_block_rc_statements(block));
         }
-
-//        if stmt.is_let_binding() {
-//            let binding = stmt.unwrap_let_binding();
-//            let init = semantic::Expression::binary_op(
-//                semantic::Expression::identifier(binding.name, stmt.context.clone()),
-//                operators::Assignment,
-//                *binding.value,
-//                stmt.context.clone(),
-//            );
-//        }
 
         /* it's a single statement not a block, let's figure out if it has any rc bindings */
         let mut rc_bindings = Vec::new();
@@ -359,7 +338,20 @@ impl Expression {
                     name: binding.name,
                 };
 
-                (Some(bound_name), *binding.value)
+                match Self::extract_stmt_rc_bindings(*binding.value, rc_bindings.len()) {
+                    RcStatement::Statement {
+                        body,
+                        rc_bindings: val_rc_bindings,
+                        bound_name: None
+                    } => {
+                        rc_bindings.extend(val_rc_bindings);
+
+                        (Some(bound_name), *body)
+                    }
+
+                    unexpected => panic!("expected let value to be a value expression, got {:?}",
+                                         unexpected),
+                }
             }
 
             expr => (None, expr),
@@ -372,19 +364,14 @@ impl Expression {
         }
     }
 
-    fn translate_rc_statement(stmt: RcStatement,
+    pub(super) fn translate_rc_statement(stmt: RcStatement,
                               unit: &mut TranslationUnit)
                               -> TranslationResult<Vec<Expression>> {
         match stmt {
             RcStatement::Block(statements) => {
-                let mut block_lines = Vec::new();
-                for block_stmt in statements {
-                    block_lines.extend(Self::translate_rc_statement(block_stmt, unit)?);
-                }
+                let block = Block::translate_rc_block(statements, None, unit)?;
 
-                Ok(vec![
-                    Expression::Block(Block::new(block_lines))
-                ])
+                Ok(vec![Expression::Block(block)])
             }
 
             RcStatement::Statement { body, rc_bindings, bound_name } => {
@@ -422,19 +409,17 @@ impl Expression {
 
                     lines.push(Expression::local_decl(
                         local_type,
-                        bound_name.name.as_str(),
+                        Name::local(bound_name.name.as_str()),
                         None)
                     );
                 }
 
                 let body_expr = match &bound_name {
-                    Some(BoundName { name, .. }) => {
-                        Expression::binary_op(
-                            Name::local(name.as_str()),
-                            "=",
-                            Self::translate_expression(&body, unit)?
-                        )
-                    }
+                    Some(BoundName { name, .. }) => Expression::binary_op(
+                        Name::local(name.as_str()),
+                        "=",
+                        Self::translate_expression(&body, unit)?,
+                    ),
 
                     None => Self::translate_expression(&body, unit)?,
                 };
@@ -465,40 +450,24 @@ impl Expression {
                         let tmp_type = tmp_val.expr_type()
                             .expect("temporary rc values should always be valid types")
                             .expect("temporary rc values should never have no type");
+
                         let val_c_type = CType::translate(&tmp_type, tmp_val.scope(), unit)?;
-
                         let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-
                         let tmp_val_expr = Expression::translate_expression(tmp_val, unit)?;
-                        let tmp_var = Variable {
-                            name: tmp_name.clone(),
-                            ctype: val_c_type,
-                            default_value: None,
-                            array_size: None,
-                        };
 
-                        temp_block.push(tmp_var.decl_statement());
-                        temp_block.push(Expression::binary_op(tmp_name, "=", tmp_val_expr));
+                        temp_block.push(Expression::local_decl(
+                            val_c_type,
+                            tmp_name,
+                            Some(tmp_val_expr)
+                        ));
                     }
 
                     // ...the original exprs in the middle...
-                    match bound_name {
-                        Some(bound_name) => {
-                            let local_type = CType::translate(
-                                &bound_name.bound_type,
-                                body.scope(),
-                                unit,
-                            )?;
+                    temp_block.push(body_expr);
 
-                            temp_block.push(Expression::local_decl(
-                                local_type,
-                                bound_name.name,
-                                Some(body_expr),
-                            ));
-                        }
-                        None => {
-                            temp_block.push(body_expr);
-                        }
+                    // ...retain the value if we're binding to a name...
+                    if let Some(bound_name) = &bound_name {
+                        temp_block.push(rc_retain(Name::local(bound_name.name.as_str())));
                     }
 
                     // ...retain newly-assigned values...
@@ -667,7 +636,7 @@ impl Expression {
 
                 Ok(Expression::local_decl(
                     CType::translate(&value_type, expr.scope(), unit)?,
-                    binding.name.clone(),
+                    Name::local(binding.name.as_str()),
                     Some(value),
                 ))
             }
