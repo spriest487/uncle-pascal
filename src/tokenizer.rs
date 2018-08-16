@@ -13,6 +13,12 @@ pub struct SourceToken {
     pub col: usize,
 }
 
+impl fmt::Display for SourceToken {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} @ {}:{}", self.token, self.line, self.col)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct IllegalToken {
     pub text: String,
@@ -23,7 +29,7 @@ pub struct IllegalToken {
 
 impl fmt::Display for IllegalToken {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "illegal token '{}' @ {}:{}", self.text, self.line, self.col)
+        write!(f, "illegal token: {} @ {}:{}", self.text, self.line, self.col)
     }
 }
 

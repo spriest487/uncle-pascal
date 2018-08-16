@@ -1,6 +1,8 @@
+use std::fmt;
+
 use tokens;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Keyword {
     Program,
     Var,
@@ -40,5 +42,11 @@ impl tokens::ToSource for Keyword {
             &Keyword::Type => "type",
             &Keyword::Record => "record",
         }.to_owned()
+    }
+}
+
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", tokens::ToSource::to_source(self))
     }
 }
