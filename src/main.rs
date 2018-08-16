@@ -124,8 +124,13 @@ fn empty_context() -> source::Token {
 fn load_source<TPath: AsRef<Path>>(path: TPath,
                                    opts: CompileOptions)
                                    -> Result<Vec<source::Token>, CompileError> {
-    let display_filename = path.as_ref()
-        .file_name()
+    let path = path.as_ref();
+    if !path.exists() {
+        let msg = format!("missing input file `{}`", path.to_string_lossy());
+        return Err(CompileError::from(io::Error::new(io::ErrorKind::NotFound, msg)));
+    }
+
+    let display_filename = path.file_name()
         .map(OsStr::to_string_lossy)
         .map(|s| String::from(s))
         .unwrap_or_else(|| "(unknown)".to_owned());

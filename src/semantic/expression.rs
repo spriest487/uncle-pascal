@@ -1,6 +1,6 @@
 use syntax;
 use semantic::*;
-use node::{self, Identifier};
+use node::{self, Identifier, TypeName};
 use operators;
 use types;
 use source;
@@ -512,7 +512,7 @@ impl Expression {
                 let lhs_type = lhs.expr_type()?;
                 let rhs_type = rhs.expr_type()?;
 
-                let string_type = scope.get_type(&Identifier::from("System.String"))
+                let string_type = scope.get_type(&TypeName::with_name("System.String"))
                     .unwrap();
 
                 let lhs_is_string = lhs_type.map(|ty| ty == string_type).unwrap_or(false);

@@ -16,9 +16,9 @@ impl TypeDecl {
             },
 
             node::TypeDecl::Alias { alias, of, context } => {
-                let aliased_type = scope.get_type(&of.name)
+                let aliased_type = scope.get_type(&of)
                     .ok_or_else(|| {
-                        SemanticError::unknown_type(of.name.clone(), context.clone())
+                        SemanticError::unknown_type(of.clone(), context.clone())
                     })?;
 
                 Ok(node::TypeDecl::Alias {

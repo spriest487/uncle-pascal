@@ -1,5 +1,6 @@
 # TODO
 
+* RC struct members on the stack
 * Interfaces
 * Reflection
 * Implement suffix operators (for ^)

@@ -1,7 +1,7 @@
 use tokens;
 use tokens::AsToken;
 use keywords;
-use node::{self, Identifier};
+use node::{self, Identifier, TypeName};
 use syntax::*;
 
 pub type VarDecl = node::VarDecl<ParsedSymbol>;
@@ -17,7 +17,7 @@ impl Parse for VarDecl {
         let name_token = id_tokens[0].clone();
         let name = Identifier::from(name_token.as_token().unwrap_identifier());
 
-        let decl_type: ParsedType = tokens.parse()?;
+        let decl_type: TypeName = tokens.parse()?;
 
         Ok(VarDecl {
             name,
@@ -80,7 +80,7 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(ParsedType::with_name("Integer"), vars.decls[0].decl_type);
+        assert_eq!(TypeName::with_name("Integer"), vars.decls[0].decl_type);
     }
 
     #[test]
@@ -90,10 +90,10 @@ mod test {
         assert_eq!(2, vars.decls.len());
 
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(ParsedType::with_name("System.Integer"), vars.decls[0].decl_type);
+        assert_eq!(TypeName::with_name("System.Integer"), vars.decls[0].decl_type);
 
         assert_eq!(Identifier::from("y"), vars.decls[1].name);
-        assert_eq!(ParsedType::with_name("System.String"), vars.decls[1].decl_type);
+        assert_eq!(TypeName::with_name("System.String"), vars.decls[1].decl_type);
     }
 
     #[test]
@@ -102,6 +102,6 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(ParsedType::with_name("T.B").pointer(), vars.decls[0].decl_type);
+        assert_eq!(TypeName::with_name("T.B").pointer(), vars.decls[0].decl_type);
     }
 }

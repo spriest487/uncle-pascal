@@ -3,7 +3,7 @@ use std::{
     mem::size_of,
 };
 
-use node::{self, Identifier};
+use node::{self, Identifier, ToSource, IndexRange};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Symbol {
@@ -11,7 +11,7 @@ pub struct Symbol {
     pub decl_type: DeclaredType,
 }
 
-impl node::ToSource for Symbol {
+impl ToSource for Symbol {
     fn to_source(&self) -> String {
         self.name.to_source()
     }
@@ -109,9 +109,14 @@ pub enum DeclaredType {
     Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
     Record(DeclaredRecord),
+    Array {
+        element: Box<DeclaredType>,
+        first_dim: IndexRange,
+        rest_dims: Vec<IndexRange>,
+    },
 }
 
-impl node::ToSource for DeclaredType {
+impl ToSource for DeclaredType {
     fn to_source(&self) -> String {
         DeclaredType::name(Some(self))
     }
@@ -122,18 +127,31 @@ impl DeclaredType {
         match decl_type {
             None => "(none)".to_string(),
             Some(t) => match t {
-                &DeclaredType::Nil => "nil".to_string(),
-                &DeclaredType::Byte => "System.Byte".to_string(),
-                &DeclaredType::Boolean => "System.Boolean".to_string(),
-                &DeclaredType::Integer => "System.Integer".to_string(),
-                &DeclaredType::RawPointer => "System.Pointer".to_string(),
-                &DeclaredType::Pointer(ref target) => format!("^{}", DeclaredType::name(Some(target))),
-                &DeclaredType::Function(ref sig) => format!("{}", sig),
-                &DeclaredType::Record(ref record) => format!("{}", record.name),
+                DeclaredType::Nil => "nil".to_string(),
+                DeclaredType::Byte => "System.Byte".to_string(),
+                DeclaredType::Boolean => "System.Boolean".to_string(),
+                DeclaredType::Integer => "System.Integer".to_string(),
+                DeclaredType::RawPointer => "System.Pointer".to_string(),
+                DeclaredType::Pointer(target) => format!("^{}", target.to_source()),
+                DeclaredType::Function(sig) => format!("{}", sig),
+                DeclaredType::Record(record) => format!("{}", record.name),
+                DeclaredType::Array { element, first_dim, rest_dims } => {
+                    let mut name = "array ".to_string();
+                    name.push_str(&format!("[{}..{}", first_dim.from, first_dim.to));
+                    for dim in rest_dims.iter() {
+                        name.push_str(&format!(",{}..{}", dim.from, dim.to));
+                    }
+                    name.push_str(&format!("] of {}", element.to_source()));
+                    name
+                }
             }
         }
     }
-
+//
+//    pub fn annotate(parsed_type: &ParsedType, scope: &Scope) -> SemanticResult<Self> {
+//
+//    }
+//
     pub fn align_of(&self) -> usize {
         const WORD_SIZE: usize = size_of::<u32>();
 
@@ -148,16 +166,24 @@ impl DeclaredType {
 
     pub fn size_of(&self) -> usize {
         match self {
-            &DeclaredType::Nil |
-            &DeclaredType::RawPointer |
-            &DeclaredType::Pointer(_) |
-            &DeclaredType::Function(_) |
-            &DeclaredType::Integer => size_of::<usize>(),
+            DeclaredType::Nil |
+            DeclaredType::RawPointer |
+            DeclaredType::Pointer(_) |
+            DeclaredType::Function(_) |
+            DeclaredType::Integer => size_of::<usize>(),
 
-            &DeclaredType::Byte => size_of::<u8>(),
-            &DeclaredType::Boolean => size_of::<u8>(),
+            DeclaredType::Byte => size_of::<u8>(),
+            DeclaredType::Boolean => size_of::<u8>(),
 
-            &DeclaredType::Record(ref rec) => rec.size_of(),
+            DeclaredType::Record(rec) => rec.size_of(),
+            DeclaredType::Array { element, first_dim, rest_dims } => {
+                let total_len = rest_dims.iter()
+                    .fold(first_dim.len(), |total, dim| {
+                        total * dim.len()
+                    });
+
+                total_len * element.size_of()
+            }
         }
     }
 
@@ -233,15 +259,16 @@ impl DeclaredType {
 
     pub fn valid_lhs_type(&self) -> bool {
         match self {
-            &DeclaredType::Pointer(_) |
-            &DeclaredType::Byte |
-            &DeclaredType::Record(_) |
-            &DeclaredType::RawPointer |
-            &DeclaredType::Integer |
-            &DeclaredType::Boolean => true,
+            DeclaredType::Pointer(_) |
+            DeclaredType::Byte |
+            DeclaredType::Record(_) |
+            DeclaredType::RawPointer |
+            DeclaredType::Integer |
+            DeclaredType::Boolean => true,
 
-            &DeclaredType::Nil |
-            &DeclaredType::Function(_) => false,
+            DeclaredType::Array { .. } |
+            DeclaredType::Nil |
+            DeclaredType::Function(_) => false,
         }
     }
 
@@ -286,7 +313,7 @@ impl DeclaredType {
 
     pub fn promotes_to(&self, other: &DeclaredType) -> bool {
         match (self, other) {
-            (a, b) if a == b && a.is_numeric()  => true,
+            (a, b) if a == b && a.is_numeric() => true,
             (DeclaredType::Byte, DeclaredType::Integer) => true,
 
             _ => false,
@@ -315,7 +342,7 @@ impl DeclaredType {
 
             (DeclaredType::Pointer(a_target), DeclaredType::Pointer(b_target)) => {
                 a_target == b_target
-            },
+            }
 
             (a, b) => a.promotes_to(b),
         };

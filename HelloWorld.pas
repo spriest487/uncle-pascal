@@ -24,6 +24,8 @@ end
 
 var
   //vec: Vector
+  ints: array [0..2] of Integer
+  ints2: array[-1..1, -2..2] of Integer
 
 begin
   let x := 1

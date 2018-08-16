@@ -7,23 +7,26 @@ pub mod type_decl;
 pub mod program;
 pub mod unit;
 
-use node::Identifier;
+pub use self::{
+    block::*,
+    expression::*,
+    function::*,
+    program::*,
+    scope::*,
+    type_decl::*,
+    unit::*,
+    var_decl::*,
+};
+
+use node::{Identifier, TypeName};
 use operators;
-pub use self::block::*;
-pub use self::expression::*;
-pub use self::function::*;
-pub use self::program::*;
-pub use self::scope::*;
-pub use self::type_decl::*;
-pub use self::unit::*;
-pub use self::var_decl::*;
 use source;
 use std::fmt;
 use types::*;
 
 #[derive(Clone, Debug)]
 pub enum SemanticErrorKind {
-    UnknownType(Identifier),
+    UnknownType(TypeName),
     UnknownSymbol(Identifier),
     UnexpectedType {
         expected: Option<DeclaredType>,
@@ -173,7 +176,7 @@ impl SemanticError {
         }
     }
 
-    pub fn unknown_type(missing_type: Identifier, context: source::Token) -> Self {
+    pub fn unknown_type(missing_type: TypeName, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownType(missing_type),
             context,

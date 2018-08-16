@@ -11,18 +11,12 @@ pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol>;
 impl Function {
     pub fn annotate(function: &syntax::FunctionDecl,
                     scope: &Scope) -> Result<Self, SemanticError> {
-        let return_type = match function.return_type {
-            Some(ref func_return_type) => {
-                let mut found_type = scope.get_type(&func_return_type.name)
-                    .map(|mut return_type| {
-                        for _ in 0..func_return_type.indirection {
-                            return_type = return_type.pointer();
-                        }
-                        return_type
-                    });
+        let return_type = match &function.return_type {
+            Some(func_return_type) => {
+                let found_type = scope.get_type(&func_return_type);
 
                 let return_type = found_type
-                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.name.clone(),
+                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.clone(),
                                                                function.context.clone()))?;
 
                 Some(return_type)

@@ -1,11 +1,13 @@
 pub mod identifier;
+pub mod type_name;
 pub mod expression;
 pub mod to_source;
 
 use std::fmt;
 
 use source;
-use types::{ RecordKind };
+use types::RecordKind;
+pub use self::type_name::{TypeName, IndexRange};
 pub use self::identifier::*;
 pub use self::expression::*;
 pub use self::to_source::*;
@@ -126,7 +128,7 @@ pub enum TypeDecl<TSymbol>
 
         alias: String,
         of: TSymbol::Type,
-    }
+    },
 }
 
 #[derive(Clone, Debug)]

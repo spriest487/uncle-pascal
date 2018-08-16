@@ -79,6 +79,7 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         func_pattern(r"[a-zA-Z_](([a-zA-Z0-9_])?)+", parse_name),
         //anything between two quote marks, with double quote as literal quote mark
         func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
+        func_pattern(r"-?[0-9]+", parse_literal_integer),
         simple_pattern(r"\*", operators::Multiply),
         simple_pattern(r"[/]", operators::Divide),
         simple_pattern(r"\(", tokens::BracketLeft),
@@ -100,7 +101,6 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         simple_pattern(r";", tokens::Semicolon),
         simple_pattern(r",", tokens::Comma),
         simple_pattern(r"\.", tokens::Period),
-        func_pattern(r"[0-9]+", parse_literal_integer)
     ]
 }
 

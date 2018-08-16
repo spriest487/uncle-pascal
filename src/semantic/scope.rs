@@ -2,7 +2,7 @@ use std::collections::hash_map::*;
 use std::fmt;
 
 use types::*;
-use node::{self, Identifier, UnitReferenceKind};
+use node::{self, Identifier, UnitReferenceKind, TypeName};
 use semantic::*;
 
 #[derive(Clone, Debug)]
@@ -335,7 +335,7 @@ impl Scope {
             .and_then(|global_name| self.get_type_global(global_name))
     }
 
-    pub fn get_type(&self, name: &Identifier) -> Option<DeclaredType> {
+    fn find_base_type(&self, name: &Identifier) -> Option<DeclaredType> {
         self.local_name.as_ref()
             .and_then(|local_name| {
                 let name_in_local_ns = local_name.append(name);
@@ -348,6 +348,24 @@ impl Scope {
             .or_else(|| {
                 self.get_type_global(name)
             })
+    }
+
+    pub fn get_type(&self, parsed_type: &TypeName) -> Option<DeclaredType> {
+        let mut result = self.find_base_type(&parsed_type.name)?;
+
+        for _ in 0..parsed_type.indirection {
+            result = result.pointer();
+        }
+
+        if parsed_type.array_dimensions.len() > 0 {
+            result = DeclaredType::Array {
+                element: Box::new(result),
+                first_dim: parsed_type.array_dimensions[0].clone(),
+                rest_dims: parsed_type.array_dimensions[1..].iter().cloned().collect(),
+            }
+        }
+
+        Some(result)
     }
 
     fn find_record_member(&self,

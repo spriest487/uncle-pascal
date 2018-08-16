@@ -19,15 +19,11 @@ impl Into<Symbol> for VarDecl {
 
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope, kind: SemanticVarsKind) -> Result<Self, SemanticError> {
-        let mut var_type = scope.get_type(&decl.decl_type.name)
+        let var_type = scope.get_type(&decl.decl_type)
             .ok_or_else(|| {
-                SemanticError::unknown_type(decl.decl_type.name.clone(),
+                SemanticError::unknown_type(decl.decl_type.clone(),
                                             decl.context.clone())
             })?;
-
-        for _ in 0..decl.decl_type.indirection {
-            var_type = var_type.pointer()
-        }
 
         let qualified_name = if decl.name.namespace.len() != 0 {
             return Err(SemanticError::illegal_name(decl.name.to_string(), decl.context.clone()))

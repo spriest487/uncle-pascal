@@ -49,6 +49,19 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
                 RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
             }
         }
+
+        DeclaredType::Array { element, first_dim, rest_dims } => {
+            let mut name = String::new();
+            name.push_str("System_Internal_Array_");
+            name.push_str(&format!("{}_", type_to_c(element.as_ref())));
+            name.push_str(&format!("{}", first_dim.len()));
+
+            for dim in rest_dims.iter() {
+                name.push_str(&format!("_{}", dim.len()));
+            }
+            name
+
+        }
     }.to_owned()
 }
 
