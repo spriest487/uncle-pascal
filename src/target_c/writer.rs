@@ -1,24 +1,38 @@
-use std::fmt::{self, Write};
+use std::{
+    fmt::{self, Write},
+};
 
 use semantic;
 use operators;
-use node;
-use types;
+use node::{
+    self,
+    ExpressionValue,
+    Identifier,
+    FunctionKind,
+    UnitDeclaration,
+};
+use types::{
+    DeclaredRecord,
+    DeclaredType,
+    RecordKind,
+    FunctionSignature,
+    Symbol,
+};
 use ProgramModule;
 use super::HEADER;
 
-pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
+pub fn type_to_c(pascal_type: &DeclaredType) -> String {
     match pascal_type {
-        &types::DeclaredType::Nil => panic!("cannot output `nil` as a type in C"),
-        &types::DeclaredType::Byte => "System_Byte".to_owned(),
-        &types::DeclaredType::Integer => "System_Integer".to_owned(),
-        &types::DeclaredType::Boolean => "System_Boolean".to_owned(),
-        &types::DeclaredType::RawPointer => "System_Pointer".to_owned(),
-        &types::DeclaredType::Pointer(ref target) => {
+        DeclaredType::Nil => panic!("cannot output `nil` as a type in C"),
+        DeclaredType::Byte => "System_Byte".to_owned(),
+        DeclaredType::Integer => "System_Integer".to_owned(),
+        DeclaredType::Boolean => "System_Boolean".to_owned(),
+        DeclaredType::RawPointer => "System_Pointer".to_owned(),
+        DeclaredType::Pointer(ref target) => {
             let target_c = type_to_c(target.as_ref());
             format!("{}*", target_c)
         }
-        &types::DeclaredType::Function(ref sig) => {
+        DeclaredType::Function(ref sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
             let return_type = sig.return_type.as_ref().map(type_to_c)
                 .unwrap_or_else(|| "void".to_owned());
@@ -29,16 +43,16 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
 
             format!("({} (*{})({}))", return_type, name, arg_types)
         }
-        &types::DeclaredType::Record(ref decl) => {
+        DeclaredType::Record(ref decl) => {
             match decl.kind {
-                types::RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
-                types::RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
+                RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
+                RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
             }
         }
     }.to_owned()
 }
 
-pub fn identifier_to_c(id: &node::Identifier) -> String {
+pub fn identifier_to_c(id: &Identifier) -> String {
     let mut parts = id.namespace.clone();
     parts.push(id.name.clone());
 
@@ -57,21 +71,21 @@ pub fn symbol_to_c(sym: &semantic::ScopedSymbol) -> String {
     }
 }
 
-pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Result {
+pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
     let id = identifier_to_c(&target.name);
 
     match &target.decl_type {
-        &types::DeclaredType::Record(ref _decl) => {
+        DeclaredType::Record(ref _decl) => {
             /* zero initializing works for both record instances and RCd classes */
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
-        &types::DeclaredType::Integer => {
+        DeclaredType::Integer => {
             writeln!(out, "{} = 0;", id)
         }
 
-        &types::DeclaredType::RawPointer |
-        &types::DeclaredType::Pointer(_) => {
+        DeclaredType::RawPointer |
+        DeclaredType::Pointer(_) => {
             writeln!(out, "{} = nullptr;", id)
         }
 
@@ -82,7 +96,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                   -> fmt::Result {
     match &expr.value {
-        node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+        ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let c_op = match op {
                 operators::Assignment => "=",
                 operators::Equals => "==",
@@ -107,18 +121,18 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, ")")
         }
 
-        node::ExpressionValue::PrefixOperator { op, rhs } => {
+        ExpressionValue::PrefixOperator { op, rhs } => {
             let c_op = match op {
-                &operators::Plus => "+",
-                &operators::Minus => "-",
-                &operators::Deref => "*",
-                &operators::AddressOf => "&",
+                operators::Plus => "+",
+                operators::Minus => "-",
+                operators::Deref => "*",
+                operators::AddressOf => "&",
 
-                &operators::And |
-                &operators::Or |
-                &operators::Equals |
-                &operators::NotEquals |
-                &operators::Assignment => panic!("bad prefix operator type: {}", op),
+                operators::And |
+                operators::Or |
+                operators::Equals |
+                operators::NotEquals |
+                operators::Assignment => panic!("bad prefix operator type: {}", op),
             };
 
 //            println!("PREFIX OP {} @ {}", op, expr.context.location);
@@ -130,7 +144,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, ")")
         }
 
-        node::ExpressionValue::FunctionCall { target, args } => {
+        ExpressionValue::FunctionCall { target, args } => {
             let args_str = args.iter()
                 .map(|arg_expr| -> Result<String, fmt::Error> {
                     let mut expr_out = String::new();
@@ -145,7 +159,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, "({})", args_str)
         }
 
-        &node::ExpressionValue::LetBinding { ref name, ref value } => {
+        ExpressionValue::LetBinding { name, value } => {
             let value_type = value.expr_type().unwrap().unwrap();
 
             write!(out, "{} {} =", type_to_c(&value_type), name)?;
@@ -153,19 +167,19 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write_expr(out, value)
         }
 
-        &node::ExpressionValue::LiteralInteger(ref i) => {
-            write!(out, "(({}) {})", type_to_c(&types::DeclaredType::Integer), i)
+        ExpressionValue::LiteralInteger(i) => {
+            write!(out, "(({}) {})", type_to_c(&DeclaredType::Integer), i)
         }
 
-        &node::ExpressionValue::LiteralString(ref s) => {
-            write!(out, "(({})\"{}\")", type_to_c(&types::DeclaredType::Byte.pointer()), s)
+        ExpressionValue::LiteralString(s) => {
+            write!(out, "(({})\"{}\")", type_to_c(&DeclaredType::Byte.pointer()), s)
         }
 
-        &node::ExpressionValue::LiteralNil => {
+        ExpressionValue::LiteralNil => {
             out.write_str("NULL")
         }
 
-        &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
+        ExpressionValue::If { condition, then_branch, else_branch } => {
             write!(out, "if (")?;
             write_expr(out, condition)?;
             write!(out, ") {{")?;
@@ -181,15 +195,15 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             Ok(())
         }
 
-        &node::ExpressionValue::ForLoop { ref from, ref to, ref body } => {
+        ExpressionValue::ForLoop { from, to, body } => {
             let iter_expr = match &from.as_ref().value {
-                &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. }
+                ExpressionValue::BinaryOperator { lhs, op, .. }
                 if *op == operators::Assignment => {
                     let mut iter_expr_out = String::new();
                     write_expr(&mut iter_expr_out, lhs)?;
                     iter_expr_out
                 }
-                &node::ExpressionValue::LetBinding { ref name, .. } => {
+                ExpressionValue::LetBinding { ref name, .. } => {
                     name.clone()
                 }
                 _ => panic!("for loop 'from' clause must be an assignment or a let binding")
@@ -204,21 +218,21 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             writeln!(out, ";}}")
         }
 
-        &node::ExpressionValue::Identifier(ref sym) => {
+        ExpressionValue::Identifier(ref sym) => {
             write!(out, "{}", symbol_to_c(sym))
         }
 
-        &node::ExpressionValue::Member { ref of, ref name } => {
+        ExpressionValue::Member { ref of, ref name } => {
             let mut member_out = String::new();
             //panic!("of: {:?}, name: {}", of, name);
-            let mut of_type: types::DeclaredType = of.expr_type()
+            let mut of_type: DeclaredType = of.expr_type()
                 .unwrap()
                 .expect("target of member expression must exist");
 
             let mut deref_levels = 0;
             loop {
                 match of_type {
-                    types::DeclaredType::Pointer(of_target) => {
+                    DeclaredType::Pointer(of_target) => {
                         write!(member_out, "(*")?;
                         deref_levels += 1;
                         of_type = *of_target;
@@ -236,7 +250,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             }
 
             match &of_type {
-                types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
+                DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
                     write!(member_out, "->{}", name)?;
                 }
                 _ => {
@@ -247,7 +261,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             out.write_str(&member_out)
         }
 
-        &node::ExpressionValue::Block(ref block) => {
+        ExpressionValue::Block(block) => {
             write_block(out, block)
         }
     }
@@ -258,53 +272,15 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
     writeln!(out, "{{")?;
 
     for statement in block.statements.iter() {
-        // after assigning or binding a class instance, retain the reference
-        // for the duration of the block
-        match &statement.value {
-            node::ExpressionValue::LetBinding { name, value } => {
-                write_expr(out, statement)?;
-                writeln!(out, ";")?;
-
-                if let Some(_) = value.class_type().unwrap() {
-                    writeln!(out, "System_Internal_Rc_Retain({});", name)?;
-                }
-            }
-
-            node::ExpressionValue::BinaryOperator { lhs, op, .. } => {
-                let is_class_assignment = match lhs.class_type().unwrap() {
-                    Some(_) => *op == operators::Assignment,
-                    _ => false,
-                };
-
-                let mut lhs_expr = String::new();
-                write_expr(&mut lhs_expr, &lhs)?;
-
-                if is_class_assignment {
-                    writeln!(out, "if ({} && {}->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
-                    writeln!(out, " System_Internal_Rc_Release({});", lhs_expr)?;
-                    writeln!(out, "}}")?;
-                }
-
-                write_expr(out, statement)?;
-                writeln!(out, ";")?;
-
-                if is_class_assignment {
-                    writeln!(out, " System_Internal_Rc_Retain({});", lhs_expr)?;
-                }
-            }
-
-            _ => {
-                write_expr(out, statement)?;
-                writeln!(out, ";")?;
-            }
-        }
+        write_statement(out, statement)?;
+        writeln!(out, ";")?;
     }
 
     // release all references
     for stmt in block.statements.iter() {
-        if let node::ExpressionValue::LetBinding { name, value } = &stmt.value {
-            if let types::DeclaredType::Record(decl) = value.expr_type().unwrap().unwrap() {
-                if decl.kind == types::RecordKind::Class {
+        if let ExpressionValue::LetBinding { name, value } = &stmt.value {
+            if let DeclaredType::Record(decl) = value.expr_type().unwrap().unwrap() {
+                if decl.kind == RecordKind::Class {
                     writeln!(out, "System_Internal_Rc_Release({});", name)?;
                 }
             }
@@ -312,6 +288,139 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
     }
 
     writeln!(out, "}}")
+}
+
+fn write_statement(out: &mut String, statement: &semantic::Expression) -> fmt::Result {
+    let mut bindings = Vec::new();
+    let mut next_binding = 1;
+
+    let stmt_after_let = match statement.clone() {
+        // if it's a let-binding, declare the variable and turn it into a assignment
+        semantic::Expression { value: ExpressionValue::LetBinding { name, value }, context } => {
+            let binding_type: DeclaredType = value.expr_type()
+                .expect("let binding target must be a valid type")
+                .expect("let binding type must not be None");
+            writeln!(out, "{} {};", type_to_c(&binding_type), name)?;
+
+            let binding_id = Identifier::from(&name);
+            default_initialize(out, &Symbol {
+                name: binding_id.clone(),
+                decl_type: binding_type.clone(),
+            })?;
+
+            let binding_sym = semantic::ScopedSymbol::Local {
+                name: binding_id,
+                decl_type: binding_type,
+            };
+            let binding_id_expr = semantic::Expression::identifier(binding_sym, context.clone());
+
+            semantic::Expression::binary_op(binding_id_expr, operators::Assignment, *value, context)
+        }
+
+        stmt @ _ => stmt,
+    };
+
+    /* bind the results of any function calls which return RC objects to temporary bindings so we
+     can release them later. nothing but function calls returning RC objects can leak an RC,
+     because local vars and func args are already managed elsewhere */
+    let stmt_simplified = node::transform_expressions(stmt_after_let, &mut |subexpr: semantic::Expression| {
+        // call expression...
+        let call_target = match subexpr.value.clone() {
+            ExpressionValue::FunctionCall { target, .. } => {
+                target
+            }
+            _ => return subexpr,
+        };
+
+        // calling a function...
+        let call_sig: FunctionSignature = match call_target.expr_type() {
+            Ok(Some(DeclaredType::Function(sig))) => *sig,
+            _ => return subexpr,
+        };
+
+        // returning an instance of an rc class..
+        let class_decl = match call_sig.return_type {
+            Some(DeclaredType::Record(
+                     class_decl @ DeclaredRecord { kind: RecordKind::Class, .. })) =>
+                class_decl,
+
+            _ => return subexpr,
+        };
+
+        let name = format!("internal_rc_binding_{}", next_binding);
+        next_binding += 1;
+
+        let binding_sym = semantic::ScopedSymbol::Local {
+            name: Identifier::from(&name),
+            decl_type: DeclaredType::Record(class_decl),
+        };
+        let binding_context = subexpr.context.clone();
+
+        bindings.push((name, subexpr));
+
+        semantic::Expression::identifier(binding_sym, binding_context)
+    });
+
+    if bindings.len() > 0 {
+        //write a block around this statement for the scope of the temp bindings
+        writeln!(out, "{{")?;
+
+        for (tmp_name, tmp_val) in bindings.iter() {
+            let val_c_type = type_to_c(&tmp_val.expr_type()
+                .expect("temporary rc values should always be valid types")
+                .expect("temproary rc values should never have no type"));
+
+            write!(out, "{} {} =", val_c_type, tmp_name)?;
+            write_expr(out, tmp_val)?;
+            writeln!(out, ";")?;
+        }
+    }
+
+    //write the statement body
+    match &stmt_simplified.value {
+        /* if assigning a new value to an rc variable, release the old value first */
+        ExpressionValue::BinaryOperator { lhs, op, .. } => {
+            let is_class_assignment = match lhs.class_type().unwrap() {
+                Some(_) => *op == operators::Assignment,
+                _ => false,
+            };
+
+            let mut lhs_expr = String::new();
+            write_expr(&mut lhs_expr, &lhs)?;
+
+            if is_class_assignment {
+                writeln!(out, "if ({} && {}->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
+                writeln!(out, " System_Internal_Rc_Release({});", lhs_expr)?;
+                writeln!(out, "}}")?;
+            }
+
+            // do the thing
+            write_expr(out, &stmt_simplified)?;
+            writeln!(out, ";")?;
+
+            if is_class_assignment {
+                /* retain rc variables: if it came from a function call, it'll be released once
+                (from the code above which releases all rc results from functions), and if it's an
+                existing value we now have two references to it */
+                writeln!(out, "System_Internal_Rc_Retain({});", lhs_expr)?;
+            }
+        }
+
+        _ => {
+            write_expr(out, &stmt_simplified)?;
+            writeln!(out, ";")?;
+        }
+    }
+
+    if bindings.len() > 0 {
+        //release temp bindings and close the block
+        for (tmp_name, _tmp_val) in bindings.iter() {
+            writeln!(out, "System_Internal_Rc_Release({});", tmp_name)?;
+        }
+        writeln!(out, "}}")?;
+    }
+
+    Ok(())
 }
 
 pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
@@ -329,7 +438,7 @@ pub fn release_vars<'a>(out: &mut String,
                         -> fmt::Result {
     for decl in vars {
         match &decl.decl_type {
-            types::DeclaredType::Record(record) if record.kind == types::RecordKind::Class => {
+            DeclaredType::Record(record) if record.kind == RecordKind::Class => {
                 writeln!(out, "System_Internal_Rc_Release({});", decl.name)?;
             }
             _ => {}
@@ -344,8 +453,8 @@ pub fn default_initialize_vars<'a>(out: &mut String,
                                    -> fmt::Result {
     decls.into_iter()
         .map(|decl| {
-            default_initialize(out, &types::Symbol::new(decl.name.clone(),
-                                                        decl.decl_type.clone()))
+            default_initialize(out, &Symbol::new(decl.name.clone(),
+                                                 decl.decl_type.clone()))
         })
         .collect()
 }
@@ -354,7 +463,7 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     assert!(record_decl.members.len() > 0, "structs must have at least one member");
 
 
-    if record_decl.kind == types::RecordKind::Class {
+    if record_decl.kind == RecordKind::Class {
         writeln!(out, "struct {}: System_Internal_Object {{", identifier_to_c(&record_decl.name))?;
     } else {
         writeln!(out, "struct {} {{", identifier_to_c(&record_decl.name))?;
@@ -388,10 +497,10 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write_vars(out, &function.local_vars)?;
     default_initialize_vars(out, function.local_vars.decls.iter())?;
 
-    if function.kind == node::FunctionKind::Constructor {
+    if function.kind == FunctionKind::Constructor {
         //the actual return type is an Rc, but we need to pass the class type to sizeof
         let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
-            types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
+            DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
                 identifier_to_c(&decl.name)
             }
             _ => panic!("constructor must return a class type"),
@@ -405,8 +514,8 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
 
     let rc_args: Vec<_> = function.args.decls.iter()
         .filter_map(|arg| {
-            if let types::DeclaredType::Record(record) = &arg.decl_type {
-                if record.kind == types::RecordKind::Class {
+            if let DeclaredType::Record(record) = &arg.decl_type {
+                if record.kind == RecordKind::Class {
                     return Some(arg);
                 }
             }
@@ -419,7 +528,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     // happen
     // it's safe to do this with a constructor because the object under construction exists only
     // in the result position
-    if function.kind == node::FunctionKind::Function {
+    if function.kind == FunctionKind::Function {
         for arg in rc_args.iter() {
             writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
         }
@@ -428,11 +537,11 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write_block(out, &function.body)?;
 
     //release all local vars except the result
-    let result_id = node::Identifier::from("result");
+    let result_id = Identifier::from("result");
     release_vars(out, function.local_vars.decls.iter()
         .filter(|decl| decl.name != result_id))?;
 
-    if function.kind == node::FunctionKind::Function {
+    if function.kind == FunctionKind::Function {
         //release args
         for arg in rc_args.iter() {
             writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
@@ -450,11 +559,11 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
 
 pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Result {
     match decl {
-        &node::UnitDeclaration::Function(ref func_decl) =>
+        UnitDeclaration::Function(ref func_decl) =>
             write_function(out, func_decl),
-        &node::UnitDeclaration::Record(ref record_decl) =>
+        UnitDeclaration::Record(ref record_decl) =>
             write_record_decl(out, record_decl),
-        &node::UnitDeclaration::Vars(ref vars_decl) =>
+        UnitDeclaration::Vars(ref vars_decl) =>
             write_vars(out, vars_decl),
     }
 }
@@ -465,8 +574,8 @@ pub fn write_static_init<'a>(out: &mut String,
     let classes = decls.iter()
         .filter_map(|decl| {
             match decl {
-                node::UnitDeclaration::Record(record)
-                if record.kind == types::RecordKind::Class => Some(record),
+                UnitDeclaration::Record(record)
+                if record.kind == RecordKind::Class => Some(record),
 
                 _ => None,
             }
@@ -475,7 +584,7 @@ pub fn write_static_init<'a>(out: &mut String,
     for class in classes {
         let destructor = decls.iter()
             .filter_map(|decl| match decl {
-                node::UnitDeclaration::Function(func_decl)
+                UnitDeclaration::Function(func_decl)
                 if func_decl.is_destructor_of(&class)
                 => Some(func_decl),
                 _ => None
@@ -524,7 +633,7 @@ pub fn write_c(module: &ProgramModule)
 
     let var_decls: Vec<_> = module.program.decls.iter()
         .filter_map(|decl| match decl {
-            &node::UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
+            UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
             _ => None
         })
         .flat_map(|decl_group| decl_group.decls.iter())

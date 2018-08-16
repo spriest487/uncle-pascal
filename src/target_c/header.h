@@ -103,9 +103,9 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
 }
 
 static System_Internal_Object* System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
-    auto obj = static_cast<System_Internal_Object*>(std::malloc(static_cast<std::size_t>(size)));
+    auto obj = reinterpret_cast<System_Internal_Object*>(System_GetMem(size));
     obj->Class = System_Internal_FindClass(constructorName);
-    obj->StrongCount = 0;
+    obj->StrongCount = 1;
 
     std::fprintf(stderr, "rc allocated %lld bytes for %s @ %p\n", size, constructorName, obj);
     return obj;
@@ -154,22 +154,4 @@ static void System_WriteLn(System_String* lineRc) {
     }
 
     System_Internal_Rc_Release(lineRc);
-}
-
-/* function System.StringFromBytes(chars: ^System.Byte; len: System.Integer): System.String */
-static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer len) {
-    auto string = static_cast<System_Byte*>(std::malloc((size_t)len));
-    if (!string) {
-        fputs("string allocation failed in System.StringFromBytes\n", stderr);
-        abort();
-    }
-
-    std::memcpy(string, bytes, (size_t)len);
-
-    auto result = System_Internal_Rc_GetMem(sizeof(System_String), "System.String");
-    auto resultStr = static_cast<System_String*>(result);
-    resultStr->Chars = string;
-    resultStr->Length = len;
-
-    return resultStr;
 }
