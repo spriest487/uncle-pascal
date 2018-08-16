@@ -2,12 +2,19 @@ unit System
 
 interface
 
-implementation
-
-constructor StringCreate(): String
+constructor StringCreate: String
 begin
     result.Chars := nil
     result.Length := 0
+end
+
+constructor StringFromBytes(bytes: ^System.Byte; len: System.Integer): String
+begin
+    result.Chars := GetMem(len)
+    result.Length := len
+
+    for let c := 0 to result.Length do
+        ^(result.Chars + c) := ^(bytes + c)
 end
 
 function StringConcat(a: String; b: String): String
@@ -31,5 +38,7 @@ begin
             ^(result.Chars + a.Length + c) := ^(b.Chars + c);
     end;
 end
+
+implementation
 
 end.

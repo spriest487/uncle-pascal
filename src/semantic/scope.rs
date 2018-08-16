@@ -189,21 +189,6 @@ impl Scope {
                                       arg_types: vec![DeclaredType::Byte.pointer()],
                                       return_type: None,
                                   }))
-            .with_symbol_absolute(Identifier::from("System.StringFromBytes"),
-                                  DeclaredType::from(FunctionSignature {
-                                      name: Identifier::from("StringFromBytes"),
-                                      arg_types: vec![
-                                          DeclaredType::Byte.pointer(),
-                                          DeclaredType::Integer,
-                                      ],
-                                      return_type: Some(string_type.clone()),
-                                  }))
-            .with_symbol_absolute(Identifier::from("System.StringConcat"),
-            DeclaredType::from(FunctionSignature {
-                name: Identifier::from("StringConcat"),
-                arg_types: vec![string_type.clone(), string_type.clone()],
-                return_type: Some(string_type.clone())
-            }))
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {
