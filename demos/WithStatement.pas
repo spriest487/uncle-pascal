@@ -8,7 +8,7 @@ type
     Age: Int32
   end
 
-function CreateDog(name: String; age: Int32): Dog
+function CreateDog(name: String; age: Int32): Dog =
   result := (Age: age; Name: name)
 
 begin

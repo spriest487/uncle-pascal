@@ -191,6 +191,7 @@ impl UnitDecl {
             Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
             => {
                 let func: FunctionDecl = tokens.parse()?;
+                tokens.match_or_endl(tokens::Semicolon)?;
 
                 Ok(vec![node::UnitDecl::Function(func)])
             }

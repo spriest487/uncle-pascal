@@ -21,13 +21,13 @@ function AddAll(self: Vector; other: Vector)
 
 implementation
 
-function New: Vector
+function New: Vector =
     result := (
         Elements: nil
         Length: 0
     )
 
-function Disposable.Dispose(self: Vector)
+function Disposable.Dispose(self: Vector) =
     FreeMem(self.Elements)
 
 function Add(self: Vector; p: Element)
@@ -48,7 +48,7 @@ begin
   self.Elements[self.Length - 1] := p
 end
 
-function AddAll(self: Vector; other: Vector)
+function AddAll(self: Vector; other: Vector) =
   for let i = 0 to other.Length do
     self.Add(other.Elements[i])
 

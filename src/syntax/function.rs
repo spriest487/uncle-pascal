@@ -11,7 +11,6 @@ use node::{
     TypeName,
     FunctionModifier,
     FunctionArgModifier,
-    ExpressionValue,
 };
 
 pub type FunctionDecl = node::FunctionDecl<ParsedContext>;
@@ -71,9 +70,6 @@ impl Parse for FunctionDecl {
 
         let modifiers = Self::parse_modifiers(tokens)?;
 
-        //body (if present) appears after separator or newline
-        tokens.match_or_endl(tokens::Semicolon)?;
-
         Ok(FunctionDecl {
             name: name.name,
             context: ParsedContext::from(context),
@@ -92,6 +88,24 @@ impl Parse for Function {
         let nested_func_keyword = keywords::Function
             .or(keywords::Procedure);
 
+        /* if the first token of the body is `=`, we expect a body of one expression
+        to follow that and nothing else */
+        if let Some(equals) = tokens.look_ahead().match_one(operators::Equals) {
+            tokens.advance(1);
+            let body = Expression::parse(tokens)?;
+            tokens.match_or_endl(tokens::Semicolon)?;
+
+            return Ok(Function {
+                decl,
+                block: Block {
+                    statements: vec![body],
+                    context: ParsedContext::from(equals),
+                },
+                local_decls: Vec::new(),
+            });
+        }
+
+        /* ...otherwise we may have local decls and the body must appear in a begin/end pair */
         let any_decl_kw = keywords::Var
             .or(keywords::Const)
             .or(nested_func_keyword.clone());
@@ -125,21 +139,7 @@ impl Parse for Function {
             }
         }
 
-        /* the begin/end block is optional if the body consists of one expression,
-        but wrap it in a block in that case */
-        let body = Expression::parse(tokens)?;
-        let block = match body.value {
-            | ExpressionValue::Block(block) => block,
-            | single_expr_val @ _ => Block {
-                context: body.context.clone(),
-                statements: vec![
-                    Expression {
-                        context: body.context,
-                        value: single_expr_val,
-                    }
-                ]
-            },
-        };
+        let block = Block::parse(tokens)?;
 
         tokens.match_or_endl(tokens::Semicolon)?;
 

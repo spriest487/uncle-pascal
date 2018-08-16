@@ -2,7 +2,7 @@ program HelloWorld
 
 uses System.*, Vector.Vector
 
-function Greet(name: String): String
+function Greet(name: String): String =
     result := 'hello, ' + name + '!'
 
 var

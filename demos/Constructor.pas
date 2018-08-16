@@ -14,13 +14,13 @@ type
         Flavor: String
     end
 
-function PrintAnimal(name: String; animal: Animal)
+function PrintAnimal(name: String; animal: Animal) =
     WriteLn(name
         + ' is an animal with '
         + StringFromInt(animal.Ears) + ' ears and '
         + StringFromInt(animal.Legs) + ' legs.')
 
-function PrintIceCream(name: String; iceCream: IceCream)
+function PrintIceCream(name: String; iceCream: IceCream) =
     WriteLn('for ' + name
             + ' I am having '
             + StringFromInt(iceCream.Scoops) + ' scoops of '
