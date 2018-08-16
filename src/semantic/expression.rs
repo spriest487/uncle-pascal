@@ -31,6 +31,12 @@ fn expect_valid_operation(operator: operators::Operator,
                 operators::Minus =>
                     a.can_offset_by(b),
 
+                operators::Gt |
+                operators::Gte |
+                operators::Lt |
+                operators::Lte =>
+                    a.has_ord_comparisons(b),
+
                 operators::And |
                 operators::Or =>
                     *a == DeclaredType::Boolean && *b == DeclaredType::Boolean,
@@ -350,6 +356,10 @@ fn binary_op_type(lhs: &Expression,
         operators::And |
         operators::Or |
         operators::NotEquals |
+        operators::Gt |
+        operators::Gte |
+        operators::Lt |
+        operators::Lte |
         operators::Equals => {
             expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
             Ok(Some(DeclaredType::Boolean))
@@ -410,6 +420,10 @@ fn prefix_op_type(op: operators::Operator,
         operators::Or |
         operators::Assignment |
         operators::Equals |
+        operators::Gt |
+        operators::Gte |
+        operators::Lt |
+        operators::Lte |
         operators::NotEquals =>
             invalid_op_err(),
     }

@@ -25,7 +25,7 @@ end
 
 destructor DestroyString(string: String)
 begin
-    if string.Length <> 0 then
+    if string.Length > 0 then
     begin
         FreeMem(string.Chars)
 

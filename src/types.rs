@@ -271,6 +271,11 @@ impl DeclaredType {
         }
     }
 
+    // can we use the >, >=, <, and <= operations between these two types?
+    pub fn has_ord_comparisons(&self, other: &DeclaredType) -> bool {
+        self.is_numeric() && other.promotes_to(self)
+    }
+
     pub fn promotes_to(&self, other: &DeclaredType) -> bool {
         match (self, other) {
             (a, b) if a == b && a.is_numeric()  => true,

@@ -29,9 +29,13 @@ pub enum Operator {
     AddressOf,
     And,
     Or,
+    Gt,
+    Gte,
+    Lt,
+    Lte,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 11] = [
+pub static PRECEDENCE: [(Operator, Position); 15] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
@@ -42,9 +46,13 @@ pub static PRECEDENCE: [(Operator, Position); 11] = [
     (Minus, Position::Binary),
     (Equals, Position::Binary),
     (NotEquals, Position::Binary),
-    (Assignment, Position::Binary),
+    (Gt, Position::Binary),
+    (Gte, Position::Binary),
+    (Lt, Position::Binary),
+    (Lte, Position::Binary),
     (And, Position::Binary),
     (Or, Position::Binary),
+    (Assignment, Position::Binary),
 ];
 
 impl Operator {
@@ -87,6 +95,10 @@ impl fmt::Display for Operator {
             Minus => "-",
             And => "and",
             Or => "or",
+            Gt => ">",
+            Gte => ">=",
+            Lt => "<",
+            Lte => "<=",
         })
     }
 }
