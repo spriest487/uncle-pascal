@@ -193,6 +193,20 @@ impl Type {
         }
     }
 
+    pub fn unwrap_class(&self) -> Option<&Identifier> {
+        match self {
+            Type::Class(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    pub fn unwrap_record(&self) -> Option<&Identifier> {
+        match self {
+            Type::Record(id) => Some(id),
+            _ => None,
+        }
+    }
+
     /* if this is a typed pointer, what does it dereference to? None if this is a raw pointer
      or not a pointer */
     pub fn deref_type(&self) -> Option<&Type> {

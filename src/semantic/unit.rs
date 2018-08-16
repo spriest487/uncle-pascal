@@ -36,7 +36,7 @@ impl Unit {
                     node::TypeDecl::Alias { alias, of, .. } => {
                         let alias_name = node::Identifier::from(alias);
 
-                        scope = scope.with_alias(alias_name, of.clone());
+                        scope = scope.with_type_alias(alias_name, of.clone());
                     }
                 }
 

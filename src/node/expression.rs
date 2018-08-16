@@ -18,49 +18,192 @@ pub struct SetMemberGroup<TContext> {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TContext> {
+    /**
+        operator applied to a following operand
+        `-1`
+        `@dog`
+    */
     PrefixOperator {
         op: operators::Operator,
         rhs: Box<Expression<TContext>>,
     },
+
+    /**
+        operator applied to two operands
+        `1 + 2`
+        `x..y`
+        `true and false`
+    */
     BinaryOperator {
         lhs: Box<Expression<TContext>>,
         op: operators::Operator,
         rhs: Box<Expression<TContext>>,
     },
+
+    /**
+        a call to a function with an argument list of 0 or more arguments.
+        `x(y)`
+        `x(y, z)`
+        `x()`
+        `x` where x is a function taking no arguments, or where all arguments have defaults
+    */
     FunctionCall {
         target: Box<Expression<TContext>>,
         args: Vec<Expression<TContext>>,
     },
+
+    /**
+        a constant value. expressions of this type can be used in array range
+        declarations, constant bindings, and other context where the value must
+        be known at compile time.
+
+        operator expressions composed exclusively of constant expressions are
+        also resolvable to constant values, depending on the operator and operand
+        types.
+
+        constant int, uint and char: `1`, `$1`, `#1`
+        constant float: `1.0`, `1E100`, `1.0E100`
+        constant string: `'hello world'`
+        constant nil: `nil`
+        constant boolean: `true`, `false`
+        constant enum: `Apple`
+        constant set: `[Apple, Banana]`. `[Apple..Pear, Cherry]`, `[]`
+    */
     Constant(ConstantExpression),
+
+    /**
+        a local or fully-qualified name
+        `a`
+        `System.a.b`
+
+        note that before typechecking, we don't know if a name is just a name
+        or if it's a function call (when there's no args list) or a record
+        member (when the member expression is a valid identifier on its own).
+    */
     Identifier(Identifier),
+
+    /**
+        binds a value to a new name into the current scope.
+        `let x = foo()`
+        a let binding's value cannot change after it is bound (like a const) but
+        does not have to be a compile-time constant expression (unlike a const).
+
+        the type of the introduced name is inferred from the value of the binding.
+        this statement itself has no type
+    */
     LetBinding {
         name: String,
         value: Box<Expression<TContext>>,
     },
+
+    /**
+        the value of a member of a record or class e.g. `dog.Name`
+        OR a function invocation on a record or class using UFCS e.g. `vector.Add(x)`
+    */
     Member {
         of: Box<Expression<TContext>>,
         name: String,
     },
+
+    /**
+        the value of an element in an array at a given index.
+        `x[index]`
+
+        the type of this expression is the element type of the array (if the target
+        array is single-dimensional), or an array of the same type with one less
+        dimension (if the target is multi-dimensional)
+    */
     ArrayElement {
         of: Box<Expression<TContext>>,
         index_expr: Box<Expression<TContext>>,
     },
+
+    /**
+        conditional branch. there are two possible forms:
+        `if x then ...`
+        `if x then ... else ...`
+
+        `condition` must be an expression which has boolean type.
+        the `then` and `else` branch expressions can be statements of any type.
+
+        this expression has no type and can only be used as a statement.
+    */
     If {
         condition: Box<Expression<TContext>>,
         then_branch: Box<Expression<TContext>>,
         else_branch: Option<Box<Expression<TContext>>>,
     },
+
+    /**
+        iterate while a condition is true.
+        `while condition do ...`
+
+        `condition` must be an expression which has boolean type.
+
+        this expression has no type and can only be used as a statement.
+    */
     While {
         condition: Box<Expression<TContext>>,
         body: Box<Expression<TContext>>,
     },
+
+    /**
+        group a list of enclosed statements together into a single expression.
+        `begin (statements) end`
+        statements are separated by newlines or semicolons. empty statements
+        are allowed and ignored.
+
+        this expression has no type and can only be used as a statement.
+    */
     Block(Block<TContext>),
+
+    /**
+        iterate over a range. there are two possible forms:
+        `for x := 0 to 10 do ...`
+        `for let x = 0 to 10 do ...`
+        the first assigns to and increments an existing variable during
+        the loop. the latter binds the loop counter to a new name which
+        is only visible during the loop.
+
+        in either form the counter variable must be an expression of
+        integer type.
+
+        this expression has no type and can only be used as a statement.
+    */
     ForLoop {
         from: Box<Expression<TContext>>,
         to: Box<Expression<TContext>>,
         body: Box<Expression<TContext>>,
     },
+
+    /**
+        a value of a set type which can include multiple member
+        groups. a member group can be a single value or an inclusive range.
+        the type of this expression is dependent on the type expressed in
+        its member groups (which must be uniform).
+
+        an empty set constructor is the empty set type, which can be
+        assigned to all set values.
+
+        e.g. `[0, 1, 2]`, `[0..10]`
+    */
     SetConstructor(Vec<SetMemberGroup<TContext>>),
+
+    /**
+        `with (value) do (body)`, where `value` is a class or record.
+        `body` is evaluated in the scope of `value`, e.g.
+        `with dog do WriteLn(Name)`
+        and
+        `WriteLn(dog.Name)`
+        are equivalent.
+
+        this exists for compatibility with existing FPC and Delphi code and
+        should not be used
+    */
+    With {
+        value: Box<Expression<TContext>>,
+        body: Box<Expression<TContext>>,
+    },
 }
 
 
@@ -257,15 +400,23 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn member_deep<TNames>(of: Self, names: TNames) -> Self
-        where TNames: IntoIterator<Item=String>
-    {
+    pub fn member_deep(of: Self, names: impl IntoIterator<Item=String>) -> Self {
         let mut member = of;
         for name in names {
             member = Expression::member(member, &name);
         }
 
         member
+    }
+
+    pub fn with_statement(value: Self, body: Self, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::With {
+                value: Box::new(value),
+                body: Box::new(body),
+            },
+            context: context.into(),
+        }
     }
 
     pub fn is_any_member(&self) -> bool {
@@ -561,6 +712,13 @@ pub fn transform_expressions<TContext>(
                 .collect();
 
             replace(Expression::set_constructor(members, root_expr.context))
+        }
+
+        ExpressionValue::With { value, body } => {
+            let value = transform_expressions(*value, replace);
+            let body = transform_expressions(*body, replace);
+
+            replace(Expression::with_statement(value, body, root_expr.context))
         }
     }
 }

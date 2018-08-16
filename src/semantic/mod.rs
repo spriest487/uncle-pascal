@@ -47,6 +47,7 @@ pub enum SemanticErrorKind {
         expected: Option<Type>,
         actual: Option<Type>,
     },
+    InvalidWithType(Option<Type>),
     InvalidFunctionType(Option<Type>),
     InvalidConstructorType(Option<Type>),
     InvalidDestructorReturn(Type),
@@ -89,8 +90,13 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::UnexpectedType { ref expected, ref actual } => {
                 write!(f, "expected type `{}`, found `{}`",
-                       expected.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()),
-                       actual.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()))
+                    Type::name(expected.as_ref()),
+                    Type::name(actual.as_ref()))
+            }
+
+            &SemanticErrorKind::InvalidWithType(ref actual) => {
+                write!(f, "{} is not a valid value for a `with` expression (expected record or class)",
+                    Type::name(actual.as_ref()))
             }
 
             &SemanticErrorKind::InvalidFunctionType(ref actual) => {
@@ -238,6 +244,13 @@ impl SemanticError {
                 actual,
             },
             context,
+        }
+    }
+
+    pub fn invalid_with_type(actual: Option<Type>, context: SemanticContext) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidWithType(actual),
+            context
         }
     }
 

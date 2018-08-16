@@ -129,6 +129,10 @@ impl<C> ToSource for ExpressionValue<C>
                     .collect::<Vec<_>>()
                     .join(", "))
             }
+
+            ExpressionValue::With { value, body } => {
+                format!("with {} do {}", value.to_source(), body.to_source())
+            }
         }
     }
 }

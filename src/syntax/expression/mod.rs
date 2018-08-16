@@ -45,8 +45,9 @@ impl CompoundExpressionPart {
 }
 
 /* matches valueless statements/flow control */
-fn match_statement() -> Matcher {
+fn match_statement_keyword() -> Matcher {
     keywords::Let
+        .or(keywords::With)
         .or(keywords::Begin)
         .or(keywords::If)
         .or(keywords::While)
@@ -56,7 +57,7 @@ fn match_statement() -> Matcher {
 
 /* this matcher should cover anything which can appear at the start of an expr */
 fn match_expr_start() -> Matcher {
-    match_statement().or(match_operand_start())
+    match_statement_keyword().or(match_operand_start())
 }
 
 /* anything which can appear at the start of an operand subexpr (not let bindings
@@ -401,6 +402,15 @@ fn parse_set_constructor(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(Expression::set_constructor(groups, context))
 }
 
+fn parse_with_statement(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(keywords::With)?;
+    let value = tokens.parse()?;
+    tokens.match_one(keywords::Do)?;
+    let body = tokens.parse()?;
+
+    Ok(Expression::with_statement(value, body, context))
+}
+
 struct CompoundExpressionParser<'tokens> {
     tokens: &'tokens mut TokenStream,
     last_was_operand: bool,
@@ -591,32 +601,22 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
 impl Parse for Expression {
     fn parse(tokens: &mut TokenStream) -> ExpressionResult {
-        match tokens.look_ahead().match_one(match_statement()) {
+        let first_kw = tokens.look_ahead()
+            .match_one(match_statement_keyword())
+            .map(|token| token.unwrap_keyword());
+
+        match first_kw {
             /* it's a structured statement, it must consist of this one statement
             and nothing else */
-            Some(ref kw) if kw.is_keyword(keywords::Let) => {
-                parse_let_binding(tokens)
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::For) => {
-                parse_for_loop(tokens)
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::If) => {
-                parse_if(tokens)
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::While) => {
-                parse_while_loop(tokens)
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
+            Some(keywords::Let) => parse_let_binding(tokens),
+            Some(keywords::For) => parse_for_loop(tokens),
+            Some(keywords::If) => parse_if(tokens),
+            Some(keywords::While) => parse_while_loop(tokens),
+            Some(keywords::Try) => parse_try_except(tokens),
+            Some(keywords::With) => parse_with_statement(tokens),
+            Some(keywords::Begin) => {
                 let parsed_block = Block::parse(tokens)?;
                 Ok(Expression::block(parsed_block))
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::Try) => {
-                parse_try_except(tokens)
             }
 
             /* it's a compound value expression, parse parts until we run out

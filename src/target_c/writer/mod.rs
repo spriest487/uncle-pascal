@@ -429,6 +429,10 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::SetConstructor(_member_groups) => {
             unimplemented!("set constructor (c++ backend)");
         }
+
+        ExpressionValue::With { .. } => {
+            unreachable!("with statements should be removed during semantic analysis");
+        }
     }
 }
 

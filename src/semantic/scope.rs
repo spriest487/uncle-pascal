@@ -22,7 +22,7 @@ use semantic::*;
 
 #[derive(Clone, Debug)]
 pub enum Named {
-    Alias(Type),
+    TypeAlias(Type),
     Record(RecordDecl),
     Class(RecordDecl),
     Function(FunctionDecl),
@@ -140,7 +140,7 @@ impl fmt::Debug for Scope {
 
         for (name, named) in self.names.iter() {
             match named {
-                Named::Alias(ty) => types.push((name, ty)),
+                Named::TypeAlias(ty) => types.push((name, ty)),
                 Named::Symbol(sym) => symbols.push((name, sym)),
                 Named::Function(func) => functions.push((name, func)),
                 Named::Class(decl) => classes.push((name, decl)),
@@ -226,18 +226,18 @@ impl Scope {
         Scope::new()
             .with_local_namespace("System")
             /* standard primitives */
-            .with_alias(Identifier::from("System.Byte"), Type::Byte)
+            .with_type_alias(Identifier::from("System.Byte"), Type::Byte)
 //            .with_alias(Identifier::from("System.Int16"), DeclaredType::Int16)
 //            .with_alias(Identifier::from("System.UInt16"), DeclaredType::UInt16)
-            .with_alias(Identifier::from("System.Int32"), Type::Int32)
-            .with_alias(Identifier::from("System.UInt32"), Type::UInt32)
-            .with_alias(Identifier::from("System.Int64"), Type::Int64)
-            .with_alias(Identifier::from("System.UInt64"), Type::UInt64)
-            .with_alias(Identifier::from("System.Float64"), Type::Float64)
-            .with_alias(Identifier::from("System.NativeInt"), Type::NativeInt)
-            .with_alias(Identifier::from("System.NativeUInt"), Type::NativeUInt)
-            .with_alias(Identifier::from("System.Pointer"), Type::RawPointer)
-            .with_alias(Identifier::from("System.Boolean"), Type::Boolean)
+            .with_type_alias(Identifier::from("System.Int32"), Type::Int32)
+            .with_type_alias(Identifier::from("System.UInt32"), Type::UInt32)
+            .with_type_alias(Identifier::from("System.Int64"), Type::Int64)
+            .with_type_alias(Identifier::from("System.UInt64"), Type::UInt64)
+            .with_type_alias(Identifier::from("System.Float64"), Type::Float64)
+            .with_type_alias(Identifier::from("System.NativeInt"), Type::NativeInt)
+            .with_type_alias(Identifier::from("System.NativeUInt"), Type::NativeUInt)
+            .with_type_alias(Identifier::from("System.Pointer"), Type::RawPointer)
+            .with_type_alias(Identifier::from("System.Boolean"), Type::Boolean)
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {
@@ -247,9 +247,9 @@ impl Scope {
         }
     }
 
-    pub fn with_alias(mut self, name: impl Into<Identifier>, named_type: Type) -> Self {
+    pub fn with_type_alias(mut self, name: impl Into<Identifier>, named_type: Type) -> Self {
         let name = name.into();
-        self.names.insert(name, Named::Alias(named_type));
+        self.names.insert(name, Named::TypeAlias(named_type));
         self
     }
 
@@ -448,7 +448,7 @@ impl Scope {
             })
     }
 
-    pub fn get_alias(&self, alias: &Identifier) -> Option<Type> {
+    pub fn get_type_alias(&self, alias: &Identifier) -> Option<Type> {
         let result = match self.find_named(alias) {
             Some((class_name, Named::Class(_))) =>
                 Type::Class(class_name),
@@ -458,13 +458,14 @@ impl Scope {
                 Type::Enumeration(enumeration_name),
             Some((set_name, Named::Set(_))) =>
                 Type::Set(set_name),
-            Some((_, Named::Alias(ty))) =>
+            Some((_, Named::TypeAlias(ty))) =>
                 ty.clone(),
 
             None |
             Some((_, Named::Const(_))) |
             Some((_, Named::Function(_))) |
-            Some((_, Named::Symbol(_))) => return None,
+            Some((_, Named::Symbol(_))) =>
+                return None,
         };
 
         Some(result)

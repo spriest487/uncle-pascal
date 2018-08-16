@@ -316,7 +316,7 @@ impl TypeName {
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
             TypeName::Scalar { context, name, indirection, array_dimensions } => {
-                let mut result = scope.get_alias(name)
+                let mut result = scope.get_type_alias(name)
                     .ok_or_else(|| {
                         let err_context = SemanticContext::new(context.token.clone(),
                                                                scope.clone());

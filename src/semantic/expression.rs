@@ -1,4 +1,7 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    iter,
+};
 use syntax;
 use semantic::*;
 use node::{
@@ -445,6 +448,7 @@ fn is_lvalue(expr: &Expression) -> bool {
             is_lvalue(of)
         }
 
+        ExpressionValue::With { .. } |
         ExpressionValue::SetConstructor(_) |
         ExpressionValue::FunctionCall { .. } |
         ExpressionValue::Constant(_) |
@@ -598,8 +602,9 @@ impl Expression {
         };
 
         match &expr.value {
-            ExpressionValue::Identifier(name) =>
-                annotate_identifier(name, scope, &expr.context),
+            ExpressionValue::Identifier(name) => {
+                annotate_identifier(name, scope, &expr.context)
+            }
 
             ExpressionValue::Block(block) => {
                 Ok(Expression::block(Block::annotate(block, scope)?))
@@ -687,6 +692,51 @@ impl Expression {
             ExpressionValue::SetConstructor(_members) => {
                 unimplemented!("set constructor semantic analysis")
             }
+
+            ExpressionValue::With { value, body } => {
+                let parsed_value = value.as_ref();
+                let value = Expression::annotate(value.as_ref(), scope.clone())?;
+                let value_type: Option<Type> = value.expr_type()?;
+
+                /* find the class or record decl of the type referred to by `value` */
+                let (_record_id, record) = value_type.as_ref()
+                    .and_then(|ty| {
+                        let class_id = ty.unwrap_class()?;
+                        scope.get_class(class_id)
+                    })
+                    .or_else(|| {
+                        let record_id = value_type.as_ref()?.unwrap_record()?;
+                        scope.get_record(record_id)
+                    })
+                    .ok_or_else(|| {
+                        SemanticError::invalid_with_type(value_type, expr_context.clone())
+                    })?;
+
+                /* to keep the implementation simple, with-bindings get removed at this point -
+                 we transform the "value" expression in the input ast into a block expression
+                 with let-bindings for each member of the record */
+
+                // turn all members of the record into let-bindings
+                let bindings: Vec<_> = record.members.iter()
+                    .map(|record_member| {
+                        let member_of = parsed_value.clone();
+                        let member = syntax::Expression::member(member_of, &record_member.name);
+                        let context = expr.context.clone();
+
+                        syntax::Expression::let_binding(&record_member.name, member, context)
+                    })
+                    .collect();
+
+                let body_block = syntax::Expression::block(syntax::Block {
+                    context: body.context.clone(),
+                    statements: bindings.into_iter()
+                        .chain(iter::once(body.as_ref().clone()))
+                        .collect(),
+                });
+
+                // don't need to change the scope - block + let bindings will take care of it
+                Expression::annotate(&body_block, scope.clone())
+            }
         }
     }
 
@@ -720,6 +770,21 @@ impl Expression {
                     statement.expr_type()?;
                 }
 
+                Ok(None)
+            }
+
+            ExpressionValue::With { value, body } => {
+                let val_type = value.expr_type()?;
+                val_type.as_ref()
+                    .and_then(|ty| {
+                        ty.unwrap_class()
+                            .or_else(|| ty.unwrap_record())
+                    })
+                    .ok_or_else(|| {
+                        SemanticError::invalid_with_type(val_type.clone(), value.context.clone())
+                    })?;
+
+                body.expr_type()?;
                 Ok(None)
             }
 
