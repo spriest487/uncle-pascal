@@ -19,7 +19,9 @@ begin
   y := 2;
   x := x + y;
 
-  WriteLn(IntToStr(x + y));
+  WriteLn('hello world');
 
-  WriteLn(Greet());
+  //WriteLn(IntToStr(x + y));
+
+  //WriteLn(Greet());
 end.

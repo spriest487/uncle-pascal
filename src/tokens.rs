@@ -118,4 +118,18 @@ impl Token {
             _ => panic!("calling unwrap_binary_operator on {}", self),
         }
     }
+
+    pub fn unwrap_literal_string(&self) -> &str {
+        match self {
+            &LiteralString(ref s) => s,
+            _ => panic!("calling unwrap_literal_string on {}", self),
+        }
+    }
+
+    pub fn unwrap_literal_integer(&self) -> i64 {
+        match self {
+            &LiteralInteger(ref i) => *i,
+            _ => panic!("calling unwrap_literal_integer on {}", self),
+        }
+    }
 }
