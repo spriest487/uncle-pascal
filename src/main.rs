@@ -155,13 +155,10 @@ fn print_usage(program: &str, opts: getopts::Options) {
 }
 
 fn pas_to_c(in_path: &str,
-            out_dir: Option<&str>,
+            out_path: &Path,
             clang: bool) -> Result<(), CompileError> {
     let src_path = PathBuf::from(in_path)
         .canonicalize()?;
-
-    let out_path = out_dir.map(|p| PathBuf::from(p))
-        .unwrap_or_else(|| current_dir().unwrap());
 
     let module = compile_program(&src_path)?;
     let c_unit = target_c::write_c(&module)?;
@@ -169,11 +166,14 @@ fn pas_to_c(in_path: &str,
     if clang {
         invoke_clang(&c_unit, &src_path)?;
     } else {
+        fs::create_dir_all(out_path)?;
+
         let out_file_path = out_path
             .join(format!("{}.c", module.program.name));
-            //.canonicalize()?;
 
-        println!("Writing output to `{}`...", out_file_path.to_string_lossy());
+        println!("Writing output to `{}`...", out_file_path
+            .canonicalize()?
+            .to_string_lossy());
 
         let mut out_file = fs::File::create(out_file_path)?;
         out_file.write_all(c_unit.as_bytes())?;
@@ -188,10 +188,8 @@ fn main() {
     let program = args[0].clone();
 
     let mut opts = getopts::Options::new();
-    opts.optflag("c", "invoke-clang", "invoke clang to compile the generated C unit");
-
-    //TODO
-    let out_dir = None;
+    opts.optflag("c", "invoke-clang", "Invoke clang to compile the generated C unit");
+    opts.optopt("o", "outdir", "Output directory", "");
 
     match opts.parse(&args[1..]) {
         Ok(matched) => {
@@ -200,8 +198,11 @@ fn main() {
                 std::process::exit(1);
             } else {
                 let clang = matched.opt_present("c");
+                let out_dir = matched.opt_str("o")
+                    .map(|out_dir_str| PathBuf::from(out_dir_str))
+                    .unwrap_or_else(|| current_dir().unwrap());
 
-                match pas_to_c(&matched.free[0], out_dir, clang) {
+                match pas_to_c(&matched.free[0], &out_dir, clang) {
                     Err(err) => {
                         println!("error: {}", err);
                         std::process::exit(1);
