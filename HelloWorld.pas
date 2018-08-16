@@ -1,3 +1,4 @@
+//this is a line comment
 program HelloWorld;
 
 uses NPascal.System;

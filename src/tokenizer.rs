@@ -73,7 +73,6 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
             let parse_fn = Box::from(parse_literal_string);
             TokenMatchParser::ParseFn(parse_fn)
         }),
-        (r"//".to_owned(), TokenMatchParser::Simple(tokens::Token::LineComment)),
         (r"\(".to_owned(), TokenMatchParser::Simple(tokens::Token::BracketLeft)),
         (r"\)".to_owned(), TokenMatchParser::Simple(tokens::Token::BracketRight)),
         (r":=".to_owned(), {
@@ -97,6 +96,13 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
 pub type TokenizeResult<T> = Result<T, IllegalToken>;
 
 fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
+    /* remove line comments before tokenization */
+    let line_without_comment = match line.find("//") {
+        Some(comment_pos) => line.chars().take(comment_pos).collect(),
+        None => line.to_owned(),
+    };
+
+    /* make a combined regex of all the possible token match patterns */
     let all_tokens_pattern = token_patterns().into_iter()
         .map(|(pattern, _)| pattern)
         .collect::<Vec<_>>()
@@ -105,6 +111,7 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
     let all_tokens_regex = regex::Regex::new(&all_tokens_and_unrecognized)
         .expect("tokens regex must be valid");
 
+    /* compile token pattern regexes */
     let patterns = token_patterns().into_iter()
         .map(|(pattern, token_parser)| {
             let token_regex = regex::Regex::new(&pattern).expect("token regex must be valid");
@@ -112,19 +119,22 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
         })
         .collect::<Vec<_>>();
 
-    let parsed_tokens = all_tokens_regex.captures_iter(line)
+    let parsed_tokens = all_tokens_regex.captures_iter(&line_without_comment)
         .filter_map(|capture| {
             let token_match = capture.get(0).unwrap();
             let token_source = token_match.as_str();
             let col = token_match.start();
 
             if token_source.chars().all(char::is_whitespace) {
+                /* token is purely whitespace, ignore it */
                 None
             }
             else {
                 let first_matching_token = patterns.iter()
                     .find(|pattern| pattern.0.is_match(&token_source))
                     .and_then(|pattern| {
+                        /* a pattern matched this token, use the parsing
+                        function associated with this pattern */
                         pattern.1.try_parse(&capture)
                             .map(|token| SourceToken {
                                 token,

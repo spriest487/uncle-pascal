@@ -1,3 +1,5 @@
+use tokens;
+
 #[derive(Clone, Debug)]
 pub enum BinaryOperator {
     Assignment,
@@ -14,6 +16,17 @@ impl BinaryOperator {
             "+" => Some(BinaryOperator::Plus),
             "-" => Some(BinaryOperator::Minus),
             _ => None
+        }
+    }
+}
+
+impl tokens::ToSource for BinaryOperator {
+    fn to_source(&self) -> String {
+        match self {
+            &BinaryOperator::Assignment => " := ".to_owned(),
+            &BinaryOperator::Equals => " = ".to_owned(),
+            &BinaryOperator::Plus => " + ".to_owned(),
+            &BinaryOperator::Minus => " - ".to_owned(),
         }
     }
 }

@@ -1,3 +1,5 @@
+use tokens;
+
 #[derive(Copy, Clone, Debug)]
 pub enum Keyword {
     Program,
@@ -23,5 +25,20 @@ impl Keyword {
             "record" => Some(Keyword::Record),
             _ => None,
         }
+    }
+}
+
+impl tokens::ToSource for Keyword {
+    fn to_source(&self) -> String {
+        match self {
+            &Keyword::Program => "program",
+            &Keyword::Var => "var",
+            &Keyword::Function => "function",
+            &Keyword::Begin => "begin",
+            &Keyword::End => "end",
+            &Keyword::Uses => "uses",
+            &Keyword::Type => "type",
+            &Keyword::Record => "record",
+        }.to_owned()
     }
 }
