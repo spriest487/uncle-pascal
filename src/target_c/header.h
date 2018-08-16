@@ -20,6 +20,7 @@ struct System_Internal_Class {
 
 struct System_Internal_Object {
     System_Internal_Class* Class;
+    System_Integer StrongCount;
 };
 
 struct System_String : System_Internal_Object {
@@ -27,18 +28,9 @@ struct System_String : System_Internal_Object {
     System_Integer Length;
 };
 
-struct System_Internal_RefCount {
-    System_Integer StrongCount;
-};
-
-struct System_Internal_Rc {
-    System_Pointer Value;
-    System_Internal_RefCount* RefCount;
-};
-
 static std::unordered_map<std::string, std::unique_ptr<System_Internal_Class>> System_Internal_Classes;
 
-static System_Internal_Rc System_StringFromBytes(System_Byte* bytes, System_Integer len);
+static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer len);
 
 static void System_Internal_InitClass(const char* name) {
     static bool internalClassInit = false;
@@ -75,63 +67,45 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
     return nullptr;
 }
 
-static System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
-    System_Internal_Rc rc;
-    rc.Value = static_cast<System_Byte*>(malloc(static_cast<size_t>(size)));
-    if (!rc.Value) {
-        std::fprintf(stderr, "object memory allocation failed in %s constructor\n", constructorName);
-        std::abort();
-    }
+static System_Internal_Object* System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
+    auto obj = static_cast<System_Internal_Object*>(std::malloc(static_cast<std::size_t>(size)));
+    obj->Class = System_Internal_FindClass(constructorName);
+    obj->StrongCount = 0;
 
-    auto asObj = reinterpret_cast<System_Internal_Object*>(rc.Value);
-    asObj->Class = System_Internal_FindClass(constructorName);
-
-    rc.RefCount = static_cast<System_Internal_RefCount*>(malloc(sizeof(System_Internal_RefCount)));
-    if (!rc.RefCount) {
-        std::fprintf(stderr, "rc memory allocation failed in %s constructor\n", constructorName);
-        std::abort();
-    }
-
-    rc.RefCount->StrongCount = 0;
-
-    std::fprintf(stderr, "rc allocated %lld bytes for %s @ %p + %p\n", size, constructorName, rc.RefCount, rc.Value);
-    return rc;
+    std::fprintf(stderr, "rc allocated %lld bytes for %s @ %p\n", size, constructorName, obj);
+    return obj;
 }
 
-static void System_Internal_Rc_Retain(System_Internal_Rc* rc) {
-    if (!rc->RefCount) {
-        std::fprintf(stderr, "retained rc that was already deallocated @ %p + %p\n", rc->RefCount, rc->Value);
+static void System_Internal_Rc_Retain(System_Internal_Object* obj) {
+    if (!obj) {
+        std::fprintf(stderr, "retained invalid rc @ %p\n", obj);
         std::abort();
     }
 
-    rc->RefCount->StrongCount += 1;
+    obj->StrongCount += 1;
 }
 
-static void System_Internal_Rc_Release(System_Internal_Rc* rc) {
-    if (!rc->RefCount || rc->RefCount->StrongCount <= 0) {
-        std::fprintf(stderr, "released rc that was already released @ %p + %p\n", rc->RefCount, rc->Value);
+static void System_Internal_Rc_Release(System_Internal_Object* obj) {
+    if (!obj || obj->StrongCount <= 0) {
+        std::fprintf(stderr, "released rc that was already released @ %p\n", obj);
         std::abort();
     }
 
-    rc->RefCount->StrongCount -= 1;
-    if (rc->RefCount->StrongCount == 0) {
-        auto instance = static_cast<System_Internal_Object*>(rc->Value);
-        auto& className = instance->Class->Name;
+    obj->StrongCount -= 1;
+    if (obj->StrongCount == 0) {
+        auto& className = obj->Class->Name;
 
-        fprintf(stderr, "rc deallocated %s @ %p + %p\n", className.c_str(), rc->RefCount, rc->Value);
+        fprintf(stderr, "rc deallocated %s @ %p\n", className.c_str(), obj);
 
-        std::free(rc->Value);
-        std::free(rc->RefCount);
-        rc->RefCount = nullptr;
-        rc->Value = nullptr;
+        std::free(obj);
     }
 }
 
 /* procedure System.WriteLn(line: System.String) */
-static void System_WriteLn(System_Internal_Rc lineRc) {
-    System_Internal_Rc_Retain(&lineRc);
+static void System_WriteLn(System_String* lineRc) {
+    System_Internal_Rc_Retain(lineRc);
 
-    auto line = static_cast<System_String*>(lineRc.Value);
+    auto line = static_cast<System_String*>(lineRc);
 
     if (line) {
         for (int c = 0; c < line->Length; ++c) {
@@ -142,7 +116,7 @@ static void System_WriteLn(System_Internal_Rc lineRc) {
         puts("");
     }
 
-    System_Internal_Rc_Release(&lineRc);
+    System_Internal_Rc_Release(lineRc);
 }
 
 static System_Byte* System_GetMem(System_Integer bytes) {
@@ -163,35 +137,35 @@ static void System_FreeMem(System_Byte* p) {
 }
 
 /* function System.StringFromBytes(chars: ^System.Byte; len: System.Integer): System.String */
-static System_Internal_Rc System_StringFromBytes(System_Byte* bytes, System_Integer len) {
+static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer len) {
     auto string = static_cast<System_Byte*>(malloc((size_t)len));
     if (!string) {
-        fputs("string allocation failed in System_StringFromBytes\n", stderr);
+        fputs("string allocation failed in System.StringFromBytes\n", stderr);
         abort();
     }
 
-    memcpy(string, bytes, (size_t)len);
+    std::memcpy(string, bytes, (size_t)len);
 
     auto result = System_Internal_Rc_GetMem(sizeof(System_String), "System.String");
-    auto resultStr = static_cast<System_String*>(result.Value);
+    auto resultStr = static_cast<System_String*>(result);
     resultStr->Chars = string;
     resultStr->Length = len;
 
-    return result;
+    return resultStr;
 }
 
 /* function System.StringFromBytes(a: System.String; b: System.String): System.String */
-static System_Internal_Rc System_StringConcat(System_Internal_Rc aRc, System_Internal_Rc bRc) {
-    System_Internal_Rc_Retain(&aRc);
-    System_Internal_Rc_Retain(&bRc);
+static System_String* System_StringConcat(System_Internal_Object* aObj, System_Internal_Object* bObj) {
+    System_Internal_Rc_Retain(aObj);
+    System_Internal_Rc_Retain(bObj);
 
-    auto a = static_cast<System_String*>(aRc.Value);
-    auto b = static_cast<System_String*>(bRc.Value);
+    auto a = static_cast<System_String*>(aObj);
+    auto b = static_cast<System_String*>(bObj);
 
     auto emptyA = !a || !a->Length;
     auto emptyB = !b || !b->Length;
 
-    System_Internal_Rc result;
+    System_String* result;
     if (emptyA && emptyB) {
         result = System_StringFromBytes((System_Byte*)"", 0);
     } else if (emptyA) {
@@ -218,8 +192,8 @@ static System_Internal_Rc System_StringConcat(System_Internal_Rc aRc, System_Int
         free(chars);
     }
 
-    System_Internal_Rc_Release(&aRc);
-    System_Internal_Rc_Release(&bRc);
+    System_Internal_Rc_Release(aObj);
+    System_Internal_Rc_Release(bObj);
 
     return result;
 }

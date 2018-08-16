@@ -31,8 +31,8 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
         }
         &types::DeclaredType::Record(ref decl) => {
             match decl.kind {
-                types::RecordKind::Class => format!("/* {} */ struct System_Internal_Rc", decl.name),
-                types::RecordKind::Record => format!("struct {}", identifier_to_c(&decl.name)),
+                types::RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
+                types::RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
             }
         }
     }.to_owned()
@@ -231,10 +231,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
             match &of_type {
                 types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
-                    let c_class_struct_name = format!("struct {}", identifier_to_c(&decl.name));
-
-                    member_out.insert_str(0, &format!("(({}*)", c_class_struct_name));
-                    write!(member_out, ".Value)->{}", name)?;
+                    write!(member_out, "->{}", name)?;
                 }
                 _ => {
                     write!(member_out, ".{}", name)?;
@@ -263,7 +260,7 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
                 writeln!(out, ";")?;
 
                 if let Some(_) = value.class_type().unwrap() {
-                    writeln!(out, "System_Internal_Rc_Retain(&{});", name)?;
+                    writeln!(out, "System_Internal_Rc_Retain({});", name)?;
                 }
             }
 
@@ -277,8 +274,8 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
                 write_expr(&mut lhs_expr, &lhs)?;
 
                 if is_class_assignment {
-                    writeln!(out, "if ({}.RefCount && {}.RefCount->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
-                    writeln!(out, " System_Internal_Rc_Release(&{});", lhs_expr)?;
+                    writeln!(out, "if ({} && {}->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
+                    writeln!(out, " System_Internal_Rc_Release({});", lhs_expr)?;
                     writeln!(out, "}}")?;
                 }
 
@@ -286,7 +283,7 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
                 writeln!(out, ";")?;
 
                 if is_class_assignment {
-                    writeln!(out, " System_Internal_Rc_Retain(&{});", lhs_expr)?;
+                    writeln!(out, " System_Internal_Rc_Retain({});", lhs_expr)?;
                 }
             }
 
@@ -302,7 +299,7 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
         if let node::ExpressionValue::LetBinding { name, value } = &stmt.value {
             if let types::DeclaredType::Record(decl) = value.expr_type().unwrap().unwrap() {
                 if decl.kind == types::RecordKind::Class {
-                    writeln!(out, "System_Internal_Rc_Release(&{});", name)?;
+                    writeln!(out, "System_Internal_Rc_Release({});", name)?;
                 }
             }
         }
@@ -327,7 +324,7 @@ pub fn release_vars<'a>(out: &mut String,
     for decl in vars {
         match &decl.decl_type {
             types::DeclaredType::Record(record) if record.kind == types::RecordKind::Class => {
-                writeln!(out, "System_Internal_Rc_Release(&{});", decl.name)?;
+                writeln!(out, "System_Internal_Rc_Release({});", decl.name)?;
             }
             _ => {}
         }
@@ -350,11 +347,12 @@ pub fn default_initialize_vars<'a>(out: &mut String,
 pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -> fmt::Result {
     assert!(record_decl.members.len() > 0, "structs must have at least one member");
 
-    writeln!(out, "struct {} {{", identifier_to_c(&record_decl.name))?;
+
 
     if record_decl.kind == types::RecordKind::Class {
-        //class instances have a pointer to their class (filled in on construction by the runtime)
-        writeln!(out, "System_Internal_Class* Class;")?;
+        writeln!(out, "struct {}: System_Internal_Object {{", identifier_to_c(&record_decl.name))?;
+    } else {
+        writeln!(out, "struct {} {{", identifier_to_c(&record_decl.name))?;
     }
 
     for member in record_decl.members.iter() {
@@ -394,7 +392,8 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
             _ => panic!("constructor must return a class type"),
         };
 
-        writeln!(out, "result = System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
+        writeln!(out, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
+                 constructed_class_c_name,
                  constructed_class_c_name,
                  function.return_type.as_ref().expect("constructor must have return type"))?;
     }
@@ -411,7 +410,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
         }).collect();
 
     for arg in rc_args.iter() {
-        writeln!(out, "System_Internal_Rc_Retain(&{});", identifier_to_c(&arg.name))?;
+        writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
     }
 
     write_block(out, &function.body)?;
@@ -423,7 +422,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
 
     //release args
     for arg in rc_args.iter() {
-        writeln!(out, "System_Internal_Rc_Release(&{});", arg.name)?;
+        writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
     }
 
     match return_type_c {
