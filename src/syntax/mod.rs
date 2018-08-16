@@ -60,6 +60,7 @@ pub trait ToContext {
 pub enum ParseError {
     UnexpectedToken(source::Token, Option<Matcher>),
     UnexpectedEOF(Matcher, source::Token),
+    ArrayDimensionOutOfBounds(source::Token),
     EmptyOperand {
         operator: source::Token,
         before: bool,
@@ -93,6 +94,10 @@ impl fmt::Display for ParseError {
             ParseError::EmptyOperand { operator, before } => {
                 let position = if *before { "before" } else { "after" };
                 write!(f, "missing operand {} {}", position, operator)
+            }
+
+            ParseError::ArrayDimensionOutOfBounds(token) => {
+                write!(f, "array dimension constant {} is too large for target machine's native signed int size", token)
             }
         }
     }

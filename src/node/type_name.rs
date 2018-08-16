@@ -1,21 +1,23 @@
 use std::fmt;
 
-use syntax::{TokenStream, ParseResult, Matcher, Parse};
+use syntax::{TokenStream, ParseResult, Matcher, Parse, ParseError};
 use node::{Identifier, ToSource};
 use tokens::{self, AsToken};
 use keywords;
 use operators;
+use source;
+use consts::IntConstant;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct IndexRange {
-    pub from: isize,
-    pub to: isize,
+    pub from: i32,
+    pub to: i32,
 }
 
 impl IndexRange {
-    pub fn elements(&self) -> usize {
-        //todo: can this overflow
-        (self.to - self.from) as usize
+    pub fn elements(&self) -> u32 {
+        assert!(self.to >= self.from, "array upper bound must be >= lower bound");
+        self.to.wrapping_sub(self.from) as u32
     }
 }
 
@@ -47,14 +49,16 @@ impl Parse for TypeName {
                 let dims = dims_groups.groups.into_iter()
                     .map(|dim_group| {
                         let mut dim_tokens = TokenStream::new(dim_group.tokens, &dim_group.context);
-                        let dim_from = dim_tokens.match_one(Matcher::AnyLiteralInteger)?;
+                        let from = dim_tokens.match_one(Matcher::AnyLiteralInteger)
+                            .and_then(int_token_to_array_dim)?;
                         dim_tokens.match_one(tokens::Period)?;
                         dim_tokens.match_one(tokens::Period)?;
-                        let dim_to = dim_tokens.match_one(Matcher::AnyLiteralInteger)?;
+                        let to = dim_tokens.match_one(Matcher::AnyLiteralInteger)
+                            .and_then(int_token_to_array_dim)?;
 
                         Ok(IndexRange {
-                            from: dim_from.unwrap_literal_integer() as isize,
-                            to: dim_to.unwrap_literal_integer() as isize,
+                            from,
+                            to
                         })
                     })
                     .collect::<ParseResult<_>>()?;
@@ -85,6 +89,17 @@ impl Parse for TypeName {
             }
         }
     }
+}
+
+/* check int tokens used as array dimensions are int32s */
+fn int_token_to_array_dim(token: source::Token) -> ParseResult<i32> {
+    let val = match token.as_token() {
+        tokens::LiteralInteger(IntConstant::I32(val)) => Some(*val),
+        _ => None,
+
+    };
+
+    val.ok_or_else(|| ParseError::ArrayDimensionOutOfBounds(token))
 }
 
 impl TypeName {

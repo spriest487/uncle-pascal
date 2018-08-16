@@ -191,12 +191,6 @@ impl Scope {
             .with_type(Identifier::from("System.Pointer"), DeclaredType::RawPointer)
             .with_type(Identifier::from("System.Boolean"), DeclaredType::Boolean)
 
-            /* for compatibility (todo: only use these in fpc mode) */
-            .with_type(Identifier::from("System.Integer"), DeclaredType::Int32)
-            .with_type(Identifier::from("System.Cardinal"), DeclaredType::UInt32)
-            //.with_type(Identifier::from("System.Word"), DeclaredType::UInt16)
-            .with_type(Identifier::from("System.LongWord"), DeclaredType::UInt32)
-
             /* these decls need to be built in to support string concatenation sugar */
             .with_type(Identifier::from("System.String"), string_type.clone())
             .with_symbol_absolute(Identifier::from("System.StringConcat"),

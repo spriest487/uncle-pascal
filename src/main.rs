@@ -26,6 +26,7 @@ mod semantic;
 mod node;
 mod source;
 mod pp;
+mod consts;
 
 pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),

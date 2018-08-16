@@ -2,6 +2,13 @@ unit System
 
 interface
 
+type
+    {$ifdef fpc}
+    Cardinal = UInt32
+    Integer = Int32
+    LongWord = UInt32
+    {$endif}
+
 procedure WriteLn(line: String)
 
 function GetMem(len: NativeInt): ^Byte

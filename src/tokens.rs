@@ -1,8 +1,11 @@
-use std::fmt;
+use std::{
+    fmt,
+};
 
 use keywords;
 use operators;
 use node::ToSource;
+use consts::IntConstant;
 
 pub use self::Token::*;
 
@@ -11,7 +14,7 @@ pub enum Token {
     Keyword(keywords::Keyword),
     Identifier(String),
     Operator(operators::Operator),
-    LiteralInteger(i64),
+    LiteralInteger(IntConstant),
     LiteralString(String),
     Period,
     Colon,
@@ -23,7 +26,7 @@ pub enum Token {
     SquareBracketRight,
 }
 
-pub trait AsToken : Clone + fmt::Debug + fmt::Display {
+pub trait AsToken: Clone + fmt::Debug + fmt::Display {
     fn as_token(&self) -> &Token;
 
     fn is_token(&self, t: &Token) -> bool {
@@ -92,28 +95,28 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
 
     fn unwrap_identifier(&self) -> &str {
         match self.as_token() {
-            &Identifier(ref name) => name,
+            Identifier(name) => name,
             _ => panic!("calling unwrap_identifier on {}", self),
         }
     }
 
     fn unwrap_operator(&self) -> operators::Operator {
         match self.as_token() {
-            &Operator(ref op) => *op,
+            Operator(op) => *op,
             _ => panic!("calling unwrap_operator on {}", self),
         }
     }
 
     fn unwrap_literal_string(&self) -> &str {
         match self.as_token() {
-            &LiteralString(ref s) => s,
+            LiteralString(ref s) => s,
             _ => panic!("calling unwrap_literal_string on {}", self),
         }
     }
 
-    fn unwrap_literal_integer(&self) -> i64 {
+    fn unwrap_literal_integer(&self) -> IntConstant {
         match self.as_token() {
-            &LiteralInteger(ref i) => *i,
+            LiteralInteger(i) => *i,
             _ => panic!("calling unwrap_literal_integer on {}", self),
         }
     }

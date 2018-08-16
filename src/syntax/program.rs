@@ -3,6 +3,7 @@ use std::iter;
 use syntax::*;
 use tokens;
 use tokens::AsToken;
+use consts::IntConstant;
 use keywords;
 use node;
 
@@ -40,7 +41,8 @@ fn replace_block_string_literals(mut block: Block) -> Block {
 
                     let constructor = Expression::identifier(constructor_id, expr.context.clone());
                     let literal_arg = Expression::literal_string(&str, expr.context.clone());
-                    let len_arg = Expression::literal_int(str.len() as i64, expr.context);
+                    let len_val = IntConstant::I32(str.len() as i32);
+                    let len_arg = Expression::literal_int(len_val, expr.context);
 
                     Expression::function_call(constructor, vec![literal_arg, len_arg])
                 }

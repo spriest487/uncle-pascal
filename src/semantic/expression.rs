@@ -4,16 +4,34 @@ use node::{self, Identifier, TypeName};
 use operators;
 use types;
 use source;
+use consts::IntConstant;
 use types::DeclaredType;
 
 pub type Expression = node::Expression<ScopedSymbol>;
 
 fn expect_valid_operation(operator: operators::Operator,
                           target: Option<&DeclaredType>,
-                          actual: Option<&DeclaredType>,
+                          actual_expr: &Expression,
                           context: &source::Token) -> SemanticResult<()> {
+    /* special case for assigning 0 to any numeric type, or assigning integers in
+     the range 0...255 to bytes */
+    match (operator, target, &actual_expr.value) {
+        (operators::Assignment, Some(lhs_type), node::ExpressionValue::LiteralInteger(int)) =>
+            if let Some(u8_val) = int.as_u8() {
+                let assigning_u8_to_byte = *lhs_type == DeclaredType::Byte;
+                let assigning_zero_to_num = u8_val == 0 && lhs_type.is_numeric();
+
+                if assigning_u8_to_byte || assigning_zero_to_num {
+                    return Ok(());
+                }
+            },
+
+        _ => {}
+    };
+
+    let actual = actual_expr.expr_type()?;
     if operator == operators::Equals || operator == operators::NotEquals {
-        return expect_comparable(target, actual, context);
+        return expect_comparable(target, actual.as_ref(), context);
     }
 
     match (target, actual) {
@@ -25,11 +43,11 @@ fn expect_valid_operation(operator: operators::Operator,
         (Some(a), Some(b)) => {
             let valid = match operator {
                 operators::Assignment =>
-                    a.assignable_from(b),
+                    a.assignable_from(&b),
 
                 operators::Plus |
                 operators::Minus =>
-                    a.can_offset_by(b),
+                    a.can_offset_by(&b),
 
                 operators::Multiply |
                 operators::Divide =>
@@ -39,11 +57,11 @@ fn expect_valid_operation(operator: operators::Operator,
                 operators::Gte |
                 operators::Lt |
                 operators::Lte =>
-                    a.has_ord_comparisons(b),
+                    a.has_ord_comparisons(&b),
 
                 operators::And |
                 operators::Or =>
-                    *a == DeclaredType::Boolean && *b == DeclaredType::Boolean,
+                    *a == DeclaredType::Boolean && b == DeclaredType::Boolean,
 
                 _ => false,
             };
@@ -333,12 +351,11 @@ fn function_call_type(target: &Expression,
                 arg_expr.expr_type()?;
 
                 let sig_type = sig.arg_types[arg_index].clone();
-                let actual_type = arg_expr.expr_type()?;
 
                 expect_valid_operation(operators::Assignment,
                                        Some(&sig_type),
-                                       actual_type.as_ref(),
-                                       &arg_expr.context)?
+                                       &arg_expr,
+                                       &arg_expr.context)?;
             }
 
             Ok(sig.return_type.clone())
@@ -354,7 +371,6 @@ fn binary_op_type(lhs: &Expression,
                   rhs: &Expression,
                   context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
     let lhs_type = lhs.expr_type()?;
-    let rhs_type = rhs.expr_type()?;
 
     match op {
         operators::And |
@@ -365,7 +381,7 @@ fn binary_op_type(lhs: &Expression,
         operators::Lt |
         operators::Lte |
         operators::Equals => {
-            expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
+            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
             Ok(Some(DeclaredType::Boolean))
         }
 
@@ -373,37 +389,19 @@ fn binary_op_type(lhs: &Expression,
         operators::Divide |
         operators::Plus |
         operators::Minus => {
-            expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
+            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
             Ok(lhs_type)
         }
 
         operators::Assignment => {
-            expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)
-                .or_else(|err| {
-                    use node::ExpressionValue::LiteralInteger;
-                    /* todo: make int literals work better */
-                    match (&rhs.value, lhs_type.as_ref()) {
-                        | (LiteralInteger(0...255), Some(DeclaredType::Byte))
-                        | (LiteralInteger(0...255), Some(DeclaredType::Int32))
-                        | (LiteralInteger(0...255), Some(DeclaredType::UInt32))
-                        | (LiteralInteger(0...255), Some(DeclaredType::Int64))
-                        | (LiteralInteger(0...255), Some(DeclaredType::UInt64))
-                        | (LiteralInteger(0...255), Some(DeclaredType::NativeInt))
-                        | (LiteralInteger(0...255), Some(DeclaredType::NativeUInt))
-                            => Ok(()),
-
-                        _ =>
-                            Err(err)
-                    }
-                })?;
+            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
             Ok(None)
         }
 
         operators::AddressOf |
         operators::Deref => {
-            Err(SemanticError::invalid_operator(op,
-                                                vec![lhs_type, rhs_type],
-                                                context.clone()))
+            let operand_types = vec![lhs_type, rhs.expr_type()?];
+            Err(SemanticError::invalid_operator(op, operand_types, context.clone()))
         }
     }
 }
@@ -575,8 +573,13 @@ impl Expression {
             &node::ExpressionValue::LiteralString(_) =>
                 Ok(Some(DeclaredType::Byte.pointer())),
 
-            &node::ExpressionValue::LiteralInteger(_) =>
-                Ok(Some(DeclaredType::Int32)),
+            &node::ExpressionValue::LiteralInteger(int_const) =>
+                Ok(Some(match int_const {
+                    IntConstant::I32(_) => DeclaredType::Int32,
+                    IntConstant::U32(_) => DeclaredType::UInt32,
+                    IntConstant::I64(_) => DeclaredType::Int64,
+                    IntConstant::U64(_) => DeclaredType::UInt64,
+                })),
 
             &node::ExpressionValue::LiteralNil =>
                 Ok(Some(DeclaredType::Nil)),

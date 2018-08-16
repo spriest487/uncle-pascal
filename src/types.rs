@@ -107,7 +107,7 @@ pub struct ArrayType {
 }
 
 impl ArrayType {
-    pub fn total_elements(&self) -> usize {
+    pub fn total_elements(&self) -> u32 {
         self.rest_dims.iter().fold(self.first_dim.elements(), |total, dim| {
             total + dim.elements()
         })
@@ -174,7 +174,7 @@ impl DeclaredType {
 //    }
 //
     pub fn align_of(&self) -> usize {
-        const WORD_SIZE: usize = size_of::<u32>();
+        const WORD_SIZE: usize = size_of::<usize>();
 
         let size = self.size_of();
         let mut align = 0;
@@ -193,7 +193,7 @@ impl DeclaredType {
             DeclaredType::Function(_) |
             DeclaredType::NativeInt |
             DeclaredType::NativeUInt =>
-                size_of::<usize>(),
+                size_of::<usize>() as usize,
 
             DeclaredType::Int64 |
             DeclaredType::UInt64 =>
@@ -213,7 +213,7 @@ impl DeclaredType {
                 rec.size_of(),
 
             DeclaredType::Array(array) =>
-                array.total_elements() * array.element.size_of(),
+                array.total_elements() as usize * array.element.size_of(),
         }
     }
 

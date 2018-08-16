@@ -94,7 +94,7 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
-        DeclaredType::Int64 => {
+        num @ _ if num.is_numeric() => {
             writeln!(out, "{} = 0;", id)
         }
 

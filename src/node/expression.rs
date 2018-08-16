@@ -3,6 +3,7 @@ use std::fmt;
 use operators;
 use source;
 use node::*;
+use consts::IntConstant;
 
 #[derive(Clone, Debug)]
 pub enum ExpressionValue<TSymbol> {
@@ -19,7 +20,7 @@ pub enum ExpressionValue<TSymbol> {
         target: Box<Expression<TSymbol>>,
         args: Vec<Expression<TSymbol>>,
     },
-    LiteralInteger(i64),
+    LiteralInteger(IntConstant),
     LiteralString(String),
     LiteralNil,
     Identifier(TSymbol),
@@ -109,7 +110,7 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn literal_int(i: i64, context: source::Token) -> Self {
+    pub fn literal_int(i: IntConstant, context: source::Token) -> Self {
         Expression {
             value: ExpressionValue::LiteralInteger(i),
             context,
@@ -255,9 +256,9 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn is_literal_integer(&self, val: i64) -> bool {
+    pub fn is_literal_integer(&self, val: IntConstant) -> bool {
         match &self.value {
-            &ExpressionValue::LiteralInteger(i) => i == val,
+            ExpressionValue::LiteralInteger(i) => *i == val,
             _ => false,
         }
     }

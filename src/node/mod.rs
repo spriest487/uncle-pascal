@@ -3,7 +3,9 @@ pub mod type_name;
 pub mod expression;
 pub mod to_source;
 
-use std::fmt;
+use std::{
+    fmt,
+};
 
 use source;
 use types::RecordKind;

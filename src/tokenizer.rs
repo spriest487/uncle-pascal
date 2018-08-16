@@ -1,7 +1,6 @@
 use std::{
     fmt,
     rc::*,
-    i64
 };
 use regex;
 
@@ -9,6 +8,7 @@ use tokens;
 use operators;
 use keywords;
 use source;
+use consts::IntConstant;
 
 #[derive(Clone, Debug)]
 pub struct IllegalToken {
@@ -50,14 +50,7 @@ fn parse_literal_string(token_match: &regex::Captures) -> Option<tokens::Token> 
 fn parse_literal_integer(token_match: &regex::Captures) -> Option<tokens::Token> {
     let int_text = token_match.get(0).unwrap().as_str();
 
-    int_text.parse()
-        .map(|int_val| tokens::LiteralInteger(int_val))
-        .ok()
-}
-
-fn parse_literal_hexadecimal(token_match: &regex::Captures) -> Option<tokens::Token> {
-    let hex_text = token_match.get(1).unwrap().as_str();
-    let val = i64::from_str_radix(hex_text, 16).ok()?;
+    let val = IntConstant::parse_str(int_text)?;
 
     Some(tokens::LiteralInteger(val))
 }
@@ -89,8 +82,8 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         func_pattern(r"[a-zA-Z_](([a-zA-Z0-9_])?)+", parse_name),
         //anything between two quote marks, with double quote as literal quote mark
         func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
-        func_pattern(r"-?[0-9]+", parse_literal_integer),
-        func_pattern(r"\$([0-9A-Fa-f]+)", parse_literal_hexadecimal),
+        func_pattern(r"-?[0-9]+", parse_literal_integer), // decimal int
+        func_pattern(r"\$([0-9A-Fa-f]+)", parse_literal_integer), //hex int
         simple_pattern(r"\*", operators::Multiply),
         simple_pattern(r"[/]", operators::Divide),
         simple_pattern(r"\(", tokens::BracketLeft),
