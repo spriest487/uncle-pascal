@@ -168,13 +168,15 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
             write!(out, "if (")?;
             write_expr(out, condition)?;
-            write!(out, ") ")?;
+            write!(out, ") {{")?;
 
             write_expr(out, then_branch)?;
+            writeln!(out, "; }}")?;
 
             if let &Some(ref else_expr) = else_branch {
-                write!(out, " else ")?;
+                write!(out, " else {{")?;
                 write_expr(out, else_expr)?;
+                writeln!(out, "; }}")?;
             }
             Ok(())
         }
