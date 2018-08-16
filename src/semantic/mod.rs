@@ -50,23 +50,28 @@ enum SemanticErrorKind {
     },
     InvalidWithType(Option<Type>),
     InvalidFunctionType(Option<Type>),
-    InvalidConstantValue(ExpressionValue<SemanticContext>),
+    InvalidConstantValue(Box<ExpressionValue<SemanticContext>>),
     InvalidArrayIndex(Option<Type>),
     InvalidArrayType(Option<Type>),
-    InvalidSelfArg(syntax::FunctionArgSignature),
+    InvalidSelfArg(Box<syntax::FunctionArgSignature>),
     InterfaceSignatureMismatch {
-        expected_sig: FunctionSignature,
-        actual_sig: FunctionSignature,
+        expected_sig: Box<FunctionSignature>,
+        actual_sig: Box<FunctionSignature>,
         interface: Identifier,
         func_name: String,
     },
     WrongNumberOfArgs {
-        expected_sig: FunctionSignature,
+        expected_sig: Box<FunctionSignature>,
         actual: usize,
     },
     WrongArgTypes {
-        sig: FunctionSignature,
+        sig: Box<FunctionSignature>,
         actual: Vec<Option<Type>>,
+    },
+    WrongGenericArgs {
+        generic: Identifier,
+        type_params: Vec<String>,
+        actual_args: Vec<Type>,
     },
     MemberAccessOfNonRecord(Option<Type>, String),
     IllegalName(String),
@@ -81,10 +86,10 @@ enum SemanticErrorKind {
     },
     UninitializedSymbol(Identifier),
     TypeNotAssignable(Option<Type>),
-    ValueNotAssignable(Expression),
+    ValueNotAssignable(Box<Expression>),
     TypesNotComparable(Option<Type>, Option<Type>),
     PrivateMemberAccessForbidden {
-        base_type: Identifier,
+        base_type: ParameterizedName,
         member_name: String,
         from_ns: Option<Identifier>,
     },
@@ -93,12 +98,12 @@ enum SemanticErrorKind {
         member_name: String,
     },
     NotConstructable(Type),
-    UnableToInferType(syntax::Expression),
+    UnableToInferType(Box<syntax::Expression>),
     OutputUninitialized(String),
     NameInUse(Identifier),
     MultipleFunctionDef {
-        decl: FunctionDecl,
-        previous_decl: FunctionDecl,
+        decl: Box<FunctionDecl>,
+        previous_decl: Box<FunctionDecl>,
 
         for_interface: Option<Identifier>,
     },
@@ -201,13 +206,31 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::WrongArgTypes { sig, actual } => {
                 writeln!(f, "invalid arguments to function! expected:")?;
-                for expected_arg in sig.args.iter() {
+                for expected_arg in &sig.args {
                     writeln!(f, "\t{}", expected_arg)?;
                 }
                 writeln!(f, "found: ")?;
                 for actual_arg in actual.iter() {
                     writeln!(f, "\t{}", Type::name(actual_arg.as_ref()))?;
                 }
+                Ok(())
+            }
+
+            SemanticErrorKind::WrongGenericArgs { generic, type_params, actual_args } => {
+                writeln!(f, "invalid type arguments to {}! expected:", generic)?;
+                match type_params.len() {
+                    0 => { writeln!(f, "No type arguments")?; }
+                    _ => for expected in type_params {
+                        writeln!(f, "\t{}", expected)?;
+                    },
+                };
+                writeln!(f, "found:")?;
+                match actual_args.len() {
+                    0 => { writeln!(f, "No type arguments")?; }
+                    _ => for actual in type_params {
+                        writeln!(f, "\t{}", actual)?;
+                    },
+                };
                 Ok(())
             }
 
@@ -220,12 +243,21 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             SemanticErrorKind::InvalidOperator { op, args } => {
-                let args_list = args.iter()
-                    .map(|arg| format!("`{}`", Type::name(arg.as_ref())))
-                    .collect::<Vec<_>>()
-                    .join(", ");
+                match op {
+                    operators::Assignment if args.len() == 2 => {
+                        write!(f, "`{}` cannot be assigned to `{}`",
+                               Type::name(args[1].as_ref()),
+                               Type::name(args[0].as_ref()))
+                    },
+                    _ => {
+                        let args_list = args.iter()
+                            .map(|arg| format!("`{}`", Type::name(arg.as_ref())))
+                            .collect::<Vec<_>>()
+                            .join(", ");
 
-                write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
+                        write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
+                    }
+                }
             }
 
             SemanticErrorKind::InvalidArrayType(actual) => {
@@ -299,28 +331,28 @@ impl fmt::Display for SemanticErrorKind {
 #[derive(Clone, Debug)]
 pub struct SemanticError {
     kind: SemanticErrorKind,
-    context: SemanticContext,
+    context: Box<SemanticContext>,
 }
 
 impl SemanticError {
-    pub fn unresolved_unit(unit: impl ToString, context: impl Into<SemanticContext>) -> Self {
+    pub fn unresolved_unit(unit: impl Into<String>, context: impl Into<SemanticContext>) -> Self {
         SemanticError {
-            kind: SemanticErrorKind::UnresolvedUnit(unit.to_string()),
-            context: context.into(),
+            kind: SemanticErrorKind::UnresolvedUnit(unit.into()),
+            context: Box::new(context.into()),
         }
     }
 
-    pub fn illegal_name(name: String, context: SemanticContext) -> Self {
+    pub fn illegal_name(name: String, context: impl Into<SemanticContext>) -> Self {
         SemanticError {
             kind: SemanticErrorKind::IllegalName(name),
-            context,
+            context: Box::new(context.into()),
         }
     }
 
     pub fn name_in_use(name: impl Into<Identifier>, context: impl Into<SemanticContext>) -> Self {
         SemanticError {
             kind: SemanticErrorKind::NameInUse(name.into()),
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
@@ -330,11 +362,11 @@ impl SemanticError {
                                  -> Self {
         let decl = decl.into();
         SemanticError {
-            context: decl.context.clone(),
+            context: Box::new(decl.context.clone()),
             kind: SemanticErrorKind::MultipleFunctionDef {
-                decl,
-                previous_decl: previous_decl.into(),
-                for_interface: interface.map(|i| i.into())
+                decl: Box::new(decl),
+                previous_decl: Box::new(previous_decl.into()),
+                for_interface: interface.map(|i| i.into()),
             },
         }
     }
@@ -342,7 +374,7 @@ impl SemanticError {
     pub fn unknown_symbol(name: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownSymbol(name),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -351,21 +383,21 @@ impl SemanticError {
                            context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnexpectedType { expected, actual },
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn unknown_type(missing_type: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownType(missing_type),
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn empty_record(record_id: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::EmptyRecord(record_id),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -374,22 +406,22 @@ impl SemanticError {
                                 context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::MemberAccessOfNonRecord(actual, name),
-            context,
+            context: Box::new(context),
         }
     }
 
-    pub fn private_member_access_forbidden(base_type: impl Into<Identifier>,
+    pub fn private_member_access_forbidden(base_type: impl Into<ParameterizedName>,
                                            from_ns: impl Into<Option<Identifier>>,
-                                           member_name: impl ToString,
+                                           member_name: impl Into<String>,
                                            context: impl Into<SemanticContext>)
                                            -> Self {
         SemanticError {
             kind: SemanticErrorKind::PrivateMemberAccessForbidden {
                 base_type: base_type.into(),
                 from_ns: from_ns.into(),
-                member_name: member_name.to_string(),
+                member_name: member_name.into(),
             },
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
@@ -397,47 +429,64 @@ impl SemanticError {
                             context: impl Into<SemanticContext>)
                             -> Self {
         SemanticError {
-            kind: SemanticErrorKind::InvalidSelfArg(arg.into()),
-            context: context.into(),
+            kind: SemanticErrorKind::InvalidSelfArg(Box::new(arg.into())),
+            context: Box::new(context.into()),
         }
     }
 
     pub fn interface_sig_mismatch(expected_sig: impl Into<FunctionSignature>,
                                   actual_sig: impl Into<FunctionSignature>,
                                   interface: impl Into<Identifier>,
-                                  func_name: impl ToString,
+                                  func_name: impl Into<String>,
                                   context: impl Into<SemanticContext>) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InterfaceSignatureMismatch {
-                expected_sig: expected_sig.into(),
-                actual_sig: actual_sig.into(),
+                expected_sig: Box::new(expected_sig.into()),
+                actual_sig: Box::new(actual_sig.into()),
                 interface: interface.into(),
-                func_name: func_name.to_string(),
+                func_name: func_name.into(),
             },
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
     pub fn wrong_num_args(sig: FunctionSignature,
                           actual: usize,
-                          context: SemanticContext) -> Self {
+                          context: SemanticContext)
+                          -> Self {
         SemanticError {
             kind: SemanticErrorKind::WrongNumberOfArgs {
-                expected_sig: sig,
+                expected_sig: Box::new(sig),
                 actual,
             },
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn wrong_arg_types(sig: impl Into<FunctionSignature>,
                            actual: impl IntoIterator<Item=Option<Type>>,
-                           context: impl Into<SemanticContext>) -> Self {
+                           context: impl Into<SemanticContext>)
+                           -> Self {
         SemanticError {
-            context: context.into(),
+            context: Box::new(context.into()),
             kind: SemanticErrorKind::WrongArgTypes {
-                sig: sig.into(),
+                sig: Box::new(sig.into()),
                 actual: actual.into_iter().collect(),
+            },
+        }
+    }
+
+    pub fn wrong_generic_args(generic: impl Into<Identifier>,
+                              expected_params: impl IntoIterator<Item=String>,
+                              actual_args: impl IntoIterator<Item=Type>,
+                              context: impl Into<SemanticContext>)
+                              -> Self {
+        SemanticError {
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::WrongGenericArgs {
+                generic: generic.into(),
+                type_params: expected_params.into_iter().collect(),
+                actual_args: actual_args.into_iter().collect(),
             },
         }
     }
@@ -445,14 +494,14 @@ impl SemanticError {
     pub fn invalid_with_type(actual: Option<Type>, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidWithType(actual),
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn invalid_function_type(actual: Option<Type>, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -464,7 +513,7 @@ impl SemanticError {
                 from_type: from_type.into(),
                 target_type: target_type.into(),
             },
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
@@ -473,14 +522,14 @@ impl SemanticError {
                                 -> Self {
         SemanticError {
             kind: SemanticErrorKind::UninitializedSymbol(name.into()),
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
     pub fn invalid_const_value(value_expr: Expression) -> Self {
         SemanticError {
-            kind: SemanticErrorKind::InvalidConstantValue(value_expr.value),
-            context: value_expr.context,
+            kind: SemanticErrorKind::InvalidConstantValue(Box::new(value_expr.value)),
+            context: Box::new(value_expr.context),
         }
     }
 
@@ -492,7 +541,7 @@ impl SemanticError {
                 op: operator,
                 args: args.into_iter().collect(),
             },
-            context,
+            context: Box::new(context),
         }
     }
 
@@ -501,7 +550,7 @@ impl SemanticError {
                               -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidArrayType(actual.into()),
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
@@ -510,7 +559,7 @@ impl SemanticError {
                                -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidArrayIndex(actual.into()),
-            context: context.into(),
+            context: Box::new(context.into()),
         }
     }
 
@@ -518,15 +567,15 @@ impl SemanticError {
                                context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypeNotAssignable(t),
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn value_not_assignable(expr: Expression) -> SemanticError {
         let context = expr.context.clone();
         SemanticError {
-            kind: SemanticErrorKind::ValueNotAssignable(expr),
-            context,
+            kind: SemanticErrorKind::ValueNotAssignable(Box::new(expr)),
+            context: Box::new(context),
         }
     }
 
@@ -534,18 +583,18 @@ impl SemanticError {
                                 context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypesNotComparable(a, b),
-            context,
+            context: Box::new(context),
         }
     }
 
     pub fn duplicate_constructor_member(constructed: impl Into<Type>,
-                                        member: impl ToString,
+                                        member: impl Into<String>,
                                         context: impl Into<SemanticContext>)
                                         -> Self {
         SemanticError {
-            context: context.into(),
+            context: Box::new(context.into()),
             kind: SemanticErrorKind::DuplicateConstructorMember {
-                member_name: member.to_string(),
+                member_name: member.into(),
                 constructed: constructed.into(),
             },
         }
@@ -553,7 +602,7 @@ impl SemanticError {
 
     pub fn not_constructable(ty: impl Into<Type>, context: impl Into<SemanticContext>) -> Self {
         SemanticError {
-            context: context.into(),
+            context: Box::new(context.into()),
             kind: SemanticErrorKind::NotConstructable(ty.into()),
         }
     }
@@ -563,17 +612,17 @@ impl SemanticError {
                                 -> Self {
         let expr = expr.into();
         SemanticError {
-            context: context.into(),
-            kind: SemanticErrorKind::UnableToInferType(expr),
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::UnableToInferType(Box::new(expr)),
         }
     }
 
-    pub fn output_uninitialized(output_name: impl ToString,
+    pub fn output_uninitialized(output_name: impl Into<String>,
                                 context: impl Into<SemanticContext>)
                                 -> Self {
         SemanticError {
-            context: context.into(),
-            kind: SemanticErrorKind::OutputUninitialized(output_name.to_string()),
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::OutputUninitialized(output_name.into()),
         }
     }
 }
@@ -590,14 +639,26 @@ pub type SemanticResult<T> = Result<T, SemanticError>;
 pub struct SemanticContext {
     token: source::Token,
     scope: Rc<Scope>,
+    type_hint: Option<Type>,
 }
 
 impl SemanticContext {
-    pub fn new(token: impl Into<source::Token>, scope: impl Into<Rc<Scope>>) -> Self {
+    pub fn new(token: impl Into<source::Token>,
+               scope: impl Into<Rc<Scope>>,
+               type_hint: Option<Type>) -> Self {
         Self {
             token: token.into(),
             scope: scope.into(),
+            type_hint,
         }
+    }
+
+    pub fn type_hint(&self) -> Option<&Type> {
+        self.type_hint.as_ref()
+    }
+
+    pub fn scope(&self) -> &Scope {
+        self.scope.as_ref()
     }
 }
 

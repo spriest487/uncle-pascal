@@ -8,8 +8,10 @@ use semantic::{
     self,
     Scope,
 };
-use node::Identifier;
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 use target_c::ast::{
     TranslationResult,
     FunctionDecl,
@@ -26,7 +28,7 @@ struct ClassVTable {
 
 pub struct Class {
 //    name: Name,
-    pascal_name: Identifier,
+    pascal_name: ParameterizedName,
     unit_scope: Rc<Scope>,
 
     vtables: HashMap<usize, ClassVTable>,
@@ -35,14 +37,23 @@ pub struct Class {
 
 impl Class {
     pub fn translate(class: &semantic::RecordDecl,
-                     unit_scope: Rc<Scope>) -> TranslationResult<Self> {
-        let (full_name, _) = unit_scope.get_class(&Identifier::from(&class.name)).unwrap();
+                     type_args: &[Type],
+                     unit_scope: &Rc<Scope>) -> TranslationResult<Self> {
+        let name_parameterized = ParameterizedName::new_with_args(
+            class.qualified_name(),
+            type_args.iter().cloned()
+        );
+
+        let (full_name, class_decl) = unit_scope.get_class_specialized(&name_parameterized).unwrap();
+        if !class_decl.type_params.is_empty() {
+            unimplemented!("parameterized classes (c++ backend)");
+        }
 
 //        let name = Name::user_type(&full_name);
 
         /* we also need a variable to store the list of all vtables this class implements */
         let interfaces_array = Variable {
-            name: Name::class_interfaces(full_name),
+            name: Name::class_interfaces(&name_parameterized),
             default_value: None,
             ctype: CType::Named(Name::internal_type("InterfaceImpl")),
             array_size: Some(0),
@@ -97,13 +108,13 @@ impl Class {
     }
 
     pub fn is_internal(&self) -> bool {
-        self.pascal_name == Identifier::from("System.String")
+        self.pascal_name == ParameterizedName::new_simple("System.String")
     }
 
     pub fn write_decl(&self, out: &mut fmt::Write) -> fmt::Result {
         self.interfaces_array.write_impl(out)?;
 
-        for (_, vtable_var) in self.vtables.iter() {
+        for vtable_var in self.vtables.values() {
             vtable_var.variable.write_impl(out)?;
         }
 
@@ -112,10 +123,10 @@ impl Class {
 
     pub fn write_init(&self, out: &mut fmt::Write) -> fmt::Result {
         for (i, (iface_id, iface_vtable)) in self.vtables.iter().enumerate() {
-            for (method_name, impl_func) in iface_vtable.method_impls.iter() {
+            for (method_name, impl_func) in &iface_vtable.method_impls {
                 writeln!(out, "{}.{} = &{};",
                          iface_vtable.variable.name,
-                         Name::member(method_name),
+                         Name::member(method_name.clone()),
                          impl_func
                 )?;
             }

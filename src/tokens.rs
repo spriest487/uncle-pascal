@@ -36,7 +36,7 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
 
     fn is_keyword(&self, kw: keywords::Keyword) -> bool {
         match self.as_token() {
-            &Token::Keyword(token_kw) => token_kw == kw,
+            Token::Keyword(token_kw) => *token_kw == kw,
             _ => false,
         }
     }
@@ -50,7 +50,7 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
 
     fn is_any_keyword(&self) -> bool {
         match self.as_token() {
-            &Token::Keyword(_) => true,
+            Token::Keyword(_) => true,
             _ => false,
         }
     }
@@ -64,35 +64,35 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
 
     fn is_any_identifier(&self) -> bool {
         match self.as_token() {
-            &Token::Identifier(_) => true,
+            Token::Identifier(_) => true,
             _ => false,
         }
     }
 
     fn is_operator(&self, op: operators::Operator) -> bool {
         match self.as_token() {
-            &Token::Operator(ref token_op) => *token_op == op,
+            Token::Operator(token_op) => *token_op == op,
             _ => false
         }
     }
 
     fn is_any_operator(&self) -> bool {
         match self.as_token() {
-            &Token::Operator(_) => true,
+            Token::Operator(_) => true,
             _ => false,
         }
     }
 
     fn is_any_literal_string(&self) -> bool {
         match self.as_token() {
-            &Token::LiteralString(_) => true,
+            Token::LiteralString(_) => true,
             _ => false,
         }
     }
 
     fn is_any_literal_int(&self) -> bool {
         match self.as_token() {
-            &Token::LiteralInteger(_) => true,
+            Token::LiteralInteger(_) => true,
             _ => false,
         }
     }

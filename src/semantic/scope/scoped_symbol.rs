@@ -3,7 +3,10 @@ use std::fmt;
 use node::{
     Identifier
 };
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 use super::BindingKind;
 
 #[derive(Clone, PartialEq)]
@@ -17,7 +20,7 @@ pub enum ScopedSymbol {
 
     RecordMember {
         record_id: Identifier,
-        record_type: Identifier,
+        record_type: ParameterizedName,
         binding_kind: BindingKind,
         name: String,
         member_type: Type,

@@ -11,6 +11,7 @@ use super::{
 use node::{
     Identifier,
 };
+use types::ParameterizedName;
 use semantic::{
     InterfaceDecl,
     FunctionDecl,
@@ -21,7 +22,7 @@ use semantic::{
 
 #[derive(Clone, Debug, Default)]
 pub struct InterfaceMethod {
-    pub impls_by_type: HashMap<Identifier, NamedFunction>,
+    pub impls_by_type: HashMap<ParameterizedName, NamedFunction>,
 }
 
 #[derive(Clone, Debug)]
@@ -41,8 +42,8 @@ impl Interface {
     }
 
     /* if impl_entry returns None, the function name isn't part of this interface */
-    fn impl_entry(&mut self, for_type: Identifier, func: &str)
-                  -> Option<Entry<Identifier, NamedFunction>> {
+    fn impl_entry(&mut self, for_type: ParameterizedName, func: &str)
+                  -> Option<Entry<ParameterizedName, NamedFunction>> {
         let member = self.methods.get_mut(func)?;
 
         Some(member.impls_by_type.entry(for_type))
@@ -60,7 +61,7 @@ impl Interface {
         get the function decl for the function which implements an interface method for
         a particular type
     */
-    pub fn get_impl(&self, for_type: &Identifier, func: &str) -> Option<&FunctionDecl> {
+    pub fn get_impl(&self, for_type: &ParameterizedName, func: &str) -> Option<&FunctionDecl> {
         self.methods.get(func)
             .and_then(|member| member.impls_by_type.get(for_type))
             .map(|member_for_type| &member_for_type.decl)
@@ -71,7 +72,7 @@ impl Interface {
     }
 
     pub(in super) fn add_impl(&mut self,
-                impl_type: Identifier,
+                impl_type: ParameterizedName,
                 new_func: NamedFunction)
                 -> SemanticResult<()> {
         let interface_id = self.qualified_name();
@@ -102,9 +103,9 @@ impl Interface {
         Ok(())
     }
 
-    pub fn impls_for_type(&self, type_id: &Identifier) -> Vec<&FunctionDecl> {
+    pub fn impls_for_type(&self, type_id: &ParameterizedName) -> Vec<&FunctionDecl> {
         let mut result = Vec::new();
-        for (_fn_name, member) in self.methods.iter() {
+        for member in self.methods.values() {
             if let Some(impl_for_type) = member.impls_by_type.get(type_id) {
                 result.push(&impl_for_type.decl)
             }

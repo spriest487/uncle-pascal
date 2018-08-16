@@ -32,7 +32,7 @@ impl Parse for Vec<TypeDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(keywords::Type)?;
 
-        tokens.match_repeating(|i, tokens| {
+        tokens.match_repeating(|i, tokens: &mut TokenStream| {
             if i > 0 {
                 /* decls after the first must be separated by a newline or ; */
                 tokens.match_or_endl(tokens::Semicolon)?;
@@ -43,16 +43,18 @@ impl Parse for Vec<TypeDecl> {
                 return Ok(None);
             }
 
-            let match_name = tokens.match_sequence(Matcher::AnyIdentifier
-                .and_then(operators::Equals))?;
+            let name_token = tokens.match_one(Matcher::AnyIdentifier)?;
+            let decl_name = name_token.unwrap_identifier();
 
-            let decl_name = match_name[0].unwrap_identifier();
+            let type_params = parse_type_params(tokens)?;
+
+            tokens.match_one(operators::Equals)?;
 
             let peek_kind = tokens.look_ahead().match_one(any_valid_type_decl_first());
 
             let type_decl = match peek_kind {
                 Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
-                    let record_decl = RecordDecl::parse_with_name(decl_name, tokens)?;
+                    let record_decl = RecordDecl::parse_with_name(decl_name, type_params, tokens)?;
                     node::TypeDecl::Record(record_decl)
                 }
 
@@ -88,8 +90,36 @@ impl Parse for Vec<TypeDecl> {
     }
 }
 
+fn parse_type_params(tokens: &mut TokenStream) -> ParseResult<Vec<String>> {
+    match tokens.look_ahead().match_one(operators::Lt) {
+        Some(_) => {
+            tokens.advance(1);
+
+            tokens.match_repeating(|i, tokens: &mut TokenStream| {
+                if i > 0 {
+                    match tokens.look_ahead().match_one(operators::Gt) {
+                        Some(_) => {
+                            tokens.advance(1);
+                            return Ok(None);
+                        }
+
+                        None => {
+                            tokens.match_one(tokens::Comma)?;
+                        }
+                    }
+                }
+
+                let param_name = tokens.match_one(Matcher::AnyIdentifier)?;
+                Ok(Some(param_name.unwrap_identifier().to_string()))
+            })
+        }
+
+        None => Ok(Vec::new()),
+    }
+}
+
 impl EnumerationDecl {
-    fn parse_with_name(decl_name: impl ToString,
+    fn parse_with_name(decl_name: impl Into<String>,
                        tokens: &mut TokenStream)
                        -> ParseResult<Self> {
         let first_token = tokens.context().clone();
@@ -98,7 +128,7 @@ impl EnumerationDecl {
         Ok(EnumerationDecl {
             context: ParsedContext::from(first_token),
             names,
-            name: decl_name.to_string(),
+            name: decl_name.into(),
         })
     }
 
@@ -127,7 +157,7 @@ impl EnumerationDecl {
 }
 
 impl SetDecl {
-    fn parse_with_name(name: impl ToString,
+    fn parse_with_name(name: impl Into<String>,
                        tokens: &mut TokenStream)
                        -> ParseResult<Self> {
         let kws = tokens.match_sequence(Matcher::Keyword(keywords::Set)
@@ -144,7 +174,7 @@ impl SetDecl {
                 let enum_name = Identifier::parse(tokens)?;
                 let enumeration = node::SetEnumeration::Named(enum_name);
                 Ok(node::SetDecl {
-                    name: name.to_string(),
+                    name: name.into(),
                     context,
                     enumeration,
                 })
@@ -155,7 +185,7 @@ impl SetDecl {
                 let enumeration = node::SetEnumeration::Inline(names);
 
                 Ok(node::SetDecl {
-                    name: name.to_string(),
+                    name: name.into(),
                     context,
                     enumeration,
                 })
@@ -256,7 +286,7 @@ impl RecordDecl {
                     }
 
                     tokens.match_or_endl(tokens::Semicolon)?;
-                    
+
                     // found terminator after separator
                     if tokens.look_ahead().match_one(terminator.clone()).is_some() {
                         return Ok(None);
@@ -277,7 +307,10 @@ impl RecordDecl {
         })
     }
 
-    pub fn parse_with_name(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
+    pub fn parse_with_name(decl_name: &str,
+                           type_params: impl IntoIterator<Item=String>,
+                           tokens: &mut TokenStream)
+                           -> ParseResult<Self> {
         let match_kw = tokens.match_one(keywords::Record.or(keywords::Class))?;
 
         let kind = if match_kw.is_keyword(keywords::Class) {
@@ -302,6 +335,7 @@ impl RecordDecl {
             context: match_kw.clone().into(),
             members,
             variant_part,
+            type_params: type_params.into_iter().collect(),
         })
     }
 }
@@ -312,7 +346,7 @@ impl InterfaceDecl {
 
         let mut functions = LinkedHashMap::new();
         loop {
-            if functions.len() > 0 {
+            if !functions.is_empty() {
                 if tokens.look_ahead().match_one(keywords::End).is_some() {
                     break;
                 }
@@ -331,13 +365,13 @@ impl InterfaceDecl {
                         return Err(ParseError::DuplicateName(decl.name, decl.context.token));
                     }
 
-                    if decl.args.len() < 1 {
+                    if decl.args.is_empty() {
                         return Err(ParseError::MissingInterfaceArgs(decl.context.token));
                     }
 
                     let sig = decl.signature();
                     functions.insert(decl.name, sig);
-                },
+                }
                 None => break,
             }
         }
@@ -355,19 +389,10 @@ impl InterfaceDecl {
 #[cfg(test)]
 mod test {
     use super::*;
-    use opts::CompileOptions;
-
-    fn parse(source: &str) -> Vec<TypeDecl> {
-        let opts = CompileOptions::default();
-
-        let stream = TokenStream::tokenize("type_decl tests", source, &opts)
-            .unwrap();
-
-        stream.parse_to_end().unwrap()
-    }
+    use syntax::test::try_parse;
 
     fn parse_record(source: &str) -> RecordDecl {
-        let decls = parse(source);
+        let decls: Vec<TypeDecl> = try_parse(source).unwrap();
         assert_eq!(1, decls.len(), "result should be a single record declaration");
 
         match decls.into_iter().next().unwrap() {
@@ -417,5 +442,38 @@ mod test {
         assert_eq!("Car", &record.name);
         assert_eq!(RecordKind::Record, record.kind);
         assert_eq!(1, record.members.len());
+    }
+
+    #[test]
+    fn parses_type_param() {
+        let record = parse_record(r"type Car<Wheel> = record
+            wheel: Wheel
+        end");
+
+        assert_eq!("Car", record.name);
+        assert_eq!("wheel", record.members[0].name);
+        assert_eq!("Wheel", record.type_params[0]);
+        assert_eq!("Wheel", record.members[0].decl_type.to_string());
+    }
+
+    #[test]
+    fn parses_type_params_multiple() {
+        let record = parse_record(r"type Car<Wheel, Chassis> = record
+            wheel: Wheel
+            chassis: Chassis
+        end");
+
+        assert_eq!("Car", record.name);
+        assert_eq!("Wheel", record.members[0].decl_type.to_string());
+        assert_eq!("Chassis", record.members[1].decl_type.to_string());
+    }
+
+    #[test]
+    fn empty_type_params_is_err() {
+        let result = try_parse::<Vec<TypeDecl>>(r"type Car<> = record
+            wheels: Int32
+        end");
+
+        assert!(result.is_err());
     }
 }

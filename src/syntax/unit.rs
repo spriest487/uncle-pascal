@@ -169,7 +169,7 @@ impl Parse for Vec<Implementation> {
                 Some(_) => {
                     impls.extend(UnitDecl::parse_one(tokens)?
                         .into_iter()
-                        .map(|decl| node::Implementation::Decl(decl)))
+                        .map(node::Implementation::Decl))
                 }
 
                 None => break,
@@ -200,23 +200,21 @@ impl UnitDecl {
                 let type_decls: Vec<TypeDecl> = tokens.parse()?;
 
                 Ok(type_decls.into_iter()
-                    .map(|type_decl| {
-                        node::UnitDecl::Type(type_decl)
-                    })
+                    .map(node::UnitDecl::Type)
                     .collect())
             }
 
             Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
                 let vars = VarDecl::parse_var_section(tokens)?;
                 Ok(vars.into_iter()
-                    .map(|var| node::UnitDecl::Var(var))
+                    .map(node::UnitDecl::Var)
                     .collect())
             }
 
             Some(ref const_kw) if const_kw.is_keyword(keywords::Const) => {
                 let consts = ConstDecl::parse_const_section(tokens)?;
                 Ok(consts.into_iter()
-                    .map(|const_decl| node::UnitDecl::Const(const_decl))
+                    .map(node::UnitDecl::Const)
                     .collect())
             }
 
@@ -236,11 +234,8 @@ impl Parse for Vec<UnitDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut decls = Vec::new();
 
-        loop {
-            match tokens.look_ahead().match_one(decl_first_matcher()) {
-                Some(_) => decls.extend(UnitDecl::parse_one(tokens)?),
-                None => break,
-            }
+        while let Some(_) = tokens.look_ahead().match_one(decl_first_matcher()) {
+            decls.extend(UnitDecl::parse_one(tokens)?)
         }
 
         Ok(decls)

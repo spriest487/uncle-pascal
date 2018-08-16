@@ -36,7 +36,7 @@ impl Iterator for TokenStream {
 
 impl From<Vec<source::Token>> for TokenStream {
     fn from(tokens: Vec<source::Token>) -> Self {
-        if tokens.len() == 0 {
+        if tokens.is_empty() {
             panic!("length of tokenstream must be at least 1");
         }
 
@@ -206,9 +206,10 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
         let matcher = matcher.into();
 
         self.next().and_then(|t| {
-            match matcher.is_match(t.as_token()) {
-                true => Some(t),
-                false => None
+            if matcher.is_match(t.as_token()) {
+                Some(t)
+            } else {
+                None
             }
         })
     }

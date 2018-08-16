@@ -12,8 +12,8 @@ pub enum Position {
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            &Position::Prefix => "prefix",
-            &Position::Binary => "binary"
+            Position::Prefix => "prefix",
+            Position::Binary => "binary"
         })
     }
 }
@@ -74,18 +74,18 @@ pub fn for_position(position: Position) -> impl Iterator<Item = Operator> {
 }
 
 impl Operator {
-    pub fn precedence(&self, in_pos: Position) -> usize {
+    pub fn precedence(self, in_pos: Position) -> usize {
         PRECEDENCE.iter().enumerate()
-            .find(|&(_, &(op, pos))| op.eq(self) && pos == in_pos)
+            .find(|(_, (op, pos))| *op == self && *pos == in_pos)
             .map(|(index, _)| index)
             .unwrap_or_else(|| {
                 panic!("operator {} must have a precedence value in position {}", self, in_pos)
             })
     }
 
-    pub fn is_valid_in_pos(&self, in_pos: Position) -> bool {
+    pub fn is_valid_in_pos(self, in_pos: Position) -> bool {
         PRECEDENCE.iter()
-            .any(|&(op, pos)| *self == op && in_pos == pos)
+            .any(|&(op, pos)| self == op && in_pos == pos)
     }
 
     fn try_parse_text_lowercase(from: &str) -> Option<Self> {
@@ -103,9 +103,10 @@ impl Operator {
      already knows how to parse the ones which have names which aren't
      valid identifiers*/
     pub fn try_parse_text(from: &str, opts: &CompileOptions) -> Option<Operator> {
-        match opts.case_sensitive() {
-            true => Self::try_parse_text_lowercase(from),
-            false => Self::try_parse_text_lowercase(&from.to_ascii_lowercase()),
+        if opts.case_sensitive() {
+            Self::try_parse_text_lowercase(from)
+        } else {
+            Self::try_parse_text_lowercase(&from.to_ascii_lowercase())
         }
     }
 }

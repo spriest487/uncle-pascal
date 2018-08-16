@@ -7,7 +7,7 @@ use std::{
 pub use self::ast::{
     TranslationError,
     TranslationResult,
-    TranslationUnit
+    TranslationUnit,
 };
 
 use std::{
@@ -19,9 +19,7 @@ use std::{
 
 use pretty_path;
 use CompileError;
-use semantic::{
-    ProgramModule,
-};
+use semantic::ProgramModule;
 use opts::CompileOptions;
 
 const HEADER: &str = include_str!("header.h");
@@ -30,7 +28,7 @@ const RT: &str = include_str!("rt.h");
 pub fn pas_to_c(module: &ProgramModule,
                 out_path: &Path,
                 opts: &CompileOptions) -> Result<(), CompileError> {
-    let translated = ast::TranslationUnit::from_program(module)?;
+    let translated = ast::TranslationUnit::translate_program(module)?;
     let c_unit = write_cpp(&translated)?;
 
     let compile_with_clang = out_path.extension().map(|ext| ext != "cpp" && ext != "cxx")
@@ -49,10 +47,10 @@ pub fn pas_to_c(module: &ProgramModule,
     Ok(())
 }
 
-fn invoke_clang<'a>(c_src: &str,
-                    out_path: &Path,
-                    opts: &CompileOptions)
-                    -> Result<(), CompileError> {
+fn invoke_clang(c_src: &str,
+                out_path: &Path,
+                opts: &CompileOptions)
+                -> Result<(), CompileError> {
     let mut clang = process::Command::new("clang++");
     clang.arg("-Wno-parentheses-equality");
     clang.arg("-Wno-non-literal-null-conversion");
@@ -100,14 +98,14 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
     unit.declare_string_literals(&mut out)?;
 
     for decl in unit.decls() {
-        decl.write_forward(&mut out)?;
+        decl.write_forward(unit, &mut out)?;
     }
 
     unit.declare_vtables(&mut out)?;
 
     /* write impls */
     for decl_impl in unit.decls().iter() {
-        decl_impl.write_impl(&mut out)?;
+        decl_impl.write_impl(unit, &mut out)?;
     }
 
     /* write main function */

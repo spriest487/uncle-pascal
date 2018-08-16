@@ -9,12 +9,8 @@ pub use self::bindings::{
     BindingKind,
     SymbolBinding,
 };
-pub use self::scoped_symbol::{
-    ScopedSymbol
-};
-use self::interface::{
-    Interface,
-};
+pub use self::scoped_symbol::ScopedSymbol;
+use self::interface::Interface;
 
 use std::{
     collections::hash_map::*,
@@ -68,13 +64,13 @@ fn expect_overload_ok(new: &NamedFunction,
 #[derive(Clone, Debug)]
 enum Named {
     TypeAlias(Type),
-    Record(RecordDecl),
-    Class(RecordDecl),
-    Function(NamedFunction),
+    Record(Box<RecordDecl>),
+    Class(Box<RecordDecl>),
+    Function(Box<NamedFunction>),
     Const(ConstExpression, Type),
     Enumeration(EnumerationDecl),
-    Interface(Interface),
-    Set(SetDecl),
+    Interface(Box<Interface>),
+    Set(Box<SetDecl>),
     Symbol(SymbolBinding),
 }
 
@@ -123,7 +119,7 @@ impl Scope {
             namespace: ScopeNamespace::Root,
         };
 
-        root.reference(&Scope::system(), UnitReferenceKind::Namespaced)
+        root.reference(&Scope::system(), &UnitReferenceKind::Namespaced)
     }
 
     pub fn system() -> Self {
@@ -156,7 +152,7 @@ impl Scope {
             imported_names: HashMap::new(),
         };
 
-        scope.reference(&Scope::system(), UnitReferenceKind::Namespaced)
+        scope.reference(&Scope::system(), &UnitReferenceKind::Namespaced)
     }
 
     pub fn new_local(parent: &Self) -> Self {
@@ -176,7 +172,7 @@ impl Scope {
             imported_names: HashMap::new(),
         };
 
-        child.reference(parent, UnitReferenceKind::All)
+        child.reference(parent, &UnitReferenceKind::All)
     }
 
     pub fn namespace_description(&self) -> String {
@@ -220,8 +216,17 @@ impl Scope {
 
         match new_func.decl.implements.clone() {
             Some(implements) => {
-                let implemented_for = self.full_type_name(&implements.for_type)
-                    .expect("typechecker should reject invalid impl types");
+                let implemented_for = match self.full_type_name(&implements.for_type) {
+                    Some(name) => name,
+                    None => panic!(
+                        "{}: typechecker should reject invalid impl types ({}.{} implemented for {}) in {:?}",
+                        new_func.decl.context.token(),
+                        implements.interface,
+                        new_func.decl.name,
+                        implements.for_type,
+                        self,
+                    ),
+                };
 
                 self.names.get_mut(&implements.interface)
                     /* the interface we are implementing must have already been declared somewhere */
@@ -250,7 +255,7 @@ impl Scope {
                 match self.names.entry(name.clone()) {
                     /* this is the first decl */
                     Entry::Vacant(slot) => {
-                        slot.insert(Named::Function(new_func));
+                        slot.insert(Named::Function(Box::new(new_func)));
                     }
 
                     Entry::Occupied(mut slot) => {
@@ -271,7 +276,7 @@ impl Scope {
     pub fn with_class(mut self, decl: RecordDecl) -> Self {
         let name = self.namespace_qualify(&decl.name);
         assert_eq!(RecordKind::Class, decl.kind);
-        self.names.insert(name, Named::Class(decl));
+        self.names.insert(name, Named::Class(Box::new(decl)));
         self
     }
 
@@ -280,7 +285,8 @@ impl Scope {
 
         match self.names.entry(name.clone()) {
             Entry::Vacant(slot) => {
-                slot.insert(Named::Interface(Interface::new(decl)));
+                let iface = Interface::new(decl);
+                slot.insert(Named::Interface(Box::new(iface)));
             }
 
             Entry::Occupied(_) => return Err(SemanticError::name_in_use(name, decl.context)),
@@ -295,7 +301,7 @@ impl Scope {
 
         for (ord, name) in decl.names.iter().enumerate() {
             let const_name = self.namespace_qualify(&decl.name);
-            let enum_const = EnumConstant::new(ord as u64, name, const_name);
+            let enum_const = EnumConstant::new(ord as u64, name.clone(), const_name);
             let val = node::ConstExpression::Enum(enum_const);
             self.names.insert(Identifier::from(name), Named::Const(val, enum_type.clone()));
         }
@@ -307,22 +313,34 @@ impl Scope {
     pub fn with_set(mut self, decl: SetDecl) -> Self {
         let qualified_name = self.namespace_qualify(&decl.name);
 
-        /* it would make more sense to add the values first so we didn't
-        have to copy the set decl, but in the weird case that a set constant
-        has the same name as the set, we want the error to be raised on the
-        inner value, not the set decl */
-        self.names.insert(qualified_name.clone(), Named::Set(decl.clone()));
+        let set_type = Type::Set(qualified_name.clone());
 
-        if let node::SetEnumeration::Inline(names) = &decl.enumeration {
-            let set_type = Type::Set(qualified_name.clone());
+        /*
+            in the weird case that a set constant
+            has the same name as the set, we want the error to be raised on the
+            inner value, not the set decl, so grab the const decls here but don't
+            add them to scope yet
+        */
+        let consts = match &decl.enumeration {
+            node::SetEnumeration::Inline(names) => {
+                names.iter()
+                    .map(|name| {
+                        let name_qualified = self.namespace_qualify(name);
+                        let name_const = SetConstant::new(iter::once(name), qualified_name.clone());
+                        let name_expr = node::ConstExpression::Set(name_const);
 
-            for name in names.iter() {
-                let name_qualified = self.namespace_qualify(name);
-                let name_const = SetConstant::new(iter::once(name), qualified_name.clone());
-                let name_expr = node::ConstExpression::Set(name_const);
-
-                self.names.insert(name_qualified, Named::Const(name_expr, set_type.clone()));
+                        (name_qualified, name_expr)
+                    })
+                    .collect()
             }
+
+            node::SetEnumeration::Named(_) => vec![],
+        };
+
+        self.names.insert(qualified_name.clone(), Named::Set(Box::new(decl)));
+
+        for (const_name, const_expr) in consts {
+            self.names.insert(const_name, Named::Const(const_expr, set_type.clone()));
         }
 
         self
@@ -331,7 +349,7 @@ impl Scope {
     pub fn with_record(mut self, decl: RecordDecl) -> Self {
         let name = self.namespace_qualify(&decl.name);
         assert_eq!(RecordKind::Record, decl.kind);
-        self.names.insert(name, Named::Record(decl));
+        self.names.insert(name, Named::Record(Box::new(decl)));
         self
     }
 
@@ -364,9 +382,9 @@ impl Scope {
         self
     }
 
-    pub fn with_const(mut self, name: &str, val: ConstExpression, as_type: Option<Type>) -> Self {
+    pub fn with_const(mut self, name: &str, val: ConstExpression, as_type: Option<&Type>) -> Self {
         let name = self.namespace_qualify(name);
-        let val_type = as_type.unwrap_or_else(|| val.value_type());
+        let val_type = val.value_type(as_type);
 
         self.names.insert(name, Named::Const(val, val_type));
         self
@@ -374,15 +392,15 @@ impl Scope {
 
     pub fn reference(mut self,
                      other: &Scope,
-                     ref_kind: UnitReferenceKind) -> Self {
-        for (name, named) in other.names.iter() {
+                     ref_kind: &UnitReferenceKind) -> Self {
+        for (name, named) in &other.names {
             match ref_kind {
                 UnitReferenceKind::All => {
                     let imported_name = Identifier::from(&name.name);
                     self.imported_names.insert(imported_name, name.clone());
                 }
 
-                UnitReferenceKind::Name(ref imported_name) => {
+                UnitReferenceKind::Name(imported_name) => {
                     if name.name == *imported_name {
                         self.imported_names.insert(Identifier::from(imported_name),
                                                    name.clone());
@@ -403,7 +421,7 @@ impl Scope {
                          others: impl IntoIterator<Item=Scope>)
                          -> Self {
         for scope in others {
-            self = self.reference(&scope, UnitReferenceKind::Namespaced);
+            self = self.reference(&scope, &UnitReferenceKind::Namespaced);
         }
         self
     }
@@ -492,9 +510,10 @@ impl Scope {
         self.names.iter()
             .filter_map(|(name, named)| match named {
                 Named::Symbol(binding) => {
-                    match binding.kind.initialized() {
-                        true => None,
-                        false => Some(name)
+                    if binding.kind.initialized() {
+                        None
+                    } else {
+                        Some(name)
                     }
                 }
 
@@ -527,13 +546,20 @@ impl Scope {
             })
     }
 
+    // todo: type args for aliases of types that support them
     pub fn get_type_alias(&self, alias: &Identifier) -> Option<Type> {
         let result = match self.find_named(alias) {
             | Some((class_name, Named::Class(_)))
-            => Type::Class(class_name.clone()),
+            => Type::Class(ParameterizedName {
+                name: class_name.clone(),
+                type_args: Vec::new(),
+            }),
 
             | Some((record_name, Named::Record(_)))
-            => Type::Record(record_name.clone()),
+            => Type::Record(ParameterizedName {
+                name: record_name.clone(),
+                type_args: Vec::new(),
+            }),
 
             | Some((interface_name, Named::Interface(_)))
             => Type::AnyImplementation(interface_name.clone()),
@@ -566,7 +592,7 @@ impl Scope {
 
     pub fn get_set(&self, name: &Identifier) -> Option<(&Identifier, &SetDecl)> {
         match self.find_named(name) {
-            Some((id, Named::Set(decl))) => Some((id, decl)),
+            Some((id, Named::Set(decl))) => Some((id, decl.as_ref())),
             _ => None,
         }
     }
@@ -604,10 +630,28 @@ impl Scope {
         match self.find_named(name) {
             Some((id, Named::Record(decl))) => {
                 assert_eq!(RecordKind::Record, decl.kind);
-                Some((id, decl))
+                Some((id, decl.as_ref()))
             }
             _ => None,
         }
+    }
+
+    pub fn get_class_specialized(&self, name: &ParameterizedName) -> Option<(ParameterizedName, RecordDecl)> {
+        let (id, decl) = self.get_class(&name.name)?;
+
+        let specialized = decl.clone().specialize(&name.type_args);
+        let name = ParameterizedName::new_with_args(id.clone(), name.type_args.clone());
+
+        Some((name, specialized))
+    }
+
+    pub fn get_record_specialized(&self, name: &ParameterizedName) -> Option<(ParameterizedName, RecordDecl)> {
+        let (id, decl) = self.get_record(&name.name)?;
+
+        let specialized = decl.clone().specialize(&name.type_args);
+        let name = ParameterizedName::new_with_args(id.clone(), name.type_args.clone());
+
+        Some((name, specialized))
     }
 
     pub fn get_const(&self, name: &Identifier) -> Option<(&Identifier, &ConstExpression, &Type)> {
@@ -625,16 +669,16 @@ impl Scope {
         let parent_sym = self.get_symbol(&parent_id)?;
 
         let (record_id, record_decl) = match parent_sym.decl_type() {
-            Type::Record(name) => self.get_record(name),
-            Type::Class(name) => self.get_class(name),
+            Type::Record(name) => self.get_record_specialized(name),
+            Type::Class(name) => self.get_class_specialized(name),
 
             /* records and classes are auto-derefed, so consider pointers to records of any
             indirection level */
             Type::Pointer(ptr) => {
                 /* remove remaining levels of indirection */
                 match ptr.remove_indirection() {
-                    Type::Record(name) => self.get_record(name),
-                    Type::Class(name) => self.get_class(name),
+                    Type::Record(name) => self.get_record_specialized(name),
+                    Type::Class(name) => self.get_class_specialized(name),
                     _ => None,
                 }
             }
@@ -657,7 +701,7 @@ impl Scope {
         match self.find_named(name)? {
             (id, Named::Class(decl)) => {
                 assert_eq!(RecordKind::Class, decl.kind);
-                Some((id, decl))
+                Some((id, decl.as_ref()))
             }
             _ => None,
         }
@@ -682,7 +726,7 @@ impl Scope {
 
     pub fn get_interface(&self, name: &Identifier) -> Option<(&Identifier, &Interface)> {
         match self.find_named(name) {
-            | Some((name, Named::Interface(iface_decl))) => Some((name, iface_decl)),
+            | Some((name, Named::Interface(iface_decl))) => Some((name, iface_decl.as_ref())),
             | _ => None,
         }
     }
@@ -752,14 +796,16 @@ impl Scope {
 
             | Type::Boolean => 1,
 
-            | Type::Record(name) => {
+            | Type::Record(ParameterizedName { name, type_args }) => {
                 let (_, record_decl) = self.get_record(name).expect("record type passed to size_of must exist");
-                self.size_of_record(record_decl)
+                let specialized = record_decl.clone().specialize(type_args);
+                self.size_of_record(&specialized)
             }
 
-            | Type::Class(name) => {
+            | Type::Class(ParameterizedName { name, type_args }) => {
                 let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
-                self.size_of_record(class_decl)
+                let specialized = class_decl.clone().specialize(type_args);
+                self.size_of_record(&specialized)
             }
 
             | Type::DynamicArray(_array) => {
@@ -770,6 +816,9 @@ impl Scope {
 
             | Type::Array(array) =>
                 array.total_elements() as usize * self.size_of(&array.element),
+
+            | Type::Generic(_) =>
+                unreachable!("should never take size of unresolved generic type"),
         }
     }
 
@@ -811,18 +860,30 @@ impl Scope {
                    checking that all members are implemented should be done separately,
                    so just check if we have any at all
                 */
-                let implemented = iface.impls_for_type(&type_name).len() > 0;
+                let implemented = !iface.impls_for_type(&type_name).is_empty();
                 Some(implemented)
             })
             .unwrap_or(false)
     }
 
-    pub fn full_type_name(&self, ty: &Type) -> Option<Identifier> {
+    pub fn full_type_name(&self, ty: &Type) -> Option<ParameterizedName> {
         match ty {
-            | Type::Class(name) => Some(self.get_class(&name)?.0.clone()),
-            | Type::Record(name) => Some(self.get_record(&name)?.0.clone()),
-            | Type::Set(name) => Some(self.get_set(&name)?.0.clone()),
-            | Type::Enumeration(name) => Some(self.get_enumeration(&name)?.0.clone()),
+            | Type::Class(type_id) => {
+                let (class_id, _) = self.get_class_specialized(type_id)?;
+                Some(class_id)
+            }
+            | Type::Record(type_id) => {
+                let (record_id, _) = self.get_record_specialized(&type_id)?;
+                Some(record_id)
+            }
+            | Type::Set(name) => {
+                let set_name = self.get_set(&name)?.0.clone();
+                Some(ParameterizedName::new_simple(set_name))
+            }
+            | Type::Enumeration(name) => {
+                let enum_name = self.get_enumeration(&name)?.0.clone();
+                Some(ParameterizedName::new_simple(enum_name))
+            }
 
             | Type::Boolean
             | Type::Byte
@@ -831,10 +892,10 @@ impl Scope {
             | Type::Int64
             | Type::UInt64
             | Type::Float64 =>
-                return Some(Identifier::from(&Type::name(Some(ty)))),
+                Some(ParameterizedName::new_simple(&Type::name(Some(ty)))),
 
             _ =>
-                return None,
+                None,
         }
     }
 }
@@ -853,7 +914,7 @@ impl fmt::Debug for Scope {
         let mut enums = Vec::new();
         let mut sets = Vec::new();
 
-        for (name, named) in self.names.iter() {
+        for (name, named) in &self.names {
             match named {
                 Named::TypeAlias(ty) => types.push((name, ty)),
                 Named::Symbol(sym) => symbols.push((name, sym)),
@@ -896,8 +957,8 @@ impl fmt::Debug for Scope {
         for (name, iface) in interfaces {
             writeln!(f, "\t\t{}: {}", name, iface.decl.name)?;
 
-            for (method_name, method) in iface.methods.iter() {
-                for (impl_ty, method_func) in method.impls_by_type.iter() {
+            for (method_name, method) in &iface.methods {
+                for (impl_ty, method_func) in &method.impls_by_type {
                     writeln!(
                         f,
                         "\t\t\t* `{}` implemented for {} in {} ({})",
@@ -936,7 +997,7 @@ impl fmt::Debug for Scope {
         writeln!(f, "\t]")?;
 
         writeln!(f, "\timported names: [")?;
-        for (name, global_name) in self.imported_names.iter() {
+        for (name, global_name) in &self.imported_names {
             writeln!(f, "\t\t{}: {}", name, global_name)?;
         }
         writeln!(f, "\t]")?;

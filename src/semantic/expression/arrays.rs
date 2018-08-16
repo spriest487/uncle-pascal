@@ -16,7 +16,7 @@ use super::{
 
 pub fn annotate_element(of: &syntax::Expression,
                         index_expr: &syntax::Expression,
-                        context: SemanticContext)
+                        context: &SemanticContext)
                         -> SemanticResult<(Expression, Rc<Scope>)> {
     // index expr is evaluated first
     let index_type = Some(Type::Int64);
@@ -65,7 +65,7 @@ pub fn element_type(of: &Expression,
         }
 
         //pointers can also be dereferenced via indexing
-        invalid @ _ => return Err(SemanticError::invalid_array_type(
+        invalid => Err(SemanticError::invalid_array_type(
             invalid,
             context.clone(),
         ))

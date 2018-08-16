@@ -20,7 +20,7 @@ use target_c::ast::{
     CastKind,
 };
 
-#[derive(Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionArg {
     pub name: Name,
     pub ctype: CType,
@@ -32,6 +32,7 @@ impl fmt::Display for FunctionArg {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
 pub enum FunctionDefinition {
     None,
     External(String),
@@ -46,9 +47,10 @@ pub enum CallingConvention {
 
 impl CallingConvention {
     pub fn from_modifiers(modifiers: &[FunctionModifier]) -> CallingConvention {
-        match modifiers.contains(&FunctionModifier::Stdcall) {
-            true => CallingConvention::Stdcall,
-            false => CallingConvention::Cdecl,
+        if modifiers.contains(&FunctionModifier::Stdcall) {
+            CallingConvention::Stdcall
+        } else {
+            CallingConvention::Cdecl
         }
     }
 }
@@ -62,6 +64,7 @@ impl fmt::Display for CallingConvention {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl {
     pub name: Name,
     pub return_type: CType,
@@ -70,81 +73,22 @@ pub struct FunctionDecl {
     pub definition: FunctionDefinition,
 }
 
-impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
-    fn from(pascal_decl: &semantic::FunctionDecl) -> Self {
-        let return_type = pascal_decl.return_type.as_ref()
-            .map(|return_type| CType::translate(return_type, pascal_decl.scope()))
-            .unwrap_or_else(|| CType::Void);
-
-        let name = Self::translate_name(pascal_decl);
-
-        let calling_convention = CallingConvention::from_modifiers(&pascal_decl.modifiers);
-
-        let args = pascal_decl.args.iter()
-            .map(|arg_decl| {
-                let ctype_base = CType::translate(&arg_decl.decl_type, &arg_decl.scope());
-                let ctype = match &arg_decl.modifier {
-                    | None => ctype_base,
-                    | Some(FunctionArgModifier::Const)
-                    => ctype_base.into_const(),
-
-                    | Some(FunctionArgModifier::Var)
-                    | Some(FunctionArgModifier::Out)
-                    => ctype_base.into_ref(),
-                };
-
-                FunctionArg {
-                    name: Name::local(&arg_decl.name),
-                    ctype,
-                }
-            })
-            .collect();
-
-        /* for function definitions, this field gets replaced later */
-        let extern_modifier = pascal_decl.modifiers.iter()
-            .filter_map(|func_mod| match func_mod {
-                FunctionModifier::External(extern_name) => Some(extern_name),
-                _ => None,
-            })
-            .next();
-
-        let definition = match extern_modifier {
-            Some(extern_name) => {
-                if extern_name.shared_lib.is_some() {
-                    unimplemented!("DLL imports");
-                }
-
-                /* if no `name` part is present in the extern decl, the unqualified
-                name of the function is used */
-                FunctionDefinition::External(extern_name.symbol_name.as_ref()
-                    .unwrap_or_else(|| &pascal_decl.name)
-                    .to_string())
-            }
-            None => FunctionDefinition::None,
-        };
-
-        FunctionDecl {
-            name,
-            calling_convention,
-            args,
-            return_type,
-            definition,
-        }
-    }
-}
-
 impl FunctionDecl {
     pub fn virtual_call_name(decl: &semantic::FunctionDecl) -> Name {
+        assert!(decl.implements.is_some(), "virtual_call_name should only be called on interface methods");
+
         let implements = decl.implements.as_ref().unwrap();
         let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
 
-        Name::interface_call(&implements.interface, &for_type_name, &decl.name)
+        Name::interface_call(&implements.interface, &for_type_name, decl.name.clone())
     }
 
-    pub fn virtual_call_adaptor(decl: &semantic::FunctionDecl) -> Option<FunctionDecl> {
-        decl.implements.as_ref()?;
+    pub fn virtual_call_adaptor(decl: &semantic::FunctionDecl,
+                                unit: &mut TranslationUnit)
+                                -> TranslationResult<FunctionDecl> {
+        assert!(decl.implements.is_some(), "virtual_call_adaptor should only be called on interface methods");
 
-        let mut adaptor = FunctionDecl::from(decl);
+        let mut adaptor = FunctionDecl::translate_decl(decl, unit)?;
         let real_self_type = adaptor.args[0].ctype.clone();
         let real_func = adaptor.name.clone();
 
@@ -173,18 +117,19 @@ impl FunctionDecl {
             ]
         });
 
-        Some(adaptor)
+        Ok(adaptor)
     }
 
     pub fn translate_name(decl: &semantic::FunctionDecl) -> Name {
         match decl.implements.as_ref() {
             Some(implements) => {
                 let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
+                let for_type_name = for_type_name;
 
                 Name::method(
                     &implements.interface,
                     &for_type_name,
-                    &decl.name,
+                    decl.name.clone(),
                 )
             }
 
@@ -193,6 +138,67 @@ impl FunctionDecl {
                 Name::user_symbol(&qualified)
             }
         }
+    }
+
+    pub fn translate_decl(pascal_decl: &semantic::FunctionDecl, unit: &mut TranslationUnit) -> TranslationResult<Self> {
+        let return_type = pascal_decl.return_type.as_ref()
+            .map(|return_type| CType::translate(return_type, pascal_decl.scope(), unit))
+            .unwrap_or_else(|| Ok(CType::Void))?;
+
+        let name = Self::translate_name(pascal_decl);
+
+        let calling_convention = CallingConvention::from_modifiers(&pascal_decl.modifiers);
+
+        let args = pascal_decl.args.iter()
+            .map(|arg_decl| {
+                let ctype_base = CType::translate(&arg_decl.decl_type, &arg_decl.scope(), unit)?;
+                let ctype = match &arg_decl.modifier {
+                    | None => ctype_base,
+                    | Some(FunctionArgModifier::Const)
+                    => ctype_base.into_const(),
+
+                    | Some(FunctionArgModifier::Var)
+                    | Some(FunctionArgModifier::Out)
+                    => ctype_base.into_ref(),
+                };
+
+                Ok(FunctionArg {
+                    name: Name::local(arg_decl.name.clone()),
+                    ctype,
+                })
+            })
+            .collect::<TranslationResult<_>>()?;
+
+        /* for function definitions, this field gets replaced later */
+        let extern_modifier = pascal_decl.modifiers.iter()
+            .filter_map(|func_mod| match func_mod {
+                FunctionModifier::External(extern_name) => Some(extern_name),
+                _ => None,
+            })
+            .next();
+
+        let definition = match extern_modifier {
+            Some(extern_name) => {
+                if extern_name.shared_lib.is_some() {
+                    unimplemented!("DLL imports");
+                }
+
+                /* if no `name` part is present in the extern decl, the unqualified
+                name of the function is used */
+                FunctionDefinition::External(extern_name.symbol_name.as_ref()
+                    .unwrap_or_else(|| &pascal_decl.name)
+                    .to_string())
+            }
+            None => FunctionDefinition::None,
+        };
+
+        Ok(FunctionDecl {
+            name,
+            calling_convention,
+            args,
+            return_type,
+            definition,
+        })
     }
 
     pub fn translate(function: &semantic::Function,
@@ -206,7 +212,7 @@ impl FunctionDecl {
             .cloned()
             .collect();
 
-        let decl = FunctionDecl::from(&function.decl);
+        let decl = FunctionDecl::translate_decl(&function.decl, unit)?;
 
         let mut body = Block::translate(&function.block, Some(&local_vars), unit)?;
 
@@ -240,9 +246,9 @@ impl FunctionDecl {
             })
             .collect();
 
-        for arg in rc_args.iter() {
-            body.statements.insert(0, rc_retain(Name::local(&arg.name)));
-            body.statements.push(rc_release(Name::local(&arg.name)));
+        for arg in &rc_args {
+            body.statements.insert(0, rc_retain(Name::local(arg.name.clone())));
+            body.statements.push(rc_release(Name::local(arg.name.clone())));
         }
 
         if !decl.return_type.is_void() {

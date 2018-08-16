@@ -37,6 +37,7 @@ impl Expression {
         let expr_context = SemanticContext {
             token: expr.context.token().clone(),
             scope: scope.clone(),
+            type_hint: expected_type.cloned(),
         };
 
         match &expr.value {
@@ -46,7 +47,7 @@ impl Expression {
             }
 
             ExpressionValue::Block(block) => {
-                let (block, scope) = Block::annotate(block, scope)?;
+                let (block, scope) = Block::annotate(block, &scope)?;
                 Ok((Expression::block(block), scope))
             }
 
@@ -87,14 +88,14 @@ impl Expression {
                     condition.as_ref(),
                     then_branch.as_ref(),
                     else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
-                    expr_context,
+                    &expr_context,
                 ),
 
             ExpressionValue::While { condition, body } =>
                 loops::annotate_while(condition, body, expr_context),
 
             ExpressionValue::ForLoop { from, to, body } =>
-                loops::annotate_for(from, to, body, expr_context),
+                loops::annotate_for(from, to, body, &expr_context),
 
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 ops::annotate_binary(lhs, *op, rhs, expr_context)
@@ -107,16 +108,16 @@ impl Expression {
                 };
 
                 let (rhs, scope) = Expression::annotate(rhs, expected_type.as_ref(), scope)?;
-                let op_expr = Expression::prefix_op(op.clone(), rhs, expr_context);
+                let op_expr = Expression::prefix_op(*op, rhs, expr_context);
                 Ok((op_expr, scope))
             }
 
             ExpressionValue::FunctionCall(call) => {
-                function::annotate_call(call, expr_context)
+                function::annotate_call(call, &expr_context)
             }
 
             ExpressionValue::TypeCast { target_type, from_value } =>
-                annotate_type_cast(target_type, from_value, expr_context),
+                annotate_type_cast(target_type, from_value, &expr_context),
 
             ExpressionValue::Member { of, name } => {
                 let (typed_of, scope) = Expression::annotate(of, expected_type, scope)?;
@@ -126,7 +127,7 @@ impl Expression {
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
-                arrays::annotate_element(of, index_expr, expr_context)
+                arrays::annotate_element(of, index_expr, &expr_context)
             }
 
             ExpressionValue::SetConstructor(_members) => {
@@ -139,7 +140,7 @@ impl Expression {
             }
 
             ExpressionValue::With { value, body } => {
-                bindings::annotate_with(value, body, expr_context)
+                bindings::annotate_with(value, body, &expr_context)
             }
 
             ExpressionValue::Raise(error) => {
@@ -159,10 +160,10 @@ impl Expression {
                 ops::unary_type(*op, rhs, &self.context),
 
             ExpressionValue::Constant(const_val) =>
-                Ok(Some(const_val.value_type())),
+                Ok(Some(const_val.value_type(self.context.type_hint()))),
 
-            ExpressionValue::LetBinding(binding) =>
-                bindings::let_type(binding, &self.context),
+            ExpressionValue::LetBinding(_) =>
+                Ok(None),
 
             ExpressionValue::FunctionCall(call) =>
                 function::call_type(call, &self.context),
@@ -174,7 +175,7 @@ impl Expression {
                 identifier_type(id, &self.context),
 
             ExpressionValue::Block(block) => {
-                for statement in block.statements.iter() {
+                for statement in &block.statements {
                     statement.expr_type()?;
                 }
 
@@ -210,7 +211,7 @@ impl Expression {
             }
 
             ExpressionValue::ObjectConstructor(obj) => {
-                for member in obj.members.iter() {
+                for member in &obj.members {
                     member.value.expr_type()?;
                 }
                 Ok(obj.object_type.clone())
@@ -234,8 +235,8 @@ impl Expression {
 
     pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
-            Some(Type::Class(name)) => {
-                let (_class_id, class_decl) = self.context.scope.get_class(&name)
+            Some(Type::Class(type_name)) => {
+                let (_class_id, class_decl) = self.context.scope.get_class(&type_name.name)
                     .expect("record must exist in scope of expression it's used in");
 
                 Ok(Some(class_decl))
@@ -288,7 +289,7 @@ impl Expression {
                     }
 
                     (_, rhs_val) => {
-                        let operands = vec![Some(rhs_val.value_type())];
+                        let operands = vec![Some(rhs_val.value_type(self.context.type_hint()))];
                         Err(SemanticError::invalid_operator(*op, operands, self.context.clone()))
                     }
                 }
@@ -320,14 +321,15 @@ impl Expression {
                     /* anything else is an error */
                     (lhs_val, _, rhs_val) => {
                         let operands = vec![
-                            Some(lhs_val.value_type()),
-                            Some(rhs_val.value_type()),
+                            Some(lhs_val.value_type(lhs.context.type_hint())),
+                            Some(rhs_val.value_type(rhs.context.type_hint())),
                         ];
-                        return Err(SemanticError::invalid_operator(
+
+                        Err(SemanticError::invalid_operator(
                             *op,
                             operands,
                             self.context.clone(),
-                        ));
+                        ))
                     }
                 }
             }
@@ -414,7 +416,7 @@ fn match_indirection(expr: &Expression,
 
 fn annotate_type_cast(target_type: &node::TypeName,
                       from_value: &syntax::Expression,
-                      context: SemanticContext)
+                      context: &SemanticContext)
                       -> SemanticResult<(Expression, Rc<Scope>)> {
     let target_type = target_type.resolve(context.scope.clone())?;
     let (from_value, scope) = Expression::annotate(
@@ -427,6 +429,9 @@ fn annotate_type_cast(target_type: &node::TypeName,
     let context = SemanticContext {
         token: context.token().clone(),
         scope: scope.clone(),
+
+        // cast expressions ignore contextual type hints for obvious reasons
+        type_hint: None,
     };
 
     let type_cast = Expression::type_cast(target_type, from_value, context);
@@ -462,8 +467,8 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
      class members are always private i.e. inaccessible outside the unit that
      the class is declared in */
     let (base_decl, private_members) = match &base_type {
-        Some(Type::Record(name)) => (of.scope().get_record(name), false),
-        Some(Type::Class(name)) => (of.scope().get_class(name), true),
+        Some(Type::Record(name)) => (of.scope().get_record_specialized(name), false),
+        Some(Type::Class(name)) => (of.scope().get_class_specialized(name), true),
         _ => (None, false),
     };
 
@@ -471,7 +476,7 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
         Some((record_id, record)) => {
             if private_members {
                 let from_ns = of.scope().unit_namespace();
-                if from_ns != record_id.parent().as_ref() {
+                if from_ns != record_id.name.parent().as_ref() {
                     return Err(SemanticError::private_member_access_forbidden(
                         record_id.clone(),
                         of.scope().unit_namespace().cloned(),

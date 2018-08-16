@@ -67,7 +67,7 @@ impl<C> fmt::Display for InterfaceDecl<C>
                 write!(f, ": {}", return_type)?;
             }
 
-            for modifier in sig.modifiers.iter() {
+            for modifier in &sig.modifiers {
                 write!(f, "; {}", modifier)?;
             }
 
@@ -168,6 +168,8 @@ pub struct RecordDecl<TContext>
     pub context: TContext,
     pub members: Vec<RecordMember<TContext>>,
     pub variant_part: Option<RecordVariantPart<TContext>>,
+
+    pub type_params: Vec<String>,
 }
 
 impl<TContext> RecordDecl<TContext>
@@ -180,13 +182,12 @@ impl<TContext> RecordDecl<TContext>
                 let variant_part = self.variant_part.as_ref()?;
 
                 let tag = self.variant_part.as_ref().map(|variant_part| &variant_part.tag)?;
-                match name == tag.name.as_str() {
-                    true => Some(tag),
-                    false => {
-                        variant_part.cases.iter()
-                            .flat_map(|case| case.members.iter())
-                            .find(|member| member.name.as_str() == name)
-                    }
+                if name == tag.name.as_str() {
+                    Some(tag)
+                } else {
+                    variant_part.cases.iter()
+                        .flat_map(|case| case.members.iter())
+                        .find(|member| member.name.as_str() == name)
                 }
             })
     }
@@ -214,7 +215,7 @@ impl<C> fmt::Display for RecordDecl<C>
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "type {} = record", self.name)?;
 
-        for member in self.members.iter() {
+        for member in &self.members {
             writeln!(f, "\t{}: {};", member.name, member.decl_type)?;
         }
 

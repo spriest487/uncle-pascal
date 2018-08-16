@@ -9,12 +9,12 @@ use semantic::*;
 pub type Block = node::Block<SemanticContext>;
 
 impl Block {
-    pub fn annotate(block: &syntax::Block, scope: Rc<Scope>) -> SemanticResult<(Self, Rc<Scope>)> {
+    pub fn annotate(block: &syntax::Block, scope: &Rc<Scope>) -> SemanticResult<(Self, Rc<Scope>)> {
         let mut statements = Vec::new();
 
         let mut inner_scope = scope.clone();
 
-        for src_statement in block.statements.iter() {
+        for src_statement in &block.statements {
             let (statement, new_scope) = Expression::annotate(src_statement, None, inner_scope)?;
             inner_scope = new_scope;
             statements.push(statement);
@@ -25,6 +25,9 @@ impl Block {
             context: SemanticContext {
                 scope: scope.clone(),
                 token: block.context.token().clone(),
+
+                // the only valid type for Block is currently none, so discard contextual type hint
+                type_hint: None,
             }
         };
 

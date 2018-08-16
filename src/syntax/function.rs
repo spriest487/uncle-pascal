@@ -34,7 +34,7 @@ impl Parse for FunctionDecl {
         let interface_impl = match implements_interface {
             Some(interface) => {
                 /* the implementation gets its type from the first argument */
-                if args.len() == 0 {
+                if args.is_empty() {
                     return Err(ParseError::MissingInterfaceArgs(context));
                 }
 
@@ -125,14 +125,14 @@ impl Parse for Function {
                     let vars = VarDecl::parse_var_section(tokens)?;
 
                     local_decls.extend(vars.into_iter()
-                        .map(|var| node::FunctionLocalDecl::Var(var)));
+                        .map(node::FunctionLocalDecl::Var));
                 }
 
                 Some(ref kw) if kw.is_keyword(keywords::Const) => {
                     let consts = ConstDecl::parse_const_section(tokens)?;
 
                     local_decls.extend(consts.into_iter()
-                        .map(|const_decl| node::FunctionLocalDecl::Const(const_decl)));
+                        .map(node::FunctionLocalDecl::Const));
                 }
 
                 _ => break,
@@ -289,8 +289,7 @@ impl FunctionDecl {
                     match tokens.look_ahead().match_one(tokens::Colon) {
                         Some(_colon) => {
                             tokens.advance(1);
-                            let decl_type = tokens.parse()?;
-                            decl_type
+                            tokens.parse()?
                         }
 
                         None => {

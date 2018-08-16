@@ -5,6 +5,7 @@ use node::{
 };
 use target_c::ast::{
     Name,
+    TranslationUnit,
     TranslationResult,
     Struct,
     StructMember,
@@ -33,23 +34,24 @@ pub struct Interface {
 }
 
 impl Interface {
-    pub fn translate(decl: &semantic::InterfaceDecl, id: usize)
+    pub fn translate(decl: &semantic::InterfaceDecl, unit: &mut TranslationUnit, id: usize)
                      -> TranslationResult<Self> {
         let vtable_members = decl.methods.iter()
             .map(|(method_name, method)| {
                 let func_type = CType::translate(
                     &Type::Function(Box::new(method.clone())),
                     decl.scope(),
-                );
+                    unit,
+                )?;
 
-                StructMember::Field(Variable {
-                    name: Name::member(&method_name),
+                Ok(StructMember::Field(Box::new(Variable {
+                    name: Name::member(method_name.clone()),
                     ctype: func_type,
                     default_value: None,
                     array_size: None,
-                })
+                })))
             })
-            .collect();
+            .collect::<TranslationResult<_>>()?;
 
         let pascal_name = decl.qualified_name();
 
@@ -63,11 +65,12 @@ impl Interface {
                     method_name,
                     method,
                     decl.scope(),
-                );
+                    unit,
+                )?;
 
-                (method_name.clone(), method_func)
+                Ok((method_name.clone(), method_func))
             })
-            .collect();
+            .collect::<TranslationResult<HashMap<_, _>>>()?;
 
         let vtable = Struct {
             name: Some(vtable_name),
@@ -88,18 +91,20 @@ impl Interface {
                            vtable_name: &Name,
                            method_name: &str,
                            method: &semantic::FunctionSignature,
-                           scope: &Scope) -> FunctionDecl {
-        let name = Name::abstract_call(&iface_pascal_name, &method_name);
+                           scope: &Scope,
+                           unit: &mut TranslationUnit)
+                           -> TranslationResult<FunctionDecl> {
+        let name = Name::abstract_call(&iface_pascal_name, method_name);
 
         let calling_convention = CallingConvention::from_modifiers(&method.modifiers);
 
         let return_type = method.return_type.as_ref()
-            .map(|return_ty| CType::translate(return_ty, scope))
-            .unwrap_or(CType::Void);
+            .map(|return_ty| CType::translate(return_ty, scope, unit))
+            .unwrap_or(Ok(CType::Void))?;
 
         let args = method.args.iter().enumerate()
             .map(|(arg_num, method_arg)| {
-                let base_type = CType::translate(&method_arg.decl_type, scope);
+                let base_type = CType::translate(&method_arg.decl_type, scope, unit)?;
                 let ctype = match method_arg.modifier {
                     | Some(FunctionArgModifier::Var)
                     | Some(FunctionArgModifier::Out)
@@ -110,12 +115,12 @@ impl Interface {
                     => base_type,
                 };
 
-                FunctionArg {
+                Ok(FunctionArg {
                     name: Name::local(format!("arg{}", arg_num)),
                     ctype,
-                }
+                })
             })
-            .collect();
+            .collect::<TranslationResult<_>>()?;
 
         let find_vtable = Expression::function_call(Name::internal_symbol("FindVTable"), vec![
             Expression::Name(Name::local("arg0")),
@@ -133,7 +138,7 @@ impl Interface {
         let invoke_vtable_impl = Expression::function_call(
             Expression::member(
                 Expression::unary_op("*", Name::local("vtable"), true),
-                method_name.clone(),
+                method_name,
             ),
             all_args,
         );
@@ -153,6 +158,6 @@ impl Interface {
             definition,
         };
 
-        decl
+        Ok(decl)
     }
 }

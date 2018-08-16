@@ -9,7 +9,10 @@ use consts::{
     EnumConstant,
     SetConstant,
 };
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct SetMemberGroup<TContext>
@@ -364,20 +367,33 @@ pub enum ConstExpression {
 }
 
 impl ConstExpression {
-    pub fn value_type(&self) -> Type {
+    pub fn value_type(&self, hint: Option<&Type>) -> Type {
         match self {
             ConstExpression::String(_) => {
-                Type::Class(Identifier::from("System.String"))
+                Type::Class(ParameterizedName::new_simple("System.String"))
             }
 
-            ConstExpression::Integer(int_const) =>
-                match int_const {
-                    IntConstant::Char(_) => Type::Byte,
-                    IntConstant::I32(_) => Type::Int32,
-                    IntConstant::U32(_) => Type::UInt32,
-                    IntConstant::I64(_) => Type::Int64,
-                    IntConstant::U64(_) => Type::UInt64,
-                },
+            ConstExpression::Integer(int_const) => {
+                match (hint, int_const) {
+                    | (Some(hint), _) if hint.is_numeric() && int_const.is_zero() => hint.clone(),
+                    | (Some(Type::Byte), _) if int_const.as_u8().is_some() => Type::Byte,
+                    | (Some(Type::Int32), _) if int_const.as_i32().is_some() => Type::Int32,
+                    | (Some(Type::UInt32), _) if int_const.as_u32().is_some() => Type::UInt32,
+                    | (Some(Type::Int64), _) if int_const.as_i64().is_some() => Type::Int64,
+                    | (Some(Type::UInt64), _) if int_const.as_u64().is_some() => Type::Int64,
+                    | (Some(Type::NativeInt), _) if int_const.as_isize().is_some() => Type::NativeInt,
+                    | (Some(Type::NativeUInt), _) if int_const.as_usize().is_some() => Type::NativeUInt,
+
+                    //invalid type hint, ignore it
+                    | (Some(_), _) => self.value_type(None),
+
+                    | (None, IntConstant::Char(_)) => Type::Byte,
+                    | (None, IntConstant::I32(_)) => Type::Int32,
+                    | (None, IntConstant::U32(_)) => Type::UInt32,
+                    | (None, IntConstant::I64(_)) => Type::Int64,
+                    | (None, IntConstant::U64(_)) => Type::UInt64,
+                }
+            }
 
             ConstExpression::Enum(enum_const) =>
                 Type::Enumeration(enum_const.enumeration.clone()),
@@ -466,9 +482,10 @@ impl<C> fmt::Display for ExpressionValue<C>
             }
 
             ExpressionValue::LetBinding(binding) => {
-                match binding.mutable {
-                    true => write!(f, "let var {} := {}", binding.name, binding.value),
-                    false => write!(f, "let {} = {}", binding.name, binding.value),
+                if binding.mutable {
+                    write!(f, "let var {} := {}", binding.name, binding.value)
+                } else {
+                    write!(f, "let {} = {}", binding.name, binding.value)
                 }
             }
 
@@ -494,7 +511,7 @@ impl<C> fmt::Display for ExpressionValue<C>
                 writeln!(f, "if {} then", condition)?;
                 writeln!(f, "\t{}", then_branch)?;
 
-                if let &Some(ref else_expr) = else_branch {
+                if let Some(else_expr) = else_branch {
                     writeln!(f, "else")?;
                     writeln!(f, "\t{}", else_expr)?;
                 }
@@ -577,19 +594,19 @@ impl<TContext> Expression<TContext>
                 target: Box::new(target),
                 args: args.into_iter().collect(),
             }),
-            context: context.into(),
+            context,
         }
     }
 
     pub fn method_call(interface_id: impl Into<Identifier>,
-                       func_name: impl ToString,
+                       func_name: impl Into<String>,
                        for_type: impl Into<TContext::Type>,
                        args: impl IntoIterator<Item=Self>,
                        context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::FunctionCall(FunctionCall::Method {
                 interface_id: interface_id.into(),
-                func_name: func_name.to_string(),
+                func_name: func_name.into(),
                 for_type: for_type.into(),
                 args: args.into_iter().collect(),
             }),
@@ -740,7 +757,7 @@ impl<TContext> Expression<TContext>
 
     pub fn is_any_member(&self) -> bool {
         match &self.value {
-            &ExpressionValue::Member { .. } => true,
+            ExpressionValue::Member { .. } => true,
             _ => false,
         }
     }
@@ -817,21 +834,21 @@ impl<TContext> Expression<TContext>
 
     pub fn is_function_call(&self) -> bool {
         match &self.value {
-            &ExpressionValue::FunctionCall { .. } => true,
+            ExpressionValue::FunctionCall { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_if(&self) -> bool {
         match &self.value {
-            &ExpressionValue::If { .. } => true,
+            ExpressionValue::If { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_let_binding(&self) -> bool {
         match &self.value {
-            &ExpressionValue::LetBinding { .. } => true,
+            ExpressionValue::LetBinding { .. } => true,
             _ => false
         }
     }
@@ -866,15 +883,15 @@ impl<TContext> Expression<TContext>
 
     pub fn is_any_literal_integer(&self) -> bool {
         match &self.value {
-            &ExpressionValue::Constant(ConstExpression::Integer(_)) => true,
+            ExpressionValue::Constant(ConstExpression::Integer(_)) => true,
             _ => false
         }
     }
 
     pub fn is_binary_op(&self, op: operators::Operator) -> bool {
         match &self.value {
-            &ExpressionValue::BinaryOperator { op: expr_op, .. } => {
-                expr_op == op
+            ExpressionValue::BinaryOperator { op: expr_op, .. } => {
+                *expr_op == op
             }
             _ => false
         }
@@ -882,8 +899,8 @@ impl<TContext> Expression<TContext>
 
     pub fn is_prefix_op(&self, op: operators::Operator) -> bool {
         match &self.value {
-            &ExpressionValue::PrefixOperator { op: expr_op, .. } => {
-                expr_op == op
+            ExpressionValue::PrefixOperator { op: expr_op, .. } => {
+                *expr_op == op
             }
             _ => false
         }
@@ -909,7 +926,7 @@ impl<TContext> Expression<TContext>
 
     pub fn is_block(&self) -> bool {
         match &self.value {
-            &ExpressionValue::Block(_) => true,
+            ExpressionValue::Block(_) => true,
             _ => false
         }
     }

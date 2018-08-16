@@ -26,7 +26,10 @@ use node::{
     ConstExpression,
     FunctionCall,
 };
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 use consts::{
     IntConstant,
     FloatConstant,
@@ -161,18 +164,18 @@ impl Expression {
         Self::unary_op("*", self, true)
     }
 
-    pub fn unary_op(op: impl ToString, operand: impl Into<Self>, before: bool) -> Self {
+    pub fn unary_op(op: impl Into<String>, operand: impl Into<Self>, before: bool) -> Self {
         Expression::UnaryOp {
-            op: op.to_string(),
+            op: op.into(),
             operand: Box::new(operand.into()),
             before,
         }
     }
 
-    pub fn binary_op(lhs: impl Into<Self>, op: impl ToString, rhs: impl Into<Self>) -> Self {
+    pub fn binary_op(lhs: impl Into<Self>, op: impl Into<String>, rhs: impl Into<Self>) -> Self {
         Expression::BinaryOp {
             lhs: Box::new(lhs.into()),
-            op: op.to_string(),
+            op: op.into(),
             rhs: Box::new(rhs.into()),
         }
     }
@@ -186,19 +189,19 @@ impl Expression {
     }
 
     pub fn local_decl(ctype: impl Into<CType>,
-                      name: impl ToString,
+                      name: impl Into<String>,
                       value: Option<Self>) -> Self {
         Expression::LocalDecl {
             ctype: ctype.into(),
             name: Name::local(name),
-            value: value.map(|val| Box::new(val)),
+            value: value.map(Box::new),
         }
     }
 
-    pub fn member(of: impl Into<Self>, name: impl ToString) -> Self {
+    pub fn member(of: impl Into<Self>, name: impl Into<String>) -> Self {
         Expression::Member {
             of: Box::new(of.into()),
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
@@ -233,8 +236,8 @@ impl Expression {
 
                 // create the let-bound local var name
                 let local_var = Variable {
-                    name: Name::local(&binding.name),
-                    ctype: CType::translate(&binding_type, binding.value.scope()),
+                    name: Name::local(binding.name.clone()),
+                    ctype: CType::translate(&binding_type, binding.value.scope(), unit)?,
                     default_value: None,
                     array_size: None,
                 };
@@ -247,18 +250,20 @@ impl Expression {
                 let context = semantic::SemanticContext::new(
                     context.token().clone(),
                     Rc::new(stmt.scope().clone()
-                        .with_binding(&binding.name, binding_type, BindingKind::Uninitialized)),
+                        .with_binding(&binding.name, binding_type.clone(), BindingKind::Uninitialized)),
+                    Some(binding_type),
                 );
                 let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
 
-                let binary_op = semantic::Expression::binary_op(binding_id_expr,
-                                                                operators::Assignment,
-                                                                *binding.value,
-                                                                context);
-                binary_op
+                semantic::Expression::binary_op(
+                    binding_id_expr,
+                    operators::Assignment,
+                    *binding.value,
+                    context,
+                )
             }
 
-            stmt @ _ => stmt,
+            stmt => stmt,
         };
 
         /* bind the results of any function calls which return RC objects to temporary bindings so we
@@ -309,13 +314,17 @@ impl Expression {
                     .with_binding(&name, decl_type, BindingKind::Internal)
             };
 
-            let binding_context = SemanticContext::new(subexpr.context.token().clone(), binding_scope);
+            let binding_context = SemanticContext::new(
+                subexpr.context.token().clone(),
+                binding_scope,
+                None,
+            );
 
             /* construct a new expression referring to the temp binding instead of the original
             expression by its name */
             let binding_expr = semantic::Expression::identifier(
                 Identifier::from(&name),
-                binding_context
+                binding_context,
             );
 
             /* store the original expression value for later when we write out the temp bindings */
@@ -373,7 +382,7 @@ impl Expression {
             }
         };
 
-        lines.extend(if bindings.len() > 0 {
+        lines.extend(if !bindings.is_empty() {
             //write a block around this statement for the scope of the temp bindings
             let mut bindings_block = Vec::new();
 
@@ -382,7 +391,7 @@ impl Expression {
                 let tmp_type = tmp_val.expr_type()
                     .expect("temporary rc values should always be valid types")
                     .expect("temporary rc values should never have no type");
-                let val_c_type = CType::translate(&tmp_type, tmp_val.scope());
+                let val_c_type = CType::translate(&tmp_type, tmp_val.scope(), unit)?;
 
                 let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
 
@@ -420,7 +429,11 @@ impl Expression {
                                 -> TranslationResult<Self> {
         match &expr.value {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let string_type = Some(Type::Class(Identifier::from("System.String")));
+                let string_type = Some(Type::Class(ParameterizedName {
+                    name: Identifier::from("System.String"),
+                    type_args: Vec::new(),
+                }));
+
                 if *op == operators::Plus
                     && lhs.expr_type().unwrap() == string_type
                     && rhs.expr_type().unwrap() == string_type {
@@ -519,7 +532,7 @@ impl Expression {
                                 let call_name = Name::interface_call(
                                     interface_id,
                                     &type_name,
-                                    func_name,
+                                    func_name.clone(),
                                 );
 
                                 Expression::Name(call_name)
@@ -532,7 +545,7 @@ impl Expression {
             }
 
             ExpressionValue::TypeCast { target_type, from_value } => {
-                let target_ctype = CType::translate(target_type, expr.scope());
+                let target_ctype = CType::translate(target_type, expr.scope(), unit)?;
                 let from_value = Expression::translate_expression(from_value, unit)?;
 
                 Ok(Expression::cast(target_ctype, from_value, CastKind::Static))
@@ -543,17 +556,17 @@ impl Expression {
                 let value = Expression::translate_expression(binding.value.as_ref(), unit)?;
 
                 Ok(Expression::local_decl(
-                    CType::translate(&value_type, expr.scope()),
+                    CType::translate(&value_type, expr.scope(), unit)?,
                     binding.name.clone(),
-                    Some(value)
+                    Some(value),
                 ))
             }
 
             ExpressionValue::Constant(const_expr) => {
                 match const_expr {
                     ConstExpression::Integer(i) => {
-                        let int_type = const_expr.value_type();
-                        let cast_target = CType::translate(&int_type, expr.scope());
+                        let int_type = const_expr.value_type(expr.context.type_hint());
+                        let cast_target = CType::translate(&int_type, expr.scope(), unit)?;
 
                         let cast_val = Expression::Raw(match i {
                             IntConstant::U32(i) => format!("0x{:x}", i),
@@ -567,10 +580,10 @@ impl Expression {
                     }
 
                     ConstExpression::Enum(e) => {
-                        let enum_name = Name::user_type(&e.enumeration);
+                        let enum_name = Name::user_type(
+                            &ParameterizedName::new_simple(e.enumeration.clone()));
                         Ok(Expression::cast(
                             CType::Named(enum_name),
-
                             /* todo: check for overflow if usize != u64 */
                             Expression::SizeLiteral(e.ordinal as usize),
                             CastKind::Static,
@@ -582,9 +595,9 @@ impl Expression {
                     }
 
                     ConstExpression::Float(f) => {
-                        let float_type = const_expr.value_type();
+                        let float_type = const_expr.value_type(expr.context.type_hint());
 
-                        let cast_target = CType::translate(&float_type, expr.scope());
+                        let cast_target = CType::translate(&float_type, expr.scope(), unit)?;
                         let cast_value = match f {
                             FloatConstant::F64(val) => format!("{:e}", val),
                         };
@@ -601,9 +614,10 @@ impl Expression {
                     }
 
                     ConstExpression::Boolean(val) => {
-                        match *val {
-                            true => Ok(Expression::True),
-                            false => Ok(Expression::False),
+                        if *val {
+                            Ok(Expression::True)
+                        } else {
+                            Ok(Expression::False)
                         }
                     }
 
@@ -649,7 +663,7 @@ impl Expression {
                         Expression::translate_expression(lhs, unit)?
                     }
                     ExpressionValue::LetBinding(binding) => {
-                        Expression::Name(Name::local(&binding.name))
+                        Expression::Name(Name::local(binding.name.clone()))
                     }
                     _ => panic!("for loop 'from' clause must be an assignment or a let binding")
                 };
@@ -676,15 +690,36 @@ impl Expression {
                     | BindingKind::Uninitialized
                     | BindingKind::Immutable
                     | BindingKind::Mutable
-                    => Ok(Expression::Name(Name::local(&scoped_sym.name().name))),
+                    => Ok(Expression::Name(Name::local(scoped_sym.name().name.clone()))),
 
                     | BindingKind::Global
                     | BindingKind::Function
                     => Ok(Expression::Name(Name::user_symbol(&scoped_sym.name()))),
 
                     | BindingKind::Internal
-                    => Ok(Expression::Name(Name::local_internal(&scoped_sym.name())))
+                    => Ok(Expression::Name(Name::local_internal(scoped_sym.name().name.clone())))
                 }
+            }
+
+            ExpressionValue::Member { of, name } => {
+                //panic!("of: {:?}, name: {}", of, name);
+                let mut of_type: Type = of.expr_type()
+                    .unwrap()
+                    .expect("target of member expression must exist");
+
+                /* accessing a member through a pointer automatically dereferences the pointer */
+                let mut of_expr = Expression::translate_expression(of, unit)?;
+                while let Type::Pointer(of_target) = of_type {
+                    of_expr = of_expr.deref();
+                    of_type = *of_target;
+                }
+
+                /* ...but pascal classes in the C++ backend have one extra level of indirection */
+                if of_type.is_class() {
+                    of_expr = of_expr.deref();
+                };
+
+                Ok(Expression::member(of_expr, name.clone()))
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
@@ -698,33 +733,6 @@ impl Expression {
                 Ok(Expression::Raw(out))
             }
 
-            ExpressionValue::Member { of, name } => {
-                //panic!("of: {:?}, name: {}", of, name);
-                let mut of_type: Type = of.expr_type()
-                    .unwrap()
-                    .expect("target of member expression must exist");
-
-                /* accessing a member through a pointer automatically dereferences the pointer */
-                let mut of_expr = Expression::translate_expression(of, unit)?;
-                loop {
-                    match of_type {
-                        Type::Pointer(of_target) => {
-                            of_expr = of_expr.deref();
-                            of_type = *of_target;
-                        }
-
-                        _ => break,
-                    }
-                }
-
-                /* ...but pascal classes in the C++ backend have one extra level of indirection */
-                if of_type.is_class() {
-                    of_expr = of_expr.deref();
-                };
-
-                Ok(Expression::member(of_expr, &name))
-            }
-
             ExpressionValue::Block(block) => {
                 let block = Block::translate(block, None, unit)?;
                 Ok(Expression::Block(block))
@@ -732,8 +740,12 @@ impl Expression {
 
             ExpressionValue::ObjectConstructor(obj) => {
                 let (obj_id, obj_decl) = match obj.object_type.as_ref() {
-                    | Some(Type::Class(id)) => expr.scope().get_class(id).unwrap(),
-                    | Some(Type::Record(id)) => expr.scope().get_record(id).unwrap(),
+                    | Some(Type::Class(name)) => {
+                        expr.scope().get_class_specialized(name).unwrap()
+                    }
+                    | Some(Type::Record(name)) => {
+                        expr.scope().get_record_specialized(name).unwrap()
+                    }
                     | _ => panic!("invalid type for object constructor: {:?}", obj.object_type),
                 };
 
@@ -798,7 +810,7 @@ impl Expression {
                 then_branch.write(out)?;
                 writeln!(out, "; }}")?;
 
-                if let &Some(ref else_expr) = else_branch {
+                if let Some(ref else_expr) = else_branch {
                     write!(out, " else {{")?;
                     else_expr.write(out)?;
                     writeln!(out, "; }}")?;
@@ -891,7 +903,7 @@ impl Expression {
             }
 
             Expression::Member { of, name } => {
-                write!(out, "{}.{}", of, Name::member(name))
+                write!(out, "{}.{}", of, Name::member(name.clone()))
             }
 
             Expression::Return(value) => {

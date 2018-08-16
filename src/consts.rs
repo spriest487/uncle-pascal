@@ -2,7 +2,7 @@ use cast;
 use std::{
     collections::HashSet,
     fmt::{self, Write},
-    ops::{Add, Sub },
+    ops::{Add, Sub},
     i32,
 };
 
@@ -40,14 +40,6 @@ impl IntConstant {
         }
     }
 
-    pub fn as_u8(&self) -> Option<u8> {
-        cast::u8(self.as_i128()).ok()
-    }
-
-    pub fn as_i32(&self) -> Option<i32> {
-        cast::u8(self.as_i32()).ok()
-    }
-
     pub fn parse_str(s: &str) -> Option<Self> {
         let s = s.trim();
         let first_char = s.chars().next()?;
@@ -62,7 +54,7 @@ impl IntConstant {
                 let val = u64::from_str_radix(&s[1..], 16).ok()?;
 
                 /* hex literals always produce unsigned values */
-                if val <= u32::max_value() as u64 {
+                if let Ok(val) = cast::u32(val) {
                     Some(IntConstant::U32(val as u32))
                 } else {
                     Some(IntConstant::U64(val))
@@ -85,21 +77,105 @@ impl IntConstant {
 
     pub fn as_i128(&self) -> i128 {
         match self {
-            IntConstant::Char(i) => *i as i128,
-            IntConstant::I32(i) => *i as i128,
-            IntConstant::U32(i) => *i as i128,
-            IntConstant::I64(i) => *i as i128,
-            IntConstant::U64(i) => *i as i128,
+            IntConstant::Char(i) => i128::from(*i),
+            IntConstant::I32(i) => i128::from(*i),
+            IntConstant::U32(i) => i128::from(*i),
+            IntConstant::I64(i) => i128::from(*i),
+            IntConstant::U64(i) => i128::from(*i),
+        }
+    }
+
+    pub fn as_u8(&self) -> Option<u8> {
+        match self {
+            IntConstant::Char(i) => Some(*i),
+            IntConstant::I32(i) => cast::u8(*i).ok(),
+            IntConstant::U32(i) => cast::u8(*i).ok(),
+            IntConstant::I64(i) => cast::u8(*i).ok(),
+            IntConstant::U64(i) => cast::u8(*i).ok(),
+        }
+    }
+
+    pub fn as_i32(&self) -> Option<i32> {
+        match self {
+            IntConstant::Char(i) => Some(i32::from(*i)),
+            IntConstant::I32(i) => Some(*i),
+            IntConstant::U32(i) => cast::i32(*i).ok(),
+            IntConstant::I64(i) => cast::i32(*i).ok(),
+            IntConstant::U64(i) => cast::i32(*i).ok(),
+        }
+    }
+
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            IntConstant::Char(i) => Some(u32::from(*i)),
+            IntConstant::I32(i) => cast::u32(*i).ok(),
+            IntConstant::U32(i) => Some(*i),
+            IntConstant::I64(i) => cast::u32(*i).ok(),
+            IntConstant::U64(i) => cast::u32(*i).ok(),
         }
     }
 
     pub fn as_i64(&self) -> Option<i64> {
         match self {
-            IntConstant::Char(i) => Some(*i as i64),
-            IntConstant::I32(i) => Some(*i as i64),
-            IntConstant::U32(i) => Some(*i as i64),
+            IntConstant::Char(i) => Some(i64::from(*i)),
+            IntConstant::I32(i) => Some(i64::from(*i)),
+            IntConstant::U32(i) => Some(i64::from(*i)),
             IntConstant::I64(i) => Some(*i),
-            IntConstant::U64(i) => cast::i64(i).ok(),
+            IntConstant::U64(i) => cast::i64(*i).ok(),
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            IntConstant::Char(i) => Some(u64::from(*i)),
+            IntConstant::I32(i) => Some(*i as u64),
+            IntConstant::U32(i) => Some(u64::from(*i)),
+            IntConstant::I64(i) => cast::u64(*i).ok(),
+            IntConstant::U64(i) => Some(*i),
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    pub fn as_usize(&self) -> Option<usize> {
+        match self {
+            IntConstant::Char(i) => Some(*i as usize),
+            IntConstant::I32(i) => Some(*i as usize),
+            IntConstant::U32(i) => Some(*i as usize),
+            IntConstant::I64(i) => cast::usize(*i).ok(),
+            IntConstant::U64(i) => Some(*i as usize),
+        }
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    pub fn as_usize(&self) -> Option<usize> {
+        match self {
+            IntConstant::Char(i) => Some(*i as usize),
+            IntConstant::I32(i) => cast::usize(*i).ok(),
+            IntConstant::U32(i) => Some(*i as usize),
+            IntConstant::I64(i) => cast::usize(*i).ok(),
+            IntConstant::U64(i) => cast::usize(*i).ok(),
+        }
+    }
+
+    #[cfg(target_pointer_width = "64")]
+    pub fn as_isize(&self) -> Option<isize> {
+        match self {
+            IntConstant::Char(i) => Some(*i as isize),
+            IntConstant::I32(i) => Some(*i as isize),
+            IntConstant::U32(i) => Some(*i as isize),
+            IntConstant::I64(i) => Some(*i as isize),
+            IntConstant::U64(i) => cast::isize(*i).ok(),
+        }
+    }
+
+    #[cfg(target_pointer_width = "32")]
+    pub fn as_isize(&self) -> Option<isize> {
+        match self {
+            IntConstant::Char(i) => Some(*i as isize),
+            IntConstant::I32(i) => Some(*i as isize),
+            IntConstant::U32(i) => cast::isize(*i).ok(),
+            IntConstant::I64(i) => cast::isize(*i).ok(),
+            IntConstant::U64(i) => cast::isize(*i).ok(),
         }
     }
 }
@@ -118,7 +194,10 @@ impl From<i32> for IntConstant {
 
 impl From<i64> for IntConstant {
     fn from(val: i64) -> Self {
-        if val >= i32::min_value() as i64 && val <= i32::max_value() as i64 {
+        let i32_min = i64::from(i32::min_value());
+        let i32_max = i64::from(i32::max_value());
+
+        if val >= i32_min && val <= i32_max {
             IntConstant::I32(val as i32)
         } else {
             IntConstant::I64(val)
@@ -128,9 +207,9 @@ impl From<i64> for IntConstant {
 
 impl From<u64> for IntConstant {
     fn from(val: u64) -> Self {
-        if val <= i32::max_value() as u64 {
+        if let Ok(val) = cast::i32(val) {
             IntConstant::I32(val as i32)
-        } else if val <= i64::max_value() as u64 {
+        } else if let Ok(val) = cast::i64(val) {
             IntConstant::I64(val as i64)
         } else {
             IntConstant::U64(val)
@@ -140,7 +219,7 @@ impl From<u64> for IntConstant {
 
 impl From<i128> for IntConstant {
     fn from(val: i128) -> Self {
-        if val > i64::max_value() as i128 {
+        if val > i128::from(i64::max_value()) {
             IntConstant::U64(val as u64)
         } else {
             IntConstant::from(val as i64)
@@ -170,9 +249,9 @@ pub enum FloatConstant {
 }
 
 impl FloatConstant {
-    pub fn as_f64(&self) -> f64 {
+    pub fn as_f64(self) -> f64 {
         match self {
-            FloatConstant::F64(val) => *val,
+            FloatConstant::F64(val) => val,
         }
     }
 
@@ -220,10 +299,10 @@ pub struct EnumConstant {
 }
 
 impl EnumConstant {
-    pub fn new(ordinal: u64, name: impl ToString, enumeration: impl Into<Identifier>) -> Self {
+    pub fn new(ordinal: u64, name: impl Into<String>, enumeration: impl Into<Identifier>) -> Self {
         EnumConstant {
             ordinal,
-            name: name.to_string(),
+            name: name.into(),
             enumeration: enumeration.into(),
         }
     }
@@ -244,7 +323,7 @@ pub struct SetConstant {
 impl SetConstant {
     pub fn new(included_values: impl IntoIterator<Item=impl Into<Identifier>>,
                set: impl Into<Identifier>)
-        -> Self {
+               -> Self {
         SetConstant {
             included_values: included_values.into_iter()
                 .map(|val| val.into())
@@ -259,7 +338,7 @@ impl fmt::Display for SetConstant {
         f.write_char('[')?;
 
         let mut first = true;
-        for val in self.included_values.iter() {
+        for val in &self.included_values {
             if !first {
                 f.write_str(", ")?;
                 first = false;

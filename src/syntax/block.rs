@@ -25,7 +25,7 @@ impl Block {
                 }
 
                 _ => {
-                    if statements.len() > 0 {
+                    if !statements.is_empty() {
                         tokens.match_or_endl(tokens::Semicolon)?;
                     }
 

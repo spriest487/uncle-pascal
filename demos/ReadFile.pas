@@ -12,7 +12,7 @@ const
 function ReadToEnd(input: IO.InStream): String
 begin
     result := ''
-    let readBuf = ByteBufferWithLength(NativeUInt(1024))
+    let readBuf = ByteBufferWithLength(1024)
 
     while input.Ok() do begin
         let readCount = input.Read(readBuf)

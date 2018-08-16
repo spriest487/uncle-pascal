@@ -30,8 +30,7 @@ impl TypeDecl {
                     -> SemanticResult<(Option<Self>, Rc<Scope>)> {
         match decl {
             node::TypeDecl::Record(record_decl) => {
-                let (record_decl, scope) = RecordDecl::annotate(record_decl, scope.clone())?;
-
+                let (record_decl, scope) = RecordDecl::annotate(record_decl, scope)?;
 
                 Ok((Some(node::TypeDecl::Record(record_decl)), scope))
             }
@@ -63,7 +62,10 @@ impl TypeDecl {
             }
 
             node::TypeDecl::Interface(interface_decl) => {
-                let (interface_decl, scope) = InterfaceDecl::annotate(interface_decl, scope)?;
+                let (interface_decl, scope) = InterfaceDecl::annotate(
+                    interface_decl,
+                    scope
+                )?;
 
                 Ok((Some(node::TypeDecl::Interface(interface_decl)), scope))
             }
@@ -76,6 +78,7 @@ impl RecordMember {
         let context = SemanticContext {
             token: member.context.token().clone(),
             scope: scope.clone(),
+            type_hint: None,
         };
 
         let decl_type = member.decl_type.resolve(scope)?;
@@ -92,18 +95,25 @@ impl RecordVariantPart {
     pub fn annotate(part: &syntax::RecordVariantPart, scope: Rc<Scope>) -> SemanticResult<Self> {
         let context = SemanticContext {
             token: part.context.token().clone(),
-            scope: scope.clone(),
+            scope,
+            type_hint: None,
         };
 
-        let tag = RecordMember::annotate(&part.tag, scope.clone())?;
+        let tag = RecordMember::annotate(&part.tag, context.scope.clone())?;
 
         let cases = part.cases.iter()
             .map(|case| {
                 let tag_type = Some(&tag.decl_type);
-                let (tag_value, _) = Expression::annotate(&case.tag_value, tag_type, scope.clone())?;
+                let (tag_value, _) = Expression::annotate(
+                    &case.tag_value,
+                    tag_type,
+                    context.scope.clone()
+                )?;
 
                 let members = case.members.iter()
-                    .map(|case_member| RecordMember::annotate(case_member, scope.clone()))
+                    .map(|case_member| {
+                        RecordMember::annotate(case_member, context.scope.clone())
+                    })
                     .collect::<SemanticResult<_>>()?;
 
                 Ok(RecordVariantCase {
@@ -127,9 +137,16 @@ impl RecordDecl {
         let context = SemanticContext {
             token: decl.context.token().clone(),
             scope: scope.clone(),
+            type_hint: None,
         };
 
-        if decl.members.len() == 0 && decl.variant_part.is_none() {
+        let scope = decl.type_params.iter().fold(scope, |scope, param_name| {
+            Rc::new(scope.as_ref()
+                .clone()
+                .with_type_alias(param_name, Type::Generic(param_name.clone())))
+        });
+
+        if decl.members.is_empty() && decl.variant_part.is_none() {
             return Err(SemanticError::empty_record(scope.namespace_qualify(&decl.name), context));
         }
 
@@ -150,6 +167,7 @@ impl RecordDecl {
             context,
             members,
             variant_part,
+            type_params: decl.type_params.clone(),
         };
 
         let scope = match record_decl.kind {
@@ -169,13 +187,49 @@ impl RecordDecl {
     pub fn qualified_name(&self) -> Identifier {
         self.scope().namespace_qualify(&self.name)
     }
+
+    pub fn specialize(self, type_args: &[Type]) -> RecordDecl {
+        assert_eq!(type_args.len(), self.type_params.len(),
+                   "invalid type args list {:?} passed to specialize() for {}",
+                    type_args,
+                    self.qualified_name());
+
+        let type_params = self.type_params;
+
+        let members = self.members.into_iter()
+            .map(|member| {
+                match member.decl_type {
+                    Type::Generic(param_name) => {
+                        let index = type_params.iter()
+                            .position(|param| param == &param_name)
+                            .expect("generic types in record body must exist in decl's type params");
+
+                        RecordMember {
+                            decl_type: type_args[index].clone(),
+                            ..member
+                        }
+                    }
+
+                    // not generic
+                    _ => member,
+                }
+            })
+            .collect();
+
+        RecordDecl {
+            type_params: Vec::new(),
+            members,
+            ..self
+        }
+    }
 }
 
 impl EnumerationDecl {
     pub fn annotate(enumeration: &syntax::EnumerationDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
         let context = SemanticContext {
-            scope: scope.clone(),
+            scope,
             token: enumeration.context.token().clone(),
+            type_hint: None,
         };
 
         Ok(EnumerationDecl {
@@ -194,13 +248,14 @@ impl SetDecl {
     pub fn annotate(set_decl: &syntax::SetDecl,
                     scope: Rc<Scope>) -> SemanticResult<Self> {
         let context = SemanticContext {
-            scope: scope.clone(),
+            scope,
             token: set_decl.context.token().clone(),
+            type_hint: None,
         };
 
         let enumeration = match &set_decl.enumeration {
             node::SetEnumeration::Named(enum_name) => {
-                let (enum_id, _) = scope.get_enumeration(enum_name)
+                let (enum_id, _) = context.scope.get_enumeration(enum_name)
                     .ok_or_else(|| {
                         SemanticError::unknown_type(enum_name.clone(), context.clone())
                     })?;
@@ -231,7 +286,7 @@ impl InterfaceDecl {
             None => return false,
         };
 
-        if scalar.name.namespace.len() > 0 || scalar.name.name != "Self" {
+        if !scalar.name.namespace.is_empty() || scalar.name.name != "Self" {
             return false;
         }
 
@@ -261,17 +316,18 @@ impl InterfaceDecl {
                     -> SemanticResult<(Self, Rc<Scope>)> {
         let context = SemanticContext {
             token: interface_decl.context.token().clone(),
-            scope: scope.clone(),
+            scope,
+            type_hint: None,
         };
 
         let mut methods = LinkedHashMap::new();
 
-        let full_name = scope.namespace_qualify(&interface_decl.name);
+        let full_name = context.scope.namespace_qualify(&interface_decl.name);
 
         for (method_name, parsed_sig) in interface_decl.methods.iter() {
             assert!(!methods.contains_key(method_name),
                     "interface should not contain duplicate methods");
-            assert!(parsed_sig.args.len() >= 1,
+            assert!(!parsed_sig.args.is_empty(),
                     "arg list length should be >= 1 for parsed interface methods");
 
             if !Self::valid_self_arg(&parsed_sig.args[0]) {
@@ -289,7 +345,7 @@ impl InterfaceDecl {
                 modifier: None,
             };
 
-            let mut func_sig = FunctionSignature::annotate(&untyped_sig, scope.clone())?;
+            let mut func_sig = FunctionSignature::annotate(&untyped_sig, &context.scope)?;
 
             /* add the proper type for `Self` */
             func_sig.args[0] = FunctionArgSignature {
@@ -300,16 +356,17 @@ impl InterfaceDecl {
             methods.insert(method_name.to_string(), func_sig);
         }
 
+        let new_scope = context.scope.as_ref().clone();
+
         let interface = InterfaceDecl {
             name: interface_decl.name.clone(),
             methods,
             context,
         };
 
-        let scope = Rc::new(scope.as_ref().clone()
-            .with_interface(interface.clone())?);
+        let new_scope = Rc::new(new_scope.with_interface(interface.clone())?);
 
-        Ok((interface, scope))
+        Ok((interface, new_scope))
     }
 
     pub fn scope(&self) -> &Scope {

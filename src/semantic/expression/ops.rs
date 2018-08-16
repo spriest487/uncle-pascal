@@ -9,11 +9,13 @@ use semantic::{
     Scope,
 };
 use node::{
-    Identifier,
     ExpressionValue,
     ConstExpression,
 };
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 use syntax;
 use super::expect_initialized;
 
@@ -24,26 +26,26 @@ pub fn unary_type(op: operators::Operator,
     let rhs_type = rhs.expr_type()?;
 
     let invalid_op_err = ||
-        Err(SemanticError::invalid_operator(op.clone(),
+        Err(SemanticError::invalid_operator(op,
                                             vec![rhs_type.clone()],
                                             context.clone()));
     match op {
         operators::Deref => match &rhs_type {
-            &Some(Type::Pointer(ref pointed_to)) =>
+            Some(Type::Pointer(pointed_to)) =>
                 Ok(Some(pointed_to.as_ref().clone())),
             _ =>
                 invalid_op_err(),
         },
         operators::AddressOf => match &rhs_type {
-            &Some(ref t) if t.valid_lhs_type() =>
+            Some(t) if t.valid_lhs_type() =>
                 Ok(Some(t.clone().pointer())),
             _ => invalid_op_err()
         }
 
         operators::Plus |
         operators::Minus => match &rhs_type {
-            &Some(Type::Int64) |
-            &Some(Type::Byte) =>
+            Some(Type::Int64) |
+            Some(Type::Byte) =>
                 Ok(rhs_type.clone()),
             _ =>
                 invalid_op_err(),
@@ -76,24 +78,25 @@ pub fn annotate_binary(lhs: &syntax::Expression,
                        rhs: &syntax::Expression,
                        context: SemanticContext)
                        -> SemanticResult<(Expression, Rc<Scope>)> {
-    /*
-        rhs is evaluated first, but we attempt to evaluate the lhs on its own first
-        to figure out the type inference for the rhs when the operation is an assignment.
-        on any kind of error we just give up and don't infer a type
-    */
-    let rhs_assigned_type = match op {
-        operators::Assignment => {
+    let expected_operand_type = match op {
+        /*
+            rhs is evaluated first, but we attempt to evaluate the lhs on its own first
+            to figure out the type inference for the rhs when the operation is an assignment.
+            on any kind of error we just give up and don't infer a type
+        */
+        | operators::Assignment => {
             Expression::annotate(lhs, None, context.scope.clone())
                 .map(|(lhs, _)| lhs.expr_type())
                 .unwrap_or(Ok(None))
                 .ok()
                 .unwrap_or(None)
         }
-        _ => None,
+
+        | _ => None,
     };
 
-    let (rhs, lhs_scope) = Expression::annotate(rhs, rhs_assigned_type.as_ref(), context.scope.clone())?;
-    let (lhs, scope_after) = Expression::annotate(lhs, None, lhs_scope)?;
+    let (rhs, lhs_scope) = Expression::annotate(rhs, expected_operand_type.as_ref(), context.scope.clone())?;
+    let (lhs, scope_after) = Expression::annotate(lhs, expected_operand_type.as_ref(), lhs_scope)?;
 
     expect_initialized(&rhs)?;
     if op != operators::Assignment {
@@ -108,7 +111,7 @@ pub fn annotate_binary(lhs: &syntax::Expression,
             scope_after,
     };
 
-    Ok((Expression::binary_op(lhs, op.clone(), rhs, context), scope_out))
+    Ok((Expression::binary_op(lhs, op, rhs, context), scope_out))
 }
 
 pub fn binary_type(lhs: &Expression,
@@ -207,9 +210,11 @@ pub fn expect_valid(operator: operators::Operator,
     /* special case for assigning or comparing constant 0 to any numeric type, 
     or assigning/comparing integers in the range 0...255 to bytes */
     match operator {
-        operators::Equals | operators::NotEquals | operators::Assignment => 
-            match (target, &actual_expr.value) {
-            (Some(lhs_type), ExpressionValue::Constant(ConstExpression::Integer(int))) =>
+        operators::Equals | operators::NotEquals | operators::Assignment =>
+            if let (
+                Some(lhs_type),
+                ExpressionValue::Constant(ConstExpression::Integer(int))
+            ) = (target, &actual_expr.value) {
                 if let Some(u8_val) = int.as_u8() {
                     let u8_to_byte = *lhs_type == Type::Byte;
                     let zero_to_num = u8_val == 0 && lhs_type.is_numeric();
@@ -217,10 +222,8 @@ pub fn expect_valid(operator: operators::Operator,
                     if u8_to_byte || zero_to_num {
                         return Ok(());
                     }
-                },
-
-            _ => {}
-        }
+                }
+            }
 
         | _ => {}
     }
@@ -235,7 +238,7 @@ pub fn expect_valid(operator: operators::Operator,
         _ => false
     };
 
-    let string_class = Type::Class(Identifier::from("System.String"));
+    let string_class = Type::Class(ParameterizedName::new_simple("System.String"));
 
     match (target, actual) {
         | (_, None)

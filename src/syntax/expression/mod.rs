@@ -30,7 +30,7 @@ struct OperatorToken {
 
 #[derive(Clone, Debug)]
 struct CompoundOperand {
-    expr: Expression,
+    expr: Box<Expression>,
     last_token: source::Token,
 }
 
@@ -44,7 +44,7 @@ impl CompoundExpressionPart {
     fn unwrap_operand(self) -> CompoundOperand {
         match self {
             CompoundExpressionPart::Operand(operand) => operand,
-            invalid @ _ => panic!("called unwrap_operand on {:?}", invalid)
+            invalid => panic!("called unwrap_operand on {:?}", invalid)
         }
     }
 }
@@ -86,11 +86,11 @@ fn match_operand_start() -> Matcher {
 }
 
 fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expression, ParseError> {
-    assert!(parts.len() > 0, "expression must not be empty");
+    assert!(!parts.is_empty(), "expression must not be empty");
 
     if parts.len() == 1 {
         return Ok(match parts.into_iter().next().unwrap() {
-            CompoundExpressionPart::Operand(CompoundOperand { expr, .. }) => expr,
+            CompoundExpressionPart::Operand(operand) => *operand.expr,
             CompoundExpressionPart::Operator(op_token) =>
                 panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
         });
@@ -101,8 +101,8 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expre
     let (lo_op_index, lo_op) = parts.iter()
         .enumerate()
         .filter_map(|(i, part)| match part {
-            &CompoundExpressionPart::Operand { .. } => None,
-            &CompoundExpressionPart::Operator(ref op) => Some((i, op.clone())),
+            CompoundExpressionPart::Operand { .. } => None,
+            CompoundExpressionPart::Operator(op) => Some((i, op.clone())),
         })
         .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
         .unwrap();
@@ -118,25 +118,25 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expre
 
             let rhs = parts_after_op[0].clone().unwrap_operand();
 
-            let op_expr = Expression::prefix_op(lo_op.op, rhs.expr, lo_op.token);
+            let op_expr = Expression::prefix_op(lo_op.op, *rhs.expr, lo_op.token);
 
             let merged_parts: Vec<_> = before_op.iter()
                 .cloned()
                 .chain(vec![CompoundExpressionPart::Operand(CompoundOperand {
-                    expr: op_expr,
+                    expr: Box::new(op_expr),
                     last_token: rhs.last_token,
                 })])
                 .chain(parts_after_op[1..].iter().cloned())
                 .collect();
 
-            assert!(merged_parts.len() > 0);
+            assert!(!merged_parts.is_empty());
             resolve_ops_by_precedence(merged_parts)
         }
 
         operators::Position::Binary => {
             let (before_op, after_op) = parts.split_at(lo_op_index);
 
-            if before_op.len() == 0 {
+            if before_op.is_empty() {
                 return Err(ParseError::EmptyOperand {
                     operator: lo_op.token,
                     before: true,
@@ -278,9 +278,10 @@ fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
     };
 
     /* `let` uses `= value`, `let var` uses `:= value` */
-    tokens.match_one(match mutable {
-        true => operators::Assignment,
-        false => operators::Equals,
+    tokens.match_one(if mutable {
+        operators::Assignment
+    } else {
+        operators::Equals
     })?;
 
     let value: Expression = tokens.parse()?;
@@ -289,7 +290,7 @@ fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
         name,
         value: Box::new(value),
         explicit_type,
-        mutable
+        mutable,
     };
 
     Ok(Expression::let_binding(binding, context))
@@ -355,7 +356,7 @@ fn match_statements_terminated_by(tokens: &mut TokenStream,
         }
 
         match tokens.look_ahead().next() {
-            Some(ref t) if terminator.is_match(t) => return Ok(None),
+            Some(ref t) if terminator.is_match(t) => Ok(None),
             _ => {
                 let expr = Expression::parse(tokens).map(Option::from)?;
                 tokens.match_or_endl(tokens::Semicolon)?;
@@ -419,7 +420,7 @@ fn parse_set_constructor(tokens: &mut TokenStream) -> ExpressionResult {
                 (*lhs, Some(*rhs))
             }
 
-            from_value @ _ => {
+            from_value => {
                 let from_expr = Expression {
                     context: group_expr.context,
                     value: from_value,
@@ -460,7 +461,7 @@ fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
 
     let members = tokens.match_repeating(|i, tokens: &mut TokenStream| {
         if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
-            return Ok(None)
+            return Ok(None);
         }
 
         if i > 0 {
@@ -469,7 +470,7 @@ fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
 
         /* the last member might be followed by a separator too, which is legal */
         if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
-            return Ok(None)
+            return Ok(None);
         }
 
         let name = tokens.match_one(Matcher::AnyIdentifier)?
@@ -515,14 +516,15 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             an operand, the next thing must be a member access, a list of arguments to
             the function the operand referred to, an array element access, or a binary
             operator connecting this operand to the next one */
-            let more = match self.last_was_operand {
-                false => self.parse_operand()?,
-                true => self.parse_operator()?,
+            let more = if !self.last_was_operand {
+                self.parse_operand()?
+            } else {
+                self.parse_operator()?
             };
 
             if !more {
                 break {
-                    if self.parts.len() == 0 {
+                    if self.parts.is_empty() {
                         let expected = match_expr_start();
                         return Err(match self.tokens.look_ahead().next() {
                             Some(unexpected) =>
@@ -625,7 +627,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
     fn add_operand(&mut self, expr: Expression) {
         let part = CompoundExpressionPart::Operand(CompoundOperand {
-            expr,
+            expr: Box::new(expr),
             last_token: self.tokens.context().clone(),
         });
 
@@ -635,7 +637,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     fn pop_operand(&mut self) -> Expression {
         match self.parts.pop() {
             Some(CompoundExpressionPart::Operand(operand)) => {
-                operand.expr
+                *operand.expr
             }
             _ => unreachable!("last should always exist and be an operand here"),
         }

@@ -163,7 +163,7 @@ impl DirectiveParser {
                 "FPC" => Mode::Fpc,
                 "UNCLE" => Mode::Uncle,
                 "DELPHI" => Mode::Delphi,
-                unrecognized @ _ => {
+                unrecognized => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;
                 }
@@ -257,7 +257,7 @@ impl Preprocessor {
         };
 
         for line_char in line.chars() {
-            if self.comment_block.len() > 0 {
+            if !self.comment_block.is_empty() {
                 // continuing an existing comment
                 self.comment_block.push(line_char);
 
@@ -293,15 +293,15 @@ impl Preprocessor {
     /* true when we haven't encountered any conditional compilation flags, or all conditional
     compilation flags in the current stack are true */
     fn condition_active(&self) -> bool {
-        self.condition_stack.iter().fold(true, |active, symbol_condition| {
-            active && symbol_condition.value
+        self.condition_stack.iter().all(|symbol_condition| {
+            symbol_condition.value
         })
     }
 
-    fn push_condition(&mut self, symbol: String, positive: bool) -> Result<(), PreprocessorError> {
+    fn push_condition(&mut self, symbol: &str, positive: bool) -> Result<(), PreprocessorError> {
         self.condition_stack.push(SymbolCondition {
             value: {
-                let has_symbol = self.opts.defined(&symbol);
+                let has_symbol = self.opts.defined(symbol);
                 if positive { has_symbol } else { !has_symbol }
             },
             start_line: self.current_line,
@@ -321,7 +321,7 @@ impl Preprocessor {
     }
 
     fn process_directive(&mut self) -> Result<(), PreprocessorError> {
-        if self.comment_block.chars().skip(1).next() != Some('$') {
+        if self.comment_block.chars().nth(1) != Some('$') {
             return Ok(());
         }
 
@@ -355,11 +355,11 @@ impl Preprocessor {
             }
 
             Some(Directive::IfDef(symbol)) => {
-                self.push_condition(symbol, true)
+                self.push_condition(&symbol, true)
             }
 
             Some(Directive::IfNDef(symbol)) => {
-                self.push_condition(symbol, false)
+                self.push_condition(&symbol, false)
             }
 
             Some(Directive::Else) => {
@@ -377,7 +377,7 @@ impl Preprocessor {
 
             Some(Directive::ElseIf(symbol)) => {
                 self.pop_condition()?;
-                self.push_condition(symbol, true)
+                self.push_condition(&symbol, true)
             }
 
             Some(Directive::EndIf) => {

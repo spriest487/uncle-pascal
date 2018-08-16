@@ -55,9 +55,10 @@ struct Lexer<'a> {
 
 fn find_ahead(s: &[char], predicate: impl Fn(char) -> bool) -> Option<usize> {
     s.iter().enumerate()
-        .filter_map(|(col, c)| match predicate(c.clone()) {
-            true => Some(col),
-            false => None,
+        .filter_map(|(col, c)| if predicate(*c) {
+            Some(col)
+        } else {
+            None
         })
         .next()
 }
@@ -154,23 +155,26 @@ impl<'a> Lexer<'a> {
 
     fn literal_int(&mut self, sigil: bool) -> TokenizeResult<source::Token> {
         let sigil_len = if sigil { 1 } else { 0 };
-        let start = self.col + sigil_len;
+        let num_start = self.col + sigil_len;
 
-        let next_non_num = find_ahead(&self.line[start..], |c| match c {
-            '0'...'9' => false,
-            _ => true,
-        });
+        let next_non_num = {
+            let from_start = &self.line[num_start..];
+            find_ahead(from_start, |c| match c {
+                '0'...'9' => false,
+                _ => true,
+            })
+        };
 
         if !sigil {
             if let Some(num_end) = next_non_num {
-                let end_char = self.line[start + num_end];
+                let end_char = self.line[num_start + num_end];
 
                 if end_char == 'E' || end_char == 'e' {
                     /* the only valid option for num + e is a float with an exponent*/
                     return self.literal_float();
                 }
 
-                if end_char == '.' && self.line.get(start + num_end + 1) != Some(&'.') {
+                if end_char == '.' && self.line.get(num_start + num_end + 1) != Some(&'.') {
                     /* a period might mean this is a decimal, but two periods means this
                     is an integer in a range */
                     return self.literal_float();
@@ -235,26 +239,22 @@ impl<'a> Lexer<'a> {
         let mut token_str = String::new();
 
         let mut next_col = self.col;
-        loop {
-            match self.line.get(next_col) {
-                Some(c) => match c {
-                    '0'...'9' => if token_str.len() > 0 {
-                        token_str.push(*c);
-                    } else {
-                        //can't start with a number
-                        return Err(self.illegal());
-                    }
-
-                    'a'...'z' |
-                    'A'...'Z' |
-                    '_' => {
-                        token_str.push(*c);
-                    }
-
-                    _ => break,
+        while let Some(c) = self.line.get(next_col) {
+            match c {
+                '0'...'9' => if !token_str.is_empty() {
+                    token_str.push(*c);
+                } else {
+                    //can't start with a number
+                    return Err(self.illegal());
                 }
 
-                None => break,
+                'a'...'z' |
+                'A'...'Z' |
+                '_' => {
+                    token_str.push(*c);
+                }
+
+                _ => break,
             }
 
             next_col += 1;
@@ -354,11 +354,8 @@ impl<'a> Tokenizer<'a> {
         };
 
         self.out_buf.clear();
-        loop {
-            match lexer.next_token()? {
-                Some(token) => self.out_buf.push(token),
-                None => break,
-            }
+        while let Some(token) = lexer.next_token()? {
+            self.out_buf.push(token);
         }
 
         Ok(&mut self.out_buf)
@@ -371,7 +368,7 @@ pub fn tokenize(file_name: &str,
                 source: &str,
                 opts: &CompileOptions) -> TokenizeResult<Vec<source::Token>> {
     let lines: Vec<_> = source.replace("\r\n", "\n")
-        .split("\n")
+        .split('\n')
         .map(str::to_owned)
         .collect();
 
@@ -383,7 +380,7 @@ pub fn tokenize(file_name: &str,
         tokens.extend(line_tokens.drain(0..));
     }
 
-    if tokens.len() == 0 {
+    if tokens.is_empty() {
         return Err(IllegalToken {
             file: file_name.to_string(),
             line: 0,

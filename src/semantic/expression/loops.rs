@@ -19,7 +19,7 @@ use super::{
 pub fn annotate_for(from: &syntax::Expression,
                     to: &syntax::Expression,
                     body: &syntax::Expression,
-                    context: SemanticContext)
+                    context: &SemanticContext)
                     -> SemanticResult<(Expression, Rc<Scope>)> {
     let (from_expr, to_scope) = Expression::annotate(from, None, context.scope.clone())?;
     let (to_expr, body_scope) = Expression::annotate(to, None, to_scope.clone())?;

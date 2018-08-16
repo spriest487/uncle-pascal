@@ -24,12 +24,13 @@ impl FunctionDecl {
                     -> SemanticResult<(Self, Rc<Scope>)> {
         let context = SemanticContext {
             token: function.context.token().clone(),
-            scope: scope.clone(),
+            scope,
+            type_hint: None,
         };
 
         let return_type = match &function.return_type {
             Some(func_return_type) => {
-                Some(func_return_type.resolve(scope.clone())?)
+                Some(func_return_type.resolve(context.scope.clone())?)
             }
 
             None => None
@@ -39,17 +40,18 @@ impl FunctionDecl {
             .map(|arg| {
                 let arg_context = SemanticContext {
                     token: context.token().clone(),
-                    scope: scope.clone(),
+                    scope: context.scope.clone(),
+                    type_hint: None,
                 };
 
-                let arg_type = arg.decl_type.resolve(scope.clone())?;
+                let arg_type = arg.decl_type.resolve(context.scope.clone())?;
 
                 let default_value = match arg.default_value.as_ref() {
                     Some(default_expr) => {
                         let (val, _) = Expression::annotate(
                             default_expr,
                             Some(&arg_type),
-                            scope.clone(),
+                            context.scope.clone(),
                         )?;
                         Some(val.into_const_expr(Some(&arg_type))?)
                     }
@@ -60,7 +62,7 @@ impl FunctionDecl {
                     name: arg.name.clone(),
                     decl_type: arg_type,
                     context: arg_context,
-                    modifier: arg.modifier.clone(),
+                    modifier: arg.modifier,
                     default_value,
                 })
             })
@@ -69,7 +71,7 @@ impl FunctionDecl {
         let implements = match function.implements.as_ref() {
             Some(implements) => {
                 /* check the interface exists */
-                let (interface_id, interface) = scope.get_interface(&implements.interface)
+                let (interface_id, interface) = context.scope.get_interface(&implements.interface)
                     .ok_or_else(|| {
                         SemanticError::unknown_type(implements.interface.clone(), context.clone())
                     })?;
@@ -95,12 +97,12 @@ impl FunctionDecl {
                         expected_sig,
                         actual_sig,
                         interface_id.clone(),
-                        &function.name,
-                        context,
+                        function.name.clone(),
+                        context.clone(),
                     ));
                 }
 
-                let for_type = implements.for_type.resolve(scope.clone())?;
+                let for_type = implements.for_type.resolve(context.scope.clone())?;
 
                 Some(InterfaceImplementation {
                     interface: interface_id.clone(),
@@ -111,6 +113,8 @@ impl FunctionDecl {
             None => None,
         };
 
+        let new_scope = context.scope.as_ref().clone();
+
         let func_decl = FunctionDecl {
             name: function.name.clone(),
             implements,
@@ -120,10 +124,9 @@ impl FunctionDecl {
             return_type,
         };
 
-        let scope = Rc::new(scope.as_ref().clone()
-            .with_function_decl(func_decl.clone())?);
+        let new_scope = Rc::new(new_scope.with_function_decl(func_decl.clone())?);
 
-        Ok((func_decl, scope))
+        Ok((func_decl, new_scope))
     }
 
     pub fn scope(&self) -> &Scope {
@@ -145,7 +148,7 @@ impl Function {
         let mut local_decls = Vec::new();
         let mut local_scope = Rc::new(Scope::new_local(scope.as_ref()));
 
-        for local_decl in function.local_decls.iter() {
+        for local_decl in &function.local_decls {
             match local_decl {
                 node::FunctionLocalDecl::Var(_) => {
                     /* local vars are skipped here, other decls can't refer to them
@@ -153,7 +156,7 @@ impl Function {
                 }
 
                 node::FunctionLocalDecl::Const(parsed_const) => {
-                    local_scope = ConstDecl::annotate(parsed_const, local_scope)?;
+                    local_scope = ConstDecl::annotate(parsed_const, &local_scope)?;
                 }
 
                 node::FunctionLocalDecl::NestedFunction(parsed_local_func) => {
@@ -167,7 +170,7 @@ impl Function {
         }
 
         /* include args in local scope before variables */
-        for arg in decl.args.iter() {
+        for arg in &decl.args {
             let arg_type: Type = arg.decl_type.clone();
             let binding_kind = match arg.modifier {
                 Some(FunctionArgModifier::Const) => BindingKind::Immutable,
@@ -186,7 +189,7 @@ impl Function {
         for parsed_local_var in function.local_vars() {
             let (local_var, new_scope) = VarDecl::annotate(
                 parsed_local_var,
-                local_scope.clone(),
+                &local_scope,
                 BindingKind::Uninitialized,
             )?;
 
@@ -207,10 +210,10 @@ impl Function {
 
         local_decls.extend(all_local_vars
             .into_iter()
-            .map(|var| node::FunctionLocalDecl::Var(var)));
+            .map(node::FunctionLocalDecl::Var));
 
         /* we don't keep anything from the local scope after the function */
-        let (block, after_block_scope) = Block::annotate(&function.block, local_scope)?;
+        let (block, after_block_scope) = Block::annotate(&function.block, &local_scope)?;
 
         let function = Function {
             decl,
@@ -279,7 +282,7 @@ impl FunctionArg {
 }
 
 impl FunctionSignature {
-    pub fn annotate(sig: &syntax::FunctionSignature, scope: Rc<Scope>) -> SemanticResult<Self> {
+    pub fn annotate(sig: &syntax::FunctionSignature, scope: &Rc<Scope>) -> SemanticResult<Self> {
         let return_type = match sig.return_type.as_ref() {
             Some(return_type) => Some(return_type.resolve(scope.clone())?),
             None => None,
@@ -288,7 +291,7 @@ impl FunctionSignature {
         let args = sig.args.iter()
             .map(|sig_arg| {
                 let decl_type = sig_arg.decl_type.resolve(scope.clone())?;
-                let modifier = sig_arg.modifier.clone();
+                let modifier = sig_arg.modifier;
 
                 Ok(FunctionArgSignature {
                     decl_type,

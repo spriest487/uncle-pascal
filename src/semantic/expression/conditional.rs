@@ -16,7 +16,7 @@ use syntax;
 pub fn annotate(condition: &syntax::Expression,
                 then_branch: &syntax::Expression,
                 else_branch: Option<&syntax::Expression>,
-                context: SemanticContext)
+                context: &SemanticContext)
                 -> SemanticResult<(Expression, Rc<Scope>)> {
     let cond_type = Some(Type::Boolean);
     let (cond_expr, scope_after_condition) = Expression::annotate(

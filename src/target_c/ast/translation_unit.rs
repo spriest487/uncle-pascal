@@ -2,6 +2,7 @@ use std::{
     fmt,
     rc::Rc,
 };
+use linked_hash_map::LinkedHashMap;
 use linked_hash_set::LinkedHashSet;
 use node::{
     Identifier,
@@ -22,18 +23,37 @@ use target_c::ast::{
     Variable,
     CType,
     CastKind,
+    Struct,
+    StructDecl,
+};
+use types::{
+    ParameterizedName,
+    Type,
 };
 use semantic::{
     self,
     Scope,
+    RecordDecl,
 };
+
+pub struct StructInstantiation {
+    pub struct_decl: StructDecl,
+    class: Option<Class>,
+    type_args: Vec<Type>,
+}
+
+struct StructType {
+    pascal_decl: RecordDecl,
+    instantiations: LinkedHashMap<Vec<Type>, StructInstantiation>,
+}
 
 pub struct TranslationUnit {
     decls: Vec<Declaration>,
 
-    classes: Vec<Class>,
     interfaces: Vec<Interface>,
     string_literals: LinkedHashSet<String>,
+
+    structs: LinkedHashMap<Identifier, StructType>,
 
     initialization: Vec<Block>,
     finalization: Vec<Block>,
@@ -52,17 +72,10 @@ impl TranslationUnit {
         &self.finalization
     }
 
-//    pub fn interfaces(&self) -> &[Interface] {
-//        &self.interfaces
-//    }
-
-    fn add_implementation_decl(&mut self,
-                               decl: &semantic::Implementation,
-                               unit_scope: Rc<Scope>)
-                               -> TranslationResult<()> {
+    fn add_implementation_decl(&mut self, decl: &semantic::Implementation) -> TranslationResult<()> {
         match decl {
             Implementation::Decl(decl) => {
-                self.add_decl(decl, unit_scope)?;
+                self.add_decl(decl)?;
             }
             _ => {
                 let impl_decl = Declaration::translate_impl(decl, self)?;
@@ -99,7 +112,7 @@ impl TranslationUnit {
 
             let var = Variable {
                 name,
-                ctype: CType::Struct(Name::user_type(&Identifier::from("System.String")))
+                ctype: CType::Struct(Name::user_type(&ParameterizedName::new_simple("System.String")))
                     .into_pointer(),
                 default_value: None,
                 array_size: None,
@@ -115,7 +128,7 @@ impl TranslationUnit {
         for (index, literal) in self.string_literals.iter().enumerate() {
             let name = Self::string_literal_index_to_name(index);
 
-            let byte_type = CType::Named(Name::user_type(&Identifier::from("System.Byte")));
+            let byte_type = CType::Named(Name::user_type(&ParameterizedName::new_simple("System.Byte")));
 
             /* StringFromBytes takes ^Byte currently, so we have to do two casts (one into
              `const Byte*`, the next into `Byte*` */
@@ -149,26 +162,58 @@ impl TranslationUnit {
         Ok(())
     }
 
-    fn add_class(&mut self, class_record: &semantic::RecordDecl, unit_scope: Rc<Scope>) -> TranslationResult<()> {
-        let class = Class::translate(class_record, unit_scope)?;
-        self.classes.push(class);
+    pub fn declare_struct(&mut self, decl: RecordDecl) {
+        self.structs.entry(decl.qualified_name()).or_insert_with(|| {
+            StructType {
+                pascal_decl: decl,
+                instantiations: LinkedHashMap::new(),
+            }
+        });
+    }
+
+    fn instantiate_struct_type(&mut self,
+                               name: &ParameterizedName)
+                               -> TranslationResult<()> {
+        let pascal_decl = self.structs[&name.name].pascal_decl
+            .clone()
+            .specialize(&name.type_args);
+        let decl = Struct::translate(&pascal_decl, &name.type_args, self)?;
+
+        self.structs[&name.name].instantiations.insert(
+            name.type_args.clone(),
+            StructInstantiation {
+                struct_decl: decl,
+
+                /* leave this blank for now, we'll analyze which structs belong to classes in a
+                second pass */
+                class: None,
+
+                type_args: name.type_args.clone(),
+            },
+        );
+
         Ok(())
     }
 
-    fn add_decl(&mut self, decl: &semantic::UnitDecl, unit_scope: Rc<Scope>) -> TranslationResult<()> {
+    pub fn struct_instantiations(&self, base_name: &Identifier) -> impl Iterator<Item=&StructInstantiation> {
+        self.structs[base_name].instantiations.values()
+    }
+
+    pub fn struct_decl(&mut self, name: &ParameterizedName) -> TranslationResult<&StructDecl> {
+        if !self.structs[&name.name].instantiations.contains_key(&name.type_args) {
+            self.instantiate_struct_type(name)?;
+        }
+
+        Ok(&self.structs[&name.name]
+            .instantiations[&name.type_args]
+            .struct_decl)
+    }
+
+    fn add_decl(&mut self, decl: &semantic::UnitDecl) -> TranslationResult<()> {
         let c_decls = Declaration::translate_decl(decl, self)?;
 
-        match decl {
-            UnitDecl::Type(TypeDecl::Record(class_record))
-            if class_record.kind == RecordKind::Class => {
-                self.add_class(class_record, unit_scope)?;
-            }
-
-            UnitDecl::Type(TypeDecl::Interface(interface_decl)) => {
-                self.add_interface(interface_decl)?;
-            }
-
-            _ => {}
+        if let UnitDecl::Type(TypeDecl::Interface(interface_decl)) = decl {
+            self.add_interface(interface_decl)?;
         }
 
         self.decls.extend(c_decls);
@@ -178,7 +223,7 @@ impl TranslationUnit {
     fn add_interface(&mut self, iface_decl: &semantic::InterfaceDecl) -> TranslationResult<()> {
         let next_id = self.interfaces.len();
 
-        let interface = Interface::translate(iface_decl, next_id)?;
+        let interface = Interface::translate(iface_decl, self, next_id)?;
         self.interfaces.push(interface);
         Ok(())
     }
@@ -186,11 +231,11 @@ impl TranslationUnit {
     fn add_unit(&mut self, module_unit: &semantic::ModuleUnit) -> TranslationResult<()> {
         let unit = &module_unit.unit;
 
-        for decl in unit.interface.iter() {
-            self.add_decl(decl, module_unit.global_scope.clone())?;
+        for decl in &unit.interface {
+            self.add_decl(decl)?;
         }
 
-        for decl in unit.implementation.iter() {
+        for decl in &unit.implementation {
             let new_impls = Declaration::translate_impl(decl, self)?;
             self.decls.extend(new_impls);
         }
@@ -208,25 +253,30 @@ impl TranslationUnit {
         Ok(())
     }
 
-    pub fn from_program(module: &semantic::ProgramModule) -> TranslationResult<Self> {
-        let mut result = TranslationUnit {
+    pub fn new() -> Self {
+        TranslationUnit {
             decls: Vec::new(),
 
-            classes: Vec::new(),
             interfaces: Vec::new(),
 
             string_literals: LinkedHashSet::new(),
 
             initialization: Vec::new(),
             finalization: Vec::new(),
-        };
 
-        for (_, unit) in module.units.iter() {
+            structs: LinkedHashMap::new(),
+        }
+    }
+
+    pub fn translate_program(module: &semantic::ProgramModule) -> TranslationResult<Self> {
+        let mut result = TranslationUnit::new();
+
+        for (_, unit) in &module.units {
             result.add_unit(unit)?;
         }
 
-        for impl_decl in module.program.decls.iter() {
-            result.add_implementation_decl(impl_decl, module.global_scope.clone())?;
+        for impl_decl in &module.program.decls {
+            result.add_implementation_decl(impl_decl)?;
         }
 
         /*
@@ -234,9 +284,7 @@ impl TranslationUnit {
             before all decls are finished processing, and classes can be declared before
             the interfaces they implement
         */
-        for class in result.classes.iter_mut() {
-            class.update_vtables(&result.interfaces);
-        }
+        result.discover_classes(&module.global_scope)?;
 
         let global_vars: Vec<_> = module.units.values()
             .flat_map(|module_unit| module_unit.unit.vars())
@@ -268,9 +316,9 @@ impl TranslationUnit {
                         Expression::unary_op("&", name.clone(), true),
                         Expression::function_call(
                             Name::internal_symbol("SizeOf"),
-                            vec![Expression::Name(name)]
+                            vec![Expression::Name(name)],
                         )
-                    ]
+                    ],
                 )
             })
             .collect()));
@@ -292,18 +340,47 @@ impl TranslationUnit {
         Ok(result)
     }
 
+    fn classes(&self) -> impl Iterator<Item=&Class> {
+        self.structs.values()
+            .flat_map(|struct_type| struct_type.instantiations.values())
+            .filter_map(|struct_type| struct_type.class.as_ref())
+    }
+
+    fn discover_classes(&mut self, scope: &Rc<Scope>) -> TranslationResult<()> {
+        let class_structs = self.structs.iter_mut()
+            .filter_map(|(_, class_struct)| match class_struct.pascal_decl.kind {
+                RecordKind::Class => Some(class_struct),
+                RecordKind::Record => None,
+            });
+
+        for class_struct in class_structs {
+            for (_, mut instantiation) in &mut class_struct.instantiations {
+                let mut class = Class::translate(
+                    &class_struct.pascal_decl,
+                    &instantiation.type_args,
+                    &scope.clone(),
+                )?;
+                class.update_vtables(&self.interfaces);
+
+                instantiation.class = Some(class);
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn declare_vtables(&self, out: &mut fmt::Write) -> fmt::Result {
-        for iface in self.interfaces.iter() {
+        for iface in &self.interfaces {
             iface.vtable.write_def(out)?;
         }
 
-        for iface in self.interfaces.iter() {
+        for iface in &self.interfaces {
             for method in iface.methods.values() {
                 method.write_impl(out)?;
             }
         }
 
-        for class in self.classes.iter() {
+        for class in self.classes() {
             class.write_decl(out)?;
         }
 
@@ -318,7 +395,7 @@ impl TranslationUnit {
     }
 
     pub fn write_internal_class_init(&self, out: &mut fmt::Write) -> fmt::Result {
-        if let Some(string_class) = self.classes.iter().find(|c| c.is_internal()) {
+        if let Some(string_class) = self.classes().find(|c| c.is_internal()) {
             string_class.write_init(out)?;
         }
 
@@ -326,7 +403,7 @@ impl TranslationUnit {
     }
 
     pub fn write_class_init(&self, out: &mut fmt::Write) -> fmt::Result {
-        for class in self.classes.iter().filter(|c| !c.is_internal()) {
+        for class in self.classes().filter(|c| !c.is_internal()) {
             class.write_init(out)?;
         }
 

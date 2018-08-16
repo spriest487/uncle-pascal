@@ -11,6 +11,7 @@ fn fake_context() -> SemanticContext {
     SemanticContext {
         token: source::Token::new(token, location),
         scope: Rc::new(Scope::new_root()),
+        type_hint: None,
     }
 }
 
@@ -22,7 +23,7 @@ fn resolves_consts_in_referenced_units() {
         .with_const("CONST1", const_val.clone(), None);
 
     let scope = Scope::new_unit("NS2")
-        .reference(&imported, UnitReferenceKind::Namespaced);
+        .reference(&imported, &UnitReferenceKind::Namespaced);
 
     let expected_id = Identifier::from("NS1.CONST1");
     match scope.get_const(&expected_id) {
@@ -43,6 +44,7 @@ fn add_record_adds_record_in_local_ns() {
         name: "World".to_string(),
         kind: RecordKind::Record,
         variant_part: None,
+        type_params: vec![],
     };
 
     let scope = Scope::new_unit("Hello")

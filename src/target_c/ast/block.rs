@@ -26,15 +26,15 @@ impl Block {
                      unit: &mut TranslationUnit)
                      -> TranslationResult<Self> {
         let mut statements = Vec::new();
-        for stmt in block.statements.iter() {
+        for stmt in &block.statements {
             statements.extend(Expression::translate_statement(stmt, unit)?);
         }
 
         // release all rc vars bound locally in this block
-        for stmt in block.statements.iter() {
+        for stmt in &block.statements {
             if let ExpressionValue::LetBinding(binding) = &stmt.value {
                 if binding.value.expr_type().unwrap().unwrap().is_class() {
-                    statements.push(rc_release(Name::local(&binding.name)));
+                    statements.push(rc_release(Name::local(binding.name.clone())));
                 }
             }
         }
@@ -42,7 +42,7 @@ impl Block {
         if let Some(locals) = locals {
             // declare local vars
             let mut init = Vec::new();
-            for decl in locals.iter() {
+            for decl in locals {
                 init.push(Variable::translate(decl, true, unit)?
                     .decl_statement())
             }
@@ -51,7 +51,7 @@ impl Block {
 
             // release all rc local vars for this block
             for decl in locals.iter().rev().filter(|decl| decl.decl_type.is_class()) {
-                statements.push(rc_release(Name::local(&decl.name)));
+                statements.push(rc_release(Name::local(decl.name.clone())));
             }
         }
 
@@ -62,7 +62,7 @@ impl Block {
 
     pub fn write(&self, out: &mut fmt::Write) -> fmt::Result {
         writeln!(out, "{{")?;
-        for stmt in self.statements.iter() {
+        for stmt in &self.statements {
             stmt.write(out)?;
             writeln!(out, ";")?;
 

@@ -18,7 +18,7 @@ impl Unit {
         match decl {
             node::UnitDecl::Type(parsed_type_decl) => {
                 let (type_decl, scope) = TypeDecl::annotate(parsed_type_decl, scope)?;
-                let decl = type_decl.map(|decl| node::UnitDecl::Type(decl));
+                let decl = type_decl.map(node::UnitDecl::Type);
 
                 Ok((decl, scope))
             }
@@ -31,7 +31,7 @@ impl Unit {
 
             node::UnitDecl::Var(parsed_var) => {
                 let global_binding_kind = BindingKind::Global;
-                let (var, new_scope) = VarDecl::annotate(parsed_var, scope, global_binding_kind)?;
+                let (var, new_scope) = VarDecl::annotate(parsed_var, &scope, global_binding_kind)?;
 
                 Ok((Some(node::UnitDecl::Var(var)), new_scope))
             }
@@ -39,7 +39,7 @@ impl Unit {
             node::UnitDecl::Const(parsed_const) => {
                 /* consts exist in scope but we no longer need to store the declarations - they
                 don't get emitted in the backend */
-                scope = ConstDecl::annotate(parsed_const, scope)?;
+                scope = ConstDecl::annotate(parsed_const, &scope)?;
 
                 Ok((None, scope))
             }
@@ -94,7 +94,7 @@ impl Unit {
     }
 
     pub fn annotate_uses<'a>(uses: impl IntoIterator<Item=&'a syntax::UnitReference>,
-                             scope: Rc<Scope>)
+                             scope: &Rc<Scope>)
                              -> Vec<UnitReference> {
         uses.into_iter()
             .map(|unit_ref| {
@@ -105,6 +105,7 @@ impl Unit {
                         imported from the uses section, so we don't need to do anything here */
                         scope: scope.clone(),
                         token: unit_ref.context.token().clone(),
+                        type_hint: None,
                     },
                     kind: unit_ref.kind.clone(),
                 }
@@ -121,7 +122,7 @@ impl Unit {
 
             match available_units.get(&ref_name) {
                 Some(ref_scope) => {
-                    scope = scope.reference(ref_scope.global_scope.as_ref(), unit_ref.kind.clone());
+                    scope = scope.reference(ref_scope.global_scope.as_ref(), &unit_ref.kind);
                 }
                 None => return Err(SemanticError::unresolved_unit(
                     ref_name.clone(),
@@ -137,7 +138,7 @@ impl Unit {
                     available_units: &LinkedHashMap<String, ModuleUnit>)
                     -> Result<(Self, Rc<Scope>), SemanticError> {
         let unit_scope = Scope::new_unit(unit.name.as_str());
-        let uses = Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope.clone()));
+        let uses = Self::annotate_uses(unit.uses.iter(), &Rc::new(unit_scope.clone()));
 
         let unit_scope = Self::reference_uses(unit_scope, &uses, available_units)?;
 
@@ -151,11 +152,11 @@ impl Unit {
             interface_scope.clone())?;
 
         let initialization = match unit.initialization.as_ref() {
-            Some(block) => Some(Block::annotate(block, impl_scope.clone())?.0),
+            Some(block) => Some(Block::annotate(block, &impl_scope.clone())?.0),
             None => None,
         };
         let finalization = match unit.finalization.as_ref() {
-            Some(block) => Some(Block::annotate(block, impl_scope.clone())?.0),
+            Some(block) => Some(Block::annotate(block, &impl_scope.clone())?.0),
             None => None,
         };
 

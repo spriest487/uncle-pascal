@@ -68,7 +68,7 @@ impl<TContext> FunctionDecl<TContext>
             args: self.args.iter()
                 .map(|decl| FunctionArgSignature {
                     decl_type: decl.decl_type.clone(),
-                    modifier: decl.modifier.clone(),
+                    modifier: decl.modifier,
                 })
                 .collect(),
             return_type: self.return_type.clone(),
@@ -136,7 +136,7 @@ impl<C> fmt::Display for Function<C>
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.decl)?;
 
-        for decl in self.local_decls.iter() {
+        for decl in &self.local_decls {
             writeln!(f, "{}", decl)?;
         }
 

@@ -1,6 +1,10 @@
 use std::fmt;
 
 use node::Identifier;
+use types::{
+    ParameterizedName,
+    Type,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 enum NameKind {
@@ -27,45 +31,45 @@ pub struct Name {
 }
 
 impl Name {
-    pub fn user_type(qualified_name: &Identifier) -> Self {
+    pub fn user_type(qualified_name: &ParameterizedName) -> Self {
         Name {
             kind: NameKind::UserType,
-            name: identifier_to_c(qualified_name),
+            name: parameterized_id_to_c(qualified_name),
         }
     }
 
     pub fn method(interface: &Identifier,
-                          for_type: &Identifier,
-                          name: impl ToString)
-                          -> Self {
+                  for_type: &ParameterizedName,
+                  name: impl Into<String>)
+                  -> Self {
         Name {
             kind: NameKind::Method {
-                interface: Box::new(Name::user_type(interface)),
+                interface: Box::new(Name::user_type(&ParameterizedName::new_simple(interface.clone()))),
                 for_type: Box::new(Name::user_type(for_type)),
             },
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
     pub fn interface_call(interface: &Identifier,
-                          for_type: &Identifier,
-                          name: impl ToString)
+                          for_type: &ParameterizedName,
+                          name: impl Into<String>)
                           -> Self {
         Name {
             kind: NameKind::InterfaceCall {
-                interface: Box::new(Name::user_type(interface)),
+                interface: Box::new(Name::user_type(&ParameterizedName::new_simple(interface.clone()))),
                 for_type: Box::new(Name::user_type(for_type)),
             },
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
-    pub fn abstract_call(interface: &Identifier, name: impl ToString) -> Self {
+    pub fn abstract_call(interface: &Identifier, name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::AbstractCall {
-                interface: Box::new(Name::user_type(interface))
+                interface: Box::new(Name::user_type(&ParameterizedName::new_simple(interface.clone())))
             },
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
@@ -76,19 +80,19 @@ impl Name {
         }
     }
 
-    pub fn class_interfaces(class_name: &Identifier) -> Self {
+    pub fn class_interfaces(class_name: &ParameterizedName) -> Self {
         Name {
             kind: NameKind::ClassInterfaces,
-            name: identifier_to_c(class_name),
+            name: parameterized_id_to_c(class_name),
         }
     }
 
-    pub fn class_vtable(class_name: &Identifier, interface_name: &Identifier) -> Self {
+    pub fn class_vtable(class_name: &ParameterizedName, interface_name: &Identifier) -> Self {
         Name {
             kind: NameKind::ClassVTable {
-                interface: Box::new(Name::user_type(interface_name))
+                interface: Box::new(Name::user_type(&ParameterizedName::new_simple(interface_name.clone())))
             },
-            name: identifier_to_c(class_name),
+            name: parameterized_id_to_c(class_name),
         }
     }
 
@@ -99,45 +103,45 @@ impl Name {
         }
     }
 
-    pub fn internal_type(name: impl ToString) -> Self {
+    pub fn internal_type(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::InternalType,
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
-    pub fn internal_symbol(name: impl ToString) -> Self {
+    pub fn internal_symbol(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::InternalSymbol,
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
-    pub fn local(name: impl ToString) -> Self {
+    pub fn local(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::Local,
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
-    pub fn local_internal(name: impl ToString) -> Self {
+    pub fn local_internal(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::LocalInternal,
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 
-    pub fn constructor(type_id: &Identifier) -> Self {
+    pub fn constructor(type_id: &ParameterizedName) -> Self {
         Name {
             kind: NameKind::Constructor,
-            name: identifier_to_c(type_id),
+            name: parameterized_id_to_c(type_id),
         }
     }
 
-    pub fn member(name: impl ToString) -> Self {
+    pub fn member(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::Member,
-            name: name.to_string(),
+            name: name.into(),
         }
     }
 }
@@ -193,4 +197,53 @@ fn identifier_to_c(id: &Identifier) -> String {
     parts.push(id.name.replace('_', "_OF_"));
 
     parts.join("_")
+}
+
+fn name_for_type_param(ty: &Type) -> String {
+    match ty {
+        | Type::Nil
+        | Type::UntypedRef
+        | Type::Generic(_)
+        => unreachable!("illegal generic type arg"),
+
+        | Type::Function(_)
+        | Type::Array(_)
+        | Type::DynamicArray(_)
+        => unimplemented!("type param name for {} (c++ backend)", ty),
+
+        | Type::Record(type_id)
+        => format!("Record_{}", parameterized_id_to_c(type_id)),
+        | Type::Class(type_id)
+        => format!("Class_{}", parameterized_id_to_c(type_id)),
+
+        | Type::AnyImplementation(iface) => format!("AnyImpl_{}", identifier_to_c(iface)),
+
+
+        | Type::Pointer(pointed_to)
+        => format!("PointerTo_{}", name_for_type_param(pointed_to.as_ref())),
+
+        | Type::RawPointer => "Pointer".to_string(),
+        | Type::Boolean => "Boolean".to_string(),
+        | Type::Byte => "Byte".to_string(),
+        | Type::UInt32 => "UInt32".to_string(),
+        | Type::Int32 => "Int32".to_string(),
+        | Type::UInt64 => "UInt64".to_string(),
+        | Type::Int64 => "Int64".to_string(),
+        | Type::NativeUInt => "NativeUInt".to_string(),
+        | Type::NativeInt => "NativeInt".to_string(),
+        | Type::Float64 => "Float64".to_string(),
+
+        | Type::Set(type_id)
+        | Type::Enumeration(type_id)
+        => identifier_to_c(type_id)
+    }
+}
+
+fn parameterized_id_to_c(id: &ParameterizedName) -> String {
+    let mut name = identifier_to_c(&id.name);
+    for (i, arg) in id.type_args.iter().enumerate() {
+        name.push_str(&format!("_TP{}_{}", i, name_for_type_param(arg)));
+    }
+
+    name
 }

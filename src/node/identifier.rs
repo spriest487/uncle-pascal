@@ -20,7 +20,7 @@ impl<'a> From<&'a str> for Identifier {
             .map(|part: &str| part.to_owned())
             .collect();
 
-        let name = parts.pop().unwrap_or(String::new());
+        let name = parts.pop().unwrap_or_else(String::new);
 
         Identifier {
             namespace: parts,
@@ -37,7 +37,7 @@ impl<'a> From<&'a String> for Identifier {
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.namespace.len() > 0 {
+        if !self.namespace.is_empty() {
             write!(f, "{}.", self.namespace.join("."))?;
         }
         write!(f, "{}", self.name)
@@ -61,10 +61,10 @@ impl FromIterator<String> for Identifier {
         let mut last_part = String::new();
         let mut ns = Vec::new();
 
-        let identifier = loop {
+        loop {
             match parts.next() {
                 Some(next_part) => {
-                    if last_part.len() > 0 {
+                    if !last_part.is_empty() {
                         ns.push(last_part);
                     }
                     last_part = next_part;
@@ -75,9 +75,7 @@ impl FromIterator<String> for Identifier {
                     namespace: ns.clone(),
                 }
             }
-        };
-
-        identifier
+        }
     }
 }
 
@@ -116,7 +114,7 @@ impl Parse for Identifier {
             }
         }
 
-        assert!(parts.len() > 0, "must have at least one part in identifier after parsing");
+        assert!(!parts.is_empty(), "must have at least one part in identifier after parsing");
 
         let name = parts.pop().unwrap();
         Ok(Identifier {
@@ -151,7 +149,7 @@ impl Identifier {
     }
 
     pub fn parent(&self) -> Option<Identifier> {
-        if self.namespace.len() > 0 {
+        if !self.namespace.is_empty() {
             let parent_namespace = self.namespace[0..self.namespace.len() - 1]
                 .to_vec();
 
@@ -184,7 +182,7 @@ impl Identifier {
     }
 
     pub fn tail(&self) -> Option<Identifier> {
-        if self.namespace.len() > 0 {
+        if !self.namespace.is_empty() {
             Some(Identifier {
                 name: self.name.clone(),
                 namespace: self.namespace.iter().cloned().skip(1).collect(),

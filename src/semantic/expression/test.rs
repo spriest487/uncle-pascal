@@ -72,7 +72,7 @@ fn func_call_on_obj_uses_ufcs_from_target_ns() {
 
     let expr_scope = Scope::new_unit("FromNs")
         .with_binding("a", Type::Int64, BindingKind::Mutable)
-        .reference(&system_scope, UnitReferenceKind::Namespaced);
+        .reference(&system_scope, &UnitReferenceKind::Namespaced);
 
     let (expr, _) = parse_expr(r"a.TestAdd(1)", Rc::new(expr_scope));
 

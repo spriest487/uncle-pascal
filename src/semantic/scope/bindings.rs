@@ -26,7 +26,7 @@ impl fmt::Display for BindingKind {
 }
 
 impl BindingKind {
-    pub fn mutable(&self) -> bool {
+    pub fn mutable(self) -> bool {
         match self {
             | BindingKind::Uninitialized
             | BindingKind::Global
@@ -40,7 +40,7 @@ impl BindingKind {
         }
     }
 
-    pub fn initialized(&self) -> bool {
+    pub fn initialized(self) -> bool {
         match self {
             | BindingKind::Immutable
             | BindingKind::Mutable

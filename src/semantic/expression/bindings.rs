@@ -30,19 +30,20 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
         None => None
     };
 
+    let expected_type = explicit_type.as_ref()
+        .or_else(|| context.type_hint())
+        .cloned();
+
     let (value, mut binding_scope) = Expression::annotate(
         &parsed_binding.value,
-        explicit_type.as_ref(),
+        expected_type.as_ref(),
         context.scope.clone(),
     )?;
 
     expect_initialized(&value)?;
 
-    let bound_type = match explicit_type.as_ref() {
-        Some(expected_type) => {
-            expect_valid(operators::Assignment, Some(expected_type), &value, &context)?;
-            expected_type.clone()
-        }
+    let bound_type = match expected_type {
+        Some(expected) => expected,
         None => {
             //infer from value expression (must be something!)
             value.expr_type()?.ok_or_else(|| {
@@ -51,9 +52,12 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
         }
     };
 
-    let binding_kind = match parsed_binding.mutable {
-        true => BindingKind::Mutable,
-        false => BindingKind::Immutable,
+    expect_valid(operators::Assignment, Some(&bound_type), &value, &context)?;
+
+    let binding_kind = if parsed_binding.mutable {
+        BindingKind::Mutable
+    } else {
+        BindingKind::Immutable
     };
 
     binding_scope = Rc::new(binding_scope.as_ref()
@@ -72,7 +76,7 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
 
 pub fn annotate_with(parsed_value: &syntax::Expression,
                      body: &syntax::Expression,
-                     context: SemanticContext)
+                     context: &SemanticContext)
                      -> SemanticResult<(Expression, Rc<Scope>)> {
     let (value, scope) = Expression::annotate(parsed_value, None, context.scope.clone())?;
     let value_type: Option<Type> = value.expr_type()?;
@@ -81,11 +85,11 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
     let (_record_id, record) = value_type.as_ref()
         .and_then(|ty| {
             let class_id = ty.unwrap_class()?;
-            scope.get_class(class_id)
+            scope.get_class_specialized(class_id)
         })
         .or_else(|| {
             let record_id = value_type.as_ref()?.unwrap_record()?;
-            scope.get_record(record_id)
+            scope.get_record_specialized(record_id)
         })
         .ok_or_else(|| {
             SemanticError::invalid_with_type(value_type, context.clone())
@@ -122,19 +126,6 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
     });
 
     Expression::annotate(&body_block, None, scope.clone())
-}
-
-pub fn let_type(binding: &LetBinding, context: &SemanticContext) -> SemanticResult<Option<Type>> {
-    super::expect_initialized(&binding.value)?;
-
-    let value_type = binding.value.expr_type()?
-        .ok_or_else(|| SemanticError::type_not_assignable(None, context.clone()))?;
-
-    if !value_type.valid_lhs_type() {
-        return Err(SemanticError::type_not_assignable(None, context.clone()));
-    }
-
-    Ok(None)
 }
 
 pub fn with_type(value: &Expression, body: &Expression) -> SemanticResult<Option<Type>> {

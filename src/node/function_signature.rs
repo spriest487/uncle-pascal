@@ -7,13 +7,13 @@ use node::{
     Context,
 };
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct ExternalName {
     pub shared_lib: Option<String>,
     pub symbol_name: Option<String>,
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub enum FunctionModifier {
     Cdecl,
     Stdcall,
@@ -41,7 +41,7 @@ impl fmt::Display for FunctionModifier {
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionArgSignature<TType> {
     pub decl_type: TType,
     pub modifier: Option<FunctionArgModifier>,
@@ -71,7 +71,7 @@ impl<TContext> From<FunctionArg<TContext>> for FunctionArgSignature<TContext::Ty
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct FunctionSignature<TType> {
     pub return_type: Option<TType>,
     pub args: Vec<FunctionArgSignature<TType>>,
@@ -84,7 +84,7 @@ impl<TType> fmt::Display for FunctionSignature<TType>
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         f.write_str("function")?;
 
-        if self.args.len() > 0 {
+        if !self.args.is_empty() {
             f.write_char('(')?;
             f.write_str(&self.args.iter()
                 .map(|arg_type| {
@@ -99,7 +99,7 @@ impl<TType> fmt::Display for FunctionSignature<TType>
             write!(f, ": {}", return_type)?;
         }
 
-        for modifier in self.modifiers.iter() {
+        for modifier in &self.modifiers {
             write!(f, "; {}", modifier)?;
         }
 

@@ -1,14 +1,18 @@
 use std::fmt;
 
-use types::Type;
+use types::{
+    Type,
+    ParameterizedName,
+};
 use semantic::Scope;
 use node::{
     FunctionArgModifier,
-    Identifier,
 };
 use target_c::ast::{
     CallingConvention,
+    TranslationUnit,
     Name,
+    TranslationResult,
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -40,76 +44,88 @@ impl From<Name> for CType {
 }
 
 impl CType {
-    pub fn translate(pascal_type: &Type, scope: &Scope) -> Self {
+    pub fn translate(pascal_type: &Type, scope: &Scope, unit: &mut TranslationUnit) -> TranslationResult<Self> {
         match pascal_type {
             Type::Nil => unreachable!("nil type (c++ backend)"),
-            Type::Byte => CType::from(Name::user_type(&Identifier::from("System.Byte"))),
-            Type::Int32 => CType::from(Name::user_type(&Identifier::from("System.Int32"))),
-            Type::UInt32 => CType::from(Name::user_type(&Identifier::from("System.UInt32"))),
-            Type::Int64 => CType::from(Name::user_type(&Identifier::from("System.Int64"))),
-            Type::UInt64 => CType::from(Name::user_type(&Identifier::from("System.UInt64"))),
-            Type::NativeInt => CType::from(Name::user_type(&Identifier::from("System.NativeInt"))),
-            Type::NativeUInt => CType::from(Name::user_type(&Identifier::from("System.NativeUInt"))),
-            Type::Float64 => CType::from(Name::user_type(&Identifier::from("System.Float64"))),
-            Type::Boolean => CType::from(Name::user_type(&Identifier::from("System.Boolean"))),
-            Type::RawPointer => CType::from(Name::user_type(&Identifier::from("System.Pointer"))),
-            Type::UntypedRef => CType::Void,
+            Type::Generic(_) => unreachable!("unresolved generic type {} (c++ backend)", pascal_type),
+
+            Type::Byte => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Byte")))),
+            Type::Int32 => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Int32")))),
+            Type::UInt32 => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.UInt32")))),
+            Type::Int64 => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Int64")))),
+            Type::UInt64 => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.UInt64")))),
+            Type::NativeInt => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.NativeInt")))),
+            Type::NativeUInt => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.NativeUInt")))),
+            Type::Float64 => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Float64")))),
+            Type::Boolean => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Boolean")))),
+            Type::RawPointer => Ok(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Pointer")))),
+            Type::UntypedRef => Ok(CType::Void),
             Type::Pointer(target) => {
-                CType::translate(target.as_ref(), scope)
-                    .into_pointer()
+                CType::translate(target.as_ref(), scope, unit)
+                    .map(|ty| ty.into_pointer())
             }
             Type::Function(sig) => {
                 let return_type = sig.return_type.as_ref()
-                    .map(|ty| CType::translate(ty, scope))
-                    .unwrap_or_else(|| CType::Void);
+                    .map(|ty| CType::translate(ty, scope, unit))
+                    .unwrap_or_else(|| Ok(CType::Void))?;
+
                 let arg_types = sig.args.iter()
                     .map(|arg| {
-                        let arg_type_base = CType::translate(&arg.decl_type, scope);
+                        let arg_type_base = CType::translate(&arg.decl_type, scope, unit)?;
+
                         match arg.modifier {
                             | Some(FunctionArgModifier::Var)
                             | Some(FunctionArgModifier::Out) =>
-                                CType::Ref(Box::new(arg_type_base)),
+                                Ok(CType::Ref(Box::new(arg_type_base))),
                             | _ =>
-                                arg_type_base
+                                Ok(arg_type_base)
                         }
                     })
-                    .collect::<Vec<_>>();
+                    .collect::<TranslationResult<Vec<_>>>()?;
 
-                CType::Function {
+                Ok(CType::Function {
                     return_type: Box::new(return_type),
                     arg_types,
                     calling_convention: CallingConvention::from_modifiers(&sig.modifiers),
-                }
+                })
             }
             Type::Class(name) => {
-                let (class_id, _) = scope.get_class(name)
+                let (name, _) = scope.get_class_specialized(name)
                     .expect("referenced class must exist");
 
-                CType::Struct(Name::user_type(&class_id))
-                    .into_pointer()
+                let decl = unit.struct_decl(&name)?;
+
+                Ok(CType::Struct(decl.decl.name.clone()
+                    .expect("class structs are always named"))
+                    .into_pointer())
             }
             Type::Record(name) => {
-                let (record_id, _) = scope.get_record(name)
+                let (name, _) = scope.get_record_specialized(name)
                     .expect("referenced record must exist");
 
-                CType::Struct(Name::user_type(&record_id))
+                let decl = unit.struct_decl(&name)?;
+
+                Ok(CType::Struct(decl.decl.name.clone()
+                    .expect("record structs are always named")))
             }
 
             Type::Enumeration(enum_id) => {
                 let (enum_id, _) = scope.get_enumeration(enum_id)
                     .expect("referenced enumeration must exist");
-                CType::Named(Name::user_type(&enum_id))
+
+                Ok(CType::Named(Name::user_type(&ParameterizedName::new_simple(enum_id.clone()))))
             }
 
             Type::AnyImplementation(_interface_id) => {
-                CType::Struct(Name::internal_type("Object"))
-                    .into_pointer()
+                Ok(CType::Struct(Name::internal_type("Object"))
+                    .into_pointer())
             }
 
             Type::Set(set_id) => {
                 let (set_id, _) = scope.get_set(set_id)
                     .expect("referenced set must exist");
-                CType::Named(Name::user_type(&set_id))
+
+                Ok(CType::Named(Name::user_type(&ParameterizedName::new_simple(set_id.clone()))))
             }
 
             Type::DynamicArray(_dynamic_array_type) => {
@@ -117,7 +133,7 @@ impl CType {
             }
 
             Type::Array(array) => {
-                let element_type = CType::translate(array.element.as_ref(), scope);
+                let element_type = CType::translate(array.element.as_ref(), scope, unit)?;
 
                 let mut base_array = CArray {
                     element: Box::new(element_type),
@@ -135,7 +151,7 @@ impl CType {
                         }
                     });
 
-                CType::Array(multidim_array)
+                Ok(CType::Array(multidim_array))
             }
         }
     }
@@ -199,10 +215,10 @@ impl fmt::Display for CType {
 
                 match calling_convention {
                     CallingConvention::Cdecl => write!(f, "System_Internal_Func_Cdecl<{}, {}>",
-                           return_type, args_list),
+                                                       return_type, args_list),
 
                     CallingConvention::Stdcall => write!(f, "System_Internal_Func_Stdcall<{}, {}>",
-                                                       return_type, args_list),
+                                                         return_type, args_list),
                 }
             }
         }
@@ -230,7 +246,8 @@ mod test {
         });
 
         let scope = Scope::new_root();
-        let c_type = CType::translate(&pas_type, &scope);
+        let c_type = CType::translate(&pas_type, &scope, &mut TranslationUnit::new())
+            .unwrap();
 
         let expected = CType::Array(CArray {
             count: 2,
@@ -238,7 +255,7 @@ mod test {
                 count: 3,
                 element: Box::new(CType::Array(CArray {
                     count: 4,
-                    element: Box::new(CType::from(Name::internal_type("Int32"))),
+                    element: Box::new(CType::from(Name::user_type(&ParameterizedName::new_simple("System.Int32")))),
                 })),
             })),
         });

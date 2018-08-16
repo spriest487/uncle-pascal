@@ -139,7 +139,7 @@ impl<C> fmt::Display for Program<C>
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "program {};", self.name)?;
 
-        if self.uses.len() > 0 {
+        if !self.uses.is_empty() {
             writeln!(f, "uses")?;
 
             for (i, unit_ref) in self.uses.iter().enumerate() {
@@ -152,7 +152,7 @@ impl<C> fmt::Display for Program<C>
             }
         }
 
-        for decl in self.decls.iter() {
+        for decl in &self.decls {
             match decl {
                 Implementation::Function(func) =>
                     writeln!(f, "{}", func)?,
@@ -220,20 +220,20 @@ impl<C> fmt::Display for Unit<C>
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "unit {};", self.name)?;
 
-        if self.uses.len() > 0 {
-            writeln!(f, "uses {};", self.uses
-                .iter().map(|u| format!("{}", u))
+        if !self.uses.is_empty() {
+            writeln!(f, "uses {};", self.uses.iter()
+                .map(|u| format!("{}", u))
                 .collect::<Vec<_>>()
                 .join(", "))?;
         }
 
         writeln!(f, "interface")?;
-        for decl in self.interface.iter() {
+        for decl in &self.interface {
             writeln!(f, "{}", decl)?;
         }
 
         writeln!(f, "implementation")?;
-        for decl in self.interface.iter() {
+        for decl in &self.interface {
             writeln!(f, "{}", decl)?;
         }
 

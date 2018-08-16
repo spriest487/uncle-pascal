@@ -15,7 +15,7 @@ use operators;
 pub type ConstDecl = node::ConstDecl<SemanticContext>;
 
 impl ConstDecl {
-    pub fn annotate(decl: &syntax::ConstDecl, scope: Rc<Scope>) -> SemanticResult<(Rc<Scope>)> {
+    pub fn annotate(decl: &syntax::ConstDecl, scope: &Rc<Scope>) -> SemanticResult<(Rc<Scope>)> {
         /* todo: explicit type isn't saved in scope yet, we still use the const default type */
         let explicit_type = match decl.decl_type.as_ref() {
             Some(explicit_type_name) => {
@@ -36,7 +36,7 @@ impl ConstDecl {
         };
 
         let result_scope = scope.as_ref().clone()
-            .with_const(&decl.name, const_value, explicit_type);
+            .with_const(&decl.name, const_value, explicit_type.as_ref());
 
         Ok(Rc::new(result_scope))
     }

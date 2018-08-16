@@ -1,19 +1,20 @@
-use std::fmt;
-
-use node::{
-    Identifier,
+use std::fmt::{
+    self,
+    Write,
 };
+
+use node::Identifier;
 use semantic::{
     IndexRange,
     FunctionSignature,
 };
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct DynamicArrayType {
     pub element: Box<Type>,
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub struct ArrayType {
     pub element: Box<Type>,
     pub first_dim: IndexRange,
@@ -45,7 +46,7 @@ impl ArrayType {
     }
 }
 
-#[derive(PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
     Byte,
@@ -61,19 +62,21 @@ pub enum Type {
     Float64,
     UntypedRef,
     Function(Box<FunctionSignature>),
-    Record(Identifier),
-    Class(Identifier),
+    Record(ParameterizedName),
+    Class(ParameterizedName),
     Array(ArrayType),
     DynamicArray(DynamicArrayType),
     Enumeration(Identifier),
     Set(Identifier),
     AnyImplementation(Identifier),
+    Generic(String),
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nil => write!(f, "nil"),
+            Type::Generic(name) => write!(f, "{}", name),
             Type::Byte => write!(f, "System.Byte"),
             Type::Boolean => write!(f, "System.Boolean"),
             Type::Int32 => write!(f, "System.Int32"),
@@ -89,14 +92,14 @@ impl fmt::Display for Type {
             Type::Function(sig) => write!(f, "{}", sig),
             Type::Enumeration(enum_id) => write!(f, "{}", enum_id),
             Type::Set(set_id) => write!(f, "{}", set_id),
-            Type::Record(record) => write!(f, "{}", record),
-            Type::Class(class) => write!(f, "{}", class),
+            Type::Record(name) => write!(f, "{}", name),
+            Type::Class(name) => write!(f, "{}", name),
             Type::AnyImplementation(interface) => write!(f, "{}", interface),
             Type::DynamicArray(array) => write!(f, "array of {}", array.element),
             Type::Array(array) => {
                 write!(f, "array ")?;
                 write!(f, "[{}..{}", array.first_dim.from, array.first_dim.to)?;
-                for dim in array.rest_dims.iter() {
+                for dim in &array.rest_dims {
                     write!(f, ",{}..{}", dim.from, dim.to)?;
                 }
                 write!(f, "] of {}", array.element)
@@ -115,21 +118,21 @@ impl Type {
 
     pub fn is_record(&self) -> bool {
         match self {
-            Type::Record(_) => true,
+            Type::Record { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_class(&self) -> bool {
         match self {
-            Type::Class(_) => true,
+            Type::Class { .. } => true,
             _ => false,
         }
     }
 
     pub fn is_ref_counted(&self) -> bool {
         match self {
-            Type::Class(_) |
+            Type::Class { .. } |
             Type::DynamicArray(_) => true,
             Type::AnyImplementation(_) => true,
             _ => false,
@@ -182,16 +185,16 @@ impl Type {
         }
     }
 
-    pub fn unwrap_class(&self) -> Option<&Identifier> {
+    pub fn unwrap_class(&self) -> Option<&ParameterizedName> {
         match self {
-            Type::Class(id) => Some(id),
+            Type::Class(name) => Some(name),
             _ => None,
         }
     }
 
-    pub fn unwrap_record(&self) -> Option<&Identifier> {
+    pub fn unwrap_record(&self) -> Option<&ParameterizedName> {
         match self {
-            Type::Record(id) => Some(id),
+            Type::Record(name) => Some(name),
             _ => None,
         }
     }
@@ -209,10 +212,11 @@ impl Type {
         match self {
             | Type::Pointer(_)
             | Type::Byte
-            | Type::Record(_)
-            | Type::Class(_)
+            | Type::Record { .. }
+            | Type::Class { .. }
             | Type::RawPointer
             | Type::UntypedRef
+            | Type::Boolean
             | Type::Int32
             | Type::UInt32
             | Type::Int64
@@ -225,7 +229,7 @@ impl Type {
             | Type::Set(_)
             | Type::DynamicArray(_)
             | Type::AnyImplementation(_)
-            | Type::Boolean
+            | Type::Generic(_)
             => true,
 
             | Type::Array { .. }
@@ -251,7 +255,7 @@ impl Type {
 
     // can we use the >, >=, <, and <= operations between these two types?
     pub fn has_ord_comparisons(&self, other: &Type) -> bool {
-        self.is_numeric() & &other.promotes_to(self)
+        self.is_numeric() && other.promotes_to(self)
     }
 
     pub fn promotes_to(&self, other: &Type) -> bool {
@@ -320,3 +324,46 @@ impl Type {
     }
 }
 
+#[derive(Clone, Eq, PartialEq, Debug, Hash)]
+pub struct ParameterizedName {
+    pub name: Identifier,
+    pub type_args: Vec<Type>,
+}
+
+impl ParameterizedName {
+    pub fn new_simple(name: impl Into<Identifier>) -> Self {
+        ParameterizedName {
+            name: name.into(),
+            type_args: Vec::new(),
+        }
+    }
+
+    pub fn new_with_args(name: impl Into<Identifier>,
+                         type_args: impl IntoIterator<Item=Type>)
+                         -> Self {
+        ParameterizedName {
+            name: name.into(),
+            type_args: type_args.into_iter().collect(),
+        }
+    }
+}
+
+impl fmt::Display for ParameterizedName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)?;
+
+        if !self.type_args.is_empty() {
+            f.write_char('<')?;
+
+            for (i, arg) in self.type_args.iter().enumerate() {
+                if i > 0 {
+                    f.write_str(", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+
+            f.write_char('>')?;
+        }
+        Ok(())
+    }
+}

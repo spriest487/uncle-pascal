@@ -31,6 +31,7 @@ use operators;
 use source;
 use types::{
     Type,
+    ParameterizedName,
     ArrayType,
     DynamicArrayType,
 };
@@ -47,6 +48,7 @@ pub struct ScalarTypeName {
     pub name: Identifier,
     pub context: ParsedContext,
     pub indirection: usize,
+    pub type_args: Vec<TypeName>,
 }
 
 #[derive(Clone, Debug)]
@@ -163,7 +165,7 @@ impl fmt::Display for TypeName {
             TypeName::Function { return_type, args, modifiers, .. } => {
                 f.write_str("function")?;
 
-                if args.len() > 0 {
+                if !args.is_empty() {
                     f.write_str("(")?;
                     for (i, arg) in args.iter().enumerate() {
                         write!(f, "{}", arg)?;
@@ -265,11 +267,42 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
         } else {
             let name = Identifier::parse(tokens)?;
 
+            let type_args = parse_type_args(tokens)?;
+
             break Ok(TypeName::Scalar(ScalarTypeName {
                 context: ParsedContext::from(context.unwrap()),
                 name,
                 indirection,
+                type_args,
             }));
+        }
+    }
+}
+
+fn parse_type_args(tokens: &mut TokenStream) -> ParseResult<Vec<TypeName>> {
+    match tokens.look_ahead().match_one(operators::Lt) {
+        None => Ok(Vec::new()),
+
+        Some(_) => {
+            tokens.advance(1);
+
+            tokens.match_repeating(|i, tokens: &mut TokenStream| {
+                if i > 0 {
+                    match tokens.look_ahead().match_one(operators::Gt) {
+                        None => {
+                            tokens.match_one(tokens::Comma)?;
+                        }
+
+                        Some(_) => {
+                            tokens.advance(1);
+                            return Ok(None);
+                        }
+                    }
+                }
+
+                let arg: TypeName = tokens.parse()?;
+                Ok(Some(arg))
+            })
         }
     }
 }
@@ -339,6 +372,7 @@ impl TypeName {
             context: context.into(),
             name: name.into(),
             indirection: 0,
+            type_args: Vec::new(),
         })
     }
 
@@ -361,13 +395,13 @@ impl TypeName {
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::Scalar(ScalarTypeName { name, indirection, context }) =>
+            TypeName::Scalar(ScalarTypeName { name, indirection, context, type_args }) =>
                 TypeName::Scalar(ScalarTypeName {
                     context,
                     name,
                     indirection: indirection + 1,
+                    type_args,
                 }),
-
             TypeName::DynamicArray { .. } |
             TypeName::Array { .. } =>
                 unimplemented!("pointer to array"),
@@ -382,16 +416,37 @@ impl TypeName {
 
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
-            TypeName::Scalar(ScalarTypeName { context, name, indirection }) => {
+            TypeName::Scalar(ScalarTypeName { context, name, indirection, type_args }) => {
                 let result = scope.get_type_alias(name)
                     .ok_or_else(|| {
-                        let err_context = SemanticContext::new(context.token.clone(),
-                                                               scope.clone());
+                        let err_context = SemanticContext::new(
+                            context.token.clone(),
+                            scope.clone(),
+                            None,
+                        );
                         SemanticError::unknown_type(name.clone(), err_context)
                     })?;
 
+                let resolved_type_args: Vec<Type> = type_args.iter()
+                    .map(|type_arg| type_arg.resolve(scope.clone()))
+                    .collect::<SemanticResult<_>>()?;
+
+                let specialized = match result {
+                    Type::Record(record_id) => {
+                        assert_eq!(0, record_id.type_args.len(), "respecializing aliases not supported yet");
+                        Type::Record(ParameterizedName::new_with_args(record_id.name.clone(), resolved_type_args))
+                    }
+
+                    Type::Class(class_id) => {
+                        assert_eq!(0, class_id.type_args.len(), "respecializing aliases not supported yet");
+                        Type::Class(ParameterizedName::new_with_args(class_id.name.clone(), resolved_type_args))
+                    },
+
+                    other => other,
+                };
+
                 let indirected = (0..*indirection).into_iter()
-                    .fold(result, |result, _| {
+                    .fold(specialized, |result, _| {
                         result.pointer()
                     });
 
@@ -432,7 +487,7 @@ impl TypeName {
                             let decl_type = arg.decl_type.resolve(scope.clone())?;
                             Ok(FunctionArgSignature {
                                 decl_type,
-                                modifier: arg.modifier.clone(),
+                                modifier: arg.modifier,
                             })
                         })
                         .collect::<Result<_, _>>()?,

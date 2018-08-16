@@ -52,7 +52,7 @@ pub fn annotate_args(args: &[syntax::Expression],
 }
 
 pub fn annotate_call(call: &syntax::FunctionCall,
-                     context: SemanticContext)
+                     context: &SemanticContext)
                      -> SemanticResult<(Expression, Rc<Scope>)> {
     let scope = context.scope.clone();
     let (target, args) = match call {
@@ -104,6 +104,9 @@ pub fn annotate_call(call: &syntax::FunctionCall,
                 let context = SemanticContext {
                     token: target.context.token().clone(),
                     scope: scope.clone(),
+
+                    // function calls currently have no use for contextual type hints
+                    type_hint: None,
                 };
 
                 let type_cast = Expression::type_cast(target_type, from_value, context);
@@ -121,7 +124,7 @@ pub fn annotate_call(call: &syntax::FunctionCall,
             *sig.clone()
         }
 
-        invalid @ _ => {
+        invalid => {
             return Err(SemanticError::invalid_function_type(invalid, target.context));
         }
     };
@@ -144,7 +147,7 @@ fn annotate_method(call_site: MethodCallSite,
             /* make a copy of the expected sig minus the first argument to compare against,
             because the first argument is already the target of this expression */
             let rest_args_sig = FunctionSignature {
-                args: call_site.method_sig.args[1..].iter().cloned().collect(),
+                args: call_site.method_sig.args[1..].to_vec(),
                 ..call_site.method_sig.clone()
             };
 
@@ -224,6 +227,7 @@ fn find_ufcs_candidate(target: &syntax::Expression,
             let base_expr = Expression::identifier(base_id, SemanticContext {
                 token: target.context.token().clone(),
                 scope: context.scope.clone(),
+                type_hint: context.type_hint.clone(),
             });
 
             Some(UfcsCandidate {
@@ -341,9 +345,10 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
     let interface_impls = scope.get_interface_impls(&target_type);
     let interface_funcs: Vec<_> = interface_impls.into_iter()
         .filter_map(|(iface_id, method)| {
-            match method.name == candidate.func_name {
-                true => Some((iface_id, method)),
-                false => None,
+            if method.name == candidate.func_name {
+                Some((iface_id, method))
+            } else {
+                None
             }
         })
         .collect();
@@ -353,7 +358,7 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
         return None;
     }
 
-    if interface_funcs.len() == 0 {
+    if interface_funcs.is_empty() {
         return None;
     }
 
@@ -561,10 +566,10 @@ fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
         | Type::DynamicArray(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
 
-        ty @ _ => scope.full_type_name(ty),
+        ty => scope.full_type_name(ty),
     }?;
 
-    type_id.parent()
+    type_id.name.parent()
 }
 
 fn scope_after_fn_call(sig: &FunctionSignature,
@@ -574,12 +579,9 @@ fn scope_after_fn_call(sig: &FunctionSignature,
         if let Some(FunctionArgModifier::Out) = &sig_arg.modifier {
             /* if the out parameter references an identifier, that identifier must now be
               initialized */
-            match &arg_expr.value {
-                ExpressionValue::Identifier(name) => {
-                    let initialized = scope.as_ref().clone().initialize_symbol(name);
-                    scope = Rc::new(initialized);
-                }
-                _ => {}
+            if let ExpressionValue::Identifier(name) = &arg_expr.value {
+                let initialized = scope.as_ref().clone().initialize_symbol(name);
+                scope = Rc::new(initialized);
             }
         }
     }

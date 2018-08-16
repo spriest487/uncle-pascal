@@ -89,9 +89,10 @@ impl Keyword {
     }
 
     pub fn try_parse(from: &str, opts: &CompileOptions) -> Option<Self> {
-        match opts.case_sensitive() {
-            true => Self::try_parse_lowercase(from),
-            false => Self::try_parse_lowercase(&from.to_ascii_lowercase()),
+        if opts.case_sensitive() {
+            Self::try_parse_lowercase(from)
+        } else {
+            Self::try_parse_lowercase(&from.to_ascii_lowercase())
         }
     }
 }

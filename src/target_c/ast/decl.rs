@@ -16,9 +16,14 @@ use target_c::ast::{
 use semantic;
 use node::{
     self,
+    Identifier,
     UnitDecl,
     TypeDecl,
     RecordKind,
+};
+use types::{
+    Type,
+    ParameterizedName,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -31,7 +36,7 @@ pub struct Variable {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum StructMember {
-    Field(Variable),
+    Field(Box<Variable>),
     AnonymousUnion(Vec<StructMember>),
     Struct(Box<Struct>),
 }
@@ -43,11 +48,20 @@ pub struct Struct {
     pub members: Vec<StructMember>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct StructDecl {
+    pub decl: Struct,
+    pub ctor: FunctionDecl,
+}
+
 pub enum Declaration {
     Variable(Variable),
     Function(FunctionDecl),
-    Struct(Struct),
     UsingAlias(Name, CType),
+
+    /* when we encounter a struct declaration, we store it in the unit so we can accumulate
+    all specializations globally, so we only need to store the pascal ID here to look it up */
+    Struct(Identifier),
 }
 
 impl Declaration {
@@ -56,24 +70,24 @@ impl Declaration {
                           -> TranslationResult<Vec<Declaration>> {
         match decl {
             UnitDecl::Function(func_decl) => {
-                let function = FunctionDecl::from(func_decl);
+                let function = FunctionDecl::translate_decl(func_decl, unit)?;
                 Ok(vec!(Declaration::Function(function)))
             }
 
             UnitDecl::Type(ref type_decl) =>
                 match type_decl {
                     | TypeDecl::Record(record_decl) => {
-                        let (struct_decl, struct_ctor) = Struct::translate(record_decl, unit)?;
-                        let results = vec![
-                            Declaration::Struct(struct_decl),
-                            Declaration::Function(struct_ctor),
-                        ];
+                        unit.declare_struct(record_decl.clone());
 
-                        Ok(results)
+                        Ok(vec![
+                            Declaration::Struct(record_decl.qualified_name()),
+                        ])
                     }
 
                     | TypeDecl::Enumeration(enum_decl) => {
-                        let name = Name::internal_type(&enum_decl.qualified_name());
+                        let name = Name::user_type(&ParameterizedName::new_simple(
+                            enum_decl.qualified_name()));
+
                         Ok(vec!(Declaration::UsingAlias(
                             name,
                             CType::Named(Name::internal_type("UInt64")),
@@ -81,12 +95,16 @@ impl Declaration {
                     }
 
                     | TypeDecl::Set(set_decl) => {
-                        //todo
-                        let name = Name::user_type(&set_decl.qualified_name());
-                        Ok(vec!(Declaration::UsingAlias(
+                        let name = Name::user_type(&ParameterizedName::new_simple(
+                            set_decl.qualified_name()));
+
+                        let alias = Declaration::UsingAlias(
                             name,
                             CType::Named(Name::internal_type("Set<System_UInt64>".to_string()),
-                            ))))
+                            ),
+                        );
+
+                        Ok(vec!(alias))
                     }
 
                     | TypeDecl::Alias { .. } => {
@@ -119,16 +137,16 @@ impl Declaration {
             node::Implementation::Function(func_impl) => {
                 let definition = FunctionDecl::translate(func_impl, unit)?;
 
-                let result = match FunctionDecl::virtual_call_adaptor(&func_impl.decl) {
-                    Some(virtual_call_adaptor) => vec![
+                if func_impl.decl.implements.is_some() {
+                    let vcall_adaptor = FunctionDecl::virtual_call_adaptor(&func_impl.decl, unit)?;
+
+                    Ok(vec![
                         Declaration::Function(definition),
-                        Declaration::Function(virtual_call_adaptor)
-                    ],
-
-                    None => vec!(Declaration::Function(definition)),
-                };
-
-                Ok(result)
+                        Declaration::Function(vcall_adaptor)
+                    ])
+                } else {
+                    Ok(vec![Declaration::Function(definition)])
+                }
             }
 
             node::Implementation::Decl(decl) => {
@@ -137,7 +155,7 @@ impl Declaration {
         }
     }
 
-    pub fn write_forward(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_forward(&self, unit: &TranslationUnit, mut out: impl fmt::Write) -> fmt::Result {
         match self {
             Declaration::Variable(variable) => {
                 variable.write_forward(&mut out)
@@ -146,15 +164,20 @@ impl Declaration {
             Declaration::Function(function) =>
                 function.write_forward(&mut out),
 
-            Declaration::Struct(record) =>
-                record.write_forward(&mut out),
+            Declaration::Struct(record) => {
+                for instantiation in unit.struct_instantiations(record) {
+                    instantiation.struct_decl.decl.write_forward(&mut out)?;
+                    instantiation.struct_decl.ctor.write_forward(&mut out)?;
+                }
+                Ok(())
+            }
 
             Declaration::UsingAlias(alias, target) =>
                 writeln!(out, "using {} = {};", alias, target)
         }
     }
 
-    pub fn write_impl(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_impl(&self, unit: &TranslationUnit, mut out: impl fmt::Write) -> fmt::Result {
         match self {
             Declaration::Variable(variable) => {
                 variable.write_impl(&mut out)
@@ -163,8 +186,13 @@ impl Declaration {
             Declaration::Function(function) =>
                 function.write_impl(&mut out),
 
-            Declaration::Struct(record) =>
-                record.write_def(&mut out),
+            Declaration::Struct(record) => {
+                for instantiation in unit.struct_instantiations(record) {
+                    instantiation.struct_decl.decl.write_def(&mut out)?;
+                    instantiation.struct_decl.ctor.write_impl(&mut out)?;
+                }
+                Ok(())
+            }
 
             Declaration::UsingAlias(_alias, _target) =>
                 Ok(())
@@ -174,34 +202,42 @@ impl Declaration {
 
 impl Struct {
     pub fn translate(record_decl: &semantic::RecordDecl,
-                     _unit: &mut TranslationUnit)
-                     -> TranslationResult<(Struct, FunctionDecl)> {
-        assert!(record_decl.members.len() > 0 || record_decl.variant_part.is_some(),
+                     type_args: &[Type],
+                     unit: &mut TranslationUnit)
+                     -> TranslationResult<StructDecl> {
+        assert!(!record_decl.members.is_empty() || record_decl.variant_part.is_some(),
                 "structs must have at least one member");
 
-        let name = Name::user_type(&record_decl.scope().namespace_qualify(&record_decl.name));
+        assert_eq!(0, record_decl.type_params.len(),
+                   "Struct::translate expects fully specialized record decls");
+
+        let parameterized_name = ParameterizedName::new_with_args(
+            record_decl.scope().namespace_qualify(&record_decl.name),
+            type_args.iter().cloned(),
+        );
+        let name = Name::user_type(&parameterized_name);
 
         let mut members: Vec<_> = record_decl.members.iter()
             .map(|member_decl| {
-                let ctype = CType::translate(&member_decl.decl_type, record_decl.scope());
+                let ctype = CType::translate(&member_decl.decl_type, record_decl.scope(), unit)?;
 
-                Ok(StructMember::Field(Variable {
-                    name: Name::member(&member_decl.name),
+                Ok(StructMember::Field(Box::new(Variable {
+                    name: Name::member(member_decl.name.clone()),
                     default_value: None,
                     array_size: None,
                     ctype,
-                }))
+                })))
             })
             .collect::<TranslationResult<_>>()?;
 
         if let Some(variant_part) = &record_decl.variant_part {
             let tag = Variable {
-                name: Name::member(&variant_part.tag.name),
-                ctype: CType::translate(&variant_part.tag.decl_type, record_decl.scope()),
+                name: Name::member(variant_part.tag.name.clone()),
+                ctype: CType::translate(&variant_part.tag.decl_type, record_decl.scope(), unit)?,
                 default_value: None,
                 array_size: None,
             };
-            members.push(StructMember::Field(tag));
+            members.push(StructMember::Field(Box::new(tag)));
 
             let cases = variant_part.cases.iter()
                 .map(|case| {
@@ -209,14 +245,16 @@ impl Struct {
                     membes of that variant */
                     let case_struct_members: Vec<_> = case.members.iter()
                         .map(|member| {
-                            StructMember::Field(Variable {
-                                name: Name::member(&member.name),
-                                ctype: CType::translate(&member.decl_type, record_decl.scope()),
+                            let ctype = CType::translate(&member.decl_type, record_decl.scope(), unit)?;
+
+                            Ok(StructMember::Field(Box::new(Variable {
+                                name: Name::member(member.name.clone()),
+                                ctype,
                                 default_value: None,
                                 array_size: None,
-                            })
+                            })))
                         })
-                        .collect();
+                        .collect::<TranslationResult<_>>()?;
 
                     let anon_struct = Struct {
                         members: case_struct_members,
@@ -236,7 +274,7 @@ impl Struct {
             RecordKind::Class => Some(Name::internal_type("Object")),
         };
 
-        let constructor_decl = Struct::constructor_decl(&name, &record_decl);
+        let constructor_decl = Struct::constructor_decl(&parameterized_name, &record_decl, unit)?;
 
         let struct_decl = Struct {
             name: Some(name),
@@ -244,7 +282,10 @@ impl Struct {
             extends,
         };
 
-        Ok((struct_decl, constructor_decl))
+        Ok(StructDecl {
+            decl: struct_decl,
+            ctor: constructor_decl,
+        })
     }
 
     pub fn write_forward(&self, mut out: impl fmt::Write) -> fmt::Result {
@@ -265,7 +306,7 @@ impl Struct {
         }
         writeln!(out, "{{")?;
 
-        for member in self.members.iter() {
+        for member in &self.members {
             member.write(out)?;
         }
 
@@ -273,24 +314,33 @@ impl Struct {
     }
 
     // todo: this should probably be based on semantic::RecordDecl instead
-    fn constructor_decl(struct_name: &Name, record: &semantic::RecordDecl) -> FunctionDecl {
-        let name = Name::constructor(&record.qualified_name());
+    fn constructor_decl(struct_name: &ParameterizedName,
+                        record: &semantic::RecordDecl,
+                        unit: &mut TranslationUnit)
+                        -> TranslationResult<FunctionDecl> {
+        let name = Name::constructor(&struct_name);
         let result_name = Name::local("result");
 
         let all_fields: Vec<_> = record.all_members().collect();
 
         /* the args of a constructor are Options of each individual member */
         let args: Vec<_> = all_fields.iter().enumerate()
-            .map(|(mem_num, member)| FunctionArg {
-                name: Name::local(format!("arg{}", mem_num)),
-                ctype: {
-                    let member_type = CType::translate(&member.decl_type, record.scope());
+            .map(|(mem_num, member)| {
+                let member_arg_type = {
+                    let member_type = CType::translate(&member.decl_type, record.scope(), unit)?;
                     CType::Named(Name::internal_type(format!("Option<{}>", member_type)))
-                },
-            })
-            .collect();
+                };
 
-        let struct_type = CType::Struct(struct_name.clone());
+                Ok(FunctionArg {
+                    name: Name::local(format!("arg{}", mem_num)),
+                    ctype: member_arg_type,
+                })
+            })
+            .collect::<TranslationResult<_>>()?;
+
+        let struct_cname = Name::user_type(struct_name);
+
+        let struct_type = CType::Struct(struct_cname.clone());
         let (return_type, result_val) = match record.kind {
             RecordKind::Class => {
                 let deref_result = Expression::Name(result_name.clone()).deref();
@@ -310,7 +360,7 @@ impl Struct {
                     result_name.clone(), "=",
                     Expression::cast(
                         return_type.clone(),
-                        rc_getmem(struct_name.clone(), &record.qualified_name()),
+                        rc_getmem(struct_cname.clone(), &record.qualified_name()),
                         CastKind::Static,
                     ),
                 ));
@@ -331,7 +381,7 @@ impl Struct {
         }
 
         for (mem_num, member) in all_fields.iter().enumerate() {
-            let result_member = Expression::member(result_val.clone(), &member.name);
+            let result_member = Expression::member(result_val.clone(), member.name.clone());
             let arg_name = Name::local(format!("arg{}", mem_num));
 
             let deref_arg = Expression::unary_op("*", arg_name.clone(), true);
@@ -346,13 +396,13 @@ impl Struct {
 
         let definition = FunctionDefinition::Defined(Block::new(statements));
 
-        FunctionDecl {
+        Ok(FunctionDecl {
             name,
             args,
             return_type,
             calling_convention: CallingConvention::Cdecl,
             definition,
-        }
+        })
     }
 }
 
@@ -385,17 +435,14 @@ impl Variable {
                      local: bool,
                      unit: &mut TranslationUnit)
                      -> TranslationResult<Variable> {
-        let name = match local {
-            false => {
-                let full_id = var_decl.scope().namespace_qualify(&var_decl.name);
-                Name::user_symbol(&full_id)
-            }
-            true => {
-                Name::local(&var_decl.name)
-            }
+        let name = if !local {
+            let full_id = var_decl.scope().namespace_qualify(&var_decl.name);
+            Name::user_symbol(&full_id)
+        } else {
+            Name::local(var_decl.name.clone())
         };
 
-        let ctype = CType::translate(&var_decl.decl_type, var_decl.scope());
+        let ctype = CType::translate(&var_decl.decl_type, var_decl.scope(), unit)?;
 
         let default_value = match var_decl.default_value.as_ref() {
             Some(val_expr) => Some(Expression::translate_expression(val_expr, unit)?),

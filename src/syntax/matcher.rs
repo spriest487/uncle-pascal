@@ -60,17 +60,17 @@ impl<TMatchable> MatchSequenceOf for TMatchable where TMatchable: Into<Matcher> 
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(kw)),
-            &Matcher::Operator(ref op) => write!(f, "{}", op),
-            &Matcher::AnyKeyword => write!(f, "keyword"),
-            &Matcher::AnyIdentifier => write!(f, "identifier"),
-            &Matcher::AnyOperator => write!(f, "binary operator"),
-            &Matcher::AnyLiteralInteger => write!(f, "integer literal"),
-            &Matcher::AnyLiteralString => write!(f, "string literal"),
-            &Matcher::AnyLiteralFloat => write!(f, "floating point literal"),
-            &Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
-            &Matcher::Exact(ref exact_token) => write!(f, "{}", exact_token),
-            &Matcher::OneOf(ref matchers) => write!(f, "one of: {}", matchers.iter()
+            Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(*kw)),
+            Matcher::Operator(op) => write!(f, "{}", op),
+            Matcher::AnyKeyword => write!(f, "keyword"),
+            Matcher::AnyIdentifier => write!(f, "identifier"),
+            Matcher::AnyOperator => write!(f, "binary operator"),
+            Matcher::AnyLiteralInteger => write!(f, "integer literal"),
+            Matcher::AnyLiteralString => write!(f, "string literal"),
+            Matcher::AnyLiteralFloat => write!(f, "floating point literal"),
+            Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
+            Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
+            Matcher::OneOf(matchers) => write!(f, "one of: {}", matchers.iter()
                 .map(|matcher| format!("{}", matcher))
                 .collect::<Vec<_>>()
                 .join(", ")),
@@ -81,7 +81,7 @@ impl fmt::Display for Matcher {
 impl Matcher {
     pub fn any_operator_in_position(pos: operators::Position) -> Self {
         Matcher::OneOf(operators::for_position(pos)
-            .map(|op| Matcher::Operator(op))
+            .map(Matcher::Operator)
             .collect())
     }
 
@@ -149,13 +149,13 @@ impl Matchable for tokens::Token {
 
 impl Matchable for keywords::Keyword {
     fn as_matcher(&self) -> Matcher {
-        Matcher::Keyword(self.clone())
+        Matcher::Keyword(*self)
     }
 }
 
 impl Matchable for operators::Operator {
     fn as_matcher(&self) -> Matcher {
-        Matcher::Operator(self.clone())
+        Matcher::Operator(*self)
     }
 }
 

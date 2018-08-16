@@ -93,7 +93,7 @@ impl VarDecl {
         let vars = tokens.parse::<Vec<VarDecl>>()?;
 
         /* it's legal for a var section to be nothing but a terminator */
-        if vars.len() == 0 {
+        if vars.is_empty() {
             tokens.match_or_endl(tokens::Semicolon)?;
         }
 

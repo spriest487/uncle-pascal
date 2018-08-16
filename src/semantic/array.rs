@@ -21,11 +21,11 @@ impl IndexRange {
             ConstExpression::Integer(int) => {
                 match int.as_i64() {
                     Some(i) => Ok(i),
-                    None => Err(SemanticError::invalid_const_value(expr.clone())),
+                    None => Err(SemanticError::invalid_const_value(expr)),
                 }
             }
 
-            _ => Err(SemanticError::invalid_const_value(expr.clone()))
+            _ => Err(SemanticError::invalid_const_value(expr))
         }
     }
 
@@ -34,7 +34,7 @@ impl IndexRange {
 
         let from = Expression::annotate(&index_range.from, index_type.as_ref(), scope.clone())
             .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
-        let to = Expression::annotate(&index_range.to, index_type.as_ref(), scope.clone())
+        let to = Expression::annotate(&index_range.to, index_type.as_ref(), scope)
             .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
 
         Ok(IndexRange {

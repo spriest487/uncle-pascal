@@ -151,16 +151,18 @@ impl CompileOptions {
 
     #[allow(dead_code)]
     pub fn switch(&self, switch: &str) -> bool {
-        match self.case_sensitive() {
-            true => self.is_switch(switch),
-            false => self.is_switch(&switch.to_uppercase()),
+        if self.case_sensitive() {
+            self.is_switch(switch)
+        } else {
+            self.is_switch(&switch.to_uppercase())
         }
     }
 
     pub fn set_switch(&mut self, switch: &str, on: bool) {
-        match self.case_sensitive() {
-            true => { self.switches.insert(switch.to_string(), on); },
-            false => { self.switches.insert(switch.to_uppercase(), on); },
+        if self.case_sensitive() {
+            self.switches.insert(switch.to_string(), on);
+        } else {
+            self.switches.insert(switch.to_uppercase(), on);
         }
     }
 
@@ -172,23 +174,26 @@ impl CompileOptions {
     }
 
     pub fn defined(&self, symbol: &str) -> bool {
-        match self.case_sensitive() {
-            true => self.is_defined(symbol),
-            false => self.is_defined(&symbol.to_uppercase())
+        if self.case_sensitive() {
+            self.is_defined(symbol)
+        } else {
+            self.is_defined(&symbol.to_uppercase())
         }
     }
 
     pub fn define(&mut self, symbol: String) {
-        match self.case_sensitive() {
-            true => { self.symbols.insert(symbol, true); },
-            false => { self.symbols.insert(symbol.to_uppercase(), true); },
+        if self.case_sensitive() {
+            self.symbols.insert(symbol, true);
+        } else {
+            self.symbols.insert(symbol.to_uppercase(), true);
         }
     }
 
     pub fn undef(&mut self, symbol: &str) -> bool {
-        match self.case_sensitive() {
-            true => self.symbols.remove(symbol) == Some(true),
-            false => self.symbols.remove(&symbol.to_uppercase()) == Some(true),
+        if self.case_sensitive() {
+            self.symbols.remove(symbol) == Some(true)
+        } else {
+            self.symbols.remove(&symbol.to_uppercase()) == Some(true)
         }
     }
 
@@ -215,10 +220,10 @@ impl CompileOptions {
                 "delphi" => Mode::Delphi,
                 "uncle" => Mode::Uncle,
 
-                unrecognized @ _ => {
+                unrecognized => {
                     eprintln!("unrecognized -mode option: {}", unrecognized);
                     Mode::Uncle
-                },
+                }
             },
             None =>
                 Mode::Uncle,

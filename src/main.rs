@@ -94,7 +94,7 @@ impl From<pp::PreprocessorError> for CompileError {
             pp::PreprocessorError::IOError(io_err) =>
                 CompileError::IOError(io_err),
 
-            err @ _ => CompileError::PreprocessorError(err),
+            err => CompileError::PreprocessorError(err),
         }
     }
 }
@@ -122,7 +122,7 @@ fn load_source<TPath: AsRef<Path>>(path: TPath,
 
     let display_filename = path.file_name()
         .map(OsStr::to_string_lossy)
-        .map(|s| String::from(s))
+        .map(String::from)
         .unwrap_or_else(|| "(unknown)".to_owned());
 
     let preprocessor = pp::Preprocessor::new(&display_filename, opts);
@@ -201,9 +201,10 @@ fn compile_program(program_path: &Path,
             let unit_path = search_dirs.iter()
                 .filter_map(|dir| {
                     let unit_path = dir.join(format!("{}.pas", referenced_unit_id));
-                    match unit_path.exists() {
-                        true => Some(unit_path),
-                        false => None,
+                    if unit_path.exists() {
+                        Some(unit_path)
+                    } else {
+                        None
                     }
                 })
                 .next()
@@ -248,7 +249,7 @@ fn compile_program(program_path: &Path,
     })
 }
 
-fn print_usage(program: &str, opts: getopts::Options) {
+fn print_usage(program: &str, opts: &getopts::Options) {
     let brief = format!("Usage: {} FILE [options]", program);
     print!("{}", opts.usage(&brief));
 }
@@ -267,11 +268,11 @@ fn main() {
     match opts.parse(&args[1..]) {
         Ok(matched) => {
             if matched.free.len() != 1 {
-                print_usage(&program, opts);
+                print_usage(&program, &opts);
                 std::process::exit(1);
             } else {
                 let out_file = matched.opt_str("o")
-                    .map(|out_dir_str| PathBuf::from(out_dir_str))
+                    .map(PathBuf::from)
                     .unwrap_or_else(|| current_dir().unwrap());
 
                 let src_path = &matched.free[0];
@@ -291,7 +292,7 @@ fn main() {
         }
         Err(err) => {
             println!("{}", err);
-            print_usage(&program, opts);
+            print_usage(&program, &opts);
 
             std::process::exit(1);
         }

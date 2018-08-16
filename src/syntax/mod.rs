@@ -149,10 +149,10 @@ pub(crate) mod test {
     }
 
     pub fn try_parse_record(name: &str, src: &str) -> ParseResult<RecordDecl> {
-        let mut tokens = TokenStream::tokenize("tes", src, &CompileOptions::default())
+        let mut tokens = TokenStream::tokenize("test", src, &CompileOptions::default())
             .unwrap();
 
-        RecordDecl::parse_with_name(name, &mut tokens)
+        RecordDecl::parse_with_name(name, Vec::new(), &mut tokens)
     }
 
     #[test]
