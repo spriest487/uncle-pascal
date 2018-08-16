@@ -269,7 +269,7 @@ fn parses_assignment_followed_by_prefix_operator() {
 
 #[test]
 fn parses_binary_plus_followed_by_unary_plus_in_brackets() {
-    let expr = try_parse_expr(r"1 + 2
+    let expr = try_parse_expr(r"1 + abc
         (+a)")
         .unwrap();
 
