@@ -25,7 +25,7 @@ pub enum ExpressionValue<TSymbol> {
     Identifier(TSymbol),
     LetBinding {
         name: String,
-        value: Box<Expression<TSymbol>>
+        value: Box<Expression<TSymbol>>,
     },
     Member {
         of: Box<Expression<TSymbol>>,
@@ -139,7 +139,7 @@ impl<TSymbol> Expression<TSymbol>
         Expression {
             value: ExpressionValue::Member {
                 of: Box::from(of),
-                name: name.to_owned()
+                name: name.to_owned(),
             },
             context,
         }
@@ -225,7 +225,7 @@ impl<TSymbol> Expression<TSymbol>
 
     pub fn is_if(&self) -> bool {
         match &self.value {
-            &ExpressionValue::If { ..} => true,
+            &ExpressionValue::If { .. } => true,
             _ => false,
         }
     }
@@ -324,6 +324,86 @@ impl<TSymbol> Expression<TSymbol>
         match &self.value {
             &ExpressionValue::Identifier(ref expr_id) => expr_id == id,
             _ => false,
+        }
+    }
+}
+
+pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
+                         replace: impl Fn(Expression<TSymbol>) -> Expression<TSymbol>) -> Expression<TSymbol>
+{
+    match root_expr.value {
+        ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+            let lhs = transform_expressions(*lhs, replace);
+            let rhs = transform_expressions(*rhs, replace);
+
+            replace(Expression::binary_op(lhs, op, rhs, root_expr.context))
+        }
+
+        ExpressionValue::Block(block) => {
+            let statements = block.statements.into_iter()
+                .map(|stmt| transform_expressions(stmt, replace));
+
+            replace(Expression::block(Block {
+                context: block.context,
+                statements: statements.collect(),
+            }))
+        }
+
+        ExpressionValue::ForLoop { from, to, body } => {
+            let from = transform_expressions(*from, replace);
+            let to = transform_expressions(*to, replace);
+            let body = transform_expressions(*body, replace);
+
+            replace(Expression::for_loop(from, to, body, root_expr.context))
+        }
+
+        ExpressionValue::If { condition, then_branch, else_branch } => {
+            let cond = transform_expressions(*condition, replace);
+            let if_branch = transform_expressions(*then_branch, replace);
+            let else_branch = else_branch.map(|else_expr| {
+                transform_expressions(*else_expr, replace)
+            });
+
+            replace(Expression::if_then_else(cond, if_branch, else_branch, root_expr.context))
+        }
+
+        ExpressionValue::PrefixOperator { op, rhs } => {
+            let rhs = transform_expressions(*rhs, replace);
+
+            replace(Expression::prefix_op(op, rhs, root_expr.context))
+        }
+
+        ExpressionValue::LetBinding { name, value } => {
+            let value = transform_expressions(*value, replace);
+            replace(Expression::let_binding(root_expr.context, &name, value))
+        }
+
+        ExpressionValue::Member { of, name } => {
+            let of = transform_expressions(*of, replace);
+            replace(Expression::member(of, &name))
+        }
+
+        ExpressionValue::Identifier(name) => {
+            replace(Expression::identifier(name, root_expr.context))
+        }
+
+        ExpressionValue::LiteralInteger(i) => {
+            replace(Expression::literal_int(i, root_expr.context))
+        }
+
+        ExpressionValue::LiteralNil => {
+            replace(root_expr)
+        }
+
+        ExpressionValue::LiteralString(s) => {
+            replace(Expression::literal_string(&s, root_expr.context))
+        }
+
+        ExpressionValue::FunctionCall { target, args } => {
+            let target = transform_expressions(*target, replace);
+            let args = args.into_iter().map(|arg| transform_expressions(arg, replace));
+
+            replace(Expression::function_call(target, args))
         }
     }
 }

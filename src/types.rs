@@ -34,8 +34,15 @@ impl node::Symbol for Symbol {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
+pub enum FunctionKind {
+    Function,
+    Constructor,
+}
+
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub struct FunctionSignature {
     pub name: Identifier,
+    pub kind: FunctionKind,
     pub return_type: Option<DeclaredType>,
     pub arg_types: Vec<DeclaredType>,
 }

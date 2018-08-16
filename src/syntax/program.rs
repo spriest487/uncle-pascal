@@ -29,89 +29,9 @@ fn transform_blocks(mut program: Program,
     program
 }
 
-fn transform_expressions(root_expr: Expression,
-                         replace: &impl Fn(Expression) -> Expression) -> Expression
-{
-    match root_expr.value {
-        node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-            let lhs = transform_expressions(*lhs, replace);
-            let rhs = transform_expressions(*rhs, replace);
-
-            replace(Expression::binary_op(lhs, op, rhs, root_expr.context))
-        }
-
-        node::ExpressionValue::Block(block) => {
-            let statements = block.statements.into_iter()
-                .map(|stmt| transform_expressions(stmt, replace));
-
-            replace(Expression::block(Block {
-                context: block.context,
-                statements: statements.collect(),
-            }))
-        }
-
-        node::ExpressionValue::ForLoop { from, to, body } => {
-            let from = transform_expressions(*from, replace);
-            let to = transform_expressions(*to, replace);
-            let body = transform_expressions(*body, replace);
-
-            replace(Expression::for_loop(from, to, body, root_expr.context))
-        }
-
-        node::ExpressionValue::If { condition, then_branch, else_branch } => {
-            let cond = transform_expressions(*condition, replace);
-            let if_branch = transform_expressions(*then_branch, replace);
-            let else_branch = else_branch.map(|else_expr| {
-                transform_expressions(*else_expr, replace)
-            });
-
-            replace(Expression::if_then_else(cond, if_branch, else_branch, root_expr.context))
-        }
-
-        node::ExpressionValue::PrefixOperator { op, rhs } => {
-            let rhs = transform_expressions(*rhs, replace);
-
-            replace(Expression::prefix_op(op, rhs, root_expr.context))
-        }
-
-        node::ExpressionValue::LetBinding { name, value } => {
-            let value = transform_expressions(*value, replace);
-            replace(Expression::let_binding(root_expr.context, &name, value))
-        }
-
-        node::ExpressionValue::Member { of, name } => {
-            let of = transform_expressions(*of, replace);
-            replace(Expression::member(of, &name))
-        }
-
-        node::ExpressionValue::Identifier(name) => {
-            replace(Expression::identifier(name, root_expr.context))
-        }
-
-        node::ExpressionValue::LiteralInteger(i) => {
-            replace(Expression::literal_int(i, root_expr.context))
-        }
-
-        node::ExpressionValue::LiteralNil => {
-            replace(root_expr)
-        }
-
-        node::ExpressionValue::LiteralString(s) => {
-            replace(Expression::literal_string(&s, root_expr.context))
-        }
-
-        node::ExpressionValue::FunctionCall { target, args } => {
-            let target = transform_expressions(*target, replace);
-            let args = args.into_iter().map(|arg| transform_expressions(arg, replace));
-
-            replace(Expression::function_call(target, args))
-        }
-    }
-}
-
 fn replace_block_string_literals(mut block: Block) -> Block {
     block.statements = block.statements.into_iter()
-        .flat_map(|stmt| iter::once(transform_expressions(stmt, &|expr: Expression| {
+        .flat_map(|stmt| iter::once(node::transform_expressions(stmt, &|expr: Expression| {
             match expr.value {
                 node::ExpressionValue::LiteralString(str) => {
                     let constructor_id = ParsedSymbol(node::Identifier::from("System.StringFromBytes"));
