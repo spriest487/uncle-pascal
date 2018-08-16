@@ -11,6 +11,12 @@ pub struct Symbol {
     pub decl_type: DeclaredType,
 }
 
+impl node::ToSource for Symbol {
+    fn to_source(&self) -> String {
+        self.name.to_source()
+    }
+}
+
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} : {}", self.name, self.decl_type)
@@ -103,6 +109,12 @@ pub enum DeclaredType {
     Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
     Record(DeclaredRecord),
+}
+
+impl node::ToSource for DeclaredType {
+    fn to_source(&self) -> String {
+        DeclaredType::name(Some(self))
+    }
 }
 
 impl DeclaredType {

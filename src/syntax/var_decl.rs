@@ -8,19 +8,6 @@ use source;
 pub type VarDecl = node::VarDecl<ParsedSymbol>;
 pub type VarDecls = node::VarDecls<ParsedSymbol>;
 
-impl node::ToSource for VarDecls {
-    fn to_source(&self) -> String {
-        let decl_lines = self.decls.iter()
-            .map(|decl| {
-                format!("\t{}: {};", decl.name, decl.decl_type)
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        format!("var\n{}", decl_lines)
-    }
-}
-
 impl VarDecl {
     pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecl>
         where TIter: IntoIterator<Item=source::Token> + 'static

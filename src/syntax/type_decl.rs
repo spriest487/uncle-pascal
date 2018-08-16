@@ -83,17 +83,3 @@ impl RecordDecl {
         Ok(ParseOutput::new(record, terminator.last_token, terminator.next_tokens))
     }
 }
-
-impl node::ToSource for RecordDecl {
-    fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("type {} = record", self.name));
-
-        for member in self.members.iter() {
-            lines.push(format!("\t{}: {};", member.name, member.decl_type));
-        }
-
-        lines.push("end".to_owned());
-        lines.join("\n")
-    }
-}

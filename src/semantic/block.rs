@@ -102,16 +102,27 @@ impl Block {
 
                     let stmt_extracted = Self::subexprs_to_rc_block(stmt, &mut bindings, &mut next_binding);
 
+                    /* in the case that the expression was just a function call, we're
+                        left with a useless identifier on its own, so eliminate that*/
+                    let remove_extracted_stmt = match &stmt_extracted.value {
+                        node::ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) =>
+                            bindings.contains_key(&name.name),
+                        _ => false,
+                    };
+
                     if bindings.len() > 0 {
                         let mut inner_block = Vec::new();
                         for (name, bound_value) in bindings {
                             inner_block.push(Expression::let_binding(context.clone(), &name, bound_value));
                         }
-                        inner_block.push(stmt_extracted);
+
+                        if !remove_extracted_stmt {
+                            inner_block.push(stmt_extracted);
+                        }
 
                         Expression::block(Block {
                             context,
-                            statements: inner_block
+                            statements: inner_block,
                         })
                     } else {
                         stmt_extracted
@@ -135,20 +146,27 @@ mod test {
     use super::*;
     use semantic::expression::test::parse_expr;
     use types::FunctionSignature;
-    use node::{Identifier, ExpressionValue};
+    use node::{Identifier, ExpressionValue, ToSource};
+    use operators;
 
-    fn parse_block(source: &str) -> Block {
-        let mut scope = Scope::system();
+    fn test_scope() -> Scope {
+        let scope = Scope::system();
 
         let string_type = scope.get_type(&Identifier::from("System.String")).unwrap();
 
-        scope = scope.with_symbol_local("HelloWorld", DeclaredType::function(FunctionSignature {
-            name: Identifier::from("HelloWorld"),
-            return_type: Some(string_type),
-            arg_types: vec![],
-        }));
+        scope.with_symbol_local("HelloWorld", DeclaredType::function(FunctionSignature {
+                name: Identifier::from("HelloWorld"),
+                return_type: Some(string_type.clone()),
+                arg_types: vec![],
+            }))
+            .with_symbol_local("x", string_type)
+    }
 
-        if let ExpressionValue::Block(block) = parse_expr(source, &scope).value {
+    fn parse_block(source: &str) -> Block {
+        let src_in_block = format!("begin\n{}\nend", source);
+
+        let scope = test_scope();
+        if let ExpressionValue::Block(block) = parse_expr(&src_in_block, &scope).value {
             block
         } else {
             panic!("expected block test expression to parse as a block")
@@ -157,16 +175,55 @@ mod test {
 
     #[test]
     fn binds_fn_call_returning_rc_into_block() {
-        let block = parse_block("begin HelloWorld() end");
+        let block = parse_block("HelloWorld()");
 
         assert_eq!(1, block.statements.len());
 
         match &block.statements[0].value {
             ExpressionValue::Block(inner_block) => {
+                println!("{:?}", inner_block.to_source());
+                assert_eq!(1, inner_block.statements.len());
+
+                match &inner_block.statements[0].value {
+                    ExpressionValue::LetBinding { name: _name, value } => {
+                        assert!(value.is_function_call());
+                    }
+
+                    _ => panic!("expression in inner block should be a let binding")
+                }
+            }
+
+            _ => panic!("HelloWorld() returns a rc type and should have a block for the scope of its return (was: {:?})",
+                        block.statements[0].value)
+        }
+    }
+
+    #[test]
+    fn binds_assignment_returning_rc_into_block() {
+        let block = parse_block("x := HelloWorld()");
+
+        assert_eq!(1, block.statements.len());
+
+        match &block.statements[0].value {
+            ExpressionValue::Block(inner_block) => {
+                println!("{:?}", inner_block.to_source());
                 assert_eq!(2, inner_block.statements.len());
 
                 match &inner_block.statements[0].value {
-                    ExpressionValue::LetBinding { name,  }
+                    ExpressionValue::LetBinding { name: _name, value } => {
+                        assert!(value.is_function_call());
+                    }
+
+                    _ => panic!("1st expression in inner block should be a let binding")
+                }
+
+                match &inner_block.statements[1].value {
+                    ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, rhs } => {
+                        assert!(lhs.is_any_identifier());
+                        assert!(rhs.is_any_identifier());
+                    }
+
+                    _ => panic!("2nd expression in inner block should be an assignment")
                 }
             }
 

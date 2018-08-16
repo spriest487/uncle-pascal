@@ -4,7 +4,6 @@ use syntax::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
-use node::ToSource;
 
 pub type Unit = node::Unit<ParsedSymbol>;
 pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol>;
@@ -132,7 +131,7 @@ impl Unit {
                     func_kw.is_keyword(keywords::Procedure) ||
                     func_kw.is_keyword(keywords::Constructor)
                 => {
-                    let func = Function::parse(tokens, &peek_decl.last_token)?;
+                    let func = FunctionDecl::parse(tokens, &peek_decl.last_token)?;
                     decls.push(node::UnitDeclaration::Function(func.value));
 
                     tokens = Box::from(func.next_tokens);
@@ -160,46 +159,5 @@ impl Unit {
         }
 
         Ok(ParseOutput::new(decls, last_parsed, tokens))
-    }
-}
-
-impl ToSource for UnitDeclaration {
-    fn to_source(&self) -> String {
-        match self {
-            &node::UnitDeclaration::Record(ref rec_decl) =>
-                rec_decl.to_source(),
-
-            &node::UnitDeclaration::Function(ref func_decl) =>
-                func_decl.to_source(),
-
-            &node::UnitDeclaration::Vars(ref var_decls) =>
-                var_decls.to_source(),
-        }
-    }
-}
-
-impl ToSource for Unit {
-    fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("unit {};", self.name));
-
-        if self.uses.len() > 0 {
-            lines.push(format!("uses {};",
-                               self.uses.iter().map(|u| format!("{}", u))
-                                   .collect::<Vec<_>>()
-                                   .join(", ")));
-        }
-
-        lines.push("interface".to_owned());
-        for decl in self.interface.iter() {
-            lines.push(decl.to_source())
-        }
-
-        lines.push("implementation".to_owned());
-        for decl in self.interface.iter() {
-            lines.push(decl.to_source())
-        }
-
-        lines.join("\n\n")
     }
 }

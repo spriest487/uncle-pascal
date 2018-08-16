@@ -320,6 +320,13 @@ impl<TSymbol> Expression<TSymbol>
 impl<TSymbol> Expression<TSymbol>
     where TSymbol: PartialEq
 {
+    pub fn is_any_identifier(&self) -> bool {
+        match &self.value {
+            ExpressionValue::Identifier(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_identifier(&self, id: &TSymbol) -> bool {
         match &self.value {
             &ExpressionValue::Identifier(ref expr_id) => expr_id == id,

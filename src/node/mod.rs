@@ -1,5 +1,6 @@
 pub mod identifier;
 pub mod expression;
+pub mod to_source;
 
 use std::fmt;
 
@@ -7,13 +8,10 @@ use source;
 use types::{ RecordKind };
 pub use self::identifier::*;
 pub use self::expression::*;
+pub use self::to_source::*;
 
-pub trait ToSource {
-    fn to_source(&self) -> String;
-}
-
-pub trait Symbol {
-    type Type: Clone + fmt::Debug;
+pub trait Symbol: ToSource {
+    type Type: Clone + ToSource + fmt::Debug;
 }
 
 #[derive(Clone, Debug)]

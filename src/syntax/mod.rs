@@ -25,6 +25,7 @@ use source;
 use node::{
     Identifier,
     Symbol,
+    ToSource
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -34,6 +35,12 @@ pub struct ParsedSymbol(pub Identifier);
 pub struct ParsedType {
     pub name: Identifier,
     pub indirection: usize,
+}
+
+impl ToSource for ParsedType {
+    fn to_source(&self) -> String {
+        self.to_string()
+    }
 }
 
 impl ParsedType {
@@ -90,6 +97,12 @@ impl fmt::Display for ParsedType {
 
 impl Symbol for ParsedSymbol {
     type Type = ParsedType;
+}
+
+impl ToSource for ParsedSymbol {
+    fn to_source(&self) -> String {
+        self.0.to_source()
+    }
 }
 
 impl fmt::Display for ParsedSymbol {

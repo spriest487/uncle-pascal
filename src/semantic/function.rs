@@ -8,7 +8,7 @@ const RESULT_VAR_NAME: &str = "result";
 pub type Function = node::FunctionDecl<ScopedSymbol>;
 
 impl Function {
-    pub fn annotate(function: &syntax::Function,
+    pub fn annotate(function: &syntax::FunctionDecl,
                     scope: &Scope) -> Result<Self, SemanticError> {
         let return_type = match function.return_type {
             Some(ref func_return_type) => {

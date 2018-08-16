@@ -77,22 +77,3 @@ impl Block {
                             statement_groups.next_tokens))
     }
 }
-
-impl node::ToSource for Block {
-    fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push("begin".to_owned());
-
-        for (i, statement) in self.statements.iter().enumerate() {
-            let mut line = statement.to_source();
-            if i < self.statements.len() - 1 {
-                line = line + ";";
-            }
-
-            lines.push(format!("\t{}", line));
-        }
-
-        lines.push("end".to_string()).to_owned();
-        lines.join("\n")
-    }
-}

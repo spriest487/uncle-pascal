@@ -97,34 +97,3 @@ impl Program {
         Ok(program)
     }
 }
-
-impl node::ToSource for Program {
-    fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("program {};", self.name));
-
-        if self.uses.len() > 0 {
-            lines.push(format!("uses {};",
-                               self.uses.iter().map(|u| format!("{}", u))
-                                   .collect::<Vec<_>>()
-                                   .join(", ")));
-        }
-
-        for decl in self.decls.iter() {
-            match decl {
-                &node::UnitDeclaration::Record(ref rec_decl) =>
-                    lines.push(rec_decl.to_source()),
-
-                &node::UnitDeclaration::Function(ref func_decl) =>
-                    lines.push(func_decl.to_source()),
-
-                &node::UnitDeclaration::Vars(ref var_decls) =>
-                    lines.push(var_decls.to_source()),
-            }
-        }
-
-        lines.push(self.program_block.to_source() + ".");
-
-        lines.join("\n\n")
-    }
-}

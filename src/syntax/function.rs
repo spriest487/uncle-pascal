@@ -6,9 +6,9 @@ use tokens::AsToken;
 use node::{self, Identifier};
 use source;
 
-pub type Function = node::FunctionDecl<ParsedSymbol>;
+pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
 
-impl Function {
+impl FunctionDecl {
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
@@ -85,7 +85,7 @@ impl Function {
         let last_semicolon = tokens::Semicolon.match_or_endl(body_block.next_tokens,
                                                              &body_block.last_token)?;
 
-        let function = Function {
+        let function = FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name,
             return_type: return_type.value,
@@ -104,31 +104,16 @@ impl Function {
     }
 }
 
-impl node::ToSource for Function {
-    fn to_source(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("function {};", self.name));
-
-        if self.local_vars.decls.len() > 0 {
-            lines.push(self.local_vars.to_source());
-        }
-
-        lines.push(self.body.to_source() + ";");
-
-        lines.join("\n")
-    }
-}
-
 #[cfg(test)]
 mod test {
     use tokenizer;
     use node::Identifier;
     use super::*;
 
-    fn parse_func(src: &str) -> Function {
+    fn parse_func(src: &str) -> FunctionDecl {
         let tokens = tokenizer::tokenize("test", src).unwrap();
 
-        Function::parse(tokens, &source::test::empty_context())
+        FunctionDecl::parse(tokens, &source::test::empty_context())
             .unwrap()
             .value
     }

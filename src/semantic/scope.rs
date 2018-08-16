@@ -88,6 +88,17 @@ impl node::Symbol for ScopedSymbol {
     type Type = DeclaredType;
 }
 
+impl node::ToSource for ScopedSymbol {
+    fn to_source(&self) -> String {
+        match self {
+            ScopedSymbol::Local { name, .. } =>
+                name.to_source(),
+            ScopedSymbol::RecordMember { record_id, name, .. } =>
+                format!("{}.{}", record_id.to_source(), name),
+        }
+    }
+}
+
 impl Default for Scope {
     fn default() -> Self {
         Scope::new().with_all(Scope::system())
