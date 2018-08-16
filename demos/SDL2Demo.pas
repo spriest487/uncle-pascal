@@ -1,8 +1,26 @@
-program SDL2Demo
-
-uses
+program SDL2Demo 
+uses 
     SDL
     System.*
+
+procedure RunWindow(window: SDL.Window; renderer: SDL.Renderer)
+var 
+    nextEvent: SDL.Event
+    quit: Boolean = false
+begin
+    while not quit do
+    begin
+        nextEvent.PollEvent()
+
+        if nextEvent.Type = SDL.EVENT_QUIT then
+            quit := true
+        else
+        begin
+            SDL.RenderClear(renderer)
+            SDL.RenderPresent(renderer)
+        end
+    end
+end
 
 begin
     let title = 'Test Window'
@@ -23,11 +41,11 @@ begin
 
     if window = nil then
         raise 'creating window failed'
-    
-    for let i = 1 to 10 do
-         SDL.PollEvent(nil)
 
-    SDL.Delay(UInt32(2000))
+    let renderer = SDL.CreateRenderer(window, 0, 0)
+    SDL.SetRenderDrawColor(renderer, 100, 149, 237, 255)
+    
+    RunWindow(window, renderer)
 
     SDL.DestroyWindow(window)
     SDL.Quit()
