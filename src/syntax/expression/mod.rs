@@ -57,15 +57,15 @@ fn count_operators_at_base_level<'a, TIter>(tokens: TIter) -> Result<usize, Pars
 }
 
 impl Expression {
-    fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Expression {
+    fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expression, ParseError> {
         assert!(parts.len() > 0, "expression must not be empty");
 
         if parts.len() == 1 {
-            return match parts.into_iter().next().unwrap() {
+            return Ok(match parts.into_iter().next().unwrap() {
                 CompoundExpressionPart::Operand(expr) => expr,
                 CompoundExpressionPart::Operator(op_token) =>
                     panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
-            };
+            });
         }
 
         /* find the lowest-precedence operator in the expression, this becomes the
@@ -92,25 +92,43 @@ impl Expression {
 
                 let op_expr = Expression::prefix_op(lo_op.op, rhs, lo_op.token);
 
-                let merged_parts = before_op.iter()
+                let merged_parts: Vec<_> = before_op.iter()
                     .cloned()
                     .chain(vec![CompoundExpressionPart::Operand(op_expr)])
-                    .chain(parts_after_op);
+                    .chain(parts_after_op)
+                    .collect();
 
-                Expression::resolve_ops_by_precedence(merged_parts.collect())
+                assert!(merged_parts.len() > 0);
+                Expression::resolve_ops_by_precedence(merged_parts)
             }
 
             operators::Position::Binary => {
                 let (before_op, after_op) = parts.split_at(lo_op_index);
 
-                let lhs_operand = Expression::resolve_ops_by_precedence(Vec::from(before_op));
+                if before_op.len() == 0 {
+                    return Err(ParseError::EmptyOperand {
+                        operator: lo_op.token,
+                        before: true,
+                    });
+                }
+
+                //1 because the op is included in this (?)
+                if after_op.len() <= 1 {
+                    return Err(ParseError::EmptyOperand {
+                        operator: lo_op.token,
+                        before: false,
+                    });
+                }
+
+                let lhs_operand = Expression::resolve_ops_by_precedence(Vec::from(before_op))?;
                 let rhs_operand = Expression::resolve_ops_by_precedence(after_op.iter()
                     .skip(1)
                     .cloned()
-                    .collect());
+                    .collect())?;
 
                 let expr_context = lhs_operand.context.clone();
-                Expression::binary_op(lhs_operand, lo_op.op, rhs_operand, expr_context)
+
+                Ok(Expression::binary_op(lhs_operand, lo_op.op, rhs_operand, expr_context))
             }
         }
     }
@@ -285,7 +303,8 @@ impl Expression {
             }
         }
 
-        let expr = Expression::resolve_ops_by_precedence(parts);
+        assert!(parts.len() > 0, "expression must not be empty after {}", last_token);
+        let expr = Expression::resolve_ops_by_precedence(parts)?;
 
         Ok(ParseOutput::new(expr, last_token, tokens_after))
     }

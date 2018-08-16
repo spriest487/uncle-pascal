@@ -121,6 +121,10 @@ pub trait ToContext {
 pub enum ParseError {
     UnexpectedToken(source::Token, Option<Matcher>),
     UnexpectedEOF(Matcher, source::Token),
+    EmptyOperand {
+        operator: source::Token,
+        before: bool,
+    }
 }
 
 #[allow(dead_code)]
@@ -136,7 +140,7 @@ impl ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &ParseError::UnexpectedToken(ref source_token, ref expected) => {
+            ParseError::UnexpectedToken(source_token, expected) => {
                 write!(f, "unexpected token: {}", source_token)?;
 
                 expected.as_ref()
@@ -144,8 +148,13 @@ impl fmt::Display for ParseError {
                     .unwrap_or(Ok(()))
             }
 
-            &ParseError::UnexpectedEOF(ref expected, ref context) =>
+            ParseError::UnexpectedEOF(expected, context) =>
                 write!(f, "unexpected end of input: expected {} after {}", expected, context),
+
+            ParseError::EmptyOperand { operator, before } => {
+                let position = if *before { "before" } else { "after" };
+                write!(f, "missing operand {} {}", position, operator)
+            }
         }
     }
 }
