@@ -15,6 +15,7 @@ typedef std::int64_t System_Int64;
 typedef std::uint64_t System_UInt64;
 typedef std::ptrdiff_t System_NativeInt;
 typedef std::size_t System_NativeUInt;
+typedef double System_Float64;
 
 typedef void* System_Pointer;
 typedef std::uint8_t System_Boolean;

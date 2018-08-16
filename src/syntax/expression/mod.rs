@@ -374,6 +374,13 @@ impl Expression {
         Ok(Expression::literal_int(i, integer_token.clone()))
     }
 
+    fn parse_literal_float(tokens: &mut TokenStream) -> ExpressionResult {
+        let float_token = tokens.match_one(Matcher::AnyLiteralFloat)?;
+
+        let f = float_token.unwrap_literal_float();
+        Ok(Expression::literal_float(f, float_token.clone()))
+    }
+
     fn parse_literal_nil(tokens: &mut TokenStream) -> ExpressionResult {
         tokens.match_one(keywords::Nil)?;
         Ok(Expression::literal_nil(tokens.context().clone()))
@@ -454,6 +461,7 @@ impl Expression {
             .or(Matcher::AnyIdentifier)
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
+            .or(Matcher::AnyLiteralFloat)
             .or(keywords::True)
             .or(keywords::False)
             .or(tokens::BracketLeft)
@@ -499,6 +507,10 @@ impl Expression {
                 Expression::parse_literal_integer(tokens)
             }
 
+            Some(ref f) if f.is_any_literal_float() => {
+                Expression::parse_literal_float(tokens)
+            }
+
             Some(ref nil) if nil.is_literal_nil() => {
                 Expression::parse_literal_nil(tokens)
             }
@@ -508,11 +520,12 @@ impl Expression {
                 Expression::parse_literal_bool(tokens)
             }
 
-            Some(unexpected) => {
-                Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
-            }
-
-            None => Err(ParseError::UnexpectedEOF(match_expr_start, tokens.context().clone())),
+            _ => match tokens.peek() {
+                Some(unexpected) =>
+                    Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start))),
+                None =>
+                    Err(ParseError::UnexpectedEOF(match_expr_start, tokens.context().clone()))
+            },
         }
     }
 }

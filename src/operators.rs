@@ -36,6 +36,7 @@ pub enum Operator {
     Gte,
     Lt,
     Lte,
+    RangeInclusive,
 }
 
 pub static PRECEDENCE: [(Operator, Position); 17] = [
@@ -121,6 +122,7 @@ impl fmt::Display for Operator {
             Gte => ">=",
             Lt => "<",
             Lte => "<=",
+            RangeInclusive => "..",
         })
     }
 }

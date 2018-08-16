@@ -4,7 +4,7 @@ use std::{
     ops::Sub,
 };
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IntConstant {
     Char(u8),
     I32(i32),
@@ -149,5 +149,37 @@ impl Sub for IntConstant {
 
     fn sub(self, rhs: Self) -> Self {
         Self::from(self.as_i128().wrapping_sub(rhs.as_i128()))
+    }
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum FloatConstant {
+    F64(f64),
+}
+
+impl FloatConstant {
+    pub fn as_f64(&self) -> f64 {
+        match self {
+            FloatConstant::F64(val) => *val,
+        }
+    }
+
+    pub fn parse_str(s: &str) -> Option<Self> {
+        let val: f64 = s.parse().ok()?;
+        Some(FloatConstant::from(val))
+    }
+}
+
+impl From<f64> for FloatConstant {
+    fn from(val: f64) -> Self {
+        FloatConstant::F64(val)
+    }
+}
+
+impl fmt::Display for FloatConstant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FloatConstant::F64(val) => write!(f, "{:E}", val)
+        }
     }
 }

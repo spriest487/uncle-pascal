@@ -414,12 +414,14 @@ fn is_lvalue(expr: &Expression) -> bool {
             let is_declared_func = expr.scope().get_function(&sym.name()).is_some();
             !is_declared_func
         }
-        ExpressionValue::PrefixOperator { op, rhs } => match op {
-            operators::Deref =>
-                is_lvalue(rhs),
-            _ =>
-                false,
+        ExpressionValue::PrefixOperator { op, .. } => match op {
+            operators::Deref => true,
+            _ => false,
         },
+
+        ExpressionValue::Member { of, .. } => {
+            is_lvalue(of)
+        }
 
         ExpressionValue::FunctionCall { .. } |
         ExpressionValue::Constant(_) |
@@ -427,8 +429,7 @@ fn is_lvalue(expr: &Expression) -> bool {
         ExpressionValue::Block(_) |
         ExpressionValue::ForLoop { .. } |
         ExpressionValue::If { .. } |
-        ExpressionValue::LetBinding { .. } |
-        ExpressionValue::Member { .. } =>
+        ExpressionValue::LetBinding { .. } =>
             false
     }
 }
@@ -448,14 +449,11 @@ fn binary_op_type(lhs: &Expression,
         operators::Lt |
         operators::Lte |
         operators::Equals => {
-            if op == operators::Assignment && !is_lvalue(lhs) {
-                Err(SemanticError::value_not_assignable(lhs.clone()))
-            } else {
-                expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
-                Ok(Some(Type::Boolean))
-            }
+            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
+            Ok(Some(Type::Boolean))
         }
 
+        operators::RangeInclusive |
         operators::Multiply |
         operators::Divide |
         operators::Plus |
@@ -465,8 +463,12 @@ fn binary_op_type(lhs: &Expression,
         }
 
         operators::Assignment => {
-            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
-            Ok(None)
+            if !is_lvalue(lhs) {
+                Err(SemanticError::value_not_assignable(lhs.clone()))
+            } else {
+                expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
+                Ok(None)
+            }
         }
 
         operators::AddressOf |
@@ -509,6 +511,7 @@ fn prefix_op_type(op: operators::Operator,
                 invalid_op_err(),
         }
 
+        operators::RangeInclusive |
         operators::Multiply |
         operators::Divide |
         operators::And |
@@ -595,6 +598,10 @@ impl Expression {
 
             ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
                 Ok(Expression::literal_bool(*b, expr_context))
+            }
+
+            ExpressionValue::Constant(ConstantExpression::Float(f)) => {
+                Ok(Expression::literal_float(*f, expr_context))
             }
 
             ExpressionValue::If { condition, then_branch, else_branch } =>

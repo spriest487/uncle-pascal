@@ -68,6 +68,7 @@ pub enum Type {
     NativeUInt,
     RawPointer,
     Pointer(Box<Type>),
+    Float64,
     Function(Box<FunctionSignature>),
     Record(Identifier),
     Class(Identifier),
@@ -94,6 +95,7 @@ impl Type {
                 Type::UInt64 => "System.UInt64".to_string(),
                 Type::NativeInt => "System.NativeInt".to_string(),
                 Type::NativeUInt => "System.NativeUInt".to_string(),
+                Type::Float64 => "System.Float64".to_string(),
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig.to_source()),
@@ -195,6 +197,7 @@ impl Type {
             Type::UInt64 |
             Type::NativeInt |
             Type::NativeUInt |
+            Type::Float64 |
             Type::Function(_) |
             Type::Boolean => true,
 
@@ -248,6 +251,10 @@ impl Type {
             (a, b) if a == b && a.is_numeric()
                 => true,
 
+            // any number promotes to a float64
+            (a, Type::Float64) if a.is_numeric()
+                => true,
+
             // byte promotes to any larger type
             (Type::Byte, Type::Int32) |
             (Type::Byte, Type::UInt32) |
@@ -276,9 +283,11 @@ impl Type {
             Type::Int64 |
             Type::UInt64 |
             Type::NativeInt |
-            Type::NativeUInt
+            Type::NativeUInt |
+            Type::Float64
                 => true,
-            Type::Byte => true,
+            Type::Byte
+                => true,
             _ => false,
         }
     }
@@ -288,6 +297,7 @@ impl Type {
             (Type::Int64, Type::Int64) |
             (Type::Byte, Type::Byte) |
             (Type::Boolean, Type::Boolean) |
+            (Type::Float64, Type::Float64) |
             (Type::RawPointer, Type::RawPointer) =>
                 true,
 

@@ -8,7 +8,10 @@ use operators;
 use keywords;
 use source;
 use opts::CompileOptions;
-use consts::IntConstant;
+use consts::{
+    IntConstant,
+    FloatConstant,
+};
 
 #[derive(Clone, Debug)]
 pub struct IllegalToken {
@@ -75,6 +78,55 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    fn make_float_token(&mut self, len: Option<usize>) -> TokenizeResult<source::Token> {
+        let chars = match len {
+            None => &self.line[self.col..],
+            Some(len) => &self.line[self.col..self.col + len],
+        };
+
+        self.col += chars.len();
+
+        FloatConstant::parse_str(&chars.iter().collect::<String>())
+            .map(|float_const| self.make_token(tokens::LiteralFloat(float_const)))
+            .ok_or_else(|| self.illegal())
+    }
+
+    fn literal_float(&mut self) -> TokenizeResult<source::Token> {
+        let find_non_num = |c| match c {
+            '0'...'9' => false,
+            _ => true,
+        };
+
+        //find end of integer part, as offset from self.col
+        let mut cur = match find_ahead(&self.line[self.col..], find_non_num) {
+            Some(after_int_part) => after_int_part,
+            // no decimal point or exponent, just numbers until the end
+            None => return self.make_float_token(None),
+        };
+
+        if self.line[self.col + cur] == '.' {
+            cur += 1;
+            //find end of fractional part
+            cur = match find_ahead(&self.line[self.col + cur..], find_non_num) {
+                Some(after_frac_part) => cur + after_frac_part,
+                // no exponent and entire rest of line after decimal point is fractional part
+                None => return self.make_float_token(None),
+            }
+        }
+
+        if self.line[self.col + cur] == 'e' || self.line[self.col + cur] == 'E' {
+            cur += 1;
+            //find end of exponent
+            cur = match find_ahead(&self.line[self.col + cur..], find_non_num) {
+                Some(after_exponent) => cur + after_exponent,
+                //exponent is last thing on this line
+                None => return self.make_float_token(None),
+            }
+        }
+
+        self.make_float_token(Some(cur))
+    }
+
     fn literal_hex(&mut self) -> TokenizeResult<source::Token> {
         let line_after_sigil = &self.line[self.col + 1..];
         let next_non_hex = find_ahead(line_after_sigil, |c| match c {
@@ -95,7 +147,7 @@ impl<'a> Lexer<'a> {
                 let token = self.make_token(tokens::LiteralInteger(int));
                 self.col += int_str.len();
                 Ok(token)
-            },
+            }
             None => Err(self.illegal()),
         }
     }
@@ -108,6 +160,22 @@ impl<'a> Lexer<'a> {
             _ => true,
         });
 
+        if !sigil {
+            if let Some(num_end) = next_non_num {
+                let end_char = self.line[start + num_end];
+                if end_char == 'E' || end_char == 'e' {
+                    /* the only valid option for num + e is a float with an exponent*/
+                    return self.literal_float();
+                }
+
+                if end_char == '.' && self.line.get(start + num_end + 1) != Some(&'.') {
+                    /* a period might mean this is a decimal, but two periods means this
+                    is an integer in a range */
+                    return self.literal_float();
+                }
+            }
+        }
+
         let int_str = match next_non_num {
             Some(end) => &self.line[self.col..self.col + end],
             None => &self.line[self.col..],
@@ -118,7 +186,7 @@ impl<'a> Lexer<'a> {
                 let token = self.make_token(tokens::LiteralInteger(int));
                 self.col += int_str.len();
                 Ok(token)
-            },
+            }
             None => Err(self.illegal()),
         }
     }
@@ -139,18 +207,18 @@ impl<'a> Lexer<'a> {
                         Some('\'') => {
                             contents.push('\'');
                             next_col += 1;
-                        },
+                        }
 
                         /* it's something else, this string ends here */
                         _ => {
                             break;
-                        },
+                        }
                     }
                 }
 
                 Some(c) => {
                     contents.push(*c);
-                },
+                }
             }
 
             next_col += 1;
@@ -238,7 +306,10 @@ impl<'a> Lexer<'a> {
             ']' => self.simple_token(tokens::SquareBracketRight, 1),
             '@' => self.simple_token(operators::AddressOf, 1),
             ',' => self.simple_token(tokens::Comma, 1),
-            '.' => self.simple_token(tokens::Period, 1),
+            '.' => match self.line.get(self.col + 1) {
+                Some('.') => self.simple_token(operators::RangeInclusive, 2),
+                _ => self.simple_token(tokens::Period, 1),
+            },
             ';' => self.simple_token(tokens::Semicolon, 1),
             '^' => self.simple_token(operators::Deref, 1),
             '>' => match self.line.get(self.col + 1) {

@@ -3,16 +3,20 @@ use std::fmt;
 use keywords;
 use operators;
 use node::ToSource;
-use consts::IntConstant;
+use consts::{
+    IntConstant,
+    FloatConstant,
+};
 
 pub use self::Token::*;
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Token {
     Keyword(keywords::Keyword),
     Identifier(String),
     Operator(operators::Operator),
     LiteralInteger(IntConstant),
+    LiteralFloat(FloatConstant),
     LiteralString(String),
     Period,
     Colon,
@@ -105,6 +109,13 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
         }
     }
 
+    fn is_any_literal_float(&self) -> bool {
+        match self.as_token() {
+            Token::LiteralFloat(_) => true,
+            _ => false,
+        }
+    }
+
     fn unwrap_operator(&self) -> operators::Operator {
         match self.as_token() {
             Operator(op) => *op,
@@ -125,6 +136,13 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
             _ => panic!("calling unwrap_literal_integer on {}", self),
         }
     }
+
+    fn unwrap_literal_float(&self) -> FloatConstant {
+        match self.as_token() {
+            LiteralFloat(f) => *f,
+            _ => panic!("calling unwrap_literal_float on {}", self),
+        }
+    }
 }
 
 impl AsToken for Token {
@@ -141,6 +159,7 @@ impl ToSource for Token {
             Operator(op) => op.to_source(),
             LiteralInteger(i) => format!("{}", i),
             LiteralString(s) => format!("'{}'", s.replace("'", "''")),
+            LiteralFloat(f) => format!("{}", f),
             Period => ".".to_string(),
             Colon => ":".to_string(),
             Semicolon => ";".to_string(),
@@ -161,6 +180,7 @@ impl fmt::Display for Token {
             Operator(op) => write!(f, "operator `{}`", op),
             LiteralString(s) => write!(f, "string literal `{}`", s),
             LiteralInteger(i) => write!(f, "integer literal `{}`", i),
+            LiteralFloat(val) => write!(f, "float literal `{}`", val.as_f64()),
             _ => write!(f, "{}", self.to_source())
         }
     }

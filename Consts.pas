@@ -9,6 +9,9 @@ const
     NO: Boolean = false
     UNSIGNED_SOMETHING = $DEADBEEF
     CHAR_SOMETHING = #32
+    FLOAT_SOMETHING = 1.0
+    FLOAT_BIG = 9.999E7
+    FLOAT_ONE = 1.0; FLOAT_TWO = 3E1
 
 procedure Test
 const

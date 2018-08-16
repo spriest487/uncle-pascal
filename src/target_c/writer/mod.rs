@@ -24,7 +24,10 @@ use types::{
     Type,
     Symbol,
 };
-use consts::IntConstant;
+use consts::{
+    IntConstant,
+    FloatConstant,
+};
 
 use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
@@ -39,6 +42,7 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
         Type::UInt64 => "System_UInt64".to_owned(),
         Type::NativeInt => "System_NativeInt".to_owned(),
         Type::NativeUInt => "System_NativeUInt".to_owned(),
+        Type::Float64 => "System_Float64".to_owned(),
         Type::Boolean => "System_Boolean".to_owned(),
         Type::RawPointer => "System_Pointer".to_owned(),
         Type::Pointer(target) => {
@@ -167,6 +171,7 @@ pub fn write_expr(out: &mut String,
                 operators::Gt => ">",
                 operators::Gte => ">=",
 
+                operators::RangeInclusive |
                 operators::AddressOf |
                 operators::Deref => panic!("bad binary operator type: {}", op),
             };
@@ -189,6 +194,7 @@ pub fn write_expr(out: &mut String,
                 operators::Deref => "*",
                 operators::AddressOf => "&",
 
+                operators::RangeInclusive |
                 operators::And |
                 operators::Or |
                 operators::Equals |
@@ -237,7 +243,7 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::Constant(const_expr) => {
             match const_expr {
                 ConstantExpression::Integer(i) => {
-                    let int_type = expr.expr_type().unwrap().unwrap();
+                    let int_type = const_expr.value_type();
                     write!(out, "(({})", type_to_c(&int_type, expr.scope()))?;
                     match i {
                         IntConstant::U32(i) => write!(out, "0x{:x}", i)?,
@@ -245,7 +251,16 @@ pub fn write_expr(out: &mut String,
                         IntConstant::I32(i) => write!(out, "{}", i)?,
                         IntConstant::I64(i) => write!(out, "{}ll", i)?,
                         IntConstant::Char(c) => write!(out, "{}", c)?,
-                    };
+                    }
+                    write!(out, ")")
+                }
+
+                ConstantExpression::Float(f) => {
+                    let float_type = const_expr.value_type();
+                    write!(out, "(({})", type_to_c(&float_type, expr.scope()))?;
+                    match f {
+                        FloatConstant::F64(val) => write!(out, "{:e}", val)?
+                    }
                     write!(out, ")")
                 }
 

@@ -54,7 +54,7 @@ impl fmt::Display for Location {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Token {
     pub token: Rc<tokens::Token>,
     pub location: Location,

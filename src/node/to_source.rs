@@ -76,6 +76,8 @@ impl<T, C> ToSource for ExpressionValue<T, C>
             }
 
             ExpressionValue::Constant(ConstantExpression::Integer(i)) => format!("{}", i),
+            ExpressionValue::Constant(ConstantExpression::Float(f)) => format!("{}", f),
+
 
             ExpressionValue::Constant(ConstantExpression::String(s)) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
@@ -144,6 +146,7 @@ impl ToSource for ConstantExpression {
     fn to_source(&self) -> String {
         match self {
             ConstantExpression::Integer(int) => int.to_string(),
+            ConstantExpression::Float(float) => float.to_string(),
             ConstantExpression::Nil => "nil".to_string(),
             ConstantExpression::Boolean(val) => match val {
                 true => "true".to_string(),

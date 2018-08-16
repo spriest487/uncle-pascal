@@ -103,7 +103,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ParseError::UnexpectedToken(source_token, expected) => {
-                write!(f, "unexpected token {}", source_token)?;
+                write!(f, "unexpected {}", source_token)?;
 
                 expected.as_ref()
                     .map(|matcher| write!(f, " (expected: {})", matcher))

@@ -117,8 +117,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
                     let mut dim_tokens = TokenStream::new(dim_group.tokens, &dim_group.context);
                     let from = dim_tokens.match_one(Matcher::AnyLiteralInteger)
                         .and_then(int_token_to_array_dim)?;
-                    dim_tokens.match_one(tokens::Period)?;
-                    dim_tokens.match_one(tokens::Period)?;
+                    dim_tokens.match_one(operators::RangeInclusive)?;
                     let to = dim_tokens.match_one(Matcher::AnyLiteralInteger)
                         .and_then(int_token_to_array_dim)?;
 

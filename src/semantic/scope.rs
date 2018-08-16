@@ -539,7 +539,8 @@ impl Scope {
                 size_of::<usize>() as usize,
 
             Type::Int64 |
-            Type::UInt64 =>
+            Type::UInt64 |
+            Type::Float64 =>
                 8,
 
             Type::UInt32 |

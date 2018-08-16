@@ -2,7 +2,10 @@ use std::fmt;
 
 use operators;
 use node::*;
-use consts::IntConstant;
+use consts::{
+    IntConstant,
+    FloatConstant,
+};
 use types::Type;
 
 #[derive(Clone, Debug)]
@@ -53,6 +56,7 @@ pub struct Expression<TSymbol, TContext> {
 #[derive(Clone, Debug)]
 pub enum ConstantExpression {
     Integer(IntConstant),
+    Float(FloatConstant),
     String(String),
     Boolean(bool),
     Nil,
@@ -73,6 +77,11 @@ impl ConstantExpression {
                     IntConstant::I64(_) => Type::Int64,
                     IntConstant::U64(_) => Type::UInt64,
                 },
+
+            ConstantExpression::Float(float_const) =>
+                match float_const {
+                    FloatConstant::F64(_) => Type::Float64,
+                }
 
             ConstantExpression::Boolean(_) =>
                 Type::Boolean,
@@ -146,6 +155,13 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
     pub fn literal_int(i: IntConstant, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Constant(ConstantExpression::Integer(i)),
+            context: context.into(),
+        }
+    }
+
+    pub fn literal_float(f: FloatConstant, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Constant(ConstantExpression::Float(f)),
             context: context.into(),
         }
     }
@@ -444,20 +460,8 @@ pub fn transform_expressions<TSymbol, TContext>(
             replace(Expression::identifier(name, root_expr.context))
         }
 
-        ExpressionValue::Constant(ConstantExpression::Integer(i)) => {
-            replace(Expression::literal_int(i, root_expr.context))
-        }
-
-        ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
-            replace(Expression::literal_bool(b, root_expr.context))
-        }
-
-        ExpressionValue::Constant(ConstantExpression::Nil) => {
-            replace(root_expr)
-        }
-
-        ExpressionValue::Constant(ConstantExpression::String(s)) => {
-            replace(Expression::literal_string(&s, root_expr.context))
+        ExpressionValue::Constant(const_expr) => {
+            replace(Expression::const_value(const_expr, root_expr.context))
         }
 
         ExpressionValue::FunctionCall { target, args } => {
