@@ -6,15 +6,21 @@ uses
 
 begin
     let title = 'Test Window'
-    let titleCStr = GetMem(title.Length + 1)
+    let titleCStr = GetMem(title.StringLength() + 1)
     
-    if not StringToCString(title, titleCStr, title.Length + 1) then
+    if not StringToCString(title, titleCStr, title.StringLength() + 1) then
         raise 'copying title failed'
 
-    if SDL.Init($0000002) <> 0 then
+    if SDL.Init(SDL.INIT_VIDEO) <> 0 then
         raise 'initializing SDL failed'
 
-    let window = SDL.CreateWindow(titleCStr, 20, 20, 800, 600, $0)
+    let window = SDL.CreateWindow(titleCStr,
+        SDL.WINDOWPOS_UNDEFINED,
+        SDL.WINDOWPOS_UNDEFINED,
+        800,
+        600,
+        $0)
+
     if window = nil then
         raise 'creating window failed'
     
