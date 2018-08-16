@@ -8,12 +8,12 @@ use ToSource;
 
 #[derive(Debug, Clone)]
 pub struct Function {
-    name: String,
-    return_type: types::Identifier,
+    pub name: String,
+    pub return_type: types::Identifier,
 
-    local_vars: Vars,
+    pub local_vars: Vars,
 
-    body: Block,
+    pub body: Block,
 }
 
 impl Function {

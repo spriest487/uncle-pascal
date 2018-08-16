@@ -61,26 +61,61 @@ impl Scope {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Program {
-    vars: Vec<Symbol>,
-}
-
-pub fn type_check(program: syntax::Program) -> Result<Program, SemanticError> {
-    let global_scope = Scope::default();
-
-    let typed_vars = program.vars.decls.iter()
+fn annotate_vars(vars: &syntax::Vars, scope: &Scope) -> Result<Vec<Symbol>, SemanticError> {
+    vars.decls.iter()
         .map(|v| -> Result<Symbol, SemanticError> {
-            let var_type = global_scope
-                .find_type(&v.decl_type)
+            let var_type = scope.find_type(&v.decl_type)
                 .cloned()
                 .ok_or_else(|| SemanticError::UnknownType(v.decl_type.clone()))?;
 
             Ok(Symbol::new(&v.name, var_type))
         })
-        .collect::<Result<Vec<_>, _>>();
+        .collect()
+}
 
-    Ok(Program {
-        vars: typed_vars?
-    })
+#[derive(Clone, Debug)]
+pub struct Function {
+    name: String,
+    return_type: DeclaredType,
+    local_vars: Vec<Symbol>,
+    //_body: _,
+}
+
+impl Function {
+    fn annotate(function: &syntax::Function, scope: &Scope) -> Result<Self, SemanticError> {
+        let return_type = scope.find_type(&function.return_type)
+            .cloned()
+            .ok_or_else(|| SemanticError::UnknownType(function.return_type.clone()))?;
+
+        let local_vars = annotate_vars(&function.local_vars, &scope)?;
+
+        Ok(Function {
+            name: function.name.clone(),
+            return_type,
+            local_vars
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Program {
+    vars: Vec<Symbol>,
+    functions: Vec<Function>,
+}
+
+impl Program {
+    pub fn annotate(program: &syntax::Program) -> Result<Self, SemanticError> {
+        let global_scope = Scope::default();
+
+        let vars = annotate_vars(&program.vars, &global_scope)?;
+
+        let functions = program.functions.iter()
+            .map(|f| Function::annotate(f, &global_scope))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Program {
+            vars,
+            functions,
+        })
+    }
 }
