@@ -33,19 +33,29 @@ impl Expression {
                                          match_op.value))
             }
             &None => {
-                let split_at_op = Matcher::AnyBinaryOperator.split_at_match(
-                    maybe_open_bracket.next_tokens,
-                    &maybe_open_bracket.last_token)?;
+                let tokens : Vec<source::Token> = maybe_open_bracket.next_tokens.collect();
 
-                let lhs_expr = Expression::parse(split_at_op.value.before_split, context)?;
-                let op = split_at_op.value.split_at.unwrap_binary_operator().clone();
-                let rhs_expr = Expression::parse(split_at_op.next_tokens,
-                                                 &split_at_op.last_token)?;
+                /* we need to look at all ops in the token sequence and find
+                the lowest-priority one to do first, the higher-priority ones
+                 will be nested exprs on one side of the op */
+                let (op_pos, op) = tokens.iter()
+                    .enumerate()
+                    .filter(|&(_, token)| token.is_any_binary_operator())
+                    .map(|(pos, token)| (pos, token.unwrap_binary_operator().clone()))
+                    .max_by_key(|&(_, ref op)| op.precedence())
+                    .ok_or(ParseError::UnexpectedEOF(Matcher::AnyBinaryOperator,
+                                                     maybe_open_bracket.last_token.clone()))?;
+
+                let lhs_tokens: Vec<_> = tokens.iter().take(op_pos).cloned().collect();
+                let lhs_expr = Expression::parse(lhs_tokens, &maybe_open_bracket.last_token)?;
+
+                let rhs_tokens: Vec<_> = tokens.iter().skip(op_pos + 1).cloned().collect();
+                let rhs_expr = Expression::parse(rhs_tokens, &tokens[op_pos])?;
 
                 Ok(Expression::binary_op(lhs_expr,
                                          op,
                                          rhs_expr,
-                                         split_at_op.value.split_at.clone()))
+                                         tokens[op_pos].clone()))
             }
         }
     }

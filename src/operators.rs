@@ -20,6 +20,15 @@ pub static PRECEDENCE: [BinaryOperator; 5] = [
     Assignment,
 ];
 
+impl BinaryOperator {
+    pub fn precedence(&self) -> usize {
+        PRECEDENCE.iter().enumerate()
+            .find(|&(_, op)| op.eq(self))
+            .map(|(index, _)| index)
+            .unwrap()
+    }
+}
+
 impl fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
