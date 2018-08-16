@@ -27,7 +27,7 @@ const
     INIT_GAMECONTROLLER =       $00002000
     INIT_EVENTS =               $00004000
     INIT_NOPARACHUTE =          $00100000
-    WINDOWPOS_UNDEFINED =       536805376 // $1FFF0000
+    WINDOWPOS_UNDEFINED =       $1FFF0000
 
 function Init(flags: UInt32): Int32
 procedure Quit

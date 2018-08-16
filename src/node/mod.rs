@@ -14,7 +14,7 @@ pub use self::to_source::*;
 pub use self::function_signature::*;
 
 pub trait Context {
-    type Type: Clone + ToSource + fmt::Debug;
+    type Type: Clone + ToSource + PartialEq + fmt::Debug;
 
     fn token(&self) -> &source::Token;
 }
@@ -196,7 +196,9 @@ impl<TContext> Function<TContext>
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block<TContext> {
+pub struct Block<TContext>
+    where TContext: Context
+{
     pub context: TContext,
     pub statements: Vec<Expression<TContext>>,
 }

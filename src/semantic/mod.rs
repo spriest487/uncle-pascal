@@ -68,6 +68,10 @@ pub enum SemanticErrorKind {
         op: operators::Operator,
         args: Vec<Option<Type>>,
     },
+    InvalidTypecast {
+        target_type: Type,
+        from_type: Option<Type>,
+    },
     TypeNotAssignable(Option<Type>),
     ValueNotAssignable(Expression),
     TypesNotComparable(Option<Type>, Option<Type>),
@@ -159,6 +163,17 @@ impl fmt::Display for SemanticErrorKind {
 
                 write!(f, "destructor must have one argument of a class type from its own module, but found {}",
                        arg_names)
+            }
+
+            SemanticErrorKind::InvalidTypecast { target_type, from_type } => {
+                match from_type {
+                    None => write!(f, "can't cast untyped value"),
+                    Some(from_type) => {
+                        write!(f, "value of type `{}` cannot be cast to type `{}`",
+                               from_type,
+                               target_type)
+                    }
+                }
             }
 
             SemanticErrorKind::WrongNumberOfArgs { expected_sig, actual } => {
@@ -301,7 +316,7 @@ impl SemanticError {
             kind: SemanticErrorKind::WrongArgTypes {
                 sig: sig.into(),
                 actual: actual.into_iter().collect(),
-            }
+            },
         }
     }
 
@@ -316,6 +331,18 @@ impl SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
             context,
+        }
+    }
+
+    pub fn invalid_typecast(target_type: impl Into<Type>,
+                            from_type: impl Into<Option<Type>>,
+                            context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidTypecast {
+                from_type: from_type.into(),
+                target_type: target_type.into(),
+            },
+            context: context.into(),
         }
     }
 

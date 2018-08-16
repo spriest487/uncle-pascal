@@ -70,6 +70,10 @@ impl<C> ToSource for ExpressionValue<C>
                 format!("{}({})", target.to_source(), args_str)
             }
 
+            ExpressionValue::TypeCast { target_type, from_value } => {
+                format!("{}({})", target_type.to_source(), from_value.to_source())
+            }
+
             ExpressionValue::PrefixOperator { op, rhs } => {
                 format!("({} {})", op, rhs.to_source())
             }

@@ -15,11 +15,11 @@ begin
         raise 'initializing SDL failed'
 
     let window = SDL.CreateWindow(titleCStr,
-        SDL.WINDOWPOS_UNDEFINED,
-        SDL.WINDOWPOS_UNDEFINED,
+        Int32(SDL.WINDOWPOS_UNDEFINED),
+        Int32(SDL.WINDOWPOS_UNDEFINED),
         800,
         600,
-        $0)
+        0)
 
     if window = nil then
         raise 'creating window failed'
@@ -27,7 +27,7 @@ begin
     for let i = 1 to 10 do
          SDL.PollEvent(nil)
 
-    SDL.Delay($7d0)
+    SDL.Delay(UInt32(2000))
 
     SDL.DestroyWindow(window)
     SDL.Quit()

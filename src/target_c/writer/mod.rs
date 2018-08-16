@@ -264,6 +264,14 @@ pub fn write_expr(out: &mut String,
             write!(out, "({})", args_str)
         }
 
+        ExpressionValue::TypeCast { target_type, from_value } => {
+            let target_ctype = type_to_c(target_type, expr.scope());
+
+            write!(out, "static_cast<{}>(", target_ctype)?;
+            write_expr(out, from_value, globals)?;
+            write!(out, ")")
+        }
+
         ExpressionValue::LetBinding { name, value } => {
             let value_type = value.expr_type().unwrap().unwrap();
 

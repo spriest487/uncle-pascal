@@ -348,9 +348,9 @@ fn annotate_function_call(target: &syntax::Expression,
                           args: &Vec<syntax::Expression>,
                           scope: Rc<Scope>,
                           _context: &syntax::ParsedContext) -> SemanticResult<Expression> {
-    let typed_args = args.iter()
+    let typed_args: Vec<_> = args.iter()
         .map(|arg| Expression::annotate(arg, scope.clone()))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<SemanticResult<_>>()?;
 
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
@@ -387,12 +387,49 @@ fn annotate_function_call(target: &syntax::Expression,
     match ufcs_call {
         Some(ufcs_expr) => Ok(ufcs_expr),
         None => {
+            /* handle typecasting - if the func name is just an identifier,
+             it might be a typecast instead if there's no function by that
+             name and the arg list is exactly 1 long */
+            if let ExpressionValue::Identifier(name) = &target.value {
+                if scope.get_function(name).is_none() && typed_args.len() == 1 {
+                    if let Some(target_type) = scope.get_type_alias(name) {
+                        // we already checked there's exactly 1 arg
+                        let from_value = typed_args.into_iter()
+                            .next()
+                            .unwrap();
+
+                        let context = SemanticContext {
+                            token: target.context.token().clone(),
+                            scope,
+                        };
+
+                        return Ok(Expression::type_cast(target_type, from_value, context));
+                    }
+                }
+            }
+
             /* ordinary function call */
             let target = Expression::annotate(target, scope)?;
 
             Ok(Expression::function_call(target, typed_args))
         }
     }
+}
+
+fn annotate_type_cast(target_type: &node::TypeName,
+                      from_value: &syntax::Expression,
+                      scope: Rc<Scope>,
+                      context: &syntax::ParsedContext)
+                      -> SemanticResult<Expression> {
+    let target_type = target_type.resolve(scope.clone())?;
+    let from_value = Expression::annotate(from_value, scope.clone())?;
+
+    let context = SemanticContext {
+        token: context.token().clone(),
+        scope,
+    };
+
+    Ok(Expression::type_cast(target_type, from_value, context))
 }
 
 fn let_binding_type(value: &Expression, context: &SemanticContext) -> SemanticResult<Option<Type>> {
@@ -441,6 +478,31 @@ fn function_call_type(target: &Expression,
     }
 }
 
+fn type_cast_type(target_type: &Type,
+                  from_value: &Expression,
+                  context: &SemanticContext) -> SemanticResult<Option<Type>> {
+    let from_expr_type = from_value.expr_type()?
+        .ok_or_else(|| {
+            // expr has no type, can't cast it
+            SemanticError::invalid_typecast(target_type.clone(), None, context.clone())
+        })?;
+
+    match (from_expr_type, target_type) {
+        (Type::UInt32, Type::Int32) => Ok(Some(Type::Int32)),
+        (Type::Int32, Type::UInt32) => Ok(Some(Type::UInt32)),
+
+        (Type::UInt64, Type::Int64) => Ok(Some(Type::Int64)),
+        (Type::Int64, Type::UInt64) => Ok(Some(Type::UInt64)),
+
+        (ref from, to) if from.promotes_to(to) => Ok(Some(to.clone())),
+
+        // unsupported type of cast
+        (from, to) => {
+            Err(SemanticError::invalid_typecast(to.clone(), Some(from), context.clone()))
+        },
+    }
+}
+
 fn is_assignable(expr: &Expression) -> bool {
     match &expr.value {
         ExpressionValue::Identifier(name) => {
@@ -465,6 +527,7 @@ fn is_assignable(expr: &Expression) -> bool {
             is_assignable(of)
         }
 
+        ExpressionValue::TypeCast { .. } |
         ExpressionValue::Raise(_) |
         ExpressionValue::With { .. } |
         ExpressionValue::SetConstructor(_) |
@@ -710,6 +773,9 @@ impl Expression {
             ExpressionValue::FunctionCall { target, args } =>
                 annotate_function_call(target, args, scope, &expr.context),
 
+            ExpressionValue::TypeCast { target_type, from_value } =>
+                annotate_type_cast(target_type, from_value, scope, &expr.context),
+
             ExpressionValue::Member { of, name } => {
                 let typed_of = Expression::annotate(of, scope)?;
                 Ok(Expression::member(typed_of, name))
@@ -793,6 +859,9 @@ impl Expression {
 
             ExpressionValue::FunctionCall { target, args } =>
                 function_call_type(target, args, &self.context),
+
+            ExpressionValue::TypeCast { target_type, from_value } =>
+                type_cast_type(target_type, from_value, &self.context),
 
             ExpressionValue::Identifier(id) => {
                 self.scope().get_symbol(id)

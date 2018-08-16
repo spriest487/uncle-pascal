@@ -11,13 +11,17 @@ use consts::{
 use types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct SetMemberGroup<TContext> {
+pub struct SetMemberGroup<TContext>
+    where TContext: Context
+{
     pub from: Expression<TContext>,
     pub to: Option<Expression<TContext>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExpressionValue<TContext> {
+pub enum ExpressionValue<TContext>
+    where TContext: Context
+{
     /**
         operator applied to a following operand
         `-1`
@@ -50,6 +54,17 @@ pub enum ExpressionValue<TContext> {
     FunctionCall {
         target: Box<Expression<TContext>>,
         args: Vec<Expression<TContext>>,
+    },
+
+    /**
+        conversion between castable types.
+        `Int32($0)`
+        `Byte(1)`
+        we disambiguate this from a regular function call during typechecking.
+    */
+    TypeCast {
+        target_type: TContext::Type,
+        from_value: Box<Expression<TContext>>,
     },
 
     /**
@@ -211,12 +226,14 @@ pub enum ExpressionValue<TContext> {
 
         this statement terminates the program
     */
-    Raise(Box<Expression<TContext>>)
+    Raise(Box<Expression<TContext>>),
 }
 
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Expression<TContext> {
+pub struct Expression<TContext>
+    where TContext: Context,
+{
     pub value: ExpressionValue<TContext>,
     pub context: TContext,
 }
@@ -311,6 +328,19 @@ impl<TContext> Expression<TContext>
             value: ExpressionValue::FunctionCall {
                 target: Box::new(target),
                 args: args.into_iter().collect(),
+            },
+            context: context.into(),
+        }
+    }
+
+    pub fn type_cast(target_type: impl Into<TContext::Type>,
+                     from_value: impl Into<Self>,
+                     context: impl Into<TContext>)
+                     -> Self {
+        Expression {
+            value: ExpressionValue::TypeCast {
+                target_type: target_type.into(),
+                from_value: Box::new(from_value.into()),
             },
             context: context.into(),
         }
@@ -612,7 +642,9 @@ impl<TContext> Expression<TContext>
 }
 
 #[allow(dead_code)]
-impl<TContext> Expression<TContext> {
+impl<TContext> Expression<TContext>
+    where TContext: Context
+{
     pub fn is_any_identifier(&self) -> bool {
         match &self.value {
             ExpressionValue::Identifier(_) => true,
@@ -714,6 +746,12 @@ pub fn transform_expressions<TContext>(
                 .collect();
 
             replace(Expression::function_call(target, args))
+        }
+
+        ExpressionValue::TypeCast { target_type, from_value } => {
+            let from_value = transform_expressions(*from_value, replace);
+
+            replace(Expression::type_cast(target_type, from_value, root_expr.context))
         }
 
         ExpressionValue::SetConstructor(members) => {

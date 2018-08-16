@@ -285,15 +285,13 @@ impl Type {
 
     pub fn promotes_to(&self, other: &Type) -> bool {
         match (self, other) {
-// numeric types always "promote" to themselves
-            (a, b) if a == b && a.is_numeric()
-            => true,
+            // types always "promote" to themselves
+            (a, b) if a == b => true,
 
-// any number promotes to a float64
-            (a, Type::Float64) if a.is_numeric()
-            => true,
+            // any number promotes to a float64
+            (a, Type::Float64) if a.is_numeric() => true,
 
-// byte promotes to any larger type
+            // byte promotes to any larger type
             (Type::Byte, Type::Int32) |
             (Type::Byte, Type::UInt32) |
             (Type::Byte, Type::Int64) |
@@ -301,11 +299,11 @@ impl Type {
             (Type::Byte, Type::NativeInt) |
             (Type::Byte, Type::NativeUInt) |
 
-// 32-bit integers promote to any 64-bit integer
+            // 32-bit integers promote to any 64-bit integer
             (Type::UInt32, Type::Int64) |
             (Type::UInt32, Type::UInt64) |
 
-// 32-bit integers promote to native ints with the same signedness
+            // 32-bit integers promote to native ints with the same signedness
             (Type::UInt32, Type::NativeUInt) |
             (Type::Int32, Type::NativeInt)
             => true,
