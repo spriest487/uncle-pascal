@@ -8,7 +8,10 @@ pub struct Identifier {
 
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}{}", self.namespace.join("."), self.name)
+        if self.namespace.len() > 0 {
+            write!(f, "{}.", self.namespace.join("."))?;
+        }
+        write!(f, "{}", self.name)
     }
 }
 

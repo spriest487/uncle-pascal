@@ -45,7 +45,7 @@ fn compile(source: &str) -> Result<(), CompileError> {
     let program = syntax::program::Program::parse(tokens.into_iter())?
         .finish()?;
 
-    println!("{:?}", program.to_source());
+    println!("{}", program.to_source());
 
     Ok(())
 }

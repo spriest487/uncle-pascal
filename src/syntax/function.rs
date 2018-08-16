@@ -3,6 +3,7 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use types;
+use ToSource;
 
 #[derive(Debug, Clone)]
 pub struct Function {
@@ -63,5 +64,22 @@ impl Function {
         };
 
         Ok(ParseOutput::new(function, remaining))
+    }
+}
+
+impl ToSource for Function {
+    fn to_source(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push(format!("function {};", self.name));
+
+        if self.local_vars.decls.len() > 0 {
+            lines.push(self.local_vars.to_source());
+        }
+
+        lines.push("begin".to_owned());
+        lines.push(self.body.iter().map(|t| t.to_source()).collect::<Vec<_>>().join(" "));
+        lines.push("end;".to_owned());
+
+        lines.join("\n")
     }
 }

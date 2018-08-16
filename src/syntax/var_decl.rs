@@ -22,7 +22,7 @@ impl ToSource for Vars {
                 format!("    {}: {};", decl.name, decl.decl_type)
             })
             .collect::<Vec<_>>()
-            .join(",\n");
+            .join("\n");
 
         format!("var\n{}", decl_lines)
     }
