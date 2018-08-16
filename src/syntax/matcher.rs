@@ -480,22 +480,19 @@ impl BlockMatcher {
         }
     }
 
-    pub fn match_groups<TIter, TSepMatcher>(&self,
-                                            separator_matcher: TSepMatcher,
-                                            in_tokens: TIter,
-                                            context: &source::Token)
-                                            -> ParseResult<GroupsMatch>
+    pub fn match_groups_inner<TIter, TSepMatcher>(&self,
+                                                  separator_matcher: TSepMatcher,
+                                                  in_tokens: TIter,
+                                                  context: &source::Token)
+                                                  -> ParseResult<Vec<GroupMatch>>
         where TIter: IntoIterator<Item=source::Token> + 'static,
               TSepMatcher: Into<Matcher>
     {
-        //match the outer block
-        let outer_block = self.match_block(in_tokens, context)?;
-
         let match_separator = separator_matcher.into();
 
         //the groups are found in the inner tokens of the outer block
-        let mut group_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(outer_block.value.inner.into_iter());
-        let mut group_last_token = outer_block.value.open.clone();
+        let mut group_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(in_tokens.into_iter());
+        let mut group_last_token = context.clone();
 
         let mut groups = Vec::new();
         let mut next_group = GroupMatch {
@@ -513,6 +510,7 @@ impl BlockMatcher {
                         groups.push(next_group);
                     }
 
+                    group_tokens = Box::new(peek_group_tokens);
                     break
                 }
 
@@ -550,31 +548,70 @@ impl BlockMatcher {
             }
         }
 
+        Ok(ParseOutput::new(groups, group_last_token, group_tokens))
+    }
+
+    pub fn match_groups<TIter, TSepMatcher>(&self,
+                                            separator_matcher: TSepMatcher,
+                                            in_tokens: TIter,
+                                            context: &source::Token)
+                                            -> ParseResult<GroupsMatch>
+        where TIter: IntoIterator<Item=source::Token> + 'static,
+              TSepMatcher: Into<Matcher>
+    {
+        //match the outer block
+        let outer_block = self.match_block(in_tokens, context)?;
+
+        let groups = self.match_groups_inner(separator_matcher,
+                                             outer_block.value.inner,
+                                             &outer_block.last_token)?.finish()?;
+
         let groups_match = GroupsMatch {
             open: outer_block.value.open,
             close: outer_block.value.close,
             groups,
         };
 
-        Ok(ParseOutput::new(groups_match, outer_block.last_token, outer_block.next_tokens))
+        Ok(ParseOutput::new(groups_match,
+                            outer_block.last_token,
+                            outer_block.next_tokens))
     }
 }
 
 #[cfg(test)]
 mod test {
+    use std::rc::*;
     use keywords;
     use tokens;
+    use source;
     use syntax::*;
+    use tokens::AsToken;
+
+    fn tokens_to_source(tokens: Vec<tokens::Token>) -> Vec<source::Token> {
+        tokens.into_iter()
+            .map(|t| source::Token {
+                token: Rc::from(t),
+                location: source::Location::new("test", 0, 0)
+            })
+            .collect()
+    }
+
+    fn source_to_tokens<I>(iter: I) -> Vec<tokens::Token>
+        where I: IntoIterator<Item=source::Token>
+    {
+        iter.into_iter().map(|t| t.as_token().clone())
+            .collect()
+    }
 
     #[test]
     fn block_matches_nested() {
-        let tokens = vec![
+        let tokens = tokens_to_source(vec![
             tokens::Keyword(keywords::Begin),
             tokens::Keyword(keywords::Begin),
             tokens::Identifier("hello world!".to_owned()),
             tokens::Keyword(keywords::End),
             tokens::Keyword(keywords::End),
-        ];
+        ]);
 
         let matcher = keywords::Begin.terminated_by(keywords::End);
 
@@ -584,18 +621,19 @@ mod test {
         assert!(result.is_ok());
         let block = result.unwrap();
 
-        assert_eq!(tokens::Keyword(keywords::Begin), block.value.open);
+        assert_eq!(&tokens::Keyword(keywords::Begin), block.value.open.as_token());
+
         assert_eq!(vec![
             tokens::Keyword(keywords::Begin),
             tokens::Identifier("hello world!".to_owned()),
             tokens::Keyword(keywords::End),
-        ], block.value.inner);
-        assert_eq!(tokens::Keyword(keywords::End), block.value.close);
+        ], source_to_tokens(block.value.inner));
+        assert_eq!(&tokens::Keyword(keywords::End), block.value.close.as_token());
     }
 
     #[test]
     fn block_matches_empty_groups() {
-        let tokens = vec![tokens::BracketLeft, tokens::BracketRight];
+        let tokens = tokens_to_source(vec![tokens::BracketLeft, tokens::BracketRight]);
 
         let context = tokens[0].clone();
         let result = tokens::BracketLeft.terminated_by(tokens::BracketRight)
@@ -609,7 +647,7 @@ mod test {
 
     #[test]
     fn block_matches_groups() {
-        let tokens = vec![
+        let tokens = tokens_to_source(vec![
             tokens::Keyword(keywords::Begin),
             tokens::LiteralString("one".to_owned()),
             tokens::LiteralString("two".to_owned()),
@@ -617,7 +655,7 @@ mod test {
             tokens::LiteralString("three".to_owned()),
             tokens::LiteralString("four".to_owned()),
             tokens::Keyword(keywords::End),
-        ];
+        ]);
 
         let matcher = keywords::Begin.terminated_by(keywords::End);
 
@@ -631,16 +669,16 @@ mod test {
         assert_eq!(vec![
             tokens::LiteralString("one".to_owned()),
             tokens::LiteralString("two".to_owned())
-        ], groups[0].tokens);
+        ], source_to_tokens(groups[0].tokens.clone()));
         assert_eq!(vec![
             tokens::LiteralString("three".to_owned()),
             tokens::LiteralString("four".to_owned())
-        ], groups[1].tokens);
+        ], source_to_tokens(groups[1].tokens.clone()));
     }
 
     #[test]
     fn block_matches_groups_and_skips_nested() {
-        let tokens = vec![
+        let tokens = tokens_to_source(vec![
             tokens::Keyword(keywords::Begin),
             tokens::LiteralString("one".to_owned()),
             tokens::LiteralString("two".to_owned()),
@@ -650,7 +688,7 @@ mod test {
             tokens::Keyword(keywords::End),
             tokens::LiteralString("four".to_owned()),
             tokens::Keyword(keywords::End),
-        ];
+        ]);
 
         let matcher = keywords::Begin.terminated_by(keywords::End);
 
@@ -669,6 +707,6 @@ mod test {
             tokens::Semicolon,
             tokens::Keyword(keywords::End),
             tokens::LiteralString("four".to_owned()),
-        ], groups[0].tokens);
+        ], source_to_tokens(groups[0].tokens.clone()));
     }
 }

@@ -128,15 +128,10 @@ mod test {
     use tokenizer;
     use super::*;
 
-    static NO_CONTEXT: tokenizer::SourceToken = tokenizer::SourceToken {
-        token: tokens::Keyword(keywords::Program),
-        location: SourceLocation::new("test", 0, 0),
-    };
-
     fn parse_func(src: &str) -> Function {
         let tokens = tokenizer::tokenize("test", src).unwrap();
 
-        let result = Function::parse(tokens, &NO_CONTEXT);
+        let result = Function::parse(tokens, &source::test::empty_context());
         assert!(result.is_ok());
 
         result.unwrap().value
@@ -147,7 +142,7 @@ mod test {
         let func = parse_func("function hello(): String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(node::Identifier::parse("String"), func.return_type);
+        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
@@ -156,16 +151,16 @@ mod test {
         let func = parse_func("function hello: String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(node::Identifier::parse("String"), func.return_type);
+        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
     #[test]
     fn parses_sig_with_args() {
-        let func = parse_func("function hello(x: System.Float, y: Integer): String; begin end;");
+        let func = parse_func("function hello(x: System.Float; y: Integer): String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(node::Identifier::parse("String"), func.return_type);
+        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
         assert_eq!(2, func.args.decls.len());
 
         assert_eq!("x", func.args.decls[0].name);

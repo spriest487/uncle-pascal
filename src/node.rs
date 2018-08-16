@@ -180,7 +180,9 @@ impl<TSymbol> fmt::Display for Expression<TSymbol>
 }
 
 #[allow(dead_code)]
-impl<TSymbol> Expression<TSymbol> {
+impl<TSymbol> Expression<TSymbol>
+    where TSymbol: fmt::Debug
+{
     pub fn binary_op(lhs: Self,
                      op: operators::BinaryOperator,
                      rhs: Self,
@@ -283,10 +285,24 @@ impl<TSymbol> Expression<TSymbol> {
         }
     }
 
-    pub fn is_literal_string(&self) -> bool {
+    pub fn is_any_literal_string(&self) -> bool {
         match &self.value {
             &ExpressionValue::LiteralString(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn is_literal_integer(&self, val: i64) -> bool {
+        match &self.value {
+            &ExpressionValue::LiteralInteger(i) => i == val,
+            _ => false,
+        }
+    }
+
+    pub fn is_any_literal_integer(&self) -> bool {
+        match &self.value {
+            &ExpressionValue::LiteralInteger(_) => true,
+            _ => false
         }
     }
 
@@ -296,6 +312,15 @@ impl<TSymbol> Expression<TSymbol> {
                 expr_op == op
             }
             _ => false
+        }
+    }
+
+    pub fn unwrap_binary_op(self) -> (Self, operators::BinaryOperator, Self) {
+        match self.value {
+            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+                (*lhs, op, *rhs)
+            }
+            _ => panic!("called unwrap_binary_op on {}", self)
         }
     }
 }

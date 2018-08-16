@@ -82,15 +82,11 @@ impl VarDecls {
 mod test {
     use super::*;
     use tokenizer::*;
-    use source::*;
+    use source;
 
-    static NO_CONTEXT: Token = Token {
-        token: tokens::Keyword(keywords::Program),
-        location: source::SourceLocation::new("test", 0, 0),
-    };
-
-    fn parse_vars(src: &str) -> Vars {
-        let vars = Vars::parse(tokenize("test", src).unwrap(), &NO_CONTEXT);
+    fn parse_vars(src: &str) -> VarDecls {
+        let vars = VarDecls::parse(tokenize("test", src).unwrap(),
+                                   &source::test::empty_context());
 
         assert!(vars.is_ok(), "test source `{}` must parse correctly", src);
 

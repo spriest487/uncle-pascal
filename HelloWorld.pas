@@ -19,7 +19,7 @@ begin
   result.Length := 0;
 end;
 
-procedure Vector_Add(self: Vector; p: System.Pointer);
+procedure Add(self: Vector; p: System.Pointer);
 var
   newElements: System.Pointer;
   i: System.Integer;
@@ -37,9 +37,6 @@ begin
   self.Length := self.Length + 1;
   self.Elements := newElements;
 end;
-
-//function malloc(System.Integer): System.Pointer;
-//function free(System.Pointer);
 
 function Greet(name: System.String): System.String;
 var

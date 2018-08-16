@@ -115,7 +115,7 @@ impl Expression {
                     types::DeclaredType::Function(sig) => sig.return_type,
                     _ => panic!("function call target ({}) wasn't a function", self),
                 }
-            },
+            }
             &node::ExpressionValue::Identifier(ref id) => Some(id.decl_type().clone()),
 
             &node::ExpressionValue::Block(_) |
@@ -215,21 +215,13 @@ mod test {
     use tokenizer::*;
     use semantic::*;
     use syntax;
-    use tokens;
-    use keywords;
-
-    static NO_CONTEXT: SourceToken = SourceToken {
-        token: tokens::Keyword(keywords::Begin),
-        line: 0,
-        col: 0,
-        file: Rc::from(String::from("test")),
-    };
+    use source;
 
     fn parse_expr(src: &str, scope: &Scope) -> Expression {
         let tokens = tokenize("test", src)
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
-        let parsed = syntax::Expression::parse(tokens, &NO_CONTEXT)
+        let parsed = syntax::Expression::parse(tokens, &source::test::empty_context())
             .expect(&format!("test expr `{}` must parse correctly", src));
 
         Expression::annotate(&parsed, scope)
@@ -243,10 +235,13 @@ mod test {
 
         let expr = parse_expr("x := 1", &scope);
 
-        match type_check_expr(&expr) {
-            Err(SemanticErrorKind::UnexpectedType { expected, actual }) => {
-                assert_eq!(expected, DeclaredType::String);
-                assert_eq!(actual, DeclaredType::Integer);
+        match expr.type_check() {
+            Err(SemanticError {
+                    kind: SemanticErrorKind::UnexpectedType { expected, actual },
+                    ..
+                }) => {
+                assert_eq!(Some(DeclaredType::String), expected);
+                assert_eq!(Some(DeclaredType::Integer), actual);
             }
             _ => panic!("expected invalid types in assignment")
         }

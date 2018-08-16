@@ -12,6 +12,14 @@ pub enum BinaryOperator {
     Minus,
 }
 
+pub static PRECEDENCE: [BinaryOperator; 5] = [
+    Plus,
+    Minus,
+    Equals,
+    NotEquals,
+    Assignment,
+];
+
 impl fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {

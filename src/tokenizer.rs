@@ -233,6 +233,7 @@ mod test {
         let result = tokenizer::tokenize("test", s).unwrap();
         assert_eq!(1, result.len());
 
-        assert_eq!(tokens::LiteralString("hello world!".to_owned()), result[0].token);
+        assert_eq!(&tokens::LiteralString("hello world!".to_owned()),
+                   result[0].token.as_ref());
     }
 }

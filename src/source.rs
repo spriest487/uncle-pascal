@@ -44,3 +44,21 @@ impl tokens::AsToken for Token {
         &self.token
     }
 }
+
+pub mod test {
+    use std::rc::*;
+    use source;
+    use tokens;
+    use keywords;
+
+    pub fn empty_context() -> source::Token {
+        source::Token {
+            token: Rc::from(tokens::Keyword(keywords::Program)),
+            location: source::Location {
+                file: Rc::from(String::from("test")),
+                line: 0,
+                col: 0,
+            }
+        }
+    }
+}

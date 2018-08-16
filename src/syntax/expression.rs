@@ -11,14 +11,43 @@ impl Expression {
     fn parse_binary_op<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static,
     {
-        let split_at_op = Matcher::AnyBinaryOperator
-            .split_at_match(in_tokens, context)?;
+        let maybe_open_bracket = tokens::BracketLeft.match_peek(in_tokens, context)?;
+        match &maybe_open_bracket.value {
+            &Some(_) => {
+                let lhs_group = tokens::BracketLeft
+                    .terminated_by(tokens::BracketRight)
+                    .match_block(maybe_open_bracket.next_tokens,
+                                 &maybe_open_bracket.last_token)?;
 
-        let lhs_expr = Expression::parse(split_at_op.value.before_split, context)?;
-        let op = split_at_op.value.split_at.unwrap_binary_operator().clone();
-        let rhs_expr = Expression::parse(split_at_op.next_tokens, &split_at_op.last_token)?;
+                let lhs_expr = Expression::parse(lhs_group.value.inner,
+                                                 &lhs_group.value.open)?;
 
-        Ok(Expression::binary_op(lhs_expr, op, rhs_expr, split_at_op.value.split_at.clone()))
+                let match_op = Matcher::AnyBinaryOperator.match_one(lhs_group.next_tokens,
+                                                                    &lhs_group.last_token)?;
+
+                let rhs_expr = Expression::parse(match_op.next_tokens, &match_op.last_token)?;
+
+                Ok(Expression::binary_op(lhs_expr,
+                                         match_op.value.unwrap_binary_operator().clone(),
+                                         rhs_expr,
+                                         match_op.value))
+            }
+            &None => {
+                let split_at_op = Matcher::AnyBinaryOperator.split_at_match(
+                    maybe_open_bracket.next_tokens,
+                    &maybe_open_bracket.last_token)?;
+
+                let lhs_expr = Expression::parse(split_at_op.value.before_split, context)?;
+                let op = split_at_op.value.split_at.unwrap_binary_operator().clone();
+                let rhs_expr = Expression::parse(split_at_op.next_tokens,
+                                                 &split_at_op.last_token)?;
+
+                Ok(Expression::binary_op(lhs_expr,
+                                         op,
+                                         rhs_expr,
+                                         split_at_op.value.split_at.clone()))
+            }
+        }
     }
 
     fn parse_identifier<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -250,12 +279,12 @@ impl node::ToSource for Expression {
 mod test {
     use super::*;
     use tokenizer::*;
+    use source;
+    use operators;
+    use node::ToSource;
 
     fn parse_expr(src: &str) -> Expression {
-        let context = SourceToken {
-            token: tokens::Keyword(keywords::Begin),
-            location: SourceLocation::new("test", 0, 0),
-        };
+        let context = source::test::empty_context();
 
         let tokens = tokenize("test", src).unwrap();
         let expr = Expression::parse(tokens, &context);
@@ -263,6 +292,50 @@ mod test {
         assert!(expr.is_ok(), "expression source `{}` should parse correctly", src);
 
         expr.unwrap()
+    }
+
+    #[test]
+    fn brackets_groups_exprs() {
+        let expr = parse_expr("(1 + 2) - 3");
+
+        assert!(expr.is_operation(&operators::Minus));
+        let (lhs, _, rhs) = expr.unwrap_binary_op();
+
+        assert!(rhs.is_literal_integer(3));
+        assert!(lhs.is_operation(&operators::Plus));
+
+        let (nested_lhs, _, nested_rhs) = lhs.unwrap_binary_op();
+        assert!(nested_lhs.is_literal_integer(1));
+        assert!(nested_rhs.is_literal_integer(2));
+    }
+
+    #[test]
+    fn precedence() {
+        for (prec_a, op_a) in operators::PRECEDENCE.iter().enumerate() {
+            let other_ops = operators::PRECEDENCE.iter().enumerate()
+                .filter(|&(prec, _)| prec != prec_a);
+
+            for (prec_b, op_b) in other_ops {
+                let hi_op = if prec_a < prec_b { op_a } else { op_b };
+                let lo_op = if prec_a < prec_b { op_b } else { op_a };
+
+                println!("hi: {}@{}, lo: {}@{}", hi_op, lo_op, prec_a.min(prec_b), prec_a.max(prec_b));
+
+                /* should parse as ((1 hi_op 2) lo_op 3) */
+                let expr1 = parse_expr(&format!("1 {} 2 {} 3", hi_op.to_source(), lo_op.to_source()));
+                assert!(expr1.is_operation(lo_op), "{} should have precedence over {}", hi_op, lo_op);
+                let (lhs1, _, rhs1) = expr1.unwrap_binary_op();
+                assert!(lhs1.is_operation(hi_op));
+                assert!(rhs1.is_any_literal_integer());
+
+                /* should parse as (1 lo_op (2 hi_op 3)) */
+                let expr2 = parse_expr(&format!("1 {} 2 {} 3", lo_op, hi_op));
+                assert!(expr2.is_operation(lo_op), "{} should have precedence over {}", hi_op, lo_op);
+                let (lhs2, _, rhs2) = expr2.unwrap_binary_op();
+                assert!(lhs2.is_any_literal_integer());
+                assert!(rhs2.is_operation(hi_op));
+            }
+        }
     }
 
     #[test]
@@ -280,7 +353,7 @@ mod test {
         let (hello_id, hello_args) = hello_func.unwrap_function_call();
         assert_eq!(node::Identifier::parse("hello"), hello_id);
         assert_eq!(1, hello_args.len());
-        assert!(hello_args[0].is_literal_string());
+        assert!(hello_args[0].is_any_literal_string());
         assert_eq!("world", hello_args[0].clone().unwrap_literal_string());
 
         let goodbye_func = test_args[1].clone();
@@ -293,7 +366,7 @@ mod test {
         let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call();
         assert_eq!(node::Identifier::parse("cruel"), cruel_id);
         assert_eq!(1, cruel_args.len());
-        assert!(cruel_args[0].is_literal_string());
+        assert!(cruel_args[0].is_any_literal_string());
         assert_eq!("world", cruel_args[0].clone().unwrap_literal_string());
     }
 }
