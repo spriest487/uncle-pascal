@@ -74,6 +74,7 @@ enum Directive {
     ElseIf(String),
     Mode(Mode),
     Switches(Vec<(String, bool)>),
+    LinkLib(String),
 }
 
 struct DirectiveParser {
@@ -86,6 +87,7 @@ struct DirectiveParser {
     elseif_pattern: Regex,
     mode_pattern: Regex,
     switch_pattern: Regex,
+    linklib_pattern: Regex,
 }
 
 impl DirectiveParser {
@@ -100,6 +102,7 @@ impl DirectiveParser {
             elseif_pattern: Regex::new(r"^elseif\s+(\w+)$").unwrap(),
             mode_pattern: Regex::new(r"^mode\s+(\w+)$").unwrap(),
             switch_pattern: Regex::new(r"^([a-zA-Z]+)([+-])$").unwrap(),
+            linklib_pattern: Regex::new(r"linklib\s+(\w+)$").unwrap(),
         }
     }
 
@@ -169,6 +172,8 @@ impl DirectiveParser {
             Some(Directive::Mode(mode))
         } else if let Some(switches) = self.match_switches(s) {
             Some(Directive::Switches(switches))
+        } else if let Some(linklib) = self.linklib_pattern.captures(s) {
+            Some(Directive::LinkLib(linklib[1].to_string()))
         } else {
             None
         }
@@ -385,6 +390,13 @@ impl Preprocessor {
                     for (name, on) in switches {
                         self.opts.set_switch(&name, on);
                     }
+                }
+                Ok(())
+            }
+
+            Some(Directive::LinkLib(lib_name)) => {
+                if self.condition_active() {
+                    self.opts.link_lib(&lib_name);
                 }
                 Ok(())
             }

@@ -246,6 +246,7 @@ fn compile_program(program_path: &Path,
     Ok(semantic::ProgramModule {
         program,
         units: loaded_units,
+        opts,
     })
 }
 
@@ -275,11 +276,12 @@ fn main() {
 
                 let src_path = &matched.free[0];
 
-                //todo: options from command line
                 let opts = opts::CompileOptions::from_getopts(&matched);
 
                 let build_result = compile_program(&PathBuf::from(src_path), opts)
-                    .and_then(|module| target_c::pas_to_c(&module, &out_file));
+                    .and_then(|module| {
+                        target_c::pas_to_c(&module, &out_file, &module.opts)
+                    });
 
                 if let Err(err) = build_result {
                     println!("{}", err);

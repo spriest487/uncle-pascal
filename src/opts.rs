@@ -4,6 +4,7 @@ use std::{
         HashSet},
     fmt,
 };
+use linked_hash_set::LinkedHashSet;
 use getopts;
 
 #[derive(Clone, Debug)]
@@ -106,14 +107,19 @@ pub struct CompileOptions {
 
     switches: HashMap<String, bool>,
     symbols: HashMap<String, bool>,
+
+    link_libs: LinkedHashSet<String>,
 }
 
 impl CompileOptions {
     pub fn new(mode: Mode) -> Self {
         CompileOptions {
             mode: mode.profile(),
+
             switches: HashMap::new(),
             symbols: HashMap::new(),
+
+            link_libs: LinkedHashSet::new(),
         }
     }
 
@@ -181,6 +187,14 @@ impl CompileOptions {
             true => self.symbols.remove(symbol) == Some(true),
             false => self.symbols.remove(&symbol.to_uppercase()) == Some(true),
         }
+    }
+
+    pub fn link_lib(&mut self, lib_name: &str) {
+        self.link_libs.insert(lib_name.to_string());
+    }
+
+    pub fn link_libs(&self) -> impl Iterator<Item=&String> {
+        self.link_libs.iter()
     }
 
     pub fn from_getopts(matches: &getopts::Matches) -> Self {
