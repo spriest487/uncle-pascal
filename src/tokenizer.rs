@@ -1,5 +1,8 @@
-use std::fmt;
-use std::rc::*;
+use std::{
+    fmt,
+    rc::*,
+    i64
+};
 use regex;
 
 use tokens;
@@ -52,6 +55,13 @@ fn parse_literal_integer(token_match: &regex::Captures) -> Option<tokens::Token>
         .ok()
 }
 
+fn parse_literal_hexadecimal(token_match: &regex::Captures) -> Option<tokens::Token> {
+    let hex_text = token_match.get(1).unwrap().as_str();
+    let val = i64::from_str_radix(hex_text, 16).ok()?;
+
+    Some(tokens::LiteralInteger(val))
+}
+
 fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
     let text = token_match.get(0).unwrap().as_str().to_owned();
 
@@ -80,6 +90,7 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         //anything between two quote marks, with double quote as literal quote mark
         func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
         func_pattern(r"-?[0-9]+", parse_literal_integer),
+        func_pattern(r"\$([0-9A-Fa-f]+)", parse_literal_hexadecimal),
         simple_pattern(r"\*", operators::Multiply),
         simple_pattern(r"[/]", operators::Divide),
         simple_pattern(r"\(", tokens::BracketLeft),
@@ -197,7 +208,7 @@ pub fn tokenize(file_name: &str,
             line: 0,
             col: 0,
             text: "<EOF>".to_string(),
-        })
+        });
     }
 
     Ok(parsed_lines.into_iter()

@@ -4,7 +4,7 @@ interface
 
 procedure WriteLn(line: String)
 
-function GetMem(len: Integer): ^Byte
+function GetMem(len: NativeInt): ^Byte
 procedure FreeMem(mem: ^Byte)
 
 constructor StringCreate: String
@@ -13,7 +13,7 @@ begin
     result.Length := 0
 end
 
-constructor StringFromBytes(bytes: ^Byte; len: Integer): String
+constructor StringFromBytes(bytes: ^Byte; len: NativeInt): String
 begin
     result.Chars := GetMem(len)
     result.Length := len

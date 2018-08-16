@@ -26,7 +26,12 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
     match pascal_type {
         DeclaredType::Nil => panic!("cannot output `nil` as a type in C"),
         DeclaredType::Byte => "System_Byte".to_owned(),
-        DeclaredType::Integer => "System_Integer".to_owned(),
+        DeclaredType::Int32 => "System_Int32".to_owned(),
+        DeclaredType::UInt32 => "System_UInt32".to_owned(),
+        DeclaredType::Int64 => "System_Int64".to_owned(),
+        DeclaredType::UInt64 => "System_UInt64".to_owned(),
+        DeclaredType::NativeInt => "System_NativeInt".to_owned(),
+        DeclaredType::NativeUInt => "System_NativeUInt".to_owned(),
         DeclaredType::Boolean => "System_Boolean".to_owned(),
         DeclaredType::RawPointer => "System_Pointer".to_owned(),
         DeclaredType::Pointer(target) => {
@@ -89,7 +94,7 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
-        DeclaredType::Integer => {
+        DeclaredType::Int64 => {
             writeln!(out, "{} = 0;", id)
         }
 
@@ -189,7 +194,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         ExpressionValue::LiteralInteger(i) => {
-            write!(out, "(({}) {})", type_to_c(&DeclaredType::Integer), i)
+            write!(out, "(({}) {})", type_to_c(&DeclaredType::Int64), i)
         }
 
         ExpressionValue::LiteralString(s) => {

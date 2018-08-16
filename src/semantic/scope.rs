@@ -172,16 +172,30 @@ impl Scope {
             kind: RecordKind::Class,
             members: vec![
                 Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
-                Symbol::new(Identifier::from("Length"), DeclaredType::Integer),
+                Symbol::new(Identifier::from("Length"), DeclaredType::NativeInt),
             ],
         });
 
         Scope::new()
             .with_local_namespace("System")
+            /* standard primitives */
             .with_type(Identifier::from("System.Byte"), DeclaredType::Byte)
-            .with_type(Identifier::from("System.Integer"), DeclaredType::Integer)
+//            .with_type(Identifier::from("System.Int16"), DeclaredType::Int16)
+//            .with_type(Identifier::from("System.UInt16"), DeclaredType::UInt16)
+            .with_type(Identifier::from("System.Int32"), DeclaredType::Int32)
+            .with_type(Identifier::from("System.UInt32"), DeclaredType::UInt32)
+            .with_type(Identifier::from("System.Int64"), DeclaredType::Int64)
+            .with_type(Identifier::from("System.UInt64"), DeclaredType::UInt64)
+            .with_type(Identifier::from("System.NativeInt"), DeclaredType::NativeInt)
+            .with_type(Identifier::from("System.NativeUInt"), DeclaredType::NativeUInt)
             .with_type(Identifier::from("System.Pointer"), DeclaredType::RawPointer)
             .with_type(Identifier::from("System.Boolean"), DeclaredType::Boolean)
+
+            /* for compatibility (todo: only use these in fpc mode) */
+            .with_type(Identifier::from("System.Integer"), DeclaredType::Int32)
+            .with_type(Identifier::from("System.Cardinal"), DeclaredType::UInt32)
+            //.with_type(Identifier::from("System.Word"), DeclaredType::UInt16)
+            .with_type(Identifier::from("System.LongWord"), DeclaredType::UInt32)
 
             /* these decls need to be built in to support string concatenation sugar */
             .with_type(Identifier::from("System.String"), string_type.clone())

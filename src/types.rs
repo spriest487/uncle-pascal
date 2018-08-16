@@ -119,7 +119,12 @@ pub enum DeclaredType {
     Nil,
     Byte,
     Boolean,
-    Integer,
+    Int32,
+    UInt32,
+    Int64,
+    UInt64,
+    NativeInt,
+    NativeUInt,
     RawPointer,
     Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
@@ -141,7 +146,12 @@ impl DeclaredType {
                 DeclaredType::Nil => "nil".to_string(),
                 DeclaredType::Byte => "System.Byte".to_string(),
                 DeclaredType::Boolean => "System.Boolean".to_string(),
-                DeclaredType::Integer => "System.Integer".to_string(),
+                DeclaredType::Int32 => "System.Int32".to_string(),
+                DeclaredType::UInt32 => "System.UInt32".to_string(),
+                DeclaredType::Int64 => "System.Int64".to_string(),
+                DeclaredType::UInt64 => "System.UInt64".to_string(),
+                DeclaredType::NativeInt => "System.NativeInt".to_string(),
+                DeclaredType::NativeUInt => "System.NativeUInt".to_string(),
                 DeclaredType::RawPointer => "System.Pointer".to_string(),
                 DeclaredType::Pointer(target) => format!("^{}", target.to_source()),
                 DeclaredType::Function(sig) => format!("{}", sig),
@@ -181,20 +191,29 @@ impl DeclaredType {
             DeclaredType::RawPointer |
             DeclaredType::Pointer(_) |
             DeclaredType::Function(_) |
-            DeclaredType::Integer => size_of::<usize>(),
+            DeclaredType::NativeInt |
+            DeclaredType::NativeUInt =>
+                size_of::<usize>(),
 
-            DeclaredType::Byte => size_of::<u8>(),
-            DeclaredType::Boolean => size_of::<u8>(),
+            DeclaredType::Int64 |
+            DeclaredType::UInt64 =>
+                8,
 
-            DeclaredType::Record(rec) => rec.size_of(),
-            DeclaredType::Array(array) => {
-                let total_len = array.rest_dims.iter()
-                    .fold(array.first_dim.elements(), |total, dim| {
-                        total * dim.elements()
-                    });
+            DeclaredType::UInt32 |
+            DeclaredType::Int32 =>
+                4,
 
-                total_len * array.element.size_of()
-            }
+            DeclaredType::Byte =>
+                1,
+
+            DeclaredType::Boolean =>
+                1,
+
+            DeclaredType::Record(rec) =>
+                rec.size_of(),
+
+            DeclaredType::Array(array) =>
+                array.total_elements() * array.element.size_of(),
         }
     }
 
@@ -274,7 +293,12 @@ impl DeclaredType {
             DeclaredType::Byte |
             DeclaredType::Record(_) |
             DeclaredType::RawPointer |
-            DeclaredType::Integer |
+            DeclaredType::Int32 |
+            DeclaredType::UInt32 |
+            DeclaredType::Int64 |
+            DeclaredType::UInt64 |
+            DeclaredType::NativeInt |
+            DeclaredType::NativeUInt |
             DeclaredType::Boolean => true,
 
             DeclaredType::Array { .. } |
@@ -290,12 +314,11 @@ impl DeclaredType {
 
         match (self, other) {
             // nil can be assigned to any pointer, and nothing else
-            (&DeclaredType::RawPointer, &DeclaredType::Nil) |
-            (&DeclaredType::Pointer(_), &DeclaredType::Nil) => true,
-            (_, &DeclaredType::Nil) => false,
+            (DeclaredType::RawPointer, DeclaredType::Nil) |
+            (DeclaredType::Pointer(_), DeclaredType::Nil) => true,
+            (_, DeclaredType::Nil) => false,
 
-            //TODO: we should only allow byte<-int assignment if the int is in 0..255
-            (&DeclaredType::Byte, &DeclaredType::Integer) => true,
+            (ref a, ref b) if b.promotes_to(a) => true,
 
             (ref x, ref y) => x == y,
         }
@@ -308,8 +331,8 @@ impl DeclaredType {
             (a, b) if a.is_numeric() && b.promotes_to(a) =>
                 true,
 
-            //pointers can be offset, as long as the rhs is promotable to Integer
-            (ptr, off) if ptr.is_pointer() && off.promotes_to(&DeclaredType::Integer) =>
+            //pointers can be offset, as long as the rhs is promotable to NativeInt
+            (ptr, off) if ptr.is_pointer() && off.promotes_to(&DeclaredType::NativeInt) =>
                 true,
 
             _ =>
@@ -324,8 +347,26 @@ impl DeclaredType {
 
     pub fn promotes_to(&self, other: &DeclaredType) -> bool {
         match (self, other) {
-            (a, b) if a == b && a.is_numeric() => true,
-            (DeclaredType::Byte, DeclaredType::Integer) => true,
+            // numeric types always "promote" to themselves
+            | (a, b) if a == b && a.is_numeric()
+                => true,
+
+            // byte promotes to any larger type
+            | (DeclaredType::Byte, DeclaredType::Int32)
+            | (DeclaredType::Byte, DeclaredType::UInt32)
+            | (DeclaredType::Byte, DeclaredType::Int64)
+            | (DeclaredType::Byte, DeclaredType::UInt64)
+            | (DeclaredType::Byte, DeclaredType::NativeInt)
+            | (DeclaredType::Byte, DeclaredType::NativeUInt)
+
+            // 32-bit integers promote to any 64-bit integer
+            | (DeclaredType::UInt32, DeclaredType::Int64)
+            | (DeclaredType::UInt32, DeclaredType::UInt64)
+
+            // 32-bit integers promote to native ints with the same signedness
+            | (DeclaredType::UInt32, DeclaredType::NativeUInt)
+            | (DeclaredType::Int32, DeclaredType::NativeInt)
+                => true,
 
             _ => false,
         }
@@ -333,7 +374,13 @@ impl DeclaredType {
 
     pub fn is_numeric(&self) -> bool {
         match self {
-            DeclaredType::Integer => true,
+            DeclaredType::Int32 |
+            DeclaredType::UInt32 |
+            DeclaredType::Int64 |
+            DeclaredType::UInt64 |
+            DeclaredType::NativeInt |
+            DeclaredType::NativeUInt
+                => true,
             DeclaredType::Byte => true,
             _ => false,
         }
@@ -341,7 +388,7 @@ impl DeclaredType {
 
     pub fn comparable_to(&self, other: &DeclaredType) -> bool {
         let can_compare = |a: &DeclaredType, b: &DeclaredType| match (a, b) {
-            (DeclaredType::Integer, DeclaredType::Integer) |
+            (DeclaredType::Int64, DeclaredType::Int64) |
             (DeclaredType::Byte, DeclaredType::Byte) |
             (DeclaredType::Boolean, DeclaredType::Boolean) |
             (DeclaredType::RawPointer, DeclaredType::RawPointer) =>

@@ -6,7 +6,7 @@ interface
 
 type
   Element = Byte
-  Index = Integer
+  Index = NativeInt
 
   Vector = class
     Elements: ^Element

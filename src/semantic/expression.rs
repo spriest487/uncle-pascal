@@ -170,7 +170,7 @@ fn for_loop_type(from: &Expression,
     let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
 
-    expect_comparable(Some(&DeclaredType::Integer), to_type.as_ref(),
+    expect_comparable(Some(&DeclaredType::Int32), to_type.as_ref(),
                       context)?;
 
     let _body_type = body.expr_type()?;
@@ -180,7 +180,7 @@ fn for_loop_type(from: &Expression,
         if *op == operators::Operator::Assignment => {
             let lhs_type = lhs.expr_type()?;
 
-            expect_comparable(Some(&DeclaredType::Integer), lhs_type.as_ref(),
+            expect_comparable(Some(&DeclaredType::Int32), lhs_type.as_ref(),
                               context)?;
             Ok(None)
         }
@@ -188,14 +188,14 @@ fn for_loop_type(from: &Expression,
         &node::ExpressionValue::LetBinding { ref value, .. } => {
             let value_type = value.expr_type()?;
 
-            expect_comparable(Some(&DeclaredType::Integer), value_type.as_ref(),
+            expect_comparable(Some(&DeclaredType::Int32), value_type.as_ref(),
                               context)?;
             Ok(None)
         }
 
         //TODO better error
         _ => Err(SemanticError::unexpected_type(
-            Some(types::DeclaredType::Integer),
+            Some(types::DeclaredType::Int32),
             from_type,
             context.clone()))
     }
@@ -378,7 +378,24 @@ fn binary_op_type(lhs: &Expression,
         }
 
         operators::Assignment => {
-            expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
+            expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)
+                .or_else(|err| {
+                    use node::ExpressionValue::LiteralInteger;
+                    /* todo: make int literals work better */
+                    match (&rhs.value, lhs_type.as_ref()) {
+                        | (LiteralInteger(0...255), Some(DeclaredType::Byte))
+                        | (LiteralInteger(0...255), Some(DeclaredType::Int32))
+                        | (LiteralInteger(0...255), Some(DeclaredType::UInt32))
+                        | (LiteralInteger(0...255), Some(DeclaredType::Int64))
+                        | (LiteralInteger(0...255), Some(DeclaredType::UInt64))
+                        | (LiteralInteger(0...255), Some(DeclaredType::NativeInt))
+                        | (LiteralInteger(0...255), Some(DeclaredType::NativeUInt))
+                            => Ok(()),
+
+                        _ =>
+                            Err(err)
+                    }
+                })?;
             Ok(None)
         }
 
@@ -416,7 +433,7 @@ fn prefix_op_type(op: operators::Operator,
 
         operators::Plus |
         operators::Minus => match &rhs_type {
-            &Some(DeclaredType::Integer) |
+            &Some(DeclaredType::Int64) |
             &Some(DeclaredType::Byte) =>
                 Ok(rhs_type.clone()),
             _ =>
@@ -559,7 +576,7 @@ impl Expression {
                 Ok(Some(DeclaredType::Byte.pointer())),
 
             &node::ExpressionValue::LiteralInteger(_) =>
-                Ok(Some(DeclaredType::Integer)),
+                Ok(Some(DeclaredType::Int32)),
 
             &node::ExpressionValue::LiteralNil =>
                 Ok(Some(DeclaredType::Nil)),
@@ -652,7 +669,7 @@ pub(crate) mod test {
                 }) => {
                 assert_eq!(operators::Assignment, op);
                 assert_eq!(Some(DeclaredType::RawPointer), args[0]);
-                assert_eq!(Some(DeclaredType::Integer), args[1]);
+                assert_eq!(Some(DeclaredType::Int64), args[1]);
             }
             _ => panic!("expected invalid types in assignment")
         }
@@ -666,12 +683,12 @@ pub(crate) mod test {
             .with_symbol_absolute(test_func_name.clone(),
                                   DeclaredType::Function(Box::from(FunctionSignature {
                                       name: test_func_name.clone(),
-                                      return_type: Some(DeclaredType::Integer),
+                                      return_type: Some(DeclaredType::Int64),
                                       arg_types: vec![
-                                          DeclaredType::Integer
+                                          DeclaredType::Int64
                                       ],
                                   })))
-            .with_symbol_local("a", DeclaredType::Integer);
+            .with_symbol_local("a", DeclaredType::Int64);
 
         let expr = parse_expr(r"a.TestAdd(1)", &scope);
 

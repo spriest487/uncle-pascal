@@ -3,9 +3,9 @@ struct System_Internal_Class {
     System_Internal_Destructor Destructor;
 };
 
-static System_Byte* System_GetMem(System_Integer bytes) {
+static System_Byte* System_GetMem(System_NativeInt bytes) {
     if (bytes > 0) {
-        auto mem = static_cast<System_Byte*>(std::malloc(static_cast<size_t>(bytes)));
+        auto mem = static_cast<System_Byte*>(std::malloc(static_cast<std::size_t>(bytes)));
         if (!mem) {
             fputs("memory allocation failed\n", stderr);
             abort();
@@ -47,7 +47,7 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
     return nullptr;
 }
 
-static System_Internal_Object* System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
+static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName) {
     auto obj = reinterpret_cast<System_Internal_Object*>(System_GetMem(size));
     obj->Class = System_Internal_FindClass(constructorName);
     if (!obj->Class) {
