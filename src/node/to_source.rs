@@ -116,11 +116,13 @@ impl<T> ToSource for FunctionDecl<T>
         let mut lines = Vec::new();
         lines.push(format!("function {};", self.name));
 
-        if self.local_vars.decls.len() > 0 {
-            lines.push(self.local_vars.to_source());
-        }
+        if let Some(body) = &self.body {
+            if body.local_vars.decls.len() > 0 {
+                lines.push(body.local_vars.to_source());
+            }
 
-        lines.push(self.body.to_source() + ";");
+            lines.push(body.block.to_source() + ";");
+        }
 
         lines.join("\n")
     }

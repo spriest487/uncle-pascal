@@ -137,7 +137,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 operators::Equals |
                 operators::NotEquals |
                 operators::Gt |
-                operators:: Gte |
+                operators::Gte |
                 operators::Lt |
                 operators::Lte |
                 operators::Assignment => panic!("bad prefix operator type: {}", op),
@@ -494,7 +494,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
     write!(out, "{} ", identifier_to_c(&function.name))?;
 
-    writeln!(out, "({}) {{", function.args.decls.iter()
+    write!(out, "({})", function.args.decls.iter()
         .map(|arg_decl| {
             format!("{} {}", type_to_c(&arg_decl.decl_type),
                     identifier_to_c(&arg_decl.name))
@@ -502,67 +502,77 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
         .collect::<Vec<_>>()
         .join(", "))?;
 
-    write_vars(out, &function.local_vars)?;
-    default_initialize_vars(out, function.local_vars.decls.iter())?;
+    match &function.body {
+        None => writeln!(out, ";")?,
 
-    if function.kind == FunctionKind::Constructor {
-        //the actual return type is an Rc, but we need to pass the class type to sizeof
-        let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
-            DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
-                identifier_to_c(&decl.name)
+        Some(node::FunctionDeclBody { block, local_vars }) => {
+            writeln!(out, "{{")?;
+
+            write_vars(out, &local_vars)?;
+            default_initialize_vars(out, local_vars.decls.iter())?;
+
+            if function.kind == FunctionKind::Constructor {
+                //the actual return type is an Rc, but we need to pass the class type to sizeof
+                let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
+                    DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
+                        identifier_to_c(&decl.name)
+                    }
+                    _ => panic!("constructor must return a class type"),
+                };
+
+                writeln!(out, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
+                         constructed_class_c_name,
+                         constructed_class_c_name,
+                         function.return_type.as_ref().expect("constructor must have return type"))?;
             }
-            _ => panic!("constructor must return a class type"),
-        };
 
-        writeln!(out, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
-                 constructed_class_c_name,
-                 constructed_class_c_name,
-                 function.return_type.as_ref().expect("constructor must have return type"))?;
-    }
+            let rc_args: Vec<_> = function.args.decls.iter()
+                .filter_map(|arg| {
+                    if let DeclaredType::Record(record) = &arg.decl_type {
+                        if record.kind == RecordKind::Class {
+                            return Some(arg);
+                        }
+                    }
+                    None
+                }).collect();
 
-    let rc_args: Vec<_> = function.args.decls.iter()
-        .filter_map(|arg| {
-            if let DeclaredType::Record(record) = &arg.decl_type {
-                if record.kind == RecordKind::Class {
-                    return Some(arg);
+            // retain rc args to non-destructor functions
+            // this is kind of a hack to make sure temporary values used as args get rc'd
+            // destructors musn't change the ref count of their only arg, the dead object, or bad things
+            // happen
+            // it's safe to do this with a constructor because the object under construction exists only
+            // in the result position
+            if function.kind == FunctionKind::Function {
+                for arg in rc_args.iter() {
+                    writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
                 }
             }
-            None
-        }).collect();
 
-    // retain rc args to non-destructor functions
-    // this is kind of a hack to make sure temporary values used as args get rc'd
-    // destructors musn't change the ref count of their only arg, the dead object, or bad things
-    // happen
-    // it's safe to do this with a constructor because the object under construction exists only
-    // in the result position
-    if function.kind == FunctionKind::Function {
-        for arg in rc_args.iter() {
-            writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
+            write_block(out, block)?;
+
+            //release all local vars except the result
+            let result_id = Identifier::from("result");
+            release_vars(out, local_vars.decls.iter()
+                .filter(|decl| decl.name != result_id))?;
+
+            if function.kind == FunctionKind::Function {
+                //release args
+                for arg in rc_args.iter() {
+                    writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
+                }
+            }
+
+            match return_type_c {
+                Some(_) => writeln!(out, "return result;")?,
+                None => (),
+            }
+
+            writeln!(out, "}}")?;
+            writeln!(out)?;
         }
     }
 
-    write_block(out, &function.body)?;
-
-    //release all local vars except the result
-    let result_id = Identifier::from("result");
-    release_vars(out, function.local_vars.decls.iter()
-        .filter(|decl| decl.name != result_id))?;
-
-    if function.kind == FunctionKind::Function {
-        //release args
-        for arg in rc_args.iter() {
-            writeln!(out, "System_Internal_Rc_Release({});", arg.name)?;
-        }
-    }
-
-    match return_type_c {
-        Some(_) => writeln!(out, "return result;")?,
-        None => (),
-    }
-
-    writeln!(out, "}}")?;
-    writeln!(out)
+    Ok(())
 }
 
 pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Result {

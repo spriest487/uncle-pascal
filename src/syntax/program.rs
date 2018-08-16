@@ -18,7 +18,10 @@ fn transform_blocks(mut program: Program,
                 _ => return decl,
             };
 
-            fn_decl.body = f(fn_decl.body);
+            fn_decl.body = fn_decl.body.map(|mut body| {
+                body.block = f(body.block);
+                body
+            });
 
             node::UnitDeclaration::Function(fn_decl)
         })

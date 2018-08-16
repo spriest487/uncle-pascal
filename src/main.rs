@@ -1,15 +1,16 @@
 extern crate regex;
 extern crate getopts;
 
-use std::rc::*;
-use std::fmt;
-use std::io::{self, Read};
-use std::fs;
-use std::path::*;
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::env::current_dir;
-use semantic::scope::Scope;
+use std::{
+    rc::*,
+    fmt,
+    io::{self, Read},
+    fs,
+    path::*,
+    ffi::OsStr,
+    env::current_dir,
+    collections::hash_map::{Entry, HashMap},
+};
 
 mod keywords;
 mod types;
@@ -26,6 +27,7 @@ pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
+    UnresolvedUnit(String),
     WriterError(fmt::Error),
     IOError(io::Error),
 }
@@ -33,11 +35,12 @@ pub enum CompileError {
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &CompileError::TokenizeError(ref token) => write!(f, "failed to read file: {}", token),
-            &CompileError::ParseError(ref err) => write!(f, "syntax error: {}", err),
-            &CompileError::SemanticError(ref err) => write!(f, "semantic error: {}", err),
-            &CompileError::WriterError(ref err) => write!(f, "output error: {}", err),
-            &CompileError::IOError(ref err) => write!(f, "io error: {}", err),
+            CompileError::TokenizeError(token) => write!(f, "failed to read file: {}", token),
+            CompileError::ParseError(err) => write!(f, "syntax error: {}", err),
+            CompileError::SemanticError(err) => write!(f, "semantic error: {}", err),
+            CompileError::WriterError(err) => write!(f, "output error: {}", err),
+            CompileError::IOError(err) => write!(f, "io error: {}", err),
+            CompileError::UnresolvedUnit(unit) => write!(f, "unresolved unit: {}", unit),
         }
     }
 }
@@ -128,13 +131,13 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
 
     let parsed_program = syntax::Program::parse(tokens.into_iter(), &empty_context())?;
 
-    let mut loaded_units = Vec::new();
-    let mut loaded_unit_scopes = HashMap::new();
+    let mut loaded_units: Vec<semantic::Unit> = Vec::new();
+    let mut unit_scopes: HashMap<String, semantic::Scope> = HashMap::new();
 
     for unit_ref in parsed_program.uses.iter() {
         let unit_id = unit_ref.name.to_string();
 
-        if !loaded_unit_scopes.contains_key(&unit_id) {
+        if !loaded_units.iter().any(|unit| unit.name == unit_id) {
             let unit_path = source_dir.join(format!("{}.pas", unit_id));
 
             println!("Compiling unit `{}` in `{}`...",
@@ -144,18 +147,36 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
             let unit_source = load_source(unit_path)?;
             let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
 
-            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit,
-                                                              Scope::default())?;
+            let unit_imports = parsed_unit.uses.iter()
+                .map(|unit_ref| {
+                    let ref_name = unit_ref.name.to_string();
 
-            loaded_unit_scopes.insert(unit_id, unit_scope);
+                    match unit_scopes.entry(ref_name) {
+                        Entry::Occupied(scope_entry) => Ok({
+                            scope_entry.get().clone()
+                        }),
+                        Entry::Vacant(missing) => Err({
+                            CompileError::UnresolvedUnit(missing.key().clone())
+                        })
+                    }
+                })
+                .collect::<Result<Vec<semantic::Scope>, CompileError>>()?;
+
+            /* each unit imports all the units before it in the programs' units
+            clause (used units can't import any new units not referenced in the main
+            uses clause) */
+            let unit_scope = semantic::Scope::default().import_all(unit_imports);
+
+            let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, unit_scope)?;
+
+            unit_scopes.insert(unit.name.clone(), unit_scope);
             loaded_units.push(unit);
         }
     }
 
-    let program_scope = loaded_units.iter()
-        .fold(Scope::default(), |scope, unit| {
-            let unit_scope = loaded_unit_scopes.remove(&unit.name).unwrap();
-            scope.with_all(unit_scope)
+    let program_scope = unit_scopes.into_iter()
+        .fold(semantic::Scope::default(), |combined_scope, (_, unit_scope)| {
+            combined_scope.import(unit_scope)
         });
 
     let program = semantic::Program::annotate(&parsed_program, program_scope)?;

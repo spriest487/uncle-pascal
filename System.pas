@@ -2,11 +2,10 @@ unit System
 
 interface
 
-type
-    String = class
-        Chars: ^Byte
-        Length: Integer
-    end
+procedure WriteLn(line: String)
+
+function GetMem(len: Integer): ^Byte
+procedure FreeMem(mem: ^Byte)
 
 constructor StringCreate: String
 begin

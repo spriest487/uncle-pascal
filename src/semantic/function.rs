@@ -6,6 +6,7 @@ use types::{DeclaredType, FunctionSignature, RecordKind};
 const RESULT_VAR_NAME: &str = "result";
 
 pub type Function = node::FunctionDecl<ScopedSymbol>;
+pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol>;
 
 impl Function {
     pub fn annotate(function: &syntax::FunctionDecl,
@@ -30,38 +31,48 @@ impl Function {
             None => None
         };
 
-        /* there can't already be a local symbol called "result" */
-        let result_id = Identifier::from(RESULT_VAR_NAME);
-        function.local_vars.decls.iter().find(|decl| decl.name == result_id)
-            .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
-                                                     function.context.clone())))
-            .unwrap_or(Ok(()))?;
-
-        let mut local_vars = Vars::annotate(&function.local_vars,
-                                            &scope,
-                                            SemanticVarsKind::Local)?;
-
-        if let &Some(ref result_var_type) = &return_type {
-            local_vars.decls.push(VarDecl {
-                name: result_id,
-                context: function.context.clone(),
-                decl_type: result_var_type.clone(),
-            });
-        }
-
-        let args = Vars::annotate(&function.args, scope, SemanticVarsKind::Local)?;
-
-        let local_scope = scope.clone()
-            .with_vars_local(args.decls.iter())
-            .with_vars_local(local_vars.decls.iter());
-
-        let body = Block::annotate(&function.body, &local_scope)?;
-
         let qualified_name = if function.name.namespace.len() == 0 {
-            local_scope.qualify_local_name(&function.name.name)
+            scope.qualify_local_name(&function.name.name)
         } else {
             return Err(SemanticError::illegal_name(function.name.to_string(),
                                                    function.context.clone()));
+        };
+
+        let args = Vars::annotate(&function.args, scope, SemanticVarsKind::Local)?;
+
+        let body = match &function.body {
+            Some(function_body) => {
+                /* there can't already be a local symbol called "result" */
+                let result_id = Identifier::from(RESULT_VAR_NAME);
+                function_body.local_vars.decls.iter().find(|decl| decl.name == result_id)
+                    .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
+                                                             function.context.clone())))
+                    .unwrap_or(Ok(()))?;
+
+                let mut local_vars = Vars::annotate(&function_body.local_vars,
+                                                    &scope,
+                                                    SemanticVarsKind::Local)?;
+
+                if let &Some(ref result_var_type) = &return_type {
+                    local_vars.decls.push(VarDecl {
+                        name: result_id,
+                        context: function.context.clone(),
+                        decl_type: result_var_type.clone(),
+                    });
+                }
+
+                let local_scope = scope.clone()
+                    .with_vars_local(args.decls.iter())
+                    .with_vars_local(local_vars.decls.iter());
+
+                let body_block = Block::annotate(&function_body.block, &local_scope)?;
+
+                Some(FunctionDeclBody {
+                    block: body_block,
+                    local_vars,
+                })
+            }
+            None => None,
         };
 
         Ok(Function {
@@ -69,7 +80,6 @@ impl Function {
             context: function.context.clone(),
             kind: function.kind,
             return_type,
-            local_vars,
             args,
             body,
         })
@@ -128,7 +138,11 @@ impl Function {
 
         //todo: check args are all valid types
 
-        self.body.type_check()
+        if let Some(body) = &self.body {
+            body.block.type_check()?;
+        }
+
+        Ok(())
     }
 
     pub fn is_destructor_of(&self, class_type: &RecordDecl) -> bool {

@@ -101,7 +101,7 @@ impl node::ToSource for ScopedSymbol {
 
 impl Default for Scope {
     fn default() -> Self {
-        Scope::new().with_all(Scope::system())
+        Scope::new().import(Scope::system())
     }
 }
 
@@ -170,24 +170,14 @@ impl Scope {
             .with_type(Identifier::from("System.Integer"), DeclaredType::Integer)
             .with_type(Identifier::from("System.Pointer"), DeclaredType::RawPointer)
             .with_type(Identifier::from("System.Boolean"), DeclaredType::Boolean)
+
+            /* these decls need to be built in to support string concatenation sugar */
             .with_type(Identifier::from("System.String"), string_type.clone())
-            .with_symbol_absolute(Identifier::from("System.WriteLn"),
+            .with_symbol_absolute(Identifier::from("System.StringConcat"),
                                   DeclaredType::from(FunctionSignature {
-                                      name: Identifier::from("WriteLn"),
-                                      arg_types: vec![string_type.clone()],
-                                      return_type: None,
-                                  }))
-            .with_symbol_absolute(Identifier::from("System.GetMem"),
-                                  DeclaredType::from(FunctionSignature {
-                                      name: Identifier::from("GetMem"),
-                                      arg_types: vec![DeclaredType::Integer],
-                                      return_type: Some(DeclaredType::Byte.pointer()),
-                                  }))
-            .with_symbol_absolute(Identifier::from("System.FreeMem"),
-                                  DeclaredType::from(FunctionSignature {
-                                      name: Identifier::from("FreeMem"),
-                                      arg_types: vec![DeclaredType::Byte.pointer()],
-                                      return_type: None,
+                                      name: Identifier::from("StringConcat"),
+                                      arg_types: vec![string_type.clone(), string_type.clone()],
+                                      return_type: Some(string_type.clone())
                                   }))
     }
 
@@ -251,9 +241,16 @@ impl Scope {
         self
     }
 
-    pub fn with_all(mut self, other: Scope) -> Self {
+    pub fn import(mut self, other: Scope) -> Self {
         for (name, named) in other.names {
             self.names.insert(name, named);
+        }
+        self
+    }
+
+    pub fn import_all(mut self, others: impl IntoIterator<Item = Scope>) -> Self {
+        for scope in others {
+            self = self.import(scope);
         }
         self
     }

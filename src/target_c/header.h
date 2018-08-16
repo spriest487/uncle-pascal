@@ -14,7 +14,6 @@ typedef void* System_Pointer;
 typedef std::uint8_t System_Boolean;
 
 struct System_Internal_Class;
-struct System_String;
 
 struct System_Internal_Object {
     System_Internal_Class* Class;
@@ -32,6 +31,13 @@ static System_Internal_Class* System_Internal_FindClass(const char* name);
 static System_Internal_Object* System_Internal_Rc_GetMem(System_Integer size, const char* constructorName);
 static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);
+
+/* strings have special support in the compiler (e.g. concatenation sugar)
+so we need to declare them here instead of in a Pascal file */
+struct System_String : System_Internal_Object {
+    System_Byte* Chars;
+    System_Integer Length;
+};
 
 /* procedure System.WriteLn(line: System.String) */
 static void System_WriteLn(System_String* lineRc);

@@ -7,6 +7,7 @@ use node::{self, Identifier, FunctionKind};
 use source;
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
+pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol>;
 
 impl FunctionDecl {
     pub fn match_any_function_keyword() -> matcher::Matcher {
@@ -81,34 +82,43 @@ impl FunctionDecl {
             .match_peek(semicolon_after_sig.next_tokens,
                         &semicolon_after_sig.last_token)?;
 
-        let local_vars = match peek_after_sig.value {
-            Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                VarDecls::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
-            }
-            _ => {
-                ParseOutput::new(VarDecls::default(),
-                                 peek_after_sig.last_token,
-                                 peek_after_sig.next_tokens)
+        let body = match peek_after_sig.value {
+            // forward decl
+            None => ParseOutput::new(None,
+                                     peek_after_sig.last_token,
+                                     peek_after_sig.next_tokens),
+
+            // decl with body
+            Some(body_kw) => {
+                let local_vars = if body_kw.is_keyword(keywords::Var) {
+                    VarDecls::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
+                } else {
+                    ParseOutput::new(VarDecls::default(),
+                                     peek_after_sig.last_token,
+                                     peek_after_sig.next_tokens)
+                };
+
+                let block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
+
+                let body = FunctionDeclBody {
+                    block: block.value,
+                    local_vars: local_vars.value,
+                };
+
+                ParseOutput::new(Some(body), block.last_token, block.next_tokens)
             }
         };
 
-        let body_block = Block::parse(local_vars.next_tokens,
-                                      &local_vars.last_token)?;
-
-        let last_semicolon = tokens::Semicolon.match_or_endl(body_block.next_tokens,
-                                                             &body_block.last_token)?;
+        let last_semicolon = tokens::Semicolon.match_or_endl(body.next_tokens,
+                                                             &body.last_token)?;
 
         let function = FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name,
             return_type: return_type.value,
-
-            kind,
-
-            local_vars: local_vars.value,
             args: VarDecls { decls: args },
-
-            body: body_block.value,
+            kind,
+            body: body.value,
         };
 
         Ok(ParseOutput::new(function,

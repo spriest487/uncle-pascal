@@ -67,6 +67,14 @@ pub enum FunctionKind {
 }
 
 #[derive(Debug, Clone)]
+pub struct FunctionDeclBody<TSymbol>
+    where TSymbol: Symbol
+{
+    pub local_vars: VarDecls<TSymbol>,
+    pub block: Block<TSymbol>,
+}
+
+#[derive(Debug, Clone)]
 pub struct FunctionDecl<TSymbol>
     where TSymbol: Symbol
 {
@@ -77,9 +85,9 @@ pub struct FunctionDecl<TSymbol>
     pub kind: FunctionKind,
 
     pub args: VarDecls<TSymbol>,
-    pub local_vars: VarDecls<TSymbol>,
 
-    pub body: Block<TSymbol>,
+    // a function without a body is a forward declaration
+    pub body: Option<FunctionDeclBody<TSymbol>>,
 }
 
 #[derive(Clone, Debug)]
