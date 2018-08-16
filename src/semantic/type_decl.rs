@@ -75,14 +75,14 @@ impl RecordVariantPart {
 
         let cases = part.cases.iter()
             .map(|case| {
-                let tag_value = Expression::annotate(&case.tag_value, scope.clone())?;
+                let (tag_value, _) = Expression::annotate(&case.tag_value, scope.clone())?;
 
                 let members = case.members.iter()
                     .map(|case_member| RecordMember::annotate(case_member, scope.clone()))
                     .collect::<SemanticResult<_>>()?;
 
                 Ok(RecordVariantCase {
-                    tag_value,
+                    tag_value: tag_value.into_const_expr()?,
                     members,
                 })
             })

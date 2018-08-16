@@ -20,6 +20,7 @@ use node::{
     ToSource,
     FunctionModifier,
     FunctionSignature,
+    FunctionArgSignature,
     ExpressionValue,
 };
 use tokens::{
@@ -61,7 +62,7 @@ pub enum TypeName {
     Function {
         context: ParsedContext,
         return_type: Option<Box<TypeName>>,
-        arg_types: Vec<TypeName>,
+        args: Vec<FunctionArgSignature<TypeName>>,
         modifiers: Vec<FunctionModifier>,
     },
     UntypedRef {
@@ -100,16 +101,16 @@ impl PartialEq for TypeName {
                 }
             }
 
-            TypeName::Function { return_type, arg_types, modifiers, .. } => {
+            TypeName::Function { return_type, args, modifiers, .. } => {
                 match other {
                     TypeName::Function {
                         return_type: other_return,
-                        arg_types: other_args,
+                        args: other_args,
                         modifiers: other_mods,
                         ..
                     } => {
                         other_return == return_type
-                            && other_args == arg_types
+                            && other_args == args
                             && other_mods == modifiers
                     }
 
@@ -157,15 +158,15 @@ impl ToSource for TypeName {
                 result = format!("array of {}", element.to_source());
             }
 
-            TypeName::Function { return_type, arg_types, modifiers, .. } => {
+            TypeName::Function { return_type, args, modifiers, .. } => {
                 if return_type.is_some() {
                     result.push_str("function");
                 } else {
                     result.push_str("procedure");
                 }
 
-                result.push_str(&format!("({})", &arg_types.iter()
-                    .map(|arg_type| arg_type.to_source())
+                result.push_str(&format!("({})", &args.iter()
+                    .map(|arg| arg.to_source())
                     .collect::<Vec<_>>()
                     .join(", ")));
 
@@ -274,8 +275,11 @@ fn parse_as_function_type(tokens: &mut TokenStream, context: source::Token) -> P
     let kind_kw = tokens.match_one(keywords::Function.or(keywords::Procedure))?;
 
     let arg_list = FunctionDecl::parse_argument_list(tokens)?;
-    let arg_types = arg_list.into_iter()
-        .map(|decl| decl.decl_type)
+    let args = arg_list.into_iter()
+        .map(|decl| FunctionArgSignature {
+            modifier: decl.modifier,
+            decl_type: decl.decl_type,
+        })
         .collect();
 
     let return_type = if kind_kw.is_keyword(keywords::Procedure) {
@@ -291,7 +295,7 @@ fn parse_as_function_type(tokens: &mut TokenStream, context: source::Token) -> P
     Ok(TypeName::Function {
         context: ParsedContext::from(context),
         return_type,
-        arg_types,
+        args,
         modifiers,
     })
 }
@@ -344,7 +348,7 @@ impl TypeName {
                     indirection: indirection + 1,
                 },
 
-            TypeName::DynamicArray { ..} |
+            TypeName::DynamicArray { .. } |
             TypeName::Array { .. } =>
                 unimplemented!("pointer to array"),
 
@@ -401,10 +405,16 @@ impl TypeName {
                 }))
             }
 
-            TypeName::Function { return_type, arg_types, modifiers, .. } => {
+            TypeName::Function { return_type, args, modifiers, .. } => {
                 let sig = FunctionSignature {
-                    arg_types: arg_types.iter()
-                        .map(|arg_type| arg_type.resolve(scope.clone()))
+                    args: args.iter()
+                        .map(|arg| {
+                            let decl_type = arg.decl_type.resolve(scope.clone())?;
+                            Ok(FunctionArgSignature {
+                                decl_type,
+                                modifier: arg.modifier.clone(),
+                            })
+                        })
                         .collect::<Result<_, _>>()?,
                     return_type: match return_type.as_ref() {
                         None => None,

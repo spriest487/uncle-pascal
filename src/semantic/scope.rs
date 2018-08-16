@@ -22,6 +22,7 @@ use semantic::*;
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum BindingKind {
     Mutable,
+    Uninitialized,
     Immutable,
 }
 
@@ -29,7 +30,42 @@ impl fmt::Display for BindingKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             BindingKind::Mutable => write!(f, "mutable"),
+            BindingKind::Uninitialized => write!(f, "uninitialized"),
             BindingKind::Immutable => write!(f, "immutable"),
+        }
+    }
+}
+
+impl BindingKind {
+    pub fn mutable(&self) -> bool {
+        match self {
+            | BindingKind::Uninitialized
+            | BindingKind::Mutable =>
+                true,
+
+            | BindingKind::Immutable =>
+                false
+        }
+    }
+
+    pub fn initialized(&self) -> bool {
+        match self {
+            | BindingKind::Immutable
+            | BindingKind::Mutable =>
+                true,
+
+            | BindingKind::Uninitialized =>
+                false
+        }
+    }
+
+    pub fn initialize(self) -> Self {
+        match self {
+            | BindingKind::Mutable
+            | BindingKind::Immutable =>
+                self,
+            | BindingKind::Uninitialized =>
+                BindingKind::Mutable,
         }
     }
 }
@@ -101,26 +137,20 @@ impl ScopedSymbol {
         }
     }
 
-    pub fn is_readable(&self, from_ns: Option<&Identifier>) -> bool {
+    pub fn initialized(&self) -> bool {
         match self {
-            ScopedSymbol::Local { .. } => true,
-            ScopedSymbol::RecordMember { record_id, .. } => {
-                record_id.parent().as_ref() == from_ns
-            }
+            | ScopedSymbol::RecordMember { binding_kind, .. }
+            | ScopedSymbol::Local { binding_kind, .. } =>
+                binding_kind.initialized(),
         }
     }
 
-    pub fn is_writeable(&self, from_ns: Option<&Identifier>) -> bool {
+    pub fn mutable(&self, from_ns: Option<&Identifier>) -> bool {
         match self {
-            ScopedSymbol::Local { binding_kind, .. } =>
-                match binding_kind {
-                    BindingKind::Mutable => true,
-                    BindingKind::Immutable => false,
-                },
-
+            ScopedSymbol::Local { binding_kind, .. } => binding_kind.mutable(),
             ScopedSymbol::RecordMember { record_id, binding_kind, .. } => {
                 let same_ns = record_id.parent().as_ref() == from_ns;
-                same_ns && *binding_kind == BindingKind::Mutable
+                same_ns && binding_kind.mutable()
             }
         }
     }
@@ -214,12 +244,7 @@ impl fmt::Debug for Scope {
 
         writeln!(f, "\tsymbols: [")?;
         for (name, binding) in symbols {
-            let kind = match binding.kind {
-                BindingKind::Immutable => "immutable",
-                BindingKind::Mutable => "mutable",
-            };
-
-            writeln!(f, "\t\t{}: {} ({})", name, binding.decl_type, kind)?;
+            writeln!(f, "\t\t{}: {} ({})", name, binding.decl_type, binding.kind)?;
         }
         writeln!(f, "\t]")?;
 
@@ -368,16 +393,41 @@ impl Scope {
         self
     }
 
-    pub fn with_symbol_local(mut self,
-                             name: &str,
-                             decl_type: Type,
-                             kind: BindingKind) -> Self {
+    pub fn with_binding(mut self, name: &str, decl_type: Type, kind: BindingKind) -> Self {
         let binding = SymbolBinding {
             decl_type,
             kind,
         };
 
         self.names.insert(Identifier::from(name), Named::Symbol(binding));
+        self
+    }
+
+    pub fn with_global_var(mut self, name: &str, decl_type: impl Into<Type>) -> Self {
+        let full_name = self.qualify_local_name(name);
+        let binding = SymbolBinding {
+            decl_type: decl_type.into(),
+            kind: BindingKind::Mutable,
+        };
+
+        self.names.insert(full_name, Named::Symbol(binding));
+        self
+    }
+
+    pub fn initialize_symbol(mut self, name: &Identifier) -> Self {
+        let find_symbol = self.find_named(name)
+            .map(|(full_name, named)| (full_name, named.clone()));
+
+        match find_symbol {
+            Some((full_name, Named::Symbol(mut binding))) => {
+                binding.kind = binding.kind.initialize();
+                self.names.insert(full_name.clone(), Named::Symbol(binding));
+            }
+
+            _ =>
+                panic!("called initialize_symbol() on something that wasn't a symbol: `{}`", name)
+        }
+
         self
     }
 
@@ -398,7 +448,11 @@ impl Scope {
 
     pub fn with_vars_local<'a>(mut self, vars: impl IntoIterator<Item=&'a VarDecl>) -> Self {
         for var in vars {
-            self = self.with_symbol_local(&var.name, var.decl_type.clone(), BindingKind::Mutable);
+            let binding_kind = match var.default_value.is_some() {
+                | true => BindingKind::Mutable,
+                | false => BindingKind::Uninitialized,
+            };
+            self = self.with_binding(&var.name, var.decl_type.clone(), binding_kind);
         }
         self
     }
@@ -493,6 +547,32 @@ impl Scope {
                     decl_type: Type::Function(Box::from(func.signature())),
                     binding_kind: BindingKind::Immutable,
                 })
+            })
+    }
+
+    /*
+        diff of symbols uninitialized in a previous scope -> symbols uninitialized in this scope, to
+        see which ones have been initialized since then
+    */
+    pub fn initialized_since<'a>(&self, other: &'a Scope) -> Vec<&'a Identifier> {
+        let still_uninitialized: Vec<_> = self.uninitialized_symbols().collect();
+
+        other.uninitialized_symbols()
+            .filter(|name| !still_uninitialized.contains(name))
+            .collect()
+    }
+
+    pub fn uninitialized_symbols(&self) -> impl Iterator<Item=&Identifier> {
+        self.names.iter()
+            .filter_map(|(name, named)| match named {
+                Named::Symbol(binding) => {
+                    match binding.kind.initialized() {
+                        true => None,
+                        false => Some(name)
+                    }
+                }
+
+                _ => None,
             })
     }
 
@@ -787,7 +867,7 @@ mod test {
             Some((result_id, result_val)) => {
                 assert_eq!(expected_id, result_id);
                 assert_eq!(const_val, *result_val);
-            },
+            }
             None => panic!("name {} must be found in scope {:?}", expected_id, scope)
         }
     }

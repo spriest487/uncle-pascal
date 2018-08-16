@@ -55,8 +55,9 @@ impl Unit {
 
             node::UnitDecl::Vars(parsed_vars) => {
                 let vars = VarDecls::annotate(parsed_vars, Rc::new(scope.clone()))?;
-
-                scope = scope.with_vars_local(vars.decls.iter());
+                for var in vars.decls.iter() {
+                    scope = scope.with_global_var(&var.name, var.decl_type.clone());
+                }
 
                 Ok((node::UnitDecl::Vars(vars), scope))
             }
@@ -148,11 +149,11 @@ impl Unit {
         let impl_scope = Rc::new(impl_scope);
 
         let initialization = match unit.initialization.as_ref() {
-            Some(block) => Some(Block::annotate(block, impl_scope.clone())?),
+            Some(block) => Some(Block::annotate(block, impl_scope.clone())?.0),
             None => None,
         };
         let finalization = match unit.finalization.as_ref() {
-            Some(block) => Some(Block::annotate(block, impl_scope.clone())?),
+            Some(block) => Some(Block::annotate(block, impl_scope.clone())?.0),
             None => None,
         };
 

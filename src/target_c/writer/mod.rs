@@ -61,9 +61,18 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             let return_type = sig.return_type.as_ref()
                 .map(|ty| type_to_c(ty, scope))
                 .unwrap_or_else(|| "void".to_owned());
-            let arg_types = if sig.arg_types.len() > 0 {
-                sig.arg_types.iter()
-                    .map(|arg| type_to_c(&arg, scope))
+            let arg_types = if sig.args.len() > 0 {
+                sig.args.iter()
+                    .map(|arg| {
+                        let arg_type_base = type_to_c(&arg.decl_type, scope);
+                        match arg.modifier {
+                            | Some(FunctionArgModifier::Var)
+                            | Some(FunctionArgModifier::Out) =>
+                                arg_type_base + "&",
+                            _ =>
+                                arg_type_base
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(", ")
             } else {
@@ -520,7 +529,7 @@ fn write_statement(out: &mut String,
             let context = semantic::SemanticContext::new(
                 context.token().clone(),
                 Rc::new(statement.scope().clone()
-                    .with_symbol_local(&name, binding_type, BindingKind::Immutable)),
+                    .with_binding(&name, binding_type, BindingKind::Immutable)),
             );
             let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
 
@@ -565,7 +574,7 @@ fn write_statement(out: &mut String,
             let decl_type = call_func.return_type.as_ref().cloned().unwrap();
 
             subexpr.scope().clone()
-                .with_symbol_local(&name, decl_type, BindingKind::Immutable)
+                .with_binding(&name, decl_type, BindingKind::Immutable)
         };
 
         let binding_context = SemanticContext::new(subexpr.context.token().clone(), binding_scope);

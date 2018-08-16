@@ -16,8 +16,7 @@ impl Into<TypedSymbol> for VarDecl {
 }
 
 impl VarDecl {
-    pub fn annotate(decl: &syntax::VarDecl, scope: Rc<Scope>)
-                    -> Result<Self, SemanticError> {
+    pub fn annotate(decl: &syntax::VarDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
         let var_context = SemanticContext {
             scope: scope.clone(),
             token: decl.context.token().clone(),
@@ -26,8 +25,8 @@ impl VarDecl {
 
         let default_value = match decl.default_value.as_ref() {
             Some(default_expr) => {
-                Some(Expression::annotate(default_expr, scope.clone())?
-                    .into_const_expr()?)
+                let (default_val, _) = Expression::annotate(default_expr, scope.clone())?;
+                Some(default_val.into_const_expr()?)
             }
             None => None,
         };

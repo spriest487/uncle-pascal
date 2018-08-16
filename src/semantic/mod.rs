@@ -74,6 +74,7 @@ pub enum SemanticErrorKind {
         target_type: Type,
         from_type: Option<Type>,
     },
+    UninitializedSymbol(Identifier),
     TypeNotAssignable(Option<Type>),
     ValueNotAssignable(Expression),
     TypesNotComparable(Option<Type>, Option<Type>),
@@ -93,6 +94,10 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::UnknownSymbol(missing_sym) => {
                 write!(f, "symbol `{}` was not found", missing_sym)
+            }
+
+            SemanticErrorKind::UninitializedSymbol(name) => {
+                write!(f, "symbol `{}` is not initialized", name)
             }
 
             SemanticErrorKind::MemberAccessOfNonRecord(actual, name) => {
@@ -180,12 +185,12 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::WrongNumberOfArgs { expected_sig, actual } => {
                 write!(f, "wrong number of arguments passed to function (expected {}, found {})",
-                       expected_sig.arg_types.len(), actual)
+                       expected_sig.args.len(), actual)
             }
 
             SemanticErrorKind::WrongArgTypes { sig, actual } => {
                 writeln!(f, "invalid arguments to function! expected:")?;
-                for expected_arg in sig.arg_types.iter() {
+                for expected_arg in sig.args.iter() {
                     writeln!(f, "\t{}", expected_arg.to_source())?;
                 }
                 writeln!(f, "found: ")?;
@@ -356,6 +361,15 @@ impl SemanticError {
         }
     }
 
+    pub fn uninitialized_symbol(name: impl Into<Identifier>,
+                                context: impl Into<SemanticContext>)
+                                -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::UninitializedSymbol(name.into()),
+            context: context.into(),
+        }
+    }
+
     pub fn invalid_const_value(value_expr: Expression) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidConstantValue(value_expr.value),
@@ -404,7 +418,7 @@ impl SemanticError {
                               -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidArrayType(actual.into()),
-            context: context.into()
+            context: context.into(),
         }
     }
 
@@ -413,7 +427,7 @@ impl SemanticError {
                                -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidArrayIndex(actual.into()),
-            context: context.into()
+            context: context.into(),
         }
     }
 

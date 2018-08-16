@@ -32,10 +32,10 @@ begin
     description := description + ' plane'
 
     if vehicle.Wings then
-      description := description + 'with wings'
+      description := description + ' with wings'
 
     if vehicle.Propellor then
-      description := description + 'with a propellor'
+      description := description + ' with a propellor'
   end
 
   WriteLn(description)

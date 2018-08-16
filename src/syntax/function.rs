@@ -322,4 +322,22 @@ mod test {
         assert_eq!("y", func.args[1].name);
         assert_eq!(make_type_name("Integer"), func.args[1].decl_type);
     }
+
+    #[test]
+    fn parses_sig_with_out_modifier() {
+        let func = parse_func("procedure hello(out x: String)");
+        assert_eq!(Some(FunctionArgModifier::Out), func.args[0].modifier);
+    }
+
+    #[test]
+    fn parses_sig_with_var_modifier() {
+        let func = parse_func("procedure hello(var x: String)");
+        assert_eq!(Some(FunctionArgModifier::Var), func.args[0].modifier);
+    }
+
+    #[test]
+    fn parses_sig_with_const_modifier() {
+        let func = parse_func("procedure hello(const x: String)");
+        assert_eq!(Some(FunctionArgModifier::Const), func.args[0].modifier);
+    }
 }

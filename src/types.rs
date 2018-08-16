@@ -79,6 +79,7 @@ impl ArrayType {
 }
 
 pub type FunctionSignature = node::FunctionSignature<Type>;
+pub type FunctionArgSignature = node::FunctionArgSignature<Type>;
 
 #[derive(PartialEq, Clone, Debug, Hash)]
 pub enum Type {

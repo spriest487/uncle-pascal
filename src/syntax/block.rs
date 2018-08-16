@@ -25,8 +25,11 @@ impl Block {
                 }
 
                 _ => {
+                    if statements.len() > 0 {
+                        tokens.match_or_endl(tokens::Semicolon)?;
+                    }
+
                     let next_expr: Expression = tokens.parse()?;
-                    tokens.match_or_endl(tokens::Semicolon)?;
 
                     statements.push(next_expr);
                 }

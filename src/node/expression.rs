@@ -647,17 +647,98 @@ impl<TContext> Expression<TContext>
 {
     pub fn is_any_identifier(&self) -> bool {
         match &self.value {
-            ExpressionValue::Identifier(_) => true,
+            | ExpressionValue::Identifier(_) => true,
             _ => false,
         }
     }
 
     pub fn is_identifier(&self, id: &Identifier) -> bool {
         match &self.value {
-            &ExpressionValue::Identifier(ref expr_id) => expr_id == id,
+            | ExpressionValue::Identifier(expr_id) => expr_id == id,
             _ => false,
         }
     }
+}
+
+pub fn try_visit_expressions<TContext, TErr>(
+    root_expr: &Expression<TContext>,
+    mut visit: &mut FnMut(&Expression<TContext>) -> Result<(), TErr>)
+    -> Result<(), TErr>
+    where TContext: Context
+{
+    match &root_expr.value {
+        | ExpressionValue::BinaryOperator { lhs, rhs, .. } => {
+            try_visit_expressions(lhs.as_ref(), &mut visit)?;
+            try_visit_expressions(rhs.as_ref(), &mut visit)?;
+        }
+        | ExpressionValue::PrefixOperator { rhs, .. } => {
+            try_visit_expressions(rhs.as_ref(), &mut visit)?;
+        }
+        | ExpressionValue::TypeCast { from_value, .. } => {
+            try_visit_expressions(from_value.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::FunctionCall { target, args } => {
+            try_visit_expressions(target.as_ref(), &mut visit)?;
+            for arg in args.iter() {
+                try_visit_expressions(arg, &mut visit)?;
+            }
+        }
+
+        | ExpressionValue::LetBinding { value, .. } => {
+            try_visit_expressions(value.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::Member { of, .. } => {
+            try_visit_expressions(of.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::ArrayElement { of, index_expr } => {
+            try_visit_expressions(of.as_ref(), &mut visit)?;
+            try_visit_expressions(index_expr.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::If { condition, then_branch, else_branch } => {
+            try_visit_expressions(condition.as_ref(), &mut visit)?;
+            try_visit_expressions(then_branch.as_ref(), &mut visit)?;
+
+            if let Some(expr) = else_branch.as_ref() {
+                try_visit_expressions(expr.as_ref(), &mut visit)?;
+            }
+        }
+
+        | ExpressionValue::While { condition, body } => {
+            try_visit_expressions(condition.as_ref(), &mut visit)?;
+            try_visit_expressions(body.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::Block(block) => {
+            for statement in block.statements.iter() {
+                try_visit_expressions(statement, &mut visit)?;
+            }
+        }
+
+        | ExpressionValue::ForLoop { from, to, body } => {
+            try_visit_expressions(from.as_ref(), &mut visit)?;
+            try_visit_expressions(to.as_ref(), &mut visit)?;
+            try_visit_expressions(body.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::With { value, body } => {
+            try_visit_expressions(value.as_ref(), &mut visit)?;
+            try_visit_expressions(body.as_ref(), &mut visit)?;
+        }
+        | ExpressionValue::Raise(expr) => {
+            try_visit_expressions(expr.as_ref(), &mut visit)?;
+        }
+
+        | ExpressionValue::Identifier(_)
+        | ExpressionValue::Constant(_)
+        | ExpressionValue::SetConstructor(_) =>
+            {}
+    }
+
+    visit(&root_expr)
 }
 
 pub fn transform_expressions<TContext>(

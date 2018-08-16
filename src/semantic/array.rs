@@ -30,9 +30,9 @@ impl IndexRange {
 
     pub fn annotate(index_range: &syntax::IndexRange, scope: Rc<Scope>) -> SemanticResult<Self> {
         let from = Expression::annotate(&index_range.from, scope.clone())
-            .and_then(Self::const_to_array_dim)?;
+            .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
         let to = Expression::annotate(&index_range.to, scope.clone())
-            .and_then(Self::const_to_array_dim)?;
+            .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
 
         Ok(IndexRange {
             from,

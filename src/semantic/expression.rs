@@ -9,6 +9,7 @@ use node::{
     Identifier,
     ExpressionValue,
     ConstantExpression,
+    FunctionArgModifier,
 };
 use operators;
 use types::{
@@ -156,16 +157,22 @@ fn annotate_identifier(name: &Identifier,
 fn annotate_while_loop(condition: &syntax::Expression,
                        body: &syntax::Expression,
                        scope: Rc<Scope>,
-                       context: &syntax::ParsedContext) -> SemanticResult<Expression> {
-    let cond_expr = Expression::annotate(condition, scope.clone())?;
-    let body_expr = Expression::annotate(body, scope.clone())?;
+                       context: &syntax::ParsedContext)
+                       -> SemanticResult<(Expression, Rc<Scope>)> {
+    let (cond_expr, scope) = Expression::annotate(condition, scope.clone())?;
+
+    /* anything initialized or declared in the scope of the body is strictly
+    confined to the body, because it may never execute */
+    let (body_expr, _) = Expression::annotate(body, scope.clone())?;
 
     let context = SemanticContext {
         token: context.token().clone(),
-        scope,
+        scope: scope.clone(),
     };
 
-    Ok(Expression::while_loop(cond_expr, body_expr, context))
+    let while_loop = Expression::while_loop(cond_expr, body_expr, context);
+
+    Ok((while_loop, scope))
 }
 
 fn while_type(condition: &Expression, body: &Expression) -> SemanticResult<()> {
@@ -181,19 +188,56 @@ fn annotate_if(condition: &syntax::Expression,
                then_branch: &syntax::Expression,
                else_branch: Option<&syntax::Expression>,
                scope: Rc<Scope>,
-               context: &syntax::ParsedContext) -> SemanticResult<Expression>
+               context: &syntax::ParsedContext) -> SemanticResult<(Expression, Rc<Scope>)>
 {
-    let cond_expr = Expression::annotate(condition, scope.clone())?;
-    let then_expr = Expression::annotate(then_branch, scope.clone())?;
-    let else_expr = match else_branch {
-        Some(expr) => Some(Expression::annotate(expr, scope.clone())?),
-        None => None
+    let (cond_expr, scope_after_condition) = Expression::annotate(condition, scope.clone())?;
+    let (then_expr, scope_after_then) = Expression::annotate(then_branch, scope_after_condition.clone())?;
+    let (else_expr, scope_after_else) = match else_branch {
+        Some(expr) => {
+            let (else_expr, scope_after_else) = Expression::annotate(expr, scope_after_condition.clone())?;
+            (Some(else_expr), scope_after_else)
+        }
+        None => (None, scope_after_condition.clone())
     };
 
-    Ok(Expression::if_then_else(cond_expr, then_expr, else_expr, SemanticContext {
+    let if_then_else = Expression::if_then_else(cond_expr, then_expr, else_expr, SemanticContext {
         token: context.token().clone(),
-        scope,
-    }))
+        scope: scope.clone(),
+    });
+
+    /*
+        the scope for the condition, and each of the branches, doesn't live longer than the
+        if-expression. however, variables initialized in the condition expr, or variables initialized
+        in both of the branch expressions (if there is an else-branch), should still be considered
+        initialized after this if-expression.
+
+        ```
+        { function GetThing(out thing: Thing): Boolean }
+        if GetThing(thing) then
+            x := 1
+        else
+            x := 2
+        ```
+        `thing` and and `x` should be initialized
+     */
+    let mut out_scope = scope.clone();
+    for name in scope_after_condition.initialized_since(scope.as_ref()) {
+        out_scope = Rc::new(scope.as_ref().clone()
+            .initialize_symbol(name));
+    }
+
+    if else_branch.is_some() {
+        let then_initialized = scope_after_then.initialized_since(scope_after_condition.as_ref());
+
+        for name in scope_after_else.initialized_since(scope_after_condition.as_ref()) {
+            if then_initialized.contains(&name) {
+                out_scope = Rc::new(scope.as_ref().clone()
+                    .initialize_symbol(&name));
+            }
+        }
+    }
+
+    Ok((if_then_else, out_scope))
 }
 
 fn if_type(condition: &Expression,
@@ -219,28 +263,31 @@ fn annotate_for_loop(from: &syntax::Expression,
                      to: &syntax::Expression,
                      body: &syntax::Expression,
                      scope: Rc<Scope>,
-                     context: &syntax::ParsedContext) -> SemanticResult<Expression> {
-    let from_expr = Expression::annotate(from, scope.clone())?;
-    let to_expr = Expression::annotate(to, scope.clone())?;
+                     context: &syntax::ParsedContext)
+                     -> SemanticResult<(Expression, Rc<Scope>)> {
+    let (from_expr, to_scope) = Expression::annotate(from, scope.clone())?;
+    let (to_expr, body_scope) = Expression::annotate(to, to_scope.clone())?;
 
-    let do_expr = if from_expr.is_let_binding() {
-        let (from_name, from_value) = from_expr.clone().unwrap_let_binding();
-        let from_type = from_value.expr_type()?
-            .ok_or_else(|| SemanticError::type_not_assignable(
-                None, from_expr.context.clone()))?;
+    /*  we don't use the resulting scope of the loop body, because the loop
+        may run 0 times
+        todo: initializations in the from and to should be in the final scope?
+    */
+    let (do_expr, _) = Expression::annotate(body, body_scope.clone())?;
 
-        let body_scope = Rc::new(scope.as_ref().clone()
-            .with_symbol_local(&from_name, from_type, BindingKind::Immutable));
-
-        Expression::annotate(body, body_scope)?
-    } else {
-        Expression::annotate(body, scope.clone())?
-    };
-
-    Ok(Expression::for_loop(from_expr, to_expr, do_expr, SemanticContext {
+    let for_loop = Expression::for_loop(from_expr, to_expr, do_expr, SemanticContext {
         token: context.token().clone(),
         scope: scope.clone(),
-    }))
+    });
+
+    let mut scope_out = scope.clone();
+    for name in to_scope.initialized_since(scope.as_ref()) {
+        scope_out = Rc::new(scope_out.as_ref().clone().initialize_symbol(name));
+    }
+    for name in body_scope.initialized_since(scope.as_ref()) {
+        scope_out = Rc::new(scope_out.as_ref().clone().initialize_symbol(name));
+    }
+
+    Ok((for_loop, scope_out))
 }
 
 fn for_loop_type(from: &Expression,
@@ -301,33 +348,76 @@ fn match_indirection(expr: &Expression,
     result
 }
 
+fn scope_after_fn_call(sig: &FunctionSignature,
+                       actual_args: &[Expression],
+                       mut scope: Rc<Scope>) -> Rc<Scope> {
+    for (sig_arg, arg_expr) in sig.args.iter().zip(actual_args.iter()) {
+        if let Some(FunctionArgModifier::Out) = &sig_arg.modifier {
+            /* if the out parameter references an identifier, that identifier must now be
+              initialized */
+            match &arg_expr.value {
+                ExpressionValue::Identifier(name) => {
+                    let initialized = scope.as_ref().clone().initialize_symbol(name);
+                    scope = Rc::new(initialized);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    scope
+}
+
+fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
+    let type_id = match ty.remove_indirection() {
+        | Type::Class(name) => scope.get_class(&name)?.0,
+        | Type::Record(name) => scope.get_record(&name)?.0,
+        | Type::Set(name) => scope.get_set(&name)?.0,
+        | Type::Enumeration(name) => scope.get_enumeration(&name)?.0,
+
+        | Type::Array(array_type) =>
+            return ufcs_ns_of_type(array_type.element.as_ref(), scope),
+        | Type::DynamicArray(array_type) =>
+            return ufcs_ns_of_type(array_type.element.as_ref(), scope),
+
+        | Type::Boolean
+        | Type::Byte
+        | Type::Int32
+        | Type::UInt32
+        | Type::Int64
+        | Type::UInt64
+        | Type::Float64 =>
+            return Some(Identifier::from("System")),
+
+        _ =>
+            return None,
+    };
+
+    type_id.parent()
+}
+
 fn annotate_ufcs(target: &Expression,
                  target_type: &Type,
                  func_name: &str,
                  args: &Vec<Expression>,
-                 scope: Rc<Scope>) -> Option<Expression> {
-    let (base_target_id, _base_target_decl) = match target_type.remove_indirection() {
-        Type::Class(name) => scope.get_class(name)?,
-        Type::Record(name) => scope.get_record(name)?,
-        _ => return None,
-    };
-
+                 scope: Rc<Scope>) -> Option<(Expression, Rc<Scope>)> {
     /* look for matching UFCS func in NS of target type */
-    let ufcs_ns = base_target_id.parent()?;
+    let ufcs_ns = ufcs_ns_of_type(target_type, scope.as_ref())?;
 
     let ufcs_name = ufcs_ns.child(func_name);
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
     match ufcs_function {
         ScopedSymbol::Local { name: ufcs_func_name, decl_type: Type::Function(sig), .. } => {
-            let first_arg_type = sig.arg_types.first()?;
+            let first_arg = sig.args.first()?;
 
-            if first_arg_type.remove_indirection() != target_type.remove_indirection() {
+            if first_arg.decl_type.remove_indirection() != target_type.remove_indirection()
+                || first_arg.modifier.is_some() {
                 None
             } else {
                 /* match target arg expression indirection level to level of expected first arg,
                  taking the address or derefing the pointer as necessary */
-                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg_type);
+                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg.decl_type);
 
                 /* the target becomes the first arg */
                 let mut ufcs_args = vec![ufcs_target_arg];
@@ -336,7 +426,10 @@ fn annotate_ufcs(target: &Expression,
                 let ufcs_target_expr = Expression::identifier(ufcs_func_name.clone(),
                                                               target.context.clone());
 
-                Some(Expression::function_call(ufcs_target_expr, ufcs_args))
+                let func_call = Expression::function_call(ufcs_target_expr, ufcs_args);
+                let scope_after = scope_after_fn_call(&sig, args, scope.clone());
+
+                Some((func_call, scope_after))
             }
         }
 
@@ -346,21 +439,25 @@ fn annotate_ufcs(target: &Expression,
 
 fn annotate_function_call(target: &syntax::Expression,
                           args: &Vec<syntax::Expression>,
-                          scope: Rc<Scope>,
-                          _context: &syntax::ParsedContext) -> SemanticResult<Expression> {
-    let typed_args: Vec<_> = args.iter()
-        .map(|arg| Expression::annotate(arg, scope.clone()))
-        .collect::<SemanticResult<_>>()?;
+                          mut scope: Rc<Scope>,
+                          _context: &syntax::ParsedContext)
+                          -> SemanticResult<(Expression, Rc<Scope>)> {
+    let mut typed_args = Vec::new();
+    for arg in args.iter() {
+        let (arg_expr, next_arg_scope) = Expression::annotate(arg, scope)?;
+        scope = next_arg_scope;
+        typed_args.push(arg_expr);
+    }
 
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
     let ufcs_call = match &target.value {
         &ExpressionValue::Member { ref of, ref name } => {
-            let base_expr = Expression::annotate(of, scope.clone())?;
+            let (base_expr, scope) = Expression::annotate(of, scope.clone())?;
             let base_type = base_expr.expr_type()?;
 
             base_type.and_then(|base_type|
-                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope.clone()))
+                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope))
         }
 
         &ExpressionValue::Identifier(ref name) => {
@@ -387,9 +484,11 @@ fn annotate_function_call(target: &syntax::Expression,
     match ufcs_call {
         Some(ufcs_expr) => Ok(ufcs_expr),
         None => {
-            /* handle typecasting - if the func name is just an identifier,
-             it might be a typecast instead if there's no function by that
-             name and the arg list is exactly 1 long */
+            /*
+                handle typecasting - if the func name is just an identifier,
+                it might be a typecast instead if there's no function by that
+                name and the arg list is exactly 1 long
+           */
             if let ExpressionValue::Identifier(name) = &target.value {
                 if scope.get_function(name).is_none() && typed_args.len() == 1 {
                     if let Some(target_type) = scope.get_type_alias(name) {
@@ -400,18 +499,32 @@ fn annotate_function_call(target: &syntax::Expression,
 
                         let context = SemanticContext {
                             token: target.context.token().clone(),
-                            scope,
+                            scope: scope.clone(),
                         };
 
-                        return Ok(Expression::type_cast(target_type, from_value, context));
+                        let type_cast = Expression::type_cast(target_type, from_value, context);
+                        return Ok((type_cast, scope));
                     }
                 }
             }
 
-            /* ordinary function call */
-            let target = Expression::annotate(target, scope)?;
+            let (target, scope) = Expression::annotate(target, scope)?;
 
-            Ok(Expression::function_call(target, typed_args))
+            /* ordinary function call */
+            let sig = match target.expr_type()? {
+                Some(Type::Function(sig)) => {
+                    *sig.clone()
+                }
+
+                invalid @ _ => {
+                    return Err(SemanticError::invalid_function_type(invalid, target.context));
+                }
+            };
+
+            let scope = scope_after_fn_call(&sig, &typed_args, scope);
+            let func_call = Expression::function_call(target, typed_args);
+
+            Ok((func_call, scope))
         }
     }
 }
@@ -420,19 +533,22 @@ fn annotate_type_cast(target_type: &node::TypeName,
                       from_value: &syntax::Expression,
                       scope: Rc<Scope>,
                       context: &syntax::ParsedContext)
-                      -> SemanticResult<Expression> {
+                      -> SemanticResult<(Expression, Rc<Scope>)> {
     let target_type = target_type.resolve(scope.clone())?;
-    let from_value = Expression::annotate(from_value, scope.clone())?;
+    let (from_value, scope) = Expression::annotate(from_value, scope.clone())?;
 
     let context = SemanticContext {
         token: context.token().clone(),
-        scope,
+        scope: scope.clone(),
     };
 
-    Ok(Expression::type_cast(target_type, from_value, context))
+    let type_cast = Expression::type_cast(target_type, from_value, context);
+    Ok((type_cast, scope))
 }
 
 fn let_binding_type(value: &Expression, context: &SemanticContext) -> SemanticResult<Option<Type>> {
+    expect_initialized(value)?;
+
     let value_type = value.expr_type()?
         .ok_or_else(|| SemanticError::type_not_assignable(None, context.clone()))?;
 
@@ -444,30 +560,59 @@ fn let_binding_type(value: &Expression, context: &SemanticContext) -> SemanticRe
 }
 
 fn function_call_type(target: &Expression,
-                      args: &Vec<Expression>,
+                      actual_args: &Vec<Expression>,
                       context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
     if let Some(Type::Function(sig)) = &target_type {
-        if args.len() != sig.arg_types.len() {
+        if actual_args.len() != sig.args.len() {
             Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
-                                              args.len(),
+                                              actual_args.len(),
                                               context.clone()))
         } else {
-            for (arg_index, arg_expr) in args.iter().enumerate() {
-                let sig_type = &sig.arg_types[arg_index];
+            let wrong_args = || {
+                let actual_arg_types: Vec<_> = actual_args.iter()
+                    .map(|arg| arg.expr_type())
+                    .collect::<SemanticResult<_>>()?;
 
-                if let Err(_) = expect_valid_operation(operators::Assignment,
-                                                       Some(sig_type),
-                                                       &arg_expr,
-                                                       &arg_expr.context) {
-                    let actual_arg_types: Vec<_> = args.iter()
-                        .map(|arg| arg.expr_type())
-                        .collect::<SemanticResult<_>>()?;
+                Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
+                                                   actual_arg_types,
+                                                   context.clone(),
+                ))
+            };
 
-                    return Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
-                                                              actual_arg_types,
-                                                              context.clone(),
-                    ));
+            for (arg_index, arg_expr) in actual_args.iter().enumerate() {
+                let sig_arg = &sig.args[arg_index];
+
+                match sig_arg.modifier {
+                    /* by-value (and const-by-value) args: actual arg type may be
+                    any type assignable to the sig type, and must be initialized */
+                    | Some(FunctionArgModifier::Const)
+                    | None => {
+                        if let Err(_) = expect_valid_operation(operators::Assignment,
+                                                               Some(&sig_arg.decl_type),
+                                                               &arg_expr,
+                                                               &arg_expr.context) {
+                            return wrong_args();
+                        }
+
+                        expect_initialized(arg_expr)?;
+                    }
+
+                    /* by-ref var: must be initialized, must be exact type */
+                    | Some(FunctionArgModifier::Var) => {
+                        expect_initialized(arg_expr)?;
+
+                        if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
+                            return wrong_args();
+                        }
+                    }
+
+                    /* by-ref out: may be uninitialized, must be exact type */
+                    | Some(FunctionArgModifier::Out) => {
+                        if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
+                            return wrong_args();
+                        }
+                    }
                 }
             }
 
@@ -513,7 +658,7 @@ fn is_assignable(expr: &Expression) -> bool {
             }
 
             match expr.scope().get_symbol(name) {
-                Some(binding) => binding.is_writeable(expr.scope().local_namespace()),
+                Some(binding) => binding.mutable(expr.scope().local_namespace()),
                 None => false,
             }
         }
@@ -689,8 +834,37 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
     }
 }
 
+fn expect_initialized(expr: &Expression) -> SemanticResult<()> {
+    node::try_visit_expressions(expr, &mut |each_expr| {
+        match &each_expr.value {
+            ExpressionValue::Identifier(name) => {
+                match expr.scope().get_symbol(name) {
+                    | Some(ScopedSymbol::RecordMember { binding_kind, .. })
+                    | Some(ScopedSymbol::Local { binding_kind, .. }) => {
+                        match binding_kind {
+                            BindingKind::Uninitialized => {
+                                let context = expr.context.clone();
+                                Err(SemanticError::uninitialized_symbol(name.clone(), context))
+                            }
+
+                            _ =>
+                                Ok(())
+                        }
+                    }
+
+                    _ => Err(SemanticError::unknown_symbol(name.clone(), expr.context.clone()))
+                }
+            }
+
+            _ => Ok(())
+        }
+    })
+}
+
 impl Expression {
-    pub fn annotate(expr: &syntax::Expression, scope: Rc<Scope>) -> SemanticResult<Self> {
+    pub fn annotate(expr: &syntax::Expression,
+                    scope: Rc<Scope>)
+                    -> SemanticResult<(Self, Rc<Scope>)> {
         let expr_context = SemanticContext {
             token: expr.context.token().clone(),
             scope: scope.clone(),
@@ -698,48 +872,57 @@ impl Expression {
 
         match &expr.value {
             ExpressionValue::Identifier(name) => {
-                annotate_identifier(name, scope, &expr.context)
+                let identifier = annotate_identifier(name, scope.clone(), &expr.context)?;
+                Ok((identifier, scope))
             }
 
             ExpressionValue::Block(block) => {
-                Ok(Expression::block(Block::annotate(block, scope)?))
+                let (block, scope) = Block::annotate(block, scope)?;
+                Ok((Expression::block(block), scope))
             }
 
             ExpressionValue::LetBinding { name, value } => {
-                /* it's not our job to update the scope, the enclosing block
-                needs to do that (it's responsible for the scope passed to its
-                enclosed statements) */
-                let typed_value = Expression::annotate(value, scope)?;
+                let (typed_value, mut scope) = Expression::annotate(value, scope)?;
+                let bound_type = typed_value.expr_type()?
+                    .ok_or_else(|| {
+                        SemanticError::type_not_assignable(None, expr_context.clone())
+                    })?;
 
-                Ok(Expression::let_binding(name, typed_value, expr_context))
+                scope = Rc::new(scope.as_ref().clone().with_binding(
+                    name,
+                    bound_type,
+                    BindingKind::Immutable,
+                ));
+
+                Ok((Expression::let_binding(name, typed_value, expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::String(s)) => {
-                Ok(Expression::literal_string(s, expr_context))
+                Ok((Expression::literal_string(s, expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Integer(i)) => {
-                Ok(Expression::literal_int(*i, expr_context))
+                Ok((Expression::literal_int(*i, expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Nil) => {
-                Ok(Expression::literal_nil(expr_context))
+                Ok((Expression::literal_nil(expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
-                Ok(Expression::literal_bool(*b, expr_context))
+                Ok((Expression::literal_bool(*b, expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Float(f)) => {
-                Ok(Expression::literal_float(*f, expr_context))
+                Ok((Expression::literal_float(*f, expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Enum(e)) => {
-                Ok(Expression::literal_enumeration(e.clone(), expr_context))
+                Ok((Expression::literal_enumeration(e.clone(), expr_context), scope))
             }
 
             ExpressionValue::Constant(ConstantExpression::Set(set_const)) => {
-                Ok(Expression::literal_set(set_const.clone(), expr_context))
+                Ok((Expression::literal_set(set_const.clone(), expr_context), scope))
             }
 
             ExpressionValue::If { condition, then_branch, else_branch } =>
@@ -756,18 +939,25 @@ impl Expression {
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let lhs = Expression::annotate(lhs, scope.clone())?;
-                let rhs = Expression::annotate(rhs, scope.clone())?;
+                // rhs is evaluated first
+                let (rhs, lhs_scope) = Expression::annotate(rhs, scope)?;
+                let (lhs, scope_after) = Expression::annotate(lhs, lhs_scope)?;
 
-                Ok(Expression::binary_op(lhs, op.clone(), rhs, expr_context))
+                let scope_out = match (op, &lhs.value) {
+                    (operators::Assignment, ExpressionValue::Identifier(name)) =>
+                        Rc::new(scope_after.as_ref().clone().initialize_symbol(name)),
+
+                    _ =>
+                        scope_after,
+                };
+
+                Ok((Expression::binary_op(lhs, op.clone(), rhs, expr_context), scope_out))
             }
 
             ExpressionValue::PrefixOperator { op, rhs } => {
-                Ok(Expression::prefix_op(
-                    op.clone(),
-                    Expression::annotate(rhs, scope)?,
-                    expr_context,
-                ))
+                let (rhs, scope) = Expression::annotate(rhs, scope)?;
+                let op_expr = Expression::prefix_op(op.clone(), rhs, expr_context);
+                Ok((op_expr, scope))
             }
 
             ExpressionValue::FunctionCall { target, args } =>
@@ -777,14 +967,16 @@ impl Expression {
                 annotate_type_cast(target_type, from_value, scope, &expr.context),
 
             ExpressionValue::Member { of, name } => {
-                let typed_of = Expression::annotate(of, scope)?;
-                Ok(Expression::member(typed_of, name))
+                let (typed_of, scope) = Expression::annotate(of, scope)?;
+                Ok((Expression::member(typed_of, name), scope))
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
-                let of = Expression::annotate(of.as_ref(), scope.clone())?;
-                let index_expr = Expression::annotate(index_expr.as_ref(), scope.clone())?;
-                Ok(Expression::array_element(of, index_expr))
+                // index expr is evaluated first
+                let (index_expr, scope) = Expression::annotate(index_expr.as_ref(), scope)?;
+                let (of, scope) = Expression::annotate(of.as_ref(), scope)?;
+
+                Ok((Expression::array_element(of, index_expr), scope))
             }
 
             ExpressionValue::SetConstructor(_members) => {
@@ -793,7 +985,7 @@ impl Expression {
 
             ExpressionValue::With { value, body } => {
                 let parsed_value = value.as_ref();
-                let value = Expression::annotate(value.as_ref(), scope.clone())?;
+                let (value, scope) = Expression::annotate(value.as_ref(), scope)?;
                 let value_type: Option<Type> = value.expr_type()?;
 
                 /* find the class or record decl of the type referred to by `value` */
@@ -837,8 +1029,10 @@ impl Expression {
             }
 
             ExpressionValue::Raise(error) => {
-                let error = Expression::annotate(error.as_ref(), scope)?;
-                Ok(Expression::raise(error, expr_context))
+                // the raise expr is isolated
+                let (error, _) = Expression::annotate(error.as_ref(), scope.clone())?;
+
+                Ok((Expression::raise(error, expr_context), scope))
             }
         }
     }
@@ -1080,29 +1274,15 @@ pub(crate) mod test {
         rc::Rc,
     };
 
-    use tokens;
-    use source;
-    use keywords;
     use tokenizer::*;
     use semantic::*;
     use syntax;
-    use node::{
-        FunctionKind,
-        ExpressionValue,
-    };
+    use node::ExpressionValue;
     use operators;
     use types::Type;
     use opts::CompileOptions;
 
-    fn empty_context(scope: &Scope) -> SemanticContext {
-        SemanticContext {
-            scope: Rc::new(scope.clone()),
-            token: source::Token::new(tokens::Keyword(keywords::Program),
-                                      source::Location::new("test", 0, 0)),
-        }
-    }
-
-    pub fn parse_expr(src: &str, scope: Rc<Scope>) -> Expression {
+    pub fn parse_expr(src: &str, scope: Rc<Scope>) -> (Expression, Rc<Scope>) {
         let tokens = tokenize("test", src, &CompileOptions::default())
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
@@ -1117,12 +1297,26 @@ pub(crate) mod test {
             .expect(&format!("test expr `{}` must have valid types", src))
     }
 
+    fn parse_func_decl(src: &str, scope: Rc<Scope>) -> FunctionDecl {
+        let tokens = tokenize("test", src, &CompileOptions::default())
+            .expect(&format!("test decl `{}` must not contain illegal tokens", src));
+
+        let mut stream = syntax::TokenStream::from(tokens);
+        let parsed: syntax::FunctionDecl = stream.parse()
+            .expect(&format!("test decl `{}` must parse correctly", src));
+
+        stream.finish().expect("expr must not contain trailing tokens");
+
+        FunctionDecl::annotate(&parsed, scope)
+            .expect(&format!("test expr `{}` must have valid types", src))
+    }
+
     #[test]
     fn assignment_to_wrong_type_is_err() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::RawPointer, BindingKind::Mutable);
+            .with_binding("x", Type::RawPointer, BindingKind::Uninitialized);
 
-        let expr = parse_expr("x := 1", Rc::new(scope));
+        let (expr, _) = parse_expr("x := 1", Rc::new(scope));
 
         match expr.type_check() {
             Err(SemanticError {
@@ -1139,34 +1333,23 @@ pub(crate) mod test {
 
     #[test]
     fn func_call_on_obj_uses_ufcs_from_target_ns() {
-        let test_func_name = Identifier::from("System.TestAdd");
+        let scope = Scope::default()
+            .with_local_namespace("System");
 
-        let default_scope = Scope::default();
+        let scope = scope.clone()
+            .with_function(
+                parse_func_decl("function TestAdd(x: Int64): Int64",
+                                Rc::new(scope))
+            )
+            .with_binding("a", Type::Int64, BindingKind::Mutable);
 
-        let scope = default_scope.clone()
-            .with_function(FunctionDecl {
-                name: test_func_name.name.clone(),
-                return_type: Some(Type::Int64),
-                modifiers: Vec::new(),
-                args: vec![
-                    FunctionArg {
-                        context: empty_context(&default_scope),
-                        modifier: None,
-                        name: "x".to_string(),
-                        decl_type: Type::Int64,
-                        default_value: None,
-                    }
-                ],
-                kind: FunctionKind::Function,
-                context: empty_context(&default_scope),
-            })
-            .with_symbol_local("a", Type::Int64, BindingKind::Immutable);
-
-        let expr = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
+        let (expr, _) = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
 
         match expr.value {
             ExpressionValue::FunctionCall { target, args } => {
-                assert!(target.is_identifier(&test_func_name));
+                assert!(target.is_identifier(&Identifier::from("System.TestAdd")),
+                        "expected identifier, found {:?}", target.to_source());
+
                 assert_eq!(2, args.len());
 
                 assert!(args[0].is_identifier(&Identifier::from("a")));
@@ -1181,18 +1364,185 @@ pub(crate) mod test {
     #[test]
     fn type_of_pointer_deref_is_pointer_minus_indirection() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::Byte.pointer(), BindingKind::Immutable);
+            .with_binding("x", Type::Byte.pointer(), BindingKind::Immutable);
 
-        let expr = parse_expr("^x", Rc::new(scope));
+        let (expr, _) = parse_expr("^x", Rc::new(scope));
         assert_eq!(Type::Byte, expr.expr_type().unwrap().unwrap());
     }
 
     #[test]
     fn type_of_pointer_plus_offset_is_pointer() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::Byte.pointer(), BindingKind::Immutable);
+            .with_binding("x", Type::Byte.pointer(), BindingKind::Immutable);
 
-        let expr = parse_expr("x + 1", Rc::new(scope));
+        let (expr, _) = parse_expr("x + 1", Rc::new(scope));
         assert_eq!(Type::Byte.pointer(), expr.expr_type().unwrap().unwrap());
+    }
+
+    #[test]
+    fn out_param_initializes_value() {
+        let mut scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        scope = scope.with_function(parse_func_decl(
+            "procedure SetX(out xout: System.Int32)",
+            Rc::new(Scope::default()),
+        ));
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("SetX(x)", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn assignment_initializes_value() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("x := 1", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_both_branches_of_if_propagates() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("if true then x := 1 else x := 2", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_one_branches_of_if_propagates() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("if true then x := 1 else begin end", Rc::new(scope));
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_if_without_else_doesnt_propagate() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("if true then x := 1", Rc::new(scope));
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn binding_in_single_branch_of_if_doesnt_propagate() {
+        let scope = Scope::default();
+
+        let (_, scope) = parse_expr("if true then let y = 1", Rc::new(scope));
+        assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
+    }
+
+    #[test]
+    fn initialization_in_block_propagates() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("begin x := 1 end", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn binding_in_block_doesnt_propagate() {
+        let scope = Scope::default();
+
+        let (_, scope) = parse_expr("begin let y = 0 end", Rc::new(scope));
+        assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
+    }
+
+    #[test]
+    fn binding_in_while_body_doesnt_propagate() {
+        let scope = Scope::default();
+
+        let (_, scope) = parse_expr("while false do let y = 0", Rc::new(scope));
+        assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
+    }
+
+    #[test]
+    fn initialization_in_while_body_doesnt_propagate() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("while false do x := 1", Rc::new(scope));
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_while_condition_propagates() {
+        let scope = Scope::default()
+            .with_function(parse_func_decl(
+                "function GetX(out xOut: System.Int32): System.Boolean",
+                Rc::new(Scope::default()),
+            ))
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("while GetX(x) do begin end", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_for_from_propagates() {
+        let scope = Scope::default()
+            .with_function(parse_func_decl(
+                "function GetX(out xOut: System.Int32): System.Int32",
+                Rc::new(Scope::default()),
+            ))
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("for let i = GetX(x) to 10 do begin end", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_for_to_propagates() {
+        let scope = Scope::default()
+            .with_function(parse_func_decl(
+                "function GetX(out xOut: System.Int32): System.Int32",
+                Rc::new(Scope::default()),
+            ))
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("for let i = 0 to GetX(x) do begin end", Rc::new(scope));
+        assert_eq!(true, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn initialization_in_for_body_doesnt_propagate() {
+        let scope = Scope::default()
+            .with_binding("x", Type::Int32, BindingKind::Uninitialized);
+
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+        let (_, scope) = parse_expr("for let i = 0 to 10 do x := 1", Rc::new(scope));
+        assert_eq!(false, scope.get_symbol(&Identifier::from("x")).unwrap().initialized());
+    }
+
+    #[test]
+    fn binding_in_for_range_doesnt_propagate() {
+        let scope = Scope::default();
+
+        let (_, scope) = parse_expr("for let i = 0 to 3 do begin end", Rc::new(scope));
+        assert_eq!(None, scope.get_symbol(&Identifier::from("i")));
+    }
+
+    #[test]
+    fn binding_in_for_body_doesnt_propagate() {
+        let scope = Scope::default();
+
+        let (_, scope) = parse_expr("for let i = 0 to 3 do let y = 1", Rc::new(scope));
+        assert_eq!(None, scope.get_symbol(&Identifier::from("y")));
     }
 }

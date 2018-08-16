@@ -62,6 +62,10 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
 
 static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, const char* constructorName) {
     auto obj = reinterpret_cast<System_Internal_Object*>(System_GetMem(size));
+
+    /* class-type objects are zero-initialized*/
+    std::memset(obj, 0, static_cast<std::size_t>(size));
+
     obj->Class = System_Internal_FindClass(constructorName);
     if (!obj->Class) {
         std::fprintf(stderr, "missing class definition for %s\n", constructorName);

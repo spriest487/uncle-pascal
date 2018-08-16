@@ -10,7 +10,7 @@ impl Program {
         let (decls, program_scope) = Unit::annotate_impls(program.decls.iter(), scope)?;
         let program_scope = Rc::new(program_scope);
 
-        let program_block = Block::annotate(&program.program_block, program_scope.clone())?;
+        let (program_block, _) = Block::annotate(&program.program_block, program_scope.clone())?;
         program_block.type_check()?;
 
         let program = Program {

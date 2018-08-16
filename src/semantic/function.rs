@@ -49,7 +49,8 @@ impl FunctionDecl {
                     modifier: arg.modifier.clone(),
                     default_value: match arg.default_value.as_ref() {
                         Some(default_expr) => {
-                            Some(Expression::annotate(default_expr, scope.clone())?)
+                            let (val, _) = Expression::annotate(default_expr, scope.clone())?;
+                            Some(val.into_const_expr()?)
                         }
                         None => None
                     },
@@ -86,8 +87,11 @@ impl FunctionDecl {
 
     pub fn signature(&self) -> FunctionSignature {
         FunctionSignature {
-            arg_types: self.args.iter()
-                .map(|decl| decl.decl_type.clone())
+            args: self.args.iter()
+                .map(|decl| FunctionArgSignature {
+                    decl_type: decl.decl_type.clone(),
+                    modifier: decl.modifier.clone(),
+                })
                 .collect(),
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
@@ -189,22 +193,15 @@ impl Function {
             let arg_type: Type = arg.decl_type.clone();
             let binding_kind = match arg.modifier {
                 Some(node::FunctionArgModifier::Const) => BindingKind::Immutable,
-                _ => BindingKind::Mutable,
+                Some(node::FunctionArgModifier::Var) => BindingKind::Mutable,
+                Some(node::FunctionArgModifier::Out) => BindingKind::Uninitialized,
+                None => BindingKind::Mutable,
             };
-            local_scope = local_scope.with_symbol_local(&arg.name, arg_type, binding_kind);
+            local_scope = local_scope.with_binding(&arg.name, arg_type, binding_kind);
         }
 
         /* annotate variables and add them to the local scope */
         let mut all_local_vars = VarDecls::default();
-        /* add a "result" var if this function returns something */
-        if let &Some(ref result_var_type) = &decl.return_type {
-            all_local_vars.decls.push(VarDecl {
-                name: RESULT_VAR_NAME.to_string(),
-                context: decl.context.clone(),
-                default_value: None,
-                decl_type: result_var_type.clone(),
-            })
-        }
 
         for parsed_local_var in function.local_vars() {
             let local_var = VarDecl::annotate(parsed_local_var, Rc::new(local_scope.clone()))?;
@@ -212,14 +209,41 @@ impl Function {
         }
 
         for local_var in all_local_vars.decls.iter() {
-            local_scope = local_scope.with_symbol_local(&local_var.name,
-                                                        local_var.decl_type.clone(),
-                                                        BindingKind::Mutable);
+            let binding_kind = match local_var.decl_type {
+                Type::Record(_) => BindingKind::Mutable,
+                _ => BindingKind::Uninitialized,
+            };
+
+            local_scope = local_scope.with_binding(
+                &local_var.name,
+                local_var.decl_type.clone(),
+                binding_kind,
+            );
         }
+
+        /* add a "result" var if this function returns something */
+        if let &Some(ref result_var_type) = &decl.return_type {
+            all_local_vars.decls.push(VarDecl {
+                name: RESULT_VAR_NAME.to_string(),
+                context: decl.context.clone(),
+                default_value: None,
+                decl_type: result_var_type.clone(),
+            });
+
+            /* todo: we should be able to mark `result` as uninitialized! */
+            local_scope = local_scope.with_binding(
+                RESULT_VAR_NAME,
+                result_var_type.clone(),
+                BindingKind::Mutable,
+            );
+        }
+
+        /* add the "result" var */
 
         local_decls.push(node::FunctionLocalDecl::Vars(all_local_vars));
 
-        let block = Block::annotate(&function.block, Rc::new(local_scope.clone()))?;
+        /* we don't keep anything from the local scope after the function */
+        let (block, _) = Block::annotate(&function.block, Rc::new(local_scope))?;
 
         Ok(Function {
             decl,
@@ -245,5 +269,40 @@ impl Function {
 impl FunctionArg {
     pub fn scope(&self) -> &Scope {
         &self.context.scope
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tokenizer;
+    use syntax::{TokenStream, Parse};
+    use opts::CompileOptions;
+    use node::FunctionArgModifier;
+
+    fn parse_func(src: &str, scope: Scope) -> FunctionDecl {
+        let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
+            .unwrap();
+
+        let decl = syntax::FunctionDecl::parse(&mut TokenStream::from(tokens))
+            .unwrap();
+
+        FunctionDecl::annotate(&decl, Rc::new(scope))
+            .unwrap()
+    }
+
+    #[test]
+    fn sig_of_func_includes_modifier() {
+        let scope = Scope::default()
+            .with_type_alias("int", Type::Int32);
+
+        let fn_src = "procedure a(out y: int; var x: int; const z: int)";
+
+        let func = parse_func(fn_src, scope);
+        let sig = func.signature();
+
+        assert_eq!(Some(FunctionArgModifier::Out), sig.args[0].modifier);
+        assert_eq!(Some(FunctionArgModifier::Var), sig.args[1].modifier);
+        assert_eq!(Some(FunctionArgModifier::Const), sig.args[2].modifier);
     }
 }

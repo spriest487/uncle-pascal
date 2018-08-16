@@ -9,28 +9,14 @@ use semantic::*;
 pub type Block = node::Block<SemanticContext>;
 
 impl Block {
-    pub fn annotate(block: &syntax::Block, scope: Rc<Scope>) -> Result<Self, SemanticError> {
+    pub fn annotate(block: &syntax::Block, scope: Rc<Scope>) -> SemanticResult<(Self, Rc<Scope>)> {
         let mut statements = Vec::new();
-        let mut local_scope = scope.clone();
+
+        let mut inner_scope = scope.clone();
 
         for src_statement in block.statements.iter() {
-            let statement = Expression::annotate(src_statement, local_scope.clone())?;
-
-            /* after each let binding, the scope for following statements
-            includes that let binding */
-            if statement.is_let_binding() {
-                let (name, value) = statement.clone().unwrap_let_binding();
-
-                let inferred_type = value.expr_type()?
-                    .ok_or_else(|| {
-                        SemanticError::type_not_assignable(None, statement.context.clone())
-                    })?;
-
-                local_scope = Rc::new(local_scope
-                    .as_ref()
-                    .clone()
-                    .with_symbol_local(&name, inferred_type, BindingKind::Immutable));
-            }
+            let (statement, new_scope) = Expression::annotate(src_statement, inner_scope)?;
+            inner_scope = new_scope;
             statements.push(statement);
         }
 
@@ -42,7 +28,15 @@ impl Block {
             }
         };
 
-        Ok(block)
+        /* we don't want to propagate names outside the inner scope, but we do want to propagate
+        initialization */
+        let mut scope_out = scope.clone();
+        for name in inner_scope.initialized_since(scope.as_ref()) {
+            let new_scope = scope_out.as_ref().clone().initialize_symbol(name);
+            scope_out = Rc::new(new_scope);
+        }
+
+        Ok((block, scope_out))
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
