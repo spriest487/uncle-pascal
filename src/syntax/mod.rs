@@ -30,6 +30,7 @@ pub trait ToContext {
 pub enum ParseError {
     UnexpectedToken(source::Token, Option<Matcher>),
     UnexpectedEOF(Matcher, source::Token),
+    UnrecognizedSequence(Vec<source::Token>),
 }
 
 #[allow(dead_code)]
@@ -52,8 +53,12 @@ impl fmt::Display for ParseError {
                     .map(|matcher| write!(f, " (expected: {})", matcher))
                     .unwrap_or(Ok(()))
             }
+
             &ParseError::UnexpectedEOF(ref expected, ref context) =>
                 write!(f, "unexpected end of input: expected {} after {}", expected, context),
+
+            &ParseError::UnrecognizedSequence(ref tokens) =>
+                write!(f, "tokens `{}` could not be parsed", source::tokens_to_source(tokens)),
         }
     }
 }

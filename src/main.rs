@@ -100,8 +100,7 @@ fn compile_file(src_path: &str, clang: bool) -> Result<(), CompileError> {
 
     if clang {
         invoke_clang(&c_unit, src_path)?;
-    }
-    else {
+    } else {
         println!("{}", c_unit);
     }
     Ok(())
@@ -131,7 +130,7 @@ fn main() {
                     _ => ()
                 }
             }
-        },
+        }
         Err(err) => {
             println!("error: {}", err);
             print_usage(&program, opts);

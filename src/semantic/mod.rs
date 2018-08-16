@@ -30,10 +30,9 @@ pub enum SemanticErrorKind {
         expected: Option<DeclaredType>,
         actual: Option<DeclaredType>,
     },
-    InvalidFunctionType(ScopedSymbol),
+    InvalidFunctionType(Option<DeclaredType>),
     WrongNumberOfArgs {
-        target: ScopedSymbol,
-        expected: usize,
+        expected_sig: FunctionSignature,
         actual: usize,
     },
     MemberAccessOfNonRecord(Option<DeclaredType>, String),
@@ -70,13 +69,17 @@ impl fmt::Display for SemanticErrorKind {
                        actual.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()))
             }
 
-            &SemanticErrorKind::InvalidFunctionType(ref id) => {
-                write!(f, "type `{}` is not a callable function", id)
+            &SemanticErrorKind::InvalidFunctionType(ref actual) => {
+                let actual_name = actual.as_ref()
+                    .map(|t| t.to_string())
+                    .unwrap_or_else(|| "(none)".to_owned());
+
+                write!(f, "type `{}` is not a callable function", actual_name)
             }
 
-            &SemanticErrorKind::WrongNumberOfArgs { ref target, expected, actual } => {
-                write!(f, "wrong number if arguments to function `{}`, expected {}, found `{}`",
-                       target, expected, actual)
+            &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
+                write!(f, "wrong number if arguments to function `{}`, expected {}, found {}",
+                       expected_sig.name, expected_sig.arg_types.len(), actual)
             }
 
             &SemanticErrorKind::IllegalName(ref name) => {
@@ -155,23 +158,21 @@ impl SemanticError {
         }
     }
 
-    pub fn wrong_num_args(target: ScopedSymbol,
-                          expected: usize,
+    pub fn wrong_num_args(sig: FunctionSignature,
                           actual: usize,
                           context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::WrongNumberOfArgs {
-                target,
-                expected,
+                expected_sig: sig,
                 actual,
             },
             context,
         }
     }
 
-    pub fn invalid_function_type(target: ScopedSymbol, context: source::Token) -> Self {
+    pub fn invalid_function_type(actual: Option<DeclaredType>, context: source::Token) -> Self {
         SemanticError {
-            kind: SemanticErrorKind::InvalidFunctionType(target),
+            kind: SemanticErrorKind::InvalidFunctionType(actual),
             context,
         }
     }

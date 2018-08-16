@@ -186,9 +186,9 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn unwrap_function_call(self) -> (TSymbol, Vec<Self>) {
+    pub fn unwrap_function_call(self) -> (Self, Vec<Self>) {
         match self.value {
-            ExpressionValue::FunctionCall { target, args } => (target, args),
+            ExpressionValue::FunctionCall { target, args } => (*target, args),
             _ => panic!("called unwrap_function_call on something other than a function call expr"),
         }
     }

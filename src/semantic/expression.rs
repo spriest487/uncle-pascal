@@ -244,10 +244,10 @@ impl Expression {
             }
 
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
-                if let Some(DeclaredType::Function(ref sig)) = target.expr_type() {
+                let target_type = target.expr_type();
+                if let Some(DeclaredType::Function(ref sig)) = target_type {
                     if args.len() != sig.arg_types.len() {
-                        Err(SemanticError::wrong_num_args(target.clone(),
-                                                          sig.arg_types.len(),
+                        Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
                                                           args.len(),
                                                           self.context.clone()))
                     } else {
@@ -263,7 +263,7 @@ impl Expression {
                         Ok(())
                     }
                 } else {
-                    Err(SemanticError::invalid_function_type(target.clone(),
+                    Err(SemanticError::invalid_function_type(target_type,
                                                              self.context.clone()))
                 }
             }
