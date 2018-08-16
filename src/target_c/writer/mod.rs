@@ -108,6 +108,10 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
+        Type::Boolean => {
+            writeln!(out, "{} = false;", id)
+        }
+
         num @ _ if num.is_numeric() => {
             writeln!(out, "{} = 0;", id)
         }
