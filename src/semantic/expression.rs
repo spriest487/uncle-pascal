@@ -8,28 +8,53 @@ use types::DeclaredType;
 
 pub type Expression = node::Expression<ScopedSymbol>;
 
-fn expect_assignable(target: Option<DeclaredType>,
-                     actual: Option<DeclaredType>,
+fn expect_assignable(target: Option<&DeclaredType>,
+                     actual: Option<&DeclaredType>,
                      context: &source::Token) -> Result<(), SemanticError> {
     match (target, actual) {
-        //TODO: this just allows all int->ptr conversions which is bad
-        (Some(DeclaredType::RawPointer), Some(DeclaredType::Integer)) => Ok(()),
-        (Some(DeclaredType::Pointer(_)), Some(DeclaredType::Integer)) => Ok(()),
+        (None, _) =>
+            Err(SemanticError::type_not_assignable(None, context.clone())),
+        (_, None) =>
+            Err(SemanticError::unexpected_type(target.cloned(), None, context.clone())),
 
-        //TODO: we should only allow literal ints to be assigned if they're in range for bytes
-        (Some(DeclaredType::Byte), Some(DeclaredType::Integer)) => Ok(()),
-
-        (ref x, ref y) if x == y => Ok(()),
-
-        (x, y) => Err(SemanticError::unexpected_type(x, y, context.clone()))
+        (a @ Some(_), b @ Some(_)) =>
+            if a.unwrap().assignable_from(b.unwrap()) {
+                Ok(())
+            } else {
+                Err(SemanticError::unexpected_type(a.cloned(),
+                                                   b.cloned(),
+                                                   context.clone()))
+            },
     }
 }
 
-fn expect_type_eq(expected: Option<DeclaredType>,
-                  actual: Option<DeclaredType>,
-                  context: source::Token) -> Result<(), SemanticError> {
+fn expect_comparable(target: Option<&DeclaredType>,
+                     actual: Option<&DeclaredType>,
+                     context: &source::Token) -> Result<(), SemanticError> {
+    match (target, actual) {
+        (a @ None, b @ _) | (a @ _, b @ None) =>
+            Err(SemanticError::types_not_comparable(a.cloned(),
+                                                    b.cloned(),
+                                                    context.clone())),
+
+        (a @ Some(_), b @ Some(_)) =>
+            if a.unwrap().comparable_to(b.unwrap()) {
+                Ok(())
+            } else {
+                Err(SemanticError::types_not_comparable(a.cloned(),
+                                                        b.cloned(),
+                                                        context.clone()))
+            }
+    }
+}
+
+fn expect_type_eq(expected: Option<&DeclaredType>,
+                  actual: Option<&DeclaredType>,
+                  context: &source::Token) -> Result<(), SemanticError> {
     if expected != actual {
-        Err(SemanticError::unexpected_type(expected, actual, context))
+        Err(SemanticError::unexpected_type(expected.cloned(),
+                                           actual.cloned(),
+                                           context.clone()))
     } else {
         Ok(())
     }
@@ -50,7 +75,7 @@ impl Expression {
                             let base = Expression::identifier(record_sym, expr.context.clone());
 
                             Expression::member(base, &name)
-                        },
+                        }
 
                         symbol @ ScopedSymbol::Child { .. } |
                         symbol @ ScopedSymbol::Local { .. } => {
@@ -127,147 +152,166 @@ impl Expression {
         }
     }
 
-    pub fn expr_type(&self) -> Option<DeclaredType> {
+    pub fn expr_type(&self) -> Result<Option<DeclaredType>, SemanticError> {
         match &self.value {
-            &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. } => match op {
-                &operators::NotEquals |
-                &operators::Equals => Some(DeclaredType::Boolean),
+            &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } => {
+                let lhs_type = lhs.expr_type()?;
+                let rhs_type = rhs.expr_type()?;
 
-                &operators::Assignment |
-                &operators::Plus |
-                &operators::Minus => lhs.expr_type(),
-
-                &operators::AddressOf |
-                &operators::Deref => panic!("invalid operator {} in binary operator expression", op)
-            },
-            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
                 match op {
-                    &operators::Deref => match rhs.expr_type() {
-                        Some(DeclaredType::Pointer(pointed_to)) => Some(*pointed_to),
-                        _ => panic!("operand of deref `{:?}` wasn't a pointer", rhs),
-                    },
+                    &operators::NotEquals |
+                    &operators::Equals => {
+                        expect_comparable(lhs_type.as_ref(), rhs_type.as_ref(), &self.context)?;
+                        Ok(Some(DeclaredType::Boolean))
+                    }
 
-                    &operators::AddressOf => match rhs.expr_type() {
-                        Some(rhs_type) => Some(rhs_type.pointer()),
-                        None => panic!("operand of address-of `{:?}` wasn't an addressable type", rhs),
-                    },
+                    &operators::Assignment => {
+                        expect_assignable(lhs_type.as_ref(), rhs_type.as_ref(), &self.context)?;
+                        Ok(None)
+                    }
 
                     &operators::Plus |
-                    &operators::Minus => match rhs.expr_type() {
-                        Some(DeclaredType::Integer) => Some(DeclaredType::Integer),
-                        _ => panic!("operand `{:?}` of unary {} was not an integer", rhs, op),
+                    &operators::Minus => {
+                        expect_assignable(lhs_type.as_ref(), rhs_type.as_ref(), &self.context)?;
+                        Ok(lhs_type)
                     }
 
-                    &operators::Assignment |
-                    &operators::Equals |
-                    &operators::NotEquals => panic!("invalid operator {} for prefix operator expression", op)
-                }
-            }
-            &node::ExpressionValue::LiteralString(_) => Some(DeclaredType::String),
-            &node::ExpressionValue::LiteralInteger(_) => Some(DeclaredType::Integer),
-            &node::ExpressionValue::FunctionCall { ref target, .. } => {
-                match target.expr_type() {
-                    Some(types::DeclaredType::Function(sig)) => sig.return_type,
-                    _ => panic!("function call target ({}) wasn't a function", self),
-                }
-            }
-            &node::ExpressionValue::Identifier(ref id) => Some(id.decl_type().clone()),
-
-            &node::ExpressionValue::Block(_) |
-            &node::ExpressionValue::ForLoop { .. } |
-            &node::ExpressionValue::If { .. } => None,
-
-            &node::ExpressionValue::Member { ref of, ref name } => {
-                let base_type = of.expr_type().map(|dt| dt.remove_indirection().clone());
-                match base_type {
-                    Some(DeclaredType::Record(ref record)) => {
-                        match record.get_member(&name) {
-                            Some(member) => Some(member.decl_type.clone()),
-                            None => panic!("trying to get type of a field that doesn't exist")
-                        }
+                    &operators::AddressOf |
+                    &operators::Deref => {
+                        Err(SemanticError::invalid_operator(*op,
+                                                            vec![lhs_type, rhs_type],
+                                                            self.context.clone()))
                     }
-
-                    _ => panic!("trying to get type of an illegal dereference")
                 }
-            }
-        }
-    }
-
-    pub fn type_check(&self) -> Result<(), SemanticError> {
-        match &self.value {
-            &node::ExpressionValue::BinaryOperator { ref lhs, ref rhs, ref op } => {
-                lhs.type_check()?;
-                rhs.type_check()?;
-
-                let lhs_type = lhs.expr_type();
-                let rhs_type = rhs.expr_type();
-
-                if !op.is_valid_in_pos(operators::Position::Binary) {
-                    return Err(SemanticError::invalid_operator(op.clone(),
-                                                               vec![lhs_type, rhs_type],
-                                                               self.context.clone()));
-                }
-
-                expect_assignable(lhs_type, rhs_type, &self.context)
             }
 
             &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
-                rhs.type_check()?;
-                let rhs_type = rhs.expr_type();
+                let rhs_type = rhs.expr_type()?;
 
                 let invalid_op_err = ||
                     Err(SemanticError::invalid_operator(op.clone(),
                                                         vec![rhs_type.clone()],
                                                         self.context.clone()));
-
                 match op {
-                    /* can deref typed pointers only */
-                    &operators::Deref => match rhs_type {
-                        Some(DeclaredType::Pointer(_)) => Ok(()),
-                        _ => invalid_op_err(),
+                    &operators::Deref => match &rhs_type {
+                        &Some(DeclaredType::Pointer(ref pointed_to)) =>
+                            Ok(Some(pointed_to.as_ref().clone())),
+                        _ =>
+                            invalid_op_err(),
                     },
 
-                    &operators::AddressOf => match rhs_type {
-                        Some(DeclaredType::Pointer(_)) |
-                        Some(DeclaredType::Byte) |
-                        Some(DeclaredType::Record(_)) |
-                        Some(DeclaredType::String) |
-                        Some(DeclaredType::RawPointer) |
-                        Some(DeclaredType::Integer) |
-                        Some(DeclaredType::Boolean) =>
-                            Ok(()),
+                    &operators::AddressOf => match &rhs_type {
+                        &Some(ref t) if t.addressable() =>
+                            Ok(Some(t.clone().pointer())),
 
-                        Some(DeclaredType::Function(_)) |
-                        None =>
-                            invalid_op_err(),
+                        _ => invalid_op_err()
                     }
 
                     &operators::Plus |
-                    &operators::Minus => match rhs_type {
-                        Some(DeclaredType::Integer) |
-                        Some(DeclaredType::Byte) => Ok(()),
-                        _ => invalid_op_err(),
+                    &operators::Minus => match &rhs_type {
+                        &Some(DeclaredType::Integer) |
+                        &Some(DeclaredType::Byte) =>
+                            Ok(rhs_type.clone()),
+                        _ =>
+                            invalid_op_err(),
                     }
 
                     &operators::Assignment |
                     &operators::Equals |
                     &operators::NotEquals =>
                         invalid_op_err(),
-                }?;
+                }
+            }
+            &node::ExpressionValue::LiteralString(_) =>
+                Ok(Some(DeclaredType::String)),
+            &node::ExpressionValue::LiteralInteger(_) =>
+                Ok(Some(DeclaredType::Integer)),
 
-                Ok(())
+            &node::ExpressionValue::FunctionCall { ref target, ref args } => {
+                let target_type = target.expr_type()?;
+                if let Some(DeclaredType::Function(ref sig)) = target_type {
+                    if args.len() != sig.arg_types.len() {
+                        Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
+                                                          args.len(),
+                                                          self.context.clone()))
+                    } else {
+                        for (arg_index, arg_expr) in args.iter().enumerate() {
+                            arg_expr.expr_type()?;
+
+                            let sig_type = sig.arg_types[arg_index].clone();
+                            let actual_type = arg_expr.expr_type()?;
+
+                            expect_assignable(Some(&sig_type),
+                                              actual_type.as_ref(),
+                                              &arg_expr.context)?
+                        }
+
+                        Ok(sig.return_type.clone())
+                    }
+                } else {
+                    Err(SemanticError::invalid_function_type(target_type,
+                                                             self.context.clone()))
+                }
+            }
+            &node::ExpressionValue::Identifier(ref id) =>
+                Ok(Some(id.decl_type().clone())),
+
+            &node::ExpressionValue::Block(ref block) => {
+                for statement in block.statements.iter() {
+                    statement.expr_type()?;
+                }
+
+                Ok(None)
             }
 
-            &node::ExpressionValue::Identifier(_) |
-            &node::ExpressionValue::LiteralString(_) |
-            &node::ExpressionValue::LiteralInteger(_) => Ok(()),
+            &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
+                let condition_type = condition.expr_type()?;
+
+                expect_comparable(Some(&DeclaredType::Boolean),
+                                  condition_type.as_ref(),
+                                  &self.context)?;
+
+                let _then_type = then_branch.expr_type()?;
+
+                if let &Some(ref else_expr) = else_branch {
+                    else_expr.expr_type()?;
+                }
+
+                Ok(None)
+            }
+
+            &node::ExpressionValue::ForLoop { ref from, ref to, .. } => {
+                let from_type = from.expr_type()?;
+                let to_type = to.expr_type()?;
+
+                match &from.value {
+                    &node::ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
+                    if *op == operators::Operator::Assignment => {
+                        let lhs_type = lhs.expr_type()?;
+
+                        expect_comparable(Some(&DeclaredType::Integer), lhs_type.as_ref(),
+                                       &self.context)?;
+                        expect_comparable(Some(&DeclaredType::Integer), to_type.as_ref(),
+                                       &self.context)?;
+
+                        Ok(None)
+                    }
+
+                    //TODO better error
+                    _ => Err(SemanticError::unexpected_type(
+                        Some(types::DeclaredType::Integer),
+                        from_type,
+                        self.context.clone()))
+                }
+            }
 
             &node::ExpressionValue::Member { ref of, ref name } => {
-                let base_type = of.expr_type().map(|dt| dt.remove_indirection().clone());
+                let base_type = of.expr_type()?
+                    .map(|dt| dt.remove_indirection().clone());
                 match base_type {
-                    Some(DeclaredType::Record(record)) => {
+                    Some(DeclaredType::Record(ref record)) => {
                         match record.get_member(&name) {
-                            Some(_) => Ok(()),
+                            Some(member) => Ok(Some(member.decl_type.clone())),
                             None => {
                                 let name_id = node::Identifier::from(name.as_str());
                                 Err(SemanticError::unknown_symbol(name_id, of.context.clone()))
@@ -282,74 +326,12 @@ impl Expression {
                     }
                 }
             }
-
-            &node::ExpressionValue::FunctionCall { ref target, ref args } => {
-                let target_type = target.expr_type();
-                if let Some(DeclaredType::Function(ref sig)) = target_type {
-                    if args.len() != sig.arg_types.len() {
-                        Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
-                                                          args.len(),
-                                                          self.context.clone()))
-                    } else {
-                        for (arg_index, arg_expr) in args.iter().enumerate() {
-                            arg_expr.type_check()?;
-
-                            let sig_type = sig.arg_types[arg_index].clone();
-                            let actual_type = arg_expr.expr_type();
-
-                            expect_assignable(Some(sig_type), actual_type, &arg_expr.context)?
-                        }
-
-                        Ok(())
-                    }
-                } else {
-                    Err(SemanticError::invalid_function_type(target_type,
-                                                             self.context.clone()))
-                }
-            }
-
-            &node::ExpressionValue::Block(ref block) => {
-                for statement in block.statements.iter() {
-                    statement.type_check()?;
-                }
-                Ok(())
-            }
-
-            &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
-                expect_type_eq(Some(DeclaredType::Boolean),
-                               condition.expr_type(),
-                               self.context.clone())?;
-
-                condition.type_check()?;
-                then_branch.type_check()?;
-
-                if let &Some(ref else_expr) = else_branch {
-                    else_expr.type_check()?;
-                }
-
-                Ok(())
-            }
-
-            &node::ExpressionValue::ForLoop { ref from, ref to, .. } => {
-                match &from.value {
-                    &node::ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
-                    if *op == operators::Operator::Assignment => {
-                        expect_type_eq(Some(DeclaredType::Integer), lhs.expr_type(),
-                                       self.context.clone())?;
-                        expect_type_eq(Some(DeclaredType::Integer), to.expr_type(),
-                                       self.context.clone())?;
-
-                        Ok(())
-                    }
-
-                    //TODO better error
-                    _ => Err(SemanticError::unexpected_type(
-                        Some(types::DeclaredType::Integer),
-                        from.expr_type(),
-                        self.context.clone()))
-                }
-            }
         }
+    }
+
+    pub fn type_check(&self) -> Result<(), SemanticError> {
+        self.expr_type()?;
+        Ok(())
     }
 }
 

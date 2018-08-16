@@ -195,7 +195,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
         &node::ExpressionValue::Member { ref of, ref name } => {
             //panic!("of: {:?}, name: {}", of, name);
-            let mut of_type = of.expr_type();
+            let mut of_type = of.expr_type().unwrap();
             let mut deref_levels = 0;
             loop {
                 match of_type {

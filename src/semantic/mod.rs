@@ -42,6 +42,8 @@ pub enum SemanticErrorKind {
         op: operators::Operator,
         args: Vec<Option<DeclaredType>>,
     },
+    TypeNotAssignable(Option<DeclaredType>),
+    TypesNotComparable(Option<DeclaredType>, Option<DeclaredType>),
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -57,8 +59,8 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::MemberAccessOfNonRecord(ref actual, ref name) => {
                 write!(f, "cannot access member {} of {} because it is not a record",
-                    name,
-                    actual.as_ref()
+                       name,
+                       actual.as_ref()
                            .map(|t| t.to_string())
                            .unwrap_or_else(|| "none".to_string()))
             }
@@ -92,14 +94,22 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::InvalidOperator { ref op, ref args } => {
                 let args_list = args.iter()
-                    .map(|maybe_type| {
-                        maybe_type.as_ref().map(|t| t.to_string())
-                            .unwrap_or("(none)".to_owned())
-                    })
+                    .map(|arg| DeclaredType::name(arg.as_ref()))
                     .collect::<Vec<_>>()
                     .join(", ");
 
                 write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
+            }
+
+            &SemanticErrorKind::TypeNotAssignable(ref t) => {
+                write!(f, "type `{}` cannot be assigned to",
+                    DeclaredType::name(t.as_ref()))
+            }
+
+            &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
+                write!(f, "types cannot be compared: `{}` and `{}`",
+                       DeclaredType::name(a.as_ref()),
+                       DeclaredType::name(b.as_ref()))
             }
         }
     }
@@ -187,6 +197,22 @@ impl SemanticError {
                 op: operator,
                 args: args.into_iter().collect(),
             },
+            context,
+        }
+    }
+
+    pub fn type_not_assignable(t: Option<DeclaredType>,
+                               context: source::Token) -> SemanticError {
+        SemanticError {
+            kind: SemanticErrorKind::TypeNotAssignable(t),
+            context,
+        }
+    }
+
+    pub fn types_not_comparable(a: Option<DeclaredType>, b: Option<DeclaredType>,
+                                context: source::Token) -> SemanticError {
+        SemanticError {
+            kind: SemanticErrorKind::TypesNotComparable(a, b),
             context,
         }
     }

@@ -91,20 +91,27 @@ pub enum DeclaredType {
 
 impl fmt::Display for DeclaredType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            &DeclaredType::Byte => "System.Byte".to_owned(),
-            &DeclaredType::Boolean => "System.Boolean".to_owned(),
-            &DeclaredType::Integer => "System.Integer".to_owned(),
-            &DeclaredType::String => "System.String".to_owned(),
-            &DeclaredType::RawPointer => "System.Pointer".to_owned(),
-            &DeclaredType::Pointer(ref target) => format!("^{}", target),
-            &DeclaredType::Function(ref sig) => format!("{}", sig),
-            &DeclaredType::Record(ref record) => format!("record {}", record.name),
-        })
+        write!(f, "{}", DeclaredType::name(Some(self)))
     }
 }
 
 impl DeclaredType {
+    pub fn name(decl_type: Option<&Self>) -> String {
+        match decl_type {
+            None => "(none)".to_owned(),
+            Some(t) => match t {
+                &DeclaredType::Byte => "System.Byte".to_owned(),
+                &DeclaredType::Boolean => "System.Boolean".to_owned(),
+                &DeclaredType::Integer => "System.Integer".to_owned(),
+                &DeclaredType::String => "System.String".to_owned(),
+                &DeclaredType::RawPointer => "System.Pointer".to_owned(),
+                &DeclaredType::Pointer(ref target) => format!("^{}", target),
+                &DeclaredType::Function(ref sig) => format!("{}", sig),
+                &DeclaredType::Record(ref record) => format!("record {}", record.name),
+            }
+        }
+    }
+
     pub fn is_record(&self) -> bool {
         match self {
             &DeclaredType::Record(_) => true,
@@ -131,6 +138,71 @@ impl DeclaredType {
                 _ => break next
             }
         }
+    }
+
+    pub fn addressable(&self) -> bool {
+        match self {
+            &DeclaredType::Pointer(_) |
+            &DeclaredType::Byte |
+            &DeclaredType::Record(_) |
+            &DeclaredType::String |
+            &DeclaredType::RawPointer |
+            &DeclaredType::Integer |
+            &DeclaredType::Boolean => true,
+
+            &DeclaredType::Function(_) => false,
+        }
+    }
+
+    pub fn valid_lhs_type(&self) -> bool {
+        match self {
+            &DeclaredType::Function(_) => false,
+            _ => true,
+        }
+    }
+
+    pub fn assignable_from(&self, other: &DeclaredType) -> bool {
+        if !self.valid_lhs_type() {
+            return false;
+        }
+
+        match (self, other) {
+            //TODO: this just allows all int->ptr conversions which is bad
+            (&DeclaredType::RawPointer, &DeclaredType::Integer) |
+            (&DeclaredType::Pointer(_), &DeclaredType::Integer) => true,
+
+            //TODO: we should only allow byte<-int assignment if the int is in 0..255
+            (&DeclaredType::Byte, &DeclaredType::Integer) => true,
+
+            (ref x, ref y) => x == y,
+        }
+    }
+
+    pub fn promotes_to(&self, other: &DeclaredType) -> bool {
+        match (self, other) {
+            (&DeclaredType::Integer, &DeclaredType::RawPointer) |
+            (&DeclaredType::Integer, &DeclaredType::Pointer(_)) |
+            (&DeclaredType::Byte, &DeclaredType::Integer) => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn comparable_to(&self, other: &DeclaredType) -> bool {
+        let can_compare = |a, b| match (a, b) {
+            (&DeclaredType::Integer, &DeclaredType::Integer) |
+            (&DeclaredType::Byte, &DeclaredType::Byte) |
+            (&DeclaredType::Boolean, &DeclaredType::Boolean) |
+            (&DeclaredType::RawPointer, &DeclaredType::RawPointer) => true,
+
+            (&DeclaredType::Pointer(ref a_target), &DeclaredType::Pointer(ref b_target)) => {
+                a_target == b_target
+            },
+
+            (ref a, ref b) => a.promotes_to(b),
+        };
+
+        can_compare(self, other) || can_compare(other, self)
     }
 }
 
