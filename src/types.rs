@@ -1,7 +1,15 @@
+use std::fmt;
+
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Identifier {
     namespace: Vec<String>,
     name: String,
+}
+
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}{}", self.namespace.join("."), self.name)
+    }
 }
 
 impl Identifier {

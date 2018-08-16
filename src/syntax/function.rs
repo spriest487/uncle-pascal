@@ -1,4 +1,5 @@
 use syntax::*;
+use syntax::var_decl::*;
 use keywords;
 use tokens;
 use types;
@@ -8,7 +9,7 @@ pub struct Function {
     name: String,
     return_type: types::Identifier,
 
-    local_vars: Vec<var_decl::VarDecl>,
+    local_vars: Vars,
     //TODO
     body: Vec<tokens::Token>,
 }
@@ -37,9 +38,9 @@ impl Function {
 
         let (local_vars, after_local_vars) = if first_after_sig.as_token()
             .is_keyword(keywords::Var) {
-            var_decl::VarDecl::parse(after_sig)?.unwrap()
+            Vars::parse(after_sig)?.unwrap()
         } else {
-            (Vec::new(), after_sig)
+            (Vars::default(), after_sig)
         };
 
         let (body_match, after_body) = Matcher::Keyword(keywords::Begin)

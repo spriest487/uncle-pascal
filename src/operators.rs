@@ -1,4 +1,6 @@
-use tokens;
+use std::fmt;
+use ToSource;
+
 pub use self::BinaryOperator::*;
 
 #[derive(Eq, PartialEq, Clone, Debug)]
@@ -21,13 +23,19 @@ impl BinaryOperator {
     }
 }
 
-impl tokens::ToSource for BinaryOperator {
+impl fmt::Display for BinaryOperator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            &BinaryOperator::Assignment => ":=",
+            &BinaryOperator::Equals => "=",
+            &BinaryOperator::Plus => "+",
+            &BinaryOperator::Minus => "-",
+        })
+    }
+}
+
+impl ToSource for BinaryOperator {
     fn to_source(&self) -> String {
-        match self {
-            &BinaryOperator::Assignment => " := ".to_owned(),
-            &BinaryOperator::Equals => " = ".to_owned(),
-            &BinaryOperator::Plus => " + ".to_owned(),
-            &BinaryOperator::Minus => " - ".to_owned(),
-        }
+        format!("{}", self)
     }
 }

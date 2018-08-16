@@ -2,6 +2,7 @@ use std::fmt;
 
 use keywords;
 use operators;
+use ToSource;
 
 pub use self::Token::*;
 
@@ -30,10 +31,6 @@ impl AsToken for Token {
     }
 }
 
-pub trait ToSource {
-    fn to_source(&self) -> String;
-}
-
 impl ToSource for Token {
     fn to_source(&self) -> String {
         match self {
@@ -54,7 +51,14 @@ impl ToSource for Token {
 
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_source())
+        match self {
+            &Keyword(kw) => write!(f, "keyword `{}`", kw),
+            &Identifier(ref name) => write!(f, "identifier `{}`", name),
+            &BinaryOperator(ref op) => write!(f, "binary operator `{}`", op),
+            &LiteralString(ref s) => write!(f, "string literal '{}'", s),
+            &LiteralInteger(i) => write!(f, "integer literal '{}'", i),
+            _ => write!(f, "{}", self.to_source())
+        }
     }
 }
 

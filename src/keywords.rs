@@ -1,6 +1,6 @@
 use std::fmt;
 
-use tokens;
+use ToSource;
 
 pub use self::Keyword::*;
 
@@ -32,7 +32,7 @@ impl Keyword {
     }
 }
 
-impl tokens::ToSource for Keyword {
+impl ToSource for Keyword {
     fn to_source(&self) -> String {
         match self {
             &Program => "program",
@@ -49,6 +49,6 @@ impl tokens::ToSource for Keyword {
 
 impl fmt::Display for Keyword {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", tokens::ToSource::to_source(self))
+        write!(f, "{}", ToSource::to_source(self))
     }
 }

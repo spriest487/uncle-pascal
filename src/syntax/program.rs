@@ -2,15 +2,10 @@ use syntax::*;
 use types;
 use tokens;
 use keywords;
+use ToSource;
 
 mod type_decl {
     use types;
-
-    #[derive(Clone, Debug)]
-    pub struct VarDecl {
-        name: types::Identifier,
-        decl_type: types::Identifier,
-    }
 
     #[derive(Clone, Debug)]
     pub struct RecordDecl {
@@ -77,18 +72,17 @@ fn parse_decls<TIter, TToken>(in_tokens: TIter) -> ParseResult<ProgramDecls, TTo
     };
 
     loop {
-        let next = tokens.next().ok_or_else(|| {
-            ParseError::UnexpectedEOF
-        })?;
+        let match_decl_first = Matcher::Keyword(keywords::Function)
+                //.or(Matcher::Keyword(keywords::Uses))
+                .or(Matcher::Keyword(keywords::Var))
+                .or(Matcher::Keyword(keywords::Function))
+                .or(Matcher::Keyword(keywords::Begin));
 
-        /* we can't use a peekable iter so "wind back" tokens by
-        pasting the token we just consumed back onto the beginning */
-        tokens = Box::from(vec![next.clone()]
-            .into_iter()
-            .chain(tokens)
-            .into_iter());
+        let (decl_first, decl_tokens) = match_decl_first.match_peek(tokens)?
+            .unwrap();
+        tokens = Box::from(decl_tokens);
 
-        match next.as_token() {
+        match decl_first.as_token() {
             &tokens::Keyword(keywords::Function) => {
                 let (parsed_fn, after_fn) = function::Function::parse(tokens)?.unwrap();
 
@@ -112,7 +106,7 @@ fn parse_decls<TIter, TToken>(in_tokens: TIter) -> ParseResult<ProgramDecls, TTo
                     Box::from(Matcher::Keyword(keywords::Type)),
                 ]);
 
-                return Err(ParseError::UnexpectedToken(next.clone(), Some(expected)));
+                return Err(ParseError::UnexpectedToken(decl_first.clone(), Some(expected)));
             }
         }
     }
@@ -127,6 +121,9 @@ pub struct Program {
     uses: Vec<types::Identifier>,
     functions: Vec<function::Function>,
     type_decls: Vec<type_decl::RecordDecl>,
+
+    //TODO
+    program_block: Vec<tokens::Token>,
 }
 
 impl Program {
@@ -147,12 +144,35 @@ impl Program {
         let (uses, after_uses) = parse_uses(after_program_statement)?.unwrap();
         let (decls, after_decls) = parse_decls(after_uses)?.unwrap();
 
+        let (program_block, remaining) = Matcher::Keyword(keywords::Begin)
+            .paired_with(Matcher::Keyword(keywords::End))
+            .match_pair(after_decls)?
+            .unwrap();
+
         Ok(ParseOutput::new(Self {
             name,
             uses,
 
             functions: decls.functions,
             type_decls: decls.type_decls,
-        }, after_decls))
+
+            program_block: program_block.inner.iter().map(|t| t.as_token())
+                .cloned()
+                .collect(),
+        }, remaining))
+    }
+}
+
+impl ToSource for Program {
+    fn to_source(&self) -> String {
+        vec![
+            format!("program {};", self.name),
+            format!("uses {};",
+                    self.uses.iter().map(|u| format!("{}", u))
+                        .collect::<Vec<_>>()
+                        .join(", ")),
+//            format!("{};", self.vars.to_source()),
+            format!("begin\n\nend."),
+        ].join("\n\n")
     }
 }

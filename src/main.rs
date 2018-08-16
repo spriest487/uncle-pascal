@@ -9,6 +9,10 @@ mod tokens;
 mod tokenizer;
 mod syntax;
 
+pub trait ToSource {
+    fn to_source(&self) -> String;
+}
+
 enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError<tokenizer::SourceToken>),
@@ -38,11 +42,10 @@ impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
 fn compile(source: &str) -> Result<(), CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
-    let program = syntax::program::Program::parse(tokens.into_iter())?;
+    let program = syntax::program::Program::parse(tokens.into_iter())?
+        .finish()?;
 
-    println!("{:?}", &program.value);
-
-    program.finish()?;
+    println!("{:?}", program.to_source());
 
     Ok(())
 }

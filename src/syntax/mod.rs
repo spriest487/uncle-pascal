@@ -12,8 +12,7 @@ use tokens;
 pub enum ParseError<TToken> {
     UnexpectedToken(TToken, Option<Matcher>),
     UnbalancedPair(Matcher, TToken),
-    UnterminatedBlock,
-    UnexpectedEOF,
+    UnexpectedEOF(Matcher),
 }
 
 impl<TToken> fmt::Display for ParseError<TToken>
@@ -30,10 +29,8 @@ impl<TToken> fmt::Display for ParseError<TToken>
             },
             &ParseError::UnbalancedPair(ref matcher, ref source_token) =>
                 write!(f, "unbalanced pair: expected {} after {}", matcher, source_token),
-            &ParseError::UnterminatedBlock =>
-                write!(f, "unterminated block"),
-            &ParseError::UnexpectedEOF =>
-                write!(f, "unexpected end of input"),
+            &ParseError::UnexpectedEOF(ref expected) =>
+                write!(f, "unexpected end of input: expected {}", expected.clone()),
         }
     }
 }
@@ -72,6 +69,14 @@ pub struct WrapIter<TItem> {
     wrapped: Box<Iterator<Item=TItem>>
 }
 
+impl<TItem> WrapIter<TItem> {
+    pub fn new<TIter>(iter: TIter) -> Self
+        where TIter: IntoIterator<Item=TItem> + 'static
+    {
+        Self { wrapped: Box::from(iter.into_iter()) }
+    }
+}
+
 impl<TItem> Iterator for WrapIter<TItem> {
     type Item = TItem;
 
@@ -87,6 +92,7 @@ pub struct SplitResult<TToken> {
     pub before_split: Vec<TToken>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum Matcher {
     Keyword(keywords::Keyword),
@@ -102,7 +108,7 @@ pub enum Matcher {
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Matcher::Keyword(kw) => write!(f, "keyword {}", kw),
+            &Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(kw)),
             &Matcher::AnyKeyword => write!(f, "keyword"),
             &Matcher::AnyIdentifier => write!(f, "identifier"),
             &Matcher::AnyBinaryOperator => write!(f, "binary operator"),
@@ -176,7 +182,7 @@ impl Matcher {
             },
 
             None => {
-                Err(ParseError::UnexpectedEOF)
+                Err(ParseError::UnexpectedEOF(self.clone()))
             }
         }
     }
@@ -196,7 +202,7 @@ impl Matcher {
             },
 
             None => {
-                Err(ParseError::UnexpectedEOF)
+                Err(ParseError::UnexpectedEOF(self.clone()))
             }
         }
     }
@@ -224,7 +230,7 @@ impl Matcher {
 
                 None => {
                     //ran out of tokens before finding match
-                    return Err(ParseError::UnexpectedEOF);
+                    return Err(ParseError::UnexpectedEOF(self.clone()));
                 },
             }
         }
@@ -261,7 +267,7 @@ impl SequenceMatcher {
             .collect();
 
         if matches.len() < expected_len {
-            Err(ParseError::UnexpectedEOF)
+            Err(ParseError::UnexpectedEOF(self.sequence[0].clone()))
         } else {
             let first_fail = matches.iter()
                 .find(|&&(_, _, matched)| !matched)
@@ -307,33 +313,39 @@ impl PairMatcher {
     {
         let (open_token, after_open) = self.open.match_one(in_tokens)?.unwrap();
 
+        let eof_as_unbalanced = |err| {
+            match err {
+                ParseError::UnexpectedEOF(_) => {
+                    ParseError::UnbalancedPair(self.close.clone(), open_token.clone())
+                },
+                _ => err,
+            }
+        };
+
         let match_delim : Matcher = self.open.clone().or(self.close.clone());
-        let (split_at_delim, after_next_delim) = match_delim.split_at_match(after_open)?.unwrap();
+        let (split_at_delim, after_next_delim) = match_delim.split_at_match(after_open)
+            .map_err(&eof_as_unbalanced)?
+            .unwrap();
 
         let next_delim = split_at_delim.split_at.clone();
 
         if self.open.is_match(next_delim.as_token()) {
-//            let mut inner_tokens = Vec::new();
-
             /* found an inner pair, skip over it */
             let inner_pair_tokens = vec![next_delim.clone()]
                 .into_iter()
                 .chain(after_next_delim);
 
-            let (_, after_inner_pair) = self.match_pair(inner_pair_tokens)?.unwrap();
+            let (_, after_inner_pair) = self.match_pair(inner_pair_tokens)
+                .map_err(&eof_as_unbalanced)?
+                .unwrap();
 
             /* we must now be positioned after any inner pairs */
             let (final_close_token, after_final_closer) = self.close.split_at_match(after_inner_pair)
-                .map_err(|err| match err {
-                    ParseError::UnexpectedEOF => {
-                        ParseError::UnbalancedPair(self.close.clone(), next_delim.clone())
-                    },
-                    _ => err
-                })?
+                .map_err(&eof_as_unbalanced)?
                 .unwrap();
 
             let pair_match : PairMatch<TToken> = PairMatch {
-                open: open_token,
+                open: open_token.clone(),
                 close: final_close_token.split_at,
                 inner: Vec::new() //TODO
             };
@@ -342,7 +354,7 @@ impl PairMatcher {
         }
         else if self.close.is_match(next_delim.as_token()) {
             let pair_match : PairMatch<TToken> = PairMatch {
-                open: open_token,
+                open: open_token.clone(),
                 close: split_at_delim.split_at,
                 inner: split_at_delim.before_split,
             };
