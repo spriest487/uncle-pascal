@@ -1,7 +1,8 @@
 use std::rc::*;
 use std::fmt;
 
-use tokens;
+use tokens::{self, AsToken};
+use node::ToSource;
 
 #[derive(Clone)]
 pub struct Location {
@@ -24,6 +25,11 @@ impl Location {
             line,
             col
         }
+    }
+
+    pub fn after(&self, other: &Location) -> bool {
+        self.line > other.line ||
+            (self.line == other.line && self.col > other.col)
     }
 }
 
@@ -62,6 +68,13 @@ pub fn tokens_to_string(tokens: &Vec<Token>) -> String {
     tokens.iter().map(|t| format!("{{{}}}", t.to_string()))
         .collect::<Vec<_>>()
         .join(", ")
+}
+
+#[allow(dead_code)]
+pub fn tokens_to_source(tokens: &Vec<Token>) -> String {
+    tokens.iter().map(|t| t.as_token().to_source())
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 #[allow(dead_code)]

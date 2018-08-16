@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use syntax::*;
 use tokens;
 use keywords;
@@ -17,28 +20,28 @@ struct OperatorToken {
 }
 
 #[derive(Debug, Clone)]
-enum OperatorExpressionPart {
+enum CompoundExpressionPart {
     Operand(Expression),
     Operator(OperatorToken),
 }
 
-impl OperatorExpressionPart {
+impl CompoundExpressionPart {
     fn unwrap_operand(self) -> Expression {
         match self {
-            OperatorExpressionPart::Operand(expr) => expr,
+            CompoundExpressionPart::Operand(expr) => expr,
             _ => panic!("called unwrap_operand on something that wasn't an operand: {:?}", self)
         }
     }
 }
 
 impl Expression {
-    fn resolve_ops_by_precedence(parts: Vec<OperatorExpressionPart>) -> Expression {
+    fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Expression {
         assert!(parts.len() > 0, "expression must not be empty");
 
         if parts.len() == 1 {
             return match parts.into_iter().next().unwrap() {
-                OperatorExpressionPart::Operand(expr) => expr,
-                OperatorExpressionPart::Operator(op_token) =>
+                CompoundExpressionPart::Operand(expr) => expr,
+                CompoundExpressionPart::Operator(op_token) =>
                     panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
             };
         }
@@ -48,8 +51,8 @@ impl Expression {
         let (lo_op_index, lo_op) = parts.iter()
             .enumerate()
             .filter_map(|(i, part)| match part {
-                &OperatorExpressionPart::Operand(_) => None,
-                &OperatorExpressionPart::Operator(ref op) => Some((i, op.clone())),
+                &CompoundExpressionPart::Operand(_) => None,
+                &CompoundExpressionPart::Operator(ref op) => Some((i, op.clone())),
             })
             .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
             .unwrap();
@@ -69,7 +72,7 @@ impl Expression {
 
                 let merged_parts = before_op.iter()
                     .cloned()
-                    .chain(vec![OperatorExpressionPart::Operand(op_expr)])
+                    .chain(vec![CompoundExpressionPart::Operand(op_expr)])
                     .chain(parts_after_op);
 
                 Expression::resolve_ops_by_precedence(merged_parts.collect())
@@ -105,16 +108,41 @@ impl Expression {
                                                    &brackets_block.open)?
                     .finish()?;
 
-                let after_brackets = outer_brackets.next_tokens
-                    .skip(inner_len + 2); //inner size + open + close
+                let mut after_brackets = outer_brackets.next_tokens
+                    .skip(inner_len + 2) //inner size + open + close
+                    .peekable();
 
-                Ok(ParseOutput::new(inner_expr, brackets_block.close, after_brackets))
+                let inner_result = ParseOutput::new(inner_expr, brackets_block.close, after_brackets);
+
+                Expression::parse_member_access_after(inner_result)
             }
 
             None => {
                 Expression::parse(outer_brackets.next_tokens,
                                   &outer_brackets.last_token)
             }
+        }
+    }
+
+    fn parse_member_access_after(base: ParseOutput<Expression>) -> ExpressionResult {
+        let mut peek_after = base.next_tokens.peekable();
+        match peek_after.peek().cloned() {
+            Some(ref period) if *period.as_token() == tokens::Period => {
+                let member_name = node::Identifier::parse(peek_after.skip(1),
+                                                          period)?;
+
+                let member_context = base.value.context.clone();
+                let member = Expression::member_deep(base.value,
+                                                     member_name.value,
+                                                     member_context);
+
+                Ok(ParseOutput::new(member, member_name.last_token, member_name.next_tokens))
+            }
+
+            //nope, this expr ends at the close bracket
+            _ => {
+                Ok(ParseOutput::new(base.value, base.last_token, peek_after))
+            },
         }
     }
 
@@ -126,7 +154,7 @@ impl Expression {
         let all_tokens: Vec<_> = in_tokens.into_iter().collect();
         let mut last_token = context.clone();
 
-//        println!("ALL TOKENS: {}", source::tokens_to_string(&all_tokens));
+//        println!("ALL TOKENS: {}", source::tokens_to_source(&all_tokens));
 
         let mut next_operand_tokens: Vec<source::Token> = Vec::new();
 
@@ -144,16 +172,14 @@ impl Expression {
 
             if finish_operand {
                 if next_operand_tokens.len() > 0 {
-                    //println!("FINISHED OPERAND! {}", source::tokens_to_string(&next_operand_tokens));
-                    //Expression::remove_redundant_brackets(&mut next_operand_tokens);
+//                    println!("FINISHED OPERAND! {}", source::tokens_to_source(&next_operand_tokens));
                     let context = next_operand_tokens[0].clone();
                     let operand_expr = Expression::parse_operand(next_operand_tokens,
                                                                  &context)?;
 
-                    //let operand_expr = Expression::parse(next_operand_tokens, &context)?;
                     let mut after_expr = operand_expr.next_tokens.peekable();
 
-                    parts.push(OperatorExpressionPart::Operand(operand_expr.value));
+                    parts.push(CompoundExpressionPart::Operand(operand_expr.value));
 
                     match after_expr.peek() {
                         None => {
@@ -162,13 +188,7 @@ impl Expression {
                         }
                         Some(token_after) => {
                             let all_tokens_after = all_tokens.iter()
-                                .filter(|t| {
-                                    /* collect all the tokens for everything past this operand
-                                    in the stream */
-                                    t.location.line > token_after.location.line ||
-                                        (t.location.line == token_after.location.line &&
-                                            t.location.col >= token_after.location.col)
-                                })
+                                .filter(|t| t.location.after(&token_after.location))
                                 .cloned()
                                 .collect();
 
@@ -211,7 +231,7 @@ impl Expression {
 
                     in_operand = false;
 
-                    parts.push(OperatorExpressionPart::Operator(OperatorToken {
+                    parts.push(CompoundExpressionPart::Operator(OperatorToken {
                         op: op_token.unwrap_operator().clone(),
                         token: op_token.clone(),
                         pos,
@@ -268,24 +288,36 @@ impl Expression {
     fn parse_function_call<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
-        let func_name = Matcher::AnyIdentifier.match_one(in_tokens, context)?;
+        let func_name = node::Identifier::parse(in_tokens, context)?;
 
         let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
             .match_groups(tokens::Comma, func_name.next_tokens, &func_name.last_token)?;
 
+//        unsafe {
+//            static mut i: usize = 0;
+//            i += 1;
+//            if i > 10 {
+//                panic!();
+//            }
+//        }
+
+//        println!("ARG GROUPS ({}): {}", args.value.groups.len(), args.value.groups
+//            .iter()
+//            .map(|ag| source::tokens_to_source(&ag.tokens))
+//            .collect::<Vec<_>>()
+//            .join(", "));
+
         let all_args = args.value.groups
             .into_iter()
             .map(|arg_group| {
-                Expression::parse(arg_group.tokens, &arg_group.context)?.finish()
+                let arg_expr = Expression::parse_operand(arg_group.tokens, &arg_group.context)?;
+                arg_expr.finish()
             })
             .collect::<Result<Vec<_>, _>>();
 
-        let call_target = node::Identifier::from(func_name.value.as_token()
-            .unwrap_identifier());
-
-        let call_expr = Expression::function_call(call_target,
+        let call_expr = Expression::function_call(func_name.value,
                                                   all_args?,
-                                                  func_name.value.clone());
+                                                  context.clone());
 
         Ok(ParseOutput::new(call_expr, args.last_token, args.next_tokens))
     }
@@ -396,7 +428,8 @@ impl Expression {
                 }))
             }
 
-            Some(_) if contains_operator => {
+            Some(ref compound) if contains_operator ||
+                *compound.as_token() == tokens::BracketLeft => {
                 Expression::parse_function_call(all_tokens.clone(), context)
                     .or_else(|_| Expression::parse_compound(all_tokens, context))
             }
@@ -427,42 +460,7 @@ impl Expression {
     {
         let base = Expression::parse_base(in_tokens, context)?;
 
-        //TODO: this is ugly, shoudl be some option for this in the peek fns instead
-        //save original tokens so we can return them in case of EOF
-        let tokens_after_base = base.next_tokens.into_iter().collect::<Vec<_>>();
-
-        //is there a .member access after it?
-        let peek_member_name = tokens::Period
-            .and_then(Matcher::AnyIdentifier)
-            .match_peek(tokens_after_base.clone(),
-                        base.last_token.clone());
-
-        match peek_member_name {
-            //no member, not enough tokens
-            Err(ParseError::UnexpectedEOF(_, _)) => {
-                Ok(ParseOutput::new(base.value, base.last_token, tokens_after_base))
-            },
-
-            //other error
-            Err(unexpected) => Err(unexpected),
-
-            Ok(result) => match result.value {
-                //more tokens, but not a member access
-                None => Ok(ParseOutput::new(base.value, base.last_token, tokens_after_base)),
-
-                //this expression continues with a member access
-                Some(member_access) => {
-                    let member_name = member_access[1].unwrap_identifier();
-                    let member_context = member_access[0].clone();
-
-                    let tokens_after = result.next_tokens.skip(2);
-
-                    let expr = Expression::member(base.value, member_name, member_context);
-
-                    Ok(ParseOutput::new(expr, member_access[1].clone(), tokens_after))
-                }
-            }
-        }
+        Expression::parse_member_access_after(base)
     }
 }
 
@@ -517,227 +515,5 @@ impl node::ToSource for Expression {
                 format!("for {} to {} do {}", from.to_source(), to.to_source(), body.to_source())
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use tokenizer::*;
-    use source;
-    use operators;
-    use node::ToSource;
-
-    fn try_parse_expr(src: &str) -> ExpressionResult {
-        let context = source::test::empty_context();
-
-        let tokens = tokenize("test", src).unwrap();
-
-        Expression::parse(tokens, &context)
-    }
-
-    fn parse_expr(src: &str) -> Expression {
-        try_parse_expr(src).unwrap()
-            .finish()
-            .unwrap()
-    }
-
-    #[test]
-    fn brackets_groups_exprs() {
-        let expr = parse_expr("(1 + 2) - 3");
-
-        assert!(expr.is_binary_op(operators::Minus));
-        let (lhs, _, rhs) = expr.unwrap_binary_op();
-
-        assert!(rhs.is_literal_integer(3));
-        assert!(lhs.is_binary_op(operators::Plus));
-
-        let (nested_lhs, _, nested_rhs) = lhs.unwrap_binary_op();
-        assert!(nested_lhs.is_literal_integer(1));
-        assert!(nested_rhs.is_literal_integer(2));
-    }
-
-    #[test]
-    fn simple_binary_op() {
-        let expr = parse_expr("1 + 2");
-
-        assert!(expr.is_binary_op(operators::Plus));
-
-        let (lhs, _, rhs) = expr.unwrap_binary_op();
-        assert!(lhs.is_literal_integer(1));
-        assert!(rhs.is_literal_integer(2));
-    }
-
-    #[test]
-    fn simple_binary_op_in_brackets() {
-        let expr = parse_expr("(1 + 2)");
-
-        assert!(expr.is_binary_op(operators::Plus));
-
-        let (lhs, _, rhs) = expr.unwrap_binary_op();
-        assert!(lhs.is_literal_integer(1));
-        assert!(rhs.is_literal_integer(2));
-    }
-
-    #[test]
-    fn simple_prefix_op() {
-        let expr = parse_expr("+1");
-
-        assert!(expr.is_prefix_op(operators::Plus));
-        let (_, rhs) = expr.unwrap_prefix_op();
-
-        assert!(rhs.is_literal_integer(1));
-    }
-
-    #[test]
-    fn parses_multiple_line_compound_expr() {
-        let expr = try_parse_expr(r"a.b := 1
-            b.c := 2")
-            .unwrap();
-        assert!(expr.value.is_binary_op(operators::Assignment));
-
-        let remaining: Vec<_> = expr.next_tokens.collect();
-        assert_eq!(5, remaining.len(), "expected `b := 2` to be left over but got tokens {:?}", remaining);
-
-        let second_ctx = remaining[0].clone();
-        let second_expr = Expression::parse(remaining, &second_ctx)
-            .unwrap()
-            .finish()
-            .unwrap();
-
-        assert!(second_expr.is_binary_op(operators::Assignment));
-    }
-
-    #[test]
-    fn parses_binary_expr_followed_by_func_call() {
-        let expr_result = try_parse_expr(r"
-                ^a := ^(b + 1)
-
-                System.FreeMem(self.Elements)")
-            .unwrap();
-
-        let expr: Expression = expr_result.value;
-        match &expr.value {
-            &node::ExpressionValue::BinaryOperator { .. } => (),
-            _ => panic!("expected first expr in stream to be assignment, found {:?}", expr)
-        }
-    }
-
-    #[test]
-    fn parses_multi_line_block_without_terminators() {
-        let expr = parse_expr(r"begin
-            a.b := 1
-            b.c := 2
-            end");
-
-        assert!(expr.is_block());
-    }
-
-    #[test]
-    fn binary_op_precedence() {
-        let binary_ops_precedence = operators::PRECEDENCE.iter()
-            .filter_map(|&(op, pos)| if pos == operators::Position::Binary {
-                Some(op)
-            } else {
-                None
-            })
-            .collect::<Vec<_>>();
-
-        for (prec_a, op_a) in binary_ops_precedence.iter().enumerate() {
-            let other_ops = binary_ops_precedence.iter().enumerate()
-                .filter(|&(prec, _)| prec != prec_a);
-
-            for (prec_b, op_b) in other_ops {
-                let hi_op = *if prec_a < prec_b { op_a } else { op_b };
-                let lo_op = *if prec_a < prec_b { op_b } else { op_a };
-
-                /* should parse as ((1 hi_op 2) lo_op 3) */
-                let hi_first = parse_expr(&format!("1 {} 2 {} 3", hi_op.to_source(), lo_op.to_source()));
-                assert!(hi_first.is_binary_op(lo_op), "{} should have precedence over {} (understood this as {:?})", hi_op, lo_op, hi_first);
-
-                let (hi_first_1_then_2, _, hi_first_3) = hi_first.unwrap_binary_op();
-                assert!(hi_first_1_then_2.is_binary_op(hi_op));
-                assert!(hi_first_3.is_literal_integer(3), "rhs should be 3, but was `{:?}`", hi_first_3);
-
-                /* should parse as (1 lo_op (2 hi_op 3)) */
-                let lo_first = parse_expr(&format!("1 {} 2 {} 3", lo_op, hi_op));
-                assert!(lo_first.is_binary_op(lo_op), "{} should have precedence over {} (understood as {:?})", hi_op, lo_op, lo_first);
-
-                let (lo_first_1, _, lo_first_2_then_3) = lo_first.unwrap_binary_op();
-                assert!(lo_first_1.is_literal_integer(1), "lhs should be 1, but was `{:?}`", lo_first_1);
-                assert!(lo_first_2_then_3.is_binary_op(hi_op));
-            }
-        }
-    }
-
-    #[test]
-    fn parses_deref_on_lhs() {
-        let expr = parse_expr("^a + 1");
-
-        assert!(expr.is_binary_op(operators::Plus), "result should be plus, was: {}", expr.to_source());
-        let (lhs, _, rhs) = expr.unwrap_binary_op();
-
-        assert!(lhs.is_prefix_op(operators::Deref));
-        assert!(rhs.is_literal_integer(1));
-    }
-
-    #[test]
-    fn parses_assign_deref_to_deref() {
-        let expr = parse_expr("^(a + 1) := ^(b + 1)");
-
-        assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr.to_source());
-        let (lhs, _, rhs) = expr.unwrap_binary_op();
-
-        assert!(lhs.is_prefix_op(operators::Deref));
-        assert!(rhs.is_prefix_op(operators::Deref));
-    }
-
-    #[test]
-    fn parses_nested_function_calls() {
-        let expr = parse_expr("test(hello('world'), goodbye(cruel('world')))");
-
-        assert!(expr.is_function_call(), "result should be a function call expr");
-        let (test_id, test_args) = expr.unwrap_function_call();
-
-        assert_eq!(node::Identifier::from("test"), test_id);
-        assert_eq!(2, test_args.len());
-
-        let hello_func = test_args[0].clone();
-        assert!(hello_func.is_function_call(), "first argument should be a function call expr");
-        let (hello_id, hello_args) = hello_func.unwrap_function_call();
-        assert_eq!(node::Identifier::from("hello"), hello_id);
-        assert_eq!(1, hello_args.len());
-        assert!(hello_args[0].is_any_literal_string());
-        assert_eq!("world", hello_args[0].clone().unwrap_literal_string());
-
-        let goodbye_func = test_args[1].clone();
-        assert!(goodbye_func.is_function_call(), "second argument should be a function call expr");
-        let (goodbye_id, goodbye_args) = goodbye_func.unwrap_function_call();
-        assert_eq!(node::Identifier::from("goodbye"), goodbye_id);
-        assert_eq!(1, goodbye_args.len());
-        assert!(goodbye_args[0].is_function_call());
-
-        let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call();
-        assert_eq!(node::Identifier::from("cruel"), cruel_id);
-        assert_eq!(1, cruel_args.len());
-        assert!(cruel_args[0].is_any_literal_string());
-        assert_eq!("world", cruel_args[0].clone().unwrap_literal_string());
-    }
-
-    #[test]
-    fn parses_single_prefix_op_in_brackets() {
-        let expr = parse_expr("(^a)");
-
-        assert!(expr.is_prefix_op(operators::Deref));
-    }
-
-    #[test]
-    fn parses_deref_struct_field() {
-        let expr = parse_expr("(^a).b");
-
-        assert!(expr.is_any_member());
-        let (base, name) = expr.unwrap_member();
-        assert!(base.is_prefix_op(operators::Deref));
-        assert_eq!("b", name);
     }
 }

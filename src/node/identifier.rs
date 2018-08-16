@@ -42,6 +42,17 @@ impl fmt::Display for Identifier {
     }
 }
 
+impl IntoIterator for Identifier {
+    type Item = String;
+    type IntoIter = ::std::iter::Chain<::std::vec::IntoIter<Self::Item>, ::std::vec::IntoIter<Self::Item>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.namespace.into_iter()
+            .chain(vec![self.name])
+            .into_iter()
+    }
+}
+
 impl Identifier {
     pub fn parse<TIter>(iter: TIter,
                         context: &source::Token)

@@ -45,13 +45,13 @@ impl Function {
             .collect::<Result<_, _>>()?;
 
         let return_type = if func_or_proc.is_keyword(keywords::Function) {
-            let match_return = tokens::Colon
-                .and_then(Matcher::AnyIdentifier)
-                .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
+            let colon = tokens::Colon.match_one(arg_groups.next_tokens,
+                                                &arg_groups.last_token)?;
 
-            let type_id = node::Identifier::from(match_return.value[1].unwrap_identifier());
+            let type_id = node::Identifier::parse(colon.next_tokens,
+                                                  &colon.last_token)?;
 
-            ParseOutput::new(Some(type_id), match_return.last_token, match_return.next_tokens)
+            ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
         } else {
             ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
         };
@@ -127,10 +127,10 @@ mod test {
 
     #[test]
     fn parses_sig_with_empty_args() {
-        let func = parse_func("function hello(): String; begin end;");
+        let func = parse_func("function hello(): System.String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(Some(node::Identifier::from("String")), func.return_type);
+        assert_eq!(Some(node::Identifier::from("System.String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
