@@ -1,6 +1,4 @@
-use std::{
-    fmt,
-};
+use std::fmt;
 
 use node::{self, Identifier, ToSource, IndexRange};
 
@@ -55,6 +53,16 @@ impl ArrayType {
 
 pub type FunctionSignature = node::FunctionSignature<Type>;
 
+//#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+//pub struct EnumerationType {
+//    names: Vec<Identifier>,
+//}
+//
+//#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+//pub struct SetType {
+//    enum_type: EnumerationType
+//}
+
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
@@ -73,6 +81,8 @@ pub enum Type {
     Record(Identifier),
     Class(Identifier),
     Array(ArrayType),
+    Enumeration(Identifier),
+//    Set(Identifier),
 }
 
 impl ToSource for Type {
@@ -99,6 +109,8 @@ impl Type {
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig.to_source()),
+                Type::Enumeration(enum_id) => enum_id.to_string(),
+//                Type::Set(enum_id) => format!("set of {}", enum_id),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),
                 Type::Array(array) => {
@@ -136,7 +148,6 @@ impl Type {
         match self {
             Type::Pointer(_) |
             Type::RawPointer => true,
-
             _ => false,
         }
     }
@@ -199,11 +210,13 @@ impl Type {
             Type::NativeUInt |
             Type::Float64 |
             Type::Function(_) |
+            Type::Enumeration(_) |
+//            Type::Set(_) |
             Type::Boolean => true,
 
             Type::Array { .. } |
             Type::Nil
-                => false
+            => false
         }
     }
 
@@ -213,13 +226,11 @@ impl Type {
         }
 
         match (self, other) {
-            // nil can be assigned to any pointer, and nothing else
+// nil can be assigned to any pointer, and nothing else
             (Type::RawPointer, Type::Nil) |
             (Type::Pointer(_), Type::Nil) => true,
             (_, Type::Nil) => false,
-
             (ref a, ref b) if b.promotes_to(a) => true,
-
             (ref x, ref y) => x == y,
         }
     }
@@ -227,14 +238,13 @@ impl Type {
     // can we use the + and - arithmetic operations between these two types?
     pub fn can_offset_by(&self, other: &Type) -> bool {
         match (self, other) {
-            // numbers can be offset, as long as the rhs is promotable to the lhs type
-            (a, b) if a.is_numeric() && b.promotes_to(a) =>
+// numbers can be offset, as long as the rhs is promotable to the lhs type
+            (a, b) if a.is_numeric() & &b.promotes_to(a) =>
                 true,
 
-            //pointers can be offset, as long as the rhs is promotable to NativeInt
-            (ptr, off) if ptr.is_pointer() && off.promotes_to(&Type::NativeInt) =>
+//pointers can be offset, as long as the rhs is promotable to NativeInt
+            (ptr, off) if ptr.is_pointer() & &off.promotes_to(&Type::NativeInt) =>
                 true,
-
             _ =>
                 false,
         }
@@ -242,20 +252,20 @@ impl Type {
 
     // can we use the >, >=, <, and <= operations between these two types?
     pub fn has_ord_comparisons(&self, other: &Type) -> bool {
-        self.is_numeric() && other.promotes_to(self)
+        self.is_numeric() & &other.promotes_to(self)
     }
 
     pub fn promotes_to(&self, other: &Type) -> bool {
         match (self, other) {
-            // numeric types always "promote" to themselves
+// numeric types always "promote" to themselves
             (a, b) if a == b && a.is_numeric()
-                => true,
+            => true,
 
-            // any number promotes to a float64
+// any number promotes to a float64
             (a, Type::Float64) if a.is_numeric()
-                => true,
+            => true,
 
-            // byte promotes to any larger type
+// byte promotes to any larger type
             (Type::Byte, Type::Int32) |
             (Type::Byte, Type::UInt32) |
             (Type::Byte, Type::Int64) |
@@ -263,15 +273,14 @@ impl Type {
             (Type::Byte, Type::NativeInt) |
             (Type::Byte, Type::NativeUInt) |
 
-            // 32-bit integers promote to any 64-bit integer
+// 32-bit integers promote to any 64-bit integer
             (Type::UInt32, Type::Int64) |
             (Type::UInt32, Type::UInt64) |
 
-            // 32-bit integers promote to native ints with the same signedness
+// 32-bit integers promote to native ints with the same signedness
             (Type::UInt32, Type::NativeUInt) |
             (Type::Int32, Type::NativeInt)
-                => true,
-
+            => true,
             _ => false,
         }
     }
@@ -285,9 +294,9 @@ impl Type {
             Type::NativeInt |
             Type::NativeUInt |
             Type::Float64
-                => true,
+            => true,
             Type::Byte
-                => true,
+            => true,
             _ => false,
         }
     }
@@ -300,11 +309,9 @@ impl Type {
             (Type::Float64, Type::Float64) |
             (Type::RawPointer, Type::RawPointer) =>
                 true,
-
             (Type::Pointer(_), Type::Nil) |
             (Type::RawPointer, Type::Nil) =>
                 true,
-
             (Type::Pointer(a_target), Type::Pointer(b_target)) => {
                 a_target == b_target
             }

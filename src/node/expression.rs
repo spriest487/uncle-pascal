@@ -5,6 +5,7 @@ use node::*;
 use consts::{
     IntConstant,
     FloatConstant,
+    EnumConstant,
 };
 use types::Type;
 
@@ -59,6 +60,7 @@ pub enum ConstantExpression {
     Float(FloatConstant),
     String(String),
     Boolean(bool),
+    Enum(EnumConstant),
     Nil,
 }
 
@@ -77,6 +79,9 @@ impl ConstantExpression {
                     IntConstant::I64(_) => Type::Int64,
                     IntConstant::U64(_) => Type::UInt64,
                 },
+
+            ConstantExpression::Enum(enum_const) =>
+                Type::Enumeration(enum_const.enumeration.clone()),
 
             ConstantExpression::Float(float_const) =>
                 match float_const {
@@ -162,6 +167,13 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
     pub fn literal_float(f: FloatConstant, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Constant(ConstantExpression::Float(f)),
+            context: context.into(),
+        }
+    }
+
+    pub fn literal_enumeration(e: EnumConstant, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Constant(ConstantExpression::Enum(e)),
             context: context.into(),
         }
     }

@@ -604,6 +604,10 @@ impl Expression {
                 Ok(Expression::literal_float(*f, expr_context))
             }
 
+            ExpressionValue::Constant(ConstantExpression::Enum(e)) => {
+                Ok(Expression::literal_enumeration(e.clone(), expr_context))
+            }
+
             ExpressionValue::If { condition, then_branch, else_branch } =>
                 annotate_if(condition.as_ref(),
                             then_branch.as_ref(),

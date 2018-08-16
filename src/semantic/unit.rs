@@ -31,6 +31,10 @@ impl Unit {
                             }
                         }
 
+                        node::TypeDecl::Enumeration(enum_decl) => {
+                            scope = scope.with_enumeration(enum_decl.name.clone(), enum_decl.clone());
+                        }
+
                         node::TypeDecl::Alias { alias, of, .. } => {
                             let alias_name = node::Identifier::from(alias);
 

@@ -13,6 +13,7 @@ use node::{
     RecordKind,
     ConstantExpression,
 };
+use consts::EnumConstant;
 use semantic::*;
 
 #[derive(Clone, Debug)]
@@ -22,6 +23,7 @@ pub enum Named {
     Class(RecordDecl),
     Function(FunctionDecl),
     Const(ConstantExpression),
+    Enumeration(EnumerationDecl),
     Symbol(Type),
 }
 
@@ -128,6 +130,7 @@ impl fmt::Debug for Scope {
         let mut classes = Vec::new();
         let mut records = Vec::new();
         let mut consts = Vec::new();
+        let mut enums = Vec::new();
 
         for (name, named) in self.names.iter() {
             match named {
@@ -137,6 +140,7 @@ impl fmt::Debug for Scope {
                 Named::Class(decl) => classes.push((name, decl)),
                 Named::Record(decl) => records.push((name, decl)),
                 Named::Const(val) => consts.push((name, val)),
+                Named::Enumeration(decl) => enums.push((name, decl)),
             }
         }
 
@@ -167,6 +171,12 @@ impl fmt::Debug for Scope {
         writeln!(f, "\trecords: [")?;
         for (name, record) in records {
             writeln!(f, "\t\t{}: {}", name, record.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tenumerations: [")?;
+        for (name, enum_decl) in enums {
+            writeln!(f, "\t\t{}: {}", name, enum_decl.name)?;
         }
         writeln!(f, "\t]")?;
 
@@ -239,6 +249,17 @@ impl Scope {
         let name = name.into();
         assert_eq!(RecordKind::Class, decl.kind);
         self.names.insert(name, Named::Class(decl));
+        self
+    }
+
+    pub fn with_enumeration(mut self, name: impl Into<Identifier>, decl: EnumerationDecl) -> Self {
+        for (ord, name) in decl.names.iter().enumerate() {
+            let enum_const = EnumConstant::new(ord as u64, name.clone(), decl.name.clone());
+            let val = ConstantExpression::Enum(enum_const);
+            self.names.insert(Identifier::from(name), Named::Const(val));
+        }
+        self.names.insert(name.into(), Named::Enumeration(decl));
+
         self
     }
 
@@ -393,10 +414,11 @@ impl Scope {
 
     pub fn get_type(&self, parsed_type: &TypeName) -> Result<Type, TypeName> {
         match parsed_type {
-            TypeName::DataType { name, indirection, array_dimensions } => {
+            TypeName::Scalar { name, indirection, array_dimensions } => {
                 let mut result = match self.find_named(name) {
                     Some(Named::Class(class)) => Type::Class(class.name.clone()),
                     Some(Named::Record(record)) => Type::Record(record.name.clone()),
+                    Some(Named::Enumeration(enumeration)) => Type::Enumeration(enumeration.name.clone()),
                     Some(Named::Alias(ty)) => ty.clone(),
 
                     None |
@@ -420,7 +442,7 @@ impl Scope {
                 Ok(result)
             }
 
-            TypeName::FunctionType { arg_types, return_type, modifiers } => {
+            TypeName::Function { arg_types, return_type, modifiers } => {
                 let found_return_type = match return_type {
                     Some(ty) => Some(self.get_type(ty.as_ref())?),
                     None => None,
@@ -437,6 +459,13 @@ impl Scope {
                     modifiers: modifiers.clone(),
                 })))
             }
+        }
+    }
+
+    pub fn get_enumeration(&self, name: &Identifier) -> Option<&EnumerationDecl> {
+        match self.find_named(name) {
+            Some(Named::Enumeration(decl)) => Some(decl),
+            _ => None,
         }
     }
 
@@ -529,6 +558,11 @@ impl Scope {
                 .sum()
         };
 
+        let enum_size = |_enum_decl: &EnumerationDecl| {
+            /* todo: all enums are u64s */
+            8
+        };
+
         match ty {
             Type::Nil |
             Type::RawPointer |
@@ -542,6 +576,12 @@ impl Scope {
             Type::UInt64 |
             Type::Float64 =>
                 8,
+
+            Type::Enumeration(id) => {
+                let enum_decl = self.get_enumeration(id)
+                    .expect("enum type passed to size_of must exist");
+                enum_size(enum_decl)
+            }
 
             Type::UInt32 |
             Type::Int32 =>

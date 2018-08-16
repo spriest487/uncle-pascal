@@ -161,6 +161,14 @@ fn scope_from_uses(uses: &[syntax::UnitReference],
     Ok(scope)
 }
 
+fn default_refs(default_context: source::Token) -> Vec<syntax::UnitReference> {
+    vec![syntax::UnitReference {
+        name: node::Identifier::from("System"),
+        context: default_context.into(),
+        kind: node::UnitReferenceKind::Namespaced,
+    }]
+}
+
 fn compile_program(program_path: &Path,
                    opts: opts::CompileOptions)
                    -> Result<semantic::ProgramModule, CompileError> {
@@ -174,13 +182,18 @@ fn compile_program(program_path: &Path,
         })?
         .canonicalize()?;
 
+    let default_units = default_refs(tokens[0].clone());
+
     let token_stream = syntax::TokenStream::new(tokens, &empty_context());
     let parsed_program = syntax::Program::parse(token_stream)?;
 
     let mut loaded_units: Vec<semantic::Unit> = Vec::new();
     let mut unit_scopes: HashMap<String, semantic::Scope> = HashMap::new();
 
-    for unit_ref in parsed_program.uses.iter() {
+    let uses = default_units.iter()
+        .chain(parsed_program.uses.iter());
+
+    for unit_ref in uses {
         let unit_id = unit_ref.name.to_string();
 
         if !loaded_units.iter().any(|unit| unit.name == unit_id) {

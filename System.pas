@@ -7,6 +7,8 @@ type
     Cardinal = UInt32
     Integer = Int32
     LongWord = UInt32
+    Single = Float64
+    Double = Float64
 {$endif}
 
 type

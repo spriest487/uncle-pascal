@@ -169,6 +169,7 @@ pub enum TypeDecl<TSymbol, TContext>
           TContext: Context
 {
     Record(RecordDecl<TSymbol, TContext>),
+    Enumeration(EnumerationDecl<TContext>),
     Alias {
         context: TContext,
 
@@ -177,12 +178,19 @@ pub enum TypeDecl<TSymbol, TContext>
     },
 }
 
+#[derive(Clone, Debug)]
+pub struct EnumerationDecl<TContext> {
+    pub name: Identifier,
+
+    pub names: Vec<String>,
+    pub context: TContext,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum RecordKind {
     Record,
     Class,
 }
-
 
 #[derive(Clone, Debug)]
 pub struct RecordDecl<TSymbol, TContext>

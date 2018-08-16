@@ -1,3 +1,5 @@
+use node::Identifier;
+
 use std::{
     fmt,
     ops::Add,
@@ -181,5 +183,28 @@ impl fmt::Display for FloatConstant {
         match self {
             FloatConstant::F64(val) => write!(f, "{:E}", val)
         }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct EnumConstant {
+    pub ordinal: u64,
+    pub name: String,
+    pub enumeration: Identifier,
+}
+
+impl EnumConstant {
+    pub fn new(ordinal: u64, name: impl ToString, enumeration: impl Into<Identifier>) -> Self {
+        EnumConstant {
+            ordinal,
+            name: name.to_string(),
+            enumeration: enumeration.into(),
+        }
+    }
+}
+
+impl fmt::Display for EnumConstant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
     }
 }

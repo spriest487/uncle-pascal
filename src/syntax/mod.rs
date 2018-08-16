@@ -144,7 +144,7 @@ mod test {
             .unwrap();
 
         match parsed {
-            TypeName::DataType { array_dimensions, .. } =>
+            TypeName::Scalar { array_dimensions, .. } =>
                 assert_eq!(array_dimensions, vec![IndexRange { from: 0,  to: 10 }]),
 
             _ =>

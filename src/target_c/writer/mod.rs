@@ -35,16 +35,16 @@ use super::{HEADER, RT};
 pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
     match pascal_type {
         Type::Nil => panic!("cannot output `nil` as a type in C"),
-        Type::Byte => "System_Byte".to_owned(),
-        Type::Int32 => "System_Int32".to_owned(),
-        Type::UInt32 => "System_UInt32".to_owned(),
-        Type::Int64 => "System_Int64".to_owned(),
-        Type::UInt64 => "System_UInt64".to_owned(),
-        Type::NativeInt => "System_NativeInt".to_owned(),
-        Type::NativeUInt => "System_NativeUInt".to_owned(),
-        Type::Float64 => "System_Float64".to_owned(),
-        Type::Boolean => "System_Boolean".to_owned(),
-        Type::RawPointer => "System_Pointer".to_owned(),
+        Type::Byte => "System_Byte".to_string(),
+        Type::Int32 => "System_Int32".to_string(),
+        Type::UInt32 => "System_UInt32".to_string(),
+        Type::Int64 => "System_Int64".to_string(),
+        Type::UInt64 => "System_UInt64".to_string(),
+        Type::NativeInt => "System_NativeInt".to_string(),
+        Type::NativeUInt => "System_NativeUInt".to_string(),
+        Type::Float64 => "System_Float64".to_string(),
+        Type::Boolean => "System_Boolean".to_string(),
+        Type::RawPointer => "System_Pointer".to_string(),
         Type::Pointer(target) => {
             let target_c = type_to_c(target.as_ref(), scope);
             format!("{}*", target_c)
@@ -77,13 +77,23 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             format!("{}", identifier_to_c(&record.name))
         }
 
+        Type::Enumeration(enum_id) => {
+            let enumeration = scope.get_enumeration(enum_id)
+                .expect("referenced enumeration must exist");
+            identifier_to_c(&enumeration.name)
+        }
+
+//        Type::Set(enum_id) => {
+//            format!("set of {}", enum_id)
+//        }
+
         Type::Array(array) => {
             let element_name = type_to_c(array.element.as_ref(), scope);
             let element_count = array.total_elements();
 
             format!("System_Internal_Array<{}[{}]>", element_name, element_count)
         }
-    }.to_owned()
+    }
 }
 
 pub fn identifier_to_c(id: &Identifier) -> String {
@@ -120,6 +130,11 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
         }
 
         num @ _ if num.is_numeric() => {
+            writeln!(out, "{} = 0;", id)
+        }
+
+        Type::Enumeration(_enum_id) => {
+            //todo: should use the first ordinal in the enum, not 0
             writeln!(out, "{} = 0;", id)
         }
 
@@ -253,6 +268,11 @@ pub fn write_expr(out: &mut String,
                         IntConstant::Char(c) => write!(out, "{}", c)?,
                     }
                     write!(out, ")")
+                }
+
+                ConstantExpression::Enum(e) => {
+                    let enum_name = identifier_to_c(&e.enumeration);
+                    write!(out, "(({}){})", enum_name, e.ordinal)
                 }
 
                 ConstantExpression::Float(f) => {
@@ -696,16 +716,24 @@ pub fn write_decl(out: &mut String,
     match decl {
         UnitDeclaration::Function(ref func_decl) =>
             write_function(out, func_decl, globals),
+
         UnitDeclaration::Type(ref type_decl) =>
             match type_decl {
                 node::TypeDecl::Record(record_decl) =>
                     write_record_decl(out, record_decl),
+
+                node::TypeDecl::Enumeration(enumeration_decl) => {
+                    // all enums are backed by u64 for now
+                    let enum_name = identifier_to_c(&enumeration_decl.name);
+                    writeln!(out, "using {} = System_UInt64;", enum_name)
+                }
 
                 node::TypeDecl::Alias { .. } => {
                     //aliases don't do anything in the final output and can be ignored
                     Ok(())
                 }
             }
+
         UnitDeclaration::Vars(ref vars_decl) =>
             write_vars(out, vars_decl),
 

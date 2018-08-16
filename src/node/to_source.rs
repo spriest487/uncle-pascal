@@ -47,7 +47,7 @@ impl<T, C> ToSource for ExpressionValue<T, C>
           C: Context
 {
     fn to_source(&self) -> String {
-        match &self {
+        match self {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 format!("({} {} {})", lhs.to_source(), op, rhs.to_source())
             }
@@ -86,6 +86,9 @@ impl<T, C> ToSource for ExpressionValue<T, C>
                 format!("{}", if *b { "true" } else { "false" }),
 
             ExpressionValue::Constant(ConstantExpression::Nil) => "nil".to_string(),
+
+            ExpressionValue::Constant(ConstantExpression::Enum(e)) =>
+                format!("{}", e.name),
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
                 let mut lines = Vec::new();
@@ -152,6 +155,7 @@ impl ToSource for ConstantExpression {
                 true => "true".to_string(),
                 false => "false".to_string(),
             }
+            ConstantExpression::Enum(enum_val) => enum_val.to_string(),
             ConstantExpression::String(s) => format!("'{}'", s),
         }
     }
@@ -223,6 +227,9 @@ impl<T, C> ToSource for TypeDecl<T, C>
             TypeDecl::Alias { alias, of, .. } => {
                 format!("type {} = {};", alias, of.to_source())
             }
+
+            TypeDecl::Enumeration(enum_decl) => enum_decl.to_source(),
+
             TypeDecl::Record(record_decl) => record_decl.to_source()
         }
     }
@@ -242,6 +249,14 @@ impl<T, C> ToSource for RecordDecl<T, C>
 
         lines.push("end".to_owned());
         lines.join("\n")
+    }
+}
+
+impl<C> ToSource for EnumerationDecl<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        format!("type {} = ({})", self.name, self.names.join(", "))
     }
 }
 

@@ -5,15 +5,20 @@ use syntax;
 
 pub type TypeDecl = node::TypeDecl<ScopedSymbol, SemanticContext>;
 pub type RecordDecl = node::RecordDecl<ScopedSymbol, SemanticContext>;
+pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
 
 impl TypeDecl {
     pub fn annotate(decl: &syntax::TypeDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
         match decl {
             node::TypeDecl::Record(record_decl) => {
                 let record_decl = RecordDecl::annotate(record_decl, scope.clone())?;
-
                 Ok(node::TypeDecl::Record(record_decl))
-            },
+            }
+
+            node::TypeDecl::Enumeration(enum_decl) => {
+                let enum_decl = EnumerationDecl::annotate(enum_decl, scope.clone())?;
+                Ok(node::TypeDecl::Enumeration(enum_decl))
+            }
 
             node::TypeDecl::Alias { alias, of, context } => {
                 let context = SemanticContext {
@@ -63,12 +68,27 @@ impl RecordDecl {
                 name: qualified_name,
                 kind: decl.kind,
                 context,
-                members
+                members,
             })
         }
     }
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+}
+
+impl EnumerationDecl {
+    pub fn annotate(enumeration: &syntax::EnumerationDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
+        let context = SemanticContext {
+            scope: scope.clone(),
+            token: enumeration.context.token().clone(),
+        };
+
+        Ok(EnumerationDecl {
+            name: enumeration.name.clone(),
+            names: enumeration.names.clone(),
+            context,
+        })
     }
 }

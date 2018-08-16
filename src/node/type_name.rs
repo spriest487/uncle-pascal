@@ -1,6 +1,4 @@
-use std::{
-    fmt,
-};
+use std::fmt;
 
 use syntax::{
     TokenStream,
@@ -40,13 +38,13 @@ impl IndexRange {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TypeName {
-    DataType {
+    Scalar {
         name: Identifier,
         indirection: usize,
 
         array_dimensions: Vec<IndexRange>,
     },
-    FunctionType {
+    Function {
         return_type: Option<Box<TypeName>>,
         arg_types: Vec<TypeName>,
         modifiers: Vec<FunctionModifier>,
@@ -57,7 +55,7 @@ impl ToSource for TypeName {
     fn to_source(&self) -> String {
         let mut result = String::new();
         match self {
-            TypeName::DataType { name, indirection, array_dimensions } => {
+            TypeName::Scalar { name, indirection, array_dimensions } => {
                 if array_dimensions.len() > 0 {
                     result.push_str("array [");
                     result.push_str(&array_dimensions.iter()
@@ -74,7 +72,7 @@ impl ToSource for TypeName {
                 result.push_str(&name.to_string())
             }
 
-            TypeName::FunctionType { return_type, arg_types, modifiers } => {
+            TypeName::Function { return_type, arg_types, modifiers } => {
                 if return_type.is_some() {
                     result.push_str("function");
                 } else {
@@ -145,7 +143,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
         } else {
             let name = Identifier::parse(tokens)?;
 
-            break Ok(TypeName::DataType {
+            break Ok(TypeName::Scalar {
                 name,
                 indirection,
 
@@ -173,7 +171,7 @@ fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
 
     let modifiers = FunctionDecl::parse_modifiers(tokens)?;
 
-    Ok(TypeName::FunctionType {
+    Ok(TypeName::Function {
         return_type,
         arg_types,
         modifiers,
@@ -212,7 +210,7 @@ fn int_token_to_array_dim(token: source::Token) -> ParseResult<i32> {
 
 impl TypeName {
     pub fn with_name(name: impl Into<Identifier>) -> Self {
-        TypeName::DataType {
+        TypeName::Scalar {
             name: name.into(),
             indirection: 0,
 
@@ -222,15 +220,15 @@ impl TypeName {
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::DataType { name, indirection, array_dimensions } =>
-                TypeName::DataType {
+            TypeName::Scalar { name, indirection, array_dimensions } =>
+                TypeName::Scalar {
                     name,
                     array_dimensions,
 
                     indirection: indirection + 1,
                 },
 
-            TypeName::FunctionType { .. } =>
+            TypeName::Function { .. } =>
                 unimplemented!("pointer to function")
         }
     }
