@@ -153,7 +153,8 @@ impl<'a> Lexer<'a> {
     }
 
     fn literal_int(&mut self, sigil: bool) -> TokenizeResult<source::Token> {
-        let start = if sigil { self.col + 1 } else { self.col };
+        let sigil_len = if sigil { 1 } else { 0 };
+        let start = self.col + sigil_len;
 
         let next_non_num = find_ahead(&self.line[start..], |c| match c {
             '0'...'9' => false,
@@ -163,6 +164,7 @@ impl<'a> Lexer<'a> {
         if !sigil {
             if let Some(num_end) = next_non_num {
                 let end_char = self.line[start + num_end];
+
                 if end_char == 'E' || end_char == 'e' {
                     /* the only valid option for num + e is a float with an exponent*/
                     return self.literal_float();
@@ -177,7 +179,7 @@ impl<'a> Lexer<'a> {
         }
 
         let int_str = match next_non_num {
-            Some(end) => &self.line[self.col..self.col + end],
+            Some(end) => &self.line[self.col..self.col + end + sigil_len],
             None => &self.line[self.col..],
         };
 
@@ -417,7 +419,7 @@ mod test {
 
     #[test]
     fn tokenizes_literal_char() {
-        let result = tokenizer::tokenize("test,", "#32", &CompileOptions::default()).unwrap();
+        let result = tokenizer::tokenize("test,", " #32 ", &CompileOptions::default()).unwrap();
         assert_eq!(1, result.len());
         assert_eq!(&tokens::LiteralInteger(IntConstant::Char(32)),
                    result[0].as_token());
@@ -426,7 +428,7 @@ mod test {
     #[test]
     fn tokenizes_keywords_case_insensitive_for_ci_opts() {
         let opts = CompileOptions::new(Mode::Fpc);
-        let result = tokenizer::tokenize("test", "True TRUE true begIN END", &opts)
+        let result = tokenizer::tokenize("test", "  True TRUE true begIN END  ", &opts)
             .unwrap();
 
         assert_eq!(&tokens::Keyword(keywords::True), result[0].as_token());
