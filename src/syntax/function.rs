@@ -3,7 +3,12 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
-use node::{self, Identifier, FunctionKind, FunctionModifier};
+use node::{
+    self,
+    Identifier,
+    FunctionKind,
+    FunctionModifier
+};
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol, ParsedContext>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol, ParsedContext>;
@@ -118,28 +123,22 @@ impl FunctionDecl {
     }
 
     pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
-        let arg_groups = match tokens.match_peek(tokens::BracketLeft)? {
-            Some(_) => {
-                tokens.match_groups(tokens::BracketLeft, tokens::BracketRight, tokens::Semicolon)?
-                    .groups
+        match tokens.match_block_peek(tokens::BracketLeft, tokens::BracketRight)? {
+            Some(args_block) => {
+                let arg_tokens_len = args_block.len();
+
+                let mut args_tokens = TokenStream::new(args_block.inner, &args_block.open);
+                let args: Vec<VarDecl> = args_tokens.parse()?;
+                
+                args_tokens.finish()?;
+
+                tokens.advance(arg_tokens_len);
+
+                Ok(VarDecls { decls: args })
             }
-            None => Vec::new(),
-        };
 
-        let args = arg_groups.into_iter()
-            .map(|arg_tokens| {
-                let mut arg_tokens = TokenStream::new(arg_tokens.tokens, &arg_tokens.context);
-
-                let var_decl = VarDecl::parse(&mut arg_tokens)?;
-                arg_tokens.finish()?;
-
-                Ok(var_decl)
-            })
-            .collect::<Result<_, _>>()?;
-
-        Ok(VarDecls {
-            decls: args
-        })
+            None => Ok(VarDecls::default()),
+        }
     }
 }
 

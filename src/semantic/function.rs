@@ -1,10 +1,17 @@
 use std::{
     rc::Rc,
 };
-use node::{self, Identifier};
+use node::{
+    self,
+    Identifier,
+    VarModifier,
+};
 use syntax;
 use semantic::*;
-use types::{Type, FunctionSignature};
+use types::{
+    Type,
+    FunctionSignature
+};
 
 const RESULT_VAR_NAME: &str = "result";
 
@@ -54,11 +61,25 @@ impl FunctionDecl {
                 let mut local_vars = VarDecls::annotate(&function_body.local_vars,
                                                         scope.clone(),
                                                         SemanticVarsKind::Local)?;
+                for local_var in local_vars.decls.iter() {
+                    match local_var.modifier {
+                        Some(bad_modifier @ VarModifier::Out) |
+                        Some(bad_modifier @ VarModifier::Var) =>
+                            return Err(SemanticError::invalid_var_modifier(
+                                bad_modifier,
+                                local_var.context.clone())),
+
+                        Some(VarModifier::Const) |
+                        None =>
+                            ()
+                    }
+                }
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {
                         name: result_id,
                         context: context.clone(),
+                        modifier: Some(VarModifier::Out),
                         decl_type: result_var_type.clone(),
                     });
                 }

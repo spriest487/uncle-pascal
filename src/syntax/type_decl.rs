@@ -77,20 +77,8 @@ impl RecordDecl {
         let match_end = tokens.split_at_match(keywords::End)?;
 
         let mut decls_tokens = TokenStream::new(match_end.before_split, &match_kw);
-        let mut decls = Vec::new();
-
-        loop {
-            /* we can have empty tokens in a field decl which is fine, it means
-            there was a semicolon after the last field which we accept */
-            if decls_tokens.peek().is_none() {
-                break;
-            }
-
-            let decl: VarDecl = decls_tokens.parse()?;
-            decls.push(decl);
-
-            decls_tokens.match_or_endl(tokens::Semicolon)?;
-        }
+        let members: Vec<VarDecl> = decls_tokens.parse()?;
+        decls_tokens.finish()?;
 
         //after the "end", there should always be a semicolon
         //TODO: this isn't necessary, this should be up to the unit
@@ -100,7 +88,7 @@ impl RecordDecl {
             name: Identifier::from(decl_name),
             kind,
             context: match_kw.clone().into(),
-            members: decls,
+            members,
         })
     }
 }

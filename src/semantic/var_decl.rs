@@ -48,6 +48,7 @@ impl VarDecl {
             name: qualified_name,
             context: var_context,
             decl_type: var_type,
+            modifier: decl.modifier,
         })
     }
 

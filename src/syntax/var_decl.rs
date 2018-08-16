@@ -1,29 +1,75 @@
 use tokens;
 use tokens::AsToken;
 use keywords;
-use node::{self, Identifier, TypeName};
+use node::{self, Identifier, TypeName, VarModifier};
 use syntax::*;
 
 pub type VarDecl = node::VarDecl<ParsedSymbol, ParsedContext>;
 pub type VarDecls = node::VarDecls<ParsedSymbol, ParsedContext>;
 
-impl Parse for VarDecl {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecl> {
-        /* var names can't be fully-qualified, so we only need to match a
-        single name token here */
-        let id_tokens = tokens.match_sequence(Matcher::AnyIdentifier
-            .and_then(tokens::Colon))?;
+impl Parse for Vec<VarDecl> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let mut decls = Vec::new();
 
-        let name_token = id_tokens[0].clone();
-        let name = Identifier::from(name_token.as_token().unwrap_identifier());
+        loop {
+            /* keep matching until the next thing in the token stream
+            doesn't look like a valid var decl */
+            match tokens.peeked().next().map(|t| t.as_token().clone()) {
+                Some(tokens::Identifier(_)) |
+                Some(tokens::Keyword(keywords::Const)) |
+                Some(tokens::Keyword(keywords::Var)) |
+                Some(tokens::Keyword(keywords::Out)) =>
+                    {}
 
-        let decl_type: TypeName = tokens.parse()?;
+                _ => break,
+            }
 
-        Ok(VarDecl {
-            name,
-            decl_type,
-            context: name_token.into(),
-        })
+            /* the modifier comes first if there is one, and applies to
+            all variables declared in a single decl list - e.g.
+            `const x, y: Integer` means x and y are consts of type Integer */
+            let modifier = tokens.peeked().match_one(keywords::Var
+                .or(keywords::Const)
+                .or(keywords::Out))
+                .map(|t| match t.unwrap_keyword() {
+                    keywords::Var => VarModifier::Var,
+                    keywords::Const => VarModifier::Const,
+                    keywords::Out => VarModifier::Out,
+                    _ => unreachable!()
+                });
+            if modifier.is_some() {
+                tokens.advance(1);
+            }
+
+            /* parse names until the next colon */
+            let mut names = Vec::new();
+            loop {
+                let name_tokens = tokens.match_sequence(Matcher::AnyIdentifier
+                    .and_then(tokens::Colon.or(tokens::Comma)))?;
+
+                let name = Identifier::from(name_tokens[0].unwrap_identifier());
+                let context = ParsedContext::from(name_tokens[0].clone());
+
+                names.push((name, context));
+
+                if *name_tokens[1].as_token() == tokens::Colon {
+                    break;
+                }
+            }
+
+            let decl_type: TypeName = tokens.parse()?;
+            tokens.match_or_endl(tokens::Semicolon)?;
+
+            for (name, context) in names {
+                decls.push(VarDecl {
+                    name,
+                    context,
+                    modifier,
+                    decl_type: decl_type.clone(),
+                })
+            }
+        }
+
+        Ok(decls)
     }
 }
 
@@ -31,21 +77,9 @@ impl Parse for VarDecls {
     fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
         tokens.match_one(keywords::Var)?;
 
-        let mut decls = Vec::new();
-        loop {
-            match tokens.peek() {
-                Some(ref id) if id.as_token().is_any_identifier() => {
-                    let decl: VarDecl = tokens.parse()?;
-                    tokens.match_or_endl(tokens::Semicolon)?;
+        let decls: Vec<VarDecl> = tokens.parse()?;
 
-                    decls.push(decl);
-                }
-
-                _ => break,
-            }
-        }
-
-        // it's legal for a var section to be nothing but a terminator
+        /* it's legal for a var section to be nothing but a terminator */
         if decls.len() == 0 {
             tokens.match_or_endl(tokens::Semicolon)?;
         }

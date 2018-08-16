@@ -48,7 +48,14 @@ impl RecordDecl {
             Err(SemanticError::empty_record(decl.name.clone(), context))
         } else {
             let members = decl.members.iter()
-                .map(|member| VarDecl::annotate(member, scope.clone(), SemanticVarsKind::Local))
+                .map(|member| {
+                    let member = VarDecl::annotate(member, scope.clone(), SemanticVarsKind::Local)?;
+                    if let Some(modifier) = member.modifier {
+                        Err(SemanticError::invalid_var_modifier(modifier, member.context.clone()))
+                    } else {
+                        Ok(member)
+                    }
+                })
                 .collect::<Result<_, _>>()?;
 
             let qualified_name = if decl.name.namespace.len() == 0 {

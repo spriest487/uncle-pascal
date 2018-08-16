@@ -195,8 +195,8 @@ impl TokenStream {
                 Some(matcher) => matcher,
                 None => {
                     /* reached end of sequence without incident */
-                    break Ok(Some(matches))
-                },
+                    break Ok(Some(matches));
+                }
             };
 
             match peeked.next() {
@@ -205,9 +205,9 @@ impl TokenStream {
                         matches.push(peeked_token);
                     } else {
                         // no match
-                        break Ok(None)
+                        break Ok(None);
                     }
-                },
+                }
                 None => {
                     println!("ran out of tokens @ {}", peeked.peek_pos);
                     /* there are less tokens in the stream than in the sequence */
@@ -402,6 +402,10 @@ impl TokenStream {
         }
     }
 
+    pub fn peeked(&mut self) -> PeekedTokenStream {
+        PeekedTokenStream::new(self)
+    }
+
     /* maybe matches a block. regardless of if the block is matched, the
     next tokens and last token of the resulting output are the same as the
     input, if no error occurs */
@@ -412,7 +416,9 @@ impl TokenStream {
         let open_matcher = open.into();
         let close_matcher = close.into();
 
-        let open_token = self.match_peek(open_matcher.clone())?;
+        let mut peeked = self.peeked();
+
+        let open_token = peeked.match_one(open_matcher.clone());
         if open_token.is_none() {
             return Ok(None);
         }
@@ -420,25 +426,9 @@ impl TokenStream {
         let mut open_count = 1;
         let mut inner_tokens = Vec::new();
 
-        /* we're peeking far ahead, so we have to be careful to read from the peek
-         buffer instead of consuming new elements, until the peek buffer is empty.
-         we already peeked one token (the block opener) */
-        let mut peek_pos = 1;
-
         let final_close_token = loop {
             /* we might be using the peek buffer here */
-            let next = if peek_pos < self.peeked.len() {
-                Some(self.peeked[peek_pos].clone())
-            } else {
-                let next = self.tokens.next();
-
-                if let Some(next) = &next {
-                    self.peeked.push_back(next.clone());
-                }
-
-                next
-            };
-            peek_pos += 1;
+            let next = peeked.next();
 
             match next {
                 Some(inner_token) => if close_matcher.is_match(&inner_token) {
@@ -535,6 +525,17 @@ impl<'tokens> PeekedTokenStream<'tokens> {
             tokens,
             peek_pos: 0,
         }
+    }
+
+    pub fn match_one(&mut self, matcher: impl Into<Matcher>) -> Option<source::Token> {
+        let matcher = matcher.into();
+
+        self.next().and_then(|t| {
+            match matcher.is_match(t.as_token()) {
+                true => Some(t),
+                false => None
+            }
+        })
     }
 }
 

@@ -185,6 +185,24 @@ pub struct VarDecl<TSymbol, TContext>
     pub context: TContext,
 
     pub decl_type: TSymbol::Type,
+    pub modifier: Option<VarModifier>,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum VarModifier {
+    Const,
+    Var,
+    Out,
+}
+
+impl ToSource for VarModifier {
+    fn to_source(&self) -> String {
+        match self {
+            VarModifier::Const => "const".to_string(),
+            VarModifier::Var => "var".to_string(),
+            VarModifier::Out => "out".to_string(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]

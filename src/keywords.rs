@@ -31,6 +31,8 @@ pub enum Keyword {
     Implementation,
     Array,
     Of,
+    Const,
+    Out,
 }
 
 impl Keyword {
@@ -61,6 +63,8 @@ impl Keyword {
             "implementation" => Some(Implementation),
             "array" => Some(Array),
             "of" => Some(Of),
+            "const" => Some(Const),
+            "out" => Some(Out),
             _ => None,
         }
     }
@@ -94,6 +98,8 @@ impl ToSource for Keyword {
             Implementation => "implementation",
             Array => "array",
             Of => "of",
+            Const => "const",
+            Out => "out",
         }.to_string()
     }
 }
