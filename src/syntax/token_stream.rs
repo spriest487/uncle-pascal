@@ -498,6 +498,7 @@ mod test {
     use operators;
     use syntax::*;
     use tokens::AsToken;
+    use consts::IntConstant;
 
     fn tokens_to_source(tokens: Vec<tokens::Token>) -> Vec<source::Token> {
         tokens.into_iter()
@@ -637,11 +638,11 @@ mod test {
     #[test]
     fn rewind_retains_original_sequence() {
         let sequence = tokens_to_source(vec![
-            tokens::LiteralInteger(1),
-            tokens::LiteralInteger(2),
-            tokens::LiteralInteger(3),
-            tokens::LiteralInteger(4),
-            tokens::LiteralInteger(5),
+            tokens::LiteralInteger(IntConstant::from(1)),
+            tokens::LiteralInteger(IntConstant::from(2)),
+            tokens::LiteralInteger(IntConstant::from(3)),
+            tokens::LiteralInteger(IntConstant::from(4)),
+            tokens::LiteralInteger(IntConstant::from(5)),
         ]);
 
         let mut tokens = TokenStream::from(sequence.clone());

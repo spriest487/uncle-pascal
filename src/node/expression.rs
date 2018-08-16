@@ -257,9 +257,9 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         }
     }
 
-    pub fn is_literal_integer(&self, val: IntConstant) -> bool {
+    pub fn is_literal_integer(&self, val: impl Into<IntConstant>) -> bool {
         match &self.value {
-            ExpressionValue::LiteralInteger(i) => *i == val,
+            ExpressionValue::LiteralInteger(i) => *i == val.into(),
             _ => false,
         }
     }

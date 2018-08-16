@@ -376,8 +376,8 @@ fn function_call_type(target: &Expression,
             Some(sig) => sig,
             None => {
                 return Err(SemanticError::invalid_function_type(target_type.clone(),
-                                                                context.clone()))
-            },
+                                                                context.clone()));
+            }
         };
 
         if args.len() != sig.args.decls.len() {
@@ -700,14 +700,27 @@ impl Expression {
 
 #[cfg(test)]
 pub(crate) mod test {
+    use std::rc::Rc;
+
+    use tokens;
+    use source;
+    use keywords;
     use tokenizer::*;
     use semantic::*;
     use syntax;
-    use node;
+    use node::{self, FunctionKind};
     use operators;
-    use types::{Type, FunctionSignature};
+    use types::Type;
 
-    pub fn parse_expr(src: &str, scope: &Scope) -> Expression {
+    fn empty_context(scope: &Scope) -> SemanticContext {
+        SemanticContext {
+            scope: Rc::new(scope.clone()),
+            token: source::Token::new(tokens::Keyword(keywords::Program),
+                                      source::Location::new("test", 0, 0)),
+        }
+    }
+
+    pub fn parse_expr(src: &str, scope: Rc<Scope>) -> Expression {
         let tokens = tokenize("test", src)
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
@@ -727,7 +740,7 @@ pub(crate) mod test {
         let scope = Scope::default()
             .with_symbol_local("x", Type::RawPointer);
 
-        let expr = parse_expr("x := 1", &scope);
+        let expr = parse_expr("x := 1", Rc::new(scope));
 
         match expr.type_check() {
             Err(SemanticError {
@@ -746,18 +759,28 @@ pub(crate) mod test {
     fn func_call_on_obj_uses_ufcs_from_target_ns() {
         let test_func_name = Identifier::from("System.TestAdd");
 
-        let scope = Scope::default()
-            .with_symbol_local(test_func_name.clone(),
-                                  Type::Function(Box::from(FunctionSignature {
-                                      name: test_func_name.clone(),
-                                      return_type: Some(Type::Int64),
-                                      arg_types: vec![
-                                          Type::Int64
-                                      ],
-                                  })))
+        let default_scope = Scope::default();
+
+        let scope = default_scope.clone()
+            .with_function(test_func_name.clone(), FunctionDecl {
+                name: test_func_name.clone(),
+                return_type: Some(Type::Int64),
+                args: Vars {
+                    decls: vec![
+                        VarDecl {
+                            context: empty_context(&default_scope),
+                            name: Identifier::from("x"),
+                            decl_type: Type::Int64,
+                        }
+                    ]
+                },
+                body: None,
+                kind: FunctionKind::Function,
+                context: empty_context(&default_scope),
+            })
             .with_symbol_local("a", Type::Int64);
 
-        let expr = parse_expr(r"a.TestAdd(1)", &scope);
+        let expr = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
 
         match expr.value {
             node::ExpressionValue::FunctionCall { target, args } => {
@@ -781,7 +804,7 @@ pub(crate) mod test {
         let scope = Scope::default()
             .with_symbol_local("x", Type::Byte.pointer());
 
-        let expr = parse_expr("^x", &scope);
+        let expr = parse_expr("^x", Rc::new(scope));
         assert_eq!(Type::Byte, expr.expr_type().unwrap().unwrap());
     }
 
@@ -790,7 +813,7 @@ pub(crate) mod test {
         let scope = Scope::default()
             .with_symbol_local("x", Type::Byte.pointer());
 
-        let expr = parse_expr("x + 1", &scope);
+        let expr = parse_expr("x + 1", Rc::new(scope));
         assert_eq!(Type::Byte.pointer(), expr.expr_type().unwrap().unwrap());
     }
 }
