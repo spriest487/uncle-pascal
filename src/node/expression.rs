@@ -22,6 +22,7 @@ pub enum ExpressionValue<TSymbol, TContext> {
     LiteralInteger(IntConstant),
     LiteralString(String),
     LiteralNil,
+    LiteralBoolean(bool),
     Identifier(TSymbol),
     LetBinding {
         name: String,
@@ -205,6 +206,13 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         Expression {
             context: context.into(),
             value: ExpressionValue::LiteralNil,
+        }
+    }
+
+    pub fn literal_bool(val: bool, context: impl Into<TContext>) -> Self {
+        Expression {
+            context: context.into(),
+            value: ExpressionValue::LiteralBoolean(val),
         }
     }
 
@@ -400,6 +408,10 @@ pub fn transform_expressions<TSymbol, TContext>(
 
         ExpressionValue::LiteralInteger(i) => {
             replace(Expression::literal_int(i, root_expr.context))
+        }
+
+        ExpressionValue::LiteralBoolean(b) => {
+            replace(Expression::literal_bool(b, root_expr.context))
         }
 
         ExpressionValue::LiteralNil => {

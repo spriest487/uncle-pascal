@@ -33,6 +33,8 @@ pub enum Keyword {
     Of,
     Const,
     Out,
+    True,
+    False,
 }
 
 impl Keyword {
@@ -65,6 +67,8 @@ impl Keyword {
             "of" => Some(Of),
             "const" => Some(Const),
             "out" => Some(Out),
+            "true" => Some(True),
+            "false" => Some(False),
             _ => None,
         }
     }
@@ -100,6 +104,8 @@ impl ToSource for Keyword {
             Of => "of",
             Const => "const",
             Out => "out",
+            True => "true",
+            False => "false",
         }.to_string()
     }
 }

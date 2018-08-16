@@ -240,6 +240,10 @@ pub fn write_expr(out: &mut String,
             write!(out, "{}", name)
         }
 
+        ExpressionValue::LiteralBoolean(val) => {
+            write!(out, "{}", if *val { "true" } else { "false" })
+        }
+
         ExpressionValue::LiteralNil => {
             out.write_str("NULL")
         }

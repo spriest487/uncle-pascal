@@ -375,6 +375,12 @@ impl Expression {
         Ok(Expression::literal_nil(tokens.context().clone()))
     }
 
+    fn parse_literal_bool(tokens: &mut TokenStream) -> ExpressionResult {
+        let kw = tokens.match_one(keywords::True.or(keywords::False))?;
+        let val = kw.is_keyword(keywords::True);
+        Ok(Expression::literal_bool(val, kw))
+    }
+
     fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
         let binding_tokens = tokens.match_sequence(keywords::Let
             .and_then(Matcher::AnyIdentifier)
@@ -444,6 +450,8 @@ impl Expression {
             .or(Matcher::AnyIdentifier)
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
+            .or(keywords::True)
+            .or(keywords::False)
             .or(tokens::BracketLeft)
             .or(keywords::Nil)
             .or(Matcher::any_operator_in_position(operators::Position::Prefix));
@@ -491,6 +499,11 @@ impl Expression {
 
             Some(ref nil) if nil.is_literal_nil() => {
                 Expression::parse_literal_nil(tokens)
+            }
+
+            Some(ref bool_kw) if bool_kw.is_keyword(keywords::True) ||
+                bool_kw.is_keyword(keywords::False) => {
+                Expression::parse_literal_bool(tokens)
             }
 
             Some(unexpected) => {

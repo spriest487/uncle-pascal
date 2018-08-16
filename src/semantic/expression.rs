@@ -396,7 +396,7 @@ fn is_lvalue(expr: &Expression) -> bool {
         ExpressionValue::Identifier(sym) => {
             let is_declared_func = expr.scope().get_function(&sym.name()).is_some();
             !is_declared_func
-        },
+        }
         ExpressionValue::PrefixOperator { op, rhs } => match op {
             operators::Deref =>
                 is_lvalue(rhs),
@@ -408,6 +408,7 @@ fn is_lvalue(expr: &Expression) -> bool {
         ExpressionValue::LiteralInteger(_) |
         ExpressionValue::LiteralNil |
         ExpressionValue::LiteralString(_) |
+        ExpressionValue::LiteralBoolean(_) |
         ExpressionValue::BinaryOperator { .. } |
         ExpressionValue::Block(_) |
         ExpressionValue::ForLoop { .. } |
@@ -578,6 +579,10 @@ impl Expression {
                 Ok(Expression::literal_nil(expr_context))
             }
 
+            ExpressionValue::LiteralBoolean(b) => {
+                Ok(Expression::literal_bool(*b, expr_context))
+            }
+
             ExpressionValue::If { condition, then_branch, else_branch } =>
                 annotate_if(condition.as_ref(),
                             then_branch.as_ref(),
@@ -633,6 +638,9 @@ impl Expression {
                     IntConstant::I64(_) => Type::Int64,
                     IntConstant::U64(_) => Type::UInt64,
                 })),
+
+            &ExpressionValue::LiteralBoolean(_) =>
+                Ok(Some(Type::Boolean)),
 
             &ExpressionValue::LiteralNil =>
                 Ok(Some(Type::Nil)),
@@ -711,7 +719,7 @@ pub(crate) mod test {
     use syntax;
     use node::{
         FunctionKind,
-        ExpressionValue
+        ExpressionValue,
     };
     use operators;
     use types::Type;
@@ -770,15 +778,14 @@ pub(crate) mod test {
                 name: test_func_name.clone(),
                 return_type: Some(Type::Int64),
                 modifiers: Vec::new(),
-                args: VarDecls {
-                    decls: vec![
-                        VarDecl {
-                            context: empty_context(&default_scope),
-                            name: Identifier::from("x"),
-                            decl_type: Type::Int64,
-                        }
-                    ]
-                },
+                args: vec![
+                    FunctionArg {
+                        context: empty_context(&default_scope),
+                        modifier: None,
+                        name: "x".to_string(),
+                        decl_type: Type::Int64,
+                    }
+                ],
                 body: None,
                 kind: FunctionKind::Function,
                 context: empty_context(&default_scope),

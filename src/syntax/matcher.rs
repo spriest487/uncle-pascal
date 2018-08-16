@@ -20,6 +20,7 @@ pub enum Matcher {
     AnyOperator,
     AnyLiteralInteger,
     AnyLiteralString,
+    AnyLiteralBoolean,
     Exact(tokens::Token),
     OneOf(Vec<Matcher>),
 }
@@ -72,6 +73,7 @@ impl fmt::Display for Matcher {
             &Matcher::AnyOperator => write!(f, "binary operator"),
             &Matcher::AnyLiteralInteger => write!(f, "integer literal"),
             &Matcher::AnyLiteralString => write!(f, "string literal"),
+            &Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
             &Matcher::Exact(ref exact_token) => write!(f, "{}", exact_token),
             &Matcher::OneOf(ref matchers) => write!(f, "one of: {}", matchers.iter()
                 .map(|matcher| format!("{}", matcher))
@@ -99,6 +101,8 @@ impl Matcher {
             &Matcher::AnyOperator => token.is_any_operator(),
             &Matcher::AnyLiteralInteger => token.is_any_literal_int(),
             &Matcher::AnyLiteralString => token.is_any_literal_string(),
+            &Matcher::AnyLiteralBoolean => token.is_keyword(keywords::True) ||
+                token.is_keyword(keywords::False),
             &Matcher::Exact(ref exact_token) => token.as_token() == exact_token,
             &Matcher::OneOf(ref matchers) => matchers.iter()
                 .any(|matcher| matcher.is_match(token)),

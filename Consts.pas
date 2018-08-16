@@ -4,6 +4,8 @@ uses
     System.*
 
 const num = 1
+    yes = true
+    no = false
 
 procedure Test
 const
@@ -13,5 +15,6 @@ begin
 end
 
 begin
-    Test()
+    if yes and not no then
+        Test()
 end.

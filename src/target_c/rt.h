@@ -107,7 +107,7 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
 }
 
 /* procedure System.WriteLn(line: System.String) */
-static void System_WriteLn(System_String* lineRc) {
+void System_WriteLn(System_String* lineRc) {
     auto line = static_cast<System_String*>(lineRc);
 
     if (line) {
@@ -120,7 +120,7 @@ static void System_WriteLn(System_String* lineRc) {
     }
 }
 
-static System_Boolean System_StringToInt(System_String* str, System_Int32* result) {
+System_Boolean System_StringToInt(System_String* str, System_Int32* result) {
     auto stream = std::stringstream();
     stream.str(std::string(
         reinterpret_cast<const char*>(str->Chars),
@@ -133,7 +133,7 @@ static System_Boolean System_StringToInt(System_String* str, System_Int32* resul
     }
 }
 
-static System_String* System_StringFromInt(System_Int32 i) {
+System_String* System_StringFromInt(System_Int32 i) {
     auto chars = std::to_string(i);
 
     return System_StringFromBytes(

@@ -52,13 +52,16 @@ impl Parse for ConstDecl {
         let name = name_tokens[0].unwrap_identifier().to_string();
 
         let value_token = tokens.match_one(Matcher::AnyLiteralInteger
-            .or(Matcher::AnyLiteralString))?;
+            .or(Matcher::AnyLiteralString)
+            .or(Matcher::AnyLiteralBoolean))?;
 
         let value_context = ParsedContext::from(value_token.clone());
 
         let value = match value_token.as_token() {
             tokens::LiteralInteger(i) => Expression::literal_int(*i, value_context),
             tokens::LiteralString(s) => Expression::literal_string(s, value_context),
+            tokens::Keyword(keywords::True) => Expression::literal_bool(true, value_context),
+            tokens::Keyword(keywords::False) => Expression::literal_bool(false, value_context),
             _ => unreachable!(),
         };
 

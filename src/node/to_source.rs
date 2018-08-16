@@ -71,6 +71,9 @@ impl<T, C> ToSource for Expression<T, C>
             ExpressionValue::LiteralString(s) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
 
+            ExpressionValue::LiteralBoolean(b) =>
+                format!("{}", if *b { "true" } else { "false" }),
+
             ExpressionValue::LiteralNil => "nil".to_string(),
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
