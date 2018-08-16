@@ -28,6 +28,8 @@ impl VarDecl {
     pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecl>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
+        /* var names can't be fully-qualified, so we only need to match a
+        single name token here */
         let id_tokens = Matcher::AnyIdentifier
             .and_then(tokens::Colon)
             .match_sequence(in_tokens, &context)?;
@@ -77,20 +79,17 @@ impl VarDecl {
             }
         }
 
-        let type_id_token = Matcher::AnyIdentifier.match_one(modifier_tokens,
-                                                             &modifier_context)?;
-
-        let type_id = node::Identifier::parse(type_id_token.value
-            .unwrap_identifier());
+        let type_id = node::Identifier::parse(modifier_tokens,
+        &modifier_context)?;
 
         let decl = VarDecl {
             name,
-            decl_type: type_id,
+            decl_type: type_id.value,
             context: name_token.clone(),
             modifiers,
         };
 
-        Ok(ParseOutput::new(decl, type_id_token.last_token, type_id_token.next_tokens))
+        Ok(ParseOutput::new(decl, type_id.last_token, type_id.next_tokens))
     }
 }
 
@@ -155,29 +154,29 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(node::Identifier::parse("Integer"), vars.decls[0].decl_type);
+        assert_eq!(node::Identifier::from("Integer"), vars.decls[0].decl_type);
     }
 
     #[test]
     fn parses_var_list() {
-        let vars = parse_vars("var x: Integer; y: String;");
+        let vars = parse_vars("var x: System.Integer; y: System.String;");
 
         assert_eq!(2, vars.decls.len());
 
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(node::Identifier::parse("Integer"), vars.decls[0].decl_type);
+        assert_eq!(node::Identifier::from("System.Integer"), vars.decls[0].decl_type);
 
         assert_eq!("y", vars.decls[1].name);
-        assert_eq!(node::Identifier::parse("String"), vars.decls[1].decl_type);
+        assert_eq!(node::Identifier::from("System.String"), vars.decls[1].decl_type);
     }
 
     #[test]
     fn parses_var_with_modifier() {
-        let vars = parse_vars("var x: ^T");
+        let vars = parse_vars("var x: ^T.B");
 
         assert_eq!(1, vars.decls.len());
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!("T", vars.decls[0].decl_type.to_string());
+        assert_eq!("T.B", vars.decls[0].decl_type.to_string());
         assert!(vars.decls[0].modifiers.contains(&node::VarModifier::Pointer))
     }
 }

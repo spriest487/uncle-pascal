@@ -63,7 +63,7 @@ fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
 fn token_patterns() -> Vec<(String, TokenMatchParser)> {
     vec![
         (
-            r"[a-zA-Z]((\.?[a-zA-Z0-9_])?)+".to_owned(),
+            r"[a-zA-Z](([a-zA-Z0-9_])?)+".to_owned(),
             TokenMatchParser::ParseFn(Box::from(parse_name))
         ),
         (
@@ -145,6 +145,8 @@ fn parse_line(file_name: &str,
         .map(|(pattern, _)| pattern)
         .collect::<Vec<_>>()
         .join("|");
+
+    //println!("{}", all_tokens_pattern);
     let all_tokens_and_unrecognized = all_tokens_pattern + "|\\s+|.";
     let all_tokens_regex = regex::Regex::new(&all_tokens_and_unrecognized)
         .expect("tokens regex must be valid");

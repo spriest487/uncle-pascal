@@ -122,6 +122,16 @@ impl DeclaredType {
     pub fn pointer(self) -> DeclaredType {
         DeclaredType::Pointer(Box::from(self))
     }
+
+    pub fn remove_indirection(self) -> DeclaredType {
+        let mut next = self;
+        loop {
+            match next {
+                DeclaredType::Pointer(target) => next = *target,
+                _ => break next
+            }
+        }
+    }
 }
 
 impl From<FunctionSignature> for DeclaredType {

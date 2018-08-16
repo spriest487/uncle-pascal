@@ -94,4 +94,4 @@ impl<TValue> ParseOutput<TValue> {
     }
 }
 
-type ParseResult<TValue> = Result<ParseOutput<TValue>, ParseError>;
+pub type ParseResult<TValue> = Result<ParseOutput<TValue>, ParseError>;

@@ -33,6 +33,7 @@ pub static PRECEDENCE: [(Operator, Position); 8] = [
     (Plus, Position::Prefix),
     (Minus, Position::Prefix),
 
+    //(Period, Position::Binary),
     (Plus, Position::Binary),
     (Minus, Position::Binary),
     (Equals, Position::Binary),

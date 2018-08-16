@@ -49,7 +49,7 @@ impl Function {
                 .and_then(Matcher::AnyIdentifier)
                 .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
 
-            let type_id = node::Identifier::parse(match_return.value[1].unwrap_identifier());
+            let type_id = node::Identifier::from(match_return.value[1].unwrap_identifier());
 
             ParseOutput::new(Some(type_id), match_return.last_token, match_return.next_tokens)
         } else {
@@ -120,10 +120,9 @@ mod test {
     fn parse_func(src: &str) -> Function {
         let tokens = tokenizer::tokenize("test", src).unwrap();
 
-        let result = Function::parse(tokens, &source::test::empty_context());
-        assert!(result.is_ok());
-
-        result.unwrap().value
+        Function::parse(tokens, &source::test::empty_context())
+            .unwrap()
+            .value
     }
 
     #[test]
@@ -131,7 +130,7 @@ mod test {
         let func = parse_func("function hello(): String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
+        assert_eq!(Some(node::Identifier::from("String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
@@ -140,7 +139,7 @@ mod test {
         let func = parse_func("function hello: String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
+        assert_eq!(Some(node::Identifier::from("String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
@@ -149,13 +148,13 @@ mod test {
         let func = parse_func("function hello(x: System.Float; y: Integer): String; begin end;");
 
         assert_eq!("hello", func.name);
-        assert_eq!(Some(node::Identifier::parse("String")), func.return_type);
+        assert_eq!(Some(node::Identifier::from("String")), func.return_type);
         assert_eq!(2, func.args.decls.len());
 
         assert_eq!("x", func.args.decls[0].name);
-        assert_eq!(node::Identifier::parse("System.Float"), func.args.decls[0].decl_type);
+        assert_eq!(node::Identifier::from("System.Float"), func.args.decls[0].decl_type);
 
         assert_eq!("y", func.args.decls[1].name);
-        assert_eq!(node::Identifier::parse("Integer"), func.args.decls[1].decl_type);
+        assert_eq!(node::Identifier::from("Integer"), func.args.decls[1].decl_type);
     }
 }

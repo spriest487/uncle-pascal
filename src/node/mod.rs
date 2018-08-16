@@ -1,6 +1,8 @@
+pub mod identifier;
 use std::fmt;
 use std::collections::HashSet;
 
+pub use self::identifier::*;
 use operators;
 use source;
 
@@ -10,100 +12,6 @@ pub trait ToSource {
 
 pub trait Symbol {
     type Type: Clone + fmt::Debug;
-}
-
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub struct Identifier {
-    pub namespace: Vec<String>,
-    pub name: String,
-}
-
-impl Symbol for Identifier {
-    type Type = Self;
-}
-
-impl<'a> From<&'a str> for Identifier {
-    fn from(from: &'a str) -> Self {
-        Identifier::parse(from)
-    }
-}
-
-impl fmt::Display for Identifier {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if self.namespace.len() > 0 {
-            write!(f, "{}.", self.namespace.join("."))?;
-        }
-        write!(f, "{}", self.name)
-    }
-}
-
-impl Identifier {
-    pub fn parse(source: &str) -> Self {
-        let mut parts: Vec<String> = source.split('.')
-            .map(|part: &str| part.to_owned())
-            .collect();
-
-        let name = parts.pop().unwrap_or(String::new());
-
-        Identifier {
-            namespace: parts,
-            name,
-        }
-    }
-
-    pub fn child(&self, child_name: &str) -> Identifier {
-        let mut child_ns = self.namespace.clone();
-        child_ns.push(self.name.clone());
-
-        Identifier {
-            name: child_name.to_owned(),
-            namespace: child_ns,
-        }
-    }
-
-    pub fn parent(&self) -> Option<Identifier> {
-        if self.namespace.len() > 0 {
-            let parent_namespace = self.namespace[0..self.namespace.len() - 1]
-                .to_vec();
-
-            let parent_name = self.namespace.last().unwrap().clone();
-
-            Some(Identifier {
-                namespace: parent_namespace,
-                name: parent_name,
-            })
-        } else {
-            None
-        }
-    }
-
-    pub fn append(&self, other: &Identifier) -> Self {
-        let mut result_ns = self.namespace.clone();
-        result_ns.push(self.name.clone());
-        result_ns.extend(other.namespace.clone());
-
-        Identifier {
-            name: other.name.clone(),
-            namespace: result_ns,
-        }
-    }
-
-    pub fn head(&self) -> String {
-        self.namespace.first()
-            .cloned()
-            .unwrap_or_else(|| self.name.clone())
-    }
-
-    pub fn tail(&self) -> Option<Identifier> {
-        if self.namespace.len() > 0 {
-            Some(Identifier {
-                name: self.name.clone(),
-                namespace: self.namespace.iter().cloned().skip(1).collect(),
-            })
-        } else {
-            None
-        }
-    }
 }
 
 #[derive(Clone, Debug)]
@@ -269,8 +177,8 @@ impl<TSymbol> Expression<TSymbol>
     }
 
     pub fn unwrap_member(self) -> (Self, String) {
-        match &self.value {
-            &ExpressionValue::Member { of, name } => (*of, name),
+        match self.value {
+            ExpressionValue::Member { of, name } => (*of, name),
             _ => panic!("called unwrap_member on {}", self),
         }
     }

@@ -36,6 +36,7 @@ pub enum SemanticErrorKind {
         expected: usize,
         actual: usize,
     },
+    MemberAccessOfNonRecord(Option<DeclaredType>, String),
     IllegalName(String),
     EmptyRecord(String),
     InvalidOperator {
@@ -53,6 +54,14 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::UnknownSymbol(ref missing_sym) => {
                 write!(f, "symbol not found: `{}`", missing_sym)
+            }
+
+            &SemanticErrorKind::MemberAccessOfNonRecord(ref actual, ref name) => {
+                write!(f, "cannot access member {} of {} because it is not a record",
+                    name,
+                    actual.as_ref()
+                           .map(|t| t.to_string())
+                           .unwrap_or_else(|| "none".to_string()))
             }
 
             &SemanticErrorKind::UnexpectedType { ref expected, ref actual } => {
@@ -133,6 +142,15 @@ impl SemanticError {
     pub fn empty_record(record_id: String, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::EmptyRecord(record_id),
+            context,
+        }
+    }
+
+    pub fn member_of_non_record(actual: Option<DeclaredType>,
+                                name: String,
+                                context: source::Token) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::MemberAccessOfNonRecord(actual, name),
             context,
         }
     }

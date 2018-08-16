@@ -6,7 +6,7 @@ pub type VarDecl = node::VarDecl<ScopedSymbol>;
 
 impl Into<Symbol> for VarDecl {
     fn into(self) -> Symbol {
-        Symbol::new(node::Identifier::parse(&self.name), self.decl_type)
+        Symbol::new(node::Identifier::from(self.name.as_str()), self.decl_type)
     }
 }
 

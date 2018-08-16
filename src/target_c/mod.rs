@@ -107,6 +107,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &operators::Plus => "+",
                 &operators::Minus => "-",
                 &operators::Deref => "*",
+
                 &operators::Equals |
                 &operators::NotEquals |
                 &operators::Assignment => panic!("bad prefix operator type: {}", op),

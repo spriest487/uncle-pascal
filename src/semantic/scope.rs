@@ -45,7 +45,7 @@ impl ScopedSymbol {
     pub fn to_symbol(&self) -> Symbol {
         match self {
             &ScopedSymbol::Local { ref name, ref decl_type } => {
-                let id = node::Identifier::parse(name);
+                let id = node::Identifier::from(name.as_str());
                 Symbol::new(id, decl_type.clone())
             }
 

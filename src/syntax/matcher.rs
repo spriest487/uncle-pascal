@@ -366,6 +366,40 @@ impl SequenceMatcher {
             }
         }
     }
+
+    pub fn match_peek<TIter>(&self, tokens: TIter, context: source::Token)
+        -> ParseResult<Option<Vec<source::Token>>>
+        where TIter: IntoIterator<Item=source::Token> + 'static
+    {
+        let mut iter = tokens.into_iter();
+        let mut buf = Vec::new();
+
+        for matcher in self.sequence.iter() {
+            match iter.next() {
+                Some(peeked) => {
+                    buf.push(peeked.clone());
+
+                    if !matcher.is_match(&peeked) {
+                        return Ok(ParseOutput::new(None,
+                                                   context.clone(),
+                                                   buf.into_iter().chain(iter)))
+                    }
+                }
+
+                None => {
+                    let last = buf.last().cloned().unwrap_or_else(|| context.clone());
+                    return Err(ParseError::UnexpectedEOF(matcher.clone(), last));
+                }
+            }
+        };
+
+        let next_tokens = buf.clone().into_iter().chain(iter);
+
+        //made it to end without missing a match
+        Ok(ParseOutput::new(Some(buf),
+                            context.clone(),
+                            next_tokens))
+    }
 }
 
 #[derive(Clone, Debug)]

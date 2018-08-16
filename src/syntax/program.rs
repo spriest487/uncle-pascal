@@ -29,7 +29,7 @@ fn parse_uses<TIter>(in_tokens: TIter,
         let unit_id = Matcher::AnyIdentifier.match_one(units_tokens, &units_context)?;
 
         units.push(node::UnitReference {
-            name: node::Identifier::parse(unit_id.value.unwrap_identifier()),
+            name: node::Identifier::from(unit_id.value.unwrap_identifier()),
             context: unit_id.last_token.clone(),
         });
 

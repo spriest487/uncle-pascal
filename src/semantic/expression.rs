@@ -156,6 +156,20 @@ impl Expression {
             &node::ExpressionValue::Block(_) |
             &node::ExpressionValue::ForLoop { .. } |
             &node::ExpressionValue::If { .. } => None,
+
+            &node::ExpressionValue::Member { ref of, ref name } => {
+                let base_type = of.expr_type().map(|dt| dt.remove_indirection());
+                match base_type {
+                    Some(DeclaredType::Record(record)) => {
+                        match record.get_member(&name) {
+                            Some(member) => Some(member.decl_type.clone()),
+                            None => panic!("trying to get type of a field that doesn't exist")
+                        }
+                    }
+
+                    _ => panic!("trying to get type of an illegal dereference")
+                }
+            }
         }
     }
 
@@ -209,6 +223,27 @@ impl Expression {
             &node::ExpressionValue::Identifier(_) |
             &node::ExpressionValue::LiteralString(_) |
             &node::ExpressionValue::LiteralInteger(_) => Ok(()),
+
+            &node::ExpressionValue::Member { ref of, ref name } => {
+                let base_type = of.expr_type().map(|dt| dt.remove_indirection());
+                match base_type {
+                    Some(DeclaredType::Record(record)) => {
+                        match record.get_member(&name) {
+                            Some(_) => Ok(()),
+                            None => {
+                                let name_id = node::Identifier::from(name.as_str());
+                                Err(SemanticError::unknown_symbol(name_id, of.context.clone()))
+                            }
+                        }
+                    }
+
+                    bad @ _ => {
+                        Err(SemanticError::member_of_non_record(bad,
+                                                                name.clone(),
+                                                                of.context.clone()))
+                    }
+                }
+            }
 
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
                 if let DeclaredType::Function(ref sig) = target.decl_type() {

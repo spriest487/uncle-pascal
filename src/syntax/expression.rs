@@ -236,12 +236,10 @@ impl Expression {
     fn parse_identifier<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
-        let match_id = Matcher::AnyIdentifier.match_one(in_tokens, context)?;
+        let parse_id = node::Identifier::parse(in_tokens, context)?;
 
-        Ok(match_id.map(|id_token| {
-            let name = id_token.unwrap_identifier();
-
-            Expression::identifier(node::Identifier::parse(name), id_token.clone())
+        Ok(parse_id.map(|id| {
+            Expression::identifier(id, context.clone())
         }))
     }
 
@@ -282,7 +280,7 @@ impl Expression {
             })
             .collect::<Result<Vec<_>, _>>();
 
-        let call_target = node::Identifier::parse(func_name.value.as_token()
+        let call_target = node::Identifier::from(func_name.value.as_token()
             .unwrap_identifier());
 
         let call_expr = Expression::function_call(call_target,
@@ -360,7 +358,7 @@ impl Expression {
         Ok(ParseOutput::new(for_loop, body_expr.last_token, body_expr.next_tokens))
     }
 
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+    fn parse_base<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         /* this matcher should cover anything which can appear at the start of an expr */
@@ -420,6 +418,49 @@ impl Expression {
                 /* there must be 1+ tokens or match_peek would have failed */
                 let unexpected = all_tokens.get(0).unwrap().clone();
                 Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
+            }
+        }
+    }
+
+    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+        where TIter: IntoIterator<Item=source::Token> + 'static
+    {
+        let base = Expression::parse_base(in_tokens, context)?;
+
+        //TODO: this is ugly, shoudl be some option for this in the peek fns instead
+        //save original tokens so we can return them in case of EOF
+        let tokens_after_base = base.next_tokens.into_iter().collect::<Vec<_>>();
+
+        //is there a .member access after it?
+        let peek_member_name = tokens::Period
+            .and_then(Matcher::AnyIdentifier)
+            .match_peek(tokens_after_base.clone(),
+                        base.last_token.clone());
+
+        match peek_member_name {
+            //no member, not enough tokens
+            Err(ParseError::UnexpectedEOF(_, _)) => {
+                Ok(ParseOutput::new(base.value, base.last_token, tokens_after_base))
+            },
+
+            //other error
+            Err(unexpected) => Err(unexpected),
+
+            Ok(result) => match result.value {
+                //more tokens, but not a member access
+                None => Ok(ParseOutput::new(base.value, base.last_token, tokens_after_base)),
+
+                //this expression continues with a member access
+                Some(member_access) => {
+                    let member_name = member_access[1].unwrap_identifier();
+                    let member_context = member_access[0].clone();
+
+                    let tokens_after = result.next_tokens.skip(2);
+
+                    let expr = Expression::member(base.value, member_name, member_context);
+
+                    Ok(ParseOutput::new(expr, member_access[1].clone(), tokens_after))
+                }
             }
         }
     }
@@ -556,7 +597,7 @@ mod test {
         assert!(expr.value.is_binary_op(operators::Assignment));
 
         let remaining: Vec<_> = expr.next_tokens.collect();
-        assert_eq!(3, remaining.len(), "expected `b := 2` to be left over but got tokens {:?}", remaining);
+        assert_eq!(5, remaining.len(), "expected `b := 2` to be left over but got tokens {:?}", remaining);
 
         let second_ctx = remaining[0].clone();
         let second_expr = Expression::parse(remaining, &second_ctx)
@@ -658,13 +699,13 @@ mod test {
         assert!(expr.is_function_call(), "result should be a function call expr");
         let (test_id, test_args) = expr.unwrap_function_call();
 
-        assert_eq!(node::Identifier::parse("test"), test_id);
+        assert_eq!(node::Identifier::from("test"), test_id);
         assert_eq!(2, test_args.len());
 
         let hello_func = test_args[0].clone();
         assert!(hello_func.is_function_call(), "first argument should be a function call expr");
         let (hello_id, hello_args) = hello_func.unwrap_function_call();
-        assert_eq!(node::Identifier::parse("hello"), hello_id);
+        assert_eq!(node::Identifier::from("hello"), hello_id);
         assert_eq!(1, hello_args.len());
         assert!(hello_args[0].is_any_literal_string());
         assert_eq!("world", hello_args[0].clone().unwrap_literal_string());
@@ -672,12 +713,12 @@ mod test {
         let goodbye_func = test_args[1].clone();
         assert!(goodbye_func.is_function_call(), "second argument should be a function call expr");
         let (goodbye_id, goodbye_args) = goodbye_func.unwrap_function_call();
-        assert_eq!(node::Identifier::parse("goodbye"), goodbye_id);
+        assert_eq!(node::Identifier::from("goodbye"), goodbye_id);
         assert_eq!(1, goodbye_args.len());
         assert!(goodbye_args[0].is_function_call());
 
         let (cruel_id, cruel_args) = goodbye_args[0].clone().unwrap_function_call();
-        assert_eq!(node::Identifier::parse("cruel"), cruel_id);
+        assert_eq!(node::Identifier::from("cruel"), cruel_id);
         assert_eq!(1, cruel_args.len());
         assert!(cruel_args[0].is_any_literal_string());
         assert_eq!("world", cruel_args[0].clone().unwrap_literal_string());
