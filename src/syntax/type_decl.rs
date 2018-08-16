@@ -2,6 +2,7 @@ use syntax::*;
 use node::{self, Identifier};
 use source;
 use keywords;
+use types::RecordKind;
 use tokens::{self, AsToken};
 use operators;
 
@@ -14,10 +15,16 @@ impl RecordDecl {
         let match_name = keywords::Type
             .and_then(Matcher::AnyIdentifier)
             .and_then(operators::Equals)
-            .and_then(keywords::Record)
+            .and_then(keywords::Record.or(keywords::Class))
             .match_sequence(in_tokens, context)?;
 
         let type_name = Identifier::from(match_name.value[1].unwrap_identifier());
+
+        let kind = if match_name.value[3].is_keyword(keywords::Class) {
+            RecordKind::Class
+        } else {
+            RecordKind::Record
+        };
 
         let match_end = keywords::End.split_at_match(match_name.next_tokens,
                                                      &match_name.last_token)?;
@@ -68,6 +75,7 @@ impl RecordDecl {
 
         let record = RecordDecl {
             name: type_name,
+            kind,
             context: match_name.value[0].clone(),
             members: decls,
         };

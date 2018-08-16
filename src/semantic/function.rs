@@ -1,8 +1,7 @@
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
-use types::DeclaredType;
-use types::FunctionSignature;
+use types::{DeclaredType, FunctionSignature, RecordKind};
 
 const RESULT_VAR_NAME: &str = "result";
 
@@ -90,7 +89,7 @@ impl Function {
         // make sure constructors return something constructible
         if self.constructor {
             match self.return_type.as_ref() {
-                Some(DeclaredType::Pointer(pointed_type)) if pointed_type.is_record() => {},
+                Some(DeclaredType::Record(decl)) if decl.kind == RecordKind::Class => {},
                 _ => return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
                                                                         self.context.clone()))
             }

@@ -56,9 +56,16 @@ impl fmt::Display for FunctionSignature {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum RecordKind {
+    Record,
+    Class,
+}
+
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct DeclaredRecord {
     pub name: Identifier,
+    pub kind: RecordKind,
     pub members: Vec<Symbol>,
 }
 

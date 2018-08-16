@@ -3,14 +3,14 @@ program HelloWorld
 
 uses System, Vector
 
-function Greet(name: ^System.String): ^System.String
+function Greet(name: System.String): System.String
 begin
   let msg := 'hello ' + name + '!'
   result := msg
 end
 
 var
-  vec: ^Vector.Vector
+  vec: Vector.Vector
 
 begin
   let x := 1

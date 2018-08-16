@@ -24,6 +24,7 @@ impl RecordDecl {
 
             Ok(RecordDecl {
                 name: qualified_name,
+                kind: decl.kind,
                 context: decl.context.clone(),
                 members
             })
@@ -33,6 +34,7 @@ impl RecordDecl {
     pub fn record_type(&self) -> types::DeclaredType {
         let record = types::DeclaredRecord {
             name: self.name.clone(),
+            kind: self.kind,
             members: self.members.iter()
                 .map(|member| {
                     types::Symbol::new(member.name.clone(), member.decl_type.clone())

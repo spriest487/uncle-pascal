@@ -4,6 +4,7 @@ pub mod expression;
 use std::fmt;
 
 use source;
+use types::{ RecordKind };
 pub use self::identifier::*;
 pub use self::expression::*;
 
@@ -87,6 +88,8 @@ pub struct RecordDecl<TSymbol>
     where TSymbol: Symbol
 {
     pub name: Identifier,
+    pub kind: RecordKind,
+
     pub context: source::Token,
     pub members: Vec<VarDecl<TSymbol>>,
 }

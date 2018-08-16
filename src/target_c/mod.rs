@@ -30,7 +30,10 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
             format!("({} (*{})({}))", return_type, name, arg_types)
         }
         &types::DeclaredType::Record(ref decl) => {
-            format!("struct {}", identifier_to_c(&decl.name))
+            match decl.kind {
+                types::RecordKind::Class => format!("/* {} */ struct System_Internal_Rc", decl.name),
+                types::RecordKind::Record => format!("struct {}", identifier_to_c(&decl.name)),
+            }
         }
     }.to_owned()
 }
@@ -58,7 +61,8 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
     let id = identifier_to_c(&target.name);
 
     match &target.decl_type {
-        &types::DeclaredType::Record(ref _record) => {
+        &types::DeclaredType::Record(ref _decl) => {
+            /* zero initializing works for both record instances and RCd classes */
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
 
@@ -198,29 +202,46 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         &node::ExpressionValue::Member { ref of, ref name } => {
+            let mut member_out = String::new();
             //panic!("of: {:?}, name: {}", of, name);
-            let mut of_type = of.expr_type().unwrap();
+            let mut of_type: types::DeclaredType = of.expr_type()
+                .unwrap()
+                .expect("target of member expression must exist");
+
             let mut deref_levels = 0;
             loop {
                 match of_type {
-                    Some(types::DeclaredType::Pointer(of_target)) => {
-                        write!(out, "(*")?;
+                    types::DeclaredType::Pointer(of_target) => {
+                        write!(member_out, "(*")?;
                         deref_levels += 1;
-                        of_type = Some(*of_target);
+                        of_type = *of_target;
                     }
 
                     _ => {
-                        write_expr(out, of)?;
+                        write_expr(&mut member_out, of)?;
                         break;
                     }
                 }
             }
 
             for _ in 0..deref_levels {
-                write!(out, ")")?;
+                write!(member_out, ")")?;
             }
 
-            write!(out, ".{}", name)
+            match &of_type {
+                types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
+                    let of_type_c = type_to_c(&of_type);
+                    let c_class_struct_name = format!("struct {}", identifier_to_c(&decl.name));
+
+                    member_out.insert_str(0, &format!("(({}*)", c_class_struct_name));
+                    write!(member_out, ".Value)->{}", name)?;
+                }
+                _ => {
+                    write!(member_out, ".{}", name)?;
+                }
+            };
+
+            out.write_str(&member_out)
         }
 
         &node::ExpressionValue::Block(ref block) => {
@@ -293,18 +314,10 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     default_initialize_vars(out, &function.local_vars)?;
 
     if function.constructor {
-        let return_struct_type = function.return_type.as_ref()
-            .expect("constructor must always have a return type")
-            .deref_type()
-            .cloned()
-            .expect("constructor return type must always be a pointer");
-        let return_struct_c_type = type_to_c(&return_struct_type);
-
-        writeln!(out, "result = malloc(sizeof({}));", return_struct_c_type)?;
-        writeln!(out, "if (!result) {{")?;
-        writeln!(out, "    fputs(\"memory allocation failed in {} constructor\", stderr);", return_struct_type)?;
-        writeln!(out, "    abort();")?;
-        writeln!(out, "}}")?;
+        //the actual return type is an Rc
+        writeln!(out, "result = System_Internal_Rc_GetMem(sizeof({}), \"{}\");",
+                 return_type_c.as_ref().expect("constructor must have valid C return type"),
+                 function.return_type.as_ref().expect("constructor must have return type"))?;
     }
 
     write_block(out, &function.body)?;

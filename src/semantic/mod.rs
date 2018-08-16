@@ -83,7 +83,7 @@ impl fmt::Display for SemanticErrorKind {
                 let actual_name = actual.as_ref().map(|t| t.to_string())
                     .unwrap_or_else(|| "none".to_string());
 
-                write!(f, "return type of constructor function must be pointer to a record, found `{}`",
+                write!(f, "return type of constructor function must be a class, found `{}`",
                     actual_name)
             }
 

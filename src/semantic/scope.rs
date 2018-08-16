@@ -146,6 +146,7 @@ impl Scope {
     pub fn system() -> Self {
         let string_type = DeclaredType::Record(DeclaredRecord {
             name: Identifier::from("System.String"),
+            kind: RecordKind::Class,
             members: vec![
                 Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
                 Symbol::new(Identifier::from("Length"), DeclaredType::Integer),
@@ -162,7 +163,7 @@ impl Scope {
             .with_symbol_absolute(Identifier::from("System.WriteLn"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("WriteLn"),
-                                      arg_types: vec![string_type.clone().pointer()],
+                                      arg_types: vec![string_type.clone()],
                                       return_type: None,
                                   }))
             .with_symbol_absolute(Identifier::from("System.GetMem"),
@@ -184,13 +185,13 @@ impl Scope {
                                           DeclaredType::Byte.pointer(),
                                           DeclaredType::Integer,
                                       ],
-                                      return_type: Some(string_type.clone().pointer()),
+                                      return_type: Some(string_type.clone()),
                                   }))
             .with_symbol_absolute(Identifier::from("System.StringConcat"),
             DeclaredType::from(FunctionSignature {
                 name: Identifier::from("StringConcat"),
-                arg_types: vec![string_type.clone().pointer(), string_type.clone().pointer()],
-                return_type: Some(string_type.clone().pointer())
+                arg_types: vec![string_type.clone(), string_type.clone()],
+                return_type: Some(string_type.clone())
             }))
     }
 
