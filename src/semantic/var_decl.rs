@@ -13,7 +13,6 @@ impl Into<Symbol> for VarDecl {
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope) -> Result<Self, SemanticError> {
         let base_var_type = scope.get_type(&decl.decl_type)
-            .cloned()
             .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.clone(),
                                                        decl.context.clone()))?;
 

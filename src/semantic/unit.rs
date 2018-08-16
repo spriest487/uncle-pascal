@@ -6,8 +6,9 @@ pub type Unit = node::Unit<ScopedSymbol>;
 pub type UnitDeclaration = node::UnitDeclaration<ScopedSymbol>;
 
 impl Unit {
-    pub fn annotate_decls<'a, TDecls>(decls: TDecls, mut scope: Scope)
-        -> Result<(Vec<UnitDeclaration>, Scope), SemanticError>
+    pub fn annotate_decls<'a, TDecls>(decls: TDecls,
+                                      mut scope: Scope)
+                                      -> Result<(Vec<UnitDeclaration>, Scope), SemanticError>
         where TDecls: IntoIterator<Item=&'a syntax::UnitDeclaration>,
     {
         let mut result = Vec::new();
@@ -18,7 +19,7 @@ impl Unit {
                     let record_decl = RecordDecl::annotate(parsed_decl, &scope)?;
 
                     scope = scope.with_type(record_decl.name.clone(),
-                                                            record_decl.record_type());
+                                            record_decl.record_type());
 
                     result.push(node::UnitDeclaration::Record(record_decl))
                 }
@@ -27,7 +28,7 @@ impl Unit {
                     let func_decl = Function::annotate(parsed_func, &scope)?;
 
                     scope = scope.with_symbol(func_decl.name.clone(),
-                                                              func_decl.signature_type());
+                                              func_decl.signature_type());
 
                     func_decl.type_check()?;
 
@@ -46,13 +47,15 @@ impl Unit {
     }
 
     pub fn annotate(unit: &syntax::Unit, scope: Scope) -> Result<(Self, Scope), SemanticError> {
+        let unit_scope = scope.with_local_namespace(&unit.name);
+
         let (interface_decls, interface_scope) = Unit::annotate_decls(
             unit.interface.iter(),
-            scope)?;
+            unit_scope)?;
 
-        let (impl_decls, impl_scope) = Unit::annotate_decls(
+        let (impl_decls, _) = Unit::annotate_decls(
             unit.implementation.iter(),
-            interface_scope)?;
+            interface_scope.clone())?;
 
         let unit = Unit {
             interface: interface_decls,
@@ -61,6 +64,6 @@ impl Unit {
             uses: unit.uses.clone(),
         };
 
-        Ok((unit, impl_scope))
+        Ok((unit, interface_scope))
     }
 }

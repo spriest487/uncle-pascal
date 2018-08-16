@@ -32,7 +32,7 @@ impl node::Symbol for Symbol {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct FunctionSignature {
-    pub name: String,
+    pub name: node::Identifier,
     pub return_type: Option<DeclaredType>,
     pub arg_types: Vec<DeclaredType>,
 }
@@ -55,7 +55,7 @@ impl fmt::Display for FunctionSignature {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct DeclaredRecord {
-    pub name: String,
+    pub name: node::Identifier,
     pub members: Vec<Symbol>,
 }
 

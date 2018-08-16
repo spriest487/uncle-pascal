@@ -1,23 +1,26 @@
 use std::collections::HashSet;
 
-use node;
+use node::{self, Identifier};
 use syntax;
 use semantic::*;
+use types::DeclaredType;
+use types::FunctionSignature;
 
-const RESULT_VAR_NAME : &str = "result";
+const RESULT_VAR_NAME: &str = "result";
 
 pub type Function = node::FunctionDecl<ScopedSymbol>;
 
 impl Function {
-    pub fn annotate(function: &syntax::Function, scope: &Scope) -> Result<Self, SemanticError> {
+    pub fn annotate(function: &syntax::Function,
+                    scope: &Scope) -> Result<Self, SemanticError> {
         let return_type = match function.return_type {
             Some(ref func_return_type) => {
-                let found_type = scope.get_type(func_return_type)
-                    .cloned()
+                let found_type = scope.get_type(func_return_type);
+                let return_type = found_type
                     .ok_or_else(|| SemanticError::unknown_type(func_return_type.clone(),
-                        function.context.clone()))?;
+                                                               function.context.clone()))?;
 
-                Some(found_type)
+                Some(return_type)
             }
 
             None => None
@@ -26,7 +29,7 @@ impl Function {
         /* there can't already be a local symbol called "result" */
         function.local_vars.decls.iter().find(|decl| decl.name == RESULT_VAR_NAME)
             .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
-                function.context.clone())))
+                                                     function.context.clone())))
             .unwrap_or(Ok(()))?;
 
         let mut local_vars = Vars::annotate(&function.local_vars, &scope)?;
@@ -48,8 +51,10 @@ impl Function {
 
         let body = Block::annotate(&function.body, &local_scope)?;
 
+        let qualified_name = local_scope.qualify_local_name(&function.name);
+
         Ok(Function {
-            name: function.name.clone(),
+            name: qualified_name,
             context: function.context.clone(),
             return_type,
             local_vars,
@@ -61,7 +66,7 @@ impl Function {
     pub fn signature_type(&self) -> DeclaredType {
         let sig = FunctionSignature {
             return_type: self.return_type.clone(),
-            name: self.name.clone(),
+            name: Identifier::from(self.name.as_str()),
             arg_types: self.args.decls.iter().map(|arg| arg.decl_type.clone()).collect(),
         };
 

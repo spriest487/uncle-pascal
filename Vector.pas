@@ -37,5 +37,13 @@ begin
   ^(self.Elements + (self.Length - 1)) := p
 end
 
+procedure AddAll(self: ^Vector; other: ^Vector)
+var
+  i: System.Integer
+begin
+  for i := 0 to other.Length do
+    Add(self, ^(other.Elements + i))
+end
+
 implementation
 end.

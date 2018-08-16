@@ -13,6 +13,7 @@ pub enum Named {
 
 #[derive(Clone, Debug)]
 pub struct Scope {
+    local_name: Option<node::Identifier>,
     names: HashMap<String, Named>,
 
     children: HashMap<String, Scope>,
@@ -111,6 +112,7 @@ impl Default for Scope {
 impl Scope {
     pub fn new() -> Self {
         Scope {
+            local_name: None,
             names: HashMap::new(),
             children: HashMap::new(),
         }
@@ -118,6 +120,7 @@ impl Scope {
 
     pub fn system() -> Self {
         Scope::new()
+            .with_local_namespace("System")
             .with_type("Byte".to_owned(), DeclaredType::Byte)
             .with_type("Integer".to_owned(), DeclaredType::Integer)
             .with_type("String".to_owned(), DeclaredType::String)
@@ -125,36 +128,55 @@ impl Scope {
             .with_type("Boolean".to_owned(), DeclaredType::Boolean)
             .with_symbol("WriteLn".to_owned(),
                          DeclaredType::from(FunctionSignature {
-                             name: "WriteLn".to_owned(),
+                             name: node::Identifier::from("WriteLn"),
                              arg_types: vec![DeclaredType::String],
                              return_type: None,
                          }))
             .with_symbol("GetMem".to_owned(),
                          DeclaredType::from(FunctionSignature {
-                             name: "GetMem".to_owned(),
+                             name: node::Identifier::from("GetMem"),
                              arg_types: vec![DeclaredType::Integer],
                              return_type: Some(DeclaredType::Byte.pointer()),
                          }))
             .with_symbol("FreeMem".to_owned(),
                          DeclaredType::from(FunctionSignature {
-                             name: "FreeMem".to_owned(),
+                             name: node::Identifier::from("FreeMem"),
                              arg_types: vec![DeclaredType::Byte.pointer()],
                              return_type: None,
                          }))
     }
 
+    pub fn qualify_local_name(&self, name: &str) -> String {
+        match &self.local_name {
+            &Some(ref local_name) => local_name.child(&name).to_string(),
+            &None => name.to_owned()
+        }
+    }
+
     pub fn with_child(mut self, name: String, child: Scope) -> Self {
-        self.children.insert(name, child);
+        let qualified_name = self.qualify_local_name(&name);
+        self.children.insert(qualified_name, child);
         self
     }
 
     pub fn with_type(mut self, name: String, named_type: DeclaredType) -> Self {
-        self.names.insert(name, Named::Type(named_type));
+        let qualified_name = self.qualify_local_name(&name);
+        self.names.insert(qualified_name, Named::Type(named_type));
         self
     }
 
     pub fn with_symbol(mut self, name: String, decl_type: DeclaredType) -> Self {
-        self.names.insert(name, Named::Symbol(decl_type));
+        let qualified_name = self.qualify_local_name(&name);
+        self.names.insert(qualified_name, Named::Symbol(decl_type));
+        self
+    }
+
+    pub fn with_local_namespace(mut self, name: &str) -> Self {
+        self.local_name = match self.local_name {
+            Some(current_name) => Some(current_name.child(name)),
+            None => Some(node::Identifier::from(name)),
+        };
+
         self
     }
 
@@ -168,6 +190,32 @@ impl Scope {
     }
 
     pub fn get_symbol(&self, name: &node::Identifier) -> Option<ScopedSymbol> {
+        match &self.local_name {
+            &None => self.get_symbol_global(name),
+            &Some(ref local_name) => {
+                let name_in_local_ns = local_name.append(name);
+
+                self.get_symbol_global(&name_in_local_ns)
+                    .or_else(|| self.get_symbol_global(name))
+            }
+        }
+    }
+
+    pub fn get_type(&self, name: &node::Identifier) -> Option<DeclaredType> {
+        match &self.local_name {
+            &None => {
+                self.get_type_global(name)
+            },
+            &Some(ref local_name) => {
+                let name_in_local_ns = local_name.append(name);
+
+                self.get_type_global(&name_in_local_ns)
+                    .or_else(|| self.get_type_global(name))
+            }
+        }
+    }
+
+    fn get_symbol_global(&self, name: &node::Identifier) -> Option<ScopedSymbol> {
         match name.parent() {
             /* the identifier is qualified with a namespace, and exists either in a child scope,
             or as a member of a record in the local scope or a child scope */
@@ -246,7 +294,35 @@ impl Scope {
         })
     }
 
-    pub fn get_type(&self, name: &node::Identifier) -> Option<&DeclaredType> {
+    fn get_type_global(&self, name: &node::Identifier) -> Option<DeclaredType> {
+        fn type_named_in_child(child_ns: &str, child_type: &DeclaredType) -> DeclaredType {
+            match child_type {
+                &DeclaredType::Record(ref record_decl) => {
+                    let mut qualified_decl = record_decl.clone();
+                    qualified_decl.name = node::Identifier::from(child_ns)
+                        .append(&record_decl.name);
+
+                    DeclaredType::Record(qualified_decl)
+                }
+
+                &DeclaredType::Function(ref sig) => {
+                    let mut qualified_sig = sig.clone();
+                    qualified_sig.name = node::Identifier::from(child_ns)
+                        .append(&sig.name);
+
+                    DeclaredType::Function(qualified_sig)
+                }
+
+                &DeclaredType::Pointer(ref target) => {
+                    type_named_in_child(child_ns, target.as_ref())
+                        .pointer()
+                }
+
+                //type does not need qualifying
+                _ => child_type.clone()
+            }
+        }
+
         if name.namespace.len() > 0 {
             let child_scope_name = &name.namespace[0];
             let name_in_child_scope = name.tail().unwrap();
@@ -255,9 +331,12 @@ impl Scope {
                 .and_then(|child_scope| {
                     child_scope.get_type(&name_in_child_scope)
                 })
+                .map(|type_in_child| {
+                    type_named_in_child(child_scope_name, &type_in_child)
+                })
         } else {
             match self.names.get(&name.name) {
-                Some(&Named::Type(ref result)) => Some(result),
+                Some(&Named::Type(ref result)) => Some(result.clone()),
                 _ => None
             }
         }
