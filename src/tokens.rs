@@ -131,3 +131,14 @@ impl fmt::Display for Token {
         }
     }
 }
+
+impl<T> ToSource for Vec<T>
+    where T: AsToken
+{
+    fn to_source(&self) -> String {
+        self.iter()
+            .map(|t| t.as_token().to_source())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}

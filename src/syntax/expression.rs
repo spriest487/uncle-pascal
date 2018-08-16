@@ -27,7 +27,8 @@ pub enum Expression {
         condition: Box<Expression>,
         then_branch: Box<Expression>,
         else_branch: Option<Box<Expression>>,
-    }
+    },
+    Block(Block)
 }
 
 fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
@@ -140,6 +141,8 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
             else_branch: Some(Box::from(else_branch)),
         })
     } else {
+        println!("no else branch starting from {}", cond_tokens.last_token);
+
         let then = Matcher::Keyword(keywords::Then)
             .match_one(peek_then_else.next_tokens, &peek_then_else.last_token)?;
         let then_branch = Expression::parse(then.next_tokens, &then.last_token)?;
@@ -174,6 +177,13 @@ impl Expression {
             match expr_first.value {
                 Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
                     parse_if(expr_first.next_tokens, &expr_first.last_token)
+                }
+
+                Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
+                    let block = Block::parse(expr_first.next_tokens, &expr_first.last_token)?
+                        .finish()?;
+
+                    Ok(Expression::Block(block))
                 }
 
                 Some(ref identifier) if identifier.is_any_identifier() => {
@@ -234,6 +244,10 @@ impl ToSource for Expression {
                 }
 
                 lines.join("\n")
+            }
+
+            &Expression::Block(ref block) => {
+                block.to_source()
             }
         }
     }

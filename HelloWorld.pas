@@ -21,10 +21,12 @@ begin
 
   WriteLn('hello world');
 
-  if x = 1 then
+  if x = 1 then begin
     WriteLn('one')
-  else
+  end
+  else begin
     WriteLn('not one');
+  end
 
   //WriteLn(IntToStr(x + y));
 

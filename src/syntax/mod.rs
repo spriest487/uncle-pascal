@@ -25,6 +25,16 @@ pub enum ParseError<TToken> {
     UnexpectedEOF(Matcher, TToken),
 }
 
+#[allow(dead_code)]
+impl<T> ParseError<T> {
+    pub fn is_eof(&self) -> bool {
+        match self {
+            &ParseError::UnexpectedEOF(_, _) => true,
+            _ => false
+        }
+    }
+}
+
 impl<TToken> fmt::Display for ParseError<TToken>
     where TToken: tokens::AsToken + fmt::Display
 {
@@ -343,10 +353,11 @@ impl BlockMatcher {
             return Ok(ParseOutput::new(None, open_token.last_token, open_token.next_tokens));
         }
 
-        let mut block_tokens = open_token.next_tokens;
-        let mut open_count = 1;
+        let mut block_tokens = open_token.next_tokens.skip(1);
 
-        let mut peeked = Vec::new();
+        let mut open_count = 1;
+        let mut peeked = vec![open_token.value.as_ref().unwrap().clone()];
+
         let mut final_close_token = None;
 
         loop {
@@ -373,8 +384,9 @@ impl BlockMatcher {
             }
         }
 
-        let inner_len = peeked.len() - 1;
+        let inner_len = peeked.len() - 2; //2 because open + close
         let inner_tokens = peeked.iter()
+            .skip(1)
             .take(inner_len)
             .cloned()
             .collect::<Vec<_>>();
@@ -388,6 +400,7 @@ impl BlockMatcher {
                     close: close_token.clone(),
                     inner: inner_tokens,
                 };
+
                 Ok(ParseOutput::new(Some(matched_block), close_token, tokens_unpeeked))
             }
             None => {
