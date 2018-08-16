@@ -515,7 +515,7 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
 }
 
 pub fn write_function(out: &mut String,
-                      function: &semantic::Function,
+                      function: &semantic::FunctionDecl,
                       globals: &mut ModuleGlobals)
                       -> fmt::Result {
     let return_type_c = function.return_type.as_ref()

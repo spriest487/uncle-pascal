@@ -34,7 +34,7 @@ impl Unit {
                 }
 
                 node::UnitDeclaration::Function(parsed_func) => {
-                    let func_decl = Function::annotate(parsed_func, &scope)?;
+                    let func_decl = FunctionDecl::annotate(parsed_func, &scope)?;
 
                     scope = scope.with_symbol_absolute(func_decl.name.clone(),
                                                        func_decl.signature_type());

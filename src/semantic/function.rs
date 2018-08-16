@@ -5,10 +5,10 @@ use types::{Type, FunctionSignature, RecordKind};
 
 const RESULT_VAR_NAME: &str = "result";
 
-pub type Function = node::FunctionDecl<ScopedSymbol>;
+pub type FunctionDecl = node::FunctionDecl<ScopedSymbol>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol>;
 
-impl Function {
+impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
                     scope: &Scope) -> Result<Self, SemanticError> {
         let return_type = match &function.return_type {
@@ -69,7 +69,7 @@ impl Function {
             None => None,
         };
 
-        Ok(Function {
+        Ok(FunctionDecl {
             name: qualified_name,
             context: function.context.clone(),
             kind: function.kind,
