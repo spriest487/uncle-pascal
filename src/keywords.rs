@@ -38,6 +38,9 @@ pub enum Keyword {
     True,
     False,
     Set,
+    Try,
+    Except,
+    Finally,
 }
 
 impl Keyword {
@@ -74,6 +77,9 @@ impl Keyword {
             "true" => Some(True),
             "false" => Some(False),
             "set" => Some(Set),
+            "try" => Some(Try),
+            "except" => Some(Except),
+            "finally" => Some(Finally),
             _ => None,
         }
     }
@@ -120,6 +126,9 @@ impl ToSource for Keyword {
             True => "true",
             False => "false",
             Set => "set",
+            Try => "try",
+            Except => "except",
+            Finally => "finally",
         }.to_string()
     }
 }

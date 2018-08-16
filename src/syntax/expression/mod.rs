@@ -51,6 +51,7 @@ fn match_statement() -> Matcher {
         .or(keywords::If)
         .or(keywords::While)
         .or(keywords::For)
+        .or(keywords::Try)
 }
 
 /* this matcher should cover anything which can appear at the start of an expr */
@@ -305,6 +306,64 @@ fn parse_bracket_group(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(subexpr)
 }
 
+fn match_statements_terminated_by(tokens: &mut TokenStream,
+                                  terminator: impl Into<Matcher>)
+                                  -> ParseResult<Vec<Expression>> {
+    let terminator = terminator.into();
+    tokens.match_repeating(|_i, tokens: &mut TokenStream| {
+        // empty statements
+        while tokens.look_ahead().match_one(tokens::Semicolon).is_some() {
+            tokens.advance(1);
+        }
+
+        match tokens.look_ahead().next() {
+            Some(ref t) if terminator.is_match(t) => return Ok(None),
+            _ => {
+                let expr = Expression::parse(tokens).map(Option::from)?;
+                tokens.match_or_endl(tokens::Semicolon)?;
+                Ok(expr)
+            }
+        }
+    })
+}
+
+fn parse_try_except(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(keywords::Try)?;
+    eprintln!("exception handling is not supported! found `try` block starting at {}", context);
+
+    let try_exprs = match_statements_terminated_by(tokens, keywords::Finally.or(keywords::Except))?;
+
+    // except block is not used but must be parsed anyway
+    let _except_exprs = match tokens.look_ahead().match_one(keywords::Except) {
+        Some(_) => {
+            tokens.advance(1);
+            match_statements_terminated_by(tokens, keywords::Finally.or(keywords::End))?
+        }
+        None => Vec::new(),
+    };
+
+    let finally_exprs = match tokens.look_ahead().match_one(keywords::Finally) {
+        Some(_) => {
+            tokens.advance(1);
+            match_statements_terminated_by(tokens, keywords::End)?
+        }
+        None => Vec::new(),
+    };
+
+    tokens.match_one(keywords::End)?;
+    tokens.match_or_endl(tokens::Semicolon)?;
+
+    // output as block with try + finally exprs, except gets ignored
+    Ok(Expression::block(Block {
+        statements: {
+            let mut all_exprs = try_exprs;
+            all_exprs.extend(finally_exprs);
+            all_exprs
+        },
+        context: context.into(),
+    }))
+}
+
 fn parse_set_constructor(tokens: &mut TokenStream) -> ExpressionResult {
     let context = tokens.match_one(tokens::SquareBracketLeft)?;
 
@@ -536,24 +595,28 @@ impl Parse for Expression {
             /* it's a structured statement, it must consist of this one statement
             and nothing else */
             Some(ref kw) if kw.is_keyword(keywords::Let) => {
-                return parse_let_binding(tokens);
+                parse_let_binding(tokens)
             }
 
             Some(ref kw) if kw.is_keyword(keywords::For) => {
-                return parse_for_loop(tokens);
+                parse_for_loop(tokens)
             }
 
             Some(ref kw) if kw.is_keyword(keywords::If) => {
-                return parse_if(tokens);
+                parse_if(tokens)
             }
 
             Some(ref kw) if kw.is_keyword(keywords::While) => {
-                return parse_while_loop(tokens);
+                parse_while_loop(tokens)
             }
 
             Some(ref kw) if kw.is_keyword(keywords::Begin) => {
                 let parsed_block = Block::parse(tokens)?;
-                return Ok(Expression::block(parsed_block));
+                Ok(Expression::block(parsed_block))
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::Try) => {
+                parse_try_except(tokens)
             }
 
             /* it's a compound value expression, parse parts until we run out

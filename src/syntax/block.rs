@@ -11,16 +11,16 @@ impl Parse for Block {
 
         let mut statements = Vec::new();
         loop {
+            // handle empty statements
+            while tokens.look_ahead().match_one(tokens::Semicolon).is_some() {
+                tokens.advance(1);
+            }
+
             match tokens.look_ahead().next() {
                 Some(ref t) if t.is_keyword(keywords::End) => {
                     //done
                     tokens.advance(1);
                     break;
-                }
-
-                Some(ref t) if t.is_token(&tokens::Semicolon) => {
-                    //empty statement
-                    tokens.advance(1);
                 }
 
                 _ => {
