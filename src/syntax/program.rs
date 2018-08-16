@@ -31,7 +31,7 @@ fn transform_blocks(mut program: Program,
 
 fn replace_block_string_literals(mut block: Block) -> Block {
     block.statements = block.statements.into_iter()
-        .flat_map(|stmt| iter::once(node::transform_expressions(stmt, &|expr: Expression| {
+        .flat_map(|stmt| iter::once(node::transform_expressions(stmt, &mut |expr: Expression| {
             match expr.value {
                 node::ExpressionValue::LiteralString(str) => {
                     let constructor_id = ParsedSymbol(node::Identifier::from("System.StringFromBytes"));

@@ -329,7 +329,8 @@ impl<TSymbol> Expression<TSymbol>
 }
 
 pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
-                         replace: impl Fn(Expression<TSymbol>) -> Expression<TSymbol>) -> Expression<TSymbol>
+                         replace: &mut FnMut(Expression<TSymbol>) -> Expression<TSymbol>) -> Expression<TSymbol>
+    where TSymbol: fmt::Debug
 {
     match root_expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
@@ -341,11 +342,12 @@ pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
 
         ExpressionValue::Block(block) => {
             let statements = block.statements.into_iter()
-                .map(|stmt| transform_expressions(stmt, replace));
+                .map(|stmt| transform_expressions(stmt, replace))
+                .collect();
 
             replace(Expression::block(Block {
                 context: block.context,
-                statements: statements.collect(),
+                statements,
             }))
         }
 
@@ -401,7 +403,8 @@ pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
 
         ExpressionValue::FunctionCall { target, args } => {
             let target = transform_expressions(*target, replace);
-            let args = args.into_iter().map(|arg| transform_expressions(arg, replace));
+            let args: Vec<_> = args.into_iter().map(|arg| transform_expressions(arg, replace))
+                .collect();
 
             replace(Expression::function_call(target, args))
         }

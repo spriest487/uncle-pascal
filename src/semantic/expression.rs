@@ -582,7 +582,7 @@ impl Expression {
 }
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use tokenizer::*;
     use semantic::*;
     use syntax;
@@ -591,7 +591,7 @@ mod test {
     use source;
     use types::{DeclaredType, FunctionSignature};
 
-    fn parse_expr(src: &str, scope: &Scope) -> Expression {
+    pub fn parse_expr(src: &str, scope: &Scope) -> Expression {
         let tokens = tokenize("test", src)
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
