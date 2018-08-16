@@ -191,6 +191,7 @@ pub struct Preprocessor {
     comment_block: String,
 
     current_line: usize,
+    last_char: char,
 
     opts: CompileOptions,
 }
@@ -217,6 +218,8 @@ impl Preprocessor {
             comment_block: String::new(),
 
             current_line: 0,
+
+            last_char: ' '
         }
     }
 
@@ -252,17 +255,29 @@ impl Preprocessor {
                 // continuing an existing comment
                 self.comment_block.push(line_char);
 
-                // did it terminate?
-                if line_char == '}' {
-                    self.process_directive()?;
+                let comment_starter = self.comment_block.chars().next().unwrap();
+
+                // did it terminate the comment this block was started with?
+                let terminated = (line_char == '}' && comment_starter == '{')
+                    || (line_char == ')' && self.last_char == '*' && comment_starter == '(');
+
+                if terminated {
+                    if line_char == '}' {
+                        self.process_directive()?;
+                    }
                     self.comment_block.clear();
                 }
             } else if line_char == '{' {
-                // start a new comment block
+                // start a new { } comment block
                 self.comment_block.push(line_char);
+            } else if self.last_char == '(' && line_char == '*' {
+                self.comment_block.push_str("(*");
+                self.output.pop();
             } else if self.condition_active() {
                 self.output.push(line_char);
             }
+
+            self.last_char = line_char;
         }
 
         self.output.write_char('\n')?;

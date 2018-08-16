@@ -1,6 +1,14 @@
 //this is a line comment
 program HelloWorld
 
+(* this is another comment *)
+(***
+this kind of comment can be multiline
+***)
+
+{ so can
+this kind }
+
 uses System.*, Vector.Vector
 
 {$define friendly}
