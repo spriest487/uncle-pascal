@@ -29,6 +29,8 @@ pub enum Keyword {
     Unit,
     Interface,
     Implementation,
+    Array,
+    Of,
 }
 
 impl Keyword {
@@ -57,6 +59,8 @@ impl Keyword {
             "unit" => Some(Unit),
             "interface" => Some(Interface),
             "implementation" => Some(Implementation),
+            "array" => Some(Array),
+            "of" => Some(Of),
             _ => None,
         }
     }

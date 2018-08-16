@@ -31,10 +31,18 @@ use node::{
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ParsedSymbol(pub Identifier);
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub struct IndexRange {
+    from: isize,
+    to: isize,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ParsedType {
     pub name: Identifier,
     pub indirection: usize,
+
+    pub array_dimensions: Vec<IndexRange>,
 }
 
 impl ToSource for ParsedType {
@@ -48,6 +56,8 @@ impl ParsedType {
         ParsedType {
             name: name.into(),
             indirection: 0,
+
+            array_dimensions: Vec::new(),
         }
     }
 
@@ -55,10 +65,14 @@ impl ParsedType {
         ParsedType {
             name: self.name,
             indirection: self.indirection + 1,
+
+            array_dimensions: self.array_dimensions
         }
     }
 
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<ParsedType> {
+        let array_kw = tokens.match_peek(keywords::Array);
+
         let mut indirection = 0;
 
         loop {

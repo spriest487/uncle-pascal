@@ -388,7 +388,9 @@ impl Preprocessor {
                     Ok(())
                 } else if self.opts.mode != CompileMode::Uncle {
                     // allow unknown directives for compatibility modes
-                    eprintln!("ignoring unknown directive for mode {}", self.opts.mode);
+                    eprintln!("ignoring unrecognized directive {{${}}} for mode {}",
+                              directive_name,
+                              self.opts.mode);
                     Ok(())
                 } else {
                     Err(PreprocessorError::IllegalDirective {
