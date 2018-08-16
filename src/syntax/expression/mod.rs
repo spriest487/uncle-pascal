@@ -5,7 +5,11 @@ use syntax::*;
 use tokens;
 use keywords;
 use tokens::AsToken;
-use node;
+use node::{
+    self,
+    ExpressionValue,
+    SetMemberGroup,
+};
 use source;
 use operators;
 
@@ -57,15 +61,18 @@ fn match_expr_start() -> Matcher {
 or flow control statements) */
 fn match_operand_start() -> Matcher {
     Matcher::AnyIdentifier
+        // subexpr in brackets
         .or(tokens::BracketLeft)
+        // literals
         .or(keywords::True)
         .or(keywords::False)
         .or(Matcher::AnyLiteralInteger)
         .or(Matcher::AnyLiteralString)
         .or(Matcher::AnyLiteralFloat)
-        .or(keywords::True)
-        .or(keywords::False)
         .or(keywords::Nil)
+        // set constructor
+        .or(tokens::SquareBracketLeft)
+        // prefix operator applying to next operand
         .or(Matcher::any_operator_in_position(operators::Position::Prefix))
 }
 
@@ -148,348 +155,397 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expre
     }
 }
 
-impl Expression {
-    fn parse_member_access_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
-        tokens_after.match_one(tokens::Period)?;
+fn parse_member_access_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
+    tokens_after.match_one(tokens::Period)?;
 
-        let member_name = node::Identifier::parse(tokens_after)?;
+    let member_name = node::Identifier::parse(tokens_after)?;
 
 //      println!("found member name {} for base expr {:?}", member_name, base);
-        let member = Expression::member_deep(base, member_name);
-        Ok(member)
+    let member = Expression::member_deep(base, member_name);
+    Ok(member)
+}
+
+fn parse_fn_call_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
+    tokens.match_one(tokens::BracketLeft)?;
+
+    /* no args e.g. `a()` */
+    if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
+        tokens.advance(1);
+        return Ok(Expression::function_call(base, vec![]));
     }
 
-    fn parse_fn_call_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
-        tokens.match_one(tokens::BracketLeft)?;
-
-        /* no args e.g. `a()` */
-        if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
-            tokens.advance(1);
-            return Ok(Expression::function_call(base, vec![]));
+    /* parse args */
+    let arg_exprs = tokens.match_repeating(|i, tokens| {
+        if i > 0 {
+            match tokens.look_ahead().match_one(tokens::Comma) {
+                /* finished parsing one arg and there's no comma indicating another one
+                is coming, this must be the end of the args list */
+                None => return Ok(None),
+                Some(_comma) => tokens.advance(1),
+            }
         }
 
-        /* parse args */
-        let arg_exprs = tokens.match_repeating(|i, tokens| {
-            if i > 0 {
-                match tokens.look_ahead().match_one(tokens::Comma) {
-                    /* finished parsing one arg and there's no comma indicating another one
-                    is coming, this must be the end of the args list */
-                    None => return Ok(None),
-                    Some(_comma) => tokens.advance(1),
-                }
+        Expression::parse(tokens).map(Option::from)
+    })?;
+
+    tokens.match_one(tokens::BracketRight)?;
+
+    Ok(Expression::function_call(base, arg_exprs))
+}
+
+fn parse_array_element_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
+    tokens.match_one(tokens::SquareBracketLeft)?;
+    let index_expr = Expression::parse(tokens)?;
+    tokens.match_one(tokens::SquareBracketRight)?;
+
+    Ok(Expression::array_element(base, index_expr))
+}
+
+fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
+    /* the context of an identifier expression should be the first part of the
+      identifier (if it has multiple parts) */
+    let context = tokens.look_ahead().next();
+    let id = node::Identifier::parse(tokens)?;
+
+    // safe to unwrap context because a token must have existed if the identifier parsed
+    Ok(Expression::identifier(id, context.unwrap()))
+}
+
+fn parse_literal_string(tokens: &mut TokenStream) -> ExpressionResult {
+    let str_token = tokens.match_one(Matcher::AnyLiteralString)?;
+
+    let s = str_token.unwrap_literal_string();
+    Ok(Expression::literal_string(s, tokens.context().clone()))
+}
+
+fn parse_literal_integer(tokens: &mut TokenStream) -> ExpressionResult {
+    let integer_token = tokens.match_one(Matcher::AnyLiteralInteger)?;
+
+    let i = integer_token.unwrap_literal_integer();
+    Ok(Expression::literal_int(i, integer_token.clone()))
+}
+
+fn parse_literal_float(tokens: &mut TokenStream) -> ExpressionResult {
+    let float_token = tokens.match_one(Matcher::AnyLiteralFloat)?;
+
+    let f = float_token.unwrap_literal_float();
+    Ok(Expression::literal_float(f, float_token.clone()))
+}
+
+fn parse_literal_nil(tokens: &mut TokenStream) -> ExpressionResult {
+    tokens.match_one(keywords::Nil)?;
+    Ok(Expression::literal_nil(tokens.context().clone()))
+}
+
+fn parse_literal_bool(tokens: &mut TokenStream) -> ExpressionResult {
+    let kw = tokens.match_one(keywords::True.or(keywords::False))?;
+    let val = kw.is_keyword(keywords::True);
+    Ok(Expression::literal_bool(val, kw))
+}
+
+fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
+    let binding_tokens = tokens.match_sequence(keywords::Let
+        .and_then(Matcher::AnyIdentifier)
+        .and_then(tokens::Operator(operators::Equals)))?;
+
+    let name = binding_tokens[1].unwrap_identifier();
+
+    let value: Expression = tokens.parse()?;
+
+    Ok(Expression::let_binding(name, value, binding_tokens[0].clone()))
+}
+
+fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {
+    let if_kw = tokens.match_one(keywords::If)?;
+    let condition_expr: Expression = tokens.parse()?;
+
+    tokens.match_one(keywords::Then)?;
+    let then_expr: Expression = tokens.parse()?;
+
+    // else present?
+    let else_expr: Option<Expression> = match tokens.look_ahead().match_one(keywords::Else) {
+        Some(_) => {
+            tokens.advance(1);
+            Some(tokens.parse()?)
+        }
+
+        None => None,
+    };
+
+    Ok(Expression::if_then_else(condition_expr, then_expr, else_expr, if_kw))
+}
+
+fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
+    let for_kw = tokens.match_one(keywords::For)?;
+    let from_expr: Expression = tokens.parse()?;
+
+    tokens.match_one(keywords::To)?;
+    let to_expr: Expression = tokens.parse()?;
+
+    tokens.match_one(keywords::Do)?;
+    let body_expr: Expression = tokens.parse()?;
+
+    Ok(Expression::for_loop(from_expr, to_expr, body_expr, ParsedContext::from(for_kw)))
+}
+
+fn parse_bracket_group(tokens: &mut TokenStream) -> ExpressionResult {
+    tokens.match_one(tokens::BracketLeft)?;
+    let subexpr = Expression::parse(tokens)?;
+    tokens.match_one(tokens::BracketRight)?;
+    Ok(subexpr)
+}
+
+fn parse_set_constructor(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(tokens::SquareBracketLeft)?;
+
+    let groups = tokens.match_repeating(|i, tokens: &mut TokenStream| {
+        if i > 0 {
+            match tokens.look_ahead().match_one(tokens::Comma) {
+                Some(_) => tokens.advance(1),
+                None => return Ok(None),
+            }
+        }
+
+        let group_expr = Expression::parse(tokens)?;
+        let (from, to) = match group_expr.value {
+            ExpressionValue::BinaryOperator { lhs, op: operators::RangeInclusive, rhs } => {
+                (*lhs, Some(*rhs))
             }
 
-            Expression::parse(tokens).map(Option::from)
-        })?;
-
-        tokens.match_one(tokens::BracketRight)?;
-
-        Ok(Expression::function_call(base, arg_exprs))
-    }
-
-    fn parse_array_element_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
-        tokens.match_one(tokens::SquareBracketLeft)?;
-        let index_expr = Expression::parse(tokens)?;
-        tokens.match_one(tokens::SquareBracketRight)?;
-
-        Ok(Expression::array_element(base, index_expr))
-    }
-
-    fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
-        /* the context of an identifier expression should be the first part of the
-          identifier (if it has multiple parts) */
-        let context = tokens.look_ahead().next();
-        let id = node::Identifier::parse(tokens)?;
-
-        // safe to unwrap context because a token must have existed if the identifier parsed
-        Ok(Expression::identifier(id, context.unwrap()))
-    }
-
-    fn parse_literal_string(tokens: &mut TokenStream) -> ExpressionResult {
-        let str_token = tokens.match_one(Matcher::AnyLiteralString)?;
-
-        let s = str_token.unwrap_literal_string();
-        Ok(Expression::literal_string(s, tokens.context().clone()))
-    }
-
-    fn parse_literal_integer(tokens: &mut TokenStream) -> ExpressionResult {
-        let integer_token = tokens.match_one(Matcher::AnyLiteralInteger)?;
-
-        let i = integer_token.unwrap_literal_integer();
-        Ok(Expression::literal_int(i, integer_token.clone()))
-    }
-
-    fn parse_literal_float(tokens: &mut TokenStream) -> ExpressionResult {
-        let float_token = tokens.match_one(Matcher::AnyLiteralFloat)?;
-
-        let f = float_token.unwrap_literal_float();
-        Ok(Expression::literal_float(f, float_token.clone()))
-    }
-
-    fn parse_literal_nil(tokens: &mut TokenStream) -> ExpressionResult {
-        tokens.match_one(keywords::Nil)?;
-        Ok(Expression::literal_nil(tokens.context().clone()))
-    }
-
-    fn parse_literal_bool(tokens: &mut TokenStream) -> ExpressionResult {
-        let kw = tokens.match_one(keywords::True.or(keywords::False))?;
-        let val = kw.is_keyword(keywords::True);
-        Ok(Expression::literal_bool(val, kw))
-    }
-
-    fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
-        let binding_tokens = tokens.match_sequence(keywords::Let
-            .and_then(Matcher::AnyIdentifier)
-            .and_then(tokens::Operator(operators::Equals)))?;
-
-        let name = binding_tokens[1].unwrap_identifier();
-
-        let value: Expression = tokens.parse()?;
-
-        Ok(Expression::let_binding(name, value, binding_tokens[0].clone()))
-    }
-
-    fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {
-        let if_kw = tokens.match_one(keywords::If)?;
-        let condition_expr: Expression = tokens.parse()?;
-
-        tokens.match_one(keywords::Then)?;
-        let then_expr: Expression = tokens.parse()?;
-
-        // else present?
-        let else_expr: Option<Expression> = match tokens.look_ahead().match_one(keywords::Else) {
-            Some(_) => {
-                tokens.advance(1);
-                Some(tokens.parse()?)
+            from_value @ _ => {
+                let from_expr = Expression {
+                    context: group_expr.context,
+                    value: from_value,
+                };
+                (from_expr, None)
             }
-
-            None => None,
         };
 
-        Ok(Expression::if_then_else(condition_expr, then_expr, else_expr, if_kw))
+        Ok(Some(SetMemberGroup {
+            from,
+            to,
+        }))
+    })?;
+
+    tokens.match_one(tokens::SquareBracketRight)?;
+
+    Ok(Expression::set_constructor(groups, context))
+}
+
+struct CompoundExpressionParser<'tokens> {
+    tokens: &'tokens mut TokenStream,
+    last_was_operand: bool,
+    parts: Vec<CompoundExpressionPart>,
+}
+
+impl<'tokens> CompoundExpressionParser<'tokens> {
+    fn new(tokens: &'tokens mut TokenStream) -> Self {
+        CompoundExpressionParser {
+            tokens,
+            last_was_operand: false,
+            parts: Vec::new(),
+        }
     }
 
-    fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
-        let for_kw = tokens.match_one(keywords::For)?;
-        let from_expr: Expression = tokens.parse()?;
+    fn parse(mut self) -> ExpressionResult {
+        match self.tokens.look_ahead().match_one(match_statement()) {
+            /* it's a structured statement, it must consist of this one statement
+            and nothing else */
+            Some(ref kw) if kw.is_keyword(keywords::Let) => {
+                return parse_let_binding(self.tokens);
+            }
 
-        tokens.match_one(keywords::To)?;
-        let to_expr: Expression = tokens.parse()?;
+            Some(ref kw) if kw.is_keyword(keywords::For) => {
+                return parse_for_loop(self.tokens);
+            }
 
-        tokens.match_one(keywords::Do)?;
-        let body_expr: Expression = tokens.parse()?;
+            Some(ref kw) if kw.is_keyword(keywords::If) => {
+                return parse_if(self.tokens);
+            }
 
-        Ok(Expression::for_loop(from_expr, to_expr, body_expr, ParsedContext::from(for_kw)))
+            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
+                let parsed_block = Block::parse(self.tokens)?;
+                return Ok(Expression::block(parsed_block));
+            }
+
+            /* it's a compound value expression, parse parts until we run out
+            of valid-looking tokens and try to form an expression out of them */
+            _ => loop {
+                /* an operand can't be followed by another operand, so each time we finish
+                an operand, the next thing must be a member access, a list of arguments to
+                the function the operand referred to, an array element access, or a binary
+                operator connecting this operand to the next one */
+                let more = match self.last_was_operand {
+                    false => self.parse_operand()?,
+                    true => self.parse_operator()?,
+                };
+
+                if !more {
+                    break {
+                        if self.parts.len() == 0 {
+                            let expected = match_expr_start();
+                            return Err(match self.tokens.look_ahead().next() {
+                                Some(unexpected) =>
+                                    ParseError::UnexpectedToken(unexpected, Some(expected)),
+                                None => {
+                                    let after = self.tokens.context().clone();
+                                    ParseError::UnexpectedEOF(expected, after)
+                                }
+                            });
+                        }
+
+                        resolve_ops_by_precedence(self.parts)
+                    };
+                }
+            }
+        }
+    }
+
+    fn parse_operand(&mut self) -> ParseResult<bool> {
+        self.last_was_operand = true;
+
+        match self.tokens.look_ahead().match_one(match_operand_start()) {
+            /* this operand is enclosed in brackets, we expect to find an
+            entire valid subexpression then a close bracket */
+            Some(ref t) if t.is_token(&tokens::BracketLeft) => {
+                let subexpr = parse_bracket_group(self.tokens)?;
+                self.add_operand(subexpr);
+            }
+
+            Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
+                let constructor = parse_set_constructor(self.tokens)?;
+                self.add_operand(constructor);
+            }
+
+            /* it's an operator, but thanks to the match we know this operator
+            is valid in prefix position, so it's part of this expression */
+            Some(ref t) if t.is_any_operator() => {
+                // we need to parse another operand after this!
+                self.last_was_operand = false;
+                let op = self.tokens.match_one(Matcher::AnyOperator)?;
+                self.add_operator(op, operators::Position::Prefix);
+            }
+
+            /* the simple values */
+
+            Some(ref identifier) if identifier.is_any_identifier() => {
+                let expr = parse_identifier(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(ref s) if s.is_any_literal_string() => {
+                let expr = parse_literal_string(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(ref i) if i.is_any_literal_int() => {
+                let expr = parse_literal_integer(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(ref f) if f.is_any_literal_float() => {
+                let expr = parse_literal_float(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(ref nil) if nil.is_literal_nil() => {
+                let expr = parse_literal_nil(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(ref bool_kw) if Matcher::AnyLiteralBoolean.is_match(bool_kw.as_token()) => {
+                let expr = parse_literal_bool(self.tokens)?;
+                self.add_operand(expr);
+            }
+
+            Some(_) => unreachable!("pattern excludes anything else"),
+
+            /* next token is not valid as part of an operand, so this expression
+            must end here */
+            None => return Ok(false),
+        }
+
+        Ok(true)
+    }
+
+    fn add_operand(&mut self, expr: Expression) {
+        let part = CompoundExpressionPart::Operand(CompoundOperand {
+            expr,
+            last_token: self.tokens.context().clone(),
+        });
+
+        self.parts.push(part);
+    }
+
+    fn pop_operand(&mut self) -> Expression {
+        match self.parts.pop() {
+            Some(CompoundExpressionPart::Operand(operand)) => {
+                operand.expr
+            }
+            _ => unreachable!("last should always exist and be an operand here"),
+        }
+    }
+
+    fn parse_operator(&mut self) -> ParseResult<bool> {
+        let any_binary_op = Matcher::any_operator_in_position(operators::Position::Binary);
+        let match_after_operand = any_binary_op
+            .or(tokens::SquareBracketLeft) // array element access
+            .or(tokens::BracketLeft) // function call argument list
+            .or(tokens::Period); // member access
+
+        match self.tokens.look_ahead().match_one(match_after_operand) {
+            /* replace the last operand with a member access */
+            Some(ref t) if t.is_token(&tokens::Period) => {
+                let last_operand = self.pop_operand();
+                let member_access = parse_member_access_after(last_operand, self.tokens)?;
+                self.add_operand(member_access);
+            }
+
+            /* replace the last operand with a function call */
+            Some(ref t) if t.is_token(&tokens::BracketLeft) => {
+                let last_operand = self.pop_operand();
+                let fn_call = parse_fn_call_after(last_operand, self.tokens)?;
+                self.add_operand(fn_call);
+            }
+
+            /* replace the last operand with a function call */
+            Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
+                let last_operand = self.pop_operand();
+                let element_expr = parse_array_element_after(last_operand, self.tokens)?;
+                self.add_operand(element_expr);
+            }
+
+            // binary operator
+            Some(ref t) if t.is_any_operator() => {
+                // expect another operand afterwards
+                self.last_was_operand = false;
+                let op = self.tokens.match_one(Matcher::AnyOperator)?;
+                self.add_operator(op, operators::Position::Binary);
+            }
+
+            Some(_) => unreachable!("pattern excludes anything else"),
+
+            /* nothing following the last operand, which is fine, just end here */
+            None => return Ok(false),
+        }
+
+        Ok(true)
+    }
+
+    fn add_operator(&mut self, op_token: source::Token, pos: operators::Position) {
+        let part = CompoundExpressionPart::Operator(OperatorToken {
+            op: op_token.unwrap_operator(),
+            pos,
+            token: op_token,
+        });
+
+        self.parts.push(part);
     }
 }
 
 impl Parse for Expression {
     fn parse(tokens: &mut TokenStream) -> ExpressionResult {
-        match tokens.look_ahead().match_one(match_statement()) {
-            Some(ref kw) if kw.is_keyword(keywords::Let) => {
-                return Self::parse_let_binding(tokens);
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::For) => {
-                return Self::parse_for_loop(tokens);
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::If) => {
-                return Self::parse_if(tokens);
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
-                let parsed_block = Block::parse(tokens)?;
-                return Ok(Expression::block(parsed_block));
-            }
-
-            _ => { /* it's a value expression, keep going */ }
-        }
-
-        let mut compound_parts = Vec::new();
-
-        /* an operand can't be followed by another operand, so each time we finish
-        an operand, the next thing must be a member access, a list of arguments to
-        the function the operand referred to, an array element access, or a binary
-        operator connecting this operand to the next one */
-        let mut last_was_operand = false;
-
-        loop {
-            let part = if !last_was_operand {
-                last_was_operand = true;
-
-                match tokens.look_ahead().match_one(match_operand_start()) {
-                    /* this operand is enclosed in brackets, we expect to find an
-                    entire valid subexpression then a close bracket */
-                    Some(ref t) if t.is_token(&tokens::BracketLeft) => {
-                        tokens.match_one(tokens::BracketLeft)?;
-                        let subexpr = Expression::parse(tokens)?;
-                        tokens.match_one(tokens::BracketRight)?;
-
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr: subexpr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    /* it's an operator, but thanks to the match we know this operator
-                    is valid in prefix position, so it's part of this expression */
-                    Some(ref t) if t.is_any_operator() => {
-                        // we need to parse another operand after this!
-                        last_was_operand = false;
-
-                        let op = tokens.match_one(Matcher::AnyOperator)?;
-
-                        CompoundExpressionPart::Operator(OperatorToken {
-                            op: op.unwrap_operator(),
-                            token: op,
-                            pos: operators::Position::Prefix,
-                        })
-                    }
-
-                    /* the simple values */
-
-                    Some(ref identifier) if identifier.is_any_identifier() => {
-                        let expr = Expression::parse_identifier(tokens)?;
-
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(ref s) if s.is_any_literal_string() => {
-                        let expr = Expression::parse_literal_string(tokens)?;
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(ref i) if i.is_any_literal_int() => {
-                        let expr = Expression::parse_literal_integer(tokens)?;
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(ref f) if f.is_any_literal_float() => {
-                        let expr = Expression::parse_literal_float(tokens)?;
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(ref nil) if nil.is_literal_nil() => {
-                        let expr = Expression::parse_literal_nil(tokens)?;
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(ref bool_kw) if bool_kw.is_keyword(keywords::True) ||
-                        bool_kw.is_keyword(keywords::False) => {
-                        let expr = Expression::parse_literal_bool(tokens)?;
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    Some(_) => unreachable!("pattern excludes anything else"),
-
-                    /* next token is not valid as part of an operand, so this expression
-                    must end here */
-                    None => break,
-                }
-            } else {
-                let any_binary_op = Matcher::any_operator_in_position(operators::Position::Binary);
-                let match_after_operand = any_binary_op
-                    .or(tokens::SquareBracketLeft) // array element access
-                    .or(tokens::BracketLeft) // function call argument list
-                    .or(tokens::Period); // member access
-
-                fn pop_operand(parts: &mut Vec<CompoundExpressionPart>) -> Expression {
-                    match parts.pop() {
-                        Some(CompoundExpressionPart::Operand(operand)) => {
-                            operand.expr
-                        }
-                        _ => unreachable!("last should always exist and be an operand here"),
-                    }
-                };
-
-                match tokens.look_ahead().match_one(match_after_operand) {
-                    /* replace the last operand with a member access */
-                    Some(ref t) if t.is_token(&tokens::Period) => {
-                        let last_operand = pop_operand(&mut compound_parts);
-                        let member_access = Self::parse_member_access_after(last_operand, tokens)?;
-
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr: member_access,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    /* replace the last operand with a function call */
-                    Some(ref t) if t.is_token(&tokens::BracketLeft) => {
-                        let last_operand = pop_operand(&mut compound_parts);
-                        let fn_call = Self::parse_fn_call_after(last_operand, tokens)?;
-
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr: fn_call,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    /* replace the last operand with a function call */
-                    Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
-                        let last_operand = pop_operand(&mut compound_parts);
-                        let element_expr = Self::parse_array_element_after(last_operand, tokens)?;
-
-                        CompoundExpressionPart::Operand(CompoundOperand {
-                            expr: element_expr,
-                            last_token: tokens.context().clone(),
-                        })
-                    }
-
-                    // binary operator
-                    Some(ref t) if t.is_any_operator() => {
-                        // expect another operand afterwards
-                        last_was_operand = false;
-                        let op = tokens.match_one(Matcher::AnyOperator)?;
-
-                        CompoundExpressionPart::Operator(OperatorToken {
-                            op: op.unwrap_operator(),
-                            token: op,
-                            pos: operators::Position::Binary,
-                        })
-                    }
-
-                    Some(_) => unreachable!("pattern excludes anything else"),
-
-                    /* nothing following the last operand, which is fine, just end here */
-                    None => break,
-                }
-            };
-
-            compound_parts.push(part);
-        }
-
-        if compound_parts.len() == 0 {
-            return Err(match tokens.look_ahead().next() {
-                Some(unexpected) => {
-                    ParseError::UnexpectedToken(unexpected, Some(match_expr_start()))
-                }
-                None => {
-                    ParseError::UnexpectedEOF(match_expr_start(), tokens.context().clone())
-                }
-            });
-
-        }
-
-        resolve_ops_by_precedence(compound_parts)
+        CompoundExpressionParser::new(tokens)
+            .parse()
     }
 }

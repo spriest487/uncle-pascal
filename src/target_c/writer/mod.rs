@@ -417,6 +417,10 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::Block(block) => {
             write_block(out, block, globals)
         }
+
+        ExpressionValue::SetConstructor(_member_groups) => {
+            unimplemented!("set constructor (c++ backend)");
+        }
     }
 }
 

@@ -421,6 +421,7 @@ fn is_lvalue(expr: &Expression) -> bool {
             is_lvalue(of)
         }
 
+        ExpressionValue::SetConstructor(_) |
         ExpressionValue::FunctionCall { .. } |
         ExpressionValue::Constant(_) |
         ExpressionValue::BinaryOperator { .. } |
@@ -654,6 +655,10 @@ impl Expression {
                 let index_expr = Expression::annotate(index_expr.as_ref(), scope.clone())?;
                 Ok(Expression::array_element(of, index_expr))
             }
+
+            ExpressionValue::SetConstructor(_members) => {
+                unimplemented!("set constructor semantic analysis")
+            }
         }
     }
 
@@ -708,6 +713,10 @@ impl Expression {
                 let _index_type = index_expr.expr_type()?;
 
                 unimplemented!("array element typechecking")
+            }
+
+            ExpressionValue::SetConstructor(_members) => {
+                unimplemented!("set constructor typechecking")
             }
         }
     }

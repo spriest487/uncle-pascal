@@ -11,6 +11,12 @@ use consts::{
 use types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct SetMemberGroup<TContext> {
+    pub from: Expression<TContext>,
+    pub to: Option<Expression<TContext>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TContext> {
     PrefixOperator {
         op: operators::Operator,
@@ -50,9 +56,7 @@ pub enum ExpressionValue<TContext> {
         to: Box<Expression<TContext>>,
         body: Box<Expression<TContext>>,
     },
-    Set {
-        values:
-    }
+    SetConstructor(Vec<SetMemberGroup<TContext>>),
 }
 
 
@@ -237,6 +241,15 @@ impl<TContext> Expression<TContext>
                 index_expr: Box::new(index_expr),
             },
             context,
+        }
+    }
+
+    pub fn set_constructor(members: Vec<SetMemberGroup<TContext>>,
+                           context: impl Into<TContext>)
+                           -> Self {
+        Expression {
+            value: ExpressionValue::SetConstructor(members),
+            context: context.into(),
         }
     }
 
@@ -442,7 +455,7 @@ pub fn transform_expressions<TContext>(
     where TContext: Context + Clone + fmt::Debug
 {
     match root_expr.value {
-        ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let lhs = transform_expressions(*lhs, replace);
             let rhs = transform_expressions(*rhs, replace);
 
@@ -514,6 +527,19 @@ pub fn transform_expressions<TContext>(
                 .collect();
 
             replace(Expression::function_call(target, args))
+        }
+
+        ExpressionValue::SetConstructor(members) => {
+            let members = members.into_iter()
+                .map(|member| {
+                    let from = transform_expressions(member.from, replace);
+                    let to = member.to.map(|to| transform_expressions(to, replace));
+
+                    SetMemberGroup { from, to }
+                })
+                .collect();
+
+            replace(Expression::set_constructor(members, root_expr.context))
         }
     }
 }

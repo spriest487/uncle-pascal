@@ -112,6 +112,19 @@ impl<C> ToSource for ExpressionValue<C>
             ExpressionValue::ForLoop { from, to, body } => {
                 format!("for {} to {} do {}", from.to_source(), to.to_source(), body.to_source())
             }
+
+            ExpressionValue::SetConstructor(members) => {
+                format!("[{}]", members.iter()
+                    .map(|member| {
+                        let member_src = member.from.to_source();
+                        match member.to.as_ref() {
+                            Some(to) => format!("{}..{}", member_src, to.to_source()),
+                            None => member_src,
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "))
+            }
         }
     }
 }
