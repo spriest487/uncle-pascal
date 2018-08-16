@@ -1,19 +1,19 @@
 //this is a line comment
 program HelloWorld;
 
-uses NPascal.System;
+uses System;
 
-function Greet: String;
+function Greet: System.String;
 var
-  msg: String;
+  msg: System.String;
 begin
   msg := 'hello world';
   result := msg;
 end;
 
 var
-  x: Integer;
-  y: Integer;
+  x: System.Integer;
+  y: System.Integer;
 begin
   x := 1;
   y := 2;

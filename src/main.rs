@@ -9,6 +9,7 @@ mod tokens;
 mod tokenizer;
 mod syntax;
 mod target_c;
+mod semantic;
 
 pub trait ToSource {
     fn to_source(&self) -> String;
@@ -17,6 +18,7 @@ pub trait ToSource {
 enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError<tokenizer::SourceToken>),
+    SemanticError(semantic::SemanticError),
 }
 
 impl fmt::Display for CompileError {
@@ -24,6 +26,7 @@ impl fmt::Display for CompileError {
         match self {
             &CompileError::TokenizeError(ref token) => write!(f, "{}", token),
             &CompileError::ParseError(ref err) => write!(f, "{}", err),
+            &CompileError::SemanticError(ref err) => write!(f, "{}", err),
         }
     }
 }
@@ -40,11 +43,17 @@ impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
     }
 }
 
+impl From<semantic::SemanticError> for CompileError {
+    fn from(err: semantic::SemanticError) -> Self {
+        CompileError::SemanticError(err)
+    }
+}
+
 fn compile(source: &str) -> Result<String, CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
     //no context!
-    let empty_context = tokenizer::SourceToken{
+    let empty_context = tokenizer::SourceToken {
         token: tokens::Keyword(keywords::Program),
         line: 0,
         col: 0,
@@ -52,6 +61,9 @@ fn compile(source: &str) -> Result<String, CompileError> {
 
     let program = syntax::program::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
+
+    let typed_program = semantic::type_check(program.clone())?;
+    println!("{:?}", typed_program);
 
     //println!("{}", program.to_source());
 
@@ -64,10 +76,10 @@ fn main() {
     match compile(hello_world_pas) {
         Ok(c_unit) => {
             println!("{}", c_unit);
-        },
+        }
         Err(err) => {
-            println!("Error: {}", err);
+            println!("error: {}", err);
             std::process::exit(1);
-        },
+        }
     }
 }
