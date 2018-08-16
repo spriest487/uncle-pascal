@@ -5,15 +5,15 @@ use node::{
     self,
     Identifier,
     ExpressionValue,
-    ConstantExpression
+    ConstantExpression,
 };
 use operators;
-use types;
-use consts::IntConstant;
 use types::{
+    self,
     Type,
     FunctionSignature,
 };
+use consts::IntConstant;
 
 pub type Expression = node::Expression<ScopedSymbol, SemanticContext>;
 
@@ -634,41 +634,25 @@ impl Expression {
 
     pub fn expr_type(&self) -> Result<Option<Type>, SemanticError> {
         match &self.value {
-            &ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } =>
+            ExpressionValue::BinaryOperator { lhs, op, rhs } =>
                 binary_op_type(lhs, *op, rhs, &self.context),
 
-            &ExpressionValue::PrefixOperator { ref op, ref rhs } =>
+            ExpressionValue::PrefixOperator { op, rhs } =>
                 prefix_op_type(*op, rhs, &self.context),
 
-            &ExpressionValue::Constant(ConstantExpression::String(_)) => {
-                Ok(Some(Type::Class(Identifier::from("System.String"))))
-            }
+            ExpressionValue::Constant(const_val) =>
+                Ok(Some(const_val.value_type())),
 
-            &ExpressionValue::Constant(ConstantExpression::Integer(int_const)) =>
-                Ok(Some(match int_const {
-                    IntConstant::Char(_) => Type::Byte,
-                    IntConstant::I32(_) => Type::Int32,
-                    IntConstant::U32(_) => Type::UInt32,
-                    IntConstant::I64(_) => Type::Int64,
-                    IntConstant::U64(_) => Type::UInt64,
-                })),
-
-            &ExpressionValue::Constant(ConstantExpression::Boolean(_)) =>
-                Ok(Some(Type::Boolean)),
-
-            &ExpressionValue::Constant(ConstantExpression::Nil) =>
-                Ok(Some(Type::Nil)),
-
-            &ExpressionValue::LetBinding { ref value, .. } =>
+            ExpressionValue::LetBinding { value, .. } =>
                 let_binding_type(value, &self.context),
 
-            &ExpressionValue::FunctionCall { ref target, ref args } =>
+            ExpressionValue::FunctionCall { target, args } =>
                 function_call_type(target, args, &self.context),
 
-            &ExpressionValue::Identifier(ref id) =>
+            ExpressionValue::Identifier(id) =>
                 Ok(Some(id.decl_type().clone())),
 
-            &ExpressionValue::Block(ref block) => {
+            ExpressionValue::Block(block) => {
                 for statement in block.statements.iter() {
                     statement.expr_type()?;
                 }
@@ -676,16 +660,16 @@ impl Expression {
                 Ok(None)
             }
 
-            &ExpressionValue::If { ref condition, ref then_branch, ref else_branch } =>
+            ExpressionValue::If { condition, then_branch, else_branch } =>
                 if_type(condition.as_ref(),
                         then_branch.as_ref(),
                         else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
                         &self.context),
 
-            &ExpressionValue::ForLoop { ref from, ref to, ref body } =>
+            ExpressionValue::ForLoop { from, to, body } =>
                 for_loop_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context),
 
-            &ExpressionValue::Member { ref of, ref name } =>
+            ExpressionValue::Member { of, name } =>
                 member_type(of, name, &self.context)
         }
     }
@@ -718,11 +702,67 @@ impl Expression {
         self.context.scope.as_ref()
     }
 
-    pub fn to_const_value(&self, scope: Rc<Scope>) -> SemanticResult<ConstantExpression> {
+    pub fn to_const_value(&self, scope: &Scope) -> SemanticResult<ConstantExpression> {
         match &self.value {
             ExpressionValue::Constant(val) => {
                 Ok(val.clone())
-            },
+            }
+
+            ExpressionValue::PrefixOperator { op, rhs } => {
+                let rhs_val = rhs.to_const_value(scope)?;
+                match (*op, rhs_val) {
+                    (operators::Minus, ConstantExpression::Integer(rhs_int)) => {
+                        Ok(ConstantExpression::Integer(IntConstant::from(0) - rhs_int))
+                    }
+
+                    (_, rhs_val) => {
+                        let operands = vec![Some(rhs_val.value_type())];
+                        Err(SemanticError::invalid_operator(*op, operands, self.context.clone()))
+                    }
+                }
+            }
+
+            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+                let lhs_val: ConstantExpression = lhs.to_const_value(scope)?;
+                let rhs_val: ConstantExpression = rhs.to_const_value(scope)?;
+
+                match (lhs_val, *op, rhs_val) {
+                    /* const string concatenation */
+                    (
+                        ConstantExpression::String(lhs_str),
+                        operators::Plus,
+                        ConstantExpression::String(rhs_str)
+                    ) => {
+                        Ok(ConstantExpression::String(lhs_str + &rhs_str))
+                    }
+
+                    /* const int + */
+                    (
+                        ConstantExpression::Integer(lhs_int),
+                        operators::Plus,
+                        ConstantExpression::Integer(rhs_int)
+                    ) => {
+                        Ok(ConstantExpression::Integer(lhs_int + rhs_int))
+                    }
+
+                    /* const int - */
+                    (
+                        ConstantExpression::Integer(lhs_int),
+                        operators::Minus,
+                        ConstantExpression::Integer(rhs_int)
+                    ) => {
+                        Ok(ConstantExpression::Integer(lhs_int - rhs_int))
+                    }
+
+                    (lhs_val, _, rhs_val) => {
+                        let operands = vec![
+                            Some(lhs_val.value_type()),
+                            Some(rhs_val.value_type()),
+                        ];
+                        Err(SemanticError::invalid_operator(*op, operands, self.context.clone()))
+                    }
+                }
+            }
 
             ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) => {
                 scope.get_const(name)
@@ -730,7 +770,7 @@ impl Expression {
                     .ok_or_else(|| {
                         SemanticError::invalid_const_value(self.clone())
                     })
-            },
+            }
 
             _ => {
                 Err(SemanticError::invalid_const_value(self.clone()))

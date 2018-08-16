@@ -278,11 +278,9 @@ impl SemanticError {
         }
     }
 
-    pub fn invalid_operator<TArgs>(operator: operators::Operator,
-                                   args: TArgs,
-                                   context: SemanticContext) -> SemanticError
-        where TArgs: IntoIterator<Item=Option<Type>>
-    {
+    pub fn invalid_operator(operator: operators::Operator,
+                            args: impl IntoIterator<Item=Option<Type>>,
+                            context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidOperator {
                 op: operator,

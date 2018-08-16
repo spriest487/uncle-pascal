@@ -3,6 +3,7 @@ use std::fmt;
 use operators;
 use node::*;
 use consts::IntConstant;
+use types::Type;
 
 #[derive(Clone, Debug)]
 pub enum ExpressionValue<TSymbol, TContext> {
@@ -55,6 +56,31 @@ pub enum ConstantExpression {
     String(String),
     Boolean(bool),
     Nil,
+}
+
+impl ConstantExpression {
+    pub fn value_type(&self) -> Type {
+        match self {
+            ConstantExpression::String(_) => {
+                Type::Class(Identifier::from("System.String"))
+            }
+
+            ConstantExpression::Integer(int_const) =>
+                match int_const {
+                    IntConstant::Char(_) => Type::Byte,
+                    IntConstant::I32(_) => Type::Int32,
+                    IntConstant::U32(_) => Type::UInt32,
+                    IntConstant::I64(_) => Type::Int64,
+                    IntConstant::U64(_) => Type::UInt64,
+                },
+
+            ConstantExpression::Boolean(_) =>
+                Type::Boolean,
+
+            ConstantExpression::Nil =>
+                Type::Nil,
+        }
+    }
 }
 
 impl<TSymbol, TContext> fmt::Display for Expression<TSymbol, TContext>

@@ -1,4 +1,8 @@
-use std::fmt;
+use std::{
+    fmt,
+    ops::Add,
+    ops::Sub,
+};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum IntConstant {
@@ -76,6 +80,16 @@ impl IntConstant {
             }
         }
     }
+
+    fn as_i128(&self) -> i128 {
+        match self {
+            IntConstant::Char(i) => *i as i128,
+            IntConstant::I32(i) => *i as i128,
+            IntConstant::U32(i) => *i as i128,
+            IntConstant::I64(i) => *i as i128,
+            IntConstant::U64(i) => *i as i128,
+        }
+    }
 }
 
 impl From<u8> for IntConstant {
@@ -92,7 +106,7 @@ impl From<i32> for IntConstant {
 
 impl From<i64> for IntConstant {
     fn from(val: i64) -> Self {
-        if val >= i32::min_value() as i64 {
+        if val >= i32::min_value() as i64 && val <= i32::max_value() as i64 {
             IntConstant::I32(val as i32)
         } else {
             IntConstant::I64(val)
@@ -109,5 +123,31 @@ impl From<u64> for IntConstant {
         } else {
             IntConstant::U64(val)
         }
+    }
+}
+
+impl From<i128> for IntConstant {
+    fn from(val: i128) -> Self {
+        if val > i64::max_value() as i128 {
+            IntConstant::U64(val as u64)
+        } else {
+            IntConstant::from(val as i64)
+        }
+    }
+}
+
+impl Add for IntConstant {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self {
+        Self::from(self.as_i128().wrapping_add(rhs.as_i128()))
+    }
+}
+
+impl Sub for IntConstant {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self {
+        Self::from(self.as_i128().wrapping_sub(rhs.as_i128()))
     }
 }

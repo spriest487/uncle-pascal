@@ -4,7 +4,7 @@ uses
     System.*
 
 const
-    NUM = 1
+    NUM = 1 - 999
     YES = true
     NO: Boolean = false
     UNSIGNED_SOMETHING = $DEADBEEF
@@ -12,7 +12,7 @@ const
 
 procedure Test
 const
-    NAME = 'jane'
+    NAME = 'ja' + 'ne'
     HELLO = 'hello'
     GREETING: String = HELLO
 begin
