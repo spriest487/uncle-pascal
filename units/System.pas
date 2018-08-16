@@ -32,6 +32,7 @@ function StringFromInt(i: Int32): String
 function StringToInt(s: String; outVal: ^Int32): Boolean
 function StringConcat(a: String; b: String): String
 function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
+function StringLength(s: String): NativeInt
 
 { native memory allocation }
 
@@ -119,6 +120,11 @@ begin
         ^(bytes + s.Length) := #0
         result := true
     end
+end
+
+function StringLength(s: String): NativeInt
+begin
+    result := s.Length
 end
 
 end.
