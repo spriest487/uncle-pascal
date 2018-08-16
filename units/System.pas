@@ -19,7 +19,7 @@ type
 
 { io }
 
-procedure WriteLn(line: String)
+function WriteLn(line: String)
 function ReadLn(): String
 
 { string manipulation }
@@ -37,7 +37,7 @@ function StringLength(s: String): NativeInt
 { native memory allocation }
 
 function GetMem(len: NativeInt): ^Byte
-procedure FreeMem(mem: ^Byte)
+function FreeMem(mem: ^Byte)
 
 { standard math functions }
 

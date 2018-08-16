@@ -16,8 +16,8 @@ type
 constructor Create: Vector
 destructor Destroy(self: Vector)
 
-procedure Add(self: Vector; p: Element)
-procedure AddAll(self: Vector; other: Vector)
+function Add(self: Vector; p: Element)
+function AddAll(self: Vector; other: Vector)
 
 implementation
 
@@ -32,7 +32,7 @@ begin
     FreeMem(self.Elements)
 end
 
-procedure Add(self: Vector; p: Element)
+function Add(self: Vector; p: Element)
 begin
   let newElements = GetMem(self.Length + 1)
 
@@ -50,7 +50,7 @@ begin
   ^(self.Elements + (self.Length - 1)) := p
 end
 
-procedure AddAll(self: Vector; other: Vector)
+function AddAll(self: Vector; other: Vector)
 begin
   for let i = 0 to other.Length do
     self.Add(^(other.Elements + i))

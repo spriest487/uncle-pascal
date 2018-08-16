@@ -2,12 +2,12 @@ program FunctionArgModifiers
 
 uses System.*
 
-procedure OutParam(out s: String)
+function OutParam(out s: String)
 begin
     s := 'hello jane!'
 end
 
-procedure RefParam(var i: Int32)
+function RefParam(var i: Int32)
 begin
     WriteLn('val was ' + StringFromInt(i))
     i := 1 + 1
@@ -17,7 +17,7 @@ var
     greeting: String
     i: Int32
 begin
-    OutParam(greeting)
+    OutParam(greetingl)
     WriteLn(greeting)
 
     i := 1

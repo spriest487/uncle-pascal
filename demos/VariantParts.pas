@@ -17,7 +17,7 @@ type
         )
     end
 
-procedure DisplayVehicle(vehicle: Vehicle)
+function DisplayVehicle(vehicle: Vehicle)
 var
   description: String
 begin

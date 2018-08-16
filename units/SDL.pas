@@ -52,18 +52,18 @@ type
     Renderer = Pointer
 
 function Init(flags: UInt32): Int32; external name 'SDL_Init'; cdecl
-procedure Quit; external name 'SDL_Quit'
+function Quit; external name 'SDL_Quit'
 
 function CreateWindow(title: ^Byte; x, y, width, height: Int32; flags: UInt32): Window; external name 'SDL_CreateWindow'; cdecl
-procedure DestroyWindow(window: Window); external name 'SDL_DestroyWindow'; cdecl
+function DestroyWindow(window: Window); external name 'SDL_DestroyWindow'; cdecl
 
 function CreateRenderer(window: Window; rendererIndex: Int32; flags: UInt32): Renderer; external name 'SDL_CreateRenderer'; cdecl
 function SetRenderDrawColor(renderer: Renderer; r, g, b, a: Byte): Int32; external name 'SDL_SetRenderDrawColor'; cdecl
 function RenderClear(renderer: Renderer): Int32; external name 'SDL_RenderClear'; cdecl
-procedure RenderPresent(renderer: Renderer); external name 'SDL_RenderPresent'; cdecl
+function RenderPresent(renderer: Renderer); external name 'SDL_RenderPresent'; cdecl
 
 function PollEvent(event: ^Event): Int32; external name 'SDL_PollEvent'; cdecl
-procedure Delay(ms: UInt32); external name 'SDL_Delay'; cdecl
+function Delay(ms: UInt32); external name 'SDL_Delay'; cdecl
 
 implementation
 end.

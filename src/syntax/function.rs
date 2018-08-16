@@ -36,24 +36,37 @@ impl Parse for FunctionDecl {
 
         let args = Self::parse_argument_list(tokens)?;
 
-        let return_type = match kind_kw {
+        /* for compatibility, the `procedure` keyword indicates a function
+        with no return type, but just omitting the return type has the same
+        effect */
+        let return_type: Option<TypeName> = match kind_kw {
             // procedures return nothing
             keywords::Procedure |
             keywords::Destructor => None,
 
-            _ => {
-                //functions and constructors must return something
+            keywords::Constructor => {
                 tokens.match_one(tokens::Colon)?;
-                let type_id: TypeName = tokens.parse()?;
+                Some(tokens.parse()?)
+            }
 
-                Some(type_id)
+            /* keyword `function` - look for a return type of there's a colon
+            after the end of the argument list, otherwise expect no return type */
+            _ => {
+                match tokens.look_ahead().match_one(tokens::Colon) {
+                    Some(_) => {
+                        tokens.advance(1);
+                        Some(tokens.parse()?)
+                    }
+                    None => None,
+                }
             }
         };
 
         let modifiers = Self::parse_modifiers(tokens)?;
 
         //body (if present) appears after separator or newline
-        tokens.match_or_endl(tokens::Semicolon)?;
+        tokens.
+            match_or_endl(tokens::Semicolon)?;
 
         Ok(FunctionDecl {
             name: fn_name.unwrap_identifier().to_string(),
