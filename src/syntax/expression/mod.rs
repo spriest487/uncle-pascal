@@ -364,6 +364,16 @@ impl Expression {
         }))
     }
 
+    fn parse_literal_nil(in_tokens: impl IntoIterator<Item=source::Token> + 'static,
+                         context: &source::Token) -> ExpressionResult
+    {
+        let match_nil = keywords::Nil.match_one(in_tokens, context)?;
+
+        Ok(match_nil.map(|nil_token| {
+            Expression::literal_nil(&nil_token)
+        }))
+    }
+
     fn parse_let_binding<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static,
     {
@@ -461,6 +471,7 @@ impl Expression {
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
             .or(tokens::BracketLeft)
+            .or(keywords::Nil)
             .or(operators::Plus)
             .or(operators::Minus)
             .or(operators::Deref);
@@ -508,6 +519,10 @@ impl Expression {
 
             Some(ref i) if i.is_any_literal_int() => {
                 Expression::parse_literal_integer(all_tokens, context)
+            }
+
+            Some(ref nil) if nil.is_literal_nil() => {
+                Expression::parse_literal_nil(all_tokens, context)
             }
 
             _ => {
@@ -572,6 +587,8 @@ impl node::ToSource for Expression {
 
             &node::ExpressionValue::LiteralString(ref s) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
+
+            &node::ExpressionValue::LiteralNil => "nil".to_string(),
 
             &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
                 let mut lines = Vec::new();

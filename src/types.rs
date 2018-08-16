@@ -88,6 +88,7 @@ impl fmt::Display for DeclaredRecord {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum DeclaredType {
+    Nil,
     Byte,
     Boolean,
     Integer,
@@ -106,12 +107,13 @@ impl fmt::Display for DeclaredType {
 impl DeclaredType {
     pub fn name(decl_type: Option<&Self>) -> String {
         match decl_type {
-            None => "(none)".to_owned(),
+            None => "(none)".to_string(),
             Some(t) => match t {
-                &DeclaredType::Byte => "System.Byte".to_owned(),
-                &DeclaredType::Boolean => "System.Boolean".to_owned(),
-                &DeclaredType::Integer => "System.Integer".to_owned(),
-                &DeclaredType::RawPointer => "System.Pointer".to_owned(),
+                &DeclaredType::Nil => "nil".to_string(),
+                &DeclaredType::Byte => "System.Byte".to_string(),
+                &DeclaredType::Boolean => "System.Boolean".to_string(),
+                &DeclaredType::Integer => "System.Integer".to_string(),
+                &DeclaredType::RawPointer => "System.Pointer".to_string(),
                 &DeclaredType::Pointer(ref target) => format!("^{}", DeclaredType::name(Some(target))),
                 &DeclaredType::Function(ref sig) => format!("{}", sig),
                 &DeclaredType::Record(ref record) => format!("{}", record.name),
@@ -133,10 +135,11 @@ impl DeclaredType {
 
     pub fn size_of(&self) -> usize {
         match self {
-            &DeclaredType::RawPointer
-            | &DeclaredType::Pointer(_)
-            | &DeclaredType::Function(_)
-            | &DeclaredType::Integer => size_of::<usize>(),
+            &DeclaredType::Nil |
+            &DeclaredType::RawPointer |
+            &DeclaredType::Pointer(_) |
+            &DeclaredType::Function(_) |
+            &DeclaredType::Integer => size_of::<usize>(),
 
             &DeclaredType::Byte => size_of::<u8>(),
             &DeclaredType::Boolean => size_of::<u8>(),
@@ -161,6 +164,15 @@ impl DeclaredType {
 
     pub fn pointer(self) -> DeclaredType {
         DeclaredType::Pointer(Box::from(self))
+    }
+
+    pub fn is_pointer(&self) -> bool {
+        match self {
+            DeclaredType::Pointer(_) |
+            DeclaredType::RawPointer => true,
+
+            _ => false,
+        }
     }
 
     pub fn remove_indirection(&self) -> &DeclaredType {
@@ -198,6 +210,7 @@ impl DeclaredType {
             &DeclaredType::Integer |
             &DeclaredType::Boolean => true,
 
+            &DeclaredType::Nil |
             &DeclaredType::Function(_) => false,
         }
     }
@@ -208,9 +221,10 @@ impl DeclaredType {
         }
 
         match (self, other) {
-            //TODO: this just allows all int->ptr conversions which is bad
-            (&DeclaredType::RawPointer, &DeclaredType::Integer) |
-            (&DeclaredType::Pointer(_), &DeclaredType::Integer) => true,
+            // nil can be assigned to any pointer, and nothing else
+            (&DeclaredType::RawPointer, &DeclaredType::Nil) |
+            (&DeclaredType::Pointer(_), &DeclaredType::Nil) => true,
+            (_, &DeclaredType::Nil) => false,
 
             //TODO: we should only allow byte<-int assignment if the int is in 0..255
             (&DeclaredType::Byte, &DeclaredType::Integer) => true,
@@ -219,28 +233,56 @@ impl DeclaredType {
         }
     }
 
+    // can we use the + and - arithmetic operations between these two types?
+    pub fn can_offset_by(&self, other: &DeclaredType) -> bool {
+        match (self, other) {
+            // numbers can be offset, as long as the rhs is promotable to the lhs type
+            (a, b) if a.is_numeric() && b.promotes_to(a) =>
+                true,
+
+            //pointers can be offset, as long as the rhs is promotable to Integer
+            (ptr, off) if ptr.is_pointer() && off.promotes_to(&DeclaredType::Integer) =>
+                true,
+
+            _ =>
+                false,
+        }
+    }
+
     pub fn promotes_to(&self, other: &DeclaredType) -> bool {
         match (self, other) {
-            (&DeclaredType::Integer, &DeclaredType::RawPointer) |
-            (&DeclaredType::Integer, &DeclaredType::Pointer(_)) |
-            (&DeclaredType::Byte, &DeclaredType::Integer) => true,
+            (a, b) if a == b && a.is_numeric()  => true,
+            (DeclaredType::Byte, DeclaredType::Integer) => true,
 
             _ => false,
         }
     }
 
-    pub fn comparable_to(&self, other: &DeclaredType) -> bool {
-        let can_compare = |a, b| match (a, b) {
-            (&DeclaredType::Integer, &DeclaredType::Integer) |
-            (&DeclaredType::Byte, &DeclaredType::Byte) |
-            (&DeclaredType::Boolean, &DeclaredType::Boolean) |
-            (&DeclaredType::RawPointer, &DeclaredType::RawPointer) => true,
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            DeclaredType::Integer => true,
+            DeclaredType::Byte => true,
+            _ => false,
+        }
+    }
 
-            (&DeclaredType::Pointer(ref a_target), &DeclaredType::Pointer(ref b_target)) => {
+    pub fn comparable_to(&self, other: &DeclaredType) -> bool {
+        let can_compare = |a: &DeclaredType, b: &DeclaredType| match (a, b) {
+            (DeclaredType::Integer, DeclaredType::Integer) |
+            (DeclaredType::Byte, DeclaredType::Byte) |
+            (DeclaredType::Boolean, DeclaredType::Boolean) |
+            (DeclaredType::RawPointer, DeclaredType::RawPointer) =>
+                true,
+
+            (DeclaredType::Pointer(_), DeclaredType::Nil) |
+            (DeclaredType::RawPointer, DeclaredType::Nil) =>
+                true,
+
+            (DeclaredType::Pointer(a_target), DeclaredType::Pointer(b_target)) => {
                 a_target == b_target
             },
 
-            (ref a, ref b) => a.promotes_to(b),
+            (a, b) => a.promotes_to(b),
         };
 
         can_compare(self, other) || can_compare(other, self)

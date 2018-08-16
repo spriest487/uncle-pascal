@@ -77,6 +77,10 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
+    fn is_literal_nil(&self) -> bool {
+        self.as_token().is_keyword(keywords::Nil)
+    }
+
     fn unwrap_identifier(&self) -> &str {
         match self.as_token() {
             &Identifier(ref name) => name,
@@ -120,12 +124,12 @@ impl ToSource for Token {
             &Operator(ref op) => op.to_source(),
             &LiteralInteger(i) => format!("{}", i),
             &LiteralString(ref s) => format!("'{}'", s.replace("'", "''")),
-            &Period => ".".to_owned(),
-            &Colon => ":".to_owned(),
-            &Semicolon => ";".to_owned(),
-            &BracketLeft => "(".to_owned(),
-            &BracketRight => ")".to_owned(),
-            &Comma => ",".to_owned(),
+            &Period => ".".to_string(),
+            &Colon => ":".to_string(),
+            &Semicolon => ";".to_string(),
+            &BracketLeft => "(".to_string(),
+            &BracketRight => ")".to_string(),
+            &Comma => ",".to_string(),
         }
     }
 }

@@ -92,6 +92,10 @@ fn transform_expressions(root_expr: Expression,
             replace(Expression::literal_int(i, root_expr.context))
         }
 
+        node::ExpressionValue::LiteralNil => {
+            replace(root_expr)
+        }
+
         node::ExpressionValue::LiteralString(s) => {
             replace(Expression::literal_string(&s, root_expr.context))
         }

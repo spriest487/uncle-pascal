@@ -236,9 +236,7 @@ impl Scope {
         self
     }
 
-    pub fn with_vars_local<'a, TIter>(mut self, vars: TIter) -> Self
-        where TIter: IntoIterator<Item=&'a VarDecl>
-    {
+    pub fn with_vars_local<'a>(mut self, vars: impl IntoIterator<Item=&'a VarDecl>) -> Self {
         for var in vars {
             assert_eq!(var.name.namespace.len(), 0, "vars passed to with_vars_local should not be namespaced! was {}", var.name);
 

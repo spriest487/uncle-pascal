@@ -21,6 +21,7 @@ pub enum ExpressionValue<TSymbol> {
     },
     LiteralInteger(i64),
     LiteralString(String),
+    LiteralNil,
     Identifier(TSymbol),
     LetBinding {
         name: String,
@@ -198,6 +199,13 @@ impl<TSymbol> Expression<TSymbol>
         Expression {
             context: block.context.clone(),
             value: ExpressionValue::Block(block),
+        }
+    }
+
+    pub fn literal_nil(context: &source::Token) -> Self {
+        Expression {
+            context: context.clone(),
+            value: ExpressionValue::LiteralNil,
         }
     }
 

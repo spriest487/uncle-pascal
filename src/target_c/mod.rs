@@ -8,6 +8,7 @@ use ProgramModule;
 
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
+        &types::DeclaredType::Nil => panic!("cannot output `nil` as a type in C"),
         &types::DeclaredType::Byte => "System_Byte".to_owned(),
         &types::DeclaredType::Integer => "System_Integer".to_owned(),
         &types::DeclaredType::Boolean => "System_Boolean".to_owned(),
@@ -149,6 +150,10 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
         &node::ExpressionValue::LiteralString(ref s) => {
             write!(out, "(({})\"{}\")", type_to_c(&types::DeclaredType::Byte.pointer()), s)
+        }
+
+        &node::ExpressionValue::LiteralNil => {
+            out.write_str("NULL")
         }
 
         &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {

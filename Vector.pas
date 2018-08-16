@@ -11,7 +11,7 @@ end
 
 function Create: Vector
 begin
-  result.Elements := 0
+  result.Elements := nil
   result.Length := 0
 end
 
@@ -19,11 +19,10 @@ procedure Add(self: ^Vector; p: System.Byte)
 begin
   let newElements := System.GetMem(self.Length + 1)
 
-  if self.Elements <> 0 then
+  if self.Elements <> nil then
   begin
     for let i := 0 to self.Length do
       ^(newElements + i) := ^(self.Elements + i)
-
 
     System.FreeMem(self.Elements)
   end
