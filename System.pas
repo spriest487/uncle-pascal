@@ -17,6 +17,9 @@ type
 
 procedure WriteLn(line: String)
 
+function StringFromInt(i: Int32): String
+function StringToInt(s: String; outVal: ^Int32): Boolean
+
 function GetMem(len: NativeInt): ^Byte
 procedure FreeMem(mem: ^Byte)
 

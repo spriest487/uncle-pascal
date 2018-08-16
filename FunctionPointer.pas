@@ -24,5 +24,6 @@ begin
     adder := AddOne
 
     greeter('jane')
-    adder(3)
+    let added := adder(3)
+    WriteLn('added: ' + StringFromInt(added))
 end.

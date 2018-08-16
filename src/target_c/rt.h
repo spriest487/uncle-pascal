@@ -1,6 +1,8 @@
 //#define UNCLEPASCAL_RC_DEBUG
 //#define UNCLEPASCAL_REFLECTION_DEBUG
 
+#include <sstream>
+
 struct System_Internal_Class {
     std::string Name;
     System_Internal_Destructor Destructor;
@@ -105,7 +107,7 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
 }
 
 /* procedure System.WriteLn(line: System.String) */
-void System_WriteLn(System_String* lineRc) {
+static void System_WriteLn(System_String* lineRc) {
     auto line = static_cast<System_String*>(lineRc);
 
     if (line) {
@@ -116,4 +118,25 @@ void System_WriteLn(System_String* lineRc) {
     } else {
         puts("");
     }
+}
+
+static System_Boolean System_StringToInt(System_String* str, System_Int32* result) {
+    auto stream = std::stringstream();
+    stream.str(std::string(
+        reinterpret_cast<const char*>(str->Chars),
+        static_cast<std::size_t>(str->Length)));
+
+    if (stream >> *result) {
+        return true;
+    } else {
+        return false;
+    }
+}
+
+static System_String* System_StringFromInt(System_Int32 i) {
+    auto chars = std::to_string(i);
+
+    return System_StringFromBytes(
+        reinterpret_cast<System_Byte*>(chars.data()),
+        static_cast<System_NativeUInt>(chars.size()));
 }
