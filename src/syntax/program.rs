@@ -80,6 +80,13 @@ fn parse_decls<I>(in_tokens: I) -> ParseResult<ProgramDecls>
             ParseError::UnexpectedEOF
         })?;
 
+        /* we can't use a peekable iter so "wind back" tokens by
+        pasting the token we just consumed back onto the beginning */
+        tokens = Box::from(vec![next.clone()]
+            .into_iter()
+            .chain(tokens)
+            .into_iter());
+
         match next.token {
             tokens::Keyword(keywords::Function) => {
                 let (parsed_fn, after_fn) = function::Function::parse(tokens)?.unwrap();
@@ -88,7 +95,16 @@ fn parse_decls<I>(in_tokens: I) -> ParseResult<ProgramDecls>
 
                 tokens = Box::from(after_fn);
             },
-            tokens::Keyword(keywords::Type) => { unimplemented!() },
+
+            tokens::Keyword(keywords::Type) => {
+                unimplemented!()
+            },
+
+            tokens::Keyword(keywords::Begin) |
+            tokens::Keyword(keywords::Var) => {
+                break;
+            },
+
             _ => {
                 let expected = TokenMatcher::OneOf(vec![
                     Box::from(TokenMatcher::Keyword(keywords::Function)),
@@ -96,11 +112,7 @@ fn parse_decls<I>(in_tokens: I) -> ParseResult<ProgramDecls>
                 ]);
 
                 return Err(ParseError::UnexpectedToken(next.clone(), Some(expected)));
-            }
-
-            tokens::Keyword(keywords::Begin) => {
-                break;
-            }
+            },
         }
     }
 

@@ -129,12 +129,6 @@ impl TokenMatcher {
             sequence: vec![self, next_matcher]
         }
     }
-//
-//    pub fn or(self, or_matcher: TokenMatcher) -> OneOfMatcher {
-//        OneOfMatcher {
-//            matchers: vec![self, or_matcher]
-//        }
-//    }
 
     pub fn until_match<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
         where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
@@ -163,22 +157,6 @@ impl TokenMatcher {
         Ok(ParseOutput::new(until, tokens))
     }
 }
-//
-//#[derive(Clone, Debug)]
-//pub struct OneOfMatcher {
-//    matchers: Vec<TokenMatcher>,
-//}
-//
-//impl OneOfMatcher {
-//    pub fn or(mut self, matcher: TokenMatcher) -> Self {
-//        self.matchers.push(matcher);
-//        self
-//    }
-//
-//    pub fn match_token(&self, &token: tokens::Token) -> bool {
-//        self.matchers.iter().any(|m| m.match_token(token))
-//    }
-//}
 
 #[derive(Clone, Debug)]
 pub struct SequenceMatcher {
