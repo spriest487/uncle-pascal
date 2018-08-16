@@ -3,7 +3,33 @@ use semantic::*;
 use syntax;
 use types;
 
+pub type TypeDecl = node::TypeDecl<ScopedSymbol>;
 pub type RecordDecl = node::RecordDecl<ScopedSymbol>;
+
+impl TypeDecl {
+    pub fn annotate(decl: &syntax::TypeDecl, scope: &Scope) -> SemanticResult<Self> {
+        match decl {
+            node::TypeDecl::Record(record_decl) => {
+                let record_decl = RecordDecl::annotate(record_decl, scope)?;
+
+                Ok(node::TypeDecl::Record(record_decl))
+            },
+
+            node::TypeDecl::Alias { alias, of, context } => {
+                let aliased_type = scope.get_type(&of.name)
+                    .ok_or_else(|| {
+                        SemanticError::unknown_type(of.name.clone(), context.clone())
+                    })?;
+
+                Ok(node::TypeDecl::Alias {
+                    alias: alias.clone(),
+                    of: aliased_type.with_indirection(of.indirection),
+                    context: context.clone(),
+                })
+            }
+        }
+    }
+}
 
 impl RecordDecl {
     pub fn annotate(decl: &syntax::RecordDecl,

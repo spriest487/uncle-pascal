@@ -51,7 +51,7 @@ pub enum UnitDeclaration<TSymbol>
     where TSymbol: Symbol
 {
     Function(FunctionDecl<TSymbol>),
-    Record(RecordDecl<TSymbol>),
+    Type(TypeDecl<TSymbol>),
     Vars(VarDecls<TSymbol>),
 }
 
@@ -114,6 +114,19 @@ pub struct FunctionDecl<TSymbol>
 pub struct Block<TSymbol> {
     pub context: source::Token,
     pub statements: Vec<Expression<TSymbol>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeDecl<TSymbol>
+    where TSymbol: Symbol
+{
+    Record(RecordDecl<TSymbol>),
+    Alias {
+        context: source::Token,
+
+        alias: String,
+        of: TSymbol::Type,
+    }
 }
 
 #[derive(Clone, Debug)]

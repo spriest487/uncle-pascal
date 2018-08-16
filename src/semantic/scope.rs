@@ -34,7 +34,7 @@ pub enum ScopedSymbol {
         record_id: Identifier,
         record_type: DeclaredRecord,
         name: String,
-    },
+    }
 }
 
 impl ScopedSymbol {

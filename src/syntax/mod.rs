@@ -186,8 +186,7 @@ impl<TValue> ParseOutput<TValue> {
         }
     }
 
-    pub fn map<TFn, TOut>(self, mut f: TFn) -> ParseOutput<TOut>
-        where TFn: FnMut(TValue) -> TOut
+    pub fn map<TOut>(self, f: impl FnOnce(TValue) -> TOut) -> ParseOutput<TOut>
     {
         let mapped = f(self.value);
 

@@ -7,30 +7,70 @@ use tokens::{self, AsToken};
 use operators;
 
 pub type RecordDecl = node::RecordDecl<ParsedSymbol>;
+pub type TypeDecl = node::TypeDecl<ParsedSymbol>;
 
-impl RecordDecl {
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Self>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
+impl TypeDecl {
+    pub fn parse(tokens: impl IntoIterator<Item=source::Token> + 'static,
+                 context: &source::Token)
+                 -> ParseResult<Self> {
         let match_name = keywords::Type
             .and_then(Matcher::AnyIdentifier)
             .and_then(operators::Equals)
-            .and_then(keywords::Record.or(keywords::Class))
-            .match_sequence(in_tokens, context)?;
+            .match_sequence(tokens, context)?;
 
-        let type_name = Identifier::from(match_name.value[1].unwrap_identifier());
+        let decl_name = match_name.value[1].unwrap_identifier();
 
-        let kind = if match_name.value[3].is_keyword(keywords::Class) {
+        let peek_kind = keywords::Record.or(keywords::Class)
+            .or(operators::Deref)
+            .or(Matcher::AnyIdentifier)
+            .match_peek(match_name.next_tokens, &match_name.last_token)?;
+
+        let type_decl = match peek_kind.value {
+            Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
+                RecordDecl::parse(decl_name, peek_kind.next_tokens, &peek_kind.last_token)?
+                    .map(|record_decl| {
+                        node::TypeDecl::Record(record_decl)
+                    })
+            }
+
+            _ => {
+                let alias_context = peek_kind.last_token.clone();
+
+                ParsedType::parse(peek_kind.next_tokens, &peek_kind.last_token)?
+                    .map(|aliased_type| {
+                        node::TypeDecl::Alias {
+                            alias: decl_name.to_string(),
+                            of: aliased_type,
+                            context: alias_context,
+                        }
+                    })
+            }
+        };
+
+        Ok(type_decl)
+    }
+}
+
+impl RecordDecl {
+    pub fn parse<TIter>(decl_name: &str,
+                        in_tokens: TIter,
+                        context: &source::Token) -> ParseResult<Self>
+        where TIter: IntoIterator<Item=source::Token> + 'static
+    {
+        let match_kw = keywords::Record.or(keywords::Class)
+            .match_one(in_tokens, context)?;
+
+        let kind = if match_kw.value.is_keyword(keywords::Class) {
             RecordKind::Class
         } else {
             RecordKind::Record
         };
 
-        let match_end = keywords::End.split_at_match(match_name.next_tokens,
-                                                     &match_name.last_token)?;
+        let match_end = keywords::End.split_at_match(match_kw.next_tokens,
+                                                     &match_kw.last_token)?;
 
         let mut decl_next_tokens = WrapIter::new(match_end.value.before_split.into_iter());
-        let mut decl_last_token = match_name.last_token;
+        let mut decl_last_token = match_kw.last_token;
 
         let mut decls = Vec::new();
         loop {
@@ -74,9 +114,9 @@ impl RecordDecl {
                                                          &match_end.last_token)?;
 
         let record = RecordDecl {
-            name: type_name,
+            name: Identifier::from(decl_name),
             kind,
-            context: match_name.value[0].clone(),
+            context: match_kw.value.clone(),
             members: decls,
         };
 

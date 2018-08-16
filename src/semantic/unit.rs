@@ -15,16 +15,25 @@ impl Unit {
 
         for decl in decls {
             match decl {
-                &node::UnitDeclaration::Record(ref parsed_decl) => {
-                    let record_decl = RecordDecl::annotate(parsed_decl, &scope)?;
+                node::UnitDeclaration::Type(parsed_type_decl) => {
+                    let type_decl = TypeDecl::annotate(parsed_type_decl, &scope)?;
+                    match &type_decl {
+                        node::TypeDecl::Record(record_decl) => {
+                            scope = scope.with_type(record_decl.name.clone(),
+                                                    record_decl.record_type());
+                        }
 
-                    scope = scope.with_type(record_decl.name.clone(),
-                                            record_decl.record_type());
+                        node::TypeDecl::Alias { alias, of, .. } => {
+                            let alias_name = node::Identifier::from(alias);
 
-                    result.push(node::UnitDeclaration::Record(record_decl))
+                            scope = scope.with_type(alias_name, of.clone());
+                        }
+                    }
+
+                    result.push(node::UnitDeclaration::Type(type_decl))
                 }
 
-                &node::UnitDeclaration::Function(ref parsed_func) => {
+                node::UnitDeclaration::Function(parsed_func) => {
                     let func_decl = Function::annotate(parsed_func, &scope)?;
 
                     scope = scope.with_symbol_absolute(func_decl.name.clone(),
@@ -35,7 +44,7 @@ impl Unit {
                     result.push(node::UnitDeclaration::Function(func_decl))
                 }
 
-                &node::UnitDeclaration::Vars(ref parsed_vars) => {
+                node::UnitDeclaration::Vars(parsed_vars) => {
                     let vars = Vars::annotate(parsed_vars, &scope, SemanticVarsKind::Namespaced)?;
 
                     scope = scope.with_vars_absolute(vars.decls.iter());

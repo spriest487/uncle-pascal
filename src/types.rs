@@ -198,6 +198,14 @@ impl DeclaredType {
         }
     }
 
+    pub fn with_indirection(&self, level: usize) -> Self {
+        let mut result = self.clone();
+        for _ in 0..level {
+            result = result.pointer();
+        }
+        result
+    }
+
     pub fn indirection_level(&self) -> usize {
         let mut level = 0;
         let mut next = self;

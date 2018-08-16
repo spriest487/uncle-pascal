@@ -583,8 +583,16 @@ pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Re
     match decl {
         UnitDeclaration::Function(ref func_decl) =>
             write_function(out, func_decl),
-        UnitDeclaration::Record(ref record_decl) =>
-            write_record_decl(out, record_decl),
+        UnitDeclaration::Type(ref type_decl) =>
+            match type_decl {
+                node::TypeDecl::Record(record_decl) =>
+                    write_record_decl(out, record_decl),
+
+                node::TypeDecl::Alias { .. } => {
+                    //aliases don't do anything in the final output and can be ignored
+                    Ok(())
+                }
+            }
         UnitDeclaration::Vars(ref vars_decl) =>
             write_vars(out, vars_decl),
     }
@@ -596,8 +604,10 @@ pub fn write_static_init<'a>(out: &mut String,
     let classes = decls.iter()
         .filter_map(|decl| {
             match decl {
-                UnitDeclaration::Record(record)
-                if record.kind == RecordKind::Class => Some(record),
+                UnitDeclaration::Type(node::TypeDecl::Record(record))
+                if record.kind == RecordKind::Class => {
+                    Some(record)
+                }
 
                 _ => None,
             }

@@ -144,8 +144,8 @@ impl<T> ToSource for Program<T>
 
         for decl in self.decls.iter() {
             match decl {
-                UnitDeclaration::Record(rec_decl) =>
-                    lines.push(rec_decl.to_source()),
+                UnitDeclaration::Type(type_decl) =>
+                    lines.push(type_decl.to_source()),
 
                 UnitDeclaration::Function(func_decl) =>
                     lines.push(func_decl.to_source()),
@@ -158,6 +158,19 @@ impl<T> ToSource for Program<T>
         lines.push(self.program_block.to_source() + ".");
 
         lines.join("\n\n")
+    }
+}
+
+impl<T> ToSource for TypeDecl<T>
+    where T: Symbol
+{
+    fn to_source(&self) -> String {
+        match self {
+            TypeDecl::Alias { alias, of, .. } => {
+                format!("type {} = {};", alias, of.to_source())
+            },
+            TypeDecl::Record(record_decl) => record_decl.to_source()
+        }
     }
 }
 
@@ -182,8 +195,8 @@ impl<T> ToSource for UnitDeclaration<T>
 {
     fn to_source(&self) -> String {
         match self {
-            UnitDeclaration::Record(rec_decl) =>
-                rec_decl.to_source(),
+            UnitDeclaration::Type(type_decl) =>
+                type_decl.to_source(),
 
             UnitDeclaration::Function(func_decl) =>
                 func_decl.to_source(),
