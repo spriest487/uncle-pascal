@@ -419,10 +419,19 @@ fn function_call_type(target: &Expression,
             for (arg_index, arg_expr) in args.iter().enumerate() {
                 let sig_type = &sig.arg_types[arg_index];
 
-                expect_valid_operation(operators::Assignment,
-                                       Some(sig_type),
-                                       &arg_expr,
-                                       &arg_expr.context)?;
+                if let Err(_) = expect_valid_operation(operators::Assignment,
+                                                       Some(sig_type),
+                                                       &arg_expr,
+                                                       &arg_expr.context) {
+                    let actual_arg_types: Vec<_> = args.iter()
+                        .map(|arg| arg.expr_type())
+                        .collect::<SemanticResult<_>>()?;
+
+                    return Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
+                                                              actual_arg_types,
+                                                              context.clone(),
+                    ));
+                }
             }
 
             Ok(sig.return_type.clone())
@@ -594,7 +603,7 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
                         record_id.clone(),
                         of.scope().local_namespace().cloned(),
                         name,
-                        of.context.clone()
+                        of.context.clone(),
                     ));
                 }
             }
@@ -1013,7 +1022,7 @@ pub(crate) mod test {
     #[test]
     fn assignment_to_wrong_type_is_err() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::RawPointer);
+            .with_symbol_local("x", Type::RawPointer, BindingKind::Mutable);
 
         let expr = parse_expr("x := 1", Rc::new(scope));
 
@@ -1053,7 +1062,7 @@ pub(crate) mod test {
                 kind: FunctionKind::Function,
                 context: empty_context(&default_scope),
             })
-            .with_symbol_local("a", Type::Int64);
+            .with_symbol_local("a", Type::Int64, BindingKind::Immutable);
 
         let expr = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
 
@@ -1074,7 +1083,7 @@ pub(crate) mod test {
     #[test]
     fn type_of_pointer_deref_is_pointer_minus_indirection() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::Byte.pointer());
+            .with_symbol_local("x", Type::Byte.pointer(), BindingKind::Immutable);
 
         let expr = parse_expr("^x", Rc::new(scope));
         assert_eq!(Type::Byte, expr.expr_type().unwrap().unwrap());
@@ -1083,7 +1092,7 @@ pub(crate) mod test {
     #[test]
     fn type_of_pointer_plus_offset_is_pointer() {
         let scope = Scope::default()
-            .with_symbol_local("x", Type::Byte.pointer());
+            .with_symbol_local("x", Type::Byte.pointer(), BindingKind::Immutable);
 
         let expr = parse_expr("x + 1", Rc::new(scope));
         assert_eq!(Type::Byte.pointer(), expr.expr_type().unwrap().unwrap());

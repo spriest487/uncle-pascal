@@ -57,6 +57,10 @@ pub enum SemanticErrorKind {
         expected_sig: FunctionSignature,
         actual: usize,
     },
+    WrongArgTypes {
+        sig: FunctionSignature,
+        actual: Vec<Option<Type>>,
+    },
     MemberAccessOfNonRecord(Option<Type>, String),
     IllegalName(String),
     EmptyRecord(Identifier),
@@ -95,9 +99,9 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::PrivateMemberAccessForbidden { base_type, from_ns, member_name } => {
                 write!(f, "member `{}` of type `{}` cannot be accessed from unit `{}`",
-                    member_name,
-                    base_type,
-                    from_ns.as_ref()
+                       member_name,
+                       base_type,
+                       from_ns.as_ref()
                            .map(|ns| ns.to_string())
                            .unwrap_or_else(|| "(root)".to_string()),
                 )
@@ -160,6 +164,18 @@ impl fmt::Display for SemanticErrorKind {
             SemanticErrorKind::WrongNumberOfArgs { expected_sig, actual } => {
                 write!(f, "wrong number of arguments passed to function (expected {}, found {})",
                        expected_sig.arg_types.len(), actual)
+            }
+
+            SemanticErrorKind::WrongArgTypes { sig, actual } => {
+                writeln!(f, "invalid arguments to function! expected:")?;
+                for expected_arg in sig.arg_types.iter() {
+                    writeln!(f, "\t{}", expected_arg.to_source())?;
+                }
+                writeln!(f, "found: ")?;
+                for actual_arg in actual.iter() {
+                    writeln!(f, "\t{}", Type::name(actual_arg.as_ref()))?;
+                }
+                Ok(())
             }
 
             SemanticErrorKind::IllegalName(name) => {
@@ -274,6 +290,18 @@ impl SemanticError {
                 actual,
             },
             context,
+        }
+    }
+
+    pub fn wrong_arg_types(sig: impl Into<FunctionSignature>,
+                           actual: impl IntoIterator<Item=Option<Type>>,
+                           context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            context: context.into(),
+            kind: SemanticErrorKind::WrongArgTypes {
+                sig: sig.into(),
+                actual: actual.into_iter().collect(),
+            }
         }
     }
 
