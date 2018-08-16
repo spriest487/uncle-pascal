@@ -1,11 +1,21 @@
-mod writer;
 mod ast;
 
+use std::{
+    fmt::{self, Write as FmtWrite},
+};
+
+pub use self::ast::{
+    TranslationError,
+    TranslationResult,
+    TranslationUnit
+};
+
+use node::Identifier;
 use std::{
     path::Path,
     fs,
     process,
-    io::{self, Write},
+    io::Write,
 };
 
 use pretty_path;
@@ -16,18 +26,21 @@ use opts::CompileOptions;
 const HEADER: &str = include_str!("header.h");
 const RT: &str = include_str!("rt.h");
 
+pub fn identifier_to_c(id: &Identifier) -> String {
+    let mut parts = id.namespace.clone();
+    parts.push(id.name.clone());
+
+    parts.join("_")
+}
+
 pub fn pas_to_c(module: &ProgramModule,
                 out_path: &Path,
                 opts: &CompileOptions) -> Result<(), CompileError> {
-    let c_unit = writer::write_c(&module)?;
+    let translated = ast::TranslationUnit::from_program(module)?;
+    let c_unit = write_cpp(&translated)?;
 
     let compile_with_clang = out_path.extension().map(|ext| ext != "cpp" && ext != "cxx")
         .unwrap_or(true);
-
-    let _out_dir = out_path.parent().ok_or_else(|| {
-        let msg = format!("unable to resolve output directory from path `{}`", pretty_path(out_path));
-        CompileError::IOError(io::Error::new(io::ErrorKind::NotFound, msg))
-    })?;
 
     if compile_with_clang {
         invoke_clang(&c_unit, &out_path, opts)?;
@@ -82,4 +95,55 @@ fn invoke_clang<'a>(c_src: &str,
     clang_proc.wait()?;
 
     Ok(())
+}
+
+pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
+    let mut out = String::new();
+
+    out.write_str(HEADER)?;
+
+    // forward declare System.String
+    writeln!(out, "struct System_String;")?;
+
+    // declare initialize string literal global vars
+    unit.declare_string_literals(&mut out)?;
+
+    for decl in unit.decls() {
+        decl.write_forward(&mut out)?;
+    }
+
+    /* write impls */
+    for decl_impl in unit.decls().iter() {
+        decl_impl.write_impl(&mut out)?;
+    }
+
+    /* write main function */
+    writeln!(out, "int main(int argc, char* argv[]) {{")?;
+
+    // init the string class and string literals
+    writeln!(out, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+    unit.init_string_literals(&mut out)?;
+
+    // init other classes
+    for class in unit.classes().iter() {
+        class.write_init(&mut out)?;
+    }
+
+    /* write initialization for each unit's initialization */
+    for init_block in unit.initialization().iter() {
+        init_block.write(&mut out)?;
+    }
+
+    for final_block in unit.finalization().iter() {
+        final_block.write(&mut out)?;
+    }
+
+    writeln!(out, "return EXIT_SUCCESS;")?;
+    writeln!(out, "}}")?;
+
+    /* write native runtime library impls */
+    out.write_str(RT)?;
+    writeln!(out)?;
+
+    Ok(out)
 }

@@ -311,18 +311,18 @@ impl Scope {
         Scope::new()
             .with_local_namespace("System")
             /* standard primitives */
-            .with_type_alias(Identifier::from("System.Byte"), Type::Byte)
-//            .with_alias(Identifier::from("System.Int16"), DeclaredType::Int16)
-//            .with_alias(Identifier::from("System.UInt16"), DeclaredType::UInt16)
-            .with_type_alias(Identifier::from("System.Int32"), Type::Int32)
-            .with_type_alias(Identifier::from("System.UInt32"), Type::UInt32)
-            .with_type_alias(Identifier::from("System.Int64"), Type::Int64)
-            .with_type_alias(Identifier::from("System.UInt64"), Type::UInt64)
-            .with_type_alias(Identifier::from("System.Float64"), Type::Float64)
-            .with_type_alias(Identifier::from("System.NativeInt"), Type::NativeInt)
-            .with_type_alias(Identifier::from("System.NativeUInt"), Type::NativeUInt)
-            .with_type_alias(Identifier::from("System.Pointer"), Type::RawPointer)
-            .with_type_alias(Identifier::from("System.Boolean"), Type::Boolean)
+            .with_type_alias("Byte", Type::Byte)
+//            .with_alias("System.Int16", DeclaredType::Int16)
+//            .with_alias("System.UInt16", DeclaredType::UInt16)
+            .with_type_alias("Int32", Type::Int32)
+            .with_type_alias("UInt32", Type::UInt32)
+            .with_type_alias("Int64", Type::Int64)
+            .with_type_alias("UInt64", Type::UInt64)
+            .with_type_alias("Float64", Type::Float64)
+            .with_type_alias("NativeInt", Type::NativeInt)
+            .with_type_alias("NativeUInt", Type::NativeUInt)
+            .with_type_alias("Pointer", Type::RawPointer)
+            .with_type_alias("Boolean", Type::Boolean)
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {
@@ -332,9 +332,9 @@ impl Scope {
         }
     }
 
-    pub fn with_type_alias(mut self, name: impl Into<Identifier>, named_type: Type) -> Self {
-        let name = name.into();
-        self.names.insert(name, Named::TypeAlias(named_type));
+    pub fn with_type_alias(mut self, name: &str, named_type: Type) -> Self {
+        let full_name = self.qualify_local_name(name);
+        self.names.insert(full_name, Named::TypeAlias(named_type));
         self
     }
 
@@ -723,6 +723,25 @@ impl Scope {
         }
     }
 
+    /* given the fully qualified name of a class, find the destructor
+    function for that class. None if the class doesn't exist or doesn't have
+    a destructor */
+    pub fn get_destructor(&self, name: &Identifier) -> Option<(&Identifier, &FunctionDecl)> {
+        let (_, class) = self.get_class(name)?;
+
+        self.names.iter()
+            .filter_map(|(name, named)| match named {
+                Named::Function(func) => {
+                    match func.is_destructor_of(class) {
+                        true => Some((name, func)),
+                        false => None,
+                    }
+                }
+                _ => None
+            })
+            .next()
+    }
+
     pub fn align_of(&self, ty: &Type) -> usize {
         const WORD_SIZE: usize = size_of::<usize>();
 
@@ -735,13 +754,13 @@ impl Scope {
         align
     }
 
-    pub fn size_of(&self, ty: &Type) -> usize {
-        let record_size = |record: &RecordDecl| {
-            record.members.iter()
-                .map(|member| self.align_of(&member.decl_type))
-                .sum()
-        };
+    pub fn size_of_record(&self, record: &RecordDecl) -> usize {
+        record.members.iter()
+            .map(|member| self.align_of(&member.decl_type))
+            .sum()
+    }
 
+    pub fn size_of(&self, ty: &Type) -> usize {
         let enum_size = |_enum_decl: &EnumerationDecl| {
             /* todo: all enums are u64s */
             8
@@ -791,12 +810,12 @@ impl Scope {
 
             Type::Record(name) => {
                 let (_, record_decl) = self.get_record(name).expect("record type passed to size_of must exist");
-                record_size(record_decl)
+                self.size_of_record(record_decl)
             }
 
             Type::Class(name) => {
                 let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
-                record_size(class_decl)
+                self.size_of_record(class_decl)
             }
 
             Type::DynamicArray(_array) => {

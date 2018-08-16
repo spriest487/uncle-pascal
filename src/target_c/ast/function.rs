@@ -1,6 +1,5 @@
 use std::fmt::{
     self,
-    Write,
 };
 use semantic;
 use node::{
@@ -14,16 +13,12 @@ use target_c::{
     ast::{
         CType,
         TranslationResult,
+        Block,
+        TranslationUnit,
+        Expression,
+        Variable,
     },
-    writer::{
-        module_globals::ModuleGlobals,
-        identifier_to_c,
-        write_block,
-        write_vars,
-        write_consts,
-        default_initialize_vars,
-        release_vars,
-    },
+    identifier_to_c,
 };
 
 pub struct FunctionArg {
@@ -40,7 +35,7 @@ impl fmt::Display for FunctionArg {
 pub enum FunctionDefinition {
     None,
     External(String),
-    Defined(String),
+    Defined(Block),
 }
 
 pub enum CallingConvention {
@@ -68,7 +63,7 @@ pub struct FunctionDecl {
 impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
     fn from(pascal_decl: &semantic::FunctionDecl) -> Self {
         let return_type = pascal_decl.return_type.as_ref()
-            .map(|return_type| CType::from_pascal(return_type, pascal_decl.scope()))
+            .map(|return_type| CType::translate(return_type, pascal_decl.scope()))
             .unwrap_or_else(|| CType::Void);
 
         let qualified_name = pascal_decl.scope().qualify_local_name(&pascal_decl.name);
@@ -86,7 +81,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 
         let args = pascal_decl.args.iter()
             .map(|arg_decl| {
-                let ctype_base = CType::from_pascal(&arg_decl.decl_type, &arg_decl.scope());
+                let ctype_base = CType::translate(&arg_decl.decl_type, &arg_decl.scope());
                 let ctype = match &arg_decl.modifier {
                     | None => ctype_base,
                     | Some(FunctionArgModifier::Const)
@@ -139,44 +134,73 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 
 impl FunctionDecl {
     pub fn from_function(function: &semantic::Function,
-                         globals: &mut ModuleGlobals)
+                         unit: &mut TranslationUnit)
                          -> TranslationResult<Self> {
-        let mut body = String::new();
-        writeln!(&mut body, "{{")?;
+        let local_vars: Vec<_> = function.local_decls.iter()
+            .filter_map(|decl| match decl {
+                FunctionLocalDecl::Vars(local_vars) => Some(local_vars),
+                _ => None,
+            })
+            .flat_map(|vars_decl| vars_decl.decls.iter())
+            .cloned()
+            .collect();
 
-        let mut all_local_vars = Vec::new();
-        for local_decl in function.local_decls.iter() {
-            match local_decl {
-                FunctionLocalDecl::Consts(local_consts) => {
-                    write_consts(&mut body, local_consts, globals)?;
-                }
+        let decl = FunctionDecl::from(&function.decl);
 
-                FunctionLocalDecl::Vars(local_vars) => {
-                    write_vars(&mut body, local_vars)?;
-                    default_initialize_vars(&mut body, local_vars.decls.iter())?;
-                    all_local_vars.extend(local_vars.decls.iter());
-                }
+        let mut body = Block::translate(&function.block, Some(&local_vars), unit)?;
 
-                FunctionLocalDecl::NestedFunction(_) =>
-                    unimplemented!("nested functions"),
+        let result_default = match function.decl.kind {
+            /*
+                in a constructor, the result is initialized with an allocated and
+                zero-initialized instance of the class
+            */
+            FunctionKind::Constructor => {
+                // need the name of the class, not the actual c type (which is a pointer)
+                let class_name = match function.decl.return_type.as_ref() {
+                    Some(Type::Class(name)) => {
+                        name
+                    }
+                    _ => panic!("constructor must return a class type"),
+                };
+
+                let class_c_name = identifier_to_c(class_name);
+
+                let rc_alloc = Expression::function_call("System_Internal_Rc_GetMem", vec![
+                    Expression::function_call("sizeof", vec![Expression::raw(&class_c_name)]),
+                    Expression::string_literal(&class_name.to_string())
+                ]);
+
+                Some(Expression::static_cast(
+                    CType::Struct(class_c_name).into_pointer(),
+                    rc_alloc,
+                ))
+            }
+
+            _ => None,
+        };
+
+        if !decl.return_type.is_void() {
+            let result_decl = Variable {
+                default_value: result_default,
+                name: "result".to_string(),
+                ctype: decl.return_type.clone(),
+            };
+
+            body.statements.insert(0, result_decl.decl_statement());
+
+            if function.decl.kind != FunctionKind::Constructor {
+                body.statements.insert(1, Expression::from("memset(&result, 0, sizeof(result)); "));
             }
         }
 
-        if function.decl.kind == FunctionKind::Constructor {
-            //the actual return type is an Rc, but we need to pass the class type to sizeof
-            let constructed_class_c_name = match function.decl.return_type.as_ref().unwrap() {
-                Type::Class(name) => {
-                    identifier_to_c(&name)
-                }
-                _ => panic!("constructor must return a class type"),
-            };
-
-            writeln!(&mut body, "result = ({}*)System_Internal_Rc_GetMem(sizeof(struct {}), \"{}\");",
-                     constructed_class_c_name,
-                     constructed_class_c_name,
-                     function.decl.return_type.as_ref().expect("constructor must have return type"))?;
-        }
-
+        /*
+            retain rc args to non-destructor functions
+            this is kind of a hack to make sure temporary values used as args get rc'd
+            destructors mustn't change the ref count of their only arg, the dead object,
+            or bad things happen
+            it's safe not to do this in a constructor, the object under construction exists only
+            in the result position
+        */
         let rc_args: Vec<_> = function.decl.args.iter()
             .filter(|arg| {
                 arg.modifier != Some(FunctionArgModifier::Out)
@@ -184,43 +208,24 @@ impl FunctionDecl {
             })
             .collect();
 
-        // retain rc args to non-destructor functions
-        // this is kind of a hack to make sure temporary values used as args get rc'd
-        // destructors musn't change the ref count of their only arg, the dead object, or bad things
-        // happen
-        // it's safe to do this with a constructor because the object under construction exists only
-        // in the result position
         if function.decl.kind == FunctionKind::Function {
             for arg in rc_args.iter() {
-                writeln!(&mut body, "System_Internal_Rc_Retain({});", arg.name)?;
+                body.statements.insert(0, Expression::Raw(
+                    format!("System_Internal_Rc_Retain({});", arg.name)
+                ));
+                body.statements.push(Expression::Raw(
+                    format!("System_Internal_Rc_Release({})", arg.name)
+                ));
             }
         }
 
-        write_block(&mut body, &function.block, globals)?;
-        release_vars(&mut body, all_local_vars.into_iter()
-            .filter(|var| var.name != "result"))?;
-
-        if function.decl.kind == FunctionKind::Function {
-            //release args
-            for arg in rc_args.iter() {
-                writeln!(&mut body, "System_Internal_Rc_Release({});", arg.name)?;
-            }
+        if !decl.return_type.is_void() {
+            body.statements.push(Expression::from("return result"));
         }
-
-        let return_type_c = function.decl.return_type.as_ref()
-            .map(|return_type| CType::from_pascal(return_type, function.scope()));
-
-        match return_type_c {
-            Some(_) => writeln!(&mut body, "return result;")?,
-            None => (),
-        }
-
-        writeln!(&mut body, "}}")?;
-        writeln!(&mut body)?;
 
         Ok(FunctionDecl {
             definition: FunctionDefinition::Defined(body),
-            ..FunctionDecl::from(&function.decl)
+            ..decl
         })
     }
 
@@ -249,8 +254,8 @@ impl FunctionDecl {
             FunctionDefinition::External(extern_name) => {
                 writeln!(out, "namespace ffi {{")?;
                 writeln!(out, "extern \"C\" {} {} {}({});",
-                         self.calling_convention,
                          self.return_type,
+                         self.calling_convention,
                          extern_name,
                          self.args_list()
                 )?;
@@ -274,12 +279,12 @@ impl FunctionDecl {
             }
 
             FunctionDefinition::Defined(body) => {
-                writeln!(out, "{} {}({}) {{",
+                writeln!(out, "{} {}({}) ",
                          self.return_type,
                          self.name,
                          self.args_list())?;
-                out.write_str(body)?;
-                writeln!(out, "}}")?;
+
+                body.write(&mut out)?;
             }
         }
 

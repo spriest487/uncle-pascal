@@ -12,36 +12,52 @@ pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
 pub type SetDecl = node::SetDecl<SemanticContext>;
 
 impl TypeDecl {
-    pub fn annotate(decl: &syntax::TypeDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
+    /**
+        Adds type information to a parsed TypeDecl.
+        Returns None if the TypeDecl doesn't produce a semantically distinct type (e.g. an alias
+        which doesn't declare anything new).
+    */
+    pub fn annotate(decl: &syntax::TypeDecl,
+                    scope: Rc<Scope>)
+                    -> SemanticResult<(Option<Self>, Rc<Scope>)> {
         match decl {
             node::TypeDecl::Record(record_decl) => {
                 let record_decl = RecordDecl::annotate(record_decl, scope.clone())?;
-                Ok(node::TypeDecl::Record(record_decl))
+
+                let scope = match record_decl.kind {
+                    node::RecordKind::Record => scope.as_ref().clone()
+                        .with_record(record_decl.clone()),
+                    node::RecordKind::Class => scope.as_ref().clone()
+                        .with_class(record_decl.clone()),
+                };
+
+                Ok((Some(node::TypeDecl::Record(record_decl)), Rc::new(scope)))
             }
 
             node::TypeDecl::Enumeration(enum_decl) => {
                 let enum_decl = EnumerationDecl::annotate(enum_decl, scope.clone())?;
-                Ok(node::TypeDecl::Enumeration(enum_decl))
+
+                let scope = scope.as_ref().clone()
+                    .with_enumeration(enum_decl.clone());
+
+                Ok((Some(node::TypeDecl::Enumeration(enum_decl)), Rc::new(scope)))
             }
 
             node::TypeDecl::Set(set_decl) => {
                 let set_decl = SetDecl::annotate(set_decl, scope.clone())?;
-                Ok(node::TypeDecl::Set(set_decl))
+
+                let scope = scope.as_ref().clone()
+                    .with_set(set_decl.clone());
+
+                Ok((Some(node::TypeDecl::Set(set_decl)), Rc::new(scope)))
             }
 
-            node::TypeDecl::Alias { alias, of, context } => {
-                let context = SemanticContext {
-                    scope: scope.clone(),
-                    token: context.token().clone(),
-                };
-
+            node::TypeDecl::Alias { alias, of, .. } => {
                 let aliased_type = of.resolve(scope.clone())?;
 
-                Ok(node::TypeDecl::Alias {
-                    alias: alias.clone(),
-                    of: aliased_type,
-                    context,
-                })
+                let scope = scope.as_ref().clone().with_type_alias(alias, aliased_type);
+
+                Ok((None, Rc::new(scope)))
             }
         }
     }
@@ -150,6 +166,10 @@ impl EnumerationDecl {
             context,
         })
     }
+
+    pub fn qualified_name(&self) -> Identifier {
+        self.context.scope.qualify_local_name(&self.name)
+    }
 }
 
 impl SetDecl {
@@ -178,5 +198,9 @@ impl SetDecl {
             enumeration,
             context,
         })
+    }
+
+    pub fn qualified_name(&self) -> Identifier {
+        self.context.scope.qualify_local_name(&self.name)
     }
 }

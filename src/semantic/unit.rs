@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use node::{self, RecordKind};
+use node;
 use syntax;
 use semantic::*;
 
@@ -9,90 +9,61 @@ pub type Implementation = node::Implementation<SemanticContext>;
 pub type UnitReference = node::UnitReference<SemanticContext>;
 
 impl Unit {
-    fn annotate_decl(decl: &syntax::UnitDecl, mut scope: Scope) -> SemanticResult<(UnitDecl, Scope)> {
+    fn annotate_decl(decl: &syntax::UnitDecl,
+                     mut scope: Rc<Scope>) -> SemanticResult<(Option<UnitDecl>, Rc<Scope>)> {
         match decl {
             node::UnitDecl::Type(parsed_type_decl) => {
-                let type_decl = TypeDecl::annotate(parsed_type_decl, Rc::new(scope.clone()))?;
-                match &type_decl {
-                    node::TypeDecl::Record(record_decl) => {
-                        scope = match record_decl.kind {
-                            RecordKind::Record => {
-                                scope.with_record(record_decl.clone())
-                            }
-                            RecordKind::Class => {
-                                scope.with_class(record_decl.clone())
-                            }
-                        }
-                    }
+                let (type_decl, scope) = TypeDecl::annotate(parsed_type_decl, scope)?;
+                let decl = type_decl.map(|decl| node::UnitDecl::Type(decl));
 
-                    node::TypeDecl::Enumeration(enum_decl) => {
-                        scope = scope.with_enumeration(enum_decl.clone());
-                    }
-
-                    node::TypeDecl::Set(set_decl) => {
-                        scope = scope.with_set(set_decl.clone());
-                    }
-
-                    node::TypeDecl::Alias { alias, of, .. } => {
-                        let alias_name = node::Identifier::from(alias);
-
-                        scope = scope.with_type_alias(alias_name, of.clone());
-                    }
-                }
-
-                Ok((node::UnitDecl::Type(type_decl), scope))
+                Ok((decl, scope))
             }
 
             node::UnitDecl::Function(parsed_func) => {
-                let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
-
-                scope = scope.with_function(func_decl.clone());
+                let (func_decl, scope) = FunctionDecl::annotate(parsed_func, scope)?;
 
                 func_decl.type_check()?;
 
-                Ok((node::UnitDecl::Function(func_decl), scope))
+                Ok((Some(node::UnitDecl::Function(func_decl)), scope))
             }
 
             node::UnitDecl::Vars(parsed_vars) => {
-                let vars = VarDecls::annotate(parsed_vars, Rc::new(scope.clone()))?;
-                for var in vars.decls.iter() {
-                    scope = scope.with_global_var(&var.name, var.decl_type.clone());
-                }
+                let (vars, scope) = VarDecls::annotate(parsed_vars, scope)?;
 
-                Ok((node::UnitDecl::Vars(vars), scope))
+                Ok((Some(node::UnitDecl::Vars(vars)), scope))
             }
 
             node::UnitDecl::Consts(parsed_consts) => {
-                let mut consts = ConstDecls::default();
-
+                /* consts exist in scope but we no longer need to store the declarations - they
+                don't get emitted in the backend */
                 for parsed_const in parsed_consts.decls.iter() {
-                    let (const_decl, new_scope) = ConstDecl::annotate(parsed_const, Rc::new(scope))?;
-                    scope = new_scope;
-
-                    consts.decls.push(const_decl);
+                    scope = ConstDecl::annotate(parsed_const, scope)?;
                 }
 
-                Ok((node::UnitDecl::Consts(consts), scope))
+                Ok((None, scope))
             }
         }
     }
 
     pub fn annotate_impls<'a>(decls: impl IntoIterator<Item=&'a syntax::Implementation>,
-                              mut scope: Scope)
-                              -> SemanticResult<(Vec<Implementation>, Scope)> {
+                              mut scope: Rc<Scope>)
+                              -> SemanticResult<(Vec<Implementation>, Rc<Scope>)> {
         let mut result = Vec::new();
         for decl in decls {
             match decl {
                 node::Implementation::Decl(parsed_decl) => {
                     let (decl, new_scope) = Self::annotate_decl(parsed_decl, scope)?;
                     scope = new_scope;
-                    result.push(node::Implementation::Decl(decl));
+
+                    if let Some(decl) = decl {
+                        result.push(node::Implementation::Decl(decl));
+                    }
                 }
 
                 node::Implementation::Function(parsed_func) => {
-                    let func = Function::annotate(parsed_func, Rc::new(scope.clone()))?;
+                    let (func, new_scope) = Function::annotate(parsed_func, scope)?;
+                    scope = new_scope;
 
-                    scope = scope.with_function(func.decl.clone());
                     result.push(node::Implementation::Function(func));
                 }
             }
@@ -101,16 +72,19 @@ impl Unit {
     }
 
     pub fn annotate_decls<'a, TDecls>(decls: TDecls,
-                                      mut scope: Scope)
-                                      -> SemanticResult<(Vec<UnitDecl>, Scope)>
+                                      mut scope: Rc<Scope>)
+                                      -> SemanticResult<(Vec<UnitDecl>, Rc<Scope>)>
         where TDecls: IntoIterator<Item=&'a syntax::UnitDecl>,
     {
         let mut result = Vec::new();
 
         for parsed_decl in decls {
             let (decl, new_scope) = Self::annotate_decl(parsed_decl, scope)?;
-            result.push(decl);
             scope = new_scope;
+
+            if let Some(decl) = decl {
+                result.push(decl);
+            }
         }
 
         Ok((result, scope))
@@ -135,8 +109,8 @@ impl Unit {
             .collect()
     }
 
-    pub fn annotate(unit: &syntax::Unit, scope: Scope) -> Result<(Self, Scope), SemanticError> {
-        let unit_scope = scope.with_local_namespace(&unit.name);
+    pub fn annotate(unit: &syntax::Unit, scope: Rc<Scope>) -> Result<(Self, Rc<Scope>), SemanticError> {
+        let unit_scope = Rc::new(scope.as_ref().clone().with_local_namespace(&unit.name));
 
         let (interface_decls, interface_scope) = Unit::annotate_decls(
             unit.interface.iter(),
@@ -145,8 +119,6 @@ impl Unit {
         let (impl_decls, impl_scope) = Unit::annotate_impls(
             unit.implementation.iter(),
             interface_scope.clone())?;
-
-        let impl_scope = Rc::new(impl_scope);
 
         let initialization = match unit.initialization.as_ref() {
             Some(block) => Some(Block::annotate(block, impl_scope.clone())?.0),
@@ -161,7 +133,7 @@ impl Unit {
             interface: interface_decls,
             implementation: impl_decls,
             name: unit.name.clone(),
-            uses: Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope)),
+            uses: Self::annotate_uses(unit.uses.iter(), unit_scope),
             initialization,
             finalization,
         };

@@ -45,15 +45,18 @@ impl VarDecl {
 }
 
 impl VarDecls {
-    pub fn annotate(vars: &syntax::VarDecls, scope: Rc<Scope>) -> SemanticResult<Self> {
-        let decls = vars.decls.iter()
-            .map(|v| -> Result<VarDecl, SemanticError> {
-                VarDecl::annotate(v, scope.clone())
-            })
-            .collect::<Result<_, _>>()?;
+    pub fn annotate(vars: &syntax::VarDecls,
+                    mut scope: Rc<Scope>)
+                    -> SemanticResult<(Self, Rc<Scope>)> {
+        let decls: Vec<VarDecl> = vars.decls.iter()
+            .map(|v| VarDecl::annotate(v, scope.clone()))
+            .collect::<SemanticResult<_>>()?;
 
-        Ok(Self {
-            decls
-        })
+        for var in decls.iter() {
+            scope = Rc::new(scope.as_ref().clone()
+                .with_global_var(&var.name, var.decl_type.clone()));
+        }
+
+        Ok((Self { decls }, scope))
     }
 }

@@ -3,6 +3,7 @@ use std::{
 };
 use node::{
     self,
+    FunctionArgSignature,
 };
 use syntax;
 use semantic::*;
@@ -19,7 +20,8 @@ pub type FunctionArg = node::FunctionArg<SemanticContext>;
 
 impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
-                    scope: Rc<Scope>) -> Result<Self, SemanticError> {
+                    scope: Rc<Scope>)
+                    -> SemanticResult<(Self, Rc<Scope>)> {
         let context = SemanticContext {
             token: function.context.token().clone(),
             scope: scope.clone(),
@@ -58,14 +60,19 @@ impl FunctionDecl {
             })
             .collect::<SemanticResult<_>>()?;
 
-        Ok(FunctionDecl {
+        let func_decl = FunctionDecl {
             name: function.name.clone(),
             kind: function.kind.clone(),
             modifiers: function.modifiers.clone(),
             context,
             args,
             return_type,
-        })
+        };
+
+        let scope = scope.as_ref().clone()
+            .with_function(func_decl.clone());
+
+        Ok((func_decl, Rc::new(scope)))
     }
 
     pub fn is_destructor_of(&self, class_type: &RecordDecl) -> bool {
@@ -140,8 +147,8 @@ impl FunctionDecl {
 }
 
 impl Function {
-    pub fn annotate(function: &syntax::Function, scope: Rc<Scope>) -> SemanticResult<Function> {
-        let decl = FunctionDecl::annotate(&function.decl, scope.clone())?;
+    pub fn annotate(function: &syntax::Function, scope: Rc<Scope>) -> SemanticResult<(Function, Rc<Scope>)> {
+        let (decl, scope) = FunctionDecl::annotate(&function.decl, scope)?;
 
         /* there can't already be a local symbol called "result" */
         function.local_vars().find(|decl| decl.name == RESULT_VAR_NAME)
@@ -152,7 +159,7 @@ impl Function {
 
         let mut local_decls = Vec::new();
 
-        let mut local_scope = scope.as_ref().clone();
+        let mut local_scope = scope.clone();
 
         for local_decl in function.local_decls.iter() {
             match local_decl {
@@ -162,27 +169,17 @@ impl Function {
                 }
 
                 node::FunctionLocalDecl::Consts(parsed_local_consts) => {
-                    let mut local_consts = ConstDecls::default();
-
                     //consts can reference each other so we annotate them one by one
                     for parsed_const in parsed_local_consts.decls.iter() {
-                        let (const_decl, new_scope) = ConstDecl::annotate(
-                            parsed_const,
-                            Rc::new(local_scope))?;
-
-                        local_consts.decls.push(const_decl);
-                        local_scope = new_scope;
+                        local_scope = ConstDecl::annotate(parsed_const, local_scope)?;
                     }
-
-                    local_decls.push(node::FunctionLocalDecl::Consts(local_consts))
                 }
 
                 node::FunctionLocalDecl::NestedFunction(parsed_local_func) => {
-                    let func_scope = Rc::new(local_scope.clone());
-                    let local_func = Function::annotate(&parsed_local_func, func_scope)?;
-                    let local_func = Box::new(local_func);
+                    let (local_func, new_scope) = Function::annotate(&parsed_local_func, local_scope)?;
+                    local_scope = new_scope;
 
-                    let func_decl = node::FunctionLocalDecl::NestedFunction(local_func);
+                    let func_decl = node::FunctionLocalDecl::NestedFunction(Box::new(local_func));
                     local_decls.push(func_decl);
                 }
             }
@@ -197,14 +194,16 @@ impl Function {
                 Some(node::FunctionArgModifier::Out) => BindingKind::Uninitialized,
                 None => BindingKind::Mutable,
             };
-            local_scope = local_scope.with_binding(&arg.name, arg_type, binding_kind);
+            local_scope = Rc::new(local_scope
+                .as_ref().clone()
+                .with_binding(&arg.name, arg_type, binding_kind));
         }
 
         /* annotate variables and add them to the local scope */
         let mut all_local_vars = VarDecls::default();
 
         for parsed_local_var in function.local_vars() {
-            let local_var = VarDecl::annotate(parsed_local_var, Rc::new(local_scope.clone()))?;
+            let local_var = VarDecl::annotate(parsed_local_var, local_scope.clone())?;
             all_local_vars.decls.push(local_var);
         }
 
@@ -214,28 +213,21 @@ impl Function {
                 _ => BindingKind::Uninitialized,
             };
 
-            local_scope = local_scope.with_binding(
+            local_scope = Rc::new(local_scope.as_ref().clone().with_binding(
                 &local_var.name,
                 local_var.decl_type.clone(),
                 binding_kind,
-            );
+            ));
         }
 
         /* add a "result" var if this function returns something */
         if let &Some(ref result_var_type) = &decl.return_type {
-            all_local_vars.decls.push(VarDecl {
-                name: RESULT_VAR_NAME.to_string(),
-                context: decl.context.clone(),
-                default_value: None,
-                decl_type: result_var_type.clone(),
-            });
-
             /* todo: we should be able to mark `result` as uninitialized! */
-            local_scope = local_scope.with_binding(
+            local_scope = Rc::new(local_scope.as_ref().clone().with_binding(
                 RESULT_VAR_NAME,
                 result_var_type.clone(),
                 BindingKind::Mutable,
-            );
+            ));
         }
 
         /* add the "result" var */
@@ -243,13 +235,13 @@ impl Function {
         local_decls.push(node::FunctionLocalDecl::Vars(all_local_vars));
 
         /* we don't keep anything from the local scope after the function */
-        let (block, _) = Block::annotate(&function.block, Rc::new(local_scope))?;
+        let (block, _) = Block::annotate(&function.block, local_scope)?;
 
-        Ok(Function {
+        Ok((Function {
             decl,
             block,
             local_decls,
-        })
+        }, scope))
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
@@ -289,6 +281,7 @@ mod test {
 
         FunctionDecl::annotate(&decl, Rc::new(scope))
             .unwrap()
+            .0
     }
 
     #[test]

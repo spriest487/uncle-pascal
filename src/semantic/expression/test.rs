@@ -37,6 +37,7 @@ fn parse_func_decl(src: &str, scope: Rc<Scope>) -> FunctionDecl {
 
     FunctionDecl::annotate(&parsed, scope)
         .expect(&format!("test expr `{}` must have valid types", src))
+        .0
 }
 
 #[test]

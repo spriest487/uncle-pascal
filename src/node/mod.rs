@@ -78,6 +78,23 @@ pub enum UnitDecl<TContext>
     Consts(ConstDecls<TContext>),
 }
 
+impl<TContext> UnitDecl<TContext>
+    where TContext: Context
+{
+    pub fn as_class_decl(&self) -> Option<&RecordDecl<TContext>> {
+        match self {
+            UnitDecl::Type(TypeDecl::Record(record)) => {
+                match record.kind {
+                    RecordKind::Class => Some(record),
+                    RecordKind::Record => None
+                }
+            }
+
+            _ => None
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum Implementation<TContext>
     where TContext: Context
@@ -98,6 +115,23 @@ pub struct Program<TContext>
     pub program_block: Block<TContext>,
 }
 
+impl<TContext> Program<TContext>
+    where TContext: Context
+{
+    pub fn vars(&self) -> impl Iterator<Item=&VarDecl<TContext>> {
+        self.decls.iter()
+            .filter_map(|program_decl| match program_decl {
+                Implementation::Decl(decl) => match decl {
+                    UnitDecl::Vars(var_decl) => Some(var_decl),
+                    _ => None,
+                }
+
+                _ => None,
+            })
+            .flat_map(|vars| vars.decls.iter())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Unit<TContext>
     where TContext: Context
@@ -111,6 +145,32 @@ pub struct Unit<TContext>
 
     pub initialization: Option<Block<TContext>>,
     pub finalization: Option<Block<TContext>>,
+}
+
+impl<TContext> Unit<TContext>
+    where TContext: Context
+{
+    pub fn vars(&self) -> impl Iterator<Item=&VarDecl<TContext>> {
+        let interface_vars = self.interface.iter()
+            .filter_map(|decl| match decl {
+                UnitDecl::Vars(vars) => Some(vars),
+                _ => None,
+            })
+            .flat_map(|vars| vars.decls.iter());
+
+        let impl_vars = self.implementation.iter()
+            .filter_map(|program_decl| match program_decl {
+                Implementation::Decl(decl) => match decl {
+                    UnitDecl::Vars(vars) => Some(vars),
+                    _ => None,
+                }
+
+                _ => None,
+            })
+            .flat_map(|vars| vars.decls.iter());
+
+        interface_vars.chain(impl_vars)
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

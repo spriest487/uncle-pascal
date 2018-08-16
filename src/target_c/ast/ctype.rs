@@ -3,15 +3,17 @@ use std::fmt;
 use types::Type;
 use semantic::Scope;
 use node::FunctionArgModifier;
-use target_c::writer::identifier_to_c;
+use target_c::{
+    identifier_to_c,
+};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct CArray {
     pub element: Box<CType>,
     pub count: u32,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum CType {
     Void,
     Named(String),
@@ -23,6 +25,7 @@ pub enum CType {
         return_type: Box<CType>,
         arg_types: Vec<CType>,
     },
+    Struct(String),
 }
 
 impl<'a> From<&'a str> for CType {
@@ -32,7 +35,7 @@ impl<'a> From<&'a str> for CType {
 }
 
 impl CType {
-    pub fn from_pascal(pascal_type: &Type, scope: &Scope) -> Self {
+    pub fn translate(pascal_type: &Type, scope: &Scope) -> Self {
         match pascal_type {
             Type::Nil => panic!("cannot output `nil` as a type in C"),
             Type::Byte => CType::from("System_Byte"),
@@ -47,16 +50,16 @@ impl CType {
             Type::RawPointer => CType::from("System_Pointer"),
             Type::UntypedRef => CType::Void,
             Type::Pointer(target) => {
-                CType::from_pascal(target.as_ref(), scope)
+                CType::translate(target.as_ref(), scope)
                     .into_pointer()
             }
             Type::Function(sig) => {
                 let return_type = sig.return_type.as_ref()
-                    .map(|ty| CType::from_pascal(ty, scope))
+                    .map(|ty| CType::translate(ty, scope))
                     .unwrap_or_else(|| CType::Void);
                 let arg_types = sig.args.iter()
                     .map(|arg| {
-                        let arg_type_base = CType::from_pascal(&arg.decl_type, scope);
+                        let arg_type_base = CType::translate(&arg.decl_type, scope);
                         match arg.modifier {
                             | Some(FunctionArgModifier::Var)
                             | Some(FunctionArgModifier::Out) =>
@@ -76,14 +79,14 @@ impl CType {
                 let (class_id, _) = scope.get_class(name)
                     .expect("referenced class must exist");
 
-                CType::Named(identifier_to_c(&class_id))
+                CType::Struct(identifier_to_c(&class_id))
                     .into_pointer()
             }
             Type::Record(name) => {
                 let (record_id, _) = scope.get_record(name)
                     .expect("referenced record must exist");
 
-                CType::Named(identifier_to_c(&record_id))
+                CType::Struct(identifier_to_c(&record_id))
             }
 
             Type::Enumeration(enum_id) => {
@@ -99,12 +102,12 @@ impl CType {
             }
 
             Type::DynamicArray(dynamic_array_type) => {
-                let element_type = CType::from_pascal(&dynamic_array_type.element, scope);
+                let element_type = CType::translate(&dynamic_array_type.element, scope);
                 CType::Named(format!("std::shared_ptr<{}[]>", element_type))
             }
 
             Type::Array(array) => {
-                let element_type = CType::from_pascal(array.element.as_ref(), scope);
+                let element_type = CType::translate(array.element.as_ref(), scope);
 
                 let mut base_array = CArray {
                     element: Box::new(element_type),
@@ -174,6 +177,10 @@ impl fmt::Display for CType {
                 write!(f, "System_Internal_Array<{}[{}]>", array.element, array.count)
             }
 
+            CType::Struct(name) => {
+                write!(f, "struct {}", name)
+            }
+
             CType::Function { return_type, arg_types } => {
                 let args_list = arg_types.iter()
                     .map(|arg_type| arg_type.to_string())
@@ -207,7 +214,7 @@ mod test {
         });
 
         let scope = Scope::default();
-        let c_type = CType::from_pascal(&pas_type, &scope);
+        let c_type = CType::translate(&pas_type, &scope);
 
         let expected = CType::Array(CArray {
             count: 2,
