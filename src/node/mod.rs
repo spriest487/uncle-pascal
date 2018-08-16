@@ -75,7 +75,7 @@ pub enum UnitDecl<TContext>
     Function(FunctionDecl<TContext>),
     Type(TypeDecl<TContext>),
     Var(VarDecl<TContext>),
-    Consts(ConstDecls<TContext>),
+    Const(ConstDecl<TContext>),
 }
 
 impl<TContext> UnitDecl<TContext>
@@ -237,7 +237,7 @@ pub enum FunctionLocalDecl<TContext>
     where TContext: Context,
 {
     Var(VarDecl<TContext>),
-    Consts(ConstDecls<TContext>),
+    Const(ConstDecl<TContext>),
     NestedFunction(Box<Function<TContext>>),
 }
 
@@ -259,7 +259,7 @@ impl<TContext> Function<TContext>
                 FunctionLocalDecl::Var(var) => Some(var),
 
                 FunctionLocalDecl::NestedFunction(_) |
-                FunctionLocalDecl::Consts(_) => None,
+                FunctionLocalDecl::Const(_) => None,
             })
     }
 }
@@ -390,21 +390,6 @@ pub struct ConstDecl<TContext>
     pub value: Expression<TContext>,
     pub decl_type: Option<TContext::Type>,
     pub context: TContext,
-}
-
-#[derive(Clone, Debug)]
-pub struct ConstDecls<TContext>
-    where TContext: Context
-{
-    pub decls: Vec<ConstDecl<TContext>>,
-}
-
-impl<TContext> Default for ConstDecls<TContext>
-    where TContext: Context
-{
-    fn default() -> Self {
-        ConstDecls { decls: Vec::new() }
-    }
 }
 
 #[derive(Clone, Debug)]

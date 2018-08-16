@@ -87,7 +87,7 @@ impl VarDecl {
         part of the implementation or interface section of
         a unit, the global section of a program, or the decls section of a function
      */
-    pub fn parse_vars(tokens: &mut TokenStream) -> ParseResult<Vec<VarDecl>> {
+    pub fn parse_var_section(tokens: &mut TokenStream) -> ParseResult<Vec<VarDecl>> {
         tokens.match_one(keywords::Var)?;
 
         let vars = tokens.parse::<Vec<VarDecl>>()?;
@@ -112,7 +112,7 @@ mod test {
         let mut tokens = TokenStream::tokenize("test", src, &CompileOptions::default())
             .unwrap();
 
-        VarDecl::parse_vars(&mut tokens).unwrap()
+        VarDecl::parse_var_section(&mut tokens).unwrap()
     }
 
     fn make_type_name(name: &str) -> TypeName {

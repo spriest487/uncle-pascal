@@ -37,12 +37,10 @@ impl Unit {
                 Ok((Some(node::UnitDecl::Var(var)), new_scope))
             }
 
-            node::UnitDecl::Consts(parsed_consts) => {
+            node::UnitDecl::Const(parsed_const) => {
                 /* consts exist in scope but we no longer need to store the declarations - they
                 don't get emitted in the backend */
-                for parsed_const in parsed_consts.decls.iter() {
-                    scope = ConstDecl::annotate(parsed_const, scope)?;
-                }
+                scope = ConstDecl::annotate(parsed_const, scope)?;
 
                 Ok((None, scope))
             }

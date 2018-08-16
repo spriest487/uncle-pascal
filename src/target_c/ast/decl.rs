@@ -91,7 +91,7 @@ impl Declaration {
                 Ok(Some(Declaration::Variable(variable)))
             }
 
-            UnitDecl::Consts(_) => {
+            UnitDecl::Const(_) => {
                 // consts are resolved at compile-time and don't need to be in the C++ output
                 Ok(None)
             }

@@ -18,29 +18,6 @@ use tokens::{
 use operators;
 
 pub type ConstDecl = node::ConstDecl<ParsedContext>;
-pub type ConstDecls = node::ConstDecls<ParsedContext>;
-
-impl Parse for ConstDecls {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        tokens.match_one(keywords::Const)?;
-
-        let mut decls = Vec::new();
-        loop {
-            if tokens.look_ahead().match_one(Matcher::AnyIdentifier).is_none() {
-                break;
-            }
-
-            let decl: ConstDecl = tokens.parse()?;
-            tokens.match_or_endl(tokens::Semicolon)?;
-
-            decls.push(decl);
-        }
-
-        Ok(ConstDecls {
-            decls
-        })
-    }
-}
 
 impl Parse for ConstDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -56,7 +33,7 @@ impl Parse for ConstDecl {
                 let decl_type: TypeName = tokens.parse()?;
                 tokens.match_one(operators::Equals)?;
                 Some(decl_type)
-            },
+            }
 
             /* `const x = 1` - implicit type from argument */
             tokens::Operator(operators::Equals) => {
@@ -73,5 +50,25 @@ impl Parse for ConstDecl {
             decl_type,
             context: name_tokens[0].clone().into(),
         })
+    }
+}
+
+impl ConstDecl {
+    pub fn parse_const_section(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        tokens.match_one(keywords::Const)?;
+
+        let mut decls = Vec::new();
+        loop {
+            if tokens.look_ahead().match_one(Matcher::AnyIdentifier).is_none() {
+                break;
+            }
+
+            let decl: ConstDecl = tokens.parse()?;
+            tokens.match_or_endl(tokens::Semicolon)?;
+
+            decls.push(decl);
+        }
+
+        Ok(decls)
     }
 }

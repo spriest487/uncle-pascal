@@ -39,7 +39,7 @@ impl Parse for FunctionDecl {
         let return_type = match kind_kw {
             // procedures return nothing
             keywords::Procedure |
-            keywords::Destructor =>  None,
+            keywords::Destructor => None,
 
             _ => {
                 //functions and constructors must return something
@@ -89,16 +89,17 @@ impl Parse for Function {
                 }
 
                 Some(ref kw) if kw.is_keyword(keywords::Var) => {
-                    let vars = VarDecl::parse_vars(tokens)?;
+                    let vars = VarDecl::parse_var_section(tokens)?;
 
                     local_decls.extend(vars.into_iter()
                         .map(|var| node::FunctionLocalDecl::Var(var)));
                 }
 
                 Some(ref kw) if kw.is_keyword(keywords::Const) => {
-                    let consts: ConstDecls = tokens.parse()?;
+                    let consts = ConstDecl::parse_const_section(tokens)?;
 
-                    local_decls.push(node::FunctionLocalDecl::Consts(consts));
+                    local_decls.extend(consts.into_iter()
+                        .map(|const_decl| node::FunctionLocalDecl::Const(const_decl)));
                 }
 
                 _ => break,
@@ -132,12 +133,12 @@ impl Parse for node::ExternalName {
                 // found symbol name part, but no shared lib part
                 tokens.advance(1);
                 None
-            },
+            }
             None => {
                 // something else, this `external` modifier has neither part
                 return Ok(node::ExternalName {
                     symbol_name: None,
-                    shared_lib: None
+                    shared_lib: None,
                 });
             }
         };
@@ -149,7 +150,7 @@ impl Parse for node::ExternalName {
             }
             None => {
                 None
-            },
+            }
         };
 
         Ok(node::ExternalName {
@@ -186,8 +187,7 @@ impl FunctionDecl {
                         tokens.advance(1);
                         let external_name: node::ExternalName = tokens.parse()?;
                         modifiers.push(node::FunctionModifier::External(external_name));
-                    }
-                    else {
+                    } else {
                         break Ok(modifiers);
                     }
                 }
@@ -201,12 +201,12 @@ impl FunctionDecl {
         match tokens.look_ahead().match_one(tokens::BracketLeft) {
             None => {
                 // no args list
-                return Ok(Vec::new())
-            },
+                return Ok(Vec::new());
+            }
             Some(_) => {
                 // continue to read args list in brackets
                 tokens.advance(1)
-            },
+            }
         }
 
         // cover the case of an empty argument list with brackets: `procedure x()`
@@ -264,7 +264,7 @@ impl FunctionDecl {
 
                         None => {
                             TypeName::UntypedRef { context: context.clone().into() }
-                        },
+                        }
                     }
                 }
 

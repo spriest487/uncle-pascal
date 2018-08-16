@@ -167,11 +167,8 @@ impl Function {
                     so it's easiest just to process them last */
                 }
 
-                node::FunctionLocalDecl::Consts(parsed_local_consts) => {
-                    //consts can reference each other so we annotate them one by one
-                    for parsed_const in parsed_local_consts.decls.iter() {
-                        local_scope = ConstDecl::annotate(parsed_const, local_scope)?;
-                    }
+                node::FunctionLocalDecl::Const(parsed_const) => {
+                    local_scope = ConstDecl::annotate(parsed_const, local_scope)?;
                 }
 
                 node::FunctionLocalDecl::NestedFunction(parsed_local_func) => {

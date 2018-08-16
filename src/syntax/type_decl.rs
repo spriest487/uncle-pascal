@@ -246,7 +246,13 @@ impl RecordDecl {
                         return Ok(None);
                     }
 
-                    tokens.match_or_endl(tokens::Semicolon.or(terminator.clone()))?;
+                    tokens.match_or_endl(tokens::Semicolon)?;
+                    
+                    // found terminator after separator
+                    if tokens.look_ahead().match_one(terminator.clone()).is_some() {
+                        return Ok(None);
+                    }
+
                     tokens.match_one(Matcher::AnyIdentifier)?
                 }
             };
@@ -288,5 +294,73 @@ impl RecordDecl {
             members,
             variant_part,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use opts::CompileOptions;
+
+    fn parse(source: &str) -> Vec<TypeDecl> {
+        let opts = CompileOptions::default();
+
+        let stream = TokenStream::tokenize("type_decl tests", source, &opts)
+            .unwrap();
+
+        stream.parse_to_end().unwrap()
+    }
+
+    fn parse_record(source: &str) -> RecordDecl {
+        let decls = parse(source);
+        assert_eq!(1, decls.len(), "result should be a single record declaration");
+
+        match decls.into_iter().next().unwrap() {
+            node::TypeDecl::Record(record) => record,
+            bad @ _ => panic!("expected record, got {:?}", bad)
+        }
+    }
+
+    #[test]
+    fn parses_empty_record() {
+        let record = parse_record("type Car = record end");
+        assert_eq!("Car", &record.name);
+        assert_eq!(RecordKind::Record, record.kind);
+        assert_eq!(0, record.members.len());
+    }
+
+    #[test]
+    fn parses_record_fields_with_no_terminator() {
+        let record = parse_record("type Car = record wheels: Int32 end");
+        assert_eq!("Car", &record.name);
+        assert_eq!(RecordKind::Record, record.kind);
+        assert_eq!(1, record.members.len());
+    }
+
+    #[test]
+    fn parses_record_fields_with_terminating_endl() {
+        let record = parse_record(r"type Car = record wheels: Int32
+        end");
+        assert_eq!("Car", &record.name);
+        assert_eq!(RecordKind::Record, record.kind);
+        assert_eq!(1, record.members.len());
+    }
+
+    #[test]
+    fn parses_record_fields_with_terminating_semicolon() {
+        let record = parse_record("type Car = record wheels: Int32; end");
+        assert_eq!("Car", &record.name);
+        assert_eq!(RecordKind::Record, record.kind);
+        assert_eq!(1, record.members.len());
+    }
+
+    #[test]
+    fn parses_record_fields_with_terminating_semicolon_and_endl() {
+        let record = parse_record(r"type Car = record
+            wheels: Int32;
+         end");
+        assert_eq!("Car", &record.name);
+        assert_eq!(RecordKind::Record, record.kind);
+        assert_eq!(1, record.members.len());
     }
 }

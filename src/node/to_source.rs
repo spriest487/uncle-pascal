@@ -155,18 +155,11 @@ impl<C> ToSource for ExpressionValue<C>
     }
 }
 
-impl<C> ToSource for ConstDecls<C>
+impl<C> ToSource for ConstDecl<C>
     where C: Context
 {
     fn to_source(&self) -> String {
-        let decl_lines = self.decls.iter()
-            .map(|decl| {
-                format!("\t{} = {};", decl.name, decl.value.to_source())
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        format!("const\n{}", decl_lines)
+        format!("const {} = {};", self.name, self.value.to_source())
     }
 }
 
@@ -192,9 +185,9 @@ impl<C> ToSource for FunctionLocalDecl<C>
 {
     fn to_source(&self) -> String {
         match self {
-            FunctionLocalDecl::Var(var) => format!("var {}", var.to_source()),
+            FunctionLocalDecl::Var(var) => var.to_source(),
             FunctionLocalDecl::NestedFunction(func) => func.to_source(),
-            FunctionLocalDecl::Consts(consts) => consts.to_source(),
+            FunctionLocalDecl::Const(const_decl) => const_decl.to_source(),
         }
     }
 }
@@ -250,10 +243,10 @@ impl<C> ToSource for Program<C>
                     lines.push(func_decl.to_source()),
 
                 Implementation::Decl(UnitDecl::Var(var_decl)) =>
-                    lines.push(format!("var {}", var_decl.to_source())),
+                    lines.push(var_decl.to_source()),
 
-                Implementation::Decl(UnitDecl::Consts(const_decls)) =>
-                    lines.push(const_decls.to_source()),
+                Implementation::Decl(UnitDecl::Const(const_decl)) =>
+                    lines.push(const_decl.to_source()),
             }
         }
 
@@ -327,10 +320,10 @@ impl<C> ToSource for UnitDecl<C>
                 func_decl.to_source(),
 
             UnitDecl::Var(var) =>
-                format!("var {}", var.to_source()),
+                var.to_source(),
 
-            UnitDecl::Consts(const_decls) =>
-                const_decls.to_source(),
+            UnitDecl::Const(const_decl) =>
+                const_decl.to_source(),
         }
     }
 }
@@ -339,7 +332,7 @@ impl<C> ToSource for VarDecl<C>
     where C: Context
 {
     fn to_source(&self) -> String {
-        format!("\t{}: {};", self.name, self.decl_type.to_source())
+        format!("var {}: {};", self.name, self.decl_type.to_source())
     }
 }
 
