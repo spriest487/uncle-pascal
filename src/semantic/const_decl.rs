@@ -15,7 +15,7 @@ impl ConstDecl {
         };
 
         let value = Expression::annotate(&decl.value, Rc::new(scope.clone()))?;
-        let const_value = value.to_const_value(scope)?;
+        let const_value = value.to_const_value()?;
 
         *scope = scope.clone().with_const(&decl.name, const_value);
 

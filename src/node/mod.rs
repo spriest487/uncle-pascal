@@ -264,6 +264,8 @@ pub struct VarDecl<TSymbol, TContext>
     pub context: TContext,
 
     pub decl_type: TSymbol::Type,
+
+    pub default_value: Option<Expression<TSymbol, TContext>>,
 }
 
 #[derive(Clone, Debug)]

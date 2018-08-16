@@ -716,14 +716,23 @@ impl Expression {
         self.context.scope.as_ref()
     }
 
-    pub fn to_const_value(&self, scope: &Scope) -> SemanticResult<ConstantExpression> {
+    pub fn into_const_expr(self) -> SemanticResult<Self> {
+        let const_value = self.to_const_value()?;
+
+        Ok(Expression {
+            context: self.context,
+            value: ExpressionValue::Constant(const_value)
+        })
+    }
+
+    pub fn to_const_value(&self) -> SemanticResult<ConstantExpression> {
         match &self.value {
             ExpressionValue::Constant(val) => {
                 Ok(val.clone())
             }
 
             ExpressionValue::PrefixOperator { op, rhs } => {
-                let rhs_val = rhs.to_const_value(scope)?;
+                let rhs_val = rhs.to_const_value()?;
                 match (*op, rhs_val) {
                     (operators::Minus, ConstantExpression::Integer(rhs_int)) => {
                         Ok(ConstantExpression::Integer(IntConstant::from(0) - rhs_int))
@@ -737,8 +746,8 @@ impl Expression {
             }
 
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let lhs_val: ConstantExpression = lhs.to_const_value(scope)?;
-                let rhs_val: ConstantExpression = rhs.to_const_value(scope)?;
+                let lhs_val: ConstantExpression = lhs.to_const_value()?;
+                let rhs_val: ConstantExpression = rhs.to_const_value()?;
 
                 match (lhs_val, *op, rhs_val) {
                     /* const string concatenation */
@@ -779,7 +788,7 @@ impl Expression {
             }
 
             ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) => {
-                scope.get_const(name)
+                self.scope().get_const(name)
                     .map(|(_const_id, const_val)| const_val.clone())
                     .ok_or_else(|| {
                         SemanticError::invalid_const_value(self.clone())

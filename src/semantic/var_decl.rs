@@ -27,10 +27,19 @@ impl VarDecl {
                 SemanticError::unknown_type(not_found, var_context.clone())
             })?;
 
+        let default_value = match decl.default_value.as_ref() {
+            Some(default_expr) => {
+                Some(Expression::annotate(default_expr, scope.clone())?
+                    .into_const_expr()?)
+            },
+            None => None,
+        };
+
         Ok(VarDecl {
             name: decl.name.clone(),
             context: var_context,
             decl_type: var_type,
+            default_value
         })
     }
 

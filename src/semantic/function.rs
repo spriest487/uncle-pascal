@@ -85,6 +85,7 @@ impl FunctionDecl {
                         name: result_id.to_string(),
                         context: context.clone(),
                         decl_type: result_var_type.clone(),
+                        default_value: None,
                     });
                 }
 

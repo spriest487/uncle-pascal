@@ -2,6 +2,7 @@ use tokens;
 use tokens::AsToken;
 use keywords;
 use node::{self, TypeName};
+use operators;
 use syntax::*;
 
 pub type VarDecl = node::VarDecl<ParsedSymbol, ParsedContext>;
@@ -36,14 +37,42 @@ impl Parse for Vec<VarDecl> {
             }
 
             let decl_type: TypeName = tokens.parse()?;
+
+            if names.len() == 1 {}
+
+            let default_value: Option<Expression> = if names.len() == 1 {
+                match tokens.look_ahead().next() {
+                    Some(ref t) if t.is_operator(operators::Equals) => {
+                        tokens.advance(1);
+
+                        Some(tokens.parse()?)
+                    }
+
+                    _ => None,
+                }
+            } else {
+                None
+            };
+
             tokens.match_or_endl(tokens::Semicolon)?;
 
-            for (name, context) in names {
+            if names.len() == 1 {
+                let (name, context) = names.into_iter().next().unwrap();
                 decls.push(VarDecl {
                     name,
                     context,
-                    decl_type: decl_type.clone(),
+                    decl_type,
+                    default_value,
                 })
+            } else {
+                for (name, context) in names {
+                    decls.push(VarDecl {
+                        name,
+                        context,
+                        decl_type: decl_type.clone(),
+                        default_value: None,
+                    })
+                }
             }
         }
 
