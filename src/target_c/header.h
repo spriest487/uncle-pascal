@@ -1,13 +1,21 @@
-#include <stdint.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <stdbool.h>
+#include <cstdint>
+#include <cstdlib>
+#include <cstdio>
+#include <cstring>
 
-typedef int8_t System_Byte;
-typedef int64_t System_Integer;
+typedef std::int8_t System_Byte;
+typedef std::int64_t System_Integer;
 typedef void* System_Pointer;
-typedef uint8_t System_Boolean;
+typedef std::uint8_t System_Boolean;
+
+struct System_String {
+    System_Byte* Chars;
+    System_Integer Length;
+};
+
+struct System_Internal_Class {
+    System_String Name;
+};
 
 struct System_Internal_RefCount {
     System_Integer StrongCount;
@@ -15,59 +23,54 @@ struct System_Internal_RefCount {
 
 struct System_Internal_Rc {
     System_Pointer Value;
-    struct System_Internal_RefCount* RefCount;
+    System_Internal_RefCount* RefCount;
 };
 
-static struct System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
-    struct System_Internal_Rc rc;
-    rc.Value = malloc((size_t)size);
+static System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
+    System_Internal_Rc rc;
+    rc.Value = static_cast<System_Byte*>(malloc(static_cast<size_t>(size)));
     if (!rc.Value) {
-        fprintf(stderr, "object memory allocation failed in %s constructor\n", constructorName);
-        abort();
+        std::fprintf(std::stderr, "object memory allocation failed in %s constructor\n", constructorName);
+        std::abort();
     }
 
-    rc.RefCount = malloc(sizeof(struct System_Internal_RefCount));
+    rc.RefCount = static_cast<System_Internal_RefCount*>(malloc(sizeof(System_Internal_RefCount)));
     if (!rc.RefCount) {
-        fprintf(stderr, "rc memory allocation failed in %s constructor\n", constructorName);
-        abort();
+        std::fprintf(stderr, "rc memory allocation failed in %s constructor\n", constructorName);
+        std::abort();
     }
 
     rc.RefCount->StrongCount = 0;
 
-    fprintf(stderr, "rc allocated %lld bytes for %s @ %p + %p\n", size, constructorName, rc.RefCount, rc.Value);
+    std::fprintf(stderr, "rc allocated %lld bytes for %s @ %p + %p\n", size, constructorName, rc.RefCount, rc.Value);
     return rc;
 }
 
-static void System_Internal_Rc_Retain(struct System_Internal_Rc* rc) {
+static void System_Internal_Rc_Retain(System_Internal_Rc* rc) {
     if (!rc->RefCount) {
-        fprintf(stderr, "retained rc that was already deallocated @ %p + %p\n", rc->RefCount, rc->Value);
-        abort();
+        std::fprintf(stderr, "retained rc that was already deallocated @ %p + %p\n", rc->RefCount, rc->Value);
+        std::abort();
     }
 
     rc->RefCount->StrongCount += 1;
 }
 
-static void System_Internal_Rc_Release(struct System_Internal_Rc* rc) {
+static void System_Internal_Rc_Release(System_Internal_Rc* rc) {
     if (!rc->RefCount || rc->RefCount->StrongCount <= 0) {
-        fprintf(stderr, "released rc that was already released @ %p + %p\n", rc->RefCount, rc->Value);
-        abort();
+        std::fprintf(stderr, "released rc that was already released @ %p + %p\n", rc->RefCount, rc->Value);
+        std::abort();
     }
 
     rc->RefCount->StrongCount -= 1;
     if (rc->RefCount->StrongCount == 0) {
         fprintf(stderr, "rc deallocated @ %p + %p\n", rc->RefCount, rc->Value);
 
-        free(rc->Value);
-        free(rc->RefCount);
-        rc->RefCount = NULL;
-        rc->Value = NULL;
+        std::free(rc->Value);
+        std::free(rc->RefCount);
+        rc->RefCount = nullptr;
+        rc->Value = nullptr;
     }
 }
-
-struct System_String {
-    System_Byte* Chars;
-    System_Integer Length;
-};
 
 /* procedure System.WriteLn(line: System.String) */
 static void System_WriteLn(struct System_Internal_Rc lineRc) {
@@ -89,14 +92,14 @@ static void System_WriteLn(struct System_Internal_Rc lineRc) {
 
 static System_Byte* System_GetMem(System_Integer bytes) {
     if (bytes > 0) {
-        System_Byte* mem = malloc((size_t) bytes);
+        auto mem = static_cast<System_Byte*>(malloc(static_cast<size_t>(bytes)));
         if (!mem) {
             fputs("memory allocation failed\n", stderr);
             abort();
         }
         return mem;
     } else {
-        return NULL;
+        return nullptr;
     }
 }
 

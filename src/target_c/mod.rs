@@ -44,7 +44,7 @@ fn invoke_clang<'a>(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
     clang.arg("-Wno-non-literal-null-conversion");
 
     let mut clang_proc = clang
-        .arg("-x").arg("c")
+        .arg("-x").arg("c++")
         .arg("-o").arg(out_path)
         .arg("-")
         .stdout(process::Stdio::inherit())

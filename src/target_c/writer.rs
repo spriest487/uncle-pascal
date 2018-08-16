@@ -72,7 +72,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 
         &types::DeclaredType::RawPointer |
         &types::DeclaredType::Pointer(_) => {
-            writeln!(out, "{} = NULL;", id)
+            writeln!(out, "{} = nullptr;", id)
         }
 
         _ => panic!("type `{}` cannot be default initialized!", target.decl_type)
@@ -82,16 +82,16 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                   -> fmt::Result {
     match &expr.value {
-        &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } => {
+        &node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let c_op = match op {
-                &operators::Assignment => "=",
-                &operators::Equals => "==",
-                &operators::NotEquals => "!=",
-                &operators::Minus => "-",
-                &operators::Plus => "+",
+                operators::Assignment => "=",
+                operators::Equals => "==",
+                operators::NotEquals => "!=",
+                operators::Minus => "-",
+                operators::Plus => "+",
 
-                &operators::AddressOf |
-                &operators::Deref => panic!("bad binary operator type: {}", op),
+                operators::AddressOf |
+                operators::Deref => panic!("bad binary operator type: {}", op),
             };
 
 //            println!("BINARY OP {} @ {}", op, expr.context.location);
