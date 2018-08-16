@@ -50,7 +50,7 @@ static void System_Internal_ZeroMemory(void* mem, PascalType_System_NativeUInt l
     std::memset(mem, 0, len);
 }
 
-static PascalType_System_Byte* Pascal_System_GetMem(PascalType_System_NativeInt bytes) {
+static PascalType_System_Byte* Pascal_System_GetMem(PascalType_System_NativeUInt bytes) {
     if (bytes > 0) {
         auto mem = static_cast<PascalType_System_Byte*>(std::malloc(static_cast<std::size_t>(bytes)));
         if (!mem) {
@@ -100,7 +100,7 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
 }
 
 static System_Internal_Object* System_Internal_Rc_GetMem(
-        PascalType_System_NativeInt size,
+        PascalType_System_NativeUInt size,
         const char* constructorName) {
     auto obj = reinterpret_cast<System_Internal_Object*>(Pascal_System_GetMem(size));
 

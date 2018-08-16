@@ -14,7 +14,7 @@ type
 type
     String = class
         Chars: ^Byte
-        Length: NativeInt
+        Length: NativeUInt
     end
 
     Disposable = interface
@@ -29,18 +29,18 @@ function ReadLn(): String
 { string manipulation }
 
 function StringCreate: String
-function StringFromBytes(bytes: ^Byte; len: NativeInt): String
+function StringFromBytes(bytes: ^Byte; len: NativeUInt): String
 function Disposable.Dispose(string: String)
 
 function StringFromInt(i: Int32): String
 function StringToInt(s: String; out val: Int32): Boolean
 function StringConcat(a: String; b: String): String
-function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
-function StringLength(s: String): NativeInt
+function StringToCString(s: String; bytes: ^Byte; len: NativeUInt): Boolean
+function StringLength(s: String): NativeUInt
 
 { native memory allocation }
 
-function GetMem(len: NativeInt): ^Byte
+function GetMem(len: NativeUInt): ^Byte
 function FreeMem(mem: ^Byte)
 
 { standard math functions }
@@ -68,20 +68,20 @@ implementation
 function StringCreate: String =
     result := (Chars: nil; Length: 0)
 
-function StringFromBytes(bytes: ^Byte; len: NativeInt): String
+function StringFromBytes(bytes: ^Byte; len: NativeUInt): String
 begin
     result := (
         Chars: GetMem(len)
         Length: len
     )
 
-    for let c = 0 to result.Length do
+    for let c = NativeUInt(0) to result.Length do
         result.Chars[c] := bytes[c]
 end
 
 function Disposable.Dispose(string: String)
 begin
-    if string.Length > 0 then begin
+    if string.Length > NativeUInt(0) then begin
         if string.Chars <> nil then 
             raise 'Empty string should not be initialized'
 
@@ -106,28 +106,28 @@ begin
         result.Length := a.Length + b.Length;
         result.Chars := GetMem(result.Length);
 
-        for let c = 0 to a.Length do
+        for let c = NativeUInt(0) to a.Length do
             result.Chars[c] := a.Chars[c];
 
-        for let c = 0 to b.Length do
+        for let c = NativeUInt(0) to b.Length do
             result.Chars[a.Length + c] := b.Chars[c];
     end
 end
 
-function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
+function StringToCString(s: String; bytes: ^Byte; len: NativeUInt): Boolean
 begin
-    if len < s.Length + 1 then
+    if len < s.Length + NativeUInt(1) then
         result := false
     else begin
-        for let i = 0 to s.Length do
+        for let i = NativeUInt(0) to s.Length do
             bytes[i] := s.Chars[i]
 
-        bytes[s.Length] := #0
+        bytes[s.Length] := 0
         result := true
     end
 end
 
-function StringLength(s: String): NativeInt =
+function StringLength(s: String): NativeUInt =
     result := s.Length
 
 end.

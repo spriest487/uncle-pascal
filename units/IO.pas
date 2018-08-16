@@ -2,7 +2,9 @@ unit IO
 
 interface
 
-uses System.*
+uses 
+    System.*
+    ByteBuffer.ByteBuffer
 
 type FileStream = class
     FileHandle: Pointer
@@ -10,7 +12,7 @@ type FileStream = class
 end
 
 type InStream = interface
-    function Read(self: Self; buf: ^Byte; count: NativeUInt): NativeUInt
+    function Read(self: Self; buf: ByteBuffer): NativeUInt
     function Ok(self: Self): Boolean
 end
 
@@ -26,7 +28,7 @@ const
 function  OpenFile(filename: String;  mode: NativeInt): FileStream
 
 function Disposable.Dispose(self: FileStream)
-function InStream.Read(self: FileStream; buf: ^Byte; count: NativeUInt): NativeUInt
+function InStream.Read(self: FileStream; buf: ByteBuffer): NativeUInt
 function InStream.Ok(self: FileStream): Boolean
 
 function FOpen(filenameCStr: ^Byte; modeCStr: NativeInt): Pointer
@@ -38,7 +40,7 @@ implementation
 
 function OpenFile(filename: String;  mode: NativeInt): FileStream
 begin
-    let fileNameBufLen = filename.StringLength() + 1
+    let fileNameBufLen = filename.StringLength() + NativeUInt(1)
     let fileNameCStr = GetMem(fileNameBufLen)
     filename.StringToCString(fileNameCStr, fileNameBufLen)
 
@@ -56,19 +58,22 @@ begin
     result := (self.FileHandle <> nil) and self.Status = OK
 end
 
-function InStream.Read(self: FileStream; buf: ^Byte; count: NativeUInt): NativeUInt
+function InStream.Read(self: FileStream; buf: ByteBuffer): NativeUInt
 begin
     if self.Status <> OK then begin
         result := 0
     end
     else begin
-        result := FRead(self.FileHandle, buf, count)
+        result := FRead(self.FileHandle, buf.Data(), buf.Length())
 
-        if result <> count then 
+        if result <> buf.Length() then 
             if FEof(self.FileHandle) then
+            begin
                 self.Status := EOF
-            else
+            end
+            else begin
                 self.Status := BAD
+            end
     end
 end
 

@@ -37,13 +37,13 @@ pub fn element_type(of: &Expression,
                     index_expr: &Expression,
                     context: &SemanticContext)
                     -> SemanticResult<Option<Type>> {
-    let check_index_type_is_isize = ops::expect_valid(
+    let check_index_type_is_usize = ops::expect_valid(
         operators::Assignment,
-        Some(&Type::NativeInt),
+        Some(&Type::NativeUInt),
         index_expr,
         context);
 
-    if check_index_type_is_isize.is_err() {
+    if check_index_type_is_usize.is_err() {
         return Err(SemanticError::invalid_array_index(index_expr.expr_type()?,
                                                       context.clone()));
     }

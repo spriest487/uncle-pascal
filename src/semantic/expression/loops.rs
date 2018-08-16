@@ -48,38 +48,33 @@ pub fn for_type(from: &Expression,
                 to: &Expression,
                 body: &Expression,
                 context: &SemanticContext) -> SemanticResult<()> {
-    let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
-
-    ops::expect_comparable(Some(&Type::Int32), to_type.as_ref(), context)?;
 
     let _body_type = body.expr_type()?;
 
-    match &from.value {
+    let iter_expr = match &from.value {
         | ExpressionValue::BinaryOperator { op, lhs, .. }
         if *op == operators::Operator::Assignment => {
-            let lhs_type = lhs.expr_type()?;
-
-            ops::expect_comparable(Some(&Type::Int32), lhs_type.as_ref(),
-                                   context)?;
-
-            Ok(())
+            lhs.as_ref()
         }
 
         | ExpressionValue::LetBinding(binding) => {
-            let value_type = binding.value.expr_type()?;
-
-            ops::expect_comparable(Some(&Type::Int32), value_type.as_ref(),
-                                   context)?;
-            Ok(())
+            binding.value.as_ref()
         }
 
         //TODO better error
-        _ => Err(SemanticError::unexpected_type(
-            Some(Type::Int32),
-            from_type,
+        _ => return Err(SemanticError::unexpected_type(
+            to_type.clone(),
+            from.expr_type()?,
             context.clone()))
-    }
+    };
+
+    ops::expect_valid(
+        operators::Equals,
+        to_type.as_ref(),
+        iter_expr,
+        context
+    )
 }
 
 pub fn annotate_while(condition: &syntax::Expression,
@@ -105,9 +100,12 @@ pub fn annotate_while(condition: &syntax::Expression,
 }
 
 pub fn while_type(condition: &Expression, body: &Expression) -> SemanticResult<()> {
-    let cond_type = condition.expr_type()?;
     body.expr_type()?;
 
-    ops::expect_comparable(Some(&Type::Boolean), cond_type.as_ref(), &condition.context)?;
-    Ok(())
+    ops::expect_valid(
+        operators::Equals,
+        Some(&Type::Boolean), 
+        condition, 
+        &condition.context,
+    )
 }

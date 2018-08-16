@@ -5,6 +5,8 @@
 * add Name node in C++ AST for renaming (--> remove pascal names from C++ output)
 * shadowing breaks initialization checks which are done by name
 * RC struct members on the stack
+* Type hints for expr_type to help infer types for constant expressions and make
+    dealing with uints less painful
 
 ## fixes
 * variant fields with the same name

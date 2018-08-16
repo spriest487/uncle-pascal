@@ -203,40 +203,54 @@ pub fn is_assignable(expr: &Expression) -> bool {
 pub fn expect_valid(operator: operators::Operator,
                     target: Option<&Type>,
                     actual_expr: &Expression,
-                    context: &SemanticContext) -> SemanticResult<()> {
-    /* special case for assigning 0 to any numeric type, or assigning integers in
-     the range 0...255 to bytes */
-    match (operator, target, &actual_expr.value) {
-        (
-            operators::Assignment,
-            Some(lhs_type),
-            ExpressionValue::Constant(ConstExpression::Integer(int))
-        ) =>
-            if let Some(u8_val) = int.as_u8() {
-                let assigning_u8_to_byte = *lhs_type == Type::Byte;
-                let assigning_zero_to_num = u8_val == 0 && lhs_type.is_numeric();
+                    context: &SemanticContext) -> SemanticResult<()> {    
+    /* special case for assigning or comparing constant 0 to any numeric type, 
+    or assigning/comparing integers in the range 0...255 to bytes */
+    match operator {
+        operators::Equals | operators::NotEquals | operators::Assignment => 
+            match (target, &actual_expr.value) {
+            (Some(lhs_type), ExpressionValue::Constant(ConstExpression::Integer(int))) =>
+                if let Some(u8_val) = int.as_u8() {
+                    let u8_to_byte = *lhs_type == Type::Byte;
+                    let zero_to_num = u8_val == 0 && lhs_type.is_numeric();
 
-                if assigning_u8_to_byte || assigning_zero_to_num {
-                    return Ok(());
-                }
-            },
+                    if u8_to_byte || zero_to_num {
+                        return Ok(());
+                    }
+                },
 
-        _ => {}
-    };
+            _ => {}
+        }
+
+        | _ => {}
+    }
 
     let actual = actual_expr.expr_type()?;
 
-    if operator == operators::Equals || operator == operators::NotEquals {
-        return expect_comparable(target, actual.as_ref(), context);
-    }
+    let is_comparison = match operator { 
+        | operators::Equals
+        | operators::NotEquals
+        => true,
+
+        _ => false
+    };
 
     let string_class = Type::Class(Identifier::from("System.String"));
 
     match (target, actual) {
-        | (None, _) =>
-            Err(SemanticError::type_not_assignable(None, context.clone())),
-        | (_, None) =>
-            Err(SemanticError::unexpected_type(target.cloned(), None, context.clone())),
+        | (_, None)
+        | (None, _) 
+        => Err(SemanticError::unexpected_type(target.cloned(), None, context.clone())),
+
+        | (Some(a),  Some(ref b)) 
+        if is_comparison =>
+            if a.comparable_to(b) {
+                Ok(())
+            } else {
+                Err(SemanticError::types_not_comparable(Some(a.clone()),
+                                                        Some(b.clone()),
+                                                        context.clone()))
+            },
 
         | (Some(a), Some(b)) => {
             let valid = match operator {
@@ -296,25 +310,5 @@ pub fn expect_valid(operator: operators::Operator,
                 Err(SemanticError::invalid_operator(operator, err_types, context.clone()))
             }
         }
-    }
-}
-
-pub fn expect_comparable(target: Option<&Type>,
-                         actual: Option<&Type>,
-                         context: &SemanticContext) -> SemanticResult<()> {
-    match (target, actual) {
-        (a @ None, b @ _) | (a @ _, b @ None) =>
-            Err(SemanticError::types_not_comparable(a.cloned(),
-                                                    b.cloned(),
-                                                    context.clone())),
-
-        (a @ Some(_), b @ Some(_)) =>
-            if a.unwrap().comparable_to(b.unwrap()) {
-                Ok(())
-            } else {
-                Err(SemanticError::types_not_comparable(a.cloned(),
-                                                        b.cloned(),
-                                                        context.clone()))
-            }
     }
 }

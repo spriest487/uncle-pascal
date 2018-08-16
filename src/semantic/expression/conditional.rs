@@ -6,9 +6,10 @@ use semantic::{
     Scope,
     SemanticResult,
 };
+use operators;
 use super::{
-    ops::expect_comparable,
     expect_initialized,
+    ops,
 };
 use syntax;
 
@@ -76,11 +77,12 @@ pub fn expr_type(condition: &Expression,
                  then_branch: &Expression,
                  else_branch: Option<&Expression>,
                  context: &SemanticContext) -> SemanticResult<()> {
-    let condition_type = condition.expr_type()?;
-
-    expect_comparable(Some(&Type::Boolean),
-                      condition_type.as_ref(),
-                      context)?;
+    ops::expect_valid(
+        operators::Equals,
+        Some(&Type::Boolean),
+        condition,
+        context
+    )?;
 
     let _then_type = then_branch.expr_type()?;
 
