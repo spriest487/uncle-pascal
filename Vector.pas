@@ -15,6 +15,11 @@ begin
   result.Length := 0
 end
 
+destructor Destroy(self: Vector)
+begin
+    System.FreeMem(self.Elements)
+end
+
 procedure Add(self: Vector; p: System.Byte)
 begin
   let newElements := System.GetMem(self.Length + 1)

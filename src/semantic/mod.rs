@@ -31,6 +31,8 @@ pub enum SemanticErrorKind {
     },
     InvalidFunctionType(Option<DeclaredType>),
     InvalidConstructorType(Option<DeclaredType>),
+    InvalidDestructorReturn(DeclaredType),
+    InvalidDestructorArgs(Vec<DeclaredType>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -84,7 +86,25 @@ impl fmt::Display for SemanticErrorKind {
                     .unwrap_or_else(|| "none".to_string());
 
                 write!(f, "return type of constructor function must be a class, found `{}`",
-                    actual_name)
+                       actual_name)
+            }
+
+            SemanticErrorKind::InvalidDestructorReturn(actual) => {
+                write!(f, "destructor must have no return type but `{}` was found", actual)
+            }
+
+            SemanticErrorKind::InvalidDestructorArgs(arg_types) => {
+                let arg_names = if arg_types.len() > 0 {
+                    arg_types.iter()
+                        .map(|arg_type| format!("`{}`", arg_type))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                } else {
+                    "(nothing)".to_string()
+                };
+
+                write!(f, "destructor must have one argument of a class type from its own module, but found {}",
+                    arg_names)
             }
 
             &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
@@ -111,7 +131,7 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::TypeNotAssignable(ref t) => {
                 write!(f, "type `{}` cannot be assigned to",
-                    DeclaredType::name(t.as_ref()))
+                       DeclaredType::name(t.as_ref()))
             }
 
             &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
@@ -199,6 +219,23 @@ impl SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidConstructorType(actual),
             context,
+        }
+    }
+
+    pub fn invalid_destructor_return(return_type: DeclaredType, context: source::Token)
+                                     -> SemanticError {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidDestructorReturn(return_type),
+            context,
+        }
+    }
+
+    pub fn invalid_destructor_args(args: impl IntoIterator<Item=DeclaredType>,
+                                   context: source::Token)
+                                   -> SemanticError {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidDestructorArgs(args.into_iter().collect()),
+            context
         }
     }
 

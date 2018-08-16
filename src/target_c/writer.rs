@@ -348,7 +348,6 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     assert!(record_decl.members.len() > 0, "structs must have at least one member");
 
 
-
     if record_decl.kind == types::RecordKind::Class {
         writeln!(out, "struct {}: System_Internal_Object {{", identifier_to_c(&record_decl.name))?;
     } else {
@@ -383,7 +382,7 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write_vars(out, &function.local_vars)?;
     default_initialize_vars(out, function.local_vars.decls.iter())?;
 
-    if function.constructor {
+    if function.kind == node::FunctionKind::Constructor {
         //the actual return type is an Rc, but we need to pass the class type to sizeof
         let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
             types::DeclaredType::Record(decl) if decl.kind == types::RecordKind::Class => {
@@ -446,9 +445,9 @@ pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Re
 }
 
 pub fn write_static_init<'a>(out: &mut String,
-                             decls: impl IntoIterator<Item=&'a semantic::UnitDeclaration>)
+                             decls: &'a Vec<semantic::UnitDeclaration>)
                              -> fmt::Result {
-    let classes = decls.into_iter()
+    let classes = decls.iter()
         .filter_map(|decl| {
             match decl {
                 node::UnitDeclaration::Record(record)
@@ -459,8 +458,22 @@ pub fn write_static_init<'a>(out: &mut String,
         });
 
     for class in classes {
+        let destructor = decls.iter()
+            .filter_map(|decl| match decl {
+                node::UnitDeclaration::Function(func_decl)
+                if func_decl.is_destructor_of(&class)
+                => Some(func_decl),
+                _ => None
+            })
+            .next();
+
+        let destructor_ptr = match destructor {
+            Some(destructor) => format!("(System_Internal_Destructor)&{}", identifier_to_c(&destructor.name)),
+            None => "nullptr".to_string(),
+        };
+
         let class: &semantic::RecordDecl = class;
-        writeln!(out, "System_Internal_InitClass(\"{}\");", class.name)?;
+        writeln!(out, "System_Internal_InitClass(\"{}\", {});", class.name, destructor_ptr)?;
     }
 
     Ok(())
@@ -509,10 +522,10 @@ pub fn write_c(module: &ProgramModule)
     default_initialize_vars(&mut output, var_decls.iter().cloned())?;
 
     for unit in module.units.iter() {
-        write_static_init(&mut output, unit.interface.iter())?;
-        write_static_init(&mut output, unit.implementation.iter())?;
+        write_static_init(&mut output, &unit.interface)?;
+        write_static_init(&mut output, &unit.implementation)?;
     }
-    write_static_init(&mut output, module.program.decls.iter())?;
+    write_static_init(&mut output, &module.program.decls)?;
 
     write_block(&mut output, &module.program.program_block)?;
     release_vars(&mut output, var_decls)?;

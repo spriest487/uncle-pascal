@@ -14,8 +14,13 @@ typedef std::int64_t System_Integer;
 typedef void* System_Pointer;
 typedef std::uint8_t System_Boolean;
 
+struct System_Internal_Object;
+
+typedef void (*System_Internal_Destructor)(System_Internal_Object*);
+
 struct System_Internal_Class {
     std::string Name;
+    System_Internal_Destructor Destructor;
 };
 
 struct System_Internal_Object {
@@ -23,22 +28,52 @@ struct System_Internal_Object {
     System_Integer StrongCount;
 };
 
+static System_Byte* System_GetMem(System_Integer bytes) {
+    if (bytes > 0) {
+        auto mem = static_cast<System_Byte*>(std::malloc(static_cast<size_t>(bytes)));
+        if (!mem) {
+            fputs("memory allocation failed\n", stderr);
+            abort();
+        }
+        return mem;
+    } else {
+        return nullptr;
+    }
+}
+
+static void System_FreeMem(System_Byte* p) {
+    std::free(p);
+}
+
 struct System_String : System_Internal_Object {
     System_Byte* Chars;
     System_Integer Length;
 };
 
+static void System_DestroyString(System_String* string)
+{
+    if (string && string->Chars)
+    {
+        std::fprintf(stderr, "freeing string: \"%.*s\"\n", (int)string->Length, string->Chars);
+
+        System_FreeMem(string->Chars);
+        string->Chars = nullptr;
+    }
+}
+
 static std::unordered_map<std::string, std::unique_ptr<System_Internal_Class>> System_Internal_Classes;
 
 static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer len);
 
-static void System_Internal_InitClass(const char* name) {
+static void System_Internal_InitClass(const char* name,
+        System_Internal_Destructor destructor) {
     static bool internalClassInit = false;
     if (!internalClassInit) {
         // init classes required to init other classes
         auto stringName = std::string("System.String");
         auto stringClass = std::make_unique<System_Internal_Class>();
         stringClass->Name = stringName;
+        stringClass->Destructor = reinterpret_cast<System_Internal_Destructor>(&System_DestroyString);
 
         System_Internal_Classes.insert(make_pair(stringName, move(stringClass)));
 
@@ -53,6 +88,7 @@ static void System_Internal_InitClass(const char* name) {
 
     auto classObj = std::make_unique<System_Internal_Class>();
     classObj->Name = nameStr;
+    classObj->Destructor = destructor;
 
     System_Internal_Classes.insert(make_pair(nameStr, move(classObj)));
 
@@ -94,10 +130,12 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
     obj->StrongCount -= 1;
     if (obj->StrongCount == 0) {
         auto& className = obj->Class->Name;
-
-        fprintf(stderr, "rc deallocated %s @ %p\n", className.c_str(), obj);
+        if (obj->Class->Destructor) {
+            obj->Class->Destructor(obj);
+        }
 
         std::free(obj);
+        fprintf(stderr, "rc deallocated %s @ %p\n", className.c_str(), obj);
     }
 }
 
@@ -119,26 +157,9 @@ static void System_WriteLn(System_String* lineRc) {
     System_Internal_Rc_Release(lineRc);
 }
 
-static System_Byte* System_GetMem(System_Integer bytes) {
-    if (bytes > 0) {
-        auto mem = static_cast<System_Byte*>(malloc(static_cast<size_t>(bytes)));
-        if (!mem) {
-            fputs("memory allocation failed\n", stderr);
-            abort();
-        }
-        return mem;
-    } else {
-        return nullptr;
-    }
-}
-
-static void System_FreeMem(System_Byte* p) {
-    free(p);
-}
-
 /* function System.StringFromBytes(chars: ^System.Byte; len: System.Integer): System.String */
 static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer len) {
-    auto string = static_cast<System_Byte*>(malloc((size_t)len));
+    auto string = static_cast<System_Byte*>(std::malloc((size_t)len));
     if (!string) {
         fputs("string allocation failed in System.StringFromBytes\n", stderr);
         abort();
@@ -154,7 +175,7 @@ static System_String* System_StringFromBytes(System_Byte* bytes, System_Integer 
     return resultStr;
 }
 
-/* function System.StringFromBytes(a: System.String; b: System.String): System.String */
+/* function System.StringConcat(a: System.String; b: System.String): System.String */
 static System_String* System_StringConcat(System_Internal_Object* aObj, System_Internal_Object* bObj) {
     System_Internal_Rc_Retain(aObj);
     System_Internal_Rc_Retain(bObj);
@@ -174,7 +195,7 @@ static System_String* System_StringConcat(System_Internal_Object* aObj, System_I
         result = System_StringFromBytes(a->Chars, a->Length);
     } else {
         auto totalLength = a->Length + b->Length;
-        auto chars = static_cast<System_Byte*>(malloc((size_t)totalLength));
+        auto chars = static_cast<System_Byte*>(std::malloc((size_t)totalLength));
         if (!chars) {
             fputs("string allocation failed in System_StringConcat\n", stderr);
             abort();
@@ -189,7 +210,7 @@ static System_String* System_StringConcat(System_Internal_Object* aObj, System_I
         }
 
         result = System_StringFromBytes(chars, totalLength);
-        free(chars);
+        std::free(chars);
     }
 
     System_Internal_Rc_Release(aObj);

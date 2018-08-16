@@ -3,23 +3,34 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
-use node::{self, Identifier};
+use node::{self, Identifier, FunctionKind};
 use source;
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
 
 impl FunctionDecl {
+    pub fn match_any_function_keyword() -> matcher::Matcher {
+        keywords::Function
+            .or(keywords::Procedure)
+            .or(keywords::Constructor)
+            .or(keywords::Destructor)
+    }
+
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         //match the name
-        let name_match = keywords::Function
-            .or(keywords::Procedure)
-            .or(keywords::Constructor)
+        let name_match = Self::match_any_function_keyword()
             .and_then(Matcher::AnyIdentifier)
             .match_sequence(in_tokens, context)?;
 
-        let func_decl_kind = name_match.value[0].clone();
+        let kind_kw = name_match.value[0].unwrap_keyword();
+        let kind = match kind_kw {
+            keywords::Constructor => FunctionKind::Constructor,
+            keywords::Destructor => FunctionKind::Destructor,
+            _ => FunctionKind::Function,
+        };
+
         let fn_name = name_match.value[1].clone();
         let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
                                                        &name_match.last_token)?;
@@ -46,19 +57,21 @@ impl FunctionDecl {
             })
             .collect::<Result<_, _>>()?;
 
-        let is_constructor = func_decl_kind.is_keyword(keywords::Constructor);
+        let return_type = match kind_kw {
+            keywords::Procedure |
+            keywords::Destructor => {
+                // procedures return nothing
+                ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
+            }
+            _ => {
+                //functions and constructors must return something
+                let colon = tokens::Colon.match_one(arg_groups.next_tokens,
+                                                    &arg_groups.last_token)?;
 
-        let return_type = if func_decl_kind.is_keyword(keywords::Procedure) {
-            // procedures return nothing
-            ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
-        } else {
-            //functions and constructors must return something
-            let colon = tokens::Colon.match_one(arg_groups.next_tokens,
-                                                &arg_groups.last_token)?;
+                let type_id = ParsedType::parse(colon.next_tokens, &colon.last_token)?;
 
-            let type_id = ParsedType::parse(colon.next_tokens, &colon.last_token)?;
-
-            ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
+                ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
+            }
         };
 
         let semicolon_after_sig = tokens::Semicolon.match_or_endl(return_type.next_tokens,
@@ -90,7 +103,7 @@ impl FunctionDecl {
             context: fn_name,
             return_type: return_type.value,
 
-            constructor: is_constructor,
+            kind,
 
             local_vars: local_vars.value,
             args: VarDecls { decls: args },

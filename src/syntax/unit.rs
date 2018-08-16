@@ -116,9 +116,7 @@ impl Unit {
         let mut last_parsed = context.clone();
 
         loop {
-            let match_decl_first = keywords::Function
-                .or(keywords::Constructor)
-                .or(keywords::Procedure)
+            let match_decl_first = FunctionDecl::match_any_function_keyword()
                 .or(keywords::Type)
                 .or(keywords::Var)
                 .or(keywords::Begin);
@@ -127,9 +125,7 @@ impl Unit {
             tokens = Box::from(peek_decl.next_tokens);
 
             match peek_decl.value {
-                Some(ref func_kw) if func_kw.is_keyword(keywords::Function) ||
-                    func_kw.is_keyword(keywords::Procedure) ||
-                    func_kw.is_keyword(keywords::Constructor)
+                Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
                 => {
                     let func = FunctionDecl::parse(tokens, &peek_decl.last_token)?;
                     decls.push(node::UnitDeclaration::Function(func.value));

@@ -57,7 +57,7 @@ impl Function {
 
         let body = Block::annotate(&function.body, &local_scope)?;
 
-        let qualified_name = if function.name.namespace.len() == 0{
+        let qualified_name = if function.name.namespace.len() == 0 {
             local_scope.qualify_local_name(&function.name.name)
         } else {
             return Err(SemanticError::illegal_name(function.name.to_string(),
@@ -67,7 +67,7 @@ impl Function {
         Ok(Function {
             name: qualified_name,
             context: function.context.clone(),
-            constructor: function.constructor,
+            kind: function.kind,
             return_type,
             local_vars,
             args,
@@ -87,16 +87,60 @@ impl Function {
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
         // make sure constructors return something constructible
-        if self.constructor {
+        if self.kind == node::FunctionKind::Constructor {
             match self.return_type.as_ref() {
-                Some(DeclaredType::Record(decl)) if decl.kind == RecordKind::Class => {},
+                Some(DeclaredType::Record(decl)) if decl.kind == RecordKind::Class => {}
                 _ => return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
                                                                         self.context.clone()))
+            }
+        }
+
+        //make sure destructors take one arg of a type in their module, and return nothing
+        if self.kind == node::FunctionKind::Destructor {
+            if let Some(return_type) = &self.return_type {
+                return Err(SemanticError::invalid_destructor_return(return_type.clone(),
+                                                                    self.context.clone()));
+            }
+
+            let is_valid_destructed_type = |ty: &DeclaredType| {
+                match ty {
+                    DeclaredType::Record(record) => {
+                        let is_class = record.kind == RecordKind::Class;
+                        let is_in_same_unit = record.name.namespace == self.name.namespace;
+
+                        is_class && is_in_same_unit
+                    }
+
+                    _ => false,
+                }
+            };
+
+            if self.args.decls.len() != 1
+                || !is_valid_destructed_type(&self.args.decls[0].decl_type) {
+                let arg_types = self.args.decls.iter()
+                    .map(|arg_decl| &arg_decl.decl_type)
+                    .cloned();
+
+                return Err(SemanticError::invalid_destructor_args(arg_types,
+                                                                  self.context.clone()));
             }
         }
 
         //todo: check args are all valid types
 
         self.body.type_check()
+    }
+
+    pub fn is_destructor_of(&self, class_type: &RecordDecl) -> bool {
+        if self.kind != node::FunctionKind::Destructor {
+            return false;
+        }
+
+        match self.args.decls.iter().next().map(|arg| &arg.decl_type) {
+            Some(DeclaredType::Record(arg_record)) =>
+                arg_record.name == class_type.name,
+            _ =>
+                false,
+        }
     }
 }

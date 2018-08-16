@@ -35,6 +35,13 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
+    fn unwrap_keyword(&self) -> keywords::Keyword {
+        match self.as_token() {
+            Token::Keyword(kw) => *kw,
+            _ => panic!("called unwrap_keyword on {}", self)
+        }
+    }
+
     fn is_any_keyword(&self) -> bool {
         match self.as_token() {
             &Token::Keyword(_) => true,

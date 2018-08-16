@@ -59,6 +59,13 @@ pub struct Unit<TSymbol>
     pub implementation: Vec<UnitDeclaration<TSymbol>>,
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+pub enum FunctionKind {
+    Function,
+    Constructor,
+    Destructor,
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionDecl<TSymbol>
     where TSymbol: Symbol
@@ -67,7 +74,7 @@ pub struct FunctionDecl<TSymbol>
     pub context: source::Token,
 
     pub return_type: Option<TSymbol::Type>,
-    pub constructor: bool,
+    pub kind: FunctionKind,
 
     pub args: VarDecls<TSymbol>,
     pub local_vars: VarDecls<TSymbol>,
