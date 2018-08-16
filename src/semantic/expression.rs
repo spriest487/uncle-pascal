@@ -133,6 +133,12 @@ impl Expression {
                 let lhs_type = lhs.expr_type();
                 let rhs_type = rhs.expr_type();
 
+                if lhs_type != rhs_type {
+                    println!("checking assignable: lhs is `{}` of type {:?}, rhs is `{}` of type {:?}",
+                             lhs, lhs_type,
+                             rhs, rhs_type);
+                }
+
                 expect_assignable(lhs_type, rhs_type, &self.context)
             }
 

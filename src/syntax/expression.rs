@@ -33,7 +33,7 @@ impl Expression {
                                          match_op.value))
             }
             &None => {
-                let tokens : Vec<source::Token> = maybe_open_bracket.next_tokens.collect();
+                let tokens: Vec<source::Token> = maybe_open_bracket.next_tokens.collect();
 
                 /* we need to look at all ops in the token sequence and find
                 the lowest-priority one to do first, the higher-priority ones
@@ -179,63 +179,58 @@ impl Expression {
     {
         /* this matcher should cover anything which can appear at the start of an expr */
         let match_expr_start = Matcher::AnyKeyword
-            .or(Matcher::AnyBinaryOperator)
             .or(Matcher::AnyIdentifier)
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
             .or(tokens::BracketLeft);
 
-        let all_tokens = in_tokens.into_iter().collect::<Vec<_>>();
+        let all_tokens: Vec<source::Token> = in_tokens.into_iter().collect();
 
-        //always try to parse it as a binary operation first
-        Expression::parse_binary_op(all_tokens.clone(), context).or_else(|_| {
-            let mut expr_first = match_expr_start.match_peek(all_tokens, context)?;
+        let expr_first = match_expr_start.match_peek(all_tokens, context)?;
+        //peeking moves all tokens, let's just put that back...
+        let all_tokens: Vec<source::Token> = expr_first.next_tokens.collect();
 
-            match expr_first.value {
-                Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
-                    Expression::parse_if(expr_first.next_tokens,
-                                         &expr_first.last_token)
-                }
+        let contains_binary_op = all_tokens.iter()
+            .any(|t| t.is_any_binary_operator());
 
-                Some(ref for_kw) if for_kw.is_keyword(keywords::For) => {
-                    Expression::parse_for_loop(expr_first.next_tokens,
-                                               &expr_first.last_token)
-                }
-
-                Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
-                    let block = Block::parse(expr_first.next_tokens,
-                                             &expr_first.last_token)?
-                        .finish()?;
-
-                    Ok(Expression::block(block))
-                }
-
-                Some(ref identifier) if identifier.is_any_identifier() => {
-                    let identifier_tokens = expr_first.next_tokens.collect::<Vec<_>>();
-                    let last_token = expr_first.last_token;
-
-                    Expression::parse_function_call(identifier_tokens.clone(),
-                                                    &last_token)
-                        .or_else(|_| Expression::parse_identifier(identifier_tokens,
-                                                                  &last_token))
-                }
-
-                Some(ref s) if s.is_any_literal_string() => {
-                    Expression::parse_literal_string(expr_first.next_tokens,
-                                                     &expr_first.last_token)
-                }
-
-                Some(ref i) if i.is_any_literal_int() => {
-                    Expression::parse_literal_integer(expr_first.next_tokens,
-                                                      &expr_first.last_token)
-                }
-
-                _ => {
-                    let unexpected = expr_first.next_tokens.next().unwrap().clone();
-                    Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
-                }
+        match expr_first.value {
+            Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
+                Expression::parse_if(all_tokens, context)
             }
-        })
+
+            Some(ref for_kw) if for_kw.is_keyword(keywords::For) => {
+                Expression::parse_for_loop(all_tokens, context)
+            }
+
+            Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
+                let block = Block::parse(all_tokens, context)?.finish()?;
+                Ok(Expression::block(block))
+            }
+
+            Some(_) if contains_binary_op => {
+                Expression::parse_function_call(all_tokens.clone(), context)
+                    .or_else(|_| Expression::parse_binary_op(all_tokens, context))
+            }
+
+            Some(ref identifier) if identifier.is_any_identifier() => {
+                Expression::parse_function_call(all_tokens.clone(), context)
+                    .or_else(|_| Expression::parse_identifier(all_tokens, context))
+            }
+
+            Some(ref s) if s.is_any_literal_string() => {
+                Expression::parse_literal_string(all_tokens, context)
+            }
+
+            Some(ref i) if i.is_any_literal_int() => {
+                Expression::parse_literal_integer(all_tokens, context)
+            }
+
+            _ => {
+                /* there must be 1+ tokens or match_peek would have failed */
+                let unexpected = all_tokens.get(0).unwrap().clone();
+                Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
+            }
+        }
     }
 }
 

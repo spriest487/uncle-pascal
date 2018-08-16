@@ -45,6 +45,7 @@ impl tokens::AsToken for Token {
     }
 }
 
+#[allow(dead_code)]
 pub mod test {
     use std::rc::*;
     use source;
