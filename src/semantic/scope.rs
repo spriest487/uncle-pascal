@@ -54,18 +54,6 @@ impl Scope {
         self
     }
 
-    pub fn with_types<TIter>(mut self, types: TIter) -> Self
-        where TIter: IntoIterator,
-              TIter::Item: Into<(node::Identifier, DeclaredType)>
-    {
-        for type_item in types {
-            let (name, typ) = type_item.into();
-
-            self = self.with_type(name, typ);
-        }
-        self
-    }
-
     pub fn with_symbol(mut self, symbol: Symbol) -> Self {
         self.names.insert(symbol.name, Named::Symbol(symbol.decl_type));
         self

@@ -34,34 +34,39 @@ pub enum SemanticError {
         actual: usize,
     },
     IllegalName(String),
+    EmptyRecord(String),
 }
 
 impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &SemanticError::UnknownType(ref missing_type) => {
-                write!(f, "type not found: {}", missing_type)
+                write!(f, "type not found: `{}`", missing_type)
             }
 
             &SemanticError::UnknownSymbol(ref missing_sym) => {
-                write!(f, "symbol not found: {}", missing_sym)
+                write!(f, "symbol not found: `{}`", missing_sym)
             }
 
             &SemanticError::UnexpectedType { ref expected, ref actual } => {
-                write!(f, "expected type {}, found {}", expected, actual)
+                write!(f, "expected type `{}`, found `{}`", expected, actual)
             }
 
             &SemanticError::InvalidFunctionType(ref id) => {
-                write!(f, "type {} is not a callable function", id)
+                write!(f, "type `{}` is not a callable function", id)
             }
 
             &SemanticError::WrongNumberOfArgs { ref target, expected, actual } => {
-                write!(f, "wrong number if arguments to function {}, expected {}, found {}",
+                write!(f, "wrong number if arguments to function `{}`, expected `{}`, found `{}`",
                        target, expected, actual)
             }
 
             &SemanticError::IllegalName(ref name) => {
-                write!(f, "illegal name: {}", name)
+                write!(f, "illegal name: `{}`", name)
+            }
+
+            &SemanticError::EmptyRecord(ref name) => {
+                write!(f, "record type `{}` must have at least one member", name)
             }
         }
     }

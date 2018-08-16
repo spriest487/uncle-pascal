@@ -2,6 +2,7 @@ use syntax;
 use semantic::*;
 use node;
 use operators;
+use types;
 
 pub type Expression = node::Expression<Symbol>;
 
@@ -47,6 +48,14 @@ impl Expression {
                 Ok(Expression::if_then_else(cond_expr, then_expr, else_expr))
             }
 
+            &node::Expression::ForLoop { ref from, ref to, ref body } => {
+                let from_expr = Expression::annotate(from, scope)?;
+                let to_expr = Expression::annotate(to, scope)?;
+                let do_expr = Expression::annotate(body, scope)?;
+
+                Ok(Expression::for_loop(from_expr, to_expr, do_expr))
+            }
+
             &node::Expression::BinaryOperator { ref lhs, ref op, ref rhs } => {
                 Ok(Expression::binary_op(
                     Expression::annotate(lhs, scope)?,
@@ -71,11 +80,12 @@ impl Expression {
     pub fn expr_type(&self) -> DeclaredType {
         match self {
             &node::Expression::BinaryOperator { ref lhs, ref op, .. } => match op {
-                &operators::BinaryOperator::Equals => DeclaredType::Boolean,
+                &operators::NotEquals |
+                &operators::Equals => DeclaredType::Boolean,
 
-                &operators::BinaryOperator::Assignment |
-                &operators::BinaryOperator::Plus |
-                &operators::BinaryOperator::Minus => lhs.expr_type()
+                &operators::Assignment |
+                &operators::Plus |
+                &operators::Minus => lhs.expr_type()
             },
             &node::Expression::LiteralString(_) => DeclaredType::String,
             &node::Expression::LiteralInteger(_) => DeclaredType::Integer,
@@ -83,6 +93,7 @@ impl Expression {
             &node::Expression::Identifier(ref id) => id.decl_type.clone(),
 
             &node::Expression::Block(_) |
+            &node::Expression::ForLoop { .. } |
             &node::Expression::If { .. } => DeclaredType::None,
         }
     }
@@ -97,7 +108,7 @@ impl Expression {
                 let rhs_type = rhs.expr_type();
 
                 expect_type_eq(lhs_type, rhs_type)
-            },
+            }
 
             &node::Expression::Identifier(_) |
             &node::Expression::LiteralString(_) |
@@ -109,7 +120,7 @@ impl Expression {
                         Err(SemanticError::WrongNumberOfArgs {
                             target: target.name.clone(),
                             expected: sig.arg_types.len(),
-                            actual: args.len()
+                            actual: args.len(),
                         })
                     } else {
                         for (arg_index, arg_expr) in args.iter().enumerate() {
@@ -126,14 +137,14 @@ impl Expression {
                 } else {
                     Err(SemanticError::InvalidFunctionType(target.name.clone()))
                 }
-            },
+            }
 
             &node::Expression::Block(ref block) => {
                 for statement in block.statements.iter() {
                     statement.type_check()?;
                 }
                 Ok(())
-            },
+            }
             &node::Expression::If { ref condition, ref then_branch, ref else_branch } => {
                 expect_type_eq(DeclaredType::Boolean, condition.expr_type())?;
 
@@ -145,6 +156,24 @@ impl Expression {
                 }
 
                 Ok(())
+            }
+
+            &node::Expression::ForLoop { ref from, ref to, .. } => {
+                match from.as_ref() {
+                    &node::Expression::BinaryOperator { ref op, ref lhs, .. }
+                    if *op == operators::BinaryOperator::Assignment => {
+                        expect_type_eq(DeclaredType::Integer, lhs.expr_type())?;
+                        expect_type_eq(DeclaredType::Integer, to.expr_type())?;
+
+                        Ok(())
+                    }
+
+                    //TODO better error
+                    _ => Err(SemanticError::UnexpectedType {
+                        expected: types::DeclaredType::Integer,
+                        actual: from.expr_type(),
+                    })
+                }
             }
         }
     }

@@ -14,7 +14,7 @@ impl Program {
             .map(|f| Function::annotate(f, &global_scope))
             .collect::<Result<Vec<_>, _>>()?;
 
-        let program_scope = global_scope
+        let mut program_scope = global_scope
             .with_symbols(vars.decls.clone())
             .with_symbols(functions.iter().cloned().map(|f| {
                 let identifier = node::Identifier::parse(&f.name);
@@ -23,11 +23,17 @@ impl Program {
                 Symbol::new(identifier, sig_type)
             }));
 
-        let program_block = Block::annotate(&program.program_block, &program_scope)?;
+        let mut type_decls = Vec::new();
+        for parsed_decl in program.type_decls.iter() {
+            let record_decl = RecordDecl::annotate(parsed_decl, &program_scope)?;
 
-        let type_decls = program.type_decls.iter()
-            .map(|decl| RecordDecl::annotate(decl, &program_scope))
-            .collect::<Result<_, _>>()?;
+            program_scope = program_scope.with_type(node::Identifier::parse(&record_decl.name),
+                                                    record_decl.record_type());
+
+            type_decls.push(record_decl);
+        }
+
+        let program_block = Block::annotate(&program.program_block, &program_scope)?;
 
         Ok(Program {
             name: program.name.clone(),

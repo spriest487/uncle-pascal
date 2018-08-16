@@ -8,10 +8,10 @@ use types;
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
         &types::DeclaredType::None => "void".to_owned(),
-        &types::DeclaredType::Integer => write_identifier(&types::builtin_names::system_integer()),
-        &types::DeclaredType::String => write_identifier(&types::builtin_names::system_string()),
-        &types::DeclaredType::Boolean => write_identifier(&types::builtin_names::system_boolean()),
-        &types::DeclaredType::Pointer => write_identifier(&types::builtin_names::system_pointer()),
+        &types::DeclaredType::Integer => identifier_to_c(&types::builtin_names::system_integer()),
+        &types::DeclaredType::String => identifier_to_c(&types::builtin_names::system_string()),
+        &types::DeclaredType::Boolean => identifier_to_c(&types::builtin_names::system_boolean()),
+        &types::DeclaredType::Pointer => identifier_to_c(&types::builtin_names::system_pointer()),
         &types::DeclaredType::Function(ref sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
             let return_type = type_to_c(&sig.return_type);
@@ -25,11 +25,35 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     }.to_owned()
 }
 
-pub fn write_identifier(id: &node::Identifier) -> String {
+pub fn identifier_to_c(id: &node::Identifier) -> String {
     let mut parts = id.namespace.clone();
     parts.push(id.name.clone());
 
     parts.join("_")
+}
+
+pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Result {
+    let id = identifier_to_c(&target.name);
+
+    match &target.decl_type {
+        &types::DeclaredType::Record(ref _record) => {
+            writeln!(out, "memset(&{}, 0, sizeof({});", id, id)
+        }
+
+        &types::DeclaredType::String => {
+            writeln!(out, "{} = \"\";", id)
+        }
+
+        &types::DeclaredType::Integer => {
+            writeln!(out, "{} = 0;", id)
+        }
+
+        &types::DeclaredType::Pointer => {
+            writeln!(out, "{} = NULL;", id)
+        }
+
+        _ => panic!("type `{}` cannot be default initialized!", target.decl_type)
+    }
 }
 
 pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result {
@@ -38,6 +62,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             let c_op = match op {
                 &operators::Assignment => "=",
                 &operators::Equals => "==",
+                &operators::NotEquals => "!=",
                 &operators::Minus => "-",
                 &operators::Plus => "+",
             };
@@ -86,8 +111,30 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             Ok(())
         }
 
+        &node::Expression::ForLoop { ref from, ref to, ref body } => {
+            let iter_expr = match from.as_ref() {
+                &node::Expression::BinaryOperator { ref lhs, ref op, .. } => {
+                    assert_eq!(operators::Assignment, *op);
+                    lhs.clone()
+                },
+                _ => panic!("for loop 'from' clause must be an assignment")
+            };
+
+            write!(out, "for (")?;
+            write_expr(out, from)?;
+            write!(out, ";")?;
+            write_expr(out, iter_expr.as_ref())?;
+            write!(out, " < ")?;
+            write_expr(out, to)?;
+            write!(out, "; ++")?;
+            write_expr(out, iter_expr.as_ref())?;
+            writeln!(out, ") {{")?;
+            write_expr(out, body)?;
+            writeln!(out, "}}")
+        }
+
         &node::Expression::Identifier(ref id) => {
-            write!(out, "{}", write_identifier(&id.name))
+            write!(out, "{}", identifier_to_c(&id.name))
         }
 
         &node::Expression::Block(ref block) => {
@@ -108,11 +155,31 @@ pub fn write_block(out: &mut String, block: &semantic::Block) -> fmt::Result {
 }
 
 pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
-    for decl in vars.decls.iter() {
-        writeln!(out, "{} {};", type_to_c(&decl.decl_type), decl.name)?;
-    }
+    vars.decls.iter()
+        .map(|decl| {
+            writeln!(out, "{} {};", type_to_c(&decl.decl_type), decl.name)
+        })
+        .collect()
+}
 
-    Ok(())
+pub fn default_initialize_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
+    vars.decls.iter()
+        .map(|decl| {
+            default_initialize(out, &types::Symbol::new(decl.name.as_str(),
+                                                        decl.decl_type.clone()))
+        })
+        .collect()
+}
+
+pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -> fmt::Result {
+    assert!(record_decl.members.len() > 0, "structs must have at least one member");
+
+    writeln!(out, "struct {} {{", record_decl.name)?;
+    for member in record_decl.members.iter() {
+        writeln!(out, "{} {};", type_to_c(&member.decl_type), member.name)?;
+    }
+    writeln!(out, "}};")?;
+    writeln!(out)
 }
 
 pub fn write_function(out: &mut String, function: &semantic::Function) -> fmt::Result {
@@ -127,12 +194,12 @@ pub fn write_function(out: &mut String, function: &semantic::Function) -> fmt::R
 
     writeln!(out, "{} {}({}) {{", return_type, function.name, args)?;
 
-    for local_var in function.local_vars.decls.iter() {
-        writeln!(out, "{} {};", type_to_c(&local_var.decl_type), local_var.name)?;
-    }
+    write_vars(out, &function.local_vars)?;
+    default_initialize_vars(out, &function.local_vars)?;
 
     write_block(out, &function.body)?;
-    writeln!(out, "}}")
+    writeln!(out, "}}")?;
+    writeln!(out)
 }
 
 pub fn write_c(program: &semantic::Program) -> Result<String, fmt::Error> {
@@ -166,6 +233,10 @@ static void Dispose(System_Pointer p) {{
     free(p);
 }}")?;
 
+    for record_decl in program.type_decls.iter() {
+        write_record_decl(&mut output, record_decl)?;
+    }
+
     for func in program.functions.iter() {
         write_function(&mut output, func)?;
     }
@@ -173,6 +244,7 @@ static void Dispose(System_Pointer p) {{
     write_vars(&mut output, &program.vars)?;
 
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
+    default_initialize_vars(&mut output, &program.vars)?;
     write_block(&mut output, &program.program_block)?;
     writeln!(output, "  return 0;")?;
     writeln!(output, "}}")?;

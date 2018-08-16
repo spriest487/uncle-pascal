@@ -105,6 +105,13 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
             }
         ),
         (
+            r"<>".to_owned(),
+            {
+                let op = tokens::BinaryOperator(operators::NotEquals);
+                TokenMatchParser::Simple(op)
+            }
+        ),
+        (
             r":".to_owned(),
             TokenMatchParser::Simple(tokens::Colon)),
         (
@@ -126,7 +133,7 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
             "=".to_owned(),
             TokenMatchParser::Simple(tokens::BinaryOperator(operators::Equals))),
         (
-            r"[1-9][0-9]*".to_owned(),
+            r"[0-9]+".to_owned(),
             {
                 let parse_fn = Box::from(parse_literal_integer);
                 TokenMatchParser::ParseFn(parse_fn)

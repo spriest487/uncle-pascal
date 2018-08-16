@@ -17,6 +17,12 @@ impl node::Symbol for Identifier {
     type Type = Self;
 }
 
+impl<'a> From<&'a str> for Identifier {
+    fn from(from: &'a str) -> Self {
+        Identifier::parse(from)
+    }
+}
+
 impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.namespace.len() > 0 {
@@ -77,6 +83,11 @@ pub enum Expression<TSymbol>
         else_branch: Option<Box<Expression<TSymbol>>>,
     },
     Block(Block<TSymbol>),
+    ForLoop {
+        from: Box<Expression<TSymbol>>,
+        to: Box<Expression<TSymbol>>,
+        body: Box<Expression<TSymbol>>,
+    }
 }
 
 #[allow(dead_code)]
@@ -121,6 +132,14 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
+    pub fn for_loop(from: Self, to: Self, body: Self) -> Self {
+        Expression::ForLoop {
+            from: Box::new(from),
+            to: Box::new(to),
+            body: Box::new(body),
+        }
+    }
+
     pub fn block(block: Block<TSymbol>) -> Self {
         Expression::Block(block)
     }
@@ -150,6 +169,15 @@ impl<TSymbol> Expression<TSymbol>
         match self {
             &Expression::LiteralString(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn is_operation(&self, op: &operators::BinaryOperator) -> bool {
+        match self {
+            &Expression::BinaryOperator { op : ref expr_op, .. } => {
+                expr_op == op
+            }
+            _ => false
         }
     }
 }

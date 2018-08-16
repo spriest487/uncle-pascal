@@ -82,7 +82,7 @@ fn parse_function_call<TIter>(in_tokens: TIter, context: &TIter::Item) -> Expres
     Ok(Expression::function_call(call_target, all_args?))
 }
 
-fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
@@ -113,8 +113,31 @@ fn parse_if<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression
     }
 }
 
+fn parse_for_loop<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
+    where TIter: IntoIterator + 'static,
+          TIter::Item: tokens::AsToken + 'static
+{
+    let for_do_pair = keywords::For.terminated_by(keywords::Do)
+        .match_block(in_tokens, context)?;
+
+    /* can't nest for loops in either the from or the to expression, so
+    it's safe just to look for the next "to" */
+    let split_at_to = keywords::To.split_at_match(for_do_pair.value.inner,
+        &for_do_pair.value.open)?;
+
+    let from_expr = Expression::parse(split_at_to.value.before_split,
+                                      &for_do_pair.value.open)?;
+    let to_expr = Expression::parse(split_at_to.next_tokens,
+                                    &split_at_to.value.split_at)?;
+
+    let body_expr = Expression::parse(for_do_pair.next_tokens,
+                                      &for_do_pair.last_token)?;
+
+    Ok(Expression::for_loop(from_expr, to_expr, body_expr))
+}
+
 impl Expression {
-    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Expression, ParseError<TIter::Item>>
+    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ExpressionResult<TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
@@ -135,6 +158,10 @@ impl Expression {
             match expr_first.value {
                 Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
                     parse_if(expr_first.next_tokens, &expr_first.last_token)
+                }
+
+                Some(ref for_kw) if for_kw.is_keyword(keywords::For) => {
+                    parse_for_loop(expr_first.next_tokens, &expr_first.last_token)
                 }
 
                 Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
@@ -206,6 +233,10 @@ impl ToSource for Expression {
 
             &node::Expression::Block(ref block) => {
                 block.to_source()
+            }
+
+            &node::Expression::ForLoop { ref from, ref to, ref body } => {
+                format!("for {} to {} do {}", from.to_source(), to.to_source(), body.to_source())
             }
         }
     }

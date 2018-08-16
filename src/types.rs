@@ -15,11 +15,12 @@ impl fmt::Display for Symbol {
 }
 
 impl Symbol {
-    pub fn new<T>(name: node::Identifier, decl_type: T) -> Self
-        where T: Into<DeclaredType>
+    pub fn new<T, TId>(name: TId, decl_type: T) -> Self
+        where T: Into<DeclaredType>,
+              TId: Into<node::Identifier>,
     {
         Self {
-            name,
+            name: name.into(),
             decl_type: decl_type.into(),
         }
     }

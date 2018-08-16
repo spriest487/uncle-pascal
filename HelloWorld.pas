@@ -13,6 +13,31 @@ type Vector = record
   Length: System.Integer;
 end;
 
+function Vector_Create: Vector;
+begin
+  result.Elements := nil;
+  result.Length := 0;
+end;
+
+procedure Vector_Add(self: Vector; p: Pointer);
+var
+  newElements: Pointer;
+  i: Integer;
+begin
+  newElements := GetMem(self.Length + 1);
+
+  if self.Elements <> nil then
+  begin
+    for i := 0 to self.Length - 1 do
+      (newElements + i) := self.Elements + i;
+
+    FreeMem(self.Elements);
+  end;
+
+  self.Length := self.Length + 1;
+  self.Elements := newElements;
+end;
+
 //function malloc(System.Integer): System.Pointer;
 //function free(System.Pointer);
 
@@ -40,7 +65,7 @@ begin
   end
   else begin
     WriteLn('not one');
-  end
+  end;
 
   //WriteLn(IntToStr(x + y));
 

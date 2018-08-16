@@ -7,6 +7,7 @@ pub use self::BinaryOperator::*;
 pub enum BinaryOperator {
     Assignment,
     Equals,
+    NotEquals,
     Plus,
     Minus,
 }
@@ -16,6 +17,7 @@ impl fmt::Display for BinaryOperator {
         write!(f, "{}", match self {
             &Assignment => ":=",
             &Equals => "=",
+            &NotEquals => "<>",
             &Plus => "+",
             &Minus => "-",
         })

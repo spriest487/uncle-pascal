@@ -17,6 +17,10 @@ pub enum Keyword {
     If,
     Then,
     Else,
+    Nil,
+    For,
+    To,
+    Do,
 }
 
 impl Keyword {
@@ -33,6 +37,10 @@ impl Keyword {
             "if" => Some(If),
             "then" => Some(Then),
             "else" => Some(Else),
+            "nil" => Some(Nil),
+            "for" => Some(For),
+            "to" => Some(To),
+            "do" => Some(Do),
             _ => None,
         }
     }
@@ -52,6 +60,10 @@ impl ToSource for Keyword {
             &If => "if",
             &Then => "then",
             &Else => "else",
+            &Nil => "nil",
+            &For => "for",
+            &To => "to",
+            &Do => "do",
         }.to_owned()
     }
 }
