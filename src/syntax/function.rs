@@ -27,29 +27,31 @@ impl Function {
             .and_then(Matcher::AnyIdentifier)
             .and_then(Matcher::Exact(tokens::Semicolon));
 
-        let (sig, sig_last, after_sig) = sig_match.match_sequence(in_tokens.into_iter(), context)?.unwrap();
+        let sig = sig_match.match_sequence(in_tokens.into_iter(), context)?;
 
-        let fn_name = &sig[1];
-        let fn_return_type = &sig[3];
+        let fn_name = &sig.value[1];
+        let fn_return_type = &sig.value[3];
 
-        let (first_after_sig, _, after_sig) = Matcher::Keyword(keywords::Var)
+        let peek_after_sig = Matcher::Keyword(keywords::Var)
             .or(Matcher::Keyword(keywords::Begin))
-            .match_peek(after_sig, &sig_last)?
-            .unwrap();
+            .match_peek(sig.next_tokens, &sig.last_token)?;
 
-        let local_vars = match first_after_sig {
+        let local_vars = match peek_after_sig.value {
             Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {
-                Vars::parse(after_sig, &sig_last)?
+                Vars::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
             }
-            _ => ParseOutput::new(Vars::default(), sig_last, after_sig)
+            _ => {
+                ParseOutput::new(Vars::default(),
+                                 peek_after_sig.last_token,
+                                 peek_after_sig.next_tokens)
+            }
         };
 
-        let body_block = Block::parse(local_vars.next, &local_vars.last_parsed)?;
+        let body_block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
 
         let match_semicolon = Matcher::Exact(tokens::Semicolon);
-        let (_, after_last_semicolon, remaining) = match_semicolon
-            .match_one(body_block.next, &body_block.value.end)?
-            .unwrap();
+        let last_semicolon = match_semicolon
+            .match_one(body_block.next_tokens, &body_block.last_token)?;
 
         let function = Function {
             name: fn_name.as_token().unwrap_identifier().to_owned(),
@@ -57,12 +59,12 @@ impl Function {
 
             local_vars: local_vars.value,
 
-            body: body_block.value.block,
+            body: body_block.value,
         };
 
         Ok(ParseOutput::new(function,
-                            after_last_semicolon,
-                            remaining))
+                            last_semicolon.last_token,
+                            last_semicolon.next_tokens))
     }
 }
 

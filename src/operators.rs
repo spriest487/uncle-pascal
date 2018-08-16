@@ -11,18 +11,6 @@ pub enum BinaryOperator {
     Minus,
 }
 
-impl BinaryOperator {
-    pub fn try_parse(from: &str) -> Option<Self> {
-        match from {
-            ":=" => Some(Assignment),
-            "=" => Some(Equals),
-            "+" => Some(Plus),
-            "-" => Some(Minus),
-            _ => None
-        }
-    }
-}
-
 impl fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {

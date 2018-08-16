@@ -34,10 +34,10 @@ impl Vars {
               TIter::Item: tokens::AsToken + 'static
     {
         let match_kw = Matcher::Keyword(keywords::Var);
-        let (_, _, after_kw) = match_kw.match_one(in_tokens.into_iter(), context)?.unwrap();
+        let var_kw = match_kw.match_one(in_tokens.into_iter(), context)?;
 
-        let mut next_tokens = after_kw;
-        let mut last_context = context.clone();
+        let mut next_tokens = WrapIter::new(var_kw.next_tokens);
+        let mut last_context = var_kw.last_token;
 
         let mut decls = Vec::new();
         loop {
@@ -49,15 +49,14 @@ impl Vars {
                         .and_then(Matcher::AnyIdentifier)
                         .and_then(Matcher::Exact(tokens::Semicolon));
 
-                    let (decl, _, after_decl) = match_decl.match_sequence(peekable_tokens, &last_context)?
-                        .unwrap();
+                    let decl = match_decl.match_sequence(peekable_tokens, &last_context)?;
 
-                    let name = decl[0].as_token().unwrap_identifier().to_owned();
-                    let decl_type = types::Identifier::parse(decl[2].as_token().unwrap_identifier());
+                    let name = decl.value[0].as_token().unwrap_identifier().to_owned();
+                    let decl_type = types::Identifier::parse(decl.value[2].as_token().unwrap_identifier());
                     decls.push(VarDecl { name, decl_type });
 
-                    next_tokens = after_decl;
-                    last_context = decl[3].clone();
+                    next_tokens = WrapIter::new(decl.next_tokens);
+                    last_context = decl.last_token;
                 }
                 Some(ref _unexpected) => {
                     next_tokens = WrapIter::new(peekable_tokens);
@@ -69,6 +68,6 @@ impl Vars {
             }
         }
 
-        Ok(ParseOutput::new(Vars{ decls}, last_context, next_tokens.into_iter()))
+        Ok(ParseOutput::new(Vars{ decls}, last_context, next_tokens))
     }
 }

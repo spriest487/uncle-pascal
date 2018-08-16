@@ -15,20 +15,18 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
         //no uses
         return Ok(ParseOutput::new(Vec::new(),
                                    context.clone(),
-                                   uses_kw.next));
+                                   uses_kw.next_tokens));
     }
 
     //there is a uses, advance past it
-    let mut after_uses = uses_kw.next;
+    let mut after_uses = uses_kw.next_tokens;
     after_uses.next();
 
     let match_semicolon = Matcher::Exact(tokens::Semicolon);
-    let (uses_tokens, _, after_uses) = match_semicolon.split_at_match(after_uses,
-                                                                   &uses_kw.last_parsed)?
-        .unwrap();
+    let uses_tokens = match_semicolon.split_at_match(after_uses, &uses_kw.last_token)?;
 
     let match_comma = Matcher::Exact(tokens::Comma);
-    let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.before_split
+    let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.value.before_split
         .split(|source_token| match_comma.is_match(source_token))
         .map(|source_tokens| {
             if source_tokens.len() == 1 &&
@@ -42,8 +40,8 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec
         .collect();
 
     Ok(ParseOutput::new(uses_identifiers?,
-                        uses_tokens.split_at,
-                        after_uses))
+                        uses_tokens.value.split_at,
+                        uses_tokens.next_tokens))
 }
 
 struct ProgramDecls {
@@ -59,6 +57,8 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
     let mut tokens: Box<Iterator<Item=TIter::Item>> = Box::from(in_tokens.into_iter());
 
     let mut program_functions = Vec::new();
+
+    #[allow(unused_mut)]
     let mut program_type_decls = Vec::new();
     let mut program_vars = Vars::default();
 
@@ -66,24 +66,20 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
 
     loop {
         let match_decl_first = Matcher::Keyword(keywords::Function)
-            //.or(Matcher::Keyword(keywords::Uses))
+            //.or(Matcher::Keyword(keywords::Uses)) TODO?
             .or(Matcher::Keyword(keywords::Var))
             .or(Matcher::Keyword(keywords::Begin));
 
-        let (decl_first, decl_last, decl_tokens) = match_decl_first
-            .match_peek(tokens, &last_parsed)?
-            .unwrap();
-        tokens = Box::from(decl_tokens);
+        let peek_decl = match_decl_first.match_peek(tokens, &last_parsed)?;
+        tokens = Box::from(peek_decl.next_tokens);
 
-        match decl_first {
+        match peek_decl.value {
             Some(ref func_kw) if func_kw.as_token().is_keyword(keywords::Function) => {
-                let (parsed_fn, fn_last, after_fn) = function::Function::parse(tokens, &decl_last)?
-                    .unwrap();
+                let func = Function::parse(tokens, &peek_decl.last_token)?;
+                program_functions.push(func.value);
 
-                program_functions.push(parsed_fn);
-
-                tokens = Box::from(after_fn);
-                last_parsed = fn_last;
+                tokens = Box::from(func.next_tokens);
+                last_parsed = func.last_token;
             }
 
             Some(ref type_kw) if type_kw.as_token().is_keyword(keywords::Type) => {
@@ -91,12 +87,11 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
             }
 
             Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {
-                let (vars, vars_last, after_vars) = Vars::parse(tokens, &decl_last)?
-                    .unwrap();
-                program_vars.decls.extend(vars.decls);
+                let vars = Vars::parse(tokens, &peek_decl.last_token)?;
+                program_vars.decls.extend(vars.value.decls);
 
-                tokens = Box::from(after_vars);
-                last_parsed = vars_last;
+                tokens = Box::from(vars.next_tokens);
+                last_parsed = vars.last_token;
             }
 
             Some(ref begin_kw) if begin_kw.as_token().is_keyword(keywords::Begin) => {
@@ -135,7 +130,6 @@ pub struct Program {
     type_decls: Vec<RecordDecl>,
     vars: Vars,
 
-    //TODO
     program_block: Block,
 }
 
@@ -154,30 +148,28 @@ impl Program {
             .as_token()
             .unwrap_identifier());
 
-        let uses = parse_uses(program_statement.next,
-                              &program_statement.last_parsed)?;
+        let uses = parse_uses(program_statement.next_tokens,
+                              &program_statement.last_token)?;
 
-        let (decls, decls_last, after_decls) = parse_decls(uses.next, &uses.last_parsed)?.unwrap();
+        let decls = parse_decls(uses.next_tokens, &uses.last_token)?;
 
-        let (program_block, block_last, after_block) = Block::parse(after_decls, &decls_last)?
-            .unwrap();
+        let program_block = Block::parse(decls.next_tokens, &decls.last_token)?;
 
-        let (last_period, _, trailing) = Matcher::Exact(tokens::Period)
-            .match_one(after_block, &block_last)?
-            .unwrap();
+        let last_period = Matcher::Exact(tokens::Period)
+            .match_one(program_block.next_tokens, &program_block.last_token)?;
 
-        let program = Self {
+        let program = Program {
             name,
             uses: uses.value,
 
-            functions: decls.functions,
-            type_decls: decls.type_decls,
-            vars: decls.vars,
+            functions: decls.value.functions,
+            type_decls: decls.value.type_decls,
+            vars: decls.value.vars,
 
-            program_block: program_block.block,
+            program_block: program_block.value,
         };
 
-        Ok(ParseOutput::new(program, last_period, trailing))
+        Ok(ParseOutput::new(program, last_period.last_token, last_period.next_tokens))
     }
 }
 

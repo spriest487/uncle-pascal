@@ -7,24 +7,17 @@ pub struct Block {
     pub statements: Vec<Expression>
 }
 
-pub struct ParsedBlock<TToken> {
-    pub begin: TToken,
-    pub end: TToken,
-    pub block: Block,
-}
-
 impl Block {
-    pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<ParsedBlock<TIter::Item>, TIter::Item>
+    pub fn parse<TIter>(tokens: TIter, context: &TIter::Item) -> ParseResult<Block, TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
-        let (block_pair, block_last, remaining) = Matcher::Keyword(keywords::Begin)
-            .paired_with(Matcher::Keyword(keywords::End))
-            .match_pair(tokens, context)?
-            .unwrap();
+        let block_pair = Matcher::Keyword(keywords::Begin)
+            .terminated_by(Matcher::Keyword(keywords::End))
+            .match_block(tokens, context)?;
 
         let match_separator = Matcher::Exact(tokens::Semicolon);
-        let statements = block_pair.inner.split(|t| match_separator.is_match(t))
+        let statements = block_pair.value.inner.split(|t| match_separator.is_match(t))
             .filter(|stmt_tokens| {
                 stmt_tokens.len() > 0
             })
@@ -39,11 +32,7 @@ impl Block {
             statements: statements?
         };
 
-        Ok(ParseOutput::new(ParsedBlock{
-            begin: block_pair.open,
-            end: block_pair.close,
-            block
-        }, block_last, remaining))
+        Ok(ParseOutput::new(block, block_pair.last_token, block_pair.next_tokens))
     }
 }
 

@@ -7,6 +7,7 @@ use tokens;
 use tokens::AsToken;
 use ToSource;
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum Expression {
     BinaryOperator{
@@ -27,13 +28,11 @@ fn parse_binary_op<TIter>(in_tokens: TIter, context: &TIter::Item) -> Result<Exp
     where TIter: IntoIterator + 'static,
           TIter::Item: tokens::AsToken + 'static
 {
-    let (lhs, op_last_parsed, after_op) = Matcher::AnyBinaryOperator
-        .split_at_match(in_tokens, context)?
-        .unwrap();
+    let split_at_op = Matcher::AnyBinaryOperator.split_at_match(in_tokens, context)?;
 
-    let lhs_expr = Expression::parse(lhs.before_split, context)?;
-    let op = lhs.split_at.as_token().unwrap_binary_operator().clone();
-    let rhs_expr = Expression::parse(after_op, &op_last_parsed)?;
+    let lhs_expr = Expression::parse(split_at_op.value.before_split, context)?;
+    let op = split_at_op.value.split_at.as_token().unwrap_binary_operator().clone();
+    let rhs_expr = Expression::parse(split_at_op.next_tokens, &split_at_op.last_token)?;
 
     Ok(Expression::BinaryOperator {
         lhs: Box::from(lhs_expr),
