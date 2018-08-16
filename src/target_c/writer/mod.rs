@@ -8,6 +8,7 @@ use std::{
 use operators;
 use semantic::{
     self,
+    SemanticContext,
     ProgramModule,
     Scope,
 };
@@ -461,6 +462,10 @@ pub fn write_block(out: &mut String,
 fn write_statement(out: &mut String,
                    statement: &semantic::Expression,
                    globals: &mut ModuleGlobals) -> fmt::Result {
+    if let ExpressionValue::Block(block) = &statement.value {
+        return write_block(out, block, globals);
+    }
+
     let mut bindings = Vec::new();
     let mut next_binding = 1;
 
@@ -522,9 +527,19 @@ fn write_statement(out: &mut String,
         let name = format!("internal_rc_binding_{}", next_binding);
         next_binding += 1;
 
-        let binding_context = subexpr.context.clone();
-        let binding_expr = semantic::Expression::identifier(Identifier::from(&name), binding_context);
+        /* the temp binding needs to be added to scope in case anything typechecks again after
+        this point*/
+        let binding_scope = subexpr.scope().clone()
+            .with_symbol_local(&name, call_func.return_type.as_ref().cloned().unwrap());
 
+        let binding_context = SemanticContext::new(subexpr.context.token().clone(), binding_scope);
+
+        /* construct a new expression referring to the temp binding instead of the original
+        expression by its name */
+        let binding_expr = semantic::Expression::identifier(Identifier::from(&name),
+                                                            binding_context);
+
+        /* store the original expression value for later when we write out the temp bindings */
         bindings.push((name, subexpr));
         binding_expr
     });
