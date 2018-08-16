@@ -10,7 +10,6 @@ use semantic::{
     self,
     SemanticContext,
     ProgramModule,
-    Scope,
     BindingKind,
 };
 use node::{
@@ -22,7 +21,6 @@ use node::{
     RecordKind,
     UnitDecl,
     Implementation,
-    FunctionArgModifier,
     ConstantExpression,
 };
 use types::{
@@ -33,91 +31,13 @@ use consts::{
     IntConstant,
     FloatConstant,
 };
-use target_c::ast;
+use target_c::ast::{
+    self,
+    CType,
+};
 
 use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
-
-pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
-    match pascal_type {
-        Type::Nil => panic!("cannot output `nil` as a type in C"),
-        Type::Byte => "System_Byte".to_string(),
-        Type::Int32 => "System_Int32".to_string(),
-        Type::UInt32 => "System_UInt32".to_string(),
-        Type::Int64 => "System_Int64".to_string(),
-        Type::UInt64 => "System_UInt64".to_string(),
-        Type::NativeInt => "System_NativeInt".to_string(),
-        Type::NativeUInt => "System_NativeUInt".to_string(),
-        Type::Float64 => "System_Float64".to_string(),
-        Type::Boolean => "System_Boolean".to_string(),
-        Type::RawPointer => "System_Pointer".to_string(),
-        Type::UntypedRef => "void*".to_string(),
-        Type::Pointer(target) => {
-            let target_c = type_to_c(target.as_ref(), scope);
-            format!("{}*", target_c)
-        }
-        Type::Function(sig) => {
-            let return_type = sig.return_type.as_ref()
-                .map(|ty| type_to_c(ty, scope))
-                .unwrap_or_else(|| "void".to_owned());
-            let arg_types = if sig.args.len() > 0 {
-                sig.args.iter()
-                    .map(|arg| {
-                        let arg_type_base = type_to_c(&arg.decl_type, scope);
-                        match arg.modifier {
-                            | Some(FunctionArgModifier::Var)
-                            | Some(FunctionArgModifier::Out) =>
-                                arg_type_base + "&",
-                            _ =>
-                                arg_type_base
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            } else {
-                "void".to_string()
-            };
-
-            format!("System_Internal_Func<{}, {}>", return_type, arg_types)
-        }
-        Type::Class(name) => {
-            let (class_id, _) = scope.get_class(name)
-                .expect("referenced class must exist");
-
-            format!("{}*", identifier_to_c(&class_id))
-        }
-        Type::Record(name) => {
-            let (record_id, _) = scope.get_record(name)
-                .expect("referenced record must exist");
-
-            format!("{}", identifier_to_c(&record_id))
-        }
-
-        Type::Enumeration(enum_id) => {
-            let (enum_id, _) = scope.get_enumeration(enum_id)
-                .expect("referenced enumeration must exist");
-            identifier_to_c(&enum_id)
-        }
-
-        Type::Set(set_id) => {
-            let (set_id, _) = scope.get_set(set_id)
-                .expect("referenced set must exist");
-            identifier_to_c(&set_id)
-        }
-
-        Type::DynamicArray(dynamic_array_type) => {
-            let element_type = type_to_c(&dynamic_array_type.element, scope);
-            format!("std::shared_ptr<{}[]>", element_type)
-        }
-
-        Type::Array(array) => {
-            let element_name = type_to_c(array.element.as_ref(), scope);
-            let element_count = array.total_elements();
-
-            format!("System_Internal_Array<{}[{}]>", element_name, element_count)
-        }
-    }
-}
 
 pub fn identifier_to_c(id: &Identifier) -> String {
     let mut parts = id.namespace.clone();
@@ -266,7 +186,7 @@ pub fn write_expr(out: &mut String,
         }
 
         ExpressionValue::TypeCast { target_type, from_value } => {
-            let target_ctype = type_to_c(target_type, expr.scope());
+            let target_ctype = CType::from_pascal(target_type, expr.scope());
 
             write!(out, "static_cast<{}>(", target_ctype)?;
             write_expr(out, from_value, globals)?;
@@ -276,7 +196,7 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::LetBinding { name, value } => {
             let value_type = value.expr_type().unwrap().unwrap();
 
-            write!(out, "{} {} =", type_to_c(&value_type, expr.scope()), name)?;
+            write!(out, "{} {} =", CType::from_pascal(&value_type, expr.scope()), name)?;
 
             write_expr(out, value, globals)
         }
@@ -285,7 +205,7 @@ pub fn write_expr(out: &mut String,
             match const_expr {
                 ConstantExpression::Integer(i) => {
                     let int_type = const_expr.value_type();
-                    write!(out, "(({})", type_to_c(&int_type, expr.scope()))?;
+                    write!(out, "(({})", CType::from_pascal(&int_type, expr.scope()))?;
                     match i {
                         IntConstant::U32(i) => write!(out, "0x{:x}", i)?,
                         IntConstant::U64(i) => write!(out, "0x{:x}", i)?,
@@ -326,7 +246,7 @@ pub fn write_expr(out: &mut String,
 
                 ConstantExpression::Float(f) => {
                     let float_type = const_expr.value_type();
-                    write!(out, "(({})", type_to_c(&float_type, expr.scope()))?;
+                    write!(out, "(({})", CType::from_pascal(&float_type, expr.scope()))?;
                     match f {
                         FloatConstant::F64(val) => write!(out, "{:e}", val)?
                     }
@@ -508,7 +428,7 @@ fn write_statement(out: &mut String,
             let binding_type: Type = value.expr_type()
                 .expect("let binding target must be a valid type")
                 .expect("let binding type must not be None");
-            writeln!(out, "{} {};", type_to_c(&binding_type, value.scope()), name)?;
+            writeln!(out, "{} {};", CType::from_pascal(&binding_type, value.scope()), name)?;
 
             let binding_id = Identifier::from(&name);
             default_initialize(out, &TypedSymbol {
@@ -589,7 +509,7 @@ fn write_statement(out: &mut String,
             let tmp_type = tmp_val.expr_type()
                 .expect("temporary rc values should always be valid types")
                 .expect("temporary rc values should never have no type");
-            let val_c_type = type_to_c(&tmp_type, tmp_val.scope());
+            let val_c_type = CType::from_pascal(&tmp_type, tmp_val.scope());
 
             write!(out, "{} {} =", val_c_type, tmp_name)?;
             write_expr(out, tmp_val, globals)?;
@@ -653,7 +573,7 @@ pub fn write_consts(out: &mut String,
         .map(|decl| {
             let const_type = decl.value.expr_type().unwrap().unwrap();
 
-            write!(out, "{} const {} = ", type_to_c(&const_type, decl.scope()), decl.name)?;
+            write!(out, "{} const {} = ", CType::from_pascal(&const_type, decl.scope()), decl.name)?;
             write_expr(out, &decl.value, globals)?;
             writeln!(out, ";")
         })
@@ -663,7 +583,7 @@ pub fn write_consts(out: &mut String,
 pub fn write_vars(out: &mut String, vars: &semantic::VarDecls) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
-            writeln!(out, "{} {};", type_to_c(&decl.decl_type, decl.scope()), decl.name)
+            writeln!(out, "{} {};", CType::from_pascal(&decl.decl_type, decl.scope()), decl.name)
         })
         .collect()
 }
@@ -705,18 +625,18 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     }
 
     for member in record_decl.members.iter() {
-        writeln!(out, "{} {};", type_to_c(&member.decl_type, record_decl.scope()), &member.name)?;
+        writeln!(out, "{} {};", CType::from_pascal(&member.decl_type, record_decl.scope()), &member.name)?;
     }
 
     if let Some(variant_part) = &record_decl.variant_part {
-        let tag_ctype = type_to_c(&variant_part.tag.decl_type, record_decl.scope());
+        let tag_ctype = CType::from_pascal(&variant_part.tag.decl_type, record_decl.scope());
         writeln!(out, "{} {};", tag_ctype, variant_part.tag.name)?;
         writeln!(out, "union {{")?;
         for case in variant_part.cases.iter() {
             //todo: this uses C11 anonymous structs which aren't valid C++
             writeln!(out, "struct {{")?;
             for member in case.members.iter() {
-                let member_ctype = type_to_c(&member.decl_type, record_decl.scope());
+                let member_ctype = CType::from_pascal(&member.decl_type, record_decl.scope());
                 writeln!(out, "{} {};", member_ctype, member.name)?;
             }
             writeln!(out, "}};")?;

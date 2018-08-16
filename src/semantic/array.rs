@@ -43,6 +43,6 @@ impl IndexRange {
     pub fn elements(&self) -> u32 {
         assert!(self.to >= self.from, "array upper bound must be >= lower bound");
 
-        self.to.wrapping_sub(self.from) as u32
+        self.to.wrapping_sub(self.from) as u32 + 1
     }
 }

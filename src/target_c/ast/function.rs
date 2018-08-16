@@ -10,7 +10,6 @@ use node::{
     FunctionLocalDecl,
 };
 use target_c::writer::{
-    type_to_c,
     identifier_to_c,
     write_block,
     write_vars,
@@ -19,13 +18,16 @@ use target_c::writer::{
     release_vars,
 };
 use types::Type;
-use target_c::writer::{
-    module_globals::ModuleGlobals
+use target_c::{
+    ast::CType,
+    writer::{
+        module_globals::ModuleGlobals
+    },
 };
 
 pub struct FunctionArg {
     pub name: String,
-    pub ctype: String,
+    pub ctype: CType,
 }
 
 impl fmt::Display for FunctionArg {
@@ -56,7 +58,7 @@ impl fmt::Display for CallingConvention {
 
 pub struct FunctionDecl {
     pub name: String,
-    pub return_type: String,
+    pub return_type: CType,
     pub calling_convention: CallingConvention,
     pub args: Vec<FunctionArg>,
     pub definition: FunctionDefinition,
@@ -65,8 +67,8 @@ pub struct FunctionDecl {
 impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
     fn from(pascal_decl: &semantic::FunctionDecl) -> Self {
         let return_type = pascal_decl.return_type.as_ref()
-            .map(|return_type| type_to_c(return_type, pascal_decl.scope()))
-            .unwrap_or_else(|| "void".to_string());
+            .map(|return_type| CType::from_pascal(return_type, pascal_decl.scope()))
+            .unwrap_or_else(|| CType::Void);
 
         let qualified_name = pascal_decl.scope().qualify_local_name(&pascal_decl.name);
         let name = identifier_to_c(&qualified_name);
@@ -83,12 +85,15 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 
         let args = pascal_decl.args.iter()
             .map(|arg_decl| {
-                let ctype_base = type_to_c(&arg_decl.decl_type, &arg_decl.scope());
+                let ctype_base = CType::from_pascal(&arg_decl.decl_type, &arg_decl.scope());
                 let ctype = match &arg_decl.modifier {
-                    None => ctype_base,
-                    Some(FunctionArgModifier::Const) => format!("{} const", ctype_base),
-                    Some(FunctionArgModifier::Var) |
-                    Some(FunctionArgModifier::Out) => format!("{}&", ctype_base),
+                    | None => ctype_base,
+                    | Some(FunctionArgModifier::Const)
+                    => ctype_base.into_const(),
+
+                    | Some(FunctionArgModifier::Var)
+                    | Some(FunctionArgModifier::Out)
+                    => ctype_base.into_ref(),
                 };
 
                 FunctionArg {
@@ -117,7 +122,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
                 FunctionDefinition::External(extern_name.symbol_name.as_ref()
                     .unwrap_or_else(|| &pascal_decl.name)
                     .to_string())
-            },
+            }
             None => FunctionDefinition::None,
         };
 
@@ -200,7 +205,7 @@ impl FunctionDecl {
         }
 
         let return_type_c = function.decl.return_type.as_ref()
-            .map(|return_type| type_to_c(return_type, function.scope()));
+            .map(|return_type| CType::from_pascal(return_type, function.scope()));
 
         match return_type_c {
             Some(_) => writeln!(&mut body, "return result;")?,
@@ -253,7 +258,7 @@ impl FunctionDecl {
                          self.name,
                          self.args_list())?;
 
-                if self.return_type != "void" {
+                if !self.return_type.is_void() {
                     write!(out, "return ")?;
                 }
                 writeln!(out, "ffi::{}({});",
