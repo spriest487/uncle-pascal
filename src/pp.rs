@@ -175,6 +175,7 @@ impl DirectiveParser {
     }
 }
 
+#[derive(Debug)]
 struct SymbolCondition {
     value: bool,
     start_line: usize,
@@ -296,7 +297,6 @@ impl Preprocessor {
         self.condition_stack.push(SymbolCondition {
             value: {
                 let has_symbol = self.opts.defined(&symbol);
-
                 if positive { has_symbol } else { !has_symbol }
             },
             start_line: self.current_line,

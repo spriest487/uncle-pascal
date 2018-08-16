@@ -24,12 +24,29 @@ pub enum Mode {
 
 impl Mode {
     fn profile(self) -> ModeProfile {
+        /* todo: this should be based on the target platform rather than the compiler platform */
+        /* we use to_uppercase for case insensitivity in modes where the preprocessor is
+        case-insensitive, so make sure everything added at this stage is uppercase already */
+        let mut symbols = HashSet::new();
+        if cfg!(target_os = "macos") {
+            symbols.insert("DARWIN".to_string());
+        } else if cfg!(target_os = "windows") {
+            if cfg!(target_arch = "x86_64") {
+                symbols.insert("WIN64".to_string());
+            } else {
+                symbols.insert("WIN32".to_string());
+            }
+        } else if cfg!(target_os = "linux") {
+            symbols.insert("LINUX".to_string());
+        } else {
+            eprintln!("warning: unsupported target platform");
+        }
+
         match self {
             Mode::Uncle => ModeProfile {
                 mode: self,
                 default_switches: HashSet::new(),
                 default_symbols: {
-                    let mut symbols = HashSet::new();
                     symbols.insert("UNCLE".to_string());
                     symbols
                 },
@@ -40,8 +57,12 @@ impl Mode {
             Mode::Fpc => ModeProfile {
                 mode: self,
                 default_symbols: {
-                    let mut symbols = HashSet::new();
                     symbols.insert("FPC".to_string());
+
+                    if cfg!(target_arch = "x86_64") {
+                        symbols.insert("CPU64".to_string());
+                    }
+
                     symbols
                 },
                 default_switches: HashSet::new(),
@@ -52,8 +73,12 @@ impl Mode {
             Mode::Delphi => ModeProfile {
                 mode: self,
                 default_symbols: {
-                    let mut symbols = HashSet::new();
                     symbols.insert("DCC".to_string());
+
+                    if cfg!(target_os = "macos") {
+                        symbols.insert("MACOS".to_string());
+                    }
+
                     symbols
                 },
                 default_switches: HashSet::new(),
@@ -108,31 +133,54 @@ impl CompileOptions {
         self.mode = mode.profile();
     }
 
-    #[allow(dead_code)]
-    pub fn switch(&self, switch: &str) -> bool {
+    fn is_switch(&self, switch: &str) -> bool {
         match self.switches.get(switch) {
             None => self.mode.default_switches.contains(switch),
             Some(on) => *on,
         }
     }
 
-    pub fn set_switch(&mut self, switch: &str, on: bool) {
-        self.switches.insert(switch.to_string(), on);
+    #[allow(dead_code)]
+    pub fn switch(&self, switch: &str) -> bool {
+        match self.case_sensitive() {
+            true => self.is_switch(switch),
+            false => self.is_switch(&switch.to_uppercase()),
+        }
     }
 
-    pub fn defined(&self, symbol: &str) -> bool {
+    pub fn set_switch(&mut self, switch: &str, on: bool) {
+        match self.case_sensitive() {
+            true => { self.switches.insert(switch.to_string(), on); },
+            false => { self.switches.insert(switch.to_uppercase(), on); },
+        }
+    }
+
+    fn is_defined(&self, symbol: &str) -> bool {
         match self.symbols.get(symbol) {
             None => self.mode.default_symbols.contains(symbol),
             Some(defined) => *defined,
         }
     }
 
+    pub fn defined(&self, symbol: &str) -> bool {
+        match self.case_sensitive() {
+            true => self.is_defined(symbol),
+            false => self.is_defined(&symbol.to_uppercase())
+        }
+    }
+
     pub fn define(&mut self, symbol: String) {
-        self.symbols.insert(symbol, true);
+        match self.case_sensitive() {
+            true => { self.symbols.insert(symbol, true); },
+            false => { self.symbols.insert(symbol.to_uppercase(), true); },
+        }
     }
 
     pub fn undef(&mut self, symbol: &str) -> bool {
-        self.symbols.remove(symbol) == Some(true)
+        match self.case_sensitive() {
+            true => self.symbols.remove(symbol) == Some(true),
+            false => self.symbols.remove(&symbol.to_uppercase()) == Some(true),
+        }
     }
 
     pub fn from_getopts(matches: &getopts::Matches) -> Self {
