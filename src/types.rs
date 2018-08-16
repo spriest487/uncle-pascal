@@ -48,7 +48,7 @@ pub struct ArrayType {
 impl ArrayType {
     pub fn total_elements(&self) -> u32 {
         self.rest_dims.iter().fold(self.first_dim.elements(), |total, dim| {
-            total + dim.elements()
+            total * dim.elements()
         })
     }
 }
