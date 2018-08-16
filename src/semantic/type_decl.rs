@@ -18,7 +18,7 @@ impl RecordDecl {
             let qualified_name = scope.qualify_local_name(&decl.name);
 
             Ok(RecordDecl {
-                name: qualified_name,
+                name: qualified_name.to_string(),
                 context: decl.context.clone(),
                 members
             })

@@ -15,11 +15,9 @@ impl Symbol for Identifier {
     type Type = Self;
 }
 
-impl<'a, TIntoStr> From<TIntoStr> for Identifier
-    where TIntoStr: Into<&'a str>
-{
-    fn from(from: TIntoStr) -> Self {
-        let mut parts: Vec<String> = from.into()
+impl<'a> From<&'a str> for Identifier {
+    fn from(from: &'a str) -> Self {
+        let mut parts: Vec<String> = from
             .split('.')
             .map(|part: &str| part.to_owned())
             .collect();
@@ -30,6 +28,12 @@ impl<'a, TIntoStr> From<TIntoStr> for Identifier
             namespace: parts,
             name,
         }
+    }
+}
+
+impl<'a> From<&'a String> for Identifier {
+    fn from(from: &'a String) -> Self {
+        Identifier::from(from.as_str())
     }
 }
 

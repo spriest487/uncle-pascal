@@ -148,9 +148,10 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
         }
     }
 
-    let program_scope = loaded_unit_scopes.into_iter()
-        .fold(Scope::default(), |scope, (unit_id, unit_scope)| {
-            scope.with_child(unit_id, unit_scope)
+    let program_scope = loaded_units.iter()
+        .fold(Scope::default(), |scope, unit| {
+            let unit_scope = loaded_unit_scopes.remove(&unit.name).unwrap();
+            scope.with_all(unit_scope)
         });
 
     let program = semantic::Program::annotate(&parsed_program, program_scope)?;

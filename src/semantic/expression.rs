@@ -65,7 +65,6 @@ impl Expression {
                             Expression::member(base, &name)
                         }
 
-                        symbol @ ScopedSymbol::Child { .. } |
                         symbol @ ScopedSymbol::Local { .. } => {
                             Expression::identifier(symbol, expr.context.clone())
                         }

@@ -46,11 +46,7 @@ pub fn identifier_to_c(id: &node::Identifier) -> String {
 pub fn symbol_to_c(sym: &semantic::ScopedSymbol) -> String {
     match sym {
         &semantic::ScopedSymbol::Local { ref name, .. } => {
-            name.to_owned()
-        }
-
-        &semantic::ScopedSymbol::Child { ref name, ref scope, .. } => {
-            identifier_to_c(&scope.child(name))
+            identifier_to_c(&name)
         }
 
         &semantic::ScopedSymbol::RecordMember { ref record_id, ref name, .. } => {

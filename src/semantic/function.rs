@@ -46,15 +46,15 @@ impl Function {
         let args = Vars::annotate(&function.args, scope)?;
 
         let local_scope = scope.clone()
-            .with_vars(args.decls.iter())
-            .with_vars(local_vars.decls.iter());
+            .with_vars_local(args.decls.iter())
+            .with_vars_local(local_vars.decls.iter());
 
         let body = Block::annotate(&function.body, &local_scope)?;
 
         let qualified_name = local_scope.qualify_local_name(&function.name);
 
         Ok(Function {
-            name: qualified_name,
+            name: qualified_name.to_string(),
             context: function.context.clone(),
             return_type,
             local_vars,
