@@ -83,14 +83,14 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         (
             r":=".to_owned(),
             {
-                let op = tokens::BinaryOperator(operators::Assignment);
+                let op = tokens::Operator(operators::Assignment);
                 TokenMatchParser::Simple(op)
             }
         ),
         (
             r"<>".to_owned(),
             {
-                let op = tokens::BinaryOperator(operators::NotEquals);
+                let op = tokens::Operator(operators::NotEquals);
                 TokenMatchParser::Simple(op)
             }
         ),
@@ -108,13 +108,17 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
             TokenMatchParser::Simple(tokens::Period)),
         (
             r"\+".to_owned(),
-            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Plus))),
+            TokenMatchParser::Simple(tokens::Operator(operators::Plus))),
         (
             r"\-".to_owned(),
-            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Minus))),
+            TokenMatchParser::Simple(tokens::Operator(operators::Minus))),
         (
             "=".to_owned(),
-            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Equals))),
+            TokenMatchParser::Simple(tokens::Operator(operators::Equals))),
+        (
+            "\\^".to_owned(),
+            TokenMatchParser::Simple(tokens::Operator(operators::Deref))
+            ),
         (
             r"[0-9]+".to_owned(),
             {
@@ -186,8 +190,8 @@ fn parse_line(file_name: &str,
                         location: source::Location {
                             file: file_name_shared.clone(),
                             line: line_num,
-                            col
-                        }
+                            col,
+                        },
                     })
                     .ok_or_else(|| IllegalToken {
                         text: token_source.to_owned(),
@@ -228,7 +232,7 @@ mod test {
 
     #[test]
     fn tokenizes_literal_string() {
-        let s = "  'hello world!'  "  ;
+        let s = "  'hello world!'  ";
 
         let result = tokenizer::tokenize("test", s).unwrap();
         assert_eq!(1, result.len());

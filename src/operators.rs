@@ -1,37 +1,54 @@
 use std::fmt;
 use node::ToSource;
 
-pub use self::BinaryOperator::*;
+pub use self::Operator::*;
 
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub enum BinaryOperator {
-    Assignment,
-    Equals,
-    NotEquals,
-    Plus,
-    Minus,
+#[derive(Eq, PartialEq, Clone, Debug, Copy)]
+pub enum Position {
+    Prefix,
+    Binary,
 }
 
-pub static PRECEDENCE: [BinaryOperator; 5] = [
-    Plus,
-    Minus,
+#[derive(Eq, PartialEq, Clone, Debug, Copy)]
+pub enum Operator {
+    Assignment,
     Equals,
     NotEquals,
-    Assignment,
+    Plus,
+    Minus,
+    Deref,
+}
+
+pub static PRECEDENCE: [(Operator, Position); 8] = [
+    (Deref, Position::Prefix),
+    (Plus, Position::Prefix),
+    (Minus, Position::Prefix),
+
+    (Plus, Position::Binary),
+    (Minus, Position::Binary),
+    (Equals, Position::Binary),
+    (NotEquals, Position::Binary),
+    (Assignment, Position::Binary),
 ];
 
-impl BinaryOperator {
-    pub fn precedence(&self) -> usize {
+impl Operator {
+    pub fn precedence(&self, in_pos: Position) -> usize {
         PRECEDENCE.iter().enumerate()
-            .find(|&(_, op)| op.eq(self))
+            .find(|&(_, &(op, pos))| op.eq(self) && pos == in_pos)
             .map(|(index, _)| index)
             .unwrap()
     }
+
+    pub fn is_valid_in_pos(&self, in_pos: Position) -> bool {
+        PRECEDENCE.iter()
+            .any(|&(op, pos)| *self == op && in_pos == pos)
+    }
 }
 
-impl fmt::Display for BinaryOperator {
+impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
+            &Deref => "^",
             &Assignment => ":=",
             &Equals => "=",
             &NotEquals => "<>",
@@ -41,7 +58,7 @@ impl fmt::Display for BinaryOperator {
     }
 }
 
-impl ToSource for BinaryOperator {
+impl ToSource for Operator {
     fn to_source(&self) -> String {
         format!("{}", self)
     }

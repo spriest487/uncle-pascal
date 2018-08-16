@@ -15,10 +15,10 @@ pub struct SplitResult {
 #[derive(Clone, Debug)]
 pub enum Matcher {
     Keyword(keywords::Keyword),
-    BinaryOperator(operators::BinaryOperator),
+    Operator(operators::Operator),
     AnyKeyword,
     AnyIdentifier,
-    AnyBinaryOperator,
+    AnyOperator,
     AnyLiteralInteger,
     AnyLiteralString,
     Exact(tokens::Token),
@@ -31,9 +31,9 @@ impl From<tokens::Token> for Matcher {
     }
 }
 
-impl From<operators::BinaryOperator> for Matcher {
-    fn from(op: operators::BinaryOperator) -> Self {
-        Matcher::BinaryOperator(op)
+impl From<operators::Operator> for Matcher {
+    fn from(op: operators::Operator) -> Self {
+        Matcher::Operator(op)
     }
 }
 
@@ -77,10 +77,10 @@ impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(kw)),
-            &Matcher::BinaryOperator(ref op) => write!(f, "{}", op),
+            &Matcher::Operator(ref op) => write!(f, "{}", op),
             &Matcher::AnyKeyword => write!(f, "keyword"),
             &Matcher::AnyIdentifier => write!(f, "identifier"),
-            &Matcher::AnyBinaryOperator => write!(f, "binary operator"),
+            &Matcher::AnyOperator => write!(f, "binary operator"),
             &Matcher::AnyLiteralInteger => write!(f, "integer literal"),
             &Matcher::AnyLiteralString => write!(f, "string literal"),
             &Matcher::Exact(ref exact_token) => write!(f, "{}", exact_token),
@@ -99,9 +99,9 @@ impl Matcher {
         match self {
             &Matcher::Keyword(kw) => token.is_keyword(kw),
             &Matcher::AnyKeyword => token.is_any_keyword(),
-            &Matcher::BinaryOperator(ref op) => token.is_binary_operator(op),
+            &Matcher::Operator(ref op) => token.is_operator(op),
             &Matcher::AnyIdentifier => token.is_any_identifier(),
-            &Matcher::AnyBinaryOperator => token.is_any_binary_operator(),
+            &Matcher::AnyOperator => token.is_any_operator(),
             &Matcher::AnyLiteralInteger => token.is_any_literal_int(),
             &Matcher::AnyLiteralString => token.is_any_literal_string(),
             &Matcher::Exact(ref exact_token) => token.as_token() == exact_token,
@@ -306,9 +306,9 @@ impl Matchable for keywords::Keyword {
     }
 }
 
-impl Matchable for operators::BinaryOperator {
+impl Matchable for operators::Operator {
     fn as_matcher(&self) -> Matcher {
-        Matcher::BinaryOperator(self.clone())
+        Matcher::Operator(self.clone())
     }
 }
 
@@ -405,6 +405,9 @@ pub struct BlockMatcher {
 }
 
 impl BlockMatcher {
+    /* maybe matches a block. regardless of if the block is matched, the
+    next tokens and last token of the resulting output are the same as the
+    input, if no error occurs */
     pub fn match_block_peek<TIter>(&self, in_tokens: TIter, context: &source::Token)
         -> BlockMatchPeekResult
         where TIter: IntoIterator<Item=source::Token> + 'static
@@ -475,7 +478,7 @@ impl BlockMatcher {
                     inner: inner_tokens,
                 };
 
-                Ok(ParseOutput::new(Some(matched_block), close_token, tokens_unpeeked))
+                Ok(ParseOutput::new(Some(matched_block), open_token.last_token, tokens_unpeeked))
             }
             None => {
                 Ok(ParseOutput::new(None, open_token.last_token, tokens_unpeeked))
@@ -642,6 +645,7 @@ mod test {
     use keywords;
     use tokens;
     use source;
+    use operators;
     use syntax::*;
     use tokens::AsToken;
 
@@ -766,5 +770,28 @@ mod test {
             tokens::Keyword(keywords::End),
             tokens::LiteralString("four".to_owned()),
         ], source_to_tokens(groups[0].tokens.clone()));
+    }
+
+    #[test]
+    fn match_groups_inner_includes_all_separators() {
+        let tokens = tokens_to_source(vec![
+            tokens::Operator(operators::Plus),
+            tokens::Operator(operators::Minus),
+            tokens::Identifier("test1".to_owned()),
+            tokens::Operator(operators::Equals),
+            tokens::Operator(operators::NotEquals),
+        ]);
+
+        let result = tokens::BracketLeft
+            .terminated_by(tokens::BracketRight)
+            .match_groups_inner(Matcher::AnyOperator,
+                tokens.clone(),
+                &tokens[0].clone());
+
+        assert!(result.is_ok());
+        let groups_match = result.unwrap().value;
+
+        assert_eq!(1, groups_match.groups.len());
+        assert_eq!(4, groups_match.separators.len());
     }
 }

@@ -79,6 +79,7 @@ impl fmt::Display for DeclaredRecord {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum DeclaredType {
+    Byte,
     Boolean,
     Integer,
     String,
@@ -90,6 +91,7 @@ pub enum DeclaredType {
 impl fmt::Display for DeclaredType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
+            &DeclaredType::Byte => "System.Byte".to_owned(),
             &DeclaredType::Boolean => "System.Boolean".to_owned(),
             &DeclaredType::Integer => "System.Integer".to_owned(),
             &DeclaredType::String => "System.String".to_owned(),
@@ -124,6 +126,10 @@ impl From<FunctionSignature> for DeclaredType {
 
 pub mod builtin_names {
     use node::*;
+
+    pub fn system_byte() -> Identifier {
+        Identifier::parse("System.Byte")
+    }
 
     pub fn system_boolean() -> Identifier {
         Identifier::parse("System.Boolean")

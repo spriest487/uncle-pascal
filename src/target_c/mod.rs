@@ -7,6 +7,7 @@ use types;
 
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
+        &types::DeclaredType::Byte => identifier_to_c(&types::builtin_names::system_byte()),
         &types::DeclaredType::Integer => identifier_to_c(&types::builtin_names::system_integer()),
         &types::DeclaredType::String => identifier_to_c(&types::builtin_names::system_string()),
         &types::DeclaredType::Boolean => identifier_to_c(&types::builtin_names::system_boolean()),
@@ -87,11 +88,28 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &operators::NotEquals => "!=",
                 &operators::Minus => "-",
                 &operators::Plus => "+",
+                &operators::Deref => panic!("bad binary operator type: {}", op),
             };
 
             write!(out, "(")?;
             write_expr(out, lhs)?;
             write!(out, " {} ", c_op)?;
+            write_expr(out, rhs)?;
+            write!(out, ")")
+        }
+
+        &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+            let c_op = match op {
+                &operators::Plus => "+",
+                &operators::Minus => "-",
+                &operators::Deref => "*",
+                &operators::Equals |
+                &operators::NotEquals |
+                &operators::Assignment => panic!("bad prefix operator type: {}", op),
+            };
+
+            write!(out, "(")?;
+            write!(out, "{}", c_op)?;
             write_expr(out, rhs)?;
             write!(out, ")")
         }
@@ -239,7 +257,7 @@ pub fn write_c(program: &semantic::Program)
 
     writeln!(output, "typedef const char* System_String;")?;
     writeln!(output, "typedef int64_t System_Integer;")?;
-    writeln!(output, "typedef void* System_Pointer;")?;
+    writeln!(output, "typedef char* System_Pointer;")?;
 
     writeln!(output,
 r"static void System_WriteLn(System_String ln) {{

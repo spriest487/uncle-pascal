@@ -140,9 +140,13 @@ pub struct Program<TSymbol>
 
 #[derive(Clone, Debug)]
 pub enum ExpressionValue<TSymbol> {
+    PrefixOperator {
+        op: operators::Operator,
+        rhs: Box<Expression<TSymbol>>,
+    },
     BinaryOperator {
         lhs: Box<Expression<TSymbol>>,
-        op: operators::BinaryOperator,
+        op: operators::Operator,
         rhs: Box<Expression<TSymbol>>,
     },
     FunctionCall {
@@ -183,8 +187,18 @@ impl<TSymbol> fmt::Display for Expression<TSymbol>
 impl<TSymbol> Expression<TSymbol>
     where TSymbol: fmt::Debug
 {
+    pub fn prefix_op(op: operators::Operator, rhs: Self, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::PrefixOperator {
+                rhs: Box::from(rhs),
+                op,
+            },
+            context,
+        }
+    }
+
     pub fn binary_op(lhs: Self,
-                     op: operators::BinaryOperator,
+                     op: operators::Operator,
                      rhs: Self,
                      context: source::Token) -> Self {
         Expression {
@@ -306,21 +320,46 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn is_operation(&self, op: &operators::BinaryOperator) -> bool {
+    pub fn is_binary_op(&self, op: operators::Operator) -> bool {
         match &self.value {
-            &ExpressionValue::BinaryOperator { op: ref expr_op, .. } => {
+            &ExpressionValue::BinaryOperator { op: expr_op, .. } => {
                 expr_op == op
             }
             _ => false
         }
     }
 
-    pub fn unwrap_binary_op(self) -> (Self, operators::BinaryOperator, Self) {
+    pub fn is_prefix_op(&self, op: operators::Operator) -> bool {
+        match &self.value {
+            &ExpressionValue::PrefixOperator { op: expr_op, ..} => {
+                expr_op == op
+            }
+            _ => false
+        }
+    }
+
+    pub fn unwrap_binary_op(self) -> (Self, operators::Operator, Self) {
         match self.value {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 (*lhs, op, *rhs)
             }
             _ => panic!("called unwrap_binary_op on {}", self)
+        }
+    }
+
+    pub fn unwrap_prefix_op(self) -> (operators::Operator, Self) {
+        match self.value {
+            ExpressionValue::PrefixOperator { op, rhs } => {
+                (op, *rhs)
+            }
+            _ => panic!("called unwrap_prefix_op on {}", self)
+        }
+    }
+
+    pub fn is_block(&self) -> bool {
+        match &self.value {
+            &ExpressionValue::Block(_) => true,
+            _ => false
         }
     }
 }

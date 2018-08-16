@@ -3,161 +3,234 @@ use tokens;
 use keywords;
 use tokens::AsToken;
 use node;
+use source;
 use operators;
 
 pub type Expression = node::Expression<node::Identifier>;
 pub type ExpressionResult = Result<ParseOutput<Expression>, ParseError>;
 
-impl Expression {
-    fn binary_op_by_precedence(operands: Vec<Expression>,
-                               operators: Vec<operators::BinaryOperator>) -> Expression {
-        assert!(operators.len() > 0);
-        assert_eq!(operands.len(),
-                   operators.len() + 1,
-                   "operands: {:?}, operators: {:?}",
-                   operands.iter().map(|expr| expr.to_string()).collect::<Vec<_>>(),
-                   operators.iter().map(|op| op.to_string()).collect::<Vec<_>>());
+#[derive(Debug, Clone)]
+struct OperatorToken {
+    op: operators::Operator,
+    pos: operators::Position,
+    token: source::Token,
+}
 
-        let (lo_op_pos, lo_op) = operators.iter()
+#[derive(Debug, Clone)]
+enum OperatorExpressionPart {
+    Operand(Expression),
+    Operator(OperatorToken),
+}
+
+impl OperatorExpressionPart {
+    fn unwrap_operand(self) -> Expression {
+        match self {
+            OperatorExpressionPart::Operand(expr) => expr,
+            _ => panic!("called unwrap_operand on something that wasn't an operand: {:?}", self)
+        }
+    }
+}
+
+impl Expression {
+    fn resolve_ops_by_precedence(parts: Vec<OperatorExpressionPart>) -> Expression {
+        assert!(parts.len() > 0, "expression must not be empty");
+
+        if parts.len() == 1 {
+            return match parts.into_iter().next().unwrap() {
+                OperatorExpressionPart::Operand(expr) => expr,
+                OperatorExpressionPart::Operator(op_token) =>
+                    panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
+            };
+        }
+
+        /* find the lowest-precedence operator in the expression, this becomes the
+         outer expression */
+        let (lo_op_index, lo_op) = parts.iter()
             .enumerate()
-            .max_by_key(|&(_, op)| op.precedence())
+            .filter_map(|(i, part)| match part {
+                &OperatorExpressionPart::Operand(_) => None,
+                &OperatorExpressionPart::Operator(ref op) => Some((i, op.clone())),
+            })
+            .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
             .unwrap();
 
-        //operands after
-        let lhs = if lo_op_pos == 0 {
-            operands[0].clone()
+        match lo_op.pos {
+            /* merge prefix operator with the operand that follows it*/
+            operators::Position::Prefix => {
+                assert!(parts.get(lo_op_index + 1).is_some(), "prefix operator must be followed by an operand");
+
+                let (before_op, after_op) = parts.split_at(lo_op_index);
+
+                let mut parts_after_op = after_op.iter().skip(1).cloned();
+
+                let rhs = parts_after_op.next().unwrap().unwrap_operand();
+
+                let op_expr = Expression::prefix_op(lo_op.op, rhs, lo_op.token);
+
+                let merged_parts = before_op.iter()
+                    .cloned()
+                    .chain(vec![OperatorExpressionPart::Operand(op_expr)])
+                    .chain(parts_after_op);
+
+                Expression::resolve_ops_by_precedence(merged_parts.collect())
+            }
+
+            operators::Position::Binary => {
+                let (before_op, after_op) = parts.split_at(lo_op_index);
+
+                let lhs_operand = Expression::resolve_ops_by_precedence(Vec::from(before_op));
+                let rhs_operand = Expression::resolve_ops_by_precedence(after_op.iter()
+                    .skip(1)
+                    .cloned()
+                    .collect());
+
+                let expr_context = lhs_operand.context.clone();
+                Expression::binary_op(lhs_operand, lo_op.op, rhs_operand, expr_context)
+            }
         }
-        else {
-            let operands_before = operands.iter().take(lo_op_pos + 1).cloned();
-            let operators_before = operators.iter().take(lo_op_pos).cloned();
-            Expression::binary_op_by_precedence(operands_before.collect(),
-                                                operators_before.collect())
-        };
-
-        let rhs = if lo_op_pos == operators.len() - 1 {
-            operands[operands.len() - 1].clone()
-        } else {
-            let operands_after = operands.iter().skip(lo_op_pos + 1).cloned();
-            let operators_after = operators.iter().skip(lo_op_pos + 1).cloned();
-            Expression::binary_op_by_precedence(operands_after.collect(),
-                                                operators_after.collect())
-        };
-
-        Expression::binary_op(lhs, lo_op.clone(), rhs, operands[0].context.clone())
     }
 
-    fn parse_binary_op<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static,
+    fn parse_operand<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+        where TIter: IntoIterator<Item=source::Token> + 'static
     {
-        let maybe_open_bracket = tokens::BracketLeft.match_peek(in_tokens, context)?;
-        match &maybe_open_bracket.value {
-            &Some(_) => {
-                let lhs_group = tokens::BracketLeft
-                    .terminated_by(tokens::BracketRight)
-                    .match_block(maybe_open_bracket.next_tokens,
-                                 &maybe_open_bracket.last_token)?;
+        /* if there's brackets around it, we know exactly where it begins and ends */
+        let outer_brackets = tokens::BracketLeft
+            .terminated_by(tokens::BracketRight)
+            .match_block_peek(in_tokens, context)?;
 
-                let lhs_expr = Expression::parse(lhs_group.value.inner,
-                                                 &lhs_group.value.open)?
+        match outer_brackets.value {
+            Some(brackets_block) => {
+                let inner_len = brackets_block.inner.len();
+                let inner_expr = Expression::parse(brackets_block.inner,
+                                                   &brackets_block.open)?
                     .finish()?;
 
-                let match_op = Matcher::AnyBinaryOperator.match_one(lhs_group.next_tokens,
-                                                                    &lhs_group.last_token)?;
+                let after_brackets = outer_brackets.next_tokens
+                    .skip(inner_len + 2); //inner size + open + close
 
-                let rhs_expr = Expression::parse(match_op.next_tokens, &match_op.last_token)?;
-
-                let op_expr = Expression::binary_op(lhs_expr,
-                                                    match_op.value.unwrap_binary_operator().clone(),
-                                                    rhs_expr.value,
-                                                    match_op.value);
-
-                Ok(ParseOutput::new(op_expr, rhs_expr.last_token, rhs_expr.next_tokens))
+                Ok(ParseOutput::new(inner_expr, brackets_block.close, after_brackets))
             }
-            &None => {
-                /* group tokens into operators and operands - we don't know where this expression
-                 will end so we need to take the entire stream */
-                let all_tokens : Vec<_> = maybe_open_bracket.next_tokens.collect();
 
-                let match_operand_groups = tokens::BracketLeft
-                    .terminated_by(tokens::BracketRight)
-                    .match_groups_inner(Matcher::AnyBinaryOperator,
-                                        all_tokens.clone(),
-                                        &maybe_open_bracket.last_token)?;
-
-                let mut next_tokens = Vec::new();
-                let mut last_token = match_operand_groups.last_token.clone();
-
-                let operand_groups = match_operand_groups.finish()?;
-
-                let mut operands = Vec::new();
-                let mut operators = Vec::new();
-
-                for (i, operand) in operand_groups.groups.into_iter().enumerate() {
-                    if i > 0 {
-                        let sep_token = &operand_groups.separators[i - 1];
-                        let op = sep_token.unwrap_binary_operator().clone();
-                        operators.push(op);
-                    }
-
-                    let operand_expr = Expression::parse(operand.tokens, &operand.context)?;
-
-                    let operand_last_token = operand_expr.last_token;
-                    /* if the operand expression finishes before the end of the operand tokens,
-                    there's another expression after this operation in the stream starting at that
-                    point */
-                    let mut peek_after_operand = operand_expr.next_tokens.peekable();
-
-                    operands.push(operand_expr.value);
-
-                    if peek_after_operand.peek().is_some() {
-                        /* collect all the tokens for everything past this operand in the stream */
-                        next_tokens = all_tokens.into_iter()
-                            .filter(|t| {
-                                let operand_location = &operand_last_token.location;
-
-                                t.location.col > operand_location.col ||
-                                    t.location.line > operand_location.line
-                            })
-                            .collect();
-
-                        last_token = operand_last_token;
-
-                        break;
-                    }
-                }
-
-                let expr = Expression::binary_op_by_precedence(operands, operators);
-
-                Ok(ParseOutput::new(expr, last_token, next_tokens))
-
-                /* we need to look at all ops in the token sequence and find
-                the lowest-priority one to do first, the higher-priority ones
-                 will be nested exprs on one side of the op */
-//                let (op_pos, op) = tokens.iter()
-//                    .enumerate()
-//                    .filter(|&(_, token)| token.is_any_binary_operator())
-//                    .map(|(pos, token)| (pos, token.unwrap_binary_operator().clone()))
-//                    .max_by_key(|&(_, ref op)| op.precedence())
-//                    .ok_or(ParseError::UnexpectedEOF(Matcher::AnyBinaryOperator,
-//                                                     maybe_open_bracket.last_token.clone()))?;
-//
-//                /* TODO this needs to break on the first expression that doesn't consume
-//                all the tokens in its operand */
-//                let lhs_tokens: Vec<_> = tokens.iter().take(op_pos).cloned().collect();
-//                let lhs_expr = Expression::parse(lhs_tokens, &maybe_open_bracket.last_token)?
-//                    .finish()?;
-//
-//                let rhs_tokens: Vec<_> = tokens.iter().skip(op_pos + 1).cloned().collect();
-//                let rhs_expr = Expression::parse(rhs_tokens, &tokens[op_pos])?;
-//
-//                let op_expr = Expression::binary_op(lhs_expr,
-//                                                    op,
-//                                                    rhs_expr.value,
-//                                                    tokens[op_pos].clone());
-//
-//                Ok(ParseOutput::new(op_expr, rhs_expr.last_token, rhs_expr.next_tokens))
+            None => {
+                Expression::parse(outer_brackets.next_tokens,
+                                  &outer_brackets.last_token)
             }
         }
+    }
+
+    fn parse_compound<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+        where TIter: IntoIterator<Item=source::Token> + 'static,
+    {
+        /* group tokens into operators and operands - we don't know where this expression
+         will end so we need to take the entire stream */
+        let all_tokens: Vec<_> = in_tokens.into_iter().collect();
+        let mut last_token = context.clone();
+
+//        println!("ALL TOKENS: {}", source::tokens_to_string(&all_tokens));
+
+        let mut next_operand_tokens: Vec<source::Token> = Vec::new();
+
+        let mut parts = Vec::new();
+        let mut in_operand = false;
+
+        let mut bracket_depth = 0;
+
+        let mut tokens_it = all_tokens.iter();
+
+        let tokens_after = loop {
+            let next_token: Option<&source::Token> = tokens_it.next();
+            let finish_operand = next_token.is_none() ||
+                (next_token.unwrap().is_any_operator() && bracket_depth == 0);
+
+            if finish_operand {
+                if next_operand_tokens.len() > 0 {
+                    //println!("FINISHED OPERAND! {}", source::tokens_to_string(&next_operand_tokens));
+                    //Expression::remove_redundant_brackets(&mut next_operand_tokens);
+                    let context = next_operand_tokens[0].clone();
+                    let operand_expr = Expression::parse_operand(next_operand_tokens,
+                                                                 &context)?;
+
+                    //let operand_expr = Expression::parse(next_operand_tokens, &context)?;
+                    let mut after_expr = operand_expr.next_tokens.peekable();
+
+                    parts.push(OperatorExpressionPart::Operand(operand_expr.value));
+
+                    match after_expr.peek() {
+                        None => {
+                            //continue
+                            next_operand_tokens = Vec::new();
+                        }
+                        Some(token_after) => {
+                            let all_tokens_after = all_tokens.iter()
+                                .filter(|t| {
+                                    /* collect all the tokens for everything past this operand
+                                    in the stream */
+                                    t.location.line > token_after.location.line ||
+                                        (t.location.line == token_after.location.line &&
+                                            t.location.col >= token_after.location.col)
+                                })
+                                .cloned()
+                                .collect();
+
+                            /* this expression is finished, and there's tokens left over */
+                            break all_tokens_after;
+                        }
+                    }
+                }
+            }
+
+            /* update the context if the token stream isn't finished */
+            if let &Some(token) = &next_token {
+                last_token = token.clone();
+            }
+
+            match next_token {
+                Some(bracket) if *bracket.as_token() == tokens::BracketLeft => {
+                    bracket_depth += 1;
+
+                    next_operand_tokens.push(bracket.clone());
+                    in_operand = true;
+                }
+
+                Some(bracket) if *bracket.as_token() == tokens::BracketRight => {
+                    match bracket_depth {
+                        0 => return Err(ParseError::UnexpectedToken(bracket.clone(), None)),
+                        _ => bracket_depth -= 1,
+                    }
+
+                    next_operand_tokens.push(bracket.clone());
+                    in_operand = true;
+                }
+
+                Some(op_token) if bracket_depth == 0 && op_token.is_any_operator() => {
+                    let pos = if in_operand {
+                        operators::Position::Binary
+                    } else {
+                        operators::Position::Prefix
+                    };
+
+                    in_operand = false;
+
+                    parts.push(OperatorExpressionPart::Operator(OperatorToken {
+                        op: op_token.unwrap_operator().clone(),
+                        token: op_token.clone(),
+                        pos,
+                    }))
+                }
+
+                Some(token @ _) => {
+                    in_operand = true;
+                    next_operand_tokens.push(token.clone());
+                }
+
+                /* finished reading the expression and there were no tokens left over */
+                None => break Vec::new(),
+            }
+        };
+
+        let expr = Expression::resolve_ops_by_precedence(parts);
+
+        Ok(ParseOutput::new(expr, last_token, tokens_after))
     }
 
     fn parse_identifier<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -168,7 +241,7 @@ impl Expression {
         Ok(match_id.map(|id_token| {
             let name = id_token.unwrap_identifier();
 
-            Expression::identifier(node::Identifier::parse(name), context.clone())
+            Expression::identifier(node::Identifier::parse(name), id_token.clone())
         }))
     }
 
@@ -179,7 +252,7 @@ impl Expression {
 
         Ok(match_str.map(|str_token| {
             let s = str_token.unwrap_literal_string();
-            Expression::literal_string(s, context.clone())
+            Expression::literal_string(s, str_token.clone())
         }))
     }
 
@@ -190,7 +263,7 @@ impl Expression {
 
         Ok(match_int.map(|integer_token| {
             let i = integer_token.unwrap_literal_integer();
-            Expression::literal_int(i, context.clone())
+            Expression::literal_int(i, integer_token.clone())
         }))
     }
 
@@ -295,7 +368,10 @@ impl Expression {
             .or(Matcher::AnyIdentifier)
             .or(Matcher::AnyLiteralInteger)
             .or(Matcher::AnyLiteralString)
-            .or(tokens::BracketLeft);
+            .or(tokens::BracketLeft)
+            .or(operators::Plus)
+            .or(operators::Minus)
+            .or(operators::Deref);
 
         let all_tokens: Vec<source::Token> = in_tokens.into_iter().collect();
 
@@ -303,8 +379,8 @@ impl Expression {
         //peeking moves all tokens, let's just put that back...
         let all_tokens: Vec<source::Token> = expr_first.next_tokens.collect();
 
-        let contains_binary_op = all_tokens.iter()
-            .any(|t| t.is_any_binary_operator());
+        let contains_operator = all_tokens.iter()
+            .any(|t| t.is_any_operator());
 
         match expr_first.value {
             Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
@@ -322,9 +398,9 @@ impl Expression {
                 }))
             }
 
-            Some(_) if contains_binary_op => {
+            Some(_) if contains_operator => {
                 Expression::parse_function_call(all_tokens.clone(), context)
-                    .or_else(|_| Expression::parse_binary_op(all_tokens, context))
+                    .or_else(|_| Expression::parse_compound(all_tokens, context))
             }
 
             Some(ref identifier) if identifier.is_any_identifier() => {
@@ -367,6 +443,10 @@ impl node::ToSource for Expression {
                 format!("{}({})", target, args_str)
             }
 
+            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+                format!("({} {})", op, rhs.to_source())
+            }
+
             &node::ExpressionValue::LiteralInteger(i) => format!("{}", i),
 
             &node::ExpressionValue::LiteralString(ref s) =>
@@ -403,13 +483,16 @@ mod test {
     use operators;
     use node::ToSource;
 
-    fn parse_expr(src: &str) -> Expression {
+    fn try_parse_expr(src: &str) -> ExpressionResult {
         let context = source::test::empty_context();
 
         let tokens = tokenize("test", src).unwrap();
 
         Expression::parse(tokens, &context)
-            .unwrap()
+    }
+
+    fn parse_expr(src: &str) -> Expression {
+        try_parse_expr(src).unwrap()
             .finish()
             .unwrap()
     }
@@ -418,11 +501,11 @@ mod test {
     fn brackets_groups_exprs() {
         let expr = parse_expr("(1 + 2) - 3");
 
-        assert!(expr.is_operation(&operators::Minus));
+        assert!(expr.is_binary_op(operators::Minus));
         let (lhs, _, rhs) = expr.unwrap_binary_op();
 
         assert!(rhs.is_literal_integer(3));
-        assert!(lhs.is_operation(&operators::Plus));
+        assert!(lhs.is_binary_op(operators::Plus));
 
         let (nested_lhs, _, nested_rhs) = lhs.unwrap_binary_op();
         assert!(nested_lhs.is_literal_integer(1));
@@ -430,32 +513,138 @@ mod test {
     }
 
     #[test]
-    fn precedence() {
-        for (prec_a, op_a) in operators::PRECEDENCE.iter().enumerate() {
-            let other_ops = operators::PRECEDENCE.iter().enumerate()
+    fn simple_binary_op() {
+        let expr = parse_expr("1 + 2");
+
+        assert!(expr.is_binary_op(operators::Plus));
+
+        let (lhs, _, rhs) = expr.unwrap_binary_op();
+        assert!(lhs.is_literal_integer(1));
+        assert!(rhs.is_literal_integer(2));
+    }
+
+    #[test]
+    fn simple_binary_op_in_brackets() {
+        let expr = parse_expr("(1 + 2)");
+
+        assert!(expr.is_binary_op(operators::Plus));
+
+        let (lhs, _, rhs) = expr.unwrap_binary_op();
+        assert!(lhs.is_literal_integer(1));
+        assert!(rhs.is_literal_integer(2));
+    }
+
+    #[test]
+    fn simple_prefix_op() {
+        let expr = parse_expr("+1");
+
+        assert!(expr.is_prefix_op(operators::Plus));
+        let (_, rhs) = expr.unwrap_prefix_op();
+
+        assert!(rhs.is_literal_integer(1));
+    }
+
+    #[test]
+    fn parses_multiple_line_compound_expr() {
+        let expr = try_parse_expr(r"a.b := 1
+            b.c := 2")
+            .unwrap();
+        assert!(expr.value.is_binary_op(operators::Assignment));
+
+        let remaining: Vec<_> = expr.next_tokens.collect();
+        assert_eq!(3, remaining.len(), "expected `b := 2` to be left over but got tokens {:?}", remaining);
+
+        let second_ctx = remaining[0].clone();
+        let second_expr = Expression::parse(remaining, &second_ctx)
+            .unwrap()
+            .finish()
+            .unwrap();
+
+        assert!(second_expr.is_binary_op(operators::Assignment));
+    }
+
+    #[test]
+    fn parses_binary_expr_followed_by_func_call() {
+        let expr_result = try_parse_expr(r"
+                ^a := ^(b + 1)
+
+                System.FreeMem(self.Elements)")
+            .unwrap();
+
+        let expr: Expression = expr_result.value;
+        match &expr.value {
+            &node::ExpressionValue::BinaryOperator { .. } => (),
+            _ => panic!("expected first expr in stream to be assignment, found {:?}", expr)
+        }
+    }
+
+    #[test]
+    fn parses_multi_line_block_without_terminators() {
+        let expr = parse_expr(r"begin
+            a.b := 1
+            b.c := 2
+            end");
+
+        assert!(expr.is_block());
+    }
+
+    #[test]
+    fn binary_op_precedence() {
+        let binary_ops_precedence = operators::PRECEDENCE.iter()
+            .filter_map(|&(op, pos)| if pos == operators::Position::Binary {
+                Some(op)
+            } else {
+                None
+            })
+            .collect::<Vec<_>>();
+
+        for (prec_a, op_a) in binary_ops_precedence.iter().enumerate() {
+            let other_ops = binary_ops_precedence.iter().enumerate()
                 .filter(|&(prec, _)| prec != prec_a);
 
             for (prec_b, op_b) in other_ops {
-                let hi_op = if prec_a < prec_b { op_a } else { op_b };
-                let lo_op = if prec_a < prec_b { op_b } else { op_a };
-
-                println!("hi: {}@{}, lo: {}@{}", hi_op, lo_op, prec_a.min(prec_b), prec_a.max(prec_b));
+                let hi_op = *if prec_a < prec_b { op_a } else { op_b };
+                let lo_op = *if prec_a < prec_b { op_b } else { op_a };
 
                 /* should parse as ((1 hi_op 2) lo_op 3) */
-                let expr1 = parse_expr(&format!("1 {} 2 {} 3", hi_op.to_source(), lo_op.to_source()));
-                assert!(expr1.is_operation(lo_op), "{} should have precedence over {} (understood this as {})", hi_op, lo_op, expr1.to_source());
-                let (lhs1, _, rhs1) = expr1.unwrap_binary_op();
-                assert!(lhs1.is_operation(hi_op));
-                assert!(rhs1.is_any_literal_integer());
+                let hi_first = parse_expr(&format!("1 {} 2 {} 3", hi_op.to_source(), lo_op.to_source()));
+                assert!(hi_first.is_binary_op(lo_op), "{} should have precedence over {} (understood this as {:?})", hi_op, lo_op, hi_first);
+
+                let (hi_first_1_then_2, _, hi_first_3) = hi_first.unwrap_binary_op();
+                assert!(hi_first_1_then_2.is_binary_op(hi_op));
+                assert!(hi_first_3.is_literal_integer(3), "rhs should be 3, but was `{:?}`", hi_first_3);
 
                 /* should parse as (1 lo_op (2 hi_op 3)) */
-                let expr2 = parse_expr(&format!("1 {} 2 {} 3", lo_op, hi_op));
-                assert!(expr2.is_operation(lo_op), "{} should have precedence over {} (understood as {})", hi_op, lo_op, expr2.to_source());
-                let (lhs2, _, rhs2) = expr2.unwrap_binary_op();
-                assert!(lhs2.is_any_literal_integer());
-                assert!(rhs2.is_operation(hi_op));
+                let lo_first = parse_expr(&format!("1 {} 2 {} 3", lo_op, hi_op));
+                assert!(lo_first.is_binary_op(lo_op), "{} should have precedence over {} (understood as {:?})", hi_op, lo_op, lo_first);
+
+                let (lo_first_1, _, lo_first_2_then_3) = lo_first.unwrap_binary_op();
+                assert!(lo_first_1.is_literal_integer(1), "lhs should be 1, but was `{:?}`", lo_first_1);
+                assert!(lo_first_2_then_3.is_binary_op(hi_op));
             }
         }
+    }
+
+    #[test]
+    fn parses_deref_on_lhs() {
+        let expr = parse_expr("^a + 1");
+
+        assert!(expr.is_binary_op(operators::Plus), "result should be plus, was: {}", expr.to_source());
+        let (lhs, _, rhs) = expr.unwrap_binary_op();
+
+        assert!(lhs.is_prefix_op(operators::Deref));
+        assert!(rhs.is_literal_integer(1));
+    }
+
+    #[test]
+    fn parses_assign_deref_to_deref() {
+        let expr = parse_expr("^(a + 1) := ^(b + 1)");
+
+        assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr.to_source());
+        let (lhs, _, rhs) = expr.unwrap_binary_op();
+
+        assert!(lhs.is_prefix_op(operators::Deref));
+        assert!(rhs.is_prefix_op(operators::Deref));
     }
 
     #[test]

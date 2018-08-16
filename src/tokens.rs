@@ -10,7 +10,7 @@ pub use self::Token::*;
 pub enum Token {
     Keyword(keywords::Keyword),
     Identifier(String),
-    BinaryOperator(operators::BinaryOperator),
+    Operator(operators::Operator),
     LiteralInteger(i64),
     LiteralString(String),
     Period,
@@ -49,16 +49,16 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
-    fn is_binary_operator(&self, op: &operators::BinaryOperator) -> bool {
+    fn is_operator(&self, op: &operators::Operator) -> bool {
         match self.as_token() {
-            &Token::BinaryOperator(ref token_op) => token_op.eq(op),
+            &Token::Operator(ref token_op) => token_op.eq(op),
             _ => false
         }
     }
 
-    fn is_any_binary_operator(&self) -> bool {
+    fn is_any_operator(&self) -> bool {
         match self.as_token() {
-            &Token::BinaryOperator(_) => true,
+            &Token::Operator(_) => true,
             _ => false,
         }
     }
@@ -84,9 +84,9 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
-    fn unwrap_binary_operator(&self) -> &operators::BinaryOperator {
+    fn unwrap_operator(&self) -> &operators::Operator {
         match self.as_token() {
-            &BinaryOperator(ref op) => op,
+            &Operator(ref op) => op,
             _ => panic!("calling unwrap_binary_operator on {}", self),
         }
     }
@@ -117,7 +117,7 @@ impl ToSource for Token {
         match self {
             &Keyword(kw) => kw.to_source(),
             &Identifier(ref name) => name.clone(),
-            &BinaryOperator(ref op) => op.to_source(),
+            &Operator(ref op) => op.to_source(),
             &LiteralInteger(i) => format!("{}", i),
             &LiteralString(ref s) => format!("'{}'", s.replace("'", "''")),
             &Period => ".".to_owned(),
@@ -135,9 +135,9 @@ impl fmt::Display for Token {
         match self {
             &Keyword(kw) => write!(f, "keyword `{}`", kw),
             &Identifier(ref name) => write!(f, "identifier `{}`", name),
-            &BinaryOperator(ref op) => write!(f, "binary operator `{}`", op),
-            &LiteralString(ref s) => write!(f, "string literal '{}'", s),
-            &LiteralInteger(i) => write!(f, "integer literal '{}'", i),
+            &Operator(ref op) => write!(f, "binary operator `{}`", op),
+            &LiteralString(ref s) => write!(f, "string literal `{}`", s),
+            &LiteralInteger(i) => write!(f, "integer literal `{}`", i),
             _ => write!(f, "{}", self.to_source())
         }
     }

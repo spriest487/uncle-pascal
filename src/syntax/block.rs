@@ -7,34 +7,6 @@ use source;
 pub type Block = node::Block<node::Identifier>;
 
 impl Block {
-//    fn split_statements_by_lines<TIter>(tokens: TIter) -> Vec<Vec<source::Token>>
-//        where TIter: IntoIterator<Item=source::Token>
-//    {
-//        let mut last_line_no = None;
-//
-//        let mut lines = Vec::new();
-//        let mut line = Vec::new();
-//
-//        for token in tokens.into_iter() {
-//            match &last_line_no {
-//                &Some(line_no) if line_no != token.location.line => {
-//                    lines.push(line);
-//                    line = vec![token.clone()];
-//                }
-//
-//                _ => line.push(token.clone()),
-//            }
-//
-//            last_line_no = Some(token.location.line);
-//        }
-//
-//        if line.len() > 0 {
-//            lines.push(line);
-//        }
-//
-//        lines
-//    }
-
     pub fn parse_exprs_multiline<TIter>(in_tokens: TIter, context: &source::Token)
         -> Result<Vec<Expression>, ParseError>
         where TIter: IntoIterator<Item=source::Token> + 'static
@@ -48,12 +20,12 @@ impl Block {
 
             match peek_start.peek() {
                 Some(_) => {
+
                     let expr = Expression::parse(peek_start, &next_expr_context)?;
 
                     /* if there's another expression in this group, it must
                     be on a different line */
                     let mut peek_after = expr.next_tokens.peekable();
-//                    let mut peek_after = nexttokens.into_iter().peekable();
 
                     match peek_after.peek().cloned() {
                         Some(ref token_after)

@@ -16,6 +16,7 @@ pub use self::program::*;
 
 use std::fmt;
 
+use operators;
 use node;
 use types::*;
 
@@ -25,9 +26,9 @@ use source;
 pub enum SemanticErrorKind {
     UnknownType(node::Identifier),
     UnknownSymbol(node::Identifier),
-    UnexpectedType{
+    UnexpectedType {
         expected: Option<DeclaredType>,
-        actual: Option<DeclaredType>
+        actual: Option<DeclaredType>,
     },
     InvalidFunctionType(ScopedSymbol),
     WrongNumberOfArgs {
@@ -37,6 +38,10 @@ pub enum SemanticErrorKind {
     },
     IllegalName(String),
     EmptyRecord(String),
+    InvalidOperator {
+        op: operators::Operator,
+        args: Vec<Option<DeclaredType>>,
+    },
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -72,6 +77,18 @@ impl fmt::Display for SemanticErrorKind {
             &SemanticErrorKind::EmptyRecord(ref name) => {
                 write!(f, "record type `{}` must have at least one member", name)
             }
+
+            &SemanticErrorKind::InvalidOperator { ref op, ref args } => {
+                let args_list = args.iter()
+                    .map(|maybe_type| {
+                        maybe_type.as_ref().map(|t| t.to_string())
+                            .unwrap_or("(none)".to_owned())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
+            }
         }
     }
 }
@@ -86,14 +103,14 @@ impl SemanticError {
     pub fn illegal_name(name: String, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::IllegalName(name),
-            context
+            context,
         }
     }
 
     pub fn unknown_symbol(name: node::Identifier, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownSymbol(name),
-            context
+            context,
         }
     }
 
@@ -102,7 +119,7 @@ impl SemanticError {
                            context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnexpectedType { expected, actual },
-            context
+            context,
         }
     }
 
@@ -130,14 +147,28 @@ impl SemanticError {
                 expected,
                 actual,
             },
-            context
+            context,
         }
     }
 
     pub fn invalid_function_type(target: ScopedSymbol, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(target),
-            context
+            context,
+        }
+    }
+
+    pub fn invalid_operator<TArgs>(operator: operators::Operator,
+                                   args: TArgs,
+                                   context: source::Token) -> SemanticError
+        where TArgs: IntoIterator<Item=Option<DeclaredType>>
+    {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidOperator {
+                op: operator,
+                args: args.into_iter().collect(),
+            },
+            context,
         }
     }
 }

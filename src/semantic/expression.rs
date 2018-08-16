@@ -84,6 +84,14 @@ impl Expression {
                 ))
             }
 
+            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+                Ok(Expression::prefix_op(
+                    op.clone(),
+                    Expression::annotate(rhs, scope)?,
+                    expr.context.clone(),
+                ))
+            }
+
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
                 let typed_args = args.iter()
                     .map(|arg| Expression::annotate(arg, scope))
@@ -106,8 +114,28 @@ impl Expression {
 
                 &operators::Assignment |
                 &operators::Plus |
-                &operators::Minus => lhs.expr_type()
+                &operators::Minus => lhs.expr_type(),
+
+                &operators::Deref => panic!("invalid operator {} in binary operator expression", op)
             },
+            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+                match op {
+                    &operators::Deref => match rhs.expr_type() {
+                        Some(DeclaredType::Pointer) => Some(DeclaredType::Byte),
+                        _ => panic!("operand of deref `{:?}` wasn't a pointer", rhs),
+                    },
+
+                    &operators::Plus |
+                    &operators::Minus => match rhs.expr_type() {
+                        Some(DeclaredType::Integer) => Some(DeclaredType::Integer),
+                        _ => panic!("operand `{:?}` of unary {} was not an integer", rhs, op),
+                    }
+
+                    &operators::Assignment |
+                    &operators::Equals |
+                    &operators::NotEquals => panic!("invalid operator {} for prefix operator expression", op)
+                }
+            }
             &node::ExpressionValue::LiteralString(_) => Some(DeclaredType::String),
             &node::ExpressionValue::LiteralInteger(_) => Some(DeclaredType::Integer),
             &node::ExpressionValue::FunctionCall { ref target, .. } => {
@@ -126,20 +154,54 @@ impl Expression {
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
         match &self.value {
-            &node::ExpressionValue::BinaryOperator { ref lhs, ref rhs, .. } => {
+            &node::ExpressionValue::BinaryOperator { ref lhs, ref rhs, ref op } => {
                 lhs.type_check()?;
                 rhs.type_check()?;
 
                 let lhs_type = lhs.expr_type();
                 let rhs_type = rhs.expr_type();
 
-                if lhs_type != rhs_type {
-                    println!("checking assignable: lhs is `{}` of type {:?}, rhs is `{}` of type {:?}",
-                             lhs, lhs_type,
-                             rhs, rhs_type);
+                if !op.is_valid_in_pos(operators::Position::Binary) {
+                    return Err(SemanticError::invalid_operator(op.clone(),
+                                                               vec![lhs_type, rhs_type],
+                                                               self.context.clone()));
                 }
 
+//                if lhs_type != rhs_type {
+//                    println!("checking assignable: lhs is `{}` of type {:?}, rhs is `{}` of type {:?}",
+//                             lhs, lhs_type,
+//                             rhs, rhs_type);
+//                }
+
                 expect_assignable(lhs_type, rhs_type, &self.context)
+            }
+
+            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+                rhs.type_check()?;
+                let rhs_type = rhs.expr_type();
+
+                let invalid_op_err = ||
+                    Err(SemanticError::invalid_operator(op.clone(),
+                                                        vec![rhs_type.clone()],
+                                                        self.context.clone()));
+
+                match op {
+                    &operators::Deref => match rhs_type {
+                        Some(DeclaredType::Pointer) => Ok(()),
+                        _ => invalid_op_err(),
+                    },
+
+                    &operators::Plus |
+                    &operators::Minus => match rhs_type {
+                        Some(DeclaredType::Integer) |
+                        Some(DeclaredType::Byte) => Ok(()),
+                        _ => invalid_op_err(),
+                    }
+
+                    _ => invalid_op_err(),
+                }?;
+
+                Ok(())
             }
 
             &node::ExpressionValue::Identifier(_) |
@@ -196,7 +258,7 @@ impl Expression {
             &node::ExpressionValue::ForLoop { ref from, ref to, .. } => {
                 match &from.value {
                     &node::ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
-                    if *op == operators::BinaryOperator::Assignment => {
+                    if *op == operators::Operator::Assignment => {
                         expect_type_eq(Some(DeclaredType::Integer), lhs.expr_type(),
                                        self.context.clone())?;
                         expect_type_eq(Some(DeclaredType::Integer), to.expr_type(),

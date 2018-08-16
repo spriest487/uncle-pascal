@@ -30,7 +30,7 @@ begin
   if self.Elements <> 0 then
   begin
     for i := 0 to self.Length - 1 do
-      newElements + i := self.Elements + i
+      ^(newElements + i) := ^(self.Elements + i)
 
     System.FreeMem(self.Elements)
   end
