@@ -270,7 +270,7 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             SemanticErrorKind::OutputUninitialized(var_name) => {
-                write!(f, "the output variable `{}` is not initialized when this function returns")
+                write!(f, "the output variable `{}` is not initialized when this function returns", var_name)
             }
         }
     }

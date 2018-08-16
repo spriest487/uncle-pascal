@@ -66,7 +66,7 @@ fn assignment_to_wrong_type_is_err() {
 #[test]
 fn func_call_on_obj_uses_ufcs_from_target_ns() {
     let system_scope = Scope::new_unit("System");
-    let func = parse_func_decl("function TestAdd(x: Int64): Int64", Rc::new(system_scope.clone()));
+    let func = parse_func_decl("function TestAdd(x, y: Int64): Int64", Rc::new(system_scope.clone()));
     let system_scope = system_scope.with_function(func);
 
     let expr_scope = Scope::new_unit("FromNs")

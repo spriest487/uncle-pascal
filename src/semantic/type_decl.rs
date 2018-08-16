@@ -22,16 +22,10 @@ impl TypeDecl {
                     -> SemanticResult<(Option<Self>, Rc<Scope>)> {
         match decl {
             node::TypeDecl::Record(record_decl) => {
-                let record_decl = RecordDecl::annotate(record_decl, scope.clone())?;
+                let (record_decl, scope) = RecordDecl::annotate(record_decl, scope.clone())?;
 
-                let scope = match record_decl.kind {
-                    node::RecordKind::Record => scope.as_ref().clone()
-                        .with_record(record_decl.clone()),
-                    node::RecordKind::Class => scope.as_ref().clone()
-                        .with_class(record_decl.clone()),
-                };
 
-                Ok((Some(node::TypeDecl::Record(record_decl)), Rc::new(scope)))
+                Ok((Some(node::TypeDecl::Record(record_decl)), scope))
             }
 
             node::TypeDecl::Enumeration(enum_decl) => {
@@ -115,7 +109,7 @@ impl RecordVariantPart {
 
 impl RecordDecl {
     pub fn annotate(decl: &syntax::RecordDecl,
-                    scope: Rc<Scope>) -> SemanticResult<Self> {
+                    scope: Rc<Scope>) -> SemanticResult<(Self, Rc<Scope>)> {
         let context = SemanticContext {
             token: decl.context.token().clone(),
             scope: scope.clone(),
@@ -132,17 +126,26 @@ impl RecordDecl {
             .collect::<Result<_, _>>()?;
 
         let variant_part = match &decl.variant_part {
-            Some(part) => Some(RecordVariantPart::annotate(part, scope)?),
+            Some(part) => Some(RecordVariantPart::annotate(part, scope.clone())?),
             None => None,
         };
 
-        Ok(RecordDecl {
+        let record_decl = RecordDecl {
             name: decl.name.clone(),
             kind: decl.kind,
             context,
             members,
             variant_part,
-        })
+        };
+
+        let scope = match record_decl.kind {
+            node::RecordKind::Record => scope.as_ref().clone()
+                .with_record(record_decl.clone()),
+            node::RecordKind::Class => scope.as_ref().clone()
+                .with_class(record_decl.clone()),
+        };
+
+        Ok((record_decl, Rc::new(scope)))
     }
 
     pub fn scope(&self) -> &Scope {

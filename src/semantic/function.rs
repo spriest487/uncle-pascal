@@ -264,31 +264,23 @@ impl FunctionArg {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tokenizer;
-    use syntax::{TokenStream, Parse};
-    use opts::CompileOptions;
+    use syntax::{
+        test::try_parse,
+        test::try_parse_record,
+    };
     use node::FunctionArgModifier;
 
     fn parse_func(src: &str, scope: Scope) -> FunctionDecl {
-        let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
-            .unwrap();
-
-        let decl = syntax::FunctionDecl::parse(&mut TokenStream::from(tokens))
-            .unwrap();
+        let decl: syntax::FunctionDecl = try_parse(src).unwrap();
 
         FunctionDecl::annotate(&decl, Rc::new(scope))
             .unwrap()
             .0
     }
 
-    fn try_parse_func_def(src: &str; scope: Scope) -> SemanticResult<(Function, Rc<Scope>)> {
-        let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
-            .unwrap();
-
-        let decl = syntax::Function::parse(&mut TokenStream::from(tokens))
-            .unwrap();
-
-        Function::annotate(&decl, Rc::new(scope))
+    fn try_parse_func_def(src: &str, scope: Rc<Scope>) -> SemanticResult<(Function, Rc<Scope>)> {
+        let func: syntax::Function = try_parse(src).unwrap();
+        Function::annotate(&func, scope)
     }
 
     #[test]
@@ -313,18 +305,40 @@ mod test {
             r"function x(): System.Int32
             begin
             end",
-            scope,
+            Rc::new(scope),
         );
 
         match result {
-            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name) }) => {
+            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name), .. }) => {
                 assert_eq!("result", name);
             }
 
-            _ => panic!("expected OutputUninitialized error, got {:}", result)
+            _ => panic!("expected OutputUninitialized error, got {:?}", result)
         }
     }
 
     #[test]
-    fn function_with_uninitialized_record_result_is_err() {}
+    fn function_with_uninitialized_record_result_is_err() {
+        let scope = Scope::new_root();
+
+        let record_decl: syntax::RecordDecl = try_parse_record("Point1D", "record x: Int32 end")
+            .unwrap();
+        let (_, scope) = RecordDecl::annotate(&record_decl, Rc::new(scope))
+            .unwrap();
+
+        let result = try_parse_func_def(
+            r"function x(): Point1D
+            begin
+            end",
+            scope,
+        );
+
+        match result {
+            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name), .. }) => {
+                assert_eq!("x", name);
+            }
+
+            _ => panic!("expected OutputUninitialized error, got {:?}", result)
+        }
+    }
 }

@@ -8,7 +8,7 @@ use semantic::{
     SemanticContext,
     SemanticError,
     Scope,
-    ScopedSymbol,
+    FunctionDecl,
 };
 use types::{
     Type,
@@ -55,142 +55,170 @@ pub fn annotate_call(target: &syntax::Expression,
 
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
-    let ufcs_call = match &target.value {
-        &ExpressionValue::Member { ref of, ref name } => {
-            let (base_expr, scope) = Expression::annotate(of, None, scope.clone())?;
-            let base_type = base_expr.expr_type()?;
-
-            base_type.and_then(|base_type|
-                annotate_ufcs(&base_expr, &base_type, &name, args, scope, &context))
-        }
-
-        &ExpressionValue::Identifier(ref name) => {
-            name.parent().and_then(|base_id| {
-                let base_sym = scope.get_symbol(&base_id)?;
-
-                let func_name = &name.name;
-                let base_expr = Expression::identifier(base_id, SemanticContext {
-                    token: target.context.token().clone(),
-                    scope: scope.clone(),
-                });
-
-                annotate_ufcs(&base_expr,
-                              &base_sym.decl_type(),
-                              func_name,
-                              args,
-                              scope.clone(),
-                              &context)
-            })
-        }
-
-        _ => None,
+    if let Some(ufcs_call) = find_ufcs_call(target, &context) {
+        let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
+        return Ok((ufcs_call, scope));
     };
 
-    match ufcs_call {
-        Some(ufcs_expr) => Ok(ufcs_expr),
-        None => {
-            /*
-                handle typecasting - if the func name is just an identifier,
-                it might be a typecast instead if there's no function by that
-                name and the arg list is exactly 1 long
-           */
-            if let ExpressionValue::Identifier(name) = &target.value {
-                if scope.get_function(name).is_none() && args.len() == 1 {
-                    if let Some(target_type) = scope.get_type_alias(name) {
-                        // we already checked there's exactly 1 arg
-                        let from_arg = args.into_iter()
-                            .next()
-                            .unwrap();
-                        let (from_value, scope) = Expression::annotate(
-                            from_arg,
-                            Some(&target_type),
-                            scope,
-                        )?;
+    /*
+        handle typecasting - if the func name is just an identifier,
+        it might be a typecast instead if there's no function by that
+        name and the arg list is exactly 1 long
+   */
+    if let ExpressionValue::Identifier(name) = &target.value {
+        if scope.get_function(name).is_none() && args.len() == 1 {
+            if let Some(target_type) = scope.get_type_alias(name) {
+                // we already checked there's exactly 1 arg
+                let from_arg = args.into_iter()
+                    .next()
+                    .unwrap();
+                let (from_value, scope) = Expression::annotate(
+                    from_arg,
+                    Some(&target_type),
+                    scope,
+                )?;
 
-                        let context = SemanticContext {
-                            token: target.context.token().clone(),
-                            scope: scope.clone(),
-                        };
+                let context = SemanticContext {
+                    token: target.context.token().clone(),
+                    scope: scope.clone(),
+                };
 
-                        let type_cast = Expression::type_cast(target_type, from_value, context);
-                        return Ok((type_cast, scope));
-                    }
-                }
+                let type_cast = Expression::type_cast(target_type, from_value, context);
+                return Ok((type_cast, scope));
             }
-
-            let (target, scope) = Expression::annotate(target, None, scope)?;
-
-            /* ordinary function call */
-            let sig = match target.expr_type()? {
-                Some(Type::Function(sig)) => {
-                    *sig.clone()
-                }
-
-                invalid @ _ => {
-                    return Err(SemanticError::invalid_function_type(invalid, target.context));
-                }
-            };
-
-            let (typed_args, scope) = annotate_args(args, &sig, &context, scope)?;
-
-            let scope = scope_after_fn_call(&sig, &typed_args, scope);
-            let func_call = Expression::function_call(target, typed_args);
-
-            Ok((func_call, scope))
         }
+    }
+
+    let (target, scope) = Expression::annotate(target, None, scope)?;
+
+    /* ordinary function call */
+    let sig = match target.expr_type()? {
+        Some(Type::Function(sig)) => {
+            *sig.clone()
+        }
+
+        invalid @ _ => {
+            return Err(SemanticError::invalid_function_type(invalid, target.context));
+        }
+    };
+
+    let (typed_args, scope) = annotate_args(args, &sig, &context, scope)?;
+
+    let scope = scope_after_fn_call(&sig, &typed_args, scope);
+    let func_call = Expression::function_call(target, typed_args);
+
+    Ok((func_call, scope))
+}
+
+struct UfcsCallSite {
+    target: Expression,
+    function: FunctionDecl,
+    function_id: Identifier,
+    scope_after_target: Rc<Scope>,
+}
+
+fn find_ufcs_call(target: &syntax::Expression,
+                  context: &SemanticContext)
+                  -> Option<UfcsCallSite> {
+    struct UfcsCandidate {
+        target: Expression,
+        scope_after_target: Rc<Scope>,
+        func_name: String,
+    }
+
+    let candidate = match &target.value {
+        ExpressionValue::Member { of, name } => {
+            let (base_expr, scope) = Expression::annotate(of, None, context.scope.clone())
+                .ok()?;
+
+            UfcsCandidate {
+                target: base_expr,
+                func_name: name.clone(),
+                scope_after_target: scope,
+            }
+        }
+
+        ExpressionValue::Identifier(name) => {
+            let base_id = name.parent()?;
+            let func_name = &name.name;
+            let base_expr = Expression::identifier(base_id, SemanticContext {
+                token: target.context.token().clone(),
+                scope: context.scope.clone(),
+            });
+
+            UfcsCandidate {
+                target: base_expr,
+                func_name: func_name.to_string(),
+                scope_after_target: context.scope.clone(),
+            }
+        }
+
+        _ => return None,
+    };
+
+    /* look for matching UFCS func in NS of target type */
+    let target_type = candidate.target.expr_type().ok()??;
+
+    let ufcs_ns = ufcs_ns_of_type(&target_type, candidate.scope_after_target.as_ref())?;
+    let ufcs_name = ufcs_ns.child(&candidate.func_name);
+
+    let (ufcs_fn_id, ufcs_fn) = candidate.scope_after_target.get_function(&ufcs_name)?;
+    let first_arg = ufcs_fn.args.first()?;
+
+    if first_arg.decl_type.remove_indirection() != target_type.remove_indirection()
+        || first_arg.modifier.is_some() {
+        None
+    } else {
+        Some(UfcsCallSite {
+            scope_after_target: candidate.scope_after_target.clone(),
+            target: candidate.target,
+            function: ufcs_fn.clone(),
+            function_id: ufcs_fn_id,
+        })
     }
 }
 
-fn annotate_ufcs(target: &Expression,
-                 target_type: &Type,
-                 func_name: &str,
-                 args: &[syntax::Expression],
-                 scope: Rc<Scope>,
-                 context: &SemanticContext) -> Option<(Expression, Rc<Scope>)> {
-    /* look for matching UFCS func in NS of target type */
-    let ufcs_ns = ufcs_ns_of_type(target_type, scope.as_ref())?;
+fn annotate_ufcs(ufcs_call: UfcsCallSite,
+                 args: &[syntax::Expression]) -> SemanticResult<(Expression, Rc<Scope>)> {
+    let target_type = ufcs_call.target.expr_type()?
+        .expect("ufcs target must have a type");
 
-    let ufcs_name = ufcs_ns.child(func_name);
-    let ufcs_function = scope.get_symbol(&ufcs_name)?;
+    let first_arg = &ufcs_call.function.args[0];
 
-    match ufcs_function {
-        ScopedSymbol::Local { name: ufcs_func_name, decl_type: Type::Function(sig), .. } => {
-            let first_arg = sig.args.first()?;
+    /* match target arg expression indirection level to level of expected first arg,
+     taking the address or derefing the pointer as necessary */
+    let ufcs_target_arg = match_indirection(
+        &ufcs_call.target,
+        &target_type,
+        &first_arg.decl_type,
+    );
+    let ufcs_target_expr = Expression::identifier(
+        ufcs_call.function_id,
+        ufcs_call.target.context.clone(),
+    );
 
-            if first_arg.decl_type.remove_indirection() != target_type.remove_indirection()
-                || first_arg.modifier.is_some() {
-                None
-            } else {
-                /* match target arg expression indirection level to level of expected first arg,
-                 taking the address or derefing the pointer as necessary */
-                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg.decl_type);
+    /* for arg typechecking, use a version of the signature without the first argument -
+    the target has already been annotated, and will become the first arg of the actual
+    function call */
+    let full_sig = ufcs_call.function.signature();
+    let mut ufcs_sig = full_sig.clone();
+    ufcs_sig.args.remove(0);
 
-                let ufcs_target_expr = Expression::identifier(ufcs_func_name.clone(),
-                                                              target.context.clone());
+    let (typed_args, scope) = annotate_args(
+        args,
+        &ufcs_sig,
+        &ufcs_call.target.context,
+        ufcs_call.scope_after_target
+    )?;
 
-                /* for arg typechecking, use a version of the signature without the first argument -
-                the target has already been annotated, and will become the first arg of the actual
-                function call */
-                let mut ufcs_sig = sig.clone();
-                ufcs_sig.args.remove(0);
 
-                let (typed_args, scope) = annotate_args(args, &ufcs_sig, context, scope)
-                    .ok()?;
+    let mut ufcs_args = vec![ufcs_target_arg];
+    ufcs_args.extend(typed_args.iter().cloned());
 
-                let mut ufcs_args = vec![ufcs_target_arg];
-                ufcs_args.extend(typed_args.iter().cloned());
+    let func_call = Expression::function_call(ufcs_target_expr, ufcs_args);
+    let scope_after = scope_after_fn_call(&full_sig, &typed_args, scope);
 
-                let func_call = Expression::function_call(ufcs_target_expr, ufcs_args);
-                let scope_after = scope_after_fn_call(&sig, &typed_args, scope);
-
-                Some((func_call, scope_after))
-            }
-        }
-
-        _ => {
-            None
-        },
-    }
+    Ok((func_call, scope_after))
 }
 
 pub fn call_type(target: &Expression,
@@ -271,7 +299,6 @@ fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
         | Type::Record(name) => scope.get_record(&name)?.0,
         | Type::Set(name) => scope.get_set(&name)?.0,
         | Type::Enumeration(name) => scope.get_enumeration(&name)?.0,
-
         | Type::Array(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
         | Type::DynamicArray(array_type) =>

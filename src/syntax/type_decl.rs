@@ -268,7 +268,7 @@ impl RecordDecl {
         })
     }
 
-    fn parse_with_name(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
+    pub fn parse_with_name(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
         let match_kw = tokens.match_one(keywords::Record.or(keywords::Class))?;
 
         let kind = if match_kw.is_keyword(keywords::Class) {

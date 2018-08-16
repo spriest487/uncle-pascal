@@ -135,18 +135,30 @@ impl fmt::Display for ParseError {
 pub type ParseResult<TValue> = Result<TValue, ParseError>;
 
 #[cfg(test)]
-mod test {
+pub(crate) mod test {
     use super::*;
     use opts::CompileOptions;
     use node::{ ExpressionValue, ConstantExpression };
 
-    #[test]
-    fn parses_1d_array_type() {
-        let mut tokens = TokenStream::tokenize("test", "array [0..10] of Integer",
-                                               &CompileOptions::default())
+    pub fn try_parse<T>(src: &str) -> ParseResult<T>
+        where T: Parse
+    {
+        let tokens = TokenStream::tokenize("test", src, &CompileOptions::default())
             .unwrap();
 
-        let parsed = TypeName::parse(&mut tokens)
+        tokens.parse_to_end()
+    }
+
+    pub fn try_parse_record(name: &str, src: &str) -> ParseResult<RecordDecl> {
+        let mut tokens = TokenStream::tokenize("tes", src, &CompileOptions::default())
+            .unwrap();
+
+        RecordDecl::parse_with_name(name, &mut tokens)
+    }
+
+    #[test]
+    fn parses_1d_array_type() {
+        let parsed = try_parse("array [0..10] of Integer")
             .unwrap();
 
         let assert_is_const_dim = |dim_expr: &Expression, dim_val: i128| {

@@ -1,8 +1,7 @@
 use std::rc::*;
 use std::fmt;
 
-use tokens::{self, AsToken};
-use node::ToSource;
+use tokens;
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct Location {
@@ -84,38 +83,5 @@ impl fmt::Debug for Token {
 impl tokens::AsToken for Token {
     fn as_token(&self) -> &tokens::Token {
         &self.token
-    }
-}
-
-#[allow(dead_code)]
-pub fn tokens_to_string(tokens: &Vec<Token>) -> String {
-    tokens.iter().map(|t| format!("{{{}}}", t.to_string()))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-#[allow(dead_code)]
-pub fn tokens_to_source(tokens: &Vec<Token>) -> String {
-    tokens.iter().map(|t| t.as_token().to_source())
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
-#[allow(dead_code)]
-pub mod test {
-    use std::rc::*;
-    use source;
-    use tokens;
-    use keywords;
-
-    pub fn empty_context() -> source::Token {
-        source::Token {
-            token: Rc::from(tokens::Keyword(keywords::Program)),
-            location: source::Location {
-                file: Rc::from(String::from("test")),
-                line: 0,
-                col: 0,
-            }
-        }
     }
 }
