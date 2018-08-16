@@ -16,7 +16,7 @@ begin
   let y = 2
   let x = 1 + y
 
-  let vec = Vector.Create()
+  let vec = Vector.New()
   vec.Add(1)
   vec.Add(2)
   Vector.Add(vec, 3)

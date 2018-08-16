@@ -45,7 +45,7 @@ type
 
             { all events are 56 bytes (as per SDL_events.h), and the first 4 bytes
             of each variant are the type tag }
-            EVENT_LASTEVENT: (Padding: array[0..52] of Byte)
+            EVENT_LASTEVENT: (Padding: array[0..51] of Byte)
     end
 
     Window = Pointer

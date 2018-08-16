@@ -1,12 +1,14 @@
 # TODO
 
-* object literals for classes and records (maybe get rid of constructors)
+* remove pascal names from C++ output
+* Disposable interface (get rid of destructors)
 * const decls should use the explicit type they're given
 * record members in local args shouldn't be initialized by default
 * `result` shouldn't be initialized by default and we should check this
 * check assignment to `out` params
 * RC struct members on the stack
 * implement `exit` and make arc work with alterate control flows 
+* variant fields with the same name
 
 * set literals
 * sets supporting ..

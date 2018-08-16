@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{
+    fmt,
+};
 use target_c::{
     identifier_to_c,
     ast::{
@@ -216,13 +218,13 @@ impl Struct {
             RecordKind::Class => Some("System_Internal_Object".to_string()),
         };
 
+        let constructor_decl = Struct::constructor_decl(&name, &record_decl);
+
         let struct_decl = Struct {
             name: Some(name),
             members,
             extends,
         };
-
-        let constructor_decl = struct_decl.constructor_decl(record_decl.kind);
 
         Ok((struct_decl, constructor_decl))
     }
@@ -253,53 +255,64 @@ impl Struct {
     }
 
     // todo: this should probably be based on semantic::RecordDecl instead
-    fn constructor_decl(&self, record_kind: RecordKind) -> FunctionDecl {
-        let struct_name = match &self.name {
-            Some(name) => name,
-            None => unimplemented!("anonymous struct constructor"),
-        };
-
+    fn constructor_decl(struct_name: &str, record: &semantic::RecordDecl) -> FunctionDecl {
         let name = format!("{}_Internal_Constructor", struct_name);
 
-        let fields: Vec<_> = self.members.iter()
-            .filter_map(|member| match member {
-                StructMember::Field(var) => {
-                    Some(var)
-                }
-                _ => {
-                    //todo
-                    eprintln!("not yet implemented: struct constructors for variant parts");
-                    None
-                }
-            })
-            .collect::<>();
+        let all_fields: Vec<_> = record.all_members().collect();
 
-        let args: Vec<_> = fields.iter().enumerate()
+        /* the args of a constructor are Options of each individual member */
+        let args: Vec<_> = all_fields.iter().enumerate()
             .map(|(mem_num, member)| FunctionArg {
                 name: format!("arg{}", mem_num),
-                ctype: member.ctype.clone(),
+                ctype: {
+                    let member_type = CType::translate(&member.decl_type, record.scope());
+                    CType::Named(format!("System_Internal_Option<{}>", member_type))
+                },
             })
             .collect();
 
-        let struct_type = CType::Struct(struct_name.clone());
-        let (return_type, member_access) = match record_kind {
+        let struct_type = CType::Struct(struct_name.to_string());
+        let (return_type, member_access) = match record.kind {
             RecordKind::Class => (struct_type.into_pointer(), "->"),
             RecordKind::Record => (struct_type, "."),
         };
 
         let mut statements = Vec::new();
-        statements.push(Expression::raw(format!("{} result;", return_type)));
-        if record_kind == RecordKind::Class {
-            statements.push(Expression::function_call("System_Internal_Rc_GetMem", vec![
-                Expression::function_call("sizeof", vec![Expression::from(struct_name.as_str())]),
-                Expression::string_literal(struct_name)
-            ]));
+        statements.push(Expression::raw(format!("{} result", return_type)));
+        match record.kind {
+            /* rc-allocate new class instance */
+            RecordKind::Class => {
+                statements.push(Expression::binary_op(
+                    "result", "=",
+                    Expression::static_cast(
+                        return_type.clone(),
+                        Expression::function_call("System_Internal_Rc_GetMem", vec![
+                            Expression::function_call("sizeof", vec![Expression::from(struct_name)]),
+                            Expression::string_literal(&record.qualified_name().to_string())
+                        ]),
+                    ),
+                ));
+            }
+
+            /* zero-initialize a new record on the stack */
+            RecordKind::Record => {
+                statements.push(Expression::function_call("std::memset", vec![
+                    Expression::raw("&result"),
+                    Expression::raw(0),
+                    Expression::function_call("sizeof", vec![Expression::from(struct_name)])
+                ]));
+            }
         }
 
-        for (mem_num, member) in fields.iter().enumerate() {
+        for (mem_num, member) in all_fields.iter().enumerate() {
             let result_member = format!("result{}{}", member_access, member.name);
             let arg_name = format!("arg{}", mem_num);
-            statements.push(Expression::binary_op(result_member.as_str(), "=", arg_name.as_str()));
+            statements.push(Expression::from(format!(
+                "if ({}) {} = *{}",
+                arg_name,
+                result_member,
+                arg_name
+            )));
         }
 
         statements.push(Expression::raw("return result"));
@@ -310,7 +323,7 @@ impl Struct {
             name,
             args,
             return_type,
-            calling_convention: CallingConvention::Stdcall,
+            calling_convention: CallingConvention::Cdecl,
             definition,
         }
     }
@@ -374,7 +387,7 @@ impl Variable {
     }
 
     pub fn write_impl(&self, out: &mut fmt::Write) -> fmt::Result {
-        write!(out, "static {} {}", self.ctype, self.name)?;
+        write!(out, "{} {}", self.ctype, self.name)?;
 
         if let Some(default_val) = &self.default_value {
             write!(out, " = ")?;

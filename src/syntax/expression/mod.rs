@@ -9,6 +9,7 @@ use node::{
     self,
     ExpressionValue,
     SetMemberGroup,
+    TypeName,
 };
 use source;
 use operators;
@@ -266,6 +267,15 @@ fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
         .unwrap_identifier()
         .to_string();
 
+    /* is there an explicit type? */
+    let explicit_type = match tokens.look_ahead().match_one(tokens::Colon) {
+        Some(_) => {
+            tokens.advance(1);
+            Some(TypeName::parse(tokens)?)
+        }
+        None => None
+    };
+
     /* `let` uses `= value`, `let var` uses `:= value` */
     tokens.match_one(match mutable {
         true => operators::Assignment,
@@ -277,6 +287,7 @@ fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
     let binding = LetBinding {
         name,
         value: Box::new(value),
+        explicit_type,
         mutable
     };
 

@@ -4,7 +4,10 @@ pub mod expression;
 pub mod to_source;
 pub mod function_signature;
 
-use std::fmt;
+use std::{
+    fmt,
+    iter,
+};
 
 use source;
 pub use self::type_name::TypeName;
@@ -379,6 +382,22 @@ impl<TContext> RecordDecl<TContext>
                     }
                 }
             })
+    }
+
+    /**
+        iterate over all members, including possible variant tag and variant case members
+    */
+    pub fn all_members(&self) -> impl Iterator<Item=&RecordMember<TContext>> {
+        self.members.iter()
+            .chain(self.variant_part.iter()
+                .flat_map(|variant_part| {
+                    let tag = iter::once(&variant_part.tag);
+                    let case_members = variant_part.cases.iter()
+                        .flat_map(|case| {
+                            case.members.iter()
+                        });
+                    tag.chain(case_members)
+                }))
     }
 }
 

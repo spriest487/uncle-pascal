@@ -91,6 +91,7 @@ pub enum SemanticErrorKind {
     },
     NotConstructable(Type),
     UnableToInferType(syntax::Expression),
+    OutputUninitialized(String),
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -266,6 +267,10 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::UnableToInferType(expr) => {
                 write!(f, "unable to infer type for `{}`", expr.to_source())
+            }
+
+            SemanticErrorKind::OutputUninitialized(var_name) => {
+                write!(f, "the output variable `{}` is not initialized when this function returns")
             }
         }
     }
@@ -517,6 +522,15 @@ impl SemanticError {
         SemanticError {
             context: context.into(),
             kind: SemanticErrorKind::UnableToInferType(expr),
+        }
+    }
+
+    pub fn output_uninitialized(output_name: impl ToString,
+                                context: impl Into<SemanticContext>)
+                                -> Self {
+        SemanticError {
+            context: context.into(),
+            kind: SemanticErrorKind::OutputUninitialized(output_name.to_string()),
         }
     }
 }

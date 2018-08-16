@@ -72,6 +72,12 @@ pub enum Expression {
     StringLiteral(String),
 }
 
+impl From<String> for Expression {
+    fn from(s: String) -> Self {
+        Expression::Raw(s)
+    }
+}
+
 impl<'a> From<&'a str> for Expression {
     fn from(src: &str) -> Self {
         Expression::Raw(src.to_string())
@@ -332,7 +338,7 @@ impl Expression {
                 let tmp_var = Variable {
                     name: tmp_name.clone(),
                     ctype: val_c_type,
-                    default_value: None
+                    default_value: None,
                 };
 
                 bindings_block.push(tmp_var.decl_statement());
@@ -488,7 +494,7 @@ impl Expression {
                         let enum_name = identifier_to_c(&e.enumeration);
                         Ok(Expression::static_cast(
                             CType::Named(enum_name),
-                            Expression::Raw(e.ordinal.to_string())
+                            Expression::Raw(e.ordinal.to_string()),
                         ))
                     }
 
@@ -632,8 +638,28 @@ impl Expression {
                 Ok(Expression::Block(block))
             }
 
-            ExpressionValue::ObjectConstructor(_members) => {
-                unimplemented!("object constructor (c++ backend)");
+            ExpressionValue::ObjectConstructor(obj) => {
+                let (obj_id, obj_decl) = match obj.object_type.as_ref() {
+                    | Some(Type::Class(id)) => expr.scope().get_class(id).unwrap(),
+                    | Some(Type::Record(id)) => expr.scope().get_record(id).unwrap(),
+                    | _ => panic!("invalid type for object constructor: {:?}", obj.object_type),
+                };
+
+                /* todo: support the variant part */
+                let ctor_args: Vec<Expression> = obj_decl.all_members()
+                    .map(|member| {
+                        match obj.get_member(&member.name) {
+                            /* the typechecker should have already thrown an error if the type
+                             isn't default-able */
+                            None => Ok(Expression::raw("{}")),
+                            Some(ctor_val) => Self::translate_expression(&ctor_val.value, unit),
+                        }
+                    })
+                    .collect::<TranslationResult<_>>()?;
+
+                let ctor_name = format!("{}_Internal_Constructor", identifier_to_c(&obj_id));
+
+                Ok(Expression::function_call(ctor_name, ctor_args))
             }
 
             ExpressionValue::SetConstructor(_member_groups) => {

@@ -168,8 +168,15 @@ fn annotate_ufcs(target: &Expression,
                 let ufcs_target_expr = Expression::identifier(ufcs_func_name.clone(),
                                                               target.context.clone());
 
-                /* the target becomes the first arg */
-                let (typed_args, scope) = annotate_args(args, &sig, context, scope).ok()?;
+                /* for arg typechecking, use a version of the signature without the first argument -
+                the target has already been annotated, and will become the first arg of the actual
+                function call */
+                let mut ufcs_sig = sig.clone();
+                ufcs_sig.args.remove(0);
+
+                let (typed_args, scope) = annotate_args(args, &ufcs_sig, context, scope)
+                    .ok()?;
+
                 let mut ufcs_args = vec![ufcs_target_arg];
                 ufcs_args.extend(typed_args.iter().cloned());
 
@@ -180,7 +187,9 @@ fn annotate_ufcs(target: &Expression,
             }
         }
 
-        _ => None,
+        _ => {
+            None
+        },
     }
 }
 

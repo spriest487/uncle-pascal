@@ -5,7 +5,10 @@ use std::{
 use tokenizer::*;
 use semantic::*;
 use syntax;
-use node::ExpressionValue;
+use node::{
+    ExpressionValue,
+    UnitReferenceKind,
+};
 use operators;
 use types::Type;
 use opts::CompileOptions;
@@ -62,16 +65,15 @@ fn assignment_to_wrong_type_is_err() {
 
 #[test]
 fn func_call_on_obj_uses_ufcs_from_target_ns() {
-    let scope = Scope::new_unit("System");
+    let system_scope = Scope::new_unit("System");
+    let func = parse_func_decl("function TestAdd(x: Int64): Int64", Rc::new(system_scope.clone()));
+    let system_scope = system_scope.with_function(func);
 
-    let scope = scope.clone()
-        .with_function(
-            parse_func_decl("function TestAdd(x: Int64): Int64",
-                            Rc::new(scope))
-        )
-        .with_binding("a", Type::Int64, BindingKind::Mutable);
+    let expr_scope = Scope::new_unit("FromNs")
+        .with_binding("a", Type::Int64, BindingKind::Mutable)
+        .reference(&system_scope, UnitReferenceKind::Namespaced);
 
-    let (expr, _) = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
+    let (expr, _) = parse_expr(r"a.TestAdd(1)", Rc::new(expr_scope));
 
     match expr.value {
         ExpressionValue::FunctionCall { target, args } => {

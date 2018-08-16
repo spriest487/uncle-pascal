@@ -8,6 +8,19 @@
 #include <utility>
 #include <memory>
 
+#ifdef __APPLE__
+#include <experimental/optional>
+
+template<typename T>
+using System_Internal_Option = std::experimental::optional<T>;
+#else
+#include <optional>
+
+template<typename T>
+using System_Internal_Option = std::optional<T>;
+#endif
+
+
 typedef std::uint8_t System_Byte;
 typedef std::int32_t System_Int32;
 typedef std::uint32_t System_UInt32;

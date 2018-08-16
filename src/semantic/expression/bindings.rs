@@ -5,6 +5,7 @@ use std::{
 
 use node;
 use syntax;
+use operators;
 use semantic::{
     Scope,
     SemanticResult,
@@ -20,16 +21,33 @@ pub type LetBinding = node::LetBinding<SemanticContext>;
 pub fn annotate_let(parsed_binding: &syntax::LetBinding,
                     context: SemanticContext)
                     -> SemanticResult<(Expression, Rc<Scope>)> {
+    let explicit_type = match parsed_binding.explicit_type.as_ref() {
+        Some(type_name) => Some(type_name.resolve(context.scope.clone())?),
+        None => None
+    };
+
     let (value, mut binding_scope) = Expression::annotate(
         &parsed_binding.value,
-        None,
-        context.scope.clone()
+        explicit_type.as_ref(),
+        context.scope.clone(),
     )?;
 
-    let bound_type = value.expr_type()?
+    let bound_type: Type = value.expr_type()?
         .ok_or_else(|| {
             SemanticError::type_not_assignable(None, context.clone())
         })?;
+
+    if let Some(expected_type) = explicit_type.as_ref() {
+        if !bound_type.assignable_from(expected_type) {
+            /* todo: better error message for this
+            (complaining about 'operator :=' doesn't really match what the user typed) */
+            return Err(SemanticError::invalid_operator(
+                operators::Assignment,
+                vec![Some(expected_type.clone()), Some(bound_type)].clone(),
+                context.clone()
+            ));
+        }
+    }
 
     let binding_kind = match parsed_binding.mutable {
         true => BindingKind::Mutable,
@@ -44,6 +62,7 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
         name: parsed_binding.name.clone(),
         mutable: parsed_binding.mutable,
         value: Box::new(value),
+        explicit_type,
     };
 
     Ok((Expression::let_binding(binding, context), binding_scope))
@@ -85,6 +104,8 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
                 mutable: true,
                 value: Box::new(member),
                 name: record_member.name.clone(),
+                // we could probably figure this out but we don't need it
+                explicit_type: None,
             };
 
             syntax::Expression::let_binding(binding, context)

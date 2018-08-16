@@ -24,8 +24,8 @@ function ReadLn(): String
 
 { string manipulation }
 
-constructor StringCreate: String
-constructor StringFromBytes(bytes: ^Byte; len: NativeInt): String
+function StringCreate: String
+function StringFromBytes(bytes: ^Byte; len: NativeInt): String
 destructor DestroyString(string: String)
 
 function StringFromInt(i: Int32): String
@@ -61,16 +61,17 @@ function Trunc(f: Float64): Int32
 
 implementation
 
-constructor StringCreate: String
+function StringCreate: String
 begin
-    result.Chars := nil
-    result.Length := 0
+    result := (Chars: nil; Length: 0)
 end
 
-constructor StringFromBytes(bytes: ^Byte; len: NativeInt): String
+function StringFromBytes(bytes: ^Byte; len: NativeInt): String
 begin
-    result.Chars := GetMem(len)
-    result.Length := len
+    result := (
+        Chars: GetMem(len)
+        Length: len
+    )
 
     for let c = 0 to result.Length do
         result.Chars[c] := bytes[c]

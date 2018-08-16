@@ -48,6 +48,15 @@ impl TranslationUnit {
         let impl_decl = Declaration::translate_impl(decl, self)?;
         self.decls.extend(impl_decl);
 
+        match decl {
+            Implementation::Decl(decl) => {
+                if let Some(class_record) = decl.as_class_decl() {
+                    self.classes.push(Class::translate(class_record)?);
+                }
+            },
+            _ => {}
+        }
+
         Ok(())
     }
 
@@ -171,8 +180,19 @@ impl TranslationUnit {
             })
             .collect()));
 
-        let main = Block::translate(&module.program.program_block, Some(&global_vars), &mut result)?;
+        let main = Block::translate(&module.program.program_block, None, &mut result)?;
         result.initialization.push(main);
+        result.initialization.push({
+            let mut release_global_vars = Vec::new();
+            // release all rc local vars for this block
+            for decl in global_vars.iter().rev().filter(|decl| decl.decl_type.is_class()) {
+                release_global_vars.push(Expression::Raw(
+                    format!("System_Internal_Rc_Release({})", decl.name)
+                ));
+            }
+
+            Block::new(release_global_vars)
+        });
 
         Ok(result)
     }

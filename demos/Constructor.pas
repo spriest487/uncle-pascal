@@ -31,26 +31,27 @@ begin
 end
 
 var
-    cat, spider, fish: Animal
-    mainCourse, dessert: IceCream
+    fish: Animal
 
 begin
-    cat := (Ears: 2; Legs: 4)
-    spider := (Legs: 8)
+    let cat: Animal = (Ears: 2; Legs: 4)
+    let var spider: Animal := (Legs: 7; Ears: cat.Ears - 2)
+    spider.Legs := spider.Legs + 1
+
     fish := ()
 
     PrintAnimal('cat', cat)
     PrintAnimal('spider', spider)
     PrintAnimal('fish', fish)
 
-    mainCourse := (
+    let mainCourse: IceCream = (
         Flavor: 'Chocolate';
         Scoops: 3;
     )
 
     PrintIceCream('main course', mainCourse)
 
-    dessert := (
+    let dessert: IceCream = (
         Flavor: mainCourse.Flavor + ' and Strawberry'
         Scoops: 1
     )

@@ -3,11 +3,10 @@ uses
     SDL
     System.*
 
-procedure RunWindow(window: SDL.Window; renderer: SDL.Renderer)
-var 
-    nextEvent: SDL.Event
+function RunWindow(window: SDL.Window; renderer: SDL.Renderer)
 begin
     let var quit := false
+    let var nextEvent: SDL.Event := ()
 
     while not quit do
     begin

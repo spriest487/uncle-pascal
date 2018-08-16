@@ -34,6 +34,15 @@ pub struct ObjectConstructor<TContext>
     pub object_type: Option<Type>,
 }
 
+impl<TContext> ObjectConstructor<TContext>
+    where TContext: Context
+{
+    pub fn get_member(&self, name: &str) -> Option<&ObjectConstructorMember<TContext>> {
+        self.members.iter()
+            .find(|mem| mem.name == name)
+    }
+}
+
 impl<TContext> PartialEq for ObjectConstructorMember<TContext>
     where TContext: Context
 {
@@ -286,7 +295,7 @@ pub struct LetBinding<TContext>
 {
     pub name: String,
     pub value: Box<Expression<TContext>>,
-    //    pub explicit_type: Option<TContext::Type>,
+    pub explicit_type: Option<TContext::Type>,
     pub mutable: bool,
 }
 

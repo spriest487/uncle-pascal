@@ -13,7 +13,7 @@ type
     Length: Index
   end
 
-constructor Create: Vector
+constructor New: Vector
 destructor Destroy(self: Vector)
 
 function Add(self: Vector; p: Element)
@@ -21,10 +21,12 @@ function AddAll(self: Vector; other: Vector)
 
 implementation
 
-constructor Create: Vector
+function New: Vector
 begin
-  result.Elements := nil
-  result.Length := 0
+    result := (
+        Elements: nil
+        Length: 0
+    )
 end
 
 destructor Destroy(self: Vector)
@@ -34,12 +36,12 @@ end
 
 function Add(self: Vector; p: Element)
 begin
-  let newElements = GetMem(self.Length + 1)
+  let var newElements := GetMem(self.Length + 1)
 
   if self.Elements <> nil then
   begin
     for let i = 0 to self.Length do
-      ^(newElements + i) := ^(self.Elements + i)
+      newElements[i] := self.Elements[i]
 
     FreeMem(self.Elements)
   end
@@ -47,13 +49,13 @@ begin
   self.Length := self.Length + 1
   self.Elements := newElements
 
-  ^(self.Elements + (self.Length - 1)) := p
+  self.Elements[self.Length - 1] := p
 end
 
 function AddAll(self: Vector; other: Vector)
 begin
   for let i = 0 to other.Length do
-    self.Add(^(other.Elements + i))
+    self.Add(other.Elements[i])
 end
 
 end.

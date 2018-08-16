@@ -19,17 +19,15 @@ use types::Type;
 pub type ObjectConstructor = node::ObjectConstructor<SemanticContext>;
 pub type ObjectConstructorMember = node::ObjectConstructorMember<SemanticContext>;
 
-fn find_object_decl<'a>(ty: &Type, scope: &'a Scope) -> Option<(&'a RecordDecl, RecordKind)> {
+fn find_object_decl<'a>(ty: &Type, scope: &'a Scope) -> Option<&'a RecordDecl> {
     match ty {
         Type::Record(record_id) => {
             let (_, record) = scope.get_record(record_id)?;
-
-            Some((record, RecordKind::Record))
+            Some(record)
         }
         Type::Class(class_id) => {
             let (_, class) = scope.get_class(class_id)?;
-
-            Some((class, RecordKind::Class))
+            Some(class)
         }
         _ => None
     }
@@ -52,11 +50,11 @@ pub fn annotate_object(obj: &syntax::ObjectConstructor,
         })?;
 
     /* must be constructing a class or record type */
-    let (record, kind) = find_object_decl(&object_type, context.scope.as_ref())
+    let record = find_object_decl(&object_type, context.scope.as_ref())
         .ok_or_else(|| {
             SemanticError::not_constructable(object_type.clone(), context.clone())
         })?;
-    let private = kind == RecordKind::Class;
+    let private = record.kind == RecordKind::Class;
 
     let mut members: Vec<ObjectConstructorMember> = Vec::new();
     let mut scope = context.scope.clone();

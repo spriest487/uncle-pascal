@@ -49,7 +49,7 @@ impl FunctionDecl {
                         let (val, _) = Expression::annotate(
                             default_expr,
                             Some(&arg_type),
-                            scope.clone()
+                            scope.clone(),
                         )?;
                         Some(val.into_const_expr()?)
                     }
@@ -208,7 +208,7 @@ impl Function {
             let (local_var, new_scope) = VarDecl::annotate(
                 parsed_local_var,
                 local_scope.clone(),
-                BindingKind::Uninitialized
+                BindingKind::Uninitialized,
             )?;
 
             all_local_vars.push(local_var);
@@ -281,6 +281,16 @@ mod test {
             .0
     }
 
+    fn try_parse_func_def(src: &str; scope: Scope) -> SemanticResult<(Function, Rc<Scope>)> {
+        let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
+            .unwrap();
+
+        let decl = syntax::Function::parse(&mut TokenStream::from(tokens))
+            .unwrap();
+
+        Function::annotate(&decl, Rc::new(scope))
+    }
+
     #[test]
     fn sig_of_func_includes_modifier() {
         let scope = Scope::new_root()
@@ -295,4 +305,26 @@ mod test {
         assert_eq!(Some(FunctionArgModifier::Var), sig.args[1].modifier);
         assert_eq!(Some(FunctionArgModifier::Const), sig.args[2].modifier);
     }
+
+    #[test]
+    fn function_with_uninitialized_result_is_err() {
+        let scope = Scope::new_root();
+        let result = try_parse_func_def(
+            r"function x(): System.Int32
+            begin
+            end",
+            scope,
+        );
+
+        match result {
+            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name) }) => {
+                assert_eq!("result", name);
+            }
+
+            _ => panic!("expected OutputUninitialized error, got {:}", result)
+        }
+    }
+
+    #[test]
+    fn function_with_uninitialized_record_result_is_err() {}
 }
