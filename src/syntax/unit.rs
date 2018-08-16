@@ -14,9 +14,10 @@ impl Unit {
         let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
         tokens.match_or_endl(tokens::Semicolon)?;
 
+        tokens.match_one(keywords::Interface)?;
+
         let uses: Vec<UnitReference> = tokens.parse()?;
 
-        tokens.match_one(keywords::Interface)?;
         let interface_decls: Vec<UnitDeclaration> = tokens.parse()?;
 
         tokens.match_one(keywords::Implementation)?;

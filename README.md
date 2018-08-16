@@ -1,7 +1,7 @@
 # TODO
 
+* "uses" should be able to appear at any position in the decls
 * RC struct members on the stack
-* int literal types based on value (smallest size that will fit, signed/unsigned)
 * casting
 * disallow pointer-to-int conversions without a cast
 * Interfaces

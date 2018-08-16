@@ -1,8 +1,7 @@
 unit Vector
+interface
 
 uses System.*
-
-interface
 
 type
   Element = Byte
