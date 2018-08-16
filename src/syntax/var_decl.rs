@@ -6,9 +6,9 @@ use syntax::*;
 use source;
 
 pub type VarDecl = node::VarDecl<node::Identifier>;
-pub type Vars = node::Vars<node::Identifier>;
+pub type VarDecls = node::VarDecls<node::Identifier>;
 
-impl node::ToSource for Vars {
+impl node::ToSource for VarDecls {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
             .map(|decl| {
@@ -45,8 +45,8 @@ impl VarDecl {
     }
 }
 
-impl Vars {
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Vars>
+impl VarDecls {
+    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecls>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let var_kw = keywords::Var.match_one(in_tokens, context)?;
@@ -74,7 +74,7 @@ impl Vars {
             }
         }
 
-        Ok(ParseOutput::new(Vars { decls }, last_context, next_tokens))
+        Ok(ParseOutput::new(VarDecls { decls }, last_context, next_tokens))
     }
 }
 

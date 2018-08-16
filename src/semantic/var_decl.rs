@@ -25,10 +25,10 @@ impl VarDecl {
     }
 }
 
-pub type Vars = node::Vars<ScopedSymbol>;
+pub type Vars = node::VarDecls<ScopedSymbol>;
 
 impl Vars {
-    pub fn annotate(vars: &syntax::Vars, scope: &Scope) -> Result<Self, SemanticError> {
+    pub fn annotate(vars: &syntax::VarDecls, scope: &Scope) -> Result<Self, SemanticError> {
         let decls = vars.decls.iter()
             .map(|v| -> Result<VarDecl, SemanticError> {
                 VarDecl::annotate(v, scope)

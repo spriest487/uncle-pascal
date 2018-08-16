@@ -170,11 +170,11 @@ impl Scope {
         self
     }
 
-    pub fn with_vars<TIter>(mut self, vars: TIter) -> Self
-        where TIter: IntoIterator<Item=VarDecl>
+    pub fn with_vars<'a, TIter>(mut self, vars: TIter) -> Self
+        where TIter: IntoIterator<Item=&'a VarDecl>
     {
         for var in vars {
-            self = self.with_symbol(var.name, var.decl_type);
+            self = self.with_symbol(var.name.clone(), var.decl_type.clone());
         }
         self
     }

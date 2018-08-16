@@ -6,7 +6,7 @@ use tokens::AsToken;
 use node;
 use source;
 
-pub type Function = node::Function<node::Identifier>;
+pub type Function = node::FunctionDecl<node::Identifier>;
 
 impl Function {
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
@@ -76,10 +76,10 @@ impl Function {
 
         let local_vars = match peek_after_sig.value {
             Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                Vars::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
+                VarDecls::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
             }
             _ => {
-                ParseOutput::new(Vars::default(),
+                ParseOutput::new(VarDecls::default(),
                                  peek_after_sig.last_token,
                                  peek_after_sig.next_tokens)
             }
@@ -97,7 +97,7 @@ impl Function {
             return_type: return_type.value,
 
             local_vars: local_vars.value,
-            args: Vars { decls: args },
+            args: VarDecls { decls: args },
 
             body: body_block.value,
         };

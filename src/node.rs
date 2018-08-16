@@ -8,7 +8,7 @@ pub trait ToSource {
 }
 
 pub trait Symbol {
-    type Type;
+    type Type: Clone + fmt::Debug;
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
@@ -118,26 +118,28 @@ impl fmt::Display for UnitReference {
 }
 
 #[derive(Clone, Debug)]
+pub enum UnitDeclaration<TSymbol>
+    where TSymbol: Symbol
+{
+    Function(FunctionDecl<TSymbol>),
+    Record(RecordDecl<TSymbol>),
+    Vars(VarDecls<TSymbol>),
+}
+
+#[derive(Clone, Debug)]
 pub struct Program<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+    where TSymbol: Symbol
 {
     pub name: String,
 
     pub uses: Vec<UnitReference>,
-
-    pub functions: Vec<Function<TSymbol>>,
-    pub type_decls: Vec<RecordDecl<TSymbol>>,
-    pub vars: Vars<TSymbol>,
+    pub decls: Vec<UnitDeclaration<TSymbol>>,
 
     pub program_block: Block<TSymbol>,
 }
 
 #[derive(Clone, Debug)]
-pub enum ExpressionValue<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
-{
+pub enum ExpressionValue<TSymbol> {
     BinaryOperator {
         lhs: Box<Expression<TSymbol>>,
         op: operators::BinaryOperator,
@@ -164,17 +166,13 @@ pub enum ExpressionValue<TSymbol>
 }
 
 #[derive(Clone, Debug)]
-pub struct Expression<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
-{
+pub struct Expression<TSymbol> {
     pub value: ExpressionValue<TSymbol>,
     pub context: source::Token,
 }
 
 impl<TSymbol> fmt::Display for Expression<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+    where TSymbol: fmt::Debug
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "expression: {:?} ({})", self.value, self.context) //TODO better display
@@ -182,10 +180,7 @@ impl<TSymbol> fmt::Display for Expression<TSymbol>
 }
 
 #[allow(dead_code)]
-impl<TSymbol> Expression<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
-{
+impl<TSymbol> Expression<TSymbol> {
     pub fn binary_op(lhs: Self,
                      op: operators::BinaryOperator,
                      rhs: Self,
@@ -306,34 +301,29 @@ impl<TSymbol> Expression<TSymbol>
 }
 
 #[derive(Debug, Clone)]
-pub struct Function<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+pub struct FunctionDecl<TSymbol>
+    where TSymbol: Symbol
 {
     pub name: String,
     pub context: source::Token,
 
     pub return_type: Option<TSymbol::Type>,
 
-    pub args: Vars<TSymbol>,
-    pub local_vars: Vars<TSymbol>,
+    pub args: VarDecls<TSymbol>,
+    pub local_vars: VarDecls<TSymbol>,
 
     pub body: Block<TSymbol>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Block<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
-{
+pub struct Block<TSymbol> {
     pub context: source::Token,
     pub statements: Vec<Expression<TSymbol>>,
 }
 
 #[derive(Clone, Debug)]
 pub struct RecordDecl<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+    where TSymbol: Symbol
 {
     pub name: String,
     pub context: source::Token,
@@ -342,8 +332,7 @@ pub struct RecordDecl<TSymbol>
 
 #[derive(Clone, Debug)]
 pub struct VarDecl<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+    where TSymbol: Symbol
 {
     pub name: String,
     pub context: source::Token,
@@ -352,16 +341,14 @@ pub struct VarDecl<TSymbol>
 }
 
 #[derive(Clone, Debug)]
-pub struct Vars<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+pub struct VarDecls<TSymbol>
+    where TSymbol: Symbol
 {
     pub decls: Vec<VarDecl<TSymbol>>,
 }
 
-impl<TSymbol> Default for Vars<TSymbol>
-    where TSymbol: Symbol + Clone + fmt::Debug,
-          TSymbol::Type: Clone + fmt::Debug
+impl<TSymbol> Default for VarDecls<TSymbol>
+    where TSymbol: Symbol
 {
     fn default() -> Self {
         Self { decls: Vec::new() }

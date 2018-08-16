@@ -260,18 +260,29 @@ static void System_FreeMem(System_Pointer p) {{
     free(p);
 }}")?;
 
-    for record_decl in program.type_decls.iter() {
-        write_record_decl(&mut output, record_decl)?;
+    for decl in program.decls.iter() {
+        match decl {
+            &node::UnitDeclaration::Function(ref func_decl) =>
+                write_function(&mut output, func_decl)?,
+            &node::UnitDeclaration::Record(ref record_decl) =>
+                write_record_decl(&mut output, record_decl)?,
+            &node::UnitDeclaration::Vars(ref vars_decl) =>
+                write_vars(&mut output, vars_decl)?,
+        }
     }
 
-    for func in program.functions.iter() {
-        write_function(&mut output, func)?;
-    }
-
-    write_vars(&mut output, &program.vars)?;
+    let var_decls = program.decls.iter()
+        .filter_map(|decl| match decl {
+            &node::UnitDeclaration::Vars(ref vars_decl) => Some(vars_decl),
+            _ => None
+        });
 
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
-    default_initialize_vars(&mut output, &program.vars)?;
+
+    for vars_decl in var_decls {
+        default_initialize_vars(&mut output, vars_decl)?;
+    }
+
     write_block(&mut output, &program.program_block)?;
     writeln!(output, "  return 0;")?;
     writeln!(output, "}}")?;

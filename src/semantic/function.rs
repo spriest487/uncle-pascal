@@ -4,7 +4,7 @@ use semantic::*;
 
 const RESULT_VAR_NAME : &str = "result";
 
-pub type Function = node::Function<ScopedSymbol>;
+pub type Function = node::FunctionDecl<ScopedSymbol>;
 
 impl Function {
     pub fn annotate(function: &syntax::Function, scope: &Scope) -> Result<Self, SemanticError> {
@@ -40,8 +40,8 @@ impl Function {
         let args = Vars::annotate(&function.args, scope)?;
 
         let local_scope = scope.clone()
-            .with_vars(args.decls.clone())
-            .with_vars(local_vars.decls.clone());
+            .with_vars(args.decls.iter())
+            .with_vars(local_vars.decls.iter());
 
         let body = Block::annotate(&function.body, &local_scope)?;
 

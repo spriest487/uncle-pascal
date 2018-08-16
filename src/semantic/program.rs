@@ -7,29 +7,34 @@ pub type Program = node::Program<ScopedSymbol>;
 impl Program {
     pub fn annotate(program: &syntax::Program) -> Result<Self, SemanticError> {
         let mut program_scope = Scope::default();
+        let mut decls = Vec::new();
 
-        let mut type_decls = Vec::new();
-        for parsed_decl in program.type_decls.iter() {
-            let record_decl = RecordDecl::annotate(parsed_decl, &program_scope)?;
+        for decl in program.decls.iter() {
+            match decl {
+                &node::UnitDeclaration::Record(ref parsed_decl) => {
+                    let record_decl = RecordDecl::annotate(parsed_decl, &program_scope)?;
 
-            program_scope = program_scope.with_type(record_decl.name.clone(),
-                                                    record_decl.record_type());
+                    program_scope = program_scope.with_type(record_decl.name.clone(),
+                                                            record_decl.record_type());
 
-            type_decls.push(record_decl);
-        }
+                    decls.push(node::UnitDeclaration::Record(record_decl))
+                }
 
-        let vars = Vars::annotate(&program.vars, &program_scope)?;
+                &node::UnitDeclaration::Function(ref parsed_func) => {
+                    let func_decl = Function::annotate(parsed_func, &program_scope)?;
 
-        let functions = program.functions.iter()
-            .map(|f| Function::annotate(f, &program_scope))
-            .collect::<Result<Vec<_>, _>>()?;
+                    program_scope = program_scope.with_symbol(func_decl.name.clone(),
+                                                              func_decl.signature_type());
 
-        program_scope = program_scope
-            .with_vars(vars.decls.clone());
+                    decls.push(node::UnitDeclaration::Function(func_decl))
+                }
 
-        for function in functions.iter().cloned() {
-            let sig = function.signature_type();
-            program_scope = program_scope.with_symbol(function.name, sig);
+                &node::UnitDeclaration::Vars(ref parsed_vars) => {
+                    let vars = Vars::annotate(parsed_vars, &program_scope)?;
+                    program_scope = program_scope.with_vars(vars.decls.iter());
+                    decls.push(node::UnitDeclaration::Vars(vars))
+                }
+            }
         }
 
         let program_block = Block::annotate(&program.program_block, &program_scope)?;
@@ -37,16 +42,19 @@ impl Program {
         Ok(Program {
             name: program.name.clone(),
             uses: program.uses.clone(),
-            vars,
-            functions,
-            type_decls,
+            decls,
             program_block,
         })
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
-        for func in self.functions.iter() {
-            func.type_check()?;
+        for decl in self.decls.iter() {
+            match decl {
+                &node::UnitDeclaration::Function(ref func) => {
+                    func.type_check()?;
+                },
+                _ => {}
+            }
         }
 
         self.program_block.type_check()

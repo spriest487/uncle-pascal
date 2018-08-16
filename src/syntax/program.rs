@@ -6,8 +6,10 @@ use keywords;
 use node;
 
 pub type Program = node::Program<node::Identifier>;
+pub type UnitDeclaration = node::UnitDeclaration<node::Identifier>;
 
-fn parse_uses<TIter>(in_tokens: TIter, context: &source::Token)
+fn parse_uses<TIter>(in_tokens: TIter,
+                     context: &source::Token)
                      -> ParseResult<Vec<node::UnitReference>>
     where TIter: IntoIterator<Item=source::Token> + 'static
 {
@@ -48,23 +50,14 @@ fn parse_uses<TIter>(in_tokens: TIter, context: &source::Token)
                         uses_tokens.next_tokens))
 }
 
-struct ProgramDecls {
-    functions: Vec<Function>,
-    type_decls: Vec<RecordDecl>,
-    vars: Vars,
-}
-
-fn parse_decls<TIter>(in_tokens: TIter, context: &source::Token)
-                      -> ParseResult<ProgramDecls>
+fn parse_decls<TIter>(in_tokens: TIter,
+                      context: &source::Token)
+                      -> ParseResult<Vec<UnitDeclaration>>
     where TIter: IntoIterator<Item=source::Token> + 'static
 {
     let mut tokens: Box<Iterator<Item=source::Token>> = Box::from(in_tokens.into_iter());
 
-    let mut program_functions = Vec::new();
-
-    #[allow(unused_mut)]
-    let mut program_type_decls = Vec::new();
-    let mut program_vars = Vars::default();
+    let mut decls = Vec::new();
 
     let mut last_parsed = context.clone();
 
@@ -82,7 +75,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &source::Token)
             Some(ref func_kw) if func_kw.is_keyword(keywords::Function) ||
                 func_kw.is_keyword(keywords::Procedure) => {
                 let func = Function::parse(tokens, &peek_decl.last_token)?;
-                program_functions.push(func.value);
+                decls.push(node::UnitDeclaration::Function(func.value));
 
                 tokens = Box::from(func.next_tokens);
                 last_parsed = func.last_token;
@@ -90,15 +83,15 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &source::Token)
 
             Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
                 let record = RecordDecl::parse(tokens, &peek_decl.last_token)?;
-                program_type_decls.push(record.value);
+                decls.push(node::UnitDeclaration::Record(record.value));
 
                 tokens = Box::from(record.next_tokens);
                 last_parsed = record.last_token;
             }
 
             Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                let vars = Vars::parse(tokens, &peek_decl.last_token)?;
-                program_vars.decls.extend(vars.value.decls);
+                let vars = VarDecls::parse(tokens, &peek_decl.last_token)?;
+                decls.push(node::UnitDeclaration::Vars(vars.value));
 
                 tokens = Box::from(vars.next_tokens);
                 last_parsed = vars.last_token;
@@ -120,12 +113,6 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &source::Token)
             }
         }
     }
-
-    let decls = ProgramDecls {
-        functions: program_functions,
-        type_decls: program_type_decls,
-        vars: program_vars,
-    };
 
     Ok(ParseOutput::new(decls, last_parsed, tokens))
 }
@@ -160,9 +147,7 @@ impl Program {
             name,
             uses: uses.value,
 
-            functions: decls.value.functions,
-            type_decls: decls.value.type_decls,
-            vars: decls.value.vars,
+            decls: decls.value,
 
             program_block: program_block.value,
         };
@@ -183,12 +168,17 @@ impl node::ToSource for Program {
                                    .join(", ")));
         }
 
-        for func in self.functions.iter() {
-            lines.push(func.to_source());
-        }
+        for decl in self.decls.iter() {
+            match decl {
+                &node::UnitDeclaration::Record(ref rec_decl) =>
+                    lines.push(rec_decl.to_source()),
 
-        if self.vars.decls.len() > 0 {
-            lines.push(self.vars.to_source());
+                &node::UnitDeclaration::Function(ref func_decl) =>
+                    lines.push(func_decl.to_source()),
+
+                &node::UnitDeclaration::Vars(ref var_decls) =>
+                    lines.push(var_decls.to_source()),
+            }
         }
 
         lines.push(self.program_block.to_source() + ".");
