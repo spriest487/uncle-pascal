@@ -19,17 +19,23 @@ struct OperatorToken {
     token: source::Token,
 }
 
+#[derive(Clone, Debug)]
+struct CompoundOperand {
+    expr: Expression,
+    last_token: source::Token,
+}
+
 #[derive(Debug, Clone)]
 enum CompoundExpressionPart {
-    Operand(Expression),
+    Operand(CompoundOperand),
     Operator(OperatorToken),
 }
 
 impl CompoundExpressionPart {
-    fn unwrap_operand(self) -> Expression {
+    fn unwrap_operand(self) -> CompoundOperand {
         match self {
-            CompoundExpressionPart::Operand(expr) => expr,
-            _ => panic!("called unwrap_operand on something that wasn't an operand: {:?}", self)
+            CompoundExpressionPart::Operand(operand) => operand,
+            invalid @ _ => panic!("called unwrap_operand on {:?}", invalid)
         }
     }
 }
@@ -61,7 +67,7 @@ impl Expression {
 
         if parts.len() == 1 {
             return Ok(match parts.into_iter().next().unwrap() {
-                CompoundExpressionPart::Operand(expr) => expr,
+                CompoundExpressionPart::Operand(CompoundOperand { expr, .. }) => expr,
                 CompoundExpressionPart::Operator(op_token) =>
                     panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
             });
@@ -72,7 +78,7 @@ impl Expression {
         let (lo_op_index, lo_op) = parts.iter()
             .enumerate()
             .filter_map(|(i, part)| match part {
-                &CompoundExpressionPart::Operand(_) => None,
+                &CompoundExpressionPart::Operand { .. } => None,
                 &CompoundExpressionPart::Operator(ref op) => Some((i, op.clone())),
             })
             .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
@@ -89,11 +95,14 @@ impl Expression {
 
                 let rhs = parts_after_op.next().unwrap().unwrap_operand();
 
-                let op_expr = Expression::prefix_op(lo_op.op, rhs, lo_op.token);
+                let op_expr = Expression::prefix_op(lo_op.op, rhs.expr, lo_op.token);
 
                 let merged_parts: Vec<_> = before_op.iter()
                     .cloned()
-                    .chain(vec![CompoundExpressionPart::Operand(op_expr)])
+                    .chain(vec![CompoundExpressionPart::Operand(CompoundOperand {
+                        expr: op_expr,
+                        last_token: rhs.last_token,
+                    })])
                     .chain(parts_after_op)
                     .collect();
 
@@ -145,7 +154,15 @@ impl Expression {
                 inner_expr_tokens.finish()?;
 
                 // seek to after brackets
+                assert_eq!(brackets_block.open, tokens.peek().unwrap());
                 tokens.advance(brackets_block_len);
+
+                assert_eq!(brackets_block.close,
+                           tokens.context().clone(),
+                           "length of bracket block containing `{}` is {}, should advance to {}",
+                           brackets_block_len,
+                           inner_expr.to_source(),
+                           brackets_block.close);
 
                 /* expression of the form (a).b should include the .b after the brackets too */
                 Expression::parse_member_access_after(inner_expr, tokens)
@@ -177,140 +194,279 @@ impl Expression {
     fn parse_compound(tokens: &mut TokenStream) -> ExpressionResult {
         let all_tokens = tokens.peek_to_end();
 
-        /* group tokens into operators and operands */
-        let mut parts = Vec::new();
-        let mut in_operand = false;
+        /* the context e.g. the last token parsed. we have to track this separately from the
+        stream because we might need to rewind the stream if it contains more than one
+        expression */
+        let mut expr_context = tokens.context().clone();
 
-        let mut bracket_depth = 0;
+        let parts = tokens.match_groups_inner(tokens::BracketLeft, tokens::BracketRight, Matcher::AnyOperator)?;
 
-        let mut next_operand_tokens = Vec::new();
+        let mut operators = parts.separators.into_iter().peekable();
+        let mut operands = parts.groups.into_iter().peekable();
 
-        // remember where this expression started, that's the context for it
-        let expr_context = tokens.context().clone();
-
-        let mut last_token = expr_context.clone();
+        let mut parsed_parts: Vec<CompoundExpressionPart> = Vec::new();
 
         loop {
-            let next_token: Option<source::Token> = tokens.next();
+            let next_operator = operators.peek().cloned();
+            let next_operand = operands.peek().map(|operand| &operand.tokens[0]).cloned();
 
-            let finish_operand = next_token.is_none() ||
-                // more tokens, but we hit an operator
-                (next_token.as_ref().unwrap().is_any_operator() &&
-                    bracket_depth == 0);
+            match (next_operator, next_operand) {
+                (Some(ref operator), Some(ref operand))
+                if operator.location.lt(&operand.location) => {
+                    /* the next token is an operator and there's an operand following it */
 
-            if finish_operand {
-                if next_operand_tokens.len() > 0 {
-                    let mut operand_stream = TokenStream::from(next_operand_tokens);
-                    next_operand_tokens = Vec::new();
+                    let position = match parsed_parts.last() {
+                        Some(CompoundExpressionPart::Operand { .. }) => {
+                            /* we just had an operand, and there's another operand after this,
+                            so it's a binary operator*/
+                            operators::Position::Binary
+                        }
 
-                    let operand_expr = Expression::parse_operand(&mut operand_stream)?;
-//                    println!("finished operand: `{}`, context: {}", operand_expr.to_source(), operand_expr.context);
+                        None |
+                        Some(CompoundExpressionPart::Operator(_)) => {
+                            /* if the last part was also an operator, or we're
+                            at the beginning of the expr, it must be a prefix operator */
+                            operators::Position::Prefix
+                        }
+                    };
 
-                    parts.push(CompoundExpressionPart::Operand(operand_expr));
-
-                    /* if there's any tokens left after an operand, they must belong to
-                    the next expression, because each set of tokens between operators must
-                    be a valid and complete expression. so we can stop parsing here */
-                    if let Some(_token_after_operand) = operand_stream.peek() {
-                        let tokens_after_operand: Vec<_> = all_tokens.iter()
-                            .filter(|t| {
-                                t.location.gt(&operand_stream.context().location)
+                    let op = operator.unwrap_operator();
+                    if op.is_valid_in_pos(position) {
+                        let operator = operators.next().unwrap();
+                        parsed_parts.push({
+                            CompoundExpressionPart::Operator(OperatorToken {
+                                op: operator.unwrap_operator(),
+                                pos: position,
+                                token: operator,
                             })
-                            .cloned()
-                            .collect();
+                        });
+                    } else {
+                        /* this operation isn't valid, so we assume the expression must
+                        terminate before this operator */
+                        let last_part = parsed_parts.last();
+                        if let Some(CompoundExpressionPart::Operand(operand)) = last_part {
+                            /* if there's no last part we're at the beginning of the stream and
+                            the expr context is already in the right place before the expr */
+                            expr_context = operand.last_token.clone();
+                        }
 
-                        *tokens = TokenStream::new(tokens_after_operand, operand_stream.context());
+//                        println!("finished 1");
                         break;
                     }
                 }
 
-                if next_token.is_none() {
+                (_, Some(_)) => {
+                    /* found an operand which either occurs before the next operator, or occurs
+                    after the last operator */
+                    if let Some(CompoundExpressionPart::Operand { .. }) = parsed_parts.last() {
+                        unreachable!("match_groups_inner should ensure all groups have at least one separator between them");
+                    }
+
+                    let operand = operands.next().unwrap();
+
+                    let mut operand_tokens = TokenStream::new(operand.tokens, &operand.context);
+                    let operand_expr = Expression::parse_operand(&mut operand_tokens)?;
+
+                    parsed_parts.push(CompoundExpressionPart::Operand(CompoundOperand {
+                        expr: operand_expr,
+                        last_token: operand_tokens.context().clone(),
+                    }));
+
+                    /* if there were parts left over they must belong to the next expression,
+                    stop parsing this one and set the context to the last token of this expression */
+                    if let Some(_) = operand_tokens.peek() {
+                        expr_context = operand_tokens.context().clone();
+
+//                        println!("finished 2 with `{}`, context: `{}`",
+//                            parsed_parts.last().cloned().unwrap().unwrap_operand().expr.to_source(),
+//                            expr_context);
+                        break;
+                    }
+                }
+
+                /* found an operator without a following operand... there's no postfix
+                operators yet so this must be part of the next expression */
+                (Some(_), None) |
+
+                /* reached the end of this expression */
+                (None, None) => {
+                    /* set the expr_context to the last token of the last part parsed */
+                    match parsed_parts.last() {
+                        Some(CompoundExpressionPart::Operand(operand)) => {
+                            expr_context = operand.last_token.clone()
+                        }
+                        Some(CompoundExpressionPart::Operator(op)) => {
+                            expr_context = op.token.clone();
+                        }
+                        None => {
+                            //just an operator on its own!? leave the expr_context at the beginning
+                        }
+                    }
+//                    println!("finished 3 with context: {}, last part {:?}", expr_context, parsed_parts.last().unwrap());
+
                     break;
                 }
             }
-
-            match next_token {
-                Some(ref bracket) if *bracket.as_token() == tokens::BracketLeft => {
-                    bracket_depth += 1;
-
-                    last_token = bracket.clone();
-
-                    next_operand_tokens.push(bracket.clone());
-                    in_operand = true;
-                }
-
-                Some(ref bracket) if *bracket.as_token() == tokens::BracketRight => {
-                    match bracket_depth {
-                        0 => return Err(ParseError::UnexpectedToken(bracket.clone(), None)),
-                        _ => bracket_depth -= 1,
-                    }
-
-                    last_token = bracket.clone();
-
-                    next_operand_tokens.push(bracket.clone());
-                    in_operand = true;
-                }
-
-                Some(ref op_token) if bracket_depth == 0 && op_token.is_any_operator() => {
-                    let op = op_token.unwrap_operator().clone();
-                    let pos = if in_operand {
-                        operators::Position::Binary
-                    } else {
-                        operators::Position::Prefix
-                    };
-
-                    if !op.is_valid_in_pos(pos) {
-                        let tokens_after_operator: Vec<_> = all_tokens.iter()
-                            .filter(|t|  t.location.ge(&last_token.location))
-                            .cloned()
-                            .collect();
-
-                        *tokens = TokenStream::new(tokens_after_operator, &last_token);
-
-                        break;
-                    }
-
-                    last_token = op_token.clone();
-                    in_operand = false;
-
-                    parts.push(CompoundExpressionPart::Operator(OperatorToken {
-                        op,
-                        token: op_token.clone(),
-                        pos,
-                    }))
-                }
-
-                Some(token @ _) => {
-                    in_operand = true;
-                    last_token = token.clone();
-                    next_operand_tokens.push(token);
-                }
-
-                /* finished reading the expression and there were no tokens left over */
-                None => unreachable!("already checked next_token for none")
-            }
-        };
-
-        if next_operand_tokens.len() > 0 {
-            let mut final_operand_tokens = TokenStream::from(next_operand_tokens);
-            let final_operand_expr = Expression::parse(&mut final_operand_tokens)?;
-//            println!("finished final operand: `{}`, context: {}",
-//                     final_operand_expr.to_source(),
-//                     final_operand_expr.context);
-
-            parts.push(CompoundExpressionPart::Operand(final_operand_expr));
-
-            // put unused tokens after this expression back into the stream
-            tokens.rewind(final_operand_tokens);
         }
 
-        assert!(parts.len() > 0, "expression must not be empty after {}", expr_context);
-        let expr = Expression::resolve_ops_by_precedence(parts)?;
+        assert!(parsed_parts.len() > 0, "expression must not be empty after {}", expr_context);
 
-//        println!("finished compound {}, next is {:?}", expr.to_source(), tokens.peek());
+        let tokens_after: Vec<_> = all_tokens.into_iter()
+            .filter(|t| t.location.gt(&expr_context.location))
+            .collect();
 
-        Ok(expr)
+        *tokens = TokenStream::new(tokens_after, &expr_context);
+
+        Self::resolve_ops_by_precedence(parsed_parts)
     }
+
+//    fn parse_compound_old(tokens: &mut TokenStream) -> ExpressionResult {
+//        let all_tokens = tokens.peek_to_end();
+//
+//        /* group tokens into operators and operands */
+//        let mut parts = Vec::new();
+//        let mut in_operand = false;
+//
+//        let mut bracket_depth = 0;
+//
+//        let mut next_operand_tokens = Vec::new();
+//
+//        // remember where this expression started, that's the context for it
+//        let expr_context = tokens.context().clone();
+//
+//        let mut last_token = expr_context.clone();
+//
+//        loop {
+//            let next_token: Option<source::Token> = tokens.next();
+//
+//            let finish_operand = next_token.is_none() ||
+//                // more tokens, but we hit an operator
+//                (next_token.as_ref().unwrap().is_any_operator() &&
+//                    bracket_depth == 0);
+//
+//            if finish_operand {
+//                if next_operand_tokens.len() > 0 {
+//                    let mut operand_stream = TokenStream::from(next_operand_tokens);
+//                    next_operand_tokens = Vec::new();
+//
+////                    println!("before finishing operand, context is {}", operand_stream.context());
+//                    let operand_expr = Expression::parse_operand(&mut operand_stream)?;
+////                    println!("finished operand: `{}` @ {}, context: {}, head: {:?}",
+////                             operand_expr.to_source(), operand_expr.context, operand_stream.context(), tokens.peek());
+//
+//                    parts.push(CompoundExpressionPart::Operand(operand_expr));
+//
+//                    /* if there's any tokens left after an operand, they must belong to
+//                    the next expression, because each set of tokens between operators must
+//                    be a valid and complete expression. so we can stop parsing here */
+//                    if let Some(token_after_operand) = operand_stream.peek() {
+//                        /* restart parsing from token after the operand */
+//                        let tokens_after_operand: Vec<_> = all_tokens.iter()
+//                            .filter(|t| {
+//                                t.location.ge(&token_after_operand.location)
+//                            })
+//                            .cloned()
+//                            .collect();
+//
+////                        println!("token after operand: {} ...new head: `{}`",
+////                                 token_after_operand,
+////                                 tokens_after_operand.to_source());
+//
+//                        *tokens = TokenStream::new(tokens_after_operand, operand_stream.context());
+//                        break;
+//                    }
+//                }
+//
+//                if next_token.is_none() {
+//                    break;
+//                }
+//            }
+//
+//            match next_token {
+//                Some(ref bracket) if *bracket.as_token() == tokens::BracketLeft => {
+//                    bracket_depth += 1;
+//
+//                    last_token = bracket.clone();
+//
+//                    next_operand_tokens.push(bracket.clone());
+//                    in_operand = true;
+//                }
+//
+//                Some(ref bracket) if *bracket.as_token() == tokens::BracketRight => {
+//                    match bracket_depth {
+//                        0 => return Err(ParseError::UnexpectedToken(bracket.clone(), None)),
+//                        _ => bracket_depth -= 1,
+//                    }
+//
+//                    last_token = bracket.clone();
+//
+//                    next_operand_tokens.push(bracket.clone());
+//                    in_operand = true;
+//                }
+//
+//                Some(ref op_token) if bracket_depth == 0 && op_token.is_any_operator() => {
+//                    let op = op_token.unwrap_operator().clone();
+//                    let pos = if in_operand {
+//                        operators::Position::Binary
+//                    } else {
+//                        operators::Position::Prefix
+//                    };
+//
+//                    if !op.is_valid_in_pos(pos) {
+//                        /* the operator we encountered isn't valid for this expression -
+//                        we have to assume it's part of the next expression. stop parsing,
+//                        and restart the stream from the token before the operator */
+//                        let tokens_after_operator: Vec<_> = all_tokens.iter()
+//                            .filter(|t| t.location.ge(&op_token.location))
+//                            .cloned()
+//                            .collect();
+//
+//                        *tokens = TokenStream::new(tokens_after_operator, &last_token);
+//
+//                        break;
+//                    }
+//
+//                    last_token = op_token.clone();
+//                    in_operand = false;
+//
+//                    parts.push(CompoundExpressionPart::Operator(OperatorToken {
+//                        op,
+//                        token: op_token.clone(),
+//                        pos,
+//                    }))
+//                }
+//
+//                Some(token @ _) => {
+//                    in_operand = true;
+//                    last_token = token.clone();
+//                    next_operand_tokens.push(token);
+//                }
+//
+//                /* finished reading the expression and there were no tokens left over */
+//                None => unreachable!("already checked next_token for none")
+//            }
+//        };
+//
+//        if next_operand_tokens.len() > 0 {
+//            let mut final_operand_tokens = TokenStream::from(next_operand_tokens);
+//            let final_operand_expr = Expression::parse(&mut final_operand_tokens)?;
+////            println!("finished final operand: `{}`, context: {}",
+////                     final_operand_expr.to_source(),
+////                     final_operand_expr.context);
+//
+//            parts.push(CompoundExpressionPart::Operand(final_operand_expr));
+//
+//            // put unused tokens after this expression back into the stream
+//            tokens.rewind(final_operand_tokens);
+//        }
+//
+//        assert!(parts.len() > 0, "expression must not be empty after {}", expr_context);
+//        let expr = Expression::resolve_ops_by_precedence(parts)?;
+//
+////        println!("finished compound {}, next is {:?}", expr.to_source(), tokens.peek());
+//
+//        Ok(expr)
+//    }
 
     fn parse_fn_call_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
         match tokens_after.peek() {

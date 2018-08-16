@@ -157,7 +157,7 @@ fn parses_deref_on_lhs() {
 
 #[test]
 fn parses_assign_deref_to_deref() {
-    let expr = parse_expr("^(a + 1) := ^(b + 1)");
+    let expr = parse_expr("^(a.b + c) := ^(d.e + f)");
 
     assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr.to_source());
     let (lhs, _, rhs) = expr.unwrap_binary_op();

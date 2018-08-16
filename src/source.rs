@@ -41,6 +41,11 @@ impl Location {
         self.line < other.line ||
             (self.line == other.line && self.col <= other.col)
     }
+
+    pub fn lt(&self, other: &Location) -> bool {
+        self.line < other.line ||
+            (self.line == other.line && self.col < other.col)
+    }
 }
 
 impl fmt::Display for Location {
@@ -53,6 +58,15 @@ impl fmt::Display for Location {
 pub struct Token {
     pub token: Rc<tokens::Token>,
     pub location: Location,
+}
+
+impl Token {
+    pub fn new(token: tokens::Token, location: Location) -> Self {
+        Self {
+            token: Rc::new(token),
+            location,
+        }
+    }
 }
 
 impl fmt::Display for Token {

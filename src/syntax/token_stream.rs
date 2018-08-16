@@ -84,18 +84,10 @@ impl TokenStream {
         &self.context
     }
 
-    pub fn advance(&mut self, mut count: usize) {
-        /* discard peeked elements, because next() and peek() use those first */
-        while count > 0 && self.peeked.len() > 0 {
-            self.peeked.pop_front();
-            count -= 1;
-        }
-
+    pub fn advance(&mut self, count: usize) {
         /* skip new stream elements */
         for _ in 0..count {
-            if self.next().is_none() {
-                panic!("must not reach unexpected EOF while advancing token stream (last token: {})", self.context);
-            }
+            self.next();
         }
     }
 
@@ -220,7 +212,7 @@ impl TokenStream {
             .collect::<Result<Vec<_>, _>>()
     }
 
-    fn match_groups_inner(&mut self,
+    pub fn match_groups_inner(&mut self,
                           open: impl Into<Matcher>,
                           close: impl Into<Matcher>,
                           separator: impl Into<Matcher>)
