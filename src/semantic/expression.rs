@@ -439,6 +439,7 @@ fn binary_op_type(lhs: &Expression,
     let lhs_type = lhs.expr_type()?;
 
     match op {
+        operators::In |
         operators::And |
         operators::Or |
         operators::NotEquals |
@@ -515,6 +516,7 @@ fn prefix_op_type(op: operators::Operator,
             _ => invalid_op_err(),
         }
 
+        operators::In |
         operators::RangeInclusive |
         operators::Multiply |
         operators::Divide |

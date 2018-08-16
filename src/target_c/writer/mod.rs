@@ -171,6 +171,10 @@ pub fn write_expr(out: &mut String,
                 return Ok(());
             }
 
+            if *op == operators::In {
+                unimplemented!("in operator (c++ backend")
+            }
+
             let c_op = match op {
                 operators::Assignment => "=",
                 operators::Equals => "==",
@@ -190,6 +194,8 @@ pub fn write_expr(out: &mut String,
                 operators::RangeInclusive |
                 operators::AddressOf |
                 operators::Deref => panic!("bad binary operator type: {}", op),
+
+                operators::In => unreachable!("special cased above"),
             };
 
 //            println!("BINARY OP {} @ {}", op, expr.context.location);
@@ -211,6 +217,7 @@ pub fn write_expr(out: &mut String,
                 operators::AddressOf => "&",
                 operators::Not => "!",
 
+                operators::In |
                 operators::RangeInclusive |
                 operators::And |
                 operators::Or |

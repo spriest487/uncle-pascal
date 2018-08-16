@@ -38,9 +38,10 @@ pub enum Operator {
     Lt,
     Lte,
     RangeInclusive,
+    In,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 19] = [
+pub static PRECEDENCE: [(Operator, Position); 20] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
@@ -57,6 +58,7 @@ pub static PRECEDENCE: [(Operator, Position); 19] = [
     (Gte, Position::Binary),
     (Lt, Position::Binary),
     (Lte, Position::Binary),
+    (In, Position::Binary),
     (And, Position::Binary),
     (Or, Position::Binary),
     (Assignment, Position::Binary),
@@ -92,6 +94,7 @@ impl Operator {
             "or" => Some(Or),
             "and" => Some(And),
             "not" => Some(Not),
+            "in" => Some(In),
             _ => None
         }
     }
@@ -127,6 +130,7 @@ impl fmt::Display for Operator {
             Gte => ">=",
             Lt => "<",
             Lte => "<=",
+            In => "in",
             RangeInclusive => "..",
         })
     }
