@@ -39,7 +39,7 @@ impl FunctionDecl {
             return Err(SemanticError::illegal_name(function.name.to_string(), context));
         };
 
-        let args = Vars::annotate(&function.args, scope.clone(), SemanticVarsKind::Local)?;
+        let args = VarDecls::annotate(&function.args, scope.clone(), SemanticVarsKind::Local)?;
 
         let body = match &function.body {
             Some(function_body) => {
@@ -51,9 +51,9 @@ impl FunctionDecl {
                     }))
                     .unwrap_or(Ok(()))?;
 
-                let mut local_vars = Vars::annotate(&function_body.local_vars,
-                                                    scope.clone(),
-                                                    SemanticVarsKind::Local)?;
+                let mut local_vars = VarDecls::annotate(&function_body.local_vars,
+                                                        scope.clone(),
+                                                        SemanticVarsKind::Local)?;
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {

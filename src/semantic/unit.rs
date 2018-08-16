@@ -52,9 +52,9 @@ impl Unit {
                 }
 
                 node::UnitDeclaration::Vars(parsed_vars) => {
-                    let vars = Vars::annotate(parsed_vars,
-                                              Rc::new(scope.clone()),
-                                              SemanticVarsKind::Namespaced)?;
+                    let vars = VarDecls::annotate(parsed_vars,
+                                                  Rc::new(scope.clone()),
+                                                  SemanticVarsKind::Namespaced)?;
 
                     scope = scope.with_vars_local(vars.decls.iter());
 

@@ -484,7 +484,7 @@ fn write_statement(out: &mut String,
     Ok(())
 }
 
-pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
+pub fn write_vars(out: &mut String, vars: &semantic::VarDecls) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
             writeln!(out, "{} {};",

@@ -770,7 +770,7 @@ pub(crate) mod test {
                 name: test_func_name.clone(),
                 return_type: Some(Type::Int64),
                 modifiers: Vec::new(),
-                args: Vars {
+                args: VarDecls {
                     decls: vec![
                         VarDecl {
                             context: empty_context(&default_scope),

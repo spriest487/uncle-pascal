@@ -7,7 +7,7 @@ use syntax;
 use semantic::*;
 
 pub type VarDecl = node::VarDecl<ScopedSymbol, SemanticContext>;
-pub type Vars = node::VarDecls<ScopedSymbol, SemanticContext>;
+pub type VarDecls = node::VarDecls<ScopedSymbol, SemanticContext>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum SemanticVarsKind {
@@ -56,7 +56,7 @@ impl VarDecl {
     }
 }
 
-impl Vars {
+impl VarDecls {
     pub fn annotate(vars: &syntax::VarDecls,
                     scope: Rc<Scope>,
                     kind: SemanticVarsKind) -> SemanticResult<Self> {
