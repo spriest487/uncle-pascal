@@ -213,6 +213,7 @@ pub struct ConstDecl<TSymbol, TContext>
 {
     pub name: String,
     pub value: Expression<TSymbol, TContext>,
+    pub decl_type: Option<TSymbol::Type>,
     pub context: TContext,
 }
 

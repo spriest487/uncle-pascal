@@ -3,18 +3,20 @@ program Consts
 uses
     System.*
 
-const num = 1
-    yes = true
-    no = false
+const
+    NUM = 1
+    YES = true
+    NO: Boolean = false
 
 procedure Test
 const
-    name = 'jane'
+    NAME = 'jane'
+    GREETING: String = 'hello'
 begin
-    WriteLn('hello ' + name + ', num is ' + StringFromInt(num))
+    WriteLn(GREETING + ' ' + NAME + ', num is ' + StringFromInt(NUM))
 end
 
 begin
-    if yes and not no then
+    if YES then
         Test()
 end.

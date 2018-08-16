@@ -1,5 +1,6 @@
 use node::{
     self,
+    TypeName,
 };
 use syntax::{
     ParsedContext,
@@ -26,9 +27,7 @@ impl Parse for ConstDecls {
 
         let mut decls = Vec::new();
         loop {
-            if tokens.match_sequence_peek(Matcher::AnyIdentifier
-                .and_then(operators::Equals))?
-                .is_none() {
+            if tokens.peeked().match_one(Matcher::AnyIdentifier).is_none() {
                 break;
             }
 
@@ -47,9 +46,25 @@ impl Parse for ConstDecls {
 impl Parse for ConstDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let name_tokens = tokens.match_sequence(Matcher::AnyIdentifier
-            .and_then(operators::Equals))?;
+            .and_then(Matcher::Operator(operators::Equals)
+                .or(tokens::Colon)))?;
 
         let name = name_tokens[0].unwrap_identifier().to_string();
+
+        let decl_type = match name_tokens[1].as_token() {
+            /* `const x: Int32 = 1` - explicit type */
+            tokens::Colon => {
+                let decl_type: TypeName = tokens.parse()?;
+                tokens.match_one(operators::Equals)?;
+                Some(decl_type)
+            },
+
+            /* `const x = 1` - implicit type from argument */
+            tokens::Operator(operators::Equals) => {
+                None
+            }
+            _ => unreachable!(),
+        };
 
         let value_token = tokens.match_one(Matcher::AnyLiteralInteger
             .or(Matcher::AnyLiteralString)
@@ -68,6 +83,7 @@ impl Parse for ConstDecl {
         Ok(ConstDecl {
             name,
             value,
+            decl_type,
             context: name_tokens[0].clone().into(),
         })
     }

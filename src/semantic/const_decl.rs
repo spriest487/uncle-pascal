@@ -28,11 +28,24 @@ impl ConstDecl {
             scope: scope.clone(),
         };
 
-        let value = Expression::annotate(&decl.value, scope)?;
+        let value = Expression::annotate(&decl.value, scope.clone())?;
+
+        let decl_type = match &decl.decl_type {
+            None => None,
+            Some(type_name) => {
+                let ty = scope.get_type(&type_name)
+                    .map_err(|_| {
+                        SemanticError::unknown_type(type_name.clone(), context.clone())
+                    })?;
+
+                Some(ty)
+            }
+        };
 
         Ok(ConstDecl {
             name: decl.name.clone(),
             value,
+            decl_type,
             context,
         })
     }
