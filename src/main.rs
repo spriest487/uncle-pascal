@@ -38,15 +38,11 @@ impl From<syntax::ParseError> for CompileError {
 fn compile(source: &str) -> Result<(), CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
-//    println!("{:?}", tokens.iter()
-//        .map(|source_token| tokens::ToSource::to_source(&source_token.token))
-//        .collect::<Vec<_>>()
-//        .join(" "));
+    let program = syntax::program::Program::parse(tokens.into_iter())?;
 
-    let program = syntax::program::Program::parse(tokens.into_iter())?
-        .finish()?;
+    println!("{:?}", &program.value);
 
-    println!("{:?}", program);
+    program.finish()?;
 
     Ok(())
 }

@@ -3,6 +3,8 @@ use std::fmt;
 use keywords;
 use operators;
 
+pub use self::Token::*;
+
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum Token {
     Keyword(keywords::Keyword),
@@ -18,6 +20,7 @@ pub enum Token {
     Comma,
 }
 
+
 pub trait ToSource {
     fn to_source(&self) -> String;
 }
@@ -25,17 +28,17 @@ pub trait ToSource {
 impl ToSource for Token {
     fn to_source(&self) -> String {
         match self {
-            &Token::Keyword(kw) => kw.to_source(),
-            &Token::Identifier(ref name) => name.clone(),
-            &Token::BinaryOperator(ref op) => op.to_source(),
-            &Token::LiteralInteger(i) => format!("{}", i),
-            &Token::LiteralString(ref s) => format!("'{}'", s.replace("'", "''")),
-            &Token::Period => ".".to_owned(),
-            &Token::Colon => ":".to_owned(),
-            &Token::Semicolon => ";".to_owned(),
-            &Token::BracketLeft => "(".to_owned(),
-            &Token::BracketRight => ")".to_owned(),
-            &Token::Comma => ",".to_owned(),
+            &Keyword(kw) => kw.to_source(),
+            &Identifier(ref name) => name.clone(),
+            &BinaryOperator(ref op) => op.to_source(),
+            &LiteralInteger(i) => format!("{}", i),
+            &LiteralString(ref s) => format!("'{}'", s.replace("'", "''")),
+            &Period => ".".to_owned(),
+            &Colon => ":".to_owned(),
+            &Semicolon => ";".to_owned(),
+            &BracketLeft => "(".to_owned(),
+            &BracketRight => ")".to_owned(),
+            &Comma => ",".to_owned(),
         }
     }
 }
@@ -86,6 +89,13 @@ impl Token {
         match self {
             &Token::LiteralInteger(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn unwrap_identifier(&self) -> &str {
+        match self {
+            &Identifier(ref name) => name,
+            _ => panic!("calling unwrap_identifier on something that is not an identifier"),
         }
     }
 }

@@ -1,4 +1,5 @@
 use tokens;
+pub use self::BinaryOperator::*;
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum BinaryOperator {

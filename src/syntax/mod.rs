@@ -1,9 +1,12 @@
+pub mod program;
+
 use std::fmt;
 
 use keywords;
 use tokens;
 use tokenizer;
 
+#[derive(Clone, Debug)]
 pub enum ParseError {
     UnexpectedToken(tokenizer::SourceToken, Option<TokenMatcher>),
     UnbalancedPair(TokenMatcher, tokenizer::SourceToken),
@@ -32,26 +35,18 @@ impl fmt::Display for ParseError {
 }
 
 pub struct ParseOutput<TValue> {
-    value: TValue,
-    next: Box<Iterator<Item=tokenizer::SourceToken>>,
+    pub value: TValue,
+    pub next: Box<Iterator<Item=tokenizer::SourceToken>>,
 }
 
 impl<TValue> ParseOutput<TValue> {
     pub fn new<TNext>(value: TValue, next: TNext) -> Self
-        where TNext: Iterator<Item=tokenizer::SourceToken> + 'static
+        where TNext: IntoIterator<Item=tokenizer::SourceToken> + 'static
     {
         Self {
             value,
-            next: Box::from(next),
+            next: Box::from(next.into_iter()),
         }
-    }
-
-    pub fn value(&self) -> &TValue {
-        &self.value
-    }
-
-    pub fn into_next(self) -> Box<Iterator<Item=tokenizer::SourceToken>> {
-        self.next
     }
 
     pub fn finish(mut self) -> Result<TValue, ParseError> {
@@ -65,7 +60,7 @@ impl<TValue> ParseOutput<TValue> {
 
 type ParseResult<T> = Result<ParseOutput<T>, ParseError>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum TokenMatcher {
     Keyword(keywords::Keyword),
     AnyKeyword,
@@ -109,93 +104,92 @@ impl TokenMatcher {
                 .any(|matcher| matcher.match_token(token)),
         }
     }
-}
 
-pub fn match_sequence<I>(matchers: &[TokenMatcher],
-                         in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
-    where
-        I: Iterator<Item=tokenizer::SourceToken>
-{
-    let tokens: Vec<_> = in_tokens.collect();
-
-    let expected_len = matchers.len();
-
-    let matches: Vec<_> = tokens.iter()
-        .zip(matchers)
-        .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.match_token(&token.token)))
-        .collect();
-
-    if matches.len() < expected_len {
-        Err(ParseError::UnexpectedEOF)
-    } else {
-        let first_fail = matches.iter()
-            .find(|&&(_, _, matched)| !matched)
-            .cloned();
-
-        match first_fail {
-            Some((token, matcher, _)) =>
-                Err(ParseError::UnexpectedToken(token, Some(matcher))),
-            None => {
-                let matched_tokens = matches.into_iter()
-                    .map(|(token, _, _)| token.clone())
-                    .collect::<Vec<_>>();
-
-                let remaining_tokens = tokens.into_iter()
-                    .skip(matched_tokens.len());
-
-                Ok(ParseOutput::new(matched_tokens, remaining_tokens))
-            },
+    pub fn and_then(self, next_matcher: TokenMatcher) -> SequenceMatcher {
+        SequenceMatcher {
+            sequence: vec![self, next_matcher]
         }
+    }
+
+    pub fn until_match<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
+        where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
+    {
+        let mut until = Vec::new();
+        let mut tokens = in_tokens.into_iter();
+
+        loop {
+            match tokens.next() {
+                Some(next_token) => {
+                    if self.match_token(&next_token.token) {
+                        break;
+                    }
+                    else {
+                        until.push(next_token.clone());
+                    }
+                },
+
+                None => {
+                    //ran out of tokens before finding match
+                    return Err(ParseError::UnexpectedEOF);
+                },
+            }
+        }
+
+        Ok(ParseOutput::new(until, tokens))
     }
 }
 
-pub mod program {
-    use syntax;
-    use types;
-    use tokenizer;
-    use keywords;
+#[derive(Clone, Debug)]
+pub struct SequenceMatcher {
+    sequence: Vec<TokenMatcher>,
+}
 
-    mod function {
-        #[derive(Clone, Debug)]
-        pub struct Function {
+impl SequenceMatcher {
+    pub fn and_then(mut self, next_matcher: TokenMatcher) -> Self {
+        self.sequence.push(next_matcher);
 
+        Self {
+            sequence: self.sequence
         }
     }
 
-    mod type_decl {
-        use types;
+    pub fn match_tokens<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
+        where I: Iterator<Item=tokenizer::SourceToken>
+    {
+        let tokens: Vec<_> = in_tokens.collect();
 
-        #[derive(Clone, Debug)]
-        pub struct VarDecl {
-            name: types::Identifier,
-            decl_type: types::Identifier,
-        }
+        let expected_len = self.sequence.len();
 
-        #[derive(Clone, Debug)]
-        pub struct RecordDecl {
-            name: types::Identifier,
-            members: Vec<VarDecl>,
-        }
-    }
+        let matches: Vec<_> = tokens.iter()
+            .zip(self.sequence.iter())
+            .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.match_token(&token.token)))
+            .collect();
 
-    #[derive(Clone, Debug)]
-    pub struct Program {
-        name: types::Identifier,
+        if matches.len() < expected_len {
+            Err(ParseError::UnexpectedEOF)
+        } else {
+            let first_fail = matches.iter()
+                .find(|&&(_, _, matched)| !matched)
+                .cloned();
 
-        uses: Vec<types::Identifier>,
-        functions: Vec<function::Function>,
-        type_decls: Vec<type_decl::RecordDecl>,
-    }
+            match first_fail {
+                Some((token, matcher, _)) =>
+                    Err(ParseError::UnexpectedToken(token, Some(matcher))),
+                None => {
+                    let matched_tokens = matches.into_iter()
+                        .map(|(token, _, _)| token.clone())
+                        .collect::<Vec<_>>();
 
-    impl Program {
-        pub fn parse<I>(tokens: I) -> syntax::ParseResult<Self>
-            where I: Iterator<Item=tokenizer::SourceToken>
-        {
-            let _program = syntax::match_sequence(&[
-                syntax::TokenMatcher::Keyword(keywords::Keyword::Program),
-            ], tokens)?;
+                    let remaining_tokens = tokens.into_iter()
+                        .skip(matched_tokens.len());
 
-            Err(syntax::ParseError::UnexpectedEOF)
+                    Ok(ParseOutput::new(matched_tokens, remaining_tokens))
+                },
+            }
         }
     }
 }
+
+
+
+
