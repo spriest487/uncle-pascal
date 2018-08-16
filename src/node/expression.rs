@@ -664,16 +664,16 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn literal_string(s: &str, context: impl Into<TContext>) -> Self {
+    pub fn literal_string(s: impl Into<String>, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstExpression::String(s.to_owned())),
+            value: ExpressionValue::Constant(ConstExpression::String(s.into())),
             context: context.into(),
         }
     }
 
-    pub fn identifier(id: Identifier, context: impl Into<TContext>) -> Self {
+    pub fn identifier(id: impl Into<Identifier>, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Identifier(id),
+            value: ExpressionValue::Identifier(id.into()),
             context: context.into(),
         }
     }
@@ -834,8 +834,15 @@ impl<TContext> Expression<TContext>
 
     pub fn is_function_call(&self) -> bool {
         match &self.value {
-            ExpressionValue::FunctionCall { .. } => true,
+            ExpressionValue::FunctionCall(_) => true,
             _ => false,
+        }
+    }
+
+    pub fn as_function_call(&self) -> Option<&FunctionCall<TContext>> {
+        match &self.value {
+            ExpressionValue::FunctionCall(call) => Some(call),
+            _ => None,
         }
     }
 
@@ -850,6 +857,13 @@ impl<TContext> Expression<TContext>
         match &self.value {
             ExpressionValue::LetBinding { .. } => true,
             _ => false
+        }
+    }
+
+    pub fn as_let_binding(&self) -> Option<&LetBinding<TContext>> {
+        match &self.value {
+            ExpressionValue::LetBinding(binding) => Some(binding),
+            _ => None
         }
     }
 
@@ -930,6 +944,20 @@ impl<TContext> Expression<TContext>
             _ => false
         }
     }
+
+    pub fn unwrap_block(self) -> Block<TContext> {
+        match self.value {
+            ExpressionValue::Block(block) => block,
+            _ => panic!("called unwrap_block on {}", self)
+        }
+    }
+
+    pub fn as_object_constructor(&self) -> Option<&ObjectConstructor<TContext>> {
+        match &self.value {
+            ExpressionValue::ObjectConstructor(ctor) => Some(ctor),
+            _ => None,
+        }
+    }
 }
 
 #[allow(dead_code)]
@@ -947,165 +975,6 @@ impl<TContext> Expression<TContext>
         match &self.value {
             | ExpressionValue::Identifier(expr_id) => expr_id == id,
             _ => false,
-        }
-    }
-}
-
-pub fn transform_expressions<TContext>(
-    root_expr: Expression<TContext>,
-    replace: &mut FnMut(Expression<TContext>) -> Expression<TContext>)
-    -> Expression<TContext>
-    where TContext: Context + Clone + fmt::Debug
-{
-    match root_expr.value {
-        ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-            let lhs = transform_expressions(*lhs, replace);
-            let rhs = transform_expressions(*rhs, replace);
-
-            replace(Expression::binary_op(lhs, op, rhs, root_expr.context))
-        }
-
-        ExpressionValue::Block(block) => {
-            let statements = block.statements.into_iter()
-                .map(|stmt| transform_expressions(stmt, replace))
-                .collect();
-
-            replace(Expression::block(Block {
-                context: block.context,
-                statements,
-            }))
-        }
-
-        ExpressionValue::ForLoop { from, to, body } => {
-            let from = transform_expressions(*from, replace);
-            let to = transform_expressions(*to, replace);
-            let body = transform_expressions(*body, replace);
-
-            replace(Expression::for_loop(from, to, body, root_expr.context))
-        }
-
-        ExpressionValue::If { condition, then_branch, else_branch } => {
-            let cond = transform_expressions(*condition, replace);
-            let if_branch = transform_expressions(*then_branch, replace);
-            let else_branch = else_branch.map(|else_expr| {
-                transform_expressions(*else_expr, replace)
-            });
-
-            replace(Expression::if_then_else(cond, if_branch, else_branch, root_expr.context))
-        }
-
-        ExpressionValue::While { condition, body } => {
-            let condition = transform_expressions(*condition, replace);
-            let body = transform_expressions(*body, replace);
-
-            replace(Expression::while_loop(condition, body, root_expr.context))
-        }
-
-        ExpressionValue::PrefixOperator { op, rhs } => {
-            let rhs = transform_expressions(*rhs, replace);
-
-            replace(Expression::prefix_op(op, rhs, root_expr.context))
-        }
-
-        ExpressionValue::LetBinding(mut binding) => {
-            binding.value = Box::new(transform_expressions(*binding.value, replace));
-            replace(Expression::let_binding(binding, root_expr.context))
-        }
-
-        ExpressionValue::Member { of, name } => {
-            let of = transform_expressions(*of, replace);
-            replace(Expression::member(of, &name))
-        }
-
-        ExpressionValue::ArrayElement { of, index_expr } => {
-            let of = transform_expressions(*of, replace);
-            let index_expr = transform_expressions(*index_expr, replace);
-            replace(Expression::array_element(of, index_expr))
-        }
-
-        ExpressionValue::Identifier(name) => {
-            replace(Expression::identifier(name, root_expr.context))
-        }
-
-        ExpressionValue::Constant(const_expr) => {
-            replace(Expression::const_value(const_expr, root_expr.context))
-        }
-
-        ExpressionValue::FunctionCall(call) => {
-            match call {
-                FunctionCall::Function { target, args } => {
-                    let args: Vec<_> = args.into_iter()
-                        .map(|arg| transform_expressions(arg, replace))
-                        .collect();
-
-                    let target = transform_expressions(*target, replace);
-                    replace(Expression::function_call(target, args))
-                }
-
-                FunctionCall::Method { interface_id, func_name, for_type, args } => {
-                    let args: Vec<_> = args.into_iter()
-                        .map(|arg| transform_expressions(arg, replace))
-                        .collect();
-
-                    replace(Expression::method_call(
-                        interface_id,
-                        func_name,
-                        for_type,
-                        args,
-                        root_expr.context,
-                    ))
-                }
-            }
-        }
-
-        ExpressionValue::TypeCast { target_type, from_value } => {
-            let from_value = transform_expressions(*from_value, replace);
-
-            replace(Expression::type_cast(target_type, from_value, root_expr.context))
-        }
-
-        ExpressionValue::SetConstructor(members) => {
-            let members = members.into_iter()
-                .map(|member| {
-                    let from = transform_expressions(member.from, replace);
-                    let to = member.to.map(|to| transform_expressions(to, replace));
-
-                    SetMemberGroup { from, to }
-                })
-                .collect();
-
-            replace(Expression::set_constructor(members, root_expr.context))
-        }
-
-        ExpressionValue::ObjectConstructor(obj) => {
-            let members: Vec<_> = obj.members.into_iter()
-                .map(|member| {
-                    let value = transform_expressions(member.value, replace);
-                    ObjectConstructorMember {
-                        name: member.name,
-                        value,
-                    }
-                })
-                .collect();
-
-            let obj: ObjectConstructor<TContext> = ObjectConstructor {
-                members,
-                object_type: obj.object_type,
-            };
-
-            replace(Expression::object_constructor(obj, root_expr.context))
-        }
-
-        ExpressionValue::With { value, body } => {
-            let value = transform_expressions(*value, replace);
-            let body = transform_expressions(*body, replace);
-
-            replace(Expression::with_statement(value, body, root_expr.context))
-        }
-
-        ExpressionValue::Raise(error) => {
-            let error = transform_expressions(*error, replace);
-            replace(Expression::raise(error, root_expr.context))
         }
     }
 }

@@ -16,6 +16,7 @@ begin
 
     while input.Ok() do begin
         let readCount = input.Read(readBuf)
+        WriteLn('read ' + StringFromInt(Int32(readCount)) + ' bytes')
         result := result + StringFromBytes(readBuf.Data(), readBuf.Length()) 
     end
 end

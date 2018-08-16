@@ -22,6 +22,7 @@ use node::{
     Identifier,
     ExpressionValue,
     ConstExpression,
+    FunctionCall,
 };
 use operators;
 use types::Type;
@@ -56,7 +57,7 @@ impl Expression {
             }
 
             ExpressionValue::Constant(node::ConstExpression::String(s)) => {
-                Ok((Expression::literal_string(s, expr_context), scope))
+                Ok((Expression::literal_string(s.as_str(), expr_context), scope))
             }
 
             ExpressionValue::Constant(node::ConstExpression::Integer(i)) => {
@@ -529,3 +530,33 @@ fn expect_initialized(expr: &Expression) -> SemanticResult<()> {
     }
 }
 
+impl FunctionCall<SemanticContext> {
+    pub fn signature(&self) -> FunctionSignature {
+        match self {
+            FunctionCall::Function { target, .. } => {
+                target.function_type()
+                    .expect("called function must have a valid type")
+                    .expect("target must be a function")
+            }
+            FunctionCall::Method { interface_id, func_name, for_type, args } => {
+                /* method calls always have a self-arg in position 0 */
+                let scope = args[0].context.scope();
+
+                // todo: getting the sig for an interface call is duplicated in call_type
+                match for_type {
+                    Type::AnyImplementation(_) => {
+                        let (_, interface) = scope.get_interface(&interface_id).unwrap();
+                        interface.decl.methods.get(func_name).cloned().unwrap()
+                    }
+
+                    _ => {
+                        let (_, func) = scope.get_interface_impl(&for_type, &interface_id, &func_name)
+                            .expect("interface call target must exist");
+
+                        func.signature()
+                    }
+                }
+            }
+        }
+    }
+}

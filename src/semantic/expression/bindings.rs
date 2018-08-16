@@ -22,6 +22,15 @@ use super::{
 
 pub type LetBinding = node::LetBinding<SemanticContext>;
 
+impl LetBinding {
+    pub fn value_type(&self) -> SemanticResult<Type> {
+        match &self.explicit_type {
+            Some(explicit) => Ok(explicit.clone()),
+            None => self.value.expr_type().map(|ty| ty.unwrap())
+        }
+    }
+}
+
 pub fn annotate_let(parsed_binding: &syntax::LetBinding,
                     context: SemanticContext)
                     -> SemanticResult<(Expression, Rc<Scope>)> {

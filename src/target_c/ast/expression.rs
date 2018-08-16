@@ -1,5 +1,4 @@
 use std::{
-    rc::Rc,
     fmt::{self, Write},
 };
 
@@ -35,6 +34,64 @@ use consts::{
     FloatConstant,
 };
 use operators;
+
+struct BoundName {
+    name: String,
+    bound_type: Type,
+}
+
+enum RcStatement {
+    Block(Vec<RcStatement>),
+
+    Statement {
+        bound_name: Option<BoundName>,
+        body: Box<semantic::Expression>,
+        rc_bindings: Vec<semantic::Expression>,
+    },
+}
+
+impl fmt::Debug for RcStatement {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            RcStatement::Block(stmts) => {
+                writeln!(f, "RcStatement [")?;
+                for stmt in stmts {
+                    writeln!(f, "\t{:?}", stmt)?;
+                }
+                write!(f, "]")
+            }
+//
+//            RcStatement::LetBinding { bound_name, init } => {
+//                writeln!(f, "RcStatement {{")?;
+//                writeln!(f, "\tbound name: `{}`", bound_name)?;
+//                writeln!(f, "\tinit expr: `{:?}`", init)?;
+//                write!(f, "}}")
+//            }
+
+            RcStatement::Statement { body, rc_bindings, bound_name } => {
+                writeln!(f, "RcStatement {{")?;
+                writeln!(f, "\tbody: `{}`", body)?;
+
+                if let Some(bound_name) = bound_name {
+                    writeln!(f, "\tbound name: `{}`", bound_name.name)?;
+                }
+
+                write!(f, "\tbindings: [")?;
+                if !rc_bindings.is_empty() {
+                    writeln!(f)?;
+                    for (i, binding) in rc_bindings.iter().enumerate() {
+                        writeln!(f, "\t\t{} = `{}`", i, binding)?;
+                    }
+                    writeln!(f, "\t]")?;
+                } else {
+                    write!(f, "]")?;
+                }
+
+                write!(f, "}}")
+            }
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CastKind {
@@ -209,219 +266,272 @@ impl Expression {
         Expression::Return(Box::new(value.into()))
     }
 
-    pub fn translate_statement(stmt: &semantic::Expression,
-                               unit: &mut TranslationUnit)
-                               -> TranslationResult<Vec<Self>> {
-        if let ExpressionValue::Block(block) = &stmt.value {
-            let block = Block::translate(block, None, unit)?;
-            return Ok(vec![Expression::Block(block)]);
+    fn extract_stmt_rc_bindings(stmt: semantic::Expression, id_offset: usize) -> RcStatement {
+        /* for blocks, do this recursively for all statements in the block and return
+        that instead */
+        if stmt.is_block() {
+            let statements = stmt.unwrap_block().statements.into_iter()
+                .map(|block_stmt| Self::extract_stmt_rc_bindings(block_stmt, 0))
+                .collect();
+
+            return RcStatement::Block(statements);
         }
 
-        let mut bindings = Vec::new();
+//        if stmt.is_let_binding() {
+//            let binding = stmt.unwrap_let_binding();
+//            let init = semantic::Expression::binary_op(
+//                semantic::Expression::identifier(binding.name, stmt.context.clone()),
+//                operators::Assignment,
+//                *binding.value,
+//                stmt.context.clone(),
+//            );
+//        }
 
-        let mut lines = Vec::new();
+        /* it's a single statement not a block, let's figure out if it has any rc bindings */
+        let mut rc_bindings = Vec::new();
 
-        /*
-            if the statement is a let binding, we turn it into a local variable decl plus an
-            assignment to that variable first of all. this is because we might create a block around
-            the whole statement to manage RC variable names, and so we need to make sure the
-            let-bound name exists outside that scope
-        */
+        let context = stmt.context.clone();
 
-        let stmt_after_let = match stmt.clone() {
-            semantic::Expression { value: ExpressionValue::LetBinding(binding), context } => {
-                let binding_type: Type = binding.value.expr_type()
-                    .expect("let binding target must be a valid type")
-                    .expect("let binding type must not be None");
-
-                // create the let-bound local var name
-                let local_var = Variable {
-                    name: Name::local(binding.name.clone()),
-                    ctype: CType::translate(&binding_type, binding.value.scope(), unit)?,
-                    default_value: None,
-                    array_size: None,
-                };
-                lines.push(local_var.decl_statement());
-
-                let binding_id = Identifier::from(&binding.name);
-
-                /* the scope of the assignment needs the let-bound variable added to it,
-                because a let binding doesn't have itself in scope */
-                let context = semantic::SemanticContext::new(
-                    context.token().clone(),
-                    Rc::new(stmt.scope().clone()
-                        .with_binding(&binding.name, binding_type.clone(), BindingKind::Uninitialized)),
-                    Some(binding_type),
-                );
-                let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
-
-                semantic::Expression::binary_op(
-                    binding_id_expr,
-                    operators::Assignment,
-                    *binding.value,
-                    context,
-                )
-            }
-
-            stmt => stmt,
-        };
-
-        /* bind the results of any function calls which return RC objects to temporary bindings so we
-         can release them later. nothing but function calls returning RC objects can leak an RC,
-         because local vars and func args are already managed elsewhere */
-        let stmt_simplified = node::transform_expressions(stmt_after_let, &mut |subexpr: semantic::Expression| {
-            // call expression...
-            let call_func = match subexpr.value.clone() {
-                ExpressionValue::FunctionCall(FunctionCall::Function { target, .. }) => {
-                    target.function_type()
-                        .expect("called function must have a valid type")
-                        .expect("called function target must be of function type")
-                }
-                ExpressionValue::FunctionCall(FunctionCall::Method { interface_id, func_name, for_type, .. }) => {
-                    // todo: getting the sig for an interface call is duplicated in call_type
-                    match for_type {
-                        Type::AnyImplementation(_) => {
-                            let (_, interface) = subexpr.scope().get_interface(&interface_id).unwrap();
-                            interface.decl.methods.get(&func_name).cloned().unwrap()
-                        }
-
-                        _ => {
-                            let (_, func) = subexpr.scope().get_interface_impl(&for_type, &interface_id, &func_name)
-                                .expect("interface call target must exist");
-
-                            func.signature()
-                        }
-                    }
-                }
-
-                _ => return subexpr,
-            };
-
-
-            // returning an instance of an rc class..
-            if !call_func.return_type.as_ref().map(|t| t.is_ref_counted()).unwrap_or(false) {
-                return subexpr;
-            }
-
-            let name = format!("rc_{}", bindings.len());
+        /* expr -> id expr, adding the real value to the rc binding list */
+        let new_rc_binding = |bindings: &mut Vec<_>, bound_value: semantic::Expression| {
+            let name = format!("rc_{}", bindings.len() + id_offset);
 
             /* the temp binding needs to be added to scope in case anything typechecks again after
-            this point*/
+                this point*/
             let binding_scope = {
-                let decl_type = call_func.return_type.as_ref().cloned().unwrap();
+                let decl_type = bound_value.expr_type().unwrap().unwrap();
 
-                subexpr.scope().clone()
+                context.scope().clone()
                     .with_binding(&name, decl_type, BindingKind::Internal)
             };
 
             let binding_context = SemanticContext::new(
-                subexpr.context.token().clone(),
+                context.token().clone(),
                 binding_scope,
                 None,
             );
 
             /* construct a new expression referring to the temp binding instead of the original
-            expression by its name */
+                   expression by its name */
             let binding_expr = semantic::Expression::identifier(
                 Identifier::from(&name),
                 binding_context,
             );
 
             /* store the original expression value for later when we write out the temp bindings */
-            bindings.push(subexpr);
+            bindings.push(bound_value);
+
             binding_expr
-        });
+        };
 
-        /*
-            translate the main statement into one or more c statements - a simple expression with no
-            rc to handle will translate to one c statement, otherwise this may include rc statements
-            to release the old value and retain the new one
-        */
-        let translated_exprs = match &stmt_simplified.value {
-            /* if assigning a new value to an rc variable, release the old value first */
-            ExpressionValue::BinaryOperator { lhs, op, .. } => {
-                let mut translated_exprs = Vec::new();
+        use node::ExpressionValue::{
+            FunctionCall,
+            ObjectConstructor,
+            LetBinding,
+        };
 
-                let lhs_type = lhs.expr_type().unwrap().unwrap();
+        /* bind the results of any function calls which return RC objects to temporary bindings so we
+         can release them later. nothing but function calls returning RC objects can leak an RC,
+         because local vars and func args are already managed elsewhere */
+        let (bound_name, body) = match stmt {
+            call_expr @ node::Expression { value: FunctionCall(_), .. } => {
+                let call_sig = call_expr.as_function_call().unwrap().signature();
 
-                let is_rc_assignment = lhs_type.is_ref_counted() && *op == operators::Assignment;
+                // returning an instance of an rc class..
+                (None, match call_sig.return_type.as_ref().map(|t| t.is_ref_counted()) {
+                    Some(true) => new_rc_binding(&mut rc_bindings, call_expr),
+                    _ => call_expr,
+                })
+            }
 
-                let mut lhs_expr = Self::translate_expression(lhs, unit)?;
+            ctor_expr @ node::Expression { value: ObjectConstructor(_), .. } => {
+                let ctor = ctor_expr.as_object_constructor().cloned().unwrap();
+
+                (None, match ctor.object_type.as_ref().map(|ty| ty.is_ref_counted()) {
+                    Some(true) => new_rc_binding(&mut rc_bindings, ctor_expr),
+                    _ => ctor_expr,
+                })
+            }
+
+            node::Expression { value: LetBinding(binding), .. } => {
+                let bound_name = BoundName {
+                    bound_type: binding.value_type().unwrap(),
+                    name: binding.name,
+                };
+
+                (Some(bound_name), *binding.value)
+            }
+
+            expr => (None, expr),
+        };
+
+        RcStatement::Statement {
+            body: Box::new(body),
+            bound_name,
+            rc_bindings,
+        }
+    }
+
+    fn translate_rc_statement(stmt: RcStatement,
+                              unit: &mut TranslationUnit)
+                              -> TranslationResult<Vec<Expression>> {
+        match stmt {
+            RcStatement::Block(statements) => {
+                let mut block_lines = Vec::new();
+                for block_stmt in statements {
+                    block_lines.extend(Self::translate_rc_statement(block_stmt, unit)?);
+                }
+
+                Ok(vec![
+                    Expression::Block(Block::new(block_lines))
+                ])
+            }
+
+            RcStatement::Statement { body, rc_bindings, bound_name } => {
+                /*
+                    translate the main statement into one or more c statements - a simple expression with no
+                    rc to handle will translate to one c statement, otherwise this may include rc statements
+                    to release the old value and retain the new one
+                */
+                let mut lines = Vec::new();
 
                 /*
-                    release the old value of the variable, if it's initialized
-                 */
-                if is_rc_assignment {
+                    expressions referring to rc-typed lvalues that are assigned to during this
+                    statement, which will need to be released before assignment and retained
+                    afterwards
+                */
+                let mut rc_assignments = Vec::new();
+
+                if let ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, .. } = &body.value {
+                    /* if assigning a new value to an rc variable, release the old value first */
+                    let lhs_type = lhs.expr_type().unwrap().unwrap();
+
+                    if lhs_type.is_ref_counted() {
+                        rc_assignments.push(*lhs.clone());
+                    }
+                }
+
+                /* if we're going to bind this to a name, declare that before the temporaries
+                block so the name is visible outside */
+                if let Some(bound_name) = &bound_name {
+                    let local_type = CType::translate(
+                        &bound_name.bound_type,
+                        body.scope(),
+                        unit,
+                    )?;
+
+                    lines.push(Expression::local_decl(
+                        local_type,
+                        bound_name.name.as_str(),
+                        None)
+                    );
+                }
+
+                let body_expr = match &bound_name {
+                    Some(BoundName { name, .. }) => {
+                        Expression::binary_op(
+                            Name::local(name.as_str()),
+                            "=",
+                            Self::translate_expression(&body, unit)?
+                        )
+                    }
+
+                    None => Self::translate_expression(&body, unit)?,
+                };
+                let rc_val_exprs: Vec<Expression> = rc_assignments.iter()
+                    .map(|expr| Self::translate_expression(expr, unit))
+                    .collect::<TranslationResult<_>>()?;
+
+                for (i, rc_val) in rc_assignments.iter().enumerate() {
                     /* if it's an assignment to a variable which is already initialized */
-                    if let ExpressionValue::Identifier(name) = &lhs.value {
-                        if lhs.scope().get_symbol(name).unwrap().initialized() {
+                    if let ExpressionValue::Identifier(name) = &rc_val.value {
+                        if rc_val.scope().get_symbol(name).unwrap().initialized() {
                             // if (lhs) release(lhs)
-                            translated_exprs.push(Expression::if_then(
-                                lhs_expr.clone(),
-                                rc_release(lhs_expr.clone()),
+                            let val_expr = &rc_val_exprs[i];
+
+                            lines.push(Expression::if_then(
+                                val_expr.clone(),
+                                rc_release(val_expr.clone()),
                             ));
                         }
                     }
                 }
 
-                // do the thing
-                translated_exprs.push(Expression::translate_expression(&stmt_simplified, unit)?);
+                if !rc_bindings.is_empty() {
+                    let mut temp_block = Vec::new();
 
-                if is_rc_assignment {
-                    /* retain rc variables: if it came from a function call, it'll be released once
-                    (from the code above which releases all rc results from functions), and if it's an
-                    existing value we now have two references to it */
-                    translated_exprs.push(rc_retain(lhs_expr.clone()));
+                    // bind RC temporaries to local names...
+                    for (tmp_id, tmp_val) in rc_bindings.iter().enumerate() {
+                        let tmp_type = tmp_val.expr_type()
+                            .expect("temporary rc values should always be valid types")
+                            .expect("temporary rc values should never have no type");
+                        let val_c_type = CType::translate(&tmp_type, tmp_val.scope(), unit)?;
+
+                        let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
+
+                        let tmp_val_expr = Expression::translate_expression(tmp_val, unit)?;
+                        let tmp_var = Variable {
+                            name: tmp_name.clone(),
+                            ctype: val_c_type,
+                            default_value: None,
+                            array_size: None,
+                        };
+
+                        temp_block.push(tmp_var.decl_statement());
+                        temp_block.push(Expression::binary_op(tmp_name, "=", tmp_val_expr));
+                    }
+
+                    // ...the original exprs in the middle...
+                    match bound_name {
+                        Some(bound_name) => {
+                            let local_type = CType::translate(
+                                &bound_name.bound_type,
+                                body.scope(),
+                                unit,
+                            )?;
+
+                            temp_block.push(Expression::local_decl(
+                                local_type,
+                                bound_name.name,
+                                Some(body_expr),
+                            ));
+                        }
+                        None => {
+                            temp_block.push(body_expr);
+                        }
+                    }
+
+                    // ...retain newly-assigned values...
+                    for rc_val in rc_val_exprs {
+                        temp_block.push(rc_retain(rc_val));
+                    }
+
+                    // ...then release temp bindings and close the block
+                    for (tmp_id, _tmp_val) in rc_bindings.iter().enumerate() {
+                        let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
+                        temp_block.push(rc_release(tmp_name));
+                    }
+
+                    lines.push(Expression::Block(Block::new(temp_block)));
+                } else {
+                    lines.push(body_expr);
+
+                    for rc_val in rc_val_exprs {
+                        lines.push(rc_retain(rc_val));
+                    }
                 }
 
-                translated_exprs
+                Ok(lines)
             }
+        }
+    }
 
-            _ => {
-                vec![Self::translate_expression(&stmt_simplified, unit)?]
-            }
-        };
+    pub fn translate_statement(stmt: &semantic::Expression,
+                               unit: &mut TranslationUnit)
+                               -> TranslationResult<Vec<Self>> {
+        let rc_block = Self::extract_stmt_rc_bindings(stmt.clone(), 0);
 
-        lines.extend(if !bindings.is_empty() {
-            //write a block around this statement for the scope of the temp bindings
-            let mut bindings_block = Vec::new();
-
-            // bind RC temporaries to local names...
-            for (tmp_id, tmp_val) in bindings.iter().enumerate() {
-                let tmp_type = tmp_val.expr_type()
-                    .expect("temporary rc values should always be valid types")
-                    .expect("temporary rc values should never have no type");
-                let val_c_type = CType::translate(&tmp_type, tmp_val.scope(), unit)?;
-
-                let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-
-                let tmp_val_expr = Expression::translate_expression(tmp_val, unit)?;
-                let tmp_var = Variable {
-                    name: tmp_name.clone(),
-                    ctype: val_c_type,
-                    default_value: None,
-                    array_size: None,
-                };
-
-                bindings_block.push(tmp_var.decl_statement());
-                bindings_block.push(Expression::binary_op(tmp_name, "=", tmp_val_expr));
-            }
-
-            // ...the original exprs in the middle...
-            bindings_block.extend(translated_exprs);
-
-            // ...then release temp bindings and close the block
-            for (tmp_id, _tmp_val) in bindings.iter().enumerate() {
-                let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-                bindings_block.push(rc_release(tmp_name));
-            }
-
-            vec![Expression::Block(Block::new(bindings_block))]
-        } else {
-            translated_exprs
-        });
-
-        Ok(lines)
+        Self::translate_rc_statement(rc_block, unit)
     }
 
     pub fn translate_expression(expr: &semantic::Expression,

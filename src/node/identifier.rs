@@ -31,7 +31,13 @@ impl<'a> From<&'a str> for Identifier {
 
 impl<'a> From<&'a String> for Identifier {
     fn from(from: &'a String) -> Self {
-        Identifier::from(from.as_str())
+        Self::from(from.as_str())
+    }
+}
+
+impl From<String> for Identifier {
+    fn from(s: String) -> Self {
+        Self::from(&s)
     }
 }
 
