@@ -30,10 +30,10 @@ impl Block {
 
         // release all rc vars bound locally in this block
         for stmt in block.statements.iter() {
-            if let ExpressionValue::LetBinding { name, value } = &stmt.value {
-                if value.expr_type().unwrap().unwrap().is_class() {
+            if let ExpressionValue::LetBinding(binding) = &stmt.value {
+                if binding.value.expr_type().unwrap().unwrap().is_class() {
                     statements.push(Expression::Raw({
-                        format!("System_Internal_Rc_Release({})", name)
+                        format!("System_Internal_Rc_Release({})", binding.name)
                     }));
                 }
             }

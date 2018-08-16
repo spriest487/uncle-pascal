@@ -14,6 +14,7 @@ use source;
 use operators;
 
 pub type Expression = node::Expression<ParsedContext>;
+pub type LetBinding = node::LetBinding<ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -248,15 +249,36 @@ fn parse_literal_bool(tokens: &mut TokenStream) -> ExpressionResult {
 }
 
 fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
-    let binding_tokens = tokens.match_sequence(keywords::Let
-        .and_then(Matcher::AnyIdentifier)
-        .and_then(tokens::Operator(operators::Equals)))?;
+    let context = tokens.match_one(keywords::Let)?;
 
-    let name = binding_tokens[1].unwrap_identifier();
+    // is it `let var`?
+    let mutable = match tokens.look_ahead().match_one(keywords::Var) {
+        | Some(_) => {
+            tokens.advance(1);
+            true
+        }
+        | None => false,
+    };
+
+    let name = tokens.match_one(Matcher::AnyIdentifier)?
+        .unwrap_identifier()
+        .to_string();
+
+    /* `let` uses `= value`, `let var` uses `:= value` */
+    tokens.match_one(match mutable {
+        true => operators::Assignment,
+        false => operators::Equals,
+    })?;
 
     let value: Expression = tokens.parse()?;
 
-    Ok(Expression::let_binding(name, value, binding_tokens[0].clone()))
+    let binding = LetBinding {
+        name,
+        value: Box::new(value),
+        mutable
+    };
+
+    Ok(Expression::let_binding(binding, context))
 }
 
 fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {

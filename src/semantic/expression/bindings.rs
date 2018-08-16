@@ -3,6 +3,7 @@ use std::{
     iter,
 };
 
+use node;
 use syntax;
 use semantic::{
     Scope,
@@ -14,25 +15,37 @@ use semantic::{
 };
 use types::Type;
 
-pub fn annotate_let(name: &str,
-                    value: &syntax::Expression,
+pub type LetBinding = node::LetBinding<SemanticContext>;
+
+pub fn annotate_let(parsed_binding: &syntax::LetBinding,
                     context: SemanticContext)
                     -> SemanticResult<(Expression, Rc<Scope>)> {
-    let (typed_value, mut binding_scope) = Expression::annotate(value, context.scope.clone())?;
-    let bound_type = typed_value.expr_type()?
+    let (value, mut binding_scope) = Expression::annotate(
+        &parsed_binding.value,
+        context.scope.clone()
+    )?;
+
+    let bound_type = value.expr_type()?
         .ok_or_else(|| {
             SemanticError::type_not_assignable(None, context.clone())
         })?;
 
+    let binding_kind = match parsed_binding.mutable {
+        true => BindingKind::Mutable,
+        false => BindingKind::Immutable,
+    };
+
     binding_scope = Rc::new(binding_scope.as_ref()
         .clone()
-        .with_binding(
-            name,
-            bound_type,
-            BindingKind::Immutable,
-        ));
+        .with_binding(&parsed_binding.name, bound_type, binding_kind));
 
-    Ok((Expression::let_binding(name, typed_value, context), binding_scope))
+    let binding = LetBinding {
+        name: parsed_binding.name.clone(),
+        mutable: parsed_binding.mutable,
+        value: Box::new(value),
+    };
+
+    Ok((Expression::let_binding(binding, context), binding_scope))
 }
 
 pub fn annotate_with(parsed_value: &syntax::Expression,
@@ -67,7 +80,13 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
             let member = syntax::Expression::member(member_of, &record_member.name);
             let context = syntax::ParsedContext::from(context.token.clone());
 
-            syntax::Expression::let_binding(&record_member.name, member, context)
+            let binding = syntax::LetBinding {
+                mutable: true,
+                value: Box::new(member),
+                name: record_member.name.clone(),
+            };
+
+            syntax::Expression::let_binding(binding, context)
         })
         .collect();
 
@@ -82,10 +101,10 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
     Expression::annotate(&body_block, scope.clone())
 }
 
-pub fn let_type(value: &Expression, context: &SemanticContext) -> SemanticResult<Option<Type>> {
-    super::expect_initialized(value)?;
+pub fn let_type(binding: &LetBinding, context: &SemanticContext) -> SemanticResult<Option<Type>> {
+    super::expect_initialized(&binding.value)?;
 
-    let value_type = value.expr_type()?
+    let value_type = binding.value.expr_type()?
         .ok_or_else(|| SemanticError::type_not_assignable(None, context.clone()))?;
 
     if !value_type.valid_lhs_type() {

@@ -52,7 +52,7 @@ pub fn annotate_if(from: &Expression,
     let _body_type = body.expr_type()?;
 
     match &from.value {
-        &ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
+        | ExpressionValue::BinaryOperator { op, lhs, .. }
         if *op == operators::Operator::Assignment => {
             let lhs_type = lhs.expr_type()?;
 
@@ -61,8 +61,8 @@ pub fn annotate_if(from: &Expression,
             Ok(())
         }
 
-        &ExpressionValue::LetBinding { ref value, .. } => {
-            let value_type = value.expr_type()?;
+        | ExpressionValue::LetBinding(binding) => {
+            let value_type = binding.value.expr_type()?;
 
             ops::expect_comparable(Some(&Type::Int32), value_type.as_ref(),
                                    context)?;

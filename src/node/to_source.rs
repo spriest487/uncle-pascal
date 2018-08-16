@@ -86,8 +86,11 @@ impl<C> ToSource for ExpressionValue<C>
                 format!("{}[{}]", of.to_source(), index_expr.to_source())
             }
 
-            ExpressionValue::LetBinding { name, value } => {
-                format!("let {} := {}", name, value.to_source())
+            ExpressionValue::LetBinding(binding) => {
+                match binding.mutable {
+                    true => format!("let var {} := {}", binding.name, binding.value.to_source()),
+                    false => format!("let {} = {}", binding.name, binding.value.to_source()),
+                }
             }
 
             ExpressionValue::Constant(ConstantExpression::Integer(i)) => format!("{}", i),

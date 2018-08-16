@@ -6,8 +6,9 @@ uses
 procedure RunWindow(window: SDL.Window; renderer: SDL.Renderer)
 var 
     nextEvent: SDL.Event
-    quit: Boolean = false
 begin
+    let var quit := false
+
     while not quit do
     begin
         nextEvent.PollEvent()

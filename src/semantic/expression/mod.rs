@@ -48,8 +48,8 @@ impl Expression {
                 Ok((Expression::block(block), scope))
             }
 
-            ExpressionValue::LetBinding { name, value } => {
-                bindings::annotate_let(name, value, expr_context)
+            ExpressionValue::LetBinding(binding) => {
+                bindings::annotate_let(binding, expr_context)
             }
 
             ExpressionValue::Constant(ConstantExpression::String(s)) => {
@@ -146,8 +146,8 @@ impl Expression {
             ExpressionValue::Constant(const_val) =>
                 Ok(Some(const_val.value_type())),
 
-            ExpressionValue::LetBinding { value, .. } =>
-                bindings::let_type(value, &self.context),
+            ExpressionValue::LetBinding(binding) =>
+                bindings::let_type(binding, &self.context),
 
             ExpressionValue::FunctionCall { target, args } =>
                 function::call_type(target, args, &self.context),

@@ -99,17 +99,16 @@ pub enum ExpressionValue<TContext>
 
     /**
         binds a value to a new name into the current scope.
-        `let x = foo()`
-        a let binding's value cannot change after it is bound (like a const) but
+        immutable binding: `let x = foo()`
+        mutable binding: `let var x := foo()`
+        a `let` binding's value cannot change after it is bound (like a const) but
         does not have to be a compile-time constant expression (unlike a const).
+        a `let var` binding can be assigned to.
 
         the type of the introduced name is inferred from the value of the binding.
         this statement itself has no type
     */
-    LetBinding {
-        name: String,
-        value: Box<Expression<TContext>>,
-    },
+    LetBinding(LetBinding<TContext>),
 
     /**
         the value of a member of a record or class e.g. `dog.Name`
@@ -229,13 +228,21 @@ pub enum ExpressionValue<TContext>
     Raise(Box<Expression<TContext>>),
 }
 
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct Expression<TContext>
     where TContext: Context,
 {
     pub value: ExpressionValue<TContext>,
     pub context: TContext,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct LetBinding<TContext>
+    where TContext: Context
+{
+    pub name: String,
+    pub value: Box<Expression<TContext>>,
+    pub mutable: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -346,12 +353,11 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn let_binding(name: &str, value: Self, context: impl Into<TContext>) -> Self {
+    pub fn let_binding(binding: impl Into<LetBinding<TContext>>,
+                       context: impl Into<TContext>)
+                       -> Self {
         Expression {
-            value: ExpressionValue::LetBinding {
-                value: Box::new(value),
-                name: name.to_owned(),
-            },
+            value: ExpressionValue::LetBinding(binding.into()),
             context: context.into(),
         }
     }
@@ -562,9 +568,9 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn unwrap_let_binding(self) -> (String, Self) {
+    pub fn unwrap_let_binding(self) -> LetBinding<TContext> {
         match self.value {
-            ExpressionValue::LetBinding { name, value } => (name, *value),
+            ExpressionValue::LetBinding(binding) => binding,
             _ => panic!("called unwrap_let_binding on {}", self)
         }
     }
@@ -685,8 +691,8 @@ pub fn try_visit_expressions<TContext, TErr>(
             }
         }
 
-        | ExpressionValue::LetBinding { value, .. } => {
-            try_visit_expressions(value.as_ref(), &mut visit)?;
+        | ExpressionValue::LetBinding(binding) => {
+            try_visit_expressions(binding.value.as_ref(), &mut visit)?;
         }
 
         | ExpressionValue::Member { of, .. } => {
@@ -797,9 +803,9 @@ pub fn transform_expressions<TContext>(
             replace(Expression::prefix_op(op, rhs, root_expr.context))
         }
 
-        ExpressionValue::LetBinding { name, value } => {
-            let value = transform_expressions(*value, replace);
-            replace(Expression::let_binding(&name, value, root_expr.context))
+        ExpressionValue::LetBinding(mut binding) => {
+            binding.value = Box::new(transform_expressions(*binding.value, replace));
+            replace(Expression::let_binding(binding, root_expr.context))
         }
 
         ExpressionValue::Member { of, name } => {

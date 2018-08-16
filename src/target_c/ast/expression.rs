@@ -180,33 +180,33 @@ impl Expression {
         */
 
         let stmt_after_let = match stmt.clone() {
-            semantic::Expression { value: ExpressionValue::LetBinding { name, value }, context } => {
-                let binding_type: Type = value.expr_type()
+            semantic::Expression { value: ExpressionValue::LetBinding(binding), context } => {
+                let binding_type: Type = binding.value.expr_type()
                     .expect("let binding target must be a valid type")
                     .expect("let binding type must not be None");
 
                 // create the let-bound local var name
                 let local_var = Variable {
-                    name: name.clone(),
-                    ctype: CType::translate(&binding_type, value.scope()),
+                    name: binding.name.clone(),
+                    ctype: CType::translate(&binding_type, binding.value.scope()),
                     default_value: None,
                 };
                 lines.push(local_var.decl_statement());
 
-                let binding_id = Identifier::from(&name);
+                let binding_id = Identifier::from(&binding.name);
 
                 /* the scope of the assignment needs the let-bound variable added to it,
                 because a let binding doesn't have itself in scope */
                 let context = semantic::SemanticContext::new(
                     context.token().clone(),
                     Rc::new(stmt.scope().clone()
-                        .with_binding(&name, binding_type, BindingKind::Uninitialized)),
+                        .with_binding(&binding.name, binding_type, BindingKind::Uninitialized)),
                 );
                 let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
 
                 let binary_op = semantic::Expression::binary_op(binding_id_expr,
                                                                 operators::Assignment,
-                                                                *value,
+                                                                *binding.value,
                                                                 context);
                 binary_op
             }
@@ -456,12 +456,12 @@ impl Expression {
                 Ok(Expression::static_cast(target_ctype, from_value))
             }
 
-            ExpressionValue::LetBinding { name, value } => {
-                let value_type = value.expr_type().unwrap().unwrap();
-                let value = Expression::translate_expression(value, unit)?;
+            ExpressionValue::LetBinding(binding) => {
+                let value_type = binding.value.expr_type().unwrap().unwrap();
+                let value = Expression::translate_expression(binding.value.as_ref(), unit)?;
 
                 let mut out = String::new();
-                write!(out, "{} {} =", CType::translate(&value_type, expr.scope()), name)?;
+                write!(out, "{} {} =", CType::translate(&value_type, expr.scope()), binding.name)?;
                 value.write(&mut out)?;
 
                 Ok(Expression::raw(out))
@@ -560,8 +560,8 @@ impl Expression {
                     if *op == operators::Assignment => {
                         Expression::translate_expression(lhs, unit)?
                     }
-                    ExpressionValue::LetBinding { ref name, .. } => {
-                        Expression::raw(name)
+                    ExpressionValue::LetBinding(binding) => {
+                        Expression::raw(&binding.name)
                     }
                     _ => panic!("for loop 'from' clause must be an assignment or a let binding")
                 };
