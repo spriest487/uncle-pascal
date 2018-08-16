@@ -51,5 +51,12 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj);
 
 struct System_String;
 
-/* procedure System.WriteLn(line: System.String) */
-static void System_WriteLn(System_String* lineRc);
+extern "C" {
+    static System_String* System_CreateString(void);
+
+    /* procedure System.WriteLn(line: System.String) */
+    static void System_WriteLn(System_String* lineRc);
+
+    /* function System.ReadLn(): System.String */
+    static System_String* System_ReadLn(void);
+}

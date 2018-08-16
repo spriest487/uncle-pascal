@@ -32,6 +32,7 @@ impl Mode {
         if cfg!(target_os = "macos") {
             symbols.insert("DARWIN".to_string());
         } else if cfg!(target_os = "windows") {
+            symbols.insert("MSWINDOWS".to_string());
             if cfg!(target_arch = "x86_64") {
                 symbols.insert("WIN64".to_string());
             } else {
@@ -109,6 +110,7 @@ pub struct CompileOptions {
     symbols: HashMap<String, bool>,
 
     link_libs: LinkedHashSet<String>,
+    lib_paths: LinkedHashSet<String>,
 }
 
 impl CompileOptions {
@@ -120,6 +122,7 @@ impl CompileOptions {
             symbols: HashMap::new(),
 
             link_libs: LinkedHashSet::new(),
+            lib_paths: LinkedHashSet::new(),
         }
     }
 
@@ -189,12 +192,20 @@ impl CompileOptions {
         }
     }
 
-    pub fn link_lib(&mut self, lib_name: &str) {
-        self.link_libs.insert(lib_name.to_string());
+    pub fn link_lib(&mut self, lib_name: String) {
+        self.link_libs.insert(lib_name);
     }
 
     pub fn link_libs(&self) -> impl Iterator<Item=&String> {
         self.link_libs.iter()
+    }
+
+    pub fn lib_path(&mut self, lib_path: String) {
+        self.lib_paths.insert(lib_path);
+    }
+
+    pub fn lib_paths(&self) -> impl Iterator<Item=&String> {
+        self.lib_paths.iter()
     }
 
     pub fn from_getopts(matches: &getopts::Matches) -> Self {
@@ -217,6 +228,14 @@ impl CompileOptions {
 
         for defined in matches.opt_strs("D") {
             opts.define(defined);
+        }
+
+        for link_lib in matches.opt_strs("l") {
+            opts.link_lib(link_lib);
+        }
+
+        for lib_path in matches.opt_strs("L") {
+            opts.lib_path(lib_path);
         }
 
         opts

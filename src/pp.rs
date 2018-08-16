@@ -396,7 +396,7 @@ impl Preprocessor {
 
             Some(Directive::LinkLib(lib_name)) => {
                 if self.condition_active() {
-                    self.opts.link_lib(&lib_name);
+                    self.opts.link_lib(lib_name.clone());
                 }
                 Ok(())
             }

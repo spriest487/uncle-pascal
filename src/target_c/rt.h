@@ -2,6 +2,7 @@
 //#define UNCLEPASCAL_REFLECTION_DEBUG
 
 #include <sstream>
+#include <iostream>
 
 struct System_Internal_Class {
     std::string Name;
@@ -122,6 +123,18 @@ void System_WriteLn(System_String* lineRc) {
         fputc('\n', stdout);
     } else {
         puts("");
+    }
+}
+
+System_String* System_ReadLn() {
+    std::string line;
+    if (std::cin >> line) {
+        return System_StringFromBytes(
+            (System_Byte*)line.data(), 
+            (System_NativeInt)line.size());
+    } else {
+        // failed, empty string
+        return System_StringCreate();
     }
 }
 

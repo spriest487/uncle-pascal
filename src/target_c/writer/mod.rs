@@ -705,6 +705,9 @@ pub fn write_function_decl(out: &mut String,
 
     let qualified_name = function.scope().qualify_local_name(&function.name);
 
+    // never use C++ name mangling
+    write!(out, "extern \"C\" ")?;
+
     write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
     write!(out, "{} ", identifier_to_c(&qualified_name))?;
 

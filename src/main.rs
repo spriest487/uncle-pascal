@@ -99,9 +99,14 @@ fn empty_context() -> source::Token {
     }
 }
 
+struct ModuleSource {
+    tokens: Vec<source::Token>,
+    opts: opts::CompileOptions,
+}
+
 fn load_source<TPath: AsRef<Path>>(path: TPath,
                                    opts: opts::CompileOptions)
-                                   -> Result<Vec<source::Token>, CompileError> {
+                                   -> Result<ModuleSource, CompileError> {
     let path = path.as_ref();
     if !path.exists() {
         let msg = format!("missing input file `{}`", path.to_string_lossy());
@@ -122,7 +127,10 @@ fn load_source<TPath: AsRef<Path>>(path: TPath,
                                      &preprocessed.source,
                                      &preprocessed.opts)?;
 
-    Ok(tokens)
+    Ok(ModuleSource {
+        tokens,
+        opts: preprocessed.opts,
+    })
 }
 
 fn pretty_path(path: &Path) -> String {
@@ -172,7 +180,7 @@ fn default_refs(default_context: source::Token) -> Vec<syntax::UnitReference> {
 fn compile_program(program_path: &Path,
                    opts: opts::CompileOptions)
                    -> Result<semantic::ProgramModule, CompileError> {
-    let tokens = load_source(program_path, opts.clone())?;
+    let mut module_source = load_source(program_path, opts)?;
 
     let source_dir = program_path.canonicalize()?
         .parent()
@@ -189,9 +197,9 @@ fn compile_program(program_path: &Path,
         vec![source_dir]
     };
 
-    let default_units = default_refs(tokens[0].clone());
+    let default_units = default_refs(module_source.tokens[0].clone());
 
-    let token_stream = syntax::TokenStream::new(tokens, &empty_context());
+    let token_stream = syntax::TokenStream::new(module_source.tokens, &empty_context());
     let parsed_program = syntax::Program::parse(token_stream)?;
 
     let mut loaded_units: Vec<semantic::Unit> = Vec::new();
@@ -222,9 +230,9 @@ fn compile_program(program_path: &Path,
                      unit_id,
                      pretty_path(&unit_path));
 
-            let unit_source = load_source(unit_path, opts.clone())?;
+            let unit_source = load_source(unit_path, module_source.opts.clone())?;
 
-            let mut unit_tokens = syntax::TokenStream::new(unit_source, &empty_context());
+            let mut unit_tokens = syntax::TokenStream::new(unit_source.tokens, &empty_context());
             let parsed_unit = syntax::Unit::parse(unit_tokens)?;
 
             /* each unit imports all the units before it in the programs' units
@@ -236,6 +244,11 @@ fn compile_program(program_path: &Path,
 
             unit_scopes.insert(unit.name.clone(), unit_scope);
             loaded_units.push(unit);
+
+            /* add linked libs from all units to main module */
+            for linked_lib in unit_source.opts.link_libs() {
+                module_source.opts.link_lib(linked_lib.clone());
+            }
         }
     }
 
@@ -246,7 +259,7 @@ fn compile_program(program_path: &Path,
     Ok(semantic::ProgramModule {
         program,
         units: loaded_units,
-        opts,
+        opts: module_source.opts,
     })
 }
 
@@ -261,8 +274,10 @@ fn main() {
 
     let mut opts = getopts::Options::new();
     opts.optopt("o", "outdir", "Output file (use .c extension to emit C intermediate files)", "");
-    opts.optmulti("D", "", "Define preprocessor symbol", "");
     opts.optopt("M", "mode", "Compiler compatibility mode (uncle, fpc)", "");
+    opts.optmulti("D", "", "Define preprocessor symbol", "");
+    opts.optmulti("l", "", "Link libraries", "");
+    opts.optmulti("L", "", "Library search paths", "");
 
     match opts.parse(&args[1..]) {
         Ok(matched) => {

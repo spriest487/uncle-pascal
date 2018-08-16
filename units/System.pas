@@ -20,6 +20,7 @@ type
 { io }
 
 procedure WriteLn(line: String)
+function ReadLn(): String
 
 { string manipulation }
 
@@ -30,6 +31,7 @@ destructor DestroyString(string: String)
 function StringFromInt(i: Int32): String
 function StringToInt(s: String; outVal: ^Int32): Boolean
 function StringConcat(a: String; b: String): String
+function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
 
 { native memory allocation }
 
@@ -104,6 +106,19 @@ begin
         for let c = 0 to b.Length do
             ^(result.Chars + a.Length + c) := ^(b.Chars + c);
     end;
+end
+
+function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
+begin
+    if len < s.Length + 1 then
+        result := false
+    else begin
+        for let i = 0 to s.Length do
+            ^(bytes + i) := ^(s.Chars + i)
+
+        ^(bytes + s.Length) := #0
+        result := true
+    end
 end
 
 end.

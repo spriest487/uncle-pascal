@@ -160,11 +160,11 @@ mod test {
         };
 
         match parsed {
-            TypeName::Scalar { array_dimensions, .. } => {
-                assert_eq!(1, array_dimensions.len());
+            TypeName::Array { dimensions, .. } => {
+                assert_eq!(1, dimensions.len());
 
-                assert_is_const_dim(&array_dimensions[0].from, 0);
-                assert_is_const_dim(&array_dimensions[0].to, 10);
+                assert_is_const_dim(&dimensions[0].from, 0);
+                assert_is_const_dim(&dimensions[0].to, 10);
             }
 
             _ =>

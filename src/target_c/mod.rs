@@ -54,6 +54,10 @@ fn invoke_clang<'a>(c_src: &str,
     clang.arg("-x").arg("c++");
     clang.arg("-std=c++17");
 
+    for lib_path in opts.lib_paths() {
+        clang.arg(&format!("-L{}", lib_path));
+    }
+
     for lib in opts.link_libs() {
         clang.arg(&format!("-l{}", lib));
     }
@@ -62,13 +66,14 @@ fn invoke_clang<'a>(c_src: &str,
         clang.arg("-stdlib=libc++");
     }
 
-    let mut clang_proc = clang
-        .arg("-o").arg(out_path)
-        .arg("-")
-        .stdout(process::Stdio::inherit())
-        .stdin(process::Stdio::piped())
-        .spawn()?;
+    clang.arg("-o").arg(out_path);
+    clang.arg("-");
+    clang.stdout(process::Stdio::inherit());
+    clang.stdin(process::Stdio::piped());
 
+    println!("invoking clang: {:#?}", clang);
+
+    let mut clang_proc = clang.spawn()?;
     {
         let clang_in = clang_proc.stdin.as_mut().unwrap();
         clang_in.write_all(c_src.to_owned().as_bytes())?;
