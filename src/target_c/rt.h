@@ -50,6 +50,11 @@ static System_Internal_Class* System_Internal_FindClass(const char* name) {
 static System_Internal_Object* System_Internal_Rc_GetMem(System_Integer size, const char* constructorName) {
     auto obj = reinterpret_cast<System_Internal_Object*>(System_GetMem(size));
     obj->Class = System_Internal_FindClass(constructorName);
+    if (!obj->Class) {
+        std::fprintf(stderr, "missing class definition for %s\n", constructorName);
+        std::abort();
+    }
+
     obj->StrongCount = 1;
 
     std::fprintf(stderr, "rc allocated %lld bytes for %s @ %p\n", size, constructorName, obj);
@@ -73,6 +78,11 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
 
     obj->StrongCount -= 1;
     if (obj->StrongCount == 0) {
+        if (!obj->Class) {
+            std::fprintf(stderr, "missing class reference for object @ %p\n", obj);
+            std::abort();
+        }
+
         auto& className = obj->Class->Name;
         if (obj->Class->Destructor) {
             obj->Class->Destructor(obj);

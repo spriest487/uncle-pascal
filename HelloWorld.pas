@@ -3,10 +3,23 @@ program HelloWorld
 
 uses System, Vector
 
+{$define friendly}
+
 function Greet(name: System.String): System.String
 begin
-  let msg := 'hello ' + name + '!'
+  {$ifdef friendly}
+  let greeting := 'hi '
+  {$else}
+  let greeting := 'hello '
+  {$endif}
+
+  let msg := greeting + name
+
+  {$ifndef friendly}
   result := msg
+  {$else}
+  result := msg + '!'
+  {$endif}
 end
 
 var

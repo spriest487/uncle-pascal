@@ -84,12 +84,8 @@ impl From<pp::PreprocessorError> for CompileError {
         match err {
             pp::PreprocessorError::IOError(io_err) =>
                 CompileError::IOError(io_err),
-            pp::PreprocessorError::SymbolNotDefined { name, filename, line } =>
-                CompileError::PreprocessorError(pp::PreprocessorError::SymbolNotDefined {
-                    name,
-                    filename,
-                    line,
-                })
+
+            err @ _ => CompileError::PreprocessorError(err),
         }
     }
 }
@@ -104,15 +100,16 @@ fn empty_context() -> source::Token {
 fn load_source<TPath: AsRef<Path>>(path: TPath,
                                    pp_symbols: HashSet<String>)
                                    -> Result<Vec<source::Token>, CompileError> {
-    let file = fs::File::open(&path)?;
-
     let display_filename = path.as_ref()
         .file_name()
         .map(OsStr::to_string_lossy)
         .map(|s| String::from(s))
         .unwrap_or_else(|| "(unknown)".to_owned());
 
-    let source = pp::preprocess(file, &display_filename, pp_symbols)?;
+    let preprocessor = pp::Preprocessor::new(&display_filename, pp_symbols);
+
+    let file = fs::File::open(&path)?;
+    let source = preprocessor.preprocess(file)?;
 
     let tokens = tokenizer::tokenize(&display_filename, &source)?;
 

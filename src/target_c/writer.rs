@@ -663,6 +663,9 @@ pub fn write_c(module: &ProgramModule)
 
     default_initialize_vars(&mut output, var_decls.iter().cloned())?;
 
+    // System.String is compiler magic so we have to manually initialize the class
+    writeln!(output, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+
     for unit in module.units.iter() {
         write_static_init(&mut output, &unit.interface)?;
         write_static_init(&mut output, &unit.implementation)?;
