@@ -182,6 +182,12 @@ fn compile_program(program_path: &Path,
         })?
         .canonicalize()?;
 
+    let search_dirs = if let Ok(current_dir) = current_dir() {
+        vec![source_dir, current_dir]
+    } else {
+        vec![source_dir]
+    };
+
     let default_units = default_refs(tokens[0].clone());
 
     let token_stream = syntax::TokenStream::new(tokens, &empty_context());
@@ -197,7 +203,19 @@ fn compile_program(program_path: &Path,
         let unit_id = unit_ref.name.to_string();
 
         if !loaded_units.iter().any(|unit| unit.name == unit_id) {
-            let unit_path = source_dir.join(format!("{}.pas", unit_id));
+            let unit_path = search_dirs.iter()
+                .filter_map(|dir| {
+                    let unit_path = dir.join(format!("{}.pas", unit_id));
+                    match unit_path.exists() {
+                        true => Some(unit_path),
+                        false => None,
+                    }
+                })
+                .next()
+                .ok_or_else(|| {
+                    let msg = format!("unit {}.pas could not be located", unit_id);
+                    io::Error::new(io::ErrorKind::NotFound, msg)
+                })?;
 
             println!("Compiling unit `{}` in `{}`...",
                      unit_id,
