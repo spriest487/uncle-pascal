@@ -107,27 +107,21 @@ fn transform_expressions(root_expr: Expression,
 
 fn replace_block_string_literals(mut block: Block) -> Block {
     block.statements = block.statements.into_iter()
-        .flat_map(|stmt| {
-            let transformed = transform_expressions(stmt, &|expr: Expression| {
-                match expr.value {
-                    node::ExpressionValue::LiteralString(str) => {
-                        let constructor_id = ParsedSymbol(node::Identifier::from("System.StringFromBytes"));
+        .flat_map(|stmt| iter::once(transform_expressions(stmt, &|expr: Expression| {
+            match expr.value {
+                node::ExpressionValue::LiteralString(str) => {
+                    let constructor_id = ParsedSymbol(node::Identifier::from("System.StringFromBytes"));
 
-                        let constructor = Expression::identifier(constructor_id, expr.context.clone());
-                        let literal_arg = Expression::literal_string(&str, expr.context.clone());
-                        let len_arg = Expression::literal_int(str.len() as i64, expr.context);
+                    let constructor = Expression::identifier(constructor_id, expr.context.clone());
+                    let literal_arg = Expression::literal_string(&str, expr.context.clone());
+                    let len_arg = Expression::literal_int(str.len() as i64, expr.context);
 
-                        Expression::function_call(constructor, vec![literal_arg, len_arg])
-                    }
-                    _ => Expression {
-                        context: expr.context,
-                        value: expr.value,
-                    }
+                    Expression::function_call(constructor, vec![literal_arg, len_arg])
                 }
-            });
 
-            iter::once(transformed)
-        })
+                _ => expr
+            }
+        })))
         .collect();
 
     block

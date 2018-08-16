@@ -454,13 +454,29 @@ impl Expression {
             &node::ExpressionValue::ForLoop { ref from, ref to, ref body } =>
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
-            &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } => {
-                Ok(Expression::binary_op(
-                    Expression::annotate(lhs, scope)?,
-                    op.clone(),
-                    Expression::annotate(rhs, scope)?,
-                    expr.context.clone(),
-                ))
+            &node::ExpressionValue::BinaryOperator { ref lhs, op, ref rhs } => {
+                let lhs = Expression::annotate(lhs, scope)?;
+                let rhs = Expression::annotate(rhs, scope)?;
+
+                let lhs_type = lhs.expr_type()?;
+                let rhs_type = rhs.expr_type()?;
+
+                let string_ptr_type = scope.get_type(&Identifier::from("System.String"))
+                    .unwrap()
+                    .pointer();
+
+                let lhs_is_string = lhs_type.map(|ty| ty == string_ptr_type).unwrap_or(false);
+                let rhs_is_string = rhs_type.map(|ty| ty == string_ptr_type).unwrap_or(false);
+
+                if lhs_is_string && rhs_is_string && op == operators::Plus {
+                    //desugar string concatenation
+                    let strcat_sym = scope.get_symbol(&Identifier::from("System.StringConcat")).unwrap();
+                    let strcat = Expression::identifier(strcat_sym, expr.context.clone());
+
+                    Ok(Expression::function_call(strcat, vec![lhs, rhs]))
+                } else {
+                    Ok(Expression::binary_op(lhs, op.clone(), rhs, expr.context.clone()))
+                }
             }
 
             &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
@@ -556,7 +572,7 @@ mod test {
     #[test]
     fn assignment_to_wrong_type_is_err() {
         let scope = Scope::default()
-            .with_symbol_local("x", DeclaredType::String);
+            .with_symbol_local("x", DeclaredType::RawPointer);
 
         let expr = parse_expr("x := 1", &scope);
 
@@ -565,7 +581,7 @@ mod test {
                     kind: SemanticErrorKind::UnexpectedType { expected, actual },
                     ..
                 }) => {
-                assert_eq!(Some(DeclaredType::String), expected);
+                assert_eq!(Some(DeclaredType::RawPointer), expected);
                 assert_eq!(Some(DeclaredType::Integer), actual);
             }
             _ => panic!("expected invalid types in assignment")

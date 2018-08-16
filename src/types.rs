@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    mem::size_of,
+};
 
 use node::{self, Identifier};
 
@@ -63,6 +66,12 @@ impl DeclaredRecord {
     pub fn get_member(&self, name: &str) -> Option<&Symbol> {
         self.members.iter().find(|m| m.name.to_string() == name)
     }
+
+    pub fn size_of(&self) -> usize {
+        self.members.iter()
+            .map(|member| member.decl_type.align_of())
+            .sum()
+    }
 }
 
 impl fmt::Display for DeclaredRecord {
@@ -82,7 +91,6 @@ pub enum DeclaredType {
     Byte,
     Boolean,
     Integer,
-    String,
     RawPointer,
     Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
@@ -103,12 +111,37 @@ impl DeclaredType {
                 &DeclaredType::Byte => "System.Byte".to_owned(),
                 &DeclaredType::Boolean => "System.Boolean".to_owned(),
                 &DeclaredType::Integer => "System.Integer".to_owned(),
-                &DeclaredType::String => "System.String".to_owned(),
                 &DeclaredType::RawPointer => "System.Pointer".to_owned(),
                 &DeclaredType::Pointer(ref target) => format!("^{}", DeclaredType::name(Some(target))),
                 &DeclaredType::Function(ref sig) => format!("{}", sig),
                 &DeclaredType::Record(ref record) => format!("{}", record.name),
             }
+        }
+    }
+
+    pub fn align_of(&self) -> usize {
+        const WORD_SIZE: usize = size_of::<u32>();
+
+        let size = self.size_of();
+        let mut align = 0;
+
+        while align < size {
+            align += WORD_SIZE
+        }
+        align
+    }
+
+    pub fn size_of(&self) -> usize {
+        match self {
+            &DeclaredType::RawPointer
+            | &DeclaredType::Pointer(_)
+            | &DeclaredType::Function(_)
+            | &DeclaredType::Integer => size_of::<usize>(),
+
+            &DeclaredType::Byte => size_of::<u8>(),
+            &DeclaredType::Boolean => size_of::<u8>(),
+
+            &DeclaredType::Record(ref rec) => rec.size_of(),
         }
     }
 
@@ -161,7 +194,6 @@ impl DeclaredType {
             &DeclaredType::Pointer(_) |
             &DeclaredType::Byte |
             &DeclaredType::Record(_) |
-            &DeclaredType::String |
             &DeclaredType::RawPointer |
             &DeclaredType::Integer |
             &DeclaredType::Boolean => true,

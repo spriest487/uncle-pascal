@@ -130,9 +130,6 @@ fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
 
     for unit_ref in parsed_program.uses.iter() {
         let unit_id = unit_ref.name.to_string();
-        if unit_id == "System" {
-            continue;
-        }
 
         if !loaded_unit_scopes.contains_key(&unit_id) {
             let unit_path = source_dir.join(format!("{}.pas", unit_id));

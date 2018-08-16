@@ -144,40 +144,54 @@ impl Scope {
     }
 
     pub fn system() -> Self {
+        let string_type = DeclaredType::Record(DeclaredRecord {
+            name: Identifier::from("System.String"),
+            members: vec![
+                Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
+                Symbol::new(Identifier::from("Length"), DeclaredType::Integer),
+            ]
+        });
+
         Scope::new()
             .with_local_namespace("System")
-            .with_type(node::Identifier::from("System.Byte"), DeclaredType::Byte)
-            .with_type(node::Identifier::from("System.Integer"), DeclaredType::Integer)
-            .with_type(node::Identifier::from("System.String"), DeclaredType::String)
-            .with_type(node::Identifier::from("System.Pointer"), DeclaredType::RawPointer)
-            .with_type(node::Identifier::from("System.Boolean"), DeclaredType::Boolean)
-            .with_symbol_absolute(node::Identifier::from("System.WriteLn"),
+            .with_type(Identifier::from("System.Byte"), DeclaredType::Byte)
+            .with_type(Identifier::from("System.Integer"), DeclaredType::Integer)
+            .with_type(Identifier::from("System.Pointer"), DeclaredType::RawPointer)
+            .with_type(Identifier::from("System.Boolean"), DeclaredType::Boolean)
+            .with_type(Identifier::from("System.String"), string_type.clone())
+            .with_symbol_absolute(Identifier::from("System.WriteLn"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("WriteLn"),
-                                      arg_types: vec![DeclaredType::String.pointer()],
+                                      arg_types: vec![string_type.clone().pointer()],
                                       return_type: None,
                                   }))
-            .with_symbol_absolute(node::Identifier::from("System.GetMem"),
+            .with_symbol_absolute(Identifier::from("System.GetMem"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("GetMem"),
                                       arg_types: vec![DeclaredType::Integer],
                                       return_type: Some(DeclaredType::Byte.pointer()),
                                   }))
-            .with_symbol_absolute(node::Identifier::from("System.FreeMem"),
+            .with_symbol_absolute(Identifier::from("System.FreeMem"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("FreeMem"),
                                       arg_types: vec![DeclaredType::Byte.pointer()],
                                       return_type: None,
                                   }))
-            .with_symbol_absolute(node::Identifier::from("System.StringFromBytes"),
+            .with_symbol_absolute(Identifier::from("System.StringFromBytes"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("StringFromBytes"),
                                       arg_types: vec![
                                           DeclaredType::Byte.pointer(),
                                           DeclaredType::Integer,
                                       ],
-                                      return_type: Some(DeclaredType::String.pointer()),
+                                      return_type: Some(string_type.clone().pointer()),
                                   }))
+            .with_symbol_absolute(Identifier::from("System.StringConcat"),
+            DeclaredType::from(FunctionSignature {
+                name: Identifier::from("StringConcat"),
+                arg_types: vec![string_type.clone().pointer(), string_type.clone().pointer()],
+                return_type: Some(string_type.clone().pointer())
+            }))
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {

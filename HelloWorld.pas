@@ -5,7 +5,7 @@ uses System, Vector
 
 function Greet(name: ^System.String): ^System.String
 begin
-  let msg := 'hello world!'
+  let msg := 'hello ' + name + '!'
   result := msg
 end
 
@@ -23,7 +23,7 @@ begin
   Vector.Add(@vec, 3)
   Vector.Add(@vec, 4)
 
-  System.WriteLn(Greet('world'))
+  System.WriteLn(Greet('wuuuorld'))
 
   if x = 1 then begin
     System.WriteLn('one')

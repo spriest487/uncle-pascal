@@ -10,7 +10,6 @@ pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
         &types::DeclaredType::Byte => "System_Byte".to_owned(),
         &types::DeclaredType::Integer => "System_Integer".to_owned(),
-        &types::DeclaredType::String => "System_String".to_owned(),
         &types::DeclaredType::Boolean => "System_Boolean".to_owned(),
         &types::DeclaredType::RawPointer => "System_Pointer".to_owned(),
         &types::DeclaredType::Pointer(ref target) => {
@@ -60,10 +59,6 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
     match &target.decl_type {
         &types::DeclaredType::Record(ref _record) => {
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
-        }
-
-        &types::DeclaredType::String => {
-            writeln!(out, "{} = \"\";", id)
         }
 
         &types::DeclaredType::Integer => {
