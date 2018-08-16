@@ -18,7 +18,7 @@ pub struct Scope {
     children: HashMap<String, Scope>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ScopedSymbol {
     /* symbol refers to a name that is in the current scope */
     Local {

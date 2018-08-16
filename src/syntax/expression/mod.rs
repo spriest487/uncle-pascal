@@ -227,6 +227,7 @@ impl Expression {
                 }
 
                 Some(op_token) if bracket_depth == 0 && op_token.is_any_operator() => {
+                    let op = op_token.unwrap_operator().clone();
                     let pos = if in_operand {
                         operators::Position::Binary
                     } else {
@@ -236,7 +237,7 @@ impl Expression {
                     in_operand = false;
 
                     parts.push(CompoundExpressionPart::Operator(OperatorToken {
-                        op: op_token.unwrap_operator().clone(),
+                        op,
                         token: op_token.clone(),
                         pos,
                     }))
@@ -314,7 +315,7 @@ impl Expression {
         let all_args = args.value.groups
             .into_iter()
             .map(|arg_group| {
-                let arg_expr = Expression::parse_operand(arg_group.tokens, &arg_group.context)?;
+                let arg_expr = Expression::parse_compound(arg_group.tokens, &arg_group.context)?;
                 arg_expr.finish()
             })
             .collect::<Result<Vec<_>, _>>();

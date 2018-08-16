@@ -254,6 +254,18 @@ fn parses_binary_op_with_fn_where_args_contain_prefix_op_and_binary_op() {
 }
 
 #[test]
+fn parses_fn_call_where_args_contain_binary_op_with_operand_in_brackets() {
+    let expr = parse_expr("b((c) - d)");
+    assert!(expr.is_function_call());
+}
+
+#[test]
+fn parses_binary_op_with_operand_in_brackets() {
+    let expr = parse_expr("(c) - d");
+    assert!(expr.is_binary_op(operators::Minus));
+}
+
+#[test]
 fn parses_fn_where_args_contains_member_access() {
     let expr = parse_expr("a((b).c)");
     assert!(expr.is_function_call());
@@ -263,4 +275,34 @@ fn parses_fn_where_args_contains_member_access() {
 fn parses_fn_where_args_contains_member_access_of_deref() {
     let expr = parse_expr("a((^b).c)");
     assert!(expr.is_function_call());
+}
+
+#[test]
+fn parses_assignment_to_member_of_deref() {
+    let expr = parse_expr("(^self).Elements := newElements");
+    assert!(expr.is_binary_op(operators::Assignment));
+
+    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    assert!(rhs.is_identifier(&node::Identifier::from("newElements")));
+
+    assert!(lhs.is_any_member());
+    let (deref, member_name) = lhs.unwrap_member();
+    assert!(deref.is_prefix_op(operators::Deref));
+    assert_eq!("Elements", member_name);
+}
+
+#[test]
+fn parses_fn_call_then_expr_on_next_line() {
+    let expr = try_parse_expr(r"a.b('hello world')
+    if x = 0 then begin end")
+        .expect("expression should parse successfully");
+
+    assert!(expr.value.is_function_call());
+
+    let next_expr = Expression::parse(expr.next_tokens, &expr.last_token)
+        .expect("second expression must parse successfully")
+        .finish()
+        .expect("second expression must parse with no trailing tokens");
+
+    assert!(next_expr.is_if());
 }

@@ -9,7 +9,7 @@ type String = record
 end
 
 type Vector = record
-  Elements: System.Pointer
+  Elements: ^System.Byte
   Length: System.Integer
 end
 
@@ -21,24 +21,24 @@ end
 
 procedure Vector_Add(self: ^Vector; p: System.Byte)
 var
-  newElements: System.Pointer
+  newElements: ^System.Byte
   i: System.Integer
 begin
   newElements := System.GetMem((^self).Length + 1)
 
-  //if (^self).Elements <> 0 then
-  begin
-    //for i := 0 to self.Length - 1 do
-      //^(newElements + i) := ^((^self).Elements + i)
+//if (^self).Elements <> 0 then
+//  begin
+//    for i := 0 to (^self).Length - 1 do
+//      ^(newElements + i) := ^((^self).Elements + i)
+//
+//
+//    System.FreeMem((^self).Elements)
+//  end
 
+//  (^self).Length := (^self).Length + 1
+//  (^self).Elements := newElements
 
-    //System.FreeMem((^self).Elements)
-  end
-
-  //(^self).Length := (^self).Length + 1
-  //(^self).Elements := newElements
-
-  //^(self.Elements + self.Length - 1) := p
+  ^(self.Elements + self.Length - 1) := p
 end
 
 function Greet(name: System.String): System.String
@@ -66,7 +66,7 @@ begin
 //  Vector_Add(vec, 12345)
 //  Vector_Add(vec, 12345)
 
-  System.WriteLn('hello world')
+  //System.WriteLn('hello world')
 
   if x = 1 then begin
     System.WriteLn('one')

@@ -74,7 +74,8 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
             writeln!(out, "{} = 0;", id)
         }
 
-        &types::DeclaredType::RawPointer => {
+        &types::DeclaredType::RawPointer |
+        &types::DeclaredType::Pointer(_) => {
             writeln!(out, "{} = NULL;", id)
         }
 
@@ -285,7 +286,7 @@ r"static void System_WriteLn(System_String ln) {{
     puts(ln);
 }}
 
-static System_Pointer System_GetMem(System_Integer bytes) {{
+static System_Byte* System_GetMem(System_Integer bytes) {{
     if (bytes > 0) {{
         return malloc((size_t) bytes);
     }} else {{
@@ -293,7 +294,7 @@ static System_Pointer System_GetMem(System_Integer bytes) {{
     }}
 }}
 
-static void System_FreeMem(System_Pointer p) {{
+static void System_FreeMem(System_Byte* p) {{
     free(p);
 }}")?;
 

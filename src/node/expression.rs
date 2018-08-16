@@ -199,6 +199,13 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
+    pub fn is_if(&self) -> bool {
+        match &self.value {
+            &ExpressionValue::If { ..} => true,
+            _ => false,
+        }
+    }
+
     pub fn unwrap_literal_string(self) -> String {
         match self.value {
             ExpressionValue::LiteralString(s) => s,
@@ -267,6 +274,18 @@ impl<TSymbol> Expression<TSymbol>
         match &self.value {
             &ExpressionValue::Block(_) => true,
             _ => false
+        }
+    }
+}
+
+#[allow(dead_code)]
+impl<TSymbol> Expression<TSymbol>
+    where TSymbol: PartialEq
+{
+    pub fn is_identifier(&self, id: &TSymbol) -> bool {
+        match &self.value {
+            &ExpressionValue::Identifier(ref expr_id) => expr_id == id,
+            _ => false,
         }
     }
 }
