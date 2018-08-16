@@ -12,6 +12,7 @@ use ProgramModule;
 mod writer;
 
 const HEADER: &str = include_str!("header.h");
+const RT: &str = include_str!("rt.h");
 
 pub fn pas_to_c(module: &ProgramModule,
                 out_path: &Path) -> Result<(), CompileError> {

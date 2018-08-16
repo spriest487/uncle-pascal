@@ -2,19 +2,36 @@ unit System
 
 interface
 
+type
+    String = class
+        Chars: ^Byte
+        Length: Integer
+    end
+
 constructor StringCreate: String
 begin
     result.Chars := nil
     result.Length := 0
 end
 
-constructor StringFromBytes(bytes: ^System.Byte; len: System.Integer): String
+constructor StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
     result.Chars := GetMem(len)
     result.Length := len
 
     for let c := 0 to result.Length do
         ^(result.Chars + c) := ^(bytes + c)
+end
+
+destructor DestroyString(string: String)
+begin
+    if string.Length <> 0 then
+    begin
+        FreeMem(string.Chars)
+
+        string.Chars := nil
+        string.Length := 0
+    end
 end
 
 function StringConcat(a: String; b: String): String

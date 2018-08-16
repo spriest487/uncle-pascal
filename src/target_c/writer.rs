@@ -19,7 +19,7 @@ use types::{
     Symbol,
 };
 use ProgramModule;
-use super::HEADER;
+use super::{HEADER, RT};
 
 pub fn type_to_c(pascal_type: &DeclaredType) -> String {
     match pascal_type {
@@ -656,6 +656,8 @@ pub fn write_c(module: &ProgramModule)
 
     writeln!(output, "  return 0;")?;
     writeln!(output, "}}")?;
+
+    output.write_str(RT)?;
 
     Ok(output)
 }
