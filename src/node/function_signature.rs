@@ -6,10 +6,17 @@ use node::{
     FunctionArgModifier,
 };
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct ExternalName {
+    pub shared_lib: Option<String>,
+    pub symbol_name: Option<String>,
+}
+
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum FunctionModifier {
     Cdecl,
     Stdcall,
+    External(ExternalName),
 }
 
 impl ToSource for FunctionModifier {
@@ -17,6 +24,18 @@ impl ToSource for FunctionModifier {
         match self {
             FunctionModifier::Cdecl => "cdecl".to_string(),
             FunctionModifier::Stdcall => "stdcall".to_string(),
+            FunctionModifier::External(ExternalName { shared_lib, symbol_name }) => {
+                let mut parts = vec!["external".to_string()];
+
+                if let Some(shared_lib) = shared_lib {
+                    parts.push(format!("'{}'", shared_lib));
+                }
+                if let Some(name) = symbol_name {
+                    parts.push(format!("name '{}'", name))
+                }
+
+                parts.join(" ")
+            }
         }
     }
 }

@@ -115,6 +115,49 @@ impl Parse for Function {
     }
 }
 
+impl Parse for node::ExternalName {
+    fn parse(tokens: &mut TokenStream) -> Result<Self, ParseError> {
+        tokens.match_one(tokens::Identifier("external".to_string()))?;
+
+        let name_or_lib_str = tokens::Identifier("name".to_string())
+            .or(Matcher::AnyLiteralString);
+
+        let lib_name = match tokens.look_ahead().match_one(name_or_lib_str) {
+            Some(ref t) if t.is_any_literal_string() => {
+                // found a shared lib name
+                Some(t.unwrap_literal_string().to_string())
+            }
+            Some(_) => {
+                // found symbol name part, but no shared lib part
+                tokens.advance(1);
+                None
+            },
+            None => {
+                // something else, this `external` modifier has neither part
+                return Ok(node::ExternalName {
+                    symbol_name: None,
+                    shared_lib: None
+                });
+            }
+        };
+
+        let sym_name = match tokens.look_ahead().match_one(Matcher::AnyLiteralString) {
+            Some(name_token) => {
+                tokens.advance(1);
+                Some(name_token.unwrap_literal_string().to_string())
+            }
+            None => {
+                None
+            },
+        };
+
+        Ok(node::ExternalName {
+            symbol_name: sym_name,
+            shared_lib: lib_name,
+        })
+    }
+}
+
 impl FunctionDecl {
     pub fn match_any_function_keyword() -> matcher::Matcher {
         keywords::Function
@@ -138,7 +181,12 @@ impl FunctionDecl {
                     } else if mod_tokens[1].is_identifier("stdcall") {
                         modifiers.push(node::FunctionModifier::Stdcall);
                         tokens.advance(mod_tokens.len());
-                    } else {
+                    } else if mod_tokens[1].is_identifier("external") {
+                        tokens.advance(1);
+                        let external_name: node::ExternalName = tokens.parse()?;
+                        modifiers.push(node::FunctionModifier::External(external_name));
+                    }
+                    else {
                         break Ok(modifiers);
                     }
                 }

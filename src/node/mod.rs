@@ -162,6 +162,19 @@ pub struct FunctionDecl<TContext>
     pub args: Vec<FunctionArg<TContext>>,
 }
 
+impl<TContext> FunctionDecl<TContext>
+    where TContext: Context
+{
+    pub fn external_name(&self) -> Option<&ExternalName> {
+        self.modifiers.iter()
+            .filter_map(|modifier| match modifier {
+                FunctionModifier::External(name) => Some(name),
+                _ => None,
+            })
+            .next()
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum FunctionLocalDecl<TContext>
     where TContext: Context,
