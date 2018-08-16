@@ -82,7 +82,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
 pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                   -> fmt::Result {
     match &expr.value {
-        &node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+        node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let c_op = match op {
                 operators::Assignment => "=",
                 operators::Equals => "==",
@@ -99,13 +99,13 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 //            println!("  BINARY RHS: {:?}", rhs);
 
             write!(out, "(")?;
-            write_expr(out, lhs)?;
+            write_expr(out, lhs.as_ref())?;
             write!(out, " {} ", c_op)?;
-            write_expr(out, rhs)?;
+            write_expr(out, rhs.as_ref())?;
             write!(out, ")")
         }
 
-        &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+        node::ExpressionValue::PrefixOperator { op, rhs } => {
             let c_op = match op {
                 &operators::Plus => "+",
                 &operators::Minus => "-",
@@ -126,7 +126,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, ")")
         }
 
-        &node::ExpressionValue::FunctionCall { ref target, ref args } => {
+        node::ExpressionValue::FunctionCall { target, args } => {
             let args_str = args.iter()
                 .map(|arg_expr| -> Result<String, fmt::Error> {
                     let mut expr_out = String::new();
@@ -351,6 +351,12 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     assert!(record_decl.members.len() > 0, "structs must have at least one member");
 
     writeln!(out, "struct {} {{", identifier_to_c(&record_decl.name))?;
+
+    if record_decl.kind == types::RecordKind::Class {
+        //class instances have a pointer to their class (filled in on construction by the runtime)
+        writeln!(out, "System_Internal_Class* Class;")?;
+    }
+
     for member in record_decl.members.iter() {
         writeln!(out, "{} {};",
                  type_to_c(&member.decl_type),
@@ -440,6 +446,27 @@ pub fn write_decl(out: &mut String, decl: &semantic::UnitDeclaration) -> fmt::Re
     }
 }
 
+pub fn write_static_init<'a>(out: &mut String,
+                             decls: impl IntoIterator<Item=&'a semantic::UnitDeclaration>)
+                             -> fmt::Result {
+    let classes = decls.into_iter()
+        .filter_map(|decl| {
+            match decl {
+                node::UnitDeclaration::Record(record)
+                if record.kind == types::RecordKind::Class => Some(record),
+
+                _ => None,
+            }
+        });
+
+    for class in classes {
+        let class: &semantic::RecordDecl = class;
+        writeln!(out, "System_Internal_InitClass(\"{}\");", class.name)?;
+    }
+
+    Ok(())
+}
+
 pub fn write_c(module: &ProgramModule)
                -> Result<String, fmt::Error> {
     let mut output = String::new();
@@ -481,6 +508,12 @@ pub fn write_c(module: &ProgramModule)
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
 
     default_initialize_vars(&mut output, var_decls.iter().cloned())?;
+
+    for unit in module.units.iter() {
+        write_static_init(&mut output, unit.interface.iter())?;
+        write_static_init(&mut output, unit.implementation.iter())?;
+    }
+    write_static_init(&mut output, module.program.decls.iter())?;
 
     write_block(&mut output, &module.program.program_block)?;
     release_vars(&mut output, var_decls)?;

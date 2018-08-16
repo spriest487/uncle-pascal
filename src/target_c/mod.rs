@@ -39,12 +39,17 @@ pub fn pas_to_c(module: &ProgramModule,
 }
 
 fn invoke_clang<'a>(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
-    let mut clang = process::Command::new("clang");
+    let mut clang = process::Command::new("clang++");
     clang.arg("-Wno-parentheses-equality");
     clang.arg("-Wno-non-literal-null-conversion");
+    clang.arg("-x").arg("c++");
+    clang.arg("-std=c++17");
+
+    if cfg!(target="macos") {
+        clang.arg("-stdlib=libc++");
+    }
 
     let mut clang_proc = clang
-        .arg("-x").arg("c++")
         .arg("-o").arg(out_path)
         .arg("-")
         .stdout(process::Stdio::inherit())
