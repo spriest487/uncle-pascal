@@ -189,7 +189,7 @@ impl Expression {
                     },
 
                     &operators::AddressOf => match &rhs_type {
-                        &Some(ref t) if t.addressable() =>
+                        &Some(ref t) if t.valid_lhs_type() =>
                             Ok(Some(t.clone().pointer())),
 
                         _ => invalid_op_err()

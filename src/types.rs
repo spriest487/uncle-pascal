@@ -140,7 +140,7 @@ impl DeclaredType {
         }
     }
 
-    pub fn addressable(&self) -> bool {
+    pub fn valid_lhs_type(&self) -> bool {
         match self {
             &DeclaredType::Pointer(_) |
             &DeclaredType::Byte |
@@ -151,13 +151,6 @@ impl DeclaredType {
             &DeclaredType::Boolean => true,
 
             &DeclaredType::Function(_) => false,
-        }
-    }
-
-    pub fn valid_lhs_type(&self) -> bool {
-        match self {
-            &DeclaredType::Function(_) => false,
-            _ => true,
         }
     }
 
