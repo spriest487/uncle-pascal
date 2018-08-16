@@ -256,6 +256,19 @@ pub struct BlockMatch<TToken>
     pub inner: Vec<TToken>,
 }
 
+#[derive(Clone, Debug)]
+pub struct GroupMatch<TItem> {
+    pub items: Vec<TItem>,
+    pub context: TItem,
+}
+
+#[derive(Clone, Debug)]
+pub struct GroupsMatch<TItem> {
+    pub open: TItem,
+    pub close: TItem,
+    pub groups: Vec<GroupMatch<TItem>>,
+}
+
 type BlockMatchResult<TToken> = Result<ParseOutput<TToken, BlockMatch<TToken>>, ParseError<TToken>>;
 type BlockMatchPeekResult<TToken> = Result<ParseOutput<TToken, Option<BlockMatch<TToken>>>, ParseError<TToken>>;
 
@@ -380,7 +393,7 @@ impl BlockMatcher {
                         separator_matcher: &Matcher,
                         in_tokens: TIter,
                         context: &TIter::Item)
-                        -> ParseResult<Vec<Vec<TIter::Item>>, TIter::Item>
+                        -> ParseResult<GroupsMatch<TIter::Item>, TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static,
     {
@@ -389,10 +402,13 @@ impl BlockMatcher {
 
         //the groups are found in the inner tokens of the outer block
         let mut group_tokens: Box<Iterator<Item=TIter::Item>> = Box::new(outer_block.value.inner.into_iter());
-        let mut group_last_token = outer_block.value.open;
+        let mut group_last_token = outer_block.value.open.clone();
 
         let mut groups = Vec::new();
-        let mut next_group = Vec::new();
+        let mut next_group = GroupMatch {
+            context: group_last_token.clone(),
+            items: Vec::new(),
+        };
 
         loop {
             let mut peek_group_tokens = group_tokens.peekable();
@@ -400,7 +416,7 @@ impl BlockMatcher {
             match peek_group_tokens.peek().cloned() {
                 /* ran out of inner tokens, this is the last group */
                 None => {
-                    if next_group.len() > 0 {
+                    if next_group.items.len() > 0 {
                         groups.push(next_group);
                     }
 
@@ -413,21 +429,24 @@ impl BlockMatcher {
                         let inner_block = self.match_block(peek_group_tokens,
                                                                     &group_last_token)?;
 
-                        next_group.push(inner_block.value.open.clone());
-                        next_group.extend(inner_block.value.inner);
-                        next_group.push(inner_block.value.close.clone());
+                        next_group.items.push(inner_block.value.open.clone());
+                        next_group.items.extend(inner_block.value.inner);
+                        next_group.items.push(inner_block.value.close.clone());
 
                         group_tokens = inner_block.next_tokens;
                         group_last_token = inner_block.value.close;
                     } else {
                         if separator_matcher.is_match(&next_token) {
                             //finish the group
-                            if next_group.len() > 0 {
+                            if next_group.items.len() > 0 {
                                 groups.push(next_group);
-                                next_group = Vec::new();
+                                next_group = GroupMatch {
+                                    items: Vec::new(),
+                                    context: group_last_token.clone(),
+                                };
                             }
                         } else {
-                            next_group.push(next_token.clone());
+                            next_group.items.push(next_token.clone());
                         }
 
                         //skip 1 because we already peeked this value
@@ -438,7 +457,13 @@ impl BlockMatcher {
             }
         }
 
-        Ok(ParseOutput::new(groups, outer_block.last_token, outer_block.next_tokens))
+        let groups_match = GroupsMatch {
+            open: outer_block.value.open,
+            close: outer_block.value.close,
+            groups,
+        };
+
+        Ok(ParseOutput::new(groups_match, outer_block.last_token, outer_block.next_tokens))
     }
 }
 

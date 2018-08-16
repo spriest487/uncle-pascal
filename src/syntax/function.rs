@@ -29,27 +29,21 @@ impl Function {
                     .match_groups(&Matcher::Exact(tokens::Comma),
                                   open_args.next_tokens,
                                   &open_args.last_token)?
+                    .map(|groups_match| groups_match.groups)
             }
-            None => ParseOutput::new(Vec::new(),
-                                     open_args.last_token.clone(),
-                                     open_args.next_tokens)
+            None => {
+                ParseOutput::new(Vec::new(),
+                                 open_args.last_token.clone(),
+                                 open_args.next_tokens)
+            }
         };
 
-        //TODO: context is bad here
-        let args_context = open_args.last_token;
         let args = arg_groups.value.into_iter()
             .map(|arg_tokens| {
-                let context = arg_tokens.get(0)
-                    .cloned()
-                    .ok_or_else(|| {
-                        ParseError::UnexpectedEOF(Matcher::AnyIdentifier,
-                                                  args_context.clone())
-                    })?;
-
                 let fn_arg = Matcher::AnyIdentifier
                     .and_then(Matcher::Exact(tokens::Colon))
                     .and_then(Matcher::AnyIdentifier)
-                    .match_sequence(arg_tokens, &context)?;
+                    .match_sequence(arg_tokens.items, &arg_tokens.context)?;
 
                 let name = String::from(fn_arg.value[0].unwrap_identifier());
                 let decl_type = node::Identifier::parse(fn_arg.value[2].unwrap_identifier());

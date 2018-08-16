@@ -58,7 +58,9 @@ pub struct ParseOutput<TToken, TValue> {
     pub next_tokens: Box<Iterator<Item=TToken>>,
 }
 
-impl<TToken, TValue> ParseOutput<TToken, TValue> {
+impl<TToken, TValue> ParseOutput<TToken, TValue>
+    where TToken: 'static
+{
     pub fn new<TNext>(value: TValue, last_token: TToken, next_tokens: TNext) -> Self
         where TNext: IntoIterator<Item=TToken> + 'static
     {
@@ -75,6 +77,14 @@ impl<TToken, TValue> ParseOutput<TToken, TValue> {
             Some(token) => Err(ParseError::UnexpectedToken(token, None)),
             None => Ok(self.value)
         }
+    }
+
+    pub fn map<TFn, TOut>(self, mut f: TFn) -> ParseOutput<TToken, TOut>
+        where TFn: FnMut(TValue) -> TOut
+    {
+        let mapped = f(self.value);
+
+        ParseOutput::new(mapped, self.last_token, self.next_tokens)
     }
 }
 
