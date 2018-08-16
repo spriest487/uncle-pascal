@@ -192,6 +192,16 @@ impl Matcher {
 
         Ok(ParseOutput::new(tokens_until, last_context, peekable_tokens))
     }
+
+    pub fn match_list(&self,
+                      inner_list_delimiter: &BlockMatcher,
+                      in_tokens: TIter, context: &TIter::Item)
+                      -> ParseResult<Vec<Vec<TIter::Item>>, TIter::Item>
+        where TIter: IntoIterator + 'static,
+              TIter::Item: tokens::AsToken + 'static,
+    {
+        unimplemented!()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -248,7 +258,7 @@ impl SequenceMatcher {
 }
 
 #[derive(Clone, Debug)]
-pub struct PairMatch<TToken>
+pub struct BlockMatch<TToken>
     where TToken: Clone + fmt::Debug
 {
     pub open: TToken,
@@ -256,8 +266,8 @@ pub struct PairMatch<TToken>
     pub inner: Vec<TToken>,
 }
 
-type PairMatchResult<TToken> = Result<ParseOutput<TToken, PairMatch<TToken>>, ParseError<TToken>>;
-type PairMatchPeekResult<TToken> = Result<ParseOutput<TToken, Option<PairMatch<TToken>>>, ParseError<TToken>>;
+type BlockMatchResult<TToken> = Result<ParseOutput<TToken, BlockMatch<TToken>>, ParseError<TToken>>;
+type BlockMatchPeekResult<TToken> = Result<ParseOutput<TToken, Option<BlockMatch<TToken>>>, ParseError<TToken>>;
 
 #[derive(Clone, Debug)]
 pub struct BlockMatcher {
@@ -267,7 +277,7 @@ pub struct BlockMatcher {
 
 impl BlockMatcher {
     pub fn match_block_peek<TIter>(&self, in_tokens: TIter, context: &TIter::Item)
-                                   -> PairMatchPeekResult<TIter::Item>
+                                   -> BlockMatchPeekResult<TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
@@ -318,7 +328,7 @@ impl BlockMatcher {
 
         match final_close_token {
             Some(close_token) => {
-                let matched_block: PairMatch<TIter::Item> = PairMatch {
+                let matched_block: BlockMatch<TIter::Item> = BlockMatch {
                     open: open_token.value.unwrap(),
                     close: close_token.clone(),
                     inner: inner_tokens,
@@ -332,7 +342,7 @@ impl BlockMatcher {
         }
     }
 
-    pub fn match_block<TIter>(&self, in_tokens: TIter, context: &TIter::Item) -> PairMatchResult<TIter::Item>
+    pub fn match_block<TIter>(&self, in_tokens: TIter, context: &TIter::Item) -> BlockMatchResult<TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
@@ -353,7 +363,7 @@ impl BlockMatcher {
                     open_count -= 1;
 
                     if open_count == 0 {
-                        let block: PairMatch<TIter::Item> = PairMatch {
+                        let block: BlockMatch<TIter::Item> = BlockMatch {
                             open: open_token.value,
                             close: close.clone(),
                             inner: inner_tokens
