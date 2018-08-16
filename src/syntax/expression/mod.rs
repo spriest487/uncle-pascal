@@ -199,6 +199,14 @@ impl Expression {
 
         {
             let mut tokens_ahead = tokens.look_ahead();
+
+            /* this is a hack because we shouldn't rule out the possibility of semicolons appearing
+            in legit expressions, and this only improves performance in the case that decls are
+            terminated with semicolons */
+            if let Some(next_semicolon_pos) = tokens_ahead.find(tokens::Semicolon) {
+                tokens_ahead = tokens_ahead.limit(next_semicolon_pos);
+            }
+
             let parts = tokens_ahead.match_groups_inner(tokens::BracketLeft,
                                                         tokens::BracketRight,
                                                         Matcher::AnyOperator);

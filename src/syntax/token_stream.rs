@@ -418,6 +418,7 @@ pub trait Parse where Self: Sized {
 pub struct LookAheadTokenStream<'tokens> {
     tokens: &'tokens mut TokenStream,
     pos: usize,
+    limit: Option<usize>,
 }
 
 impl<'tokens> LookAheadTokenStream<'tokens> {
@@ -425,7 +426,13 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
         Self {
             tokens,
             pos: 0,
+            limit: None,
         }
+    }
+
+    pub fn limit(mut self, limit: usize) -> Self {
+        self.limit = Some(limit);
+        self
     }
 
     pub fn context(&self) -> &source::Token {
@@ -445,6 +452,29 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
                 false => None
             }
         })
+    }
+
+    pub fn find(&mut self, matcher: impl Into<Matcher>) -> Option<usize> {
+        let matcher = matcher.into();
+
+        let mut offset = 0;
+        let result = loop {
+            match self.next() {
+                Some(next) => {
+                    offset += 1;
+                    if matcher.is_match(&next) {
+                        break Some(offset - 1);
+                    }
+                }
+
+                None => {
+                    break None
+                },
+            }
+        };
+
+        self.pos -= offset;
+        result
     }
 
     pub fn match_sequence(&mut self,
@@ -622,6 +652,12 @@ impl<'tokens> Iterator for LookAheadTokenStream<'tokens> {
     type Item = source::Token;
 
     fn next(&mut self) -> Option<source::Token> {
+        if let Some(limit) = self.limit {
+            if self.pos >= limit {
+                return None;
+            }
+        }
+
         let next = if self.pos < self.tokens.lookahead_buffer.len() {
             self.tokens.lookahead_buffer.get(self.pos).cloned()
         } else {
