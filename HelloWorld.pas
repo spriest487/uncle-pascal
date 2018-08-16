@@ -24,19 +24,19 @@ var
   newElements: System.Pointer
   i: System.Integer
 begin
-  newElements := System.GetMem(self.Length + 1)
+  newElements := System.GetMem((^self).Length + 1)
 
-  if self.Elements <> 0 then
+  if (^self).Elements <> 0 then
   begin
     for i := 0 to self.Length - 1 do
-      ^(newElements + i) := ^(self.Elements + i)
+      ^(newElements + i) := ^((^self).Elements + i)
 
 
-    System.FreeMem(self.Elements)
+    System.FreeMem((^self).Elements)
   end
 
-  self.Length := self.Length + 1
-  self.Elements := newElements
+  (^self).Length := (^self).Length + 1
+  (^self).Elements := newElements
 
   //^(self.Elements + self.Length - 1) := p
 end

@@ -7,11 +7,15 @@ use types;
 
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
-        &types::DeclaredType::Byte => identifier_to_c(&types::builtin_names::system_byte()),
-        &types::DeclaredType::Integer => identifier_to_c(&types::builtin_names::system_integer()),
-        &types::DeclaredType::String => identifier_to_c(&types::builtin_names::system_string()),
-        &types::DeclaredType::Boolean => identifier_to_c(&types::builtin_names::system_boolean()),
-        &types::DeclaredType::Pointer => identifier_to_c(&types::builtin_names::system_pointer()),
+        &types::DeclaredType::Byte => "System_Byte".to_owned(),
+        &types::DeclaredType::Integer => "System_Integer".to_owned(),
+        &types::DeclaredType::String => "System_String".to_owned(),
+        &types::DeclaredType::Boolean => "System_Boolean".to_owned(),
+        &types::DeclaredType::RawPointer => "System_Pointer".to_owned(),
+        &types::DeclaredType::Pointer(ref target) => {
+            let target_c = type_to_c(target.as_ref());
+            format!("{}*", target_c)
+        }
         &types::DeclaredType::Function(ref sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
             let return_type = sig.return_type.as_ref()
@@ -70,7 +74,7 @@ pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Resu
             writeln!(out, "{} = 0;", id)
         }
 
-        &types::DeclaredType::Pointer => {
+        &types::DeclaredType::RawPointer => {
             writeln!(out, "{} = NULL;", id)
         }
 
@@ -177,6 +181,11 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             write!(out, "{}", symbol_to_c(sym))
         }
 
+        &node::ExpressionValue::Member { ref of, ref name } => {
+            write_expr(out, of)?;
+            write!(out, ".{}", name)
+        }
+
         &node::ExpressionValue::Block(ref block) => {
             write_block(out, block)
         }
@@ -259,10 +268,14 @@ pub fn write_c(program: &semantic::Program)
     writeln!(output, "#include <stdlib.h>")?;
     writeln!(output, "#include <stdio.h>")?;
     writeln!(output, "#include <string.h>")?;
+    writeln!(output, "#include <stdbool.h>")?;
 
-    writeln!(output, "typedef const char* System_String;")?;
+    writeln!(output, "typedef int8_t System_Byte;")?;
     writeln!(output, "typedef int64_t System_Integer;")?;
-    writeln!(output, "typedef char* System_Pointer;")?;
+    writeln!(output, "typedef const char* System_String;")?;
+    writeln!(output, "typedef void* System_Pointer;")?;
+    writeln!(output, "typedef bool System_Boolean;")?;
+
 
     writeln!(output,
 r"static void System_WriteLn(System_String ln) {{

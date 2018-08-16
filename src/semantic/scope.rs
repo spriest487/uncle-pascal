@@ -3,6 +3,7 @@ use std::fmt;
 
 use semantic::*;
 use node;
+use types::DeclaredType;
 
 #[derive(Clone, Debug)]
 pub enum Named {
@@ -111,7 +112,7 @@ impl Default for Scope {
             .with_type("Byte".to_owned(), DeclaredType::Byte)
             .with_type("Integer".to_owned(), DeclaredType::Integer)
             .with_type("String".to_owned(), DeclaredType::String)
-            .with_type("Pointer".to_owned(), DeclaredType::Pointer)
+            .with_type("Pointer".to_owned(), DeclaredType::RawPointer)
             .with_type("Boolean".to_owned(), DeclaredType::Boolean)
             .with_symbol("WriteLn".to_owned(),
                          DeclaredType::from(FunctionSignature {
@@ -123,12 +124,12 @@ impl Default for Scope {
                          DeclaredType::from(FunctionSignature {
                              name: "GetMem".to_owned(),
                              arg_types: vec![DeclaredType::Integer],
-                             return_type: Some(DeclaredType::Pointer),
+                             return_type: Some(DeclaredType::Byte.pointer()),
                          }))
             .with_symbol("FreeMem".to_owned(),
                          DeclaredType::from(FunctionSignature {
                              name: "FreeMem".to_owned(),
-                             arg_types: vec![DeclaredType::Pointer],
+                             arg_types: vec![DeclaredType::Byte.pointer()],
                              return_type: None,
                          }));
 

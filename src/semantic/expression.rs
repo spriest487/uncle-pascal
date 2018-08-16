@@ -4,6 +4,7 @@ use node;
 use operators;
 use types;
 use source;
+use types::DeclaredType;
 
 pub type Expression = node::Expression<ScopedSymbol>;
 
@@ -12,7 +13,8 @@ fn expect_assignable(target: Option<DeclaredType>,
                      context: &source::Token) -> Result<(), SemanticError> {
     match (target, actual) {
         //TODO: this just allows all int->ptr conversions which is bad
-        (Some(DeclaredType::Pointer), Some(DeclaredType::Integer)) => Ok(()),
+        (Some(DeclaredType::RawPointer), Some(DeclaredType::Integer)) => Ok(()),
+        (Some(DeclaredType::Pointer(_)), Some(DeclaredType::Integer)) => Ok(()),
 
         (ref x, ref y) if x == y => Ok(()),
 
@@ -103,6 +105,11 @@ impl Expression {
 
                 Ok(Expression::function_call(target_symbol, typed_args, expr.context.clone()))
             }
+
+            &node::ExpressionValue::Member { ref of, ref name } => {
+                let typed_of = Expression::annotate(of, scope)?;
+                Ok(Expression::member(typed_of, name, expr.context.clone()))
+            }
         }
     }
 
@@ -121,7 +128,7 @@ impl Expression {
             &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
                 match op {
                     &operators::Deref => match rhs.expr_type() {
-                        Some(DeclaredType::Pointer) => Some(DeclaredType::Byte),
+                        Some(DeclaredType::Pointer(pointed_to)) => Some(*pointed_to),
                         _ => panic!("operand of deref `{:?}` wasn't a pointer", rhs),
                     },
 
@@ -180,8 +187,9 @@ impl Expression {
                                                         self.context.clone()));
 
                 match op {
+                    /* can deref typed pointers only */
                     &operators::Deref => match rhs_type {
-                        Some(DeclaredType::Pointer) => Ok(()),
+                        Some(DeclaredType::Pointer(_)) => Ok(()),
                         _ => invalid_op_err(),
                     },
 

@@ -157,6 +157,10 @@ pub enum ExpressionValue<TSymbol> {
     LiteralInteger(i64),
     LiteralString(String),
     Identifier(TSymbol),
+    Member{
+        of: Box<Expression<TSymbol>>,
+        name: String,
+    },
     If {
         condition: Box<Expression<TSymbol>>,
         then_branch: Box<Expression<TSymbol>>,
@@ -244,6 +248,30 @@ impl<TSymbol> Expression<TSymbol>
         Expression {
             value: ExpressionValue::Identifier(id),
             context,
+        }
+    }
+
+    pub fn member(of: Self, name: &str, context: source::Token) -> Self {
+        Expression {
+            value: ExpressionValue::Member {
+                of: Box::from(of),
+                name: name.to_owned()
+            },
+            context,
+        }
+    }
+
+    pub fn is_any_member(&self) -> bool {
+        match &self.value {
+            &ExpressionValue::Member { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn unwrap_member(self) -> (Self, String) {
+        match &self.value {
+            &ExpressionValue::Member { of, name } => (*of, name),
+            _ => panic!("called unwrap_member on {}", self),
         }
     }
 

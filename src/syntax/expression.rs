@@ -447,6 +447,10 @@ impl node::ToSource for Expression {
                 format!("({} {})", op, rhs.to_source())
             }
 
+            &node::ExpressionValue::Member { ref of, ref name } => {
+                format!("{}.{}", of, name)
+            }
+
             &node::ExpressionValue::LiteralInteger(i) => format!("{}", i),
 
             &node::ExpressionValue::LiteralString(ref s) =>
@@ -677,5 +681,22 @@ mod test {
         assert_eq!(1, cruel_args.len());
         assert!(cruel_args[0].is_any_literal_string());
         assert_eq!("world", cruel_args[0].clone().unwrap_literal_string());
+    }
+
+    #[test]
+    fn parses_single_prefix_op_in_brackets() {
+        let expr = parse_expr("(^a)");
+
+        assert!(expr.is_prefix_op(operators::Deref));
+    }
+
+    #[test]
+    fn parses_deref_struct_field() {
+        let expr = parse_expr("(^a).b");
+
+        assert!(expr.is_any_member());
+        let (base, name) = expr.unwrap_member();
+        assert!(base.is_prefix_op(operators::Deref));
+        assert_eq!("b", name);
     }
 }

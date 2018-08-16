@@ -83,7 +83,8 @@ pub enum DeclaredType {
     Boolean,
     Integer,
     String,
-    Pointer,
+    RawPointer,
+    Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
     Record(DeclaredRecord),
 }
@@ -95,7 +96,8 @@ impl fmt::Display for DeclaredType {
             &DeclaredType::Boolean => "System.Boolean".to_owned(),
             &DeclaredType::Integer => "System.Integer".to_owned(),
             &DeclaredType::String => "System.String".to_owned(),
-            &DeclaredType::Pointer => "System.Pointer".to_owned(),
+            &DeclaredType::RawPointer => "System.Pointer".to_owned(),
+            &DeclaredType::Pointer(ref target) => format!("^{}", target),
             &DeclaredType::Function(ref sig) => format!("{}", sig),
             &DeclaredType::Record(ref record) => format!("{}", record),
         })
@@ -116,34 +118,14 @@ impl DeclaredType {
             _ => panic!("called unwrap_record on {}", self)
         }
     }
+
+    pub fn pointer(self) -> DeclaredType {
+        DeclaredType::Pointer(Box::from(self))
+    }
 }
 
 impl From<FunctionSignature> for DeclaredType {
     fn from(sig: FunctionSignature) -> Self {
         DeclaredType::Function(Box::new(sig))
-    }
-}
-
-pub mod builtin_names {
-    use node::*;
-
-    pub fn system_byte() -> Identifier {
-        Identifier::parse("System.Byte")
-    }
-
-    pub fn system_boolean() -> Identifier {
-        Identifier::parse("System.Boolean")
-    }
-
-    pub fn system_integer() -> Identifier {
-        Identifier::parse("System.Integer")
-    }
-
-    pub fn system_string() -> Identifier {
-        Identifier::parse("System.String")
-    }
-
-    pub fn system_pointer() -> Identifier {
-        Identifier::parse("System.Pointer")
     }
 }

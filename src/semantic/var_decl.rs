@@ -12,10 +12,16 @@ impl Into<Symbol> for VarDecl {
 
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope) -> Result<Self, SemanticError> {
-        let var_type = scope.get_type(&decl.decl_type)
+        let base_var_type = scope.get_type(&decl.decl_type)
             .cloned()
             .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.clone(),
                                                        decl.context.clone()))?;
+
+        let var_type = if decl.modifiers.contains(&node::VarModifier::Pointer) {
+            base_var_type.pointer()
+        } else {
+            base_var_type
+        };
 
         Ok(VarDecl {
             name: decl.name.clone(),
