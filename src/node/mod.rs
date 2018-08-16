@@ -239,6 +239,40 @@ pub enum SetEnumeration {
     Inline(Vec<String>),
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecordVariantCase<TContext>
+    where TContext: Context
+{
+    pub tag_value: Expression<TContext>,
+    pub members: Vec<RecordMember<TContext>>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecordMember<TContext>
+    where TContext: Context
+{
+    pub name: String,
+    pub decl_type: TContext::Type,
+    pub context: TContext
+}
+
+/*
+    variable structure/union
+    ```
+    case tag: Int32 of
+        1: (foo: String; bar: Int32)
+        2: (baz: Boolean)
+    ```
+*/
+#[derive(Clone, Debug, PartialEq)]
+pub struct RecordVariantPart<TContext>
+    where TContext: Context
+{
+    pub tag: RecordMember<TContext>,
+    pub context: TContext,
+    pub cases: Vec<RecordVariantCase<TContext>>,
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum RecordKind {
     Record,
@@ -253,15 +287,29 @@ pub struct RecordDecl<TContext>
     pub kind: RecordKind,
 
     pub context: TContext,
-    pub members: Vec<VarDecl<TContext>>,
+    pub members: Vec<RecordMember<TContext>>,
+    pub variant_part: Option<RecordVariantPart<TContext>>,
 }
 
 impl<TContext> RecordDecl<TContext>
     where TContext: Context
 {
-    pub fn get_member(&self, name: &str) -> Option<&VarDecl<TContext>> {
+    pub fn get_member(&self, name: &str) -> Option<&RecordMember<TContext>> {
         self.members.iter()
-            .find(|member| member.name.to_string() == name)
+            .find(|member| member.name.as_str() == name)
+            .or_else(|| {
+                let variant_part = self.variant_part.as_ref()?;
+
+                let tag = self.variant_part.as_ref().map(|variant_part| &variant_part.tag)?;
+                match name == tag.name.as_str() {
+                    true => Some(tag),
+                    false => {
+                        variant_part.cases.iter()
+                            .flat_map(|case| case.members.iter())
+                            .find(|member| member.name.as_str() == name)
+                    }
+                }
+            })
     }
 }
 

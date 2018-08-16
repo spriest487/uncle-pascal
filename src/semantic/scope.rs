@@ -622,8 +622,7 @@ impl Scope {
             _ => None
         }?;
 
-        let member = record_decl.members.iter()
-            .find(|m| m.name.to_string() == *member_name)?;
+        let member = record_decl.get_member(member_name)?;
 
         Some(ScopedSymbol::RecordMember {
             record_id: parent_sym.name(),
@@ -757,6 +756,7 @@ mod test {
             members: vec![],
             name: "World".to_string(),
             kind: RecordKind::Record,
+            variant_part: None,
         };
 
         let scope = Scope::default()

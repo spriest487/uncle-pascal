@@ -705,6 +705,23 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     for member in record_decl.members.iter() {
         writeln!(out, "{} {};", type_to_c(&member.decl_type, record_decl.scope()), &member.name)?;
     }
+
+    if let Some(variant_part) = &record_decl.variant_part {
+        let tag_ctype = type_to_c(&variant_part.tag.decl_type, record_decl.scope());
+        writeln!(out, "{} {};", tag_ctype, variant_part.tag.name)?;
+        writeln!(out, "union {{")?;
+        for case in variant_part.cases.iter() {
+            //todo: this uses C11 anonymous structs which aren't valid C++
+            writeln!(out, "struct {{")?;
+            for member in case.members.iter() {
+                let member_ctype = type_to_c(&member.decl_type, record_decl.scope());
+                writeln!(out, "{} {};", member_ctype, member.name)?;
+            }
+            writeln!(out, "}};")?;
+        }
+        writeln!(out, "}};")?;
+    }
+
     writeln!(out, "}};")?;
     writeln!(out)
 }

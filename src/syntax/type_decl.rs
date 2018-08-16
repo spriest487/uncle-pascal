@@ -1,11 +1,14 @@
 use syntax::*;
-use node::{self, Identifier, RecordKind};
+use node::{self, Identifier, RecordKind, TypeName};
 use keywords;
 use tokens::{self, AsToken};
 use operators;
 
 pub type TypeDecl = node::TypeDecl<ParsedContext>;
 pub type RecordDecl = node::RecordDecl<ParsedContext>;
+pub type RecordVariantPart = node::RecordVariantPart<ParsedContext>;
+pub type RecordVariantCase = node::RecordVariantCase<ParsedContext>;
+pub type RecordMember = node::RecordMember<ParsedContext>;
 pub type EnumerationDecl = node::EnumerationDecl<ParsedContext>;
 pub type SetDecl = node::SetDecl<ParsedContext>;
 
@@ -161,6 +164,104 @@ impl SetDecl {
 }
 
 impl RecordDecl {
+    fn parse_variant_part(tokens: &mut TokenStream,
+                          terminator: impl Into<Matcher>)
+                          -> ParseResult<RecordVariantPart> {
+        let terminator = terminator.into();
+
+        let context = tokens.match_one(keywords::Case)?;
+
+        let tag_name = tokens.match_one(Matcher::AnyIdentifier)?;
+
+        tokens.match_one(tokens::Colon)?;
+
+        let tag_type = TypeName::parse(tokens)?;
+        let tag = RecordMember {
+            name: tag_name.unwrap_identifier().to_string(),
+            decl_type: tag_type,
+            context: tag_name.into(),
+        };
+
+        tokens.match_one(keywords::Of)?;
+
+        // parse variant cases
+        // todo: it's legal to nest variant cases
+        let cases = tokens.match_repeating(|case_num, tokens: &mut TokenStream| {
+            let tag_value = match case_num {
+                0 => tokens.parse()?,
+                _ => {
+                    if tokens.look_ahead().match_one(terminator.clone()).is_some() {
+                        return Ok(None);
+                    }
+
+                    tokens.match_or_endl(tokens::Semicolon)?;
+                    match Expression::parse(tokens) {
+                        Err(_) => {
+                            // no more cases
+                            return Ok(None);
+                        }
+
+                        Ok(tag_val) => tag_val,
+                    }
+                }
+            };
+
+            tokens.match_one(tokens::Colon)?;
+            tokens.match_one(tokens::BracketLeft)?;
+
+            let members = Self::parse_members(tokens, tokens::BracketRight)?;
+
+            tokens.match_one(tokens::BracketRight)?;
+            tokens.match_or_endl(tokens::Semicolon)?;
+
+            Ok(Some(RecordVariantCase {
+                tag_value,
+                members,
+            }))
+        })?;
+
+        Ok(RecordVariantPart {
+            tag,
+            context: context.into(),
+            cases,
+        })
+    }
+
+    fn parse_members(tokens: &mut TokenStream,
+                     terminator: impl Into<Matcher>)
+                     -> ParseResult<Vec<RecordMember>> {
+        let terminator = terminator.into();
+
+        /* handle empty records (which is a semantic error, but should still parse OK) */
+        if tokens.look_ahead().match_one(terminator.clone()).is_some() {
+            return Ok(Vec::new());
+        }
+
+        tokens.match_repeating(|decl_num, tokens: &mut TokenStream| {
+            let name = match decl_num {
+                0 => tokens.match_one(Matcher::AnyIdentifier)?,
+                _ => {
+                    //found terminator instead of separator, finish here
+                    if tokens.look_ahead().match_one(terminator.clone()).is_some() {
+                        return Ok(None);
+                    }
+
+                    tokens.match_or_endl(tokens::Semicolon.or(terminator.clone()))?;
+                    tokens.match_one(Matcher::AnyIdentifier)?
+                }
+            };
+
+            tokens.match_one(tokens::Colon)?;
+            let type_name = TypeName::parse(tokens)?;
+
+            Ok(Some(node::RecordMember {
+                name: name.unwrap_identifier().to_string(),
+                decl_type: type_name,
+                context: ParsedContext::from(name),
+            }))
+        })
+    }
+
     fn parse_with_name(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
         let match_kw = tokens.match_one(keywords::Record.or(keywords::Class))?;
 
@@ -170,7 +271,11 @@ impl RecordDecl {
             RecordKind::Record
         };
 
-        let members: Vec<VarDecl> = tokens.parse()?;
+        let members = Self::parse_members(tokens, keywords::End.or(keywords::Case))?;
+        let variant_part = match tokens.look_ahead().match_one(keywords::Case) {
+            Some(_) => Some(Self::parse_variant_part(tokens, keywords::End)?),
+            None => None
+        };
 
         tokens.match_one(keywords::End)?;
 
@@ -181,6 +286,7 @@ impl RecordDecl {
             kind,
             context: match_kw.clone().into(),
             members,
+            variant_part,
         })
     }
 }

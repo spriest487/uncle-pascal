@@ -277,7 +277,7 @@ impl<'a> Lexer<'a> {
         source::Token::new(token, source::Location {
             file: self.file.clone(),
             line: self.line_num,
-            col: self.col,
+            col: self.col + 1,
         })
     }
 

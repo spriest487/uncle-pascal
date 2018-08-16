@@ -5,6 +5,9 @@ use syntax;
 
 pub type TypeDecl = node::TypeDecl<SemanticContext>;
 pub type RecordDecl = node::RecordDecl<SemanticContext>;
+pub type RecordMember = node::RecordMember<SemanticContext>;
+pub type RecordVariantPart = node::RecordVariantPart<SemanticContext>;
+pub type RecordVariantCase = node::RecordVariantCase<SemanticContext>;
 pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
 pub type SetDecl = node::SetDecl<SemanticContext>;
 
@@ -44,9 +47,58 @@ impl TypeDecl {
     }
 }
 
+impl RecordMember {
+    pub fn annotate(member: &syntax::RecordMember, scope: Rc<Scope>) -> SemanticResult<Self> {
+        let context = SemanticContext {
+            token: member.context.token().clone(),
+            scope: scope.clone(),
+        };
+
+        let decl_type = member.decl_type.resolve(scope)?;
+
+        Ok(RecordMember {
+            name: member.name.clone(),
+            decl_type,
+            context,
+        })
+    }
+}
+
+impl RecordVariantPart {
+    pub fn annotate(part: &syntax::RecordVariantPart, scope: Rc<Scope>) -> SemanticResult<Self> {
+        let context = SemanticContext {
+            token: part.context.token().clone(),
+            scope: scope.clone(),
+        };
+
+        let tag = RecordMember::annotate(&part.tag, scope.clone())?;
+
+        let cases = part.cases.iter()
+            .map(|case| {
+                let tag_value = Expression::annotate(&case.tag_value, scope.clone())?;
+
+                let members = case.members.iter()
+                    .map(|case_member| RecordMember::annotate(case_member, scope.clone()))
+                    .collect::<SemanticResult<_>>()?;
+
+                Ok(RecordVariantCase {
+                    tag_value,
+                    members,
+                })
+            })
+            .collect::<SemanticResult<_>>()?;
+
+        Ok(RecordVariantPart {
+            tag,
+            cases,
+            context,
+        })
+    }
+}
+
 impl RecordDecl {
     pub fn annotate(decl: &syntax::RecordDecl,
-                    scope: Rc<Scope>) -> Result<Self, SemanticError> {
+                    scope: Rc<Scope>) -> SemanticResult<Self> {
         let context = SemanticContext {
             token: decl.context.token().clone(),
             scope: scope.clone(),
@@ -57,15 +109,21 @@ impl RecordDecl {
         } else {
             let members = decl.members.iter()
                 .map(|member| {
-                    VarDecl::annotate(member, scope.clone())
+                    RecordMember::annotate(member, scope.clone())
                 })
                 .collect::<Result<_, _>>()?;
+
+            let variant_part = match &decl.variant_part {
+                Some(part) => Some(RecordVariantPart::annotate(part, scope)?),
+                None => None,
+            };
 
             Ok(RecordDecl {
                 name: decl.name.clone(),
                 kind: decl.kind,
                 context,
                 members,
+                variant_part,
             })
         }
     }
