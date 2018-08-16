@@ -17,7 +17,7 @@ use node::{
 };
 use types::{
     DeclaredRecord,
-    DeclaredType,
+    Type,
     RecordKind,
     FunctionSignature,
     Symbol,
@@ -25,23 +25,23 @@ use types::{
 use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
 
-pub fn type_to_c(pascal_type: &DeclaredType) -> String {
+pub fn type_to_c(pascal_type: &Type) -> String {
     match pascal_type {
-        DeclaredType::Nil => panic!("cannot output `nil` as a type in C"),
-        DeclaredType::Byte => "System_Byte".to_owned(),
-        DeclaredType::Int32 => "System_Int32".to_owned(),
-        DeclaredType::UInt32 => "System_UInt32".to_owned(),
-        DeclaredType::Int64 => "System_Int64".to_owned(),
-        DeclaredType::UInt64 => "System_UInt64".to_owned(),
-        DeclaredType::NativeInt => "System_NativeInt".to_owned(),
-        DeclaredType::NativeUInt => "System_NativeUInt".to_owned(),
-        DeclaredType::Boolean => "System_Boolean".to_owned(),
-        DeclaredType::RawPointer => "System_Pointer".to_owned(),
-        DeclaredType::Pointer(target) => {
+        Type::Nil => panic!("cannot output `nil` as a type in C"),
+        Type::Byte => "System_Byte".to_owned(),
+        Type::Int32 => "System_Int32".to_owned(),
+        Type::UInt32 => "System_UInt32".to_owned(),
+        Type::Int64 => "System_Int64".to_owned(),
+        Type::UInt64 => "System_UInt64".to_owned(),
+        Type::NativeInt => "System_NativeInt".to_owned(),
+        Type::NativeUInt => "System_NativeUInt".to_owned(),
+        Type::Boolean => "System_Boolean".to_owned(),
+        Type::RawPointer => "System_Pointer".to_owned(),
+        Type::Pointer(target) => {
             let target_c = type_to_c(target.as_ref());
             format!("{}*", target_c)
         }
-        DeclaredType::Function(sig) => {
+        Type::Function(sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
             let return_type = sig.return_type.as_ref().map(type_to_c)
                 .unwrap_or_else(|| "void".to_owned());
@@ -52,14 +52,14 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
 
             format!("({} (*{})({}))", return_type, name, arg_types)
         }
-        DeclaredType::Record(decl) => {
+        Type::Record(decl) => {
             match decl.kind {
                 RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
                 RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
             }
         }
 
-        DeclaredType::Array(array) => {
+        Type::Array(array) => {
             let element_name = type_to_c(array.element.as_ref());
             let element_count = array.total_elements();
 
@@ -91,8 +91,8 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
     let id = identifier_to_c(&target.name);
 
     match &target.decl_type {
-        DeclaredType::Array(_) |
-        DeclaredType::Record(_) => {
+        Type::Array(_) |
+        Type::Record(_) => {
             /* zero initializing works for both record instances and RCd classes */
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }
@@ -101,8 +101,8 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
             writeln!(out, "{} = 0;", id)
         }
 
-        DeclaredType::RawPointer |
-        DeclaredType::Pointer(_) => {
+        Type::RawPointer |
+        Type::Pointer(_) => {
             writeln!(out, "{} = nullptr;", id)
         }
 
@@ -199,7 +199,7 @@ pub fn write_expr(out: &mut String,
         }
 
         ExpressionValue::LiteralInteger(i) => {
-            write!(out, "(({}) {})", type_to_c(&DeclaredType::Int64), i)
+            write!(out, "(({}) {})", type_to_c(&Type::Int64), i)
         }
 
         ExpressionValue::LiteralString(s) => {
@@ -257,14 +257,14 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::Member { ref of, ref name } => {
             let mut member_out = String::new();
             //panic!("of: {:?}, name: {}", of, name);
-            let mut of_type: DeclaredType = of.expr_type()
+            let mut of_type: Type = of.expr_type()
                 .unwrap()
                 .expect("target of member expression must exist");
 
             let mut deref_levels = 0;
             loop {
                 match of_type {
-                    DeclaredType::Pointer(of_target) => {
+                    Type::Pointer(of_target) => {
                         write!(member_out, "(*")?;
                         deref_levels += 1;
                         of_type = *of_target;
@@ -282,7 +282,7 @@ pub fn write_expr(out: &mut String,
             }
 
             match &of_type {
-                DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
+                Type::Record(decl) if decl.kind == RecordKind::Class => {
                     write!(member_out, "->{}", name)?;
                 }
                 _ => {
@@ -313,7 +313,7 @@ pub fn write_block(out: &mut String,
     // release all references
     for stmt in block.statements.iter() {
         if let ExpressionValue::LetBinding { name, value } = &stmt.value {
-            if let DeclaredType::Record(decl) = value.expr_type().unwrap().unwrap() {
+            if let Type::Record(decl) = value.expr_type().unwrap().unwrap() {
                 if decl.kind == RecordKind::Class {
                     writeln!(out, "System_Internal_Rc_Release({});", name)?;
                 }
@@ -333,7 +333,7 @@ fn write_statement(out: &mut String,
     let stmt_after_let = match statement.clone() {
         // if it's a let-binding, declare the variable and turn it into a assignment
         semantic::Expression { value: ExpressionValue::LetBinding { name, value }, context } => {
-            let binding_type: DeclaredType = value.expr_type()
+            let binding_type: Type = value.expr_type()
                 .expect("let binding target must be a valid type")
                 .expect("let binding type must not be None");
             writeln!(out, "{} {};", type_to_c(&binding_type), name)?;
@@ -370,13 +370,13 @@ fn write_statement(out: &mut String,
 
         // calling a function...
         let call_sig: FunctionSignature = match call_target.expr_type() {
-            Ok(Some(DeclaredType::Function(sig))) => *sig,
+            Ok(Some(Type::Function(sig))) => *sig,
             _ => return subexpr,
         };
 
         // returning an instance of an rc class..
         let class_decl = match call_sig.return_type {
-            Some(DeclaredType::Record(
+            Some(Type::Record(
                      class_decl @ DeclaredRecord { kind: RecordKind::Class, .. })) =>
                 class_decl,
 
@@ -388,7 +388,7 @@ fn write_statement(out: &mut String,
 
         let binding_sym = semantic::ScopedSymbol::Local {
             name: Identifier::from(&name),
-            decl_type: DeclaredType::Record(class_decl),
+            decl_type: Type::Record(class_decl),
         };
         let binding_context = subexpr.context.clone();
 
@@ -474,7 +474,7 @@ pub fn release_vars<'a>(out: &mut String,
                         -> fmt::Result {
     for decl in vars {
         match &decl.decl_type {
-            DeclaredType::Record(record) if record.kind == RecordKind::Class => {
+            Type::Record(record) if record.kind == RecordKind::Class => {
                 writeln!(out, "System_Internal_Rc_Release({});", decl.name)?;
             }
             _ => {}
@@ -544,7 +544,7 @@ pub fn write_function(out: &mut String,
             if function.kind == FunctionKind::Constructor {
                 //the actual return type is an Rc, but we need to pass the class type to sizeof
                 let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
-                    DeclaredType::Record(decl) if decl.kind == RecordKind::Class => {
+                    Type::Record(decl) if decl.kind == RecordKind::Class => {
                         identifier_to_c(&decl.name)
                     }
                     _ => panic!("constructor must return a class type"),
@@ -558,7 +558,7 @@ pub fn write_function(out: &mut String,
 
             let rc_args: Vec<_> = function.args.decls.iter()
                 .filter_map(|arg| {
-                    if let DeclaredType::Record(record) = &arg.decl_type {
+                    if let Type::Record(record) = &arg.decl_type {
                         if record.kind == RecordKind::Class {
                             return Some(arg);
                         }

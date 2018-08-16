@@ -31,26 +31,26 @@ pub enum SemanticErrorKind {
     UnknownType(TypeName),
     UnknownSymbol(Identifier),
     UnexpectedType {
-        expected: Option<DeclaredType>,
-        actual: Option<DeclaredType>,
+        expected: Option<Type>,
+        actual: Option<Type>,
     },
-    InvalidFunctionType(Option<DeclaredType>),
-    InvalidConstructorType(Option<DeclaredType>),
-    InvalidDestructorReturn(DeclaredType),
-    InvalidDestructorArgs(Vec<DeclaredType>),
+    InvalidFunctionType(Option<Type>),
+    InvalidConstructorType(Option<Type>),
+    InvalidDestructorReturn(Type),
+    InvalidDestructorArgs(Vec<Type>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
     },
-    MemberAccessOfNonRecord(Option<DeclaredType>, String),
+    MemberAccessOfNonRecord(Option<Type>, String),
     IllegalName(String),
     EmptyRecord(Identifier),
     InvalidOperator {
         op: operators::Operator,
-        args: Vec<Option<DeclaredType>>,
+        args: Vec<Option<Type>>,
     },
-    TypeNotAssignable(Option<DeclaredType>),
-    TypesNotComparable(Option<DeclaredType>, Option<DeclaredType>),
+    TypeNotAssignable(Option<Type>),
+    TypesNotComparable(Option<Type>, Option<Type>),
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -127,7 +127,7 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::InvalidOperator { ref op, ref args } => {
                 let args_list = args.iter()
-                    .map(|arg| format!("`{}`", DeclaredType::name(arg.as_ref())))
+                    .map(|arg| format!("`{}`", Type::name(arg.as_ref())))
                     .collect::<Vec<_>>()
                     .join(", ");
 
@@ -136,13 +136,13 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::TypeNotAssignable(ref t) => {
                 write!(f, "type `{}` cannot be assigned to",
-                       DeclaredType::name(t.as_ref()))
+                       Type::name(t.as_ref()))
             }
 
             &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
                 write!(f, "`{}` cannot be used in comparison operations with `{}`",
-                       DeclaredType::name(a.as_ref()),
-                       DeclaredType::name(b.as_ref()))
+                       Type::name(a.as_ref()),
+                       Type::name(b.as_ref()))
             }
         }
     }
@@ -169,8 +169,8 @@ impl SemanticError {
         }
     }
 
-    pub fn unexpected_type(expected: Option<DeclaredType>,
-                           actual: Option<DeclaredType>,
+    pub fn unexpected_type(expected: Option<Type>,
+                           actual: Option<Type>,
                            context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnexpectedType { expected, actual },
@@ -192,7 +192,7 @@ impl SemanticError {
         }
     }
 
-    pub fn member_of_non_record(actual: Option<DeclaredType>,
+    pub fn member_of_non_record(actual: Option<Type>,
                                 name: String,
                                 context: source::Token) -> Self {
         SemanticError {
@@ -213,21 +213,21 @@ impl SemanticError {
         }
     }
 
-    pub fn invalid_function_type(actual: Option<DeclaredType>, context: source::Token) -> Self {
+    pub fn invalid_function_type(actual: Option<Type>, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
             context,
         }
     }
 
-    pub fn invalid_constructor_type(actual: Option<DeclaredType>, context: source::Token) -> Self {
+    pub fn invalid_constructor_type(actual: Option<Type>, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidConstructorType(actual),
             context,
         }
     }
 
-    pub fn invalid_destructor_return(return_type: DeclaredType, context: source::Token)
+    pub fn invalid_destructor_return(return_type: Type, context: source::Token)
                                      -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidDestructorReturn(return_type),
@@ -235,7 +235,7 @@ impl SemanticError {
         }
     }
 
-    pub fn invalid_destructor_args(args: impl IntoIterator<Item=DeclaredType>,
+    pub fn invalid_destructor_args(args: impl IntoIterator<Item=Type>,
                                    context: source::Token)
                                    -> SemanticError {
         SemanticError {
@@ -247,7 +247,7 @@ impl SemanticError {
     pub fn invalid_operator<TArgs>(operator: operators::Operator,
                                    args: TArgs,
                                    context: source::Token) -> SemanticError
-        where TArgs: IntoIterator<Item=Option<DeclaredType>>
+        where TArgs: IntoIterator<Item=Option<Type>>
     {
         SemanticError {
             kind: SemanticErrorKind::InvalidOperator {
@@ -258,7 +258,7 @@ impl SemanticError {
         }
     }
 
-    pub fn type_not_assignable(t: Option<DeclaredType>,
+    pub fn type_not_assignable(t: Option<Type>,
                                context: source::Token) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypeNotAssignable(t),
@@ -266,7 +266,7 @@ impl SemanticError {
         }
     }
 
-    pub fn types_not_comparable(a: Option<DeclaredType>, b: Option<DeclaredType>,
+    pub fn types_not_comparable(a: Option<Type>, b: Option<Type>,
                                 context: source::Token) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypesNotComparable(a, b),

@@ -7,8 +7,8 @@ use semantic::*;
 
 #[derive(Clone, Debug)]
 pub enum Named {
-    Type(DeclaredType),
-    Symbol(DeclaredType),
+    Type(Type),
+    Symbol(Type),
 }
 
 #[derive(Clone)]
@@ -27,7 +27,7 @@ pub enum ScopedSymbol {
     /* symbol refers to a name that is in the current scope */
     Local {
         name: Identifier,
-        decl_type: DeclaredType,
+        decl_type: Type,
     },
 
     RecordMember {
@@ -57,7 +57,7 @@ impl ScopedSymbol {
         }
     }
 
-    pub fn decl_type(&self) -> DeclaredType {
+    pub fn decl_type(&self) -> Type {
         match self {
             &ScopedSymbol::Local { ref decl_type, .. } =>
                 decl_type.clone(),
@@ -90,7 +90,7 @@ impl fmt::Display for ScopedSymbol {
 }
 
 impl node::Symbol for ScopedSymbol {
-    type Type = DeclaredType;
+    type Type = Type;
 }
 
 impl node::ToSource for ScopedSymbol {
@@ -167,34 +167,34 @@ impl Scope {
     }
 
     pub fn system() -> Self {
-        let string_type = DeclaredType::Record(DeclaredRecord {
+        let string_type = Type::Record(DeclaredRecord {
             name: Identifier::from("System.String"),
             kind: RecordKind::Class,
             members: vec![
-                Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
-                Symbol::new(Identifier::from("Length"), DeclaredType::NativeInt),
+                Symbol::new(Identifier::from("Chars"), Type::Byte.pointer()),
+                Symbol::new(Identifier::from("Length"), Type::NativeInt),
             ],
         });
 
         Scope::new()
             .with_local_namespace("System")
             /* standard primitives */
-            .with_type(Identifier::from("System.Byte"), DeclaredType::Byte)
+            .with_type(Identifier::from("System.Byte"), Type::Byte)
 //            .with_type(Identifier::from("System.Int16"), DeclaredType::Int16)
 //            .with_type(Identifier::from("System.UInt16"), DeclaredType::UInt16)
-            .with_type(Identifier::from("System.Int32"), DeclaredType::Int32)
-            .with_type(Identifier::from("System.UInt32"), DeclaredType::UInt32)
-            .with_type(Identifier::from("System.Int64"), DeclaredType::Int64)
-            .with_type(Identifier::from("System.UInt64"), DeclaredType::UInt64)
-            .with_type(Identifier::from("System.NativeInt"), DeclaredType::NativeInt)
-            .with_type(Identifier::from("System.NativeUInt"), DeclaredType::NativeUInt)
-            .with_type(Identifier::from("System.Pointer"), DeclaredType::RawPointer)
-            .with_type(Identifier::from("System.Boolean"), DeclaredType::Boolean)
+            .with_type(Identifier::from("System.Int32"), Type::Int32)
+            .with_type(Identifier::from("System.UInt32"), Type::UInt32)
+            .with_type(Identifier::from("System.Int64"), Type::Int64)
+            .with_type(Identifier::from("System.UInt64"), Type::UInt64)
+            .with_type(Identifier::from("System.NativeInt"), Type::NativeInt)
+            .with_type(Identifier::from("System.NativeUInt"), Type::NativeUInt)
+            .with_type(Identifier::from("System.Pointer"), Type::RawPointer)
+            .with_type(Identifier::from("System.Boolean"), Type::Boolean)
 
             /* these decls need to be built in to support string concatenation sugar */
             .with_type(Identifier::from("System.String"), string_type.clone())
             .with_symbol_absolute(Identifier::from("System.StringConcat"),
-                                  DeclaredType::from(FunctionSignature {
+                                  Type::from(FunctionSignature {
                                       name: Identifier::from("StringConcat"),
                                       arg_types: vec![string_type.clone(), string_type.clone()],
                                       return_type: Some(string_type.clone()),
@@ -208,19 +208,19 @@ impl Scope {
         }
     }
 
-    pub fn with_type(mut self, name: Identifier, named_type: DeclaredType) -> Self {
+    pub fn with_type(mut self, name: Identifier, named_type: Type) -> Self {
         self.names.insert(name, Named::Type(named_type));
         self
     }
 
-    pub fn with_symbol_local(mut self, name: &str, decl_type: DeclaredType) -> Self {
+    pub fn with_symbol_local(mut self, name: &str, decl_type: Type) -> Self {
         let name_id = Identifier::from(name);
         assert_eq!(0, name_id.namespace.len(), "names passed to with_symbol_local must be unqualified, but got {}", name);
         self.names.insert(name_id, Named::Symbol(decl_type));
         self
     }
 
-    pub fn with_symbol_absolute<TId>(mut self, name: TId, decl_type: DeclaredType) -> Self
+    pub fn with_symbol_absolute<TId>(mut self, name: TId, decl_type: Type) -> Self
         where TId: Into<Identifier>
     {
         self.names.insert(name.into(), Named::Symbol(decl_type));
@@ -331,19 +331,19 @@ impl Scope {
             })
     }
 
-    fn get_type_global(&self, name: &Identifier) -> Option<DeclaredType> {
+    fn get_type_global(&self, name: &Identifier) -> Option<Type> {
         match self.names.get(&name) {
             Some(Named::Type(result)) => Some(result.clone()),
             _ => None
         }
     }
 
-    fn get_type_imported(&self, name: &Identifier) -> Option<DeclaredType> {
+    fn get_type_imported(&self, name: &Identifier) -> Option<Type> {
         self.imported_names.get(name)
             .and_then(|global_name| self.get_type_global(global_name))
     }
 
-    fn find_base_type(&self, name: &Identifier) -> Option<DeclaredType> {
+    fn find_base_type(&self, name: &Identifier) -> Option<Type> {
         self.local_name.as_ref()
             .and_then(|local_name| {
                 let name_in_local_ns = local_name.append(name);
@@ -358,7 +358,7 @@ impl Scope {
             })
     }
 
-    pub fn get_type(&self, parsed_type: &TypeName) -> Option<DeclaredType> {
+    pub fn get_type(&self, parsed_type: &TypeName) -> Option<Type> {
         let mut result = self.find_base_type(&parsed_type.name)?;
 
         for _ in 0..parsed_type.indirection {
@@ -366,7 +366,7 @@ impl Scope {
         }
 
         if parsed_type.array_dimensions.len() > 0 {
-            result = DeclaredType::Array(ArrayType {
+            result = Type::Array(ArrayType {
                 element: Box::new(result),
                 first_dim: parsed_type.array_dimensions[0].clone(),
                 rest_dims: parsed_type.array_dimensions[1..].iter().cloned().collect(),
@@ -382,10 +382,10 @@ impl Scope {
         let parent_sym = self.get_symbol(&parent_id)?;
 
         let record_decl = match parent_sym.decl_type() {
-            DeclaredType::Record(record_type) =>
+            Type::Record(record_type) =>
                 Some(record_type),
 
-            DeclaredType::Pointer(ref ptr_to_record) if ptr_to_record.is_record() =>
+            Type::Pointer(ref ptr_to_record) if ptr_to_record.is_record() =>
                 Some(ptr_to_record.clone().unwrap_record()),
 
             _ => None

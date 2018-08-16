@@ -57,7 +57,7 @@ impl RecordDecl {
         }
     }
 
-    pub fn record_type(&self) -> types::DeclaredType {
+    pub fn record_type(&self) -> types::Type {
         let record = types::DeclaredRecord {
             name: self.name.clone(),
             kind: self.kind,
@@ -68,6 +68,6 @@ impl RecordDecl {
                 .collect()
         };
 
-        types::DeclaredType::Record(record)
+        types::Type::Record(record)
     }
 }

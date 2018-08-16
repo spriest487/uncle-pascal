@@ -8,7 +8,7 @@ use node::{self, Identifier, ToSource, IndexRange};
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct Symbol {
     pub name: Identifier,
-    pub decl_type: DeclaredType,
+    pub decl_type: Type,
 }
 
 impl ToSource for Symbol {
@@ -25,7 +25,7 @@ impl fmt::Display for Symbol {
 
 impl Symbol {
     pub fn new<T, TId>(name: TId, decl_type: T) -> Self
-        where T: Into<DeclaredType>,
+        where T: Into<Type>,
               TId: Into<Identifier>,
     {
         Self {
@@ -36,14 +36,14 @@ impl Symbol {
 }
 
 impl node::Symbol for Symbol {
-    type Type = DeclaredType;
+    type Type = Type;
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct FunctionSignature {
     pub name: Identifier,
-    pub return_type: Option<DeclaredType>,
-    pub arg_types: Vec<DeclaredType>,
+    pub return_type: Option<Type>,
+    pub arg_types: Vec<Type>,
 }
 
 impl fmt::Display for FunctionSignature {
@@ -101,7 +101,7 @@ impl fmt::Display for DeclaredRecord {
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct ArrayType {
-    pub element: Box<DeclaredType>,
+    pub element: Box<Type>,
     pub first_dim: IndexRange,
     pub rest_dims: Vec<IndexRange>,
 }
@@ -115,7 +115,7 @@ impl ArrayType {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub enum DeclaredType {
+pub enum Type {
     Nil,
     Byte,
     Boolean,
@@ -126,37 +126,37 @@ pub enum DeclaredType {
     NativeInt,
     NativeUInt,
     RawPointer,
-    Pointer(Box<DeclaredType>),
+    Pointer(Box<Type>),
     Function(Box<FunctionSignature>),
     Record(DeclaredRecord),
     Array(ArrayType),
 }
 
-impl ToSource for DeclaredType {
+impl ToSource for Type {
     fn to_source(&self) -> String {
-        DeclaredType::name(Some(self))
+        Type::name(Some(self))
     }
 }
 
-impl DeclaredType {
+impl Type {
     pub fn name(decl_type: Option<&Self>) -> String {
         match decl_type {
             None => "(none)".to_string(),
             Some(t) => match t {
-                DeclaredType::Nil => "nil".to_string(),
-                DeclaredType::Byte => "System.Byte".to_string(),
-                DeclaredType::Boolean => "System.Boolean".to_string(),
-                DeclaredType::Int32 => "System.Int32".to_string(),
-                DeclaredType::UInt32 => "System.UInt32".to_string(),
-                DeclaredType::Int64 => "System.Int64".to_string(),
-                DeclaredType::UInt64 => "System.UInt64".to_string(),
-                DeclaredType::NativeInt => "System.NativeInt".to_string(),
-                DeclaredType::NativeUInt => "System.NativeUInt".to_string(),
-                DeclaredType::RawPointer => "System.Pointer".to_string(),
-                DeclaredType::Pointer(target) => format!("^{}", target.to_source()),
-                DeclaredType::Function(sig) => format!("{}", sig),
-                DeclaredType::Record(record) => format!("{}", record.name),
-                DeclaredType::Array(array) => {
+                Type::Nil => "nil".to_string(),
+                Type::Byte => "System.Byte".to_string(),
+                Type::Boolean => "System.Boolean".to_string(),
+                Type::Int32 => "System.Int32".to_string(),
+                Type::UInt32 => "System.UInt32".to_string(),
+                Type::Int64 => "System.Int64".to_string(),
+                Type::UInt64 => "System.UInt64".to_string(),
+                Type::NativeInt => "System.NativeInt".to_string(),
+                Type::NativeUInt => "System.NativeUInt".to_string(),
+                Type::RawPointer => "System.Pointer".to_string(),
+                Type::Pointer(target) => format!("^{}", target.to_source()),
+                Type::Function(sig) => format!("{}", sig),
+                Type::Record(record) => format!("{}", record.name),
+                Type::Array(array) => {
                     let mut name = "array ".to_string();
                     name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));
                     for dim in array.rest_dims.iter() {
@@ -187,68 +187,68 @@ impl DeclaredType {
 
     pub fn size_of(&self) -> usize {
         match self {
-            DeclaredType::Nil |
-            DeclaredType::RawPointer |
-            DeclaredType::Pointer(_) |
-            DeclaredType::Function(_) |
-            DeclaredType::NativeInt |
-            DeclaredType::NativeUInt =>
+            Type::Nil |
+            Type::RawPointer |
+            Type::Pointer(_) |
+            Type::Function(_) |
+            Type::NativeInt |
+            Type::NativeUInt =>
                 size_of::<usize>() as usize,
 
-            DeclaredType::Int64 |
-            DeclaredType::UInt64 =>
+            Type::Int64 |
+            Type::UInt64 =>
                 8,
 
-            DeclaredType::UInt32 |
-            DeclaredType::Int32 =>
+            Type::UInt32 |
+            Type::Int32 =>
                 4,
 
-            DeclaredType::Byte =>
+            Type::Byte =>
                 1,
 
-            DeclaredType::Boolean =>
+            Type::Boolean =>
                 1,
 
-            DeclaredType::Record(rec) =>
+            Type::Record(rec) =>
                 rec.size_of(),
 
-            DeclaredType::Array(array) =>
+            Type::Array(array) =>
                 array.total_elements() as usize * array.element.size_of(),
         }
     }
 
     pub fn is_record(&self) -> bool {
         match self {
-            &DeclaredType::Record(_) => true,
+            &Type::Record(_) => true,
             _ => false,
         }
     }
 
     pub fn unwrap_record(self) -> DeclaredRecord {
         match self {
-            DeclaredType::Record(record) => record,
+            Type::Record(record) => record,
             _ => panic!("called unwrap_record on {}", self)
         }
     }
 
-    pub fn pointer(self) -> DeclaredType {
-        DeclaredType::Pointer(Box::from(self))
+    pub fn pointer(self) -> Type {
+        Type::Pointer(Box::from(self))
     }
 
     pub fn is_pointer(&self) -> bool {
         match self {
-            DeclaredType::Pointer(_) |
-            DeclaredType::RawPointer => true,
+            Type::Pointer(_) |
+            Type::RawPointer => true,
 
             _ => false,
         }
     }
 
-    pub fn remove_indirection(&self) -> &DeclaredType {
+    pub fn remove_indirection(&self) -> &Type {
         let mut next = self;
         loop {
             match next {
-                &DeclaredType::Pointer(ref target) => next = target.as_ref(),
+                &Type::Pointer(ref target) => next = target.as_ref(),
                 _ => break next
             }
         }
@@ -268,7 +268,7 @@ impl DeclaredType {
 
         loop {
             match next {
-                &DeclaredType::Pointer(ref target) => {
+                &Type::Pointer(ref target) => {
                     level += 1;
                     next = target.as_ref();
                 }
@@ -280,43 +280,43 @@ impl DeclaredType {
 
     /* if this is a typed pointer, what does it dereference to? None if this is a raw pointer
      or not a pointer */
-    pub fn deref_type(&self) -> Option<&DeclaredType> {
+    pub fn deref_type(&self) -> Option<&Type> {
         match self {
-            DeclaredType::Pointer(ptr_type) => Some(ptr_type.as_ref()),
+            Type::Pointer(ptr_type) => Some(ptr_type.as_ref()),
             _ => None,
         }
     }
 
     pub fn valid_lhs_type(&self) -> bool {
         match self {
-            DeclaredType::Pointer(_) |
-            DeclaredType::Byte |
-            DeclaredType::Record(_) |
-            DeclaredType::RawPointer |
-            DeclaredType::Int32 |
-            DeclaredType::UInt32 |
-            DeclaredType::Int64 |
-            DeclaredType::UInt64 |
-            DeclaredType::NativeInt |
-            DeclaredType::NativeUInt |
-            DeclaredType::Boolean => true,
+            Type::Pointer(_) |
+            Type::Byte |
+            Type::Record(_) |
+            Type::RawPointer |
+            Type::Int32 |
+            Type::UInt32 |
+            Type::Int64 |
+            Type::UInt64 |
+            Type::NativeInt |
+            Type::NativeUInt |
+            Type::Boolean => true,
 
-            DeclaredType::Array { .. } |
-            DeclaredType::Nil |
-            DeclaredType::Function(_) => false,
+            Type::Array { .. } |
+            Type::Nil |
+            Type::Function(_) => false,
         }
     }
 
-    pub fn assignable_from(&self, other: &DeclaredType) -> bool {
+    pub fn assignable_from(&self, other: &Type) -> bool {
         if !self.valid_lhs_type() {
             return false;
         }
 
         match (self, other) {
             // nil can be assigned to any pointer, and nothing else
-            (DeclaredType::RawPointer, DeclaredType::Nil) |
-            (DeclaredType::Pointer(_), DeclaredType::Nil) => true,
-            (_, DeclaredType::Nil) => false,
+            (Type::RawPointer, Type::Nil) |
+            (Type::Pointer(_), Type::Nil) => true,
+            (_, Type::Nil) => false,
 
             (ref a, ref b) if b.promotes_to(a) => true,
 
@@ -325,14 +325,14 @@ impl DeclaredType {
     }
 
     // can we use the + and - arithmetic operations between these two types?
-    pub fn can_offset_by(&self, other: &DeclaredType) -> bool {
+    pub fn can_offset_by(&self, other: &Type) -> bool {
         match (self, other) {
             // numbers can be offset, as long as the rhs is promotable to the lhs type
             (a, b) if a.is_numeric() && b.promotes_to(a) =>
                 true,
 
             //pointers can be offset, as long as the rhs is promotable to NativeInt
-            (ptr, off) if ptr.is_pointer() && off.promotes_to(&DeclaredType::NativeInt) =>
+            (ptr, off) if ptr.is_pointer() && off.promotes_to(&Type::NativeInt) =>
                 true,
 
             _ =>
@@ -341,31 +341,31 @@ impl DeclaredType {
     }
 
     // can we use the >, >=, <, and <= operations between these two types?
-    pub fn has_ord_comparisons(&self, other: &DeclaredType) -> bool {
+    pub fn has_ord_comparisons(&self, other: &Type) -> bool {
         self.is_numeric() && other.promotes_to(self)
     }
 
-    pub fn promotes_to(&self, other: &DeclaredType) -> bool {
+    pub fn promotes_to(&self, other: &Type) -> bool {
         match (self, other) {
             // numeric types always "promote" to themselves
-            | (a, b) if a == b && a.is_numeric()
+            (a, b) if a == b && a.is_numeric()
                 => true,
 
             // byte promotes to any larger type
-            | (DeclaredType::Byte, DeclaredType::Int32)
-            | (DeclaredType::Byte, DeclaredType::UInt32)
-            | (DeclaredType::Byte, DeclaredType::Int64)
-            | (DeclaredType::Byte, DeclaredType::UInt64)
-            | (DeclaredType::Byte, DeclaredType::NativeInt)
-            | (DeclaredType::Byte, DeclaredType::NativeUInt)
+            (Type::Byte, Type::Int32) |
+            (Type::Byte, Type::UInt32) |
+            (Type::Byte, Type::Int64) |
+            (Type::Byte, Type::UInt64) |
+            (Type::Byte, Type::NativeInt) |
+            (Type::Byte, Type::NativeUInt) |
 
             // 32-bit integers promote to any 64-bit integer
-            | (DeclaredType::UInt32, DeclaredType::Int64)
-            | (DeclaredType::UInt32, DeclaredType::UInt64)
+            (Type::UInt32, Type::Int64) |
+            (Type::UInt32, Type::UInt64) |
 
             // 32-bit integers promote to native ints with the same signedness
-            | (DeclaredType::UInt32, DeclaredType::NativeUInt)
-            | (DeclaredType::Int32, DeclaredType::NativeInt)
+            (Type::UInt32, Type::NativeUInt) |
+            (Type::Int32, Type::NativeInt)
                 => true,
 
             _ => false,
@@ -374,31 +374,31 @@ impl DeclaredType {
 
     pub fn is_numeric(&self) -> bool {
         match self {
-            DeclaredType::Int32 |
-            DeclaredType::UInt32 |
-            DeclaredType::Int64 |
-            DeclaredType::UInt64 |
-            DeclaredType::NativeInt |
-            DeclaredType::NativeUInt
+            Type::Int32 |
+            Type::UInt32 |
+            Type::Int64 |
+            Type::UInt64 |
+            Type::NativeInt |
+            Type::NativeUInt
                 => true,
-            DeclaredType::Byte => true,
+            Type::Byte => true,
             _ => false,
         }
     }
 
-    pub fn comparable_to(&self, other: &DeclaredType) -> bool {
-        let can_compare = |a: &DeclaredType, b: &DeclaredType| match (a, b) {
-            (DeclaredType::Int64, DeclaredType::Int64) |
-            (DeclaredType::Byte, DeclaredType::Byte) |
-            (DeclaredType::Boolean, DeclaredType::Boolean) |
-            (DeclaredType::RawPointer, DeclaredType::RawPointer) =>
+    pub fn comparable_to(&self, other: &Type) -> bool {
+        let can_compare = |a: &Type, b: &Type| match (a, b) {
+            (Type::Int64, Type::Int64) |
+            (Type::Byte, Type::Byte) |
+            (Type::Boolean, Type::Boolean) |
+            (Type::RawPointer, Type::RawPointer) =>
                 true,
 
-            (DeclaredType::Pointer(_), DeclaredType::Nil) |
-            (DeclaredType::RawPointer, DeclaredType::Nil) =>
+            (Type::Pointer(_), Type::Nil) |
+            (Type::RawPointer, Type::Nil) =>
                 true,
 
-            (DeclaredType::Pointer(a_target), DeclaredType::Pointer(b_target)) => {
+            (Type::Pointer(a_target), Type::Pointer(b_target)) => {
                 a_target == b_target
             }
 
@@ -409,18 +409,18 @@ impl DeclaredType {
     }
 
     pub fn function(sig: FunctionSignature) -> Self {
-        DeclaredType::Function(Box::new(sig))
+        Type::Function(Box::new(sig))
     }
 }
 
-impl fmt::Display for DeclaredType {
+impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", DeclaredType::name(Some(self)))
+        write!(f, "{}", Type::name(Some(self)))
     }
 }
 
-impl From<FunctionSignature> for DeclaredType {
+impl From<FunctionSignature> for Type {
     fn from(sig: FunctionSignature) -> Self {
-        DeclaredType::Function(Box::new(sig))
+Type::Function(Box::new(sig))
     }
 }

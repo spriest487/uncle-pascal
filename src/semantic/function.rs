@@ -1,7 +1,7 @@
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
-use types::{DeclaredType, FunctionSignature, RecordKind};
+use types::{Type, FunctionSignature, RecordKind};
 
 const RESULT_VAR_NAME: &str = "result";
 
@@ -79,21 +79,21 @@ impl Function {
         })
     }
 
-    pub fn signature_type(&self) -> DeclaredType {
+    pub fn signature_type(&self) -> Type {
         let sig = FunctionSignature {
             return_type: self.return_type.clone(),
             name: self.name.clone(),
             arg_types: self.args.decls.iter().map(|arg| arg.decl_type.clone()).collect(),
         };
 
-        DeclaredType::Function(Box::from(sig))
+        Type::Function(Box::from(sig))
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
         // make sure constructors return something constructible
         if self.kind == node::FunctionKind::Constructor {
             match self.return_type.as_ref() {
-                Some(DeclaredType::Record(decl)) if decl.kind == RecordKind::Class => {}
+                Some(Type::Record(decl)) if decl.kind == RecordKind::Class => {}
                 _ => return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
                                                                         self.context.clone()))
             }
@@ -106,9 +106,9 @@ impl Function {
                                                                     self.context.clone()));
             }
 
-            let is_valid_destructed_type = |ty: &DeclaredType| {
+            let is_valid_destructed_type = |ty: &Type| {
                 match ty {
-                    DeclaredType::Record(record) => {
+                    Type::Record(record) => {
                         let is_class = record.kind == RecordKind::Class;
                         let is_in_same_unit = record.name.namespace == self.name.namespace;
 
@@ -145,7 +145,7 @@ impl Function {
         }
 
         match self.args.decls.iter().next().map(|arg| &arg.decl_type) {
-            Some(DeclaredType::Record(arg_record)) =>
+            Some(Type::Record(arg_record)) =>
                 arg_record.name == class_type.name,
             _ =>
                 false,

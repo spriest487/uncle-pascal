@@ -5,12 +5,12 @@ use operators;
 use types;
 use source;
 use consts::IntConstant;
-use types::DeclaredType;
+use types::Type;
 
 pub type Expression = node::Expression<ScopedSymbol>;
 
 fn expect_valid_operation(operator: operators::Operator,
-                          target: Option<&DeclaredType>,
+                          target: Option<&Type>,
                           actual_expr: &Expression,
                           context: &source::Token) -> SemanticResult<()> {
     /* special case for assigning 0 to any numeric type, or assigning integers in
@@ -18,7 +18,7 @@ fn expect_valid_operation(operator: operators::Operator,
     match (operator, target, &actual_expr.value) {
         (operators::Assignment, Some(lhs_type), node::ExpressionValue::LiteralInteger(int)) =>
             if let Some(u8_val) = int.as_u8() {
-                let assigning_u8_to_byte = *lhs_type == DeclaredType::Byte;
+                let assigning_u8_to_byte = *lhs_type == Type::Byte;
                 let assigning_zero_to_num = u8_val == 0 && lhs_type.is_numeric();
 
                 if assigning_u8_to_byte || assigning_zero_to_num {
@@ -61,7 +61,7 @@ fn expect_valid_operation(operator: operators::Operator,
 
                 operators::And |
                 operators::Or =>
-                    *a == DeclaredType::Boolean && b == DeclaredType::Boolean,
+                    *a == Type::Boolean && b == Type::Boolean,
 
                 _ => false,
             };
@@ -76,8 +76,8 @@ fn expect_valid_operation(operator: operators::Operator,
     }
 }
 
-fn expect_comparable(target: Option<&DeclaredType>,
-                     actual: Option<&DeclaredType>,
+fn expect_comparable(target: Option<&Type>,
+                     actual: Option<&Type>,
                      context: &source::Token) -> SemanticResult<()> {
     match (target, actual) {
         (a @ None, b @ _) | (a @ _, b @ None) =>
@@ -140,10 +140,10 @@ fn annotate_if(condition: &syntax::Expression,
 fn if_type(condition: &Expression,
            then_branch: &Expression,
            else_branch: Option<&Expression>,
-           context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
+           context: &source::Token) -> SemanticResult<Option<Type>> {
     let condition_type = condition.expr_type()?;
 
-    expect_comparable(Some(&DeclaredType::Boolean),
+    expect_comparable(Some(&Type::Boolean),
                       condition_type.as_ref(),
                       context)?;
 
@@ -184,11 +184,11 @@ fn annotate_for_loop(from: &syntax::Expression,
 fn for_loop_type(from: &Expression,
                  to: &Expression,
                  body: &Expression,
-                 context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
+                 context: &source::Token) -> SemanticResult<Option<Type>> {
     let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
 
-    expect_comparable(Some(&DeclaredType::Int32), to_type.as_ref(),
+    expect_comparable(Some(&Type::Int32), to_type.as_ref(),
                       context)?;
 
     let _body_type = body.expr_type()?;
@@ -198,7 +198,7 @@ fn for_loop_type(from: &Expression,
         if *op == operators::Operator::Assignment => {
             let lhs_type = lhs.expr_type()?;
 
-            expect_comparable(Some(&DeclaredType::Int32), lhs_type.as_ref(),
+            expect_comparable(Some(&Type::Int32), lhs_type.as_ref(),
                               context)?;
             Ok(None)
         }
@@ -206,22 +206,22 @@ fn for_loop_type(from: &Expression,
         &node::ExpressionValue::LetBinding { ref value, .. } => {
             let value_type = value.expr_type()?;
 
-            expect_comparable(Some(&DeclaredType::Int32), value_type.as_ref(),
+            expect_comparable(Some(&Type::Int32), value_type.as_ref(),
                               context)?;
             Ok(None)
         }
 
         //TODO better error
         _ => Err(SemanticError::unexpected_type(
-            Some(types::DeclaredType::Int32),
+            Some(types::Type::Int32),
             from_type,
             context.clone()))
     }
 }
 
 fn match_indirection(expr: &Expression,
-                     expr_type: &DeclaredType,
-                     target_type: &DeclaredType) -> Expression {
+                     expr_type: &Type,
+                     target_type: &Type) -> Expression {
     let target_level = target_type.indirection_level();
 
     let mut current_level = expr_type.indirection_level();
@@ -241,11 +241,11 @@ fn match_indirection(expr: &Expression,
 }
 
 fn annotate_ufcs(target: &Expression,
-                 target_type: &DeclaredType,
+                 target_type: &Type,
                  func_name: &str,
                  args: &Vec<Expression>,
                  scope: &scope::Scope) -> Option<Expression> {
-    let target_type_name = DeclaredType::name(Some(target_type.remove_indirection()));
+    let target_type_name = Type::name(Some(target_type.remove_indirection()));
 
     /* look for matching UFCS func in NS of target type */
     let ufcs_ns = Identifier::from(&target_type_name).parent()?;
@@ -254,7 +254,7 @@ fn annotate_ufcs(target: &Expression,
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
     match ufcs_function.decl_type() {
-        DeclaredType::Function(sig) => {
+        Type::Function(sig) => {
             let first_arg = sig.arg_types.first()?;
 
             if first_arg.remove_indirection() != target_type.remove_indirection() {
@@ -326,7 +326,7 @@ fn annotate_function_call(target: &syntax::Expression,
 
 fn let_binding_type(value: &Expression,
                     context: &source::Token)
-                    -> SemanticResult<Option<DeclaredType>> {
+                    -> SemanticResult<Option<Type>> {
     let value_type = value.expr_type()?
         .ok_or_else(|| SemanticError::type_not_assignable(None, context.clone()))?;
 
@@ -339,9 +339,9 @@ fn let_binding_type(value: &Expression,
 
 fn function_call_type(target: &Expression,
                       args: &Vec<Expression>,
-                      context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
+                      context: &source::Token) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
-    if let Some(DeclaredType::Function(ref sig)) = target_type {
+    if let Some(Type::Function(ref sig)) = target_type {
         if args.len() != sig.arg_types.len() {
             Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
                                               args.len(),
@@ -369,7 +369,7 @@ fn function_call_type(target: &Expression,
 fn binary_op_type(lhs: &Expression,
                   op: operators::Operator,
                   rhs: &Expression,
-                  context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
+                  context: &source::Token) -> SemanticResult<Option<Type>> {
     let lhs_type = lhs.expr_type()?;
 
     match op {
@@ -382,7 +382,7 @@ fn binary_op_type(lhs: &Expression,
         operators::Lte |
         operators::Equals => {
             expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
-            Ok(Some(DeclaredType::Boolean))
+            Ok(Some(Type::Boolean))
         }
 
         operators::Multiply |
@@ -409,7 +409,7 @@ fn binary_op_type(lhs: &Expression,
 fn prefix_op_type(op: operators::Operator,
                   rhs: &Expression,
                   context: &source::Token)
-                  -> SemanticResult<Option<DeclaredType>> {
+                  -> SemanticResult<Option<Type>> {
     let rhs_type = rhs.expr_type()?;
 
     let invalid_op_err = ||
@@ -418,7 +418,7 @@ fn prefix_op_type(op: operators::Operator,
                                             context.clone()));
     match op {
         operators::Deref => match &rhs_type {
-            &Some(DeclaredType::Pointer(ref pointed_to)) =>
+            &Some(Type::Pointer(ref pointed_to)) =>
                 Ok(Some(pointed_to.as_ref().clone())),
             _ =>
                 invalid_op_err(),
@@ -431,8 +431,8 @@ fn prefix_op_type(op: operators::Operator,
 
         operators::Plus |
         operators::Minus => match &rhs_type {
-            &Some(DeclaredType::Int64) |
-            &Some(DeclaredType::Byte) =>
+            &Some(Type::Int64) |
+            &Some(Type::Byte) =>
                 Ok(rhs_type.clone()),
             _ =>
                 invalid_op_err(),
@@ -455,12 +455,12 @@ fn prefix_op_type(op: operators::Operator,
 
 fn member_type(of: &Expression,
                name: &str,
-               _context: &source::Token) -> SemanticResult<Option<DeclaredType>> {
+               _context: &source::Token) -> SemanticResult<Option<Type>> {
     let base_type = of.expr_type()?
         .map(|dt| dt.remove_indirection().clone());
 
     match base_type {
-        Some(DeclaredType::Record(ref record)) => {
+        Some(Type::Record(ref record)) => {
             match record.get_member(name) {
                 Some(member) =>
                     Ok(Some(member.decl_type.clone())),
@@ -562,7 +562,7 @@ impl Expression {
         }
     }
 
-    pub fn expr_type(&self) -> Result<Option<DeclaredType>, SemanticError> {
+    pub fn expr_type(&self) -> Result<Option<Type>, SemanticError> {
         match &self.value {
             &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } =>
                 binary_op_type(lhs, *op, rhs, &self.context),
@@ -572,26 +572,26 @@ impl Expression {
 
             &node::ExpressionValue::LiteralString(_) => {
                 //todo: forward class decl or typename ref or something
-                Ok(Some(DeclaredType::Record(types::DeclaredRecord {
+                Ok(Some(Type::Record(types::DeclaredRecord {
                     name: Identifier::from("System.String"),
                     kind: types::RecordKind::Class,
                     members: vec![
-                        types::Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
-                        types::Symbol::new(Identifier::from("Length"), DeclaredType::NativeInt),
+                        types::Symbol::new(Identifier::from("Chars"), Type::Byte.pointer()),
+                        types::Symbol::new(Identifier::from("Length"), Type::NativeInt),
                     ]
                 })))
             }
 
             &node::ExpressionValue::LiteralInteger(int_const) =>
                 Ok(Some(match int_const {
-                    IntConstant::I32(_) => DeclaredType::Int32,
-                    IntConstant::U32(_) => DeclaredType::UInt32,
-                    IntConstant::I64(_) => DeclaredType::Int64,
-                    IntConstant::U64(_) => DeclaredType::UInt64,
+                    IntConstant::I32(_) => Type::Int32,
+                    IntConstant::U32(_) => Type::UInt32,
+                    IntConstant::I64(_) => Type::Int64,
+                    IntConstant::U64(_) => Type::UInt64,
                 })),
 
             &node::ExpressionValue::LiteralNil =>
-                Ok(Some(DeclaredType::Nil)),
+                Ok(Some(Type::Nil)),
 
             &node::ExpressionValue::LetBinding { ref value, .. } =>
                 let_binding_type(value, &self.context),
@@ -631,7 +631,7 @@ impl Expression {
 
     pub fn class_type(&self) -> SemanticResult<Option<types::DeclaredRecord>> {
         match self.expr_type()? {
-            Some(DeclaredType::Record(decl)) => {
+            Some(Type::Record(decl)) => {
                 if decl.kind == types::RecordKind::Class {
                     Ok(Some(decl))
                 } else {
@@ -650,7 +650,7 @@ pub(crate) mod test {
     use syntax;
     use node;
     use operators;
-    use types::{DeclaredType, FunctionSignature};
+    use types::{Type, FunctionSignature};
 
     pub fn parse_expr(src: &str, scope: &Scope) -> Expression {
         let tokens = tokenize("test", src)
@@ -670,7 +670,7 @@ pub(crate) mod test {
     #[test]
     fn assignment_to_wrong_type_is_err() {
         let scope = Scope::default()
-            .with_symbol_local("x", DeclaredType::RawPointer);
+            .with_symbol_local("x", Type::RawPointer);
 
         let expr = parse_expr("x := 1", &scope);
 
@@ -680,8 +680,8 @@ pub(crate) mod test {
                     ..
                 }) => {
                 assert_eq!(operators::Assignment, op);
-                assert_eq!(Some(DeclaredType::RawPointer), args[0]);
-                assert_eq!(Some(DeclaredType::Int64), args[1]);
+                assert_eq!(Some(Type::RawPointer), args[0]);
+                assert_eq!(Some(Type::Int64), args[1]);
             }
             _ => panic!("expected invalid types in assignment")
         }
@@ -693,14 +693,14 @@ pub(crate) mod test {
 
         let scope = Scope::default()
             .with_symbol_absolute(test_func_name.clone(),
-                                  DeclaredType::Function(Box::from(FunctionSignature {
+                                  Type::Function(Box::from(FunctionSignature {
                                       name: test_func_name.clone(),
-                                      return_type: Some(DeclaredType::Int64),
+                                      return_type: Some(Type::Int64),
                                       arg_types: vec![
-                                          DeclaredType::Int64
+                                          Type::Int64
                                       ],
                                   })))
-            .with_symbol_local("a", DeclaredType::Int64);
+            .with_symbol_local("a", Type::Int64);
 
         let expr = parse_expr(r"a.TestAdd(1)", &scope);
 
@@ -724,18 +724,18 @@ pub(crate) mod test {
     #[test]
     fn type_of_pointer_deref_is_pointer_minus_indirection() {
         let scope = Scope::default()
-            .with_symbol_local("x", DeclaredType::Byte.pointer());
+            .with_symbol_local("x", Type::Byte.pointer());
 
         let expr = parse_expr("^x", &scope);
-        assert_eq!(DeclaredType::Byte, expr.expr_type().unwrap().unwrap());
+        assert_eq!(Type::Byte, expr.expr_type().unwrap().unwrap());
     }
 
     #[test]
     fn type_of_pointer_plus_offset_is_pointer() {
         let scope = Scope::default()
-            .with_symbol_local("x", DeclaredType::Byte.pointer());
+            .with_symbol_local("x", Type::Byte.pointer());
 
         let expr = parse_expr("x + 1", &scope);
-        assert_eq!(DeclaredType::Byte.pointer(), expr.expr_type().unwrap().unwrap());
+        assert_eq!(Type::Byte.pointer(), expr.expr_type().unwrap().unwrap());
     }
 }
