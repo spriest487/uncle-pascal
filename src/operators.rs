@@ -1,5 +1,6 @@
 use std::fmt;
 use node::ToSource;
+use opts::CompileOptions;
 
 pub use self::Operator::*;
 
@@ -82,15 +83,22 @@ impl Operator {
             .any(|&(op, pos)| *self == op && in_pos == pos)
     }
 
+    fn try_parse_text_lowercase(from: &str) -> Option<Self> {
+        match from {
+            "or" => Some(Or),
+            "and" => Some(And),
+            _ => None
+        }
+    }
+
     /* parses operators with english names (and only those operators),
      because these names might also be valid identifiers. the tokenizer
      already knows how to parse the ones which have names which aren't
      valid identifiers*/
-    pub fn try_parse_text(text: &str) -> Option<Operator> {
-        match text {
-            "or" => Some(Or),
-            "and" => Some(And),
-            _ => None
+    pub fn try_parse_text(from: &str, opts: &CompileOptions) -> Option<Operator> {
+        match opts.case_sensitive() {
+            true => Self::try_parse_text_lowercase(from),
+            false => Self::try_parse_text_lowercase(&from.to_ascii_lowercase()),
         }
     }
 }

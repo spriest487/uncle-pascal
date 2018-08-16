@@ -3,6 +3,7 @@ use std::fmt;
 use node::ToSource;
 
 pub use self::Keyword::*;
+use opts::CompileOptions;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum Keyword {
@@ -38,7 +39,7 @@ pub enum Keyword {
 }
 
 impl Keyword {
-    pub fn try_parse(from: &str) -> Option<Self> {
+    fn try_parse_lowercase(from: &str) -> Option<Self> {
         match from {
             "program" => Some(Program),
             "let" => Some(Let),
@@ -70,6 +71,13 @@ impl Keyword {
             "true" => Some(True),
             "false" => Some(False),
             _ => None,
+        }
+    }
+
+    pub fn try_parse(from: &str, opts: &CompileOptions) -> Option<Self> {
+        match opts.case_sensitive() {
+            true => Self::try_parse_lowercase(from),
+            false => Self::try_parse_lowercase(&from.to_ascii_lowercase()),
         }
     }
 }

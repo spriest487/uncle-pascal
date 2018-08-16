@@ -8,6 +8,7 @@ use tokens;
 use operators;
 use keywords;
 use source;
+use opts::CompileOptions;
 use consts::IntConstant;
 
 #[derive(Clone, Debug)]
@@ -27,19 +28,19 @@ impl fmt::Display for IllegalToken {
 
 enum TokenMatchParser {
     Simple(tokens::Token),
-    ParseFn(Box<Fn(&regex::Captures) -> Option<tokens::Token>>),
+    ParseFn(Box<Fn(&regex::Captures, &CompileOptions) -> Option<tokens::Token>>),
 }
 
 impl TokenMatchParser {
-    fn try_parse(&self, token_match: &regex::Captures) -> Option<tokens::Token> {
+    fn try_parse(&self, token_match: &regex::Captures, opts: &CompileOptions) -> Option<tokens::Token> {
         match self {
             &TokenMatchParser::Simple(ref token) => Some(token.clone()),
-            &TokenMatchParser::ParseFn(ref parse_fn) => parse_fn(token_match),
+            &TokenMatchParser::ParseFn(ref parse_fn) => parse_fn(token_match, opts),
         }
     }
 }
 
-fn parse_literal_string(token_match: &regex::Captures) -> Option<tokens::Token> {
+fn parse_literal_string(token_match: &regex::Captures, _opts: &CompileOptions) -> Option<tokens::Token> {
     //group 1 must be the inner content of the string (eg, minus the outer quotes)
     let text = token_match.get(1).unwrap().as_str().to_owned()
         .replace("''", "'");
@@ -47,7 +48,9 @@ fn parse_literal_string(token_match: &regex::Captures) -> Option<tokens::Token> 
     Some(tokens::LiteralString(text))
 }
 
-fn parse_literal_integer(token_match: &regex::Captures) -> Option<tokens::Token> {
+fn parse_literal_integer(token_match: &regex::Captures,
+                         _opts: &CompileOptions)
+                         -> Option<tokens::Token> {
     let int_text = token_match.get(0).unwrap().as_str();
 
     let val = IntConstant::parse_str(int_text)?;
@@ -55,12 +58,12 @@ fn parse_literal_integer(token_match: &regex::Captures) -> Option<tokens::Token>
     Some(tokens::LiteralInteger(val))
 }
 
-fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
+fn parse_name(token_match: &regex::Captures, opts: &CompileOptions) -> Option<tokens::Token> {
     let text = token_match.get(0).unwrap().as_str().to_owned();
 
-    Some(keywords::Keyword::try_parse(&text)
+    Some(keywords::Keyword::try_parse(&text, opts)
         .map(|kw| tokens::Keyword(kw))
-        .or_else(|| operators::Operator::try_parse_text(&text)
+        .or_else(|| operators::Operator::try_parse_text(&text, opts)
             .map(|op| tokens::Operator(op)))
         .unwrap_or_else(|| tokens::Identifier(text)))
 }
@@ -72,7 +75,7 @@ fn simple_pattern<T>(pattern: &str, token: T) -> (String, TokenMatchParser)
 }
 
 fn func_pattern<TFn>(pattern: &str, f: TFn) -> (String, TokenMatchParser)
-    where TFn: Fn(&regex::Captures) -> Option<tokens::Token> + 'static
+    where TFn: Fn(&regex::Captures, &CompileOptions) -> Option<tokens::Token> + 'static
 {
     (pattern.to_owned(), TokenMatchParser::ParseFn(Box::new(f)))
 }
@@ -113,22 +116,35 @@ pub type TokenizeResult<T> = Result<T, IllegalToken>;
 
 fn parse_line(file_name: &str,
               line_num: usize,
-              line: &str) -> TokenizeResult<Vec<source::Token>> {
+              line: &str,
+              opts: &CompileOptions) -> TokenizeResult<Vec<source::Token>> {
     /* make a combined regex of all the possible token match patterns */
-    let all_tokens_pattern = token_patterns().into_iter()
-        .map(|(pattern, _)| pattern)
-        .collect::<Vec<_>>()
-        .join("|");
+    let all_tokens_pattern = {
+        let pattern = token_patterns().into_iter()
+            .map(|(pattern, _)| pattern)
+            .collect::<Vec<_>>()
+            .join("|");
 
-    //println!("{}", all_tokens_pattern);
-    let all_tokens_and_unrecognized = all_tokens_pattern + "|\\s+|.";
-    let all_tokens_regex = regex::Regex::new(&all_tokens_and_unrecognized)
+        let and_unrecognized = "|\\s+|.";
+        if opts.case_sensitive() {
+            pattern + and_unrecognized
+        } else {
+            format!("(?i){}{}", pattern, and_unrecognized)
+        }
+    };
+
+    let all_tokens_regex = regex::Regex::new(&all_tokens_pattern)
         .expect("tokens regex must be valid");
 
     /* compile token pattern regexes */
     let patterns = token_patterns().into_iter()
         .map(|(pattern, token_parser)| {
-            let whole_token_pattern = format!("^{}$", pattern);
+            let whole_token_pattern = if opts.case_sensitive() {
+                format!("^{}$", pattern)
+            } else {
+                format!("(?i)^{}$", pattern)
+            };
+
             let token_regex = regex::Regex::new(&whole_token_pattern)
                 .expect("token regex must be valid");
 
@@ -159,7 +175,7 @@ fn parse_line(file_name: &str,
 
                         /* a pattern matched this token, use the parsing
                         function associated with this pattern */
-                        pattern.1.try_parse(&pattern_captures)
+                        pattern.1.try_parse(&pattern_captures, opts)
                     })
                     .map(|token| source::Token {
                         token: Rc::from(token),
@@ -185,7 +201,8 @@ fn parse_line(file_name: &str,
 }
 
 pub fn tokenize(file_name: &str,
-                source: &str) -> TokenizeResult<Vec<source::Token>> {
+                source: &str,
+                opts: &CompileOptions) -> TokenizeResult<Vec<source::Token>> {
     let lines: Vec<_> = source.replace("\r\n", "\n")
         .split("\n")
         .map(str::to_owned)
@@ -193,7 +210,7 @@ pub fn tokenize(file_name: &str,
 
     let parsed_lines: Vec<_> = lines.into_iter()
         .enumerate()
-        .map(|(line_num, line)| parse_line(file_name, line_num + 1, &line))
+        .map(|(line_num, line)| parse_line(file_name, line_num + 1, &line, opts))
         .collect::<TokenizeResult<_>>()?;
 
     if parsed_lines.len() == 0 {
@@ -215,12 +232,17 @@ mod test {
     use tokenizer;
     use tokens::{self, AsToken};
     use consts::IntConstant;
+    use keywords;
+    use opts::{
+        CompileOptions,
+        Mode,
+    };
 
     #[test]
     fn tokenizes_literal_string() {
         let s = "  'hello world!'  ";
 
-        let result = tokenizer::tokenize("test", s).unwrap();
+        let result = tokenizer::tokenize("test", s, &CompileOptions::default()).unwrap();
         assert_eq!(1, result.len());
 
         assert_eq!(&tokens::LiteralString("hello world!".to_owned()),
@@ -229,9 +251,22 @@ mod test {
 
     #[test]
     fn tokenizes_literal_char() {
-        let result = tokenizer::tokenize("test,", "#32").unwrap();
+        let result = tokenizer::tokenize("test,", "#32", &CompileOptions::default()).unwrap();
         assert_eq!(1, result.len());
         assert_eq!(&tokens::LiteralInteger(IntConstant::Char(32)),
                    result[0].as_token());
+    }
+
+    #[test]
+    fn tokenizes_keywords_case_insensitive_for_ci_opts() {
+        let opts = CompileOptions::new(Mode::Fpc);
+        let result = tokenizer::tokenize("test", "True TRUE true begIN END", &opts)
+            .unwrap();
+
+        assert_eq!(&tokens::Keyword(keywords::True), result[0].as_token());
+        assert_eq!(&tokens::Keyword(keywords::True), result[1].as_token());
+        assert_eq!(&tokens::Keyword(keywords::True), result[2].as_token());
+        assert_eq!(&tokens::Keyword(keywords::Begin), result[3].as_token());
+        assert_eq!(&tokens::Keyword(keywords::End), result[4].as_token());
     }
 }

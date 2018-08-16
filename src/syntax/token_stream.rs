@@ -7,6 +7,7 @@ use tokenizer::{
     tokenize,
     TokenizeResult,
 };
+use opts::CompileOptions;
 use syntax::{
     matcher::*,
     ParseError,
@@ -62,8 +63,8 @@ impl From<Vec<source::Token>> for TokenStream {
 }
 
 impl TokenStream {
-    pub fn tokenize(file_name: &str, source: &str) -> TokenizeResult<Self> {
-        let tokens = tokenize(file_name, source)?;
+    pub fn tokenize(file_name: &str, source: &str, opts: &CompileOptions) -> TokenizeResult<Self> {
+        let tokens = tokenize(file_name, source, opts)?;
 
         Ok(TokenStream::from(tokens))
     }

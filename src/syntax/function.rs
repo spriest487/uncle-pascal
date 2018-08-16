@@ -190,10 +190,12 @@ impl FunctionDecl {
 mod test {
     use tokenizer;
     use node::Identifier;
+    use opts::CompileOptions;
     use super::*;
 
     fn parse_func(src: &str) -> FunctionDecl {
-        let tokens = tokenizer::tokenize("test", src).unwrap();
+        let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
+            .unwrap();
 
         FunctionDecl::parse(&mut TokenStream::from(tokens))
             .unwrap()

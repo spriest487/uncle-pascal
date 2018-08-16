@@ -71,9 +71,10 @@ impl Parse for VarDecls {
 #[cfg(test)]
 mod test {
     use super::*;
+    use opts::CompileOptions;
 
     fn parse_vars(src: &str) -> VarDecls {
-        TokenStream::tokenize("test", src)
+        TokenStream::tokenize("test", src, &CompileOptions::default())
             .unwrap()
             .parse_to_end()
             .unwrap()

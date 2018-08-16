@@ -2,9 +2,11 @@ use super::*;
 use tokenizer::*;
 use operators;
 use node::ToSource;
+use opts::CompileOptions;
 
 fn try_parse_expr(src: &str) -> Result<(Expression, TokenStream), ParseError> {
-    let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
+    let mut tokens = TokenStream::from(tokenize("test", src, &CompileOptions::default())
+        .unwrap());
 
     let expr: Expression = tokens.parse()?;
     Ok((expr, tokens))
@@ -241,7 +243,7 @@ fn parses_namespaced_fn_call_with_prefix_operator_in_args() {
 #[test]
 fn parses_assignment_followed_by_prefix_operator() {
     let mut tokens = TokenStream::tokenize("", r"a := b
-        ^a")
+        ^a", &CompileOptions::default())
         .unwrap();
 
     let expr: Expression = tokens.parse().unwrap();

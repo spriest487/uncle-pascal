@@ -12,7 +12,6 @@ use std::{
     env::current_dir,
     collections::{
         hash_map::HashMap,
-        HashSet,
     },
 };
 
@@ -28,6 +27,7 @@ mod node;
 mod source;
 mod pp;
 mod consts;
+mod opts;
 
 pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
@@ -92,30 +92,6 @@ impl From<pp::PreprocessorError> for CompileError {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CompileMode {
-    Uncle,
-    Fpc,
-    Delphi,
-}
-
-impl fmt::Display for CompileMode {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            CompileMode::Uncle => "uncle",
-            CompileMode::Fpc => "fpc",
-            CompileMode::Delphi => "delphi",
-        })
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct CompileOptions {
-    pub mode: CompileMode,
-    pub switches: HashSet<String>,
-    pub symbols: HashSet<String>,
-}
-
 fn empty_context() -> source::Token {
     source::Token {
         token: Rc::from(tokens::Keyword(keywords::Program)),
@@ -124,7 +100,7 @@ fn empty_context() -> source::Token {
 }
 
 fn load_source<TPath: AsRef<Path>>(path: TPath,
-                                   opts: CompileOptions)
+                                   opts: opts::CompileOptions)
                                    -> Result<Vec<source::Token>, CompileError> {
     let path = path.as_ref();
     if !path.exists() {
@@ -142,12 +118,12 @@ fn load_source<TPath: AsRef<Path>>(path: TPath,
     let file = fs::File::open(&path)?;
     let preprocessed = preprocessor.preprocess(file)?;
 
-    let tokens = tokenizer::tokenize(&display_filename, &preprocessed.source)?;
+    let tokens = tokenizer::tokenize(&display_filename,
+                                     &preprocessed.source,
+                                     &preprocessed.opts)?;
 
     Ok(tokens)
 }
-
-
 
 fn pretty_path(path: &Path) -> String {
     let canon = if path.exists() {
@@ -186,7 +162,7 @@ fn scope_from_uses(uses: &[syntax::UnitReference],
 }
 
 fn compile_program(program_path: &Path,
-                   opts: CompileOptions)
+                   opts: opts::CompileOptions)
                    -> Result<semantic::ProgramModule, CompileError> {
     let tokens = load_source(program_path, opts.clone())?;
 
@@ -246,28 +222,6 @@ fn print_usage(program: &str, opts: getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn opts_to_compile_opts(matches: &getopts::Matches) -> CompileOptions {
-    let mut opts = CompileOptions {
-        mode: CompileMode::Uncle,
-        symbols: HashSet::new(),
-        switches: HashSet::new(),
-    };
-
-    for defined in matches.opt_strs("D") {
-        opts.symbols.insert(defined);
-    }
-
-    if let Some(mode_opt) = matches.opt_str("mode") {
-        match mode_opt.as_str() {
-            "fpc" => opts.mode = CompileMode::Fpc,
-            "delphi" => opts.mode = CompileMode::Delphi,
-            unrecognized @ _ => eprintln!("unrecognized -mode option: {}", unrecognized),
-        }
-    }
-
-    opts
-}
-
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
     let program = args[0].clone();
@@ -290,7 +244,7 @@ fn main() {
                 let src_path = &matched.free[0];
 
                 //todo: options from command line
-                let opts = opts_to_compile_opts(&matched);
+                let opts = opts::CompileOptions::from_getopts(&matched);
 
                 let build_result = compile_program(&PathBuf::from(src_path), opts)
                     .and_then(|module| target_c::pas_to_c(&module, &out_file));

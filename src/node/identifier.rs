@@ -234,9 +234,11 @@ mod test {
     use tokenizer::*;
     use operators;
     use syntax::TokenStream;
+    use opts::CompileOptions;
 
     fn try_parse_name(source: &str) -> ParseResult<Identifier> {
-        let mut tokens = TokenStream::from(tokenize("test", source).unwrap());
+        let mut tokens = TokenStream::from(tokenize("test", source, &CompileOptions::default())
+            .unwrap());
 
         Identifier::parse(&mut tokens)
     }
@@ -283,7 +285,8 @@ mod test {
 
     #[test]
     fn next_tokens_is_correct_after_consuming_id() {
-        let mut tokens = TokenStream::tokenize("", "System.String;").unwrap();
+        let mut tokens = TokenStream::tokenize("", "System.String;", &CompileOptions::default())
+            .unwrap();
 
         Identifier::parse(&mut tokens).unwrap();
 

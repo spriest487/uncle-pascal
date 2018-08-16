@@ -132,10 +132,12 @@ pub type ParseResult<TValue> = Result<TValue, ParseError>;
 mod test {
     use super::*;
     use node::IndexRange;
+    use opts::CompileOptions;
 
     #[test]
     fn parses_1d_array_type() {
-        let mut tokens = TokenStream::tokenize("test", "array [0..10] of Integer")
+        let mut tokens = TokenStream::tokenize("test", "array [0..10] of Integer",
+                                               &CompileOptions::default())
             .unwrap();
 
         let parsed = TypeName::parse(&mut tokens)

@@ -1,11 +1,18 @@
 use std::rc::Rc;
 use syntax;
 use semantic::*;
-use node::{self, Identifier, ExpressionValue};
+use node::{
+    self,
+    Identifier,
+    ExpressionValue,
+};
 use operators;
 use types;
 use consts::IntConstant;
-use types::{Type, FunctionSignature};
+use types::{
+    Type,
+    FunctionSignature,
+};
 
 pub type Expression = node::Expression<ScopedSymbol, SemanticContext>;
 
@@ -723,6 +730,7 @@ pub(crate) mod test {
     };
     use operators;
     use types::Type;
+    use opts::CompileOptions;
 
     fn empty_context(scope: &Scope) -> SemanticContext {
         SemanticContext {
@@ -733,7 +741,7 @@ pub(crate) mod test {
     }
 
     pub fn parse_expr(src: &str, scope: Rc<Scope>) -> Expression {
-        let tokens = tokenize("test", src)
+        let tokens = tokenize("test", src, &CompileOptions::default())
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
         let mut stream = syntax::TokenStream::from(tokens);

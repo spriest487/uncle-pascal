@@ -3,8 +3,10 @@ use std::{
     fmt::{self, Write},
 };
 use regex::*;
-use CompileOptions;
-use CompileMode;
+use opts::{
+    CompileOptions,
+    Mode,
+};
 
 #[derive(Debug)]
 pub enum PreprocessorError {
@@ -70,7 +72,7 @@ enum Directive {
     EndIf,
     Else,
     ElseIf(String),
-    Mode(CompileMode),
+    Mode(Mode),
     Switches(Vec<(String, bool)>),
 }
 
@@ -155,9 +157,9 @@ impl DirectiveParser {
             Some(Directive::ElseIf(symbol))
         } else if let Some(mode_captures) = self.mode_pattern.captures(s) {
             let mode = match mode_captures[1].to_uppercase().as_str() {
-                "FPC" => CompileMode::Fpc,
-                "UNCLE" => CompileMode::Uncle,
-                "DELPHI" => CompileMode::Delphi,
+                "FPC" => Mode::Fpc,
+                "UNCLE" => Mode::Uncle,
+                "DELPHI" => Mode::Delphi,
                 unrecognized @ _ => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;
@@ -278,7 +280,7 @@ impl Preprocessor {
     fn push_condition(&mut self, symbol: String, positive: bool) -> Result<(), PreprocessorError> {
         self.condition_stack.push(SymbolCondition {
             value: {
-                let has_symbol = self.opts.symbols.contains(&symbol);
+                let has_symbol = self.opts.defined(&symbol);
 
                 if positive { has_symbol } else { !has_symbol }
             },
@@ -315,14 +317,14 @@ impl Preprocessor {
         match self.directive_parser.parse(&directive_name) {
             Some(Directive::Define(symbol)) => {
                 if self.condition_active() {
-                    self.opts.symbols.insert(symbol);
+                    self.opts.define(symbol);
                 }
 
                 Ok(())
             }
 
             Some(Directive::Undef(symbol)) => {
-                if !self.condition_active() || self.opts.symbols.remove(&symbol) {
+                if !self.condition_active() || self.opts.undef(&symbol) {
                     Ok(())
                 } else {
                     Err(PreprocessorError::SymbolNotDefined {
@@ -366,11 +368,7 @@ impl Preprocessor {
             Some(Directive::Switches(switches)) => {
                 if self.condition_active() {
                     for (name, on) in switches {
-                        if on {
-                            self.opts.switches.remove(&name);
-                        } else {
-                            self.opts.switches.insert(name);
-                        }
+                        self.opts.set_switch(&name, on);
                     }
                 }
                 Ok(())
@@ -378,7 +376,7 @@ impl Preprocessor {
 
             Some(Directive::Mode(mode)) => {
                 if self.condition_active() {
-                    self.opts.mode = mode;
+                    self.opts.set_mode(mode);
                 }
                 Ok(())
             }
@@ -386,11 +384,10 @@ impl Preprocessor {
             None => {
                 if !self.condition_active() {
                     Ok(())
-                } else if self.opts.mode != CompileMode::Uncle {
-                    // allow unknown directives for compatibility modes
-                    eprintln!("ignoring unrecognized directive {{${}}} for mode {}",
+                } else if !self.opts.strict_switches() {
+                    eprintln!("ignoring unrecognized directive {{${}}} (strict preprocessing not enabled for mode `{}`)",
                               directive_name,
-                              self.opts.mode);
+                              self.opts.mode());
                     Ok(())
                 } else {
                     Err(PreprocessorError::IllegalDirective {
