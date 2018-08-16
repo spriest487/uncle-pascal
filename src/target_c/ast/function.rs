@@ -152,16 +152,20 @@ impl FunctionDecl {
         adaptor.args[0].ctype = CType::Struct(Name::internal_type("Object".to_string()))
             .into_pointer();
 
-        let adaptor_cast = Expression::function_call(
-            real_func,
-            vec![
-                Expression::cast(
-                    real_self_type,
-                    Expression::Name(adaptor.args[0].name.clone()),
-                    CastKind::Static,
-                )
-            ],
-        );
+        // cast the self arg
+        let mut args = vec![
+            Expression::cast(
+                real_self_type,
+                Expression::Name(adaptor.args[0].name.clone()),
+                CastKind::Static,
+            )
+        ];
+
+        // forward the other args as-is
+        args.extend(adaptor.args[1..].iter()
+            .map(|arg| Expression::Name(arg.name.clone())));
+
+        let adaptor_cast = Expression::function_call(real_func, args);
 
         adaptor.definition = FunctionDefinition::Defined(Block {
             statements: vec![

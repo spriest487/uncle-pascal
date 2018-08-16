@@ -216,3 +216,28 @@ PascalType_System_String* Pascal_System_StringFromInt(
         reinterpret_cast<PascalType_System_Byte*>(const_cast<char*>(chars.data())),
         static_cast<PascalType_System_NativeUInt>(chars.size()));
 }
+
+PascalType_System_Pointer Pascal_IO_FOpen(
+    PascalType_System_Byte* fileNameStr,
+    PascalType_System_NativeInt mode
+) {
+    const char* modeStr;
+    switch (mode) {
+        case 1: modeStr = "wb"; break;
+        default: modeStr = "rb"; break;
+    }
+
+    const char* fileNameChars = reinterpret_cast<const char*>(fileNameStr);
+
+    FILE* file = std::fopen(fileNameChars, modeStr);
+    return static_cast<PascalType_System_Pointer>(file);
+}
+
+void Pascal_IO_FClose(PascalType_System_Pointer fileHandle) {
+    FILE* file = static_cast<FILE*>(fileHandle);
+    if (std::fclose(file) != 0) {
+        std::fprintf(stderr, "tried to close a file that wasn't open\n");
+        std::abort();
+    }
+}
+

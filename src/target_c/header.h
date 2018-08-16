@@ -37,6 +37,9 @@ typedef double PascalType_System_Float64;
 typedef void* PascalType_System_Pointer;
 typedef std::uint8_t PascalType_System_Boolean;
 
+/* intialized before class init with the ID of `System.Disposable` */
+static PascalType_System_NativeUInt System_Internal_DisposeInterfaceID;
+
 template<typename T>
 using System_Internal_Set = std::unordered_set<T>;
 
@@ -86,16 +89,3 @@ static void System_Internal_Raise(const char* file, int line, int col, const cha
 
 static void System_Internal_ZeroMemory(void* mem, PascalType_System_NativeUInt len);
 
-static PascalType_System_Byte* System_GetMem(PascalType_System_NativeInt bytes);
-static void System_FreeMem(PascalType_System_Byte* p);
-
-struct PascalType_System_String;
-static PascalType_System_String* System_CreateString(void);
-
-/* procedure System.WriteLn(line: System.String) */
-static void System_WriteLn(struct PascalType_System_String* lineRc);
-
-/* function System.ReadLn(): System.String */
-static struct PascalType_System_String* System_ReadLn(void);
-
-static PascalType_System_NativeUInt System_Internal_DisposeInterfaceID;
