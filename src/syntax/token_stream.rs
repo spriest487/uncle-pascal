@@ -92,6 +92,20 @@ impl TokenStream {
         }
     }
 
+    pub fn advance_to(&mut self, location: &source::Location) {
+        loop {
+            if self.context.location.ge(&location) {
+                break;
+            }
+
+            if self.next().is_none() {
+                panic!("must not run out of tokens while advancing (at {}, peeked {})",
+                       self.context,
+                       self.peeked.len());
+            };
+        }
+    }
+
     pub fn rewind(&mut self, rewind_from: TokenStream) {
         self.context = rewind_from.context.clone();
 
@@ -414,6 +428,14 @@ impl<'tokens> PeekedTokenStream<'tokens> {
         }
     }
 
+    pub fn context(&self) -> &source::Token {
+        if self.peek_pos == 0 {
+            self.tokens.context()
+        } else {
+            &self.tokens.peeked[self.peek_pos - 1]
+        }
+    }
+
     pub fn match_one(&mut self, matcher: impl Into<Matcher>) -> Option<source::Token> {
         let matcher = matcher.into();
 
@@ -461,9 +483,9 @@ impl<'tokens> PeekedTokenStream<'tokens> {
     next tokens and last token of the resulting output are the same as the
     input, if no error occurs */
     pub fn match_block(&mut self,
-                            open: impl Into<Matcher>,
-                            close: impl Into<Matcher>)
-                            -> Option<BlockMatch> {
+                       open: impl Into<Matcher>,
+                       close: impl Into<Matcher>)
+                       -> Option<BlockMatch> {
         let open_matcher = open.into();
         let close_matcher = close.into();
 
@@ -512,6 +534,86 @@ impl<'tokens> PeekedTokenStream<'tokens> {
             None => {
                 None
             }
+        }
+    }
+
+    pub fn match_groups_inner(&mut self,
+                              match_open: impl Into<Matcher>,
+                              match_close: impl Into<Matcher>,
+                              match_separator: impl Into<Matcher>)
+                              -> GroupsMatch {
+        let match_open = match_open.into();
+        let match_close = match_close.into();
+        let match_separator = match_separator.into();
+
+        let mut separators = Vec::new();
+        let mut groups = Vec::new();
+
+        let mut next_group = GroupMatch {
+            context: self.context().clone(),
+            tokens: Vec::new(),
+        };
+
+        loop {
+            match self.next() {
+                /* ran out of inner tokens, this is the last group */
+                None => {
+                    if next_group.tokens.len() > 0 {
+                        groups.push(next_group);
+                    }
+
+                    break;
+                }
+
+                Some(next_token) => {
+                    if match_open.is_match(&next_token) {
+                        /* go back, we need to block match starting from this open token */
+                        self.peek_pos -= 1;
+
+                        match self.match_block(match_open.clone(), match_close.clone()) {
+                            /* add the whole contents of the inner group to the last group */
+                            Some(inner_block) => {
+                                next_group.tokens.push(inner_block.open.clone());
+                                next_group.tokens.extend(inner_block.inner);
+                                next_group.tokens.push(inner_block.close.clone());
+                            }
+
+                            /* no close token? just add the rest of the tokens to the last group
+                             and stop, this will probably turn into a real parser error later but
+                              it's not this function's job to deal with that */
+                            None => {
+                                loop {
+                                    match self.next() {
+                                        Some(t) => next_group.tokens.push(t),
+                                        None => break,
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    } else {
+                        if match_separator.is_match(&next_token) {
+                            //finish the group
+                            if next_group.tokens.len() > 0 {
+                                groups.push(next_group);
+                                next_group = GroupMatch {
+                                    tokens: Vec::new(),
+                                    context: self.context().clone(),
+                                };
+                            }
+
+                            separators.push(next_token.clone());
+                        } else {
+                            next_group.tokens.push(next_token.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        GroupsMatch {
+            groups,
+            separators,
         }
     }
 }
