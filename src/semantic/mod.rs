@@ -20,6 +20,10 @@ pub use self::{
     module::*,
 };
 
+use std::{
+    rc::Rc
+};
+
 use node::{Identifier, TypeName};
 use operators;
 use source;
@@ -282,3 +286,8 @@ impl fmt::Display for SemanticError {
 }
 
 pub type SemanticResult<T> = Result<T, SemanticError>;
+
+pub struct SemanticContext {
+    token: source::Token,
+    scope: Rc<Scope>,
+}

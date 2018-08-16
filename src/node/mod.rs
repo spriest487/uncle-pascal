@@ -3,9 +3,7 @@ pub mod type_name;
 pub mod expression;
 pub mod to_source;
 
-use std::{
-    fmt,
-};
+use std::fmt;
 
 use source;
 use types::RecordKind;
@@ -13,6 +11,10 @@ pub use self::type_name::{TypeName, IndexRange};
 pub use self::identifier::*;
 pub use self::expression::*;
 pub use self::to_source::*;
+
+pub trait Context {
+    fn token(&self) -> &source::Token;
+}
 
 pub trait Symbol: ToSource {
     type Type: Clone + ToSource + fmt::Debug;
@@ -32,13 +34,17 @@ pub enum UnitReferenceKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct UnitReference {
+pub struct UnitReference<TContext>
+    where TContext: Context
+{
     pub name: Identifier,
     pub kind: UnitReferenceKind,
-    pub context: source::Token,
+    pub context: TContext,
 }
 
-impl fmt::Display for UnitReference {
+impl<TContext> fmt::Display for UnitReference<TContext>
+    where TContext: Context
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let name = match &self.kind {
             UnitReferenceKind::Namespaced => self.name.to_string(),
@@ -46,41 +52,44 @@ impl fmt::Display for UnitReference {
             UnitReferenceKind::Name(name) => format!("{}.{}", self.name, name),
         };
 
-        write!(f, "{} ({})", name, self.context)
+        write!(f, "{} ({})", name, self.context.token())
     }
 }
 
 #[derive(Clone, Debug)]
-pub enum UnitDeclaration<TSymbol>
-    where TSymbol: Symbol
+pub enum UnitDeclaration<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
-    Function(FunctionDecl<TSymbol>),
-    Type(TypeDecl<TSymbol>),
-    Vars(VarDecls<TSymbol>),
+    Function(FunctionDecl<TSymbol, TContext>),
+    Type(TypeDecl<TSymbol, TContext>),
+    Vars(VarDecls<TSymbol, TContext>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Program<TSymbol>
-    where TSymbol: Symbol
+pub struct Program<TSymbo, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
     pub name: String,
 
-    pub uses: Vec<UnitReference>,
-    pub decls: Vec<UnitDeclaration<TSymbol>>,
+    pub uses: Vec<UnitReference, TContext>,
+    pub decls: Vec<UnitDeclaration<TSymbol, TContext>>,
 
-    pub program_block: Block<TSymbol>,
+    pub program_block: Block<TSymbol, TContext>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Unit<TSymbol>
-    where TSymbol: Symbol
+pub struct Unit<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
     pub name: String,
 
-    pub uses: Vec<UnitReference>,
+    pub uses: Vec<UnitReference, TContext>,
 
-    pub interface: Vec<UnitDeclaration<TSymbol>>,
-    pub implementation: Vec<UnitDeclaration<TSymbol>>,
+    pub interface: Vec<UnitDeclaration<TSymbol, TContext>>,
+    pub implementation: Vec<UnitDeclaration<TSymbol, TContext>>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -91,19 +100,21 @@ pub enum FunctionKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDeclBody<TSymbol>
-    where TSymbol: Symbol
+pub struct FunctionDeclBody<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
     pub local_vars: VarDecls<TSymbol>,
     pub block: Block<TSymbol>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDecl<TSymbol>
-    where TSymbol: Symbol
+pub struct FunctionDecl<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
     pub name: Identifier,
-    pub context: source::Token,
+    pub context: TContext,
 
     pub return_type: Option<TSymbol::Type>,
     pub kind: FunctionKind,
@@ -111,22 +122,22 @@ pub struct FunctionDecl<TSymbol>
     pub args: VarDecls<TSymbol>,
 
     // a function without a body is a forward declaration
-    pub body: Option<FunctionDeclBody<TSymbol>>,
+    pub body: Option<FunctionDeclBody<TSymbol, TContext>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Block<TSymbol> {
-    pub context: source::Token,
-    pub statements: Vec<Expression<TSymbol>>,
+pub struct Block<TSymbol, TContext> {
+    pub context: TContext,
+    pub statements: Vec<Expression<TSymbol, TContext>>,
 }
 
 #[derive(Clone, Debug)]
-pub enum TypeDecl<TSymbol>
+pub enum TypeDecl<TSymbol, TContext>
     where TSymbol: Symbol
 {
-    Record(RecordDecl<TSymbol>),
+    Record(RecordDecl<TSymbol, TContext>),
     Alias {
-        context: source::Token,
+        context: TContext,
 
         alias: String,
         of: TSymbol::Type,
@@ -134,22 +145,23 @@ pub enum TypeDecl<TSymbol>
 }
 
 #[derive(Clone, Debug)]
-pub struct RecordDecl<TSymbol>
-    where TSymbol: Symbol
+pub struct RecordDecl<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
 {
     pub name: Identifier,
     pub kind: RecordKind,
 
-    pub context: source::Token,
+    pub context: TContext,
     pub members: Vec<VarDecl<TSymbol>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct VarDecl<TSymbol>
+pub struct VarDecl<TSymbol, TContext>
     where TSymbol: Symbol
 {
     pub name: Identifier,
-    pub context: source::Token,
+    pub context: TContext,
 
     pub decl_type: TSymbol::Type,
 }
