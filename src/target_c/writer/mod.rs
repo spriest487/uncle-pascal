@@ -24,6 +24,8 @@ use types::{
     Type,
     Symbol,
 };
+use consts::IntConstant;
+
 use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
 
@@ -236,7 +238,15 @@ pub fn write_expr(out: &mut String,
             match const_expr {
                 ConstantExpression::Integer(i) => {
                     let int_type = expr.expr_type().unwrap().unwrap();
-                    write!(out, "(({}) {})", type_to_c(&int_type, expr.scope()), i)
+                    write!(out, "(({})", type_to_c(&int_type, expr.scope()))?;
+                    match i {
+                        IntConstant::U32(i) => write!(out, "0x{:x}", i)?,
+                        IntConstant::U64(i) => write!(out, "0x{:x}", i)?,
+                        IntConstant::I32(i) => write!(out, "{}", i)?,
+                        IntConstant::I64(i) => write!(out, "{}ll", i)?,
+                        IntConstant::Char(c) => write!(out, "{}", c)?,
+                    };
+                    write!(out, ")")
                 }
 
                 ConstantExpression::String(s) => {

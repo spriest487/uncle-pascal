@@ -1,4 +1,4 @@
-use std::fmt::{self, Write};
+use std::fmt;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum IntConstant {
@@ -12,10 +12,10 @@ pub enum IntConstant {
 impl fmt::Display for IntConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            IntConstant::Char(c) => f.write_char(char::from(*c)),
+            IntConstant::Char(c) => write!(f, "#{}", c),
             IntConstant::I32(i) => write!(f, "{}", i),
             IntConstant::I64(i) => write!(f, "{}", i),
-            IntConstant::U32(i) => write!(f, "{}", i),
+            IntConstant::U32(i) => write!(f, "${:X}", i),
             IntConstant::U64(i) => write!(f, "{}", i),
         }
     }

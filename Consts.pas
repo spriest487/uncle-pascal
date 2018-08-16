@@ -7,6 +7,8 @@ const
     NUM = 1
     YES = true
     NO: Boolean = false
+    UNSIGNED_SOMETHING = $DEADBEEF
+    CHAR_SOMETHING = #32
 
 procedure Test
 const

@@ -4,7 +4,7 @@ use std::{
 };
 use regex::{
     Regex,
-    Captures,
+    Match,
 };
 
 use tokens;
@@ -31,11 +31,11 @@ impl fmt::Display for IllegalToken {
 
 enum TokenMatchParser {
     Simple(tokens::Token),
-    ParseFn(Box<Fn(&Captures, &CompileOptions) -> Option<tokens::Token>>),
+    ParseFn(Box<Fn(&Match, &CompileOptions) -> Option<tokens::Token>>),
 }
 
 impl TokenMatchParser {
-    fn try_parse(&self, token_match: &Captures, opts: &CompileOptions) -> Option<tokens::Token> {
+    fn try_parse(&self, token_match: &Match, opts: &CompileOptions) -> Option<tokens::Token> {
         match self {
             &TokenMatchParser::Simple(ref token) => Some(token.clone()),
             &TokenMatchParser::ParseFn(ref parse_fn) => parse_fn(token_match, opts),
@@ -53,12 +53,7 @@ struct Tokenizer<'a> {
 impl<'a> Tokenizer<'a> {
     pub fn new(opts: &'a CompileOptions) -> Self {
         let token_patterns = vec![
-            func_pattern(r"[a-zA-Z_](([a-zA-Z0-9_])?)+", parse_name),
             //anything between two quote marks, with double quote as literal quote mark
-            func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
-            func_pattern(r"-?[0-9]+", parse_literal_integer), // decimal int
-            func_pattern(r"#[0-9]{1,3}", parse_literal_integer), // char
-            func_pattern(r"\$([0-9A-Fa-f]+)", parse_literal_integer), //hex int
             simple_pattern(r"\*", operators::Multiply),
             simple_pattern(r"[/]", operators::Divide),
             simple_pattern(r"\(", tokens::BracketLeft),
@@ -73,22 +68,29 @@ impl<'a> Tokenizer<'a> {
             simple_pattern(r"<", operators::Lt),
             simple_pattern(r"@", operators::AddressOf),
             simple_pattern(r"\+", operators::Plus),
-            simple_pattern(r"\-", operators::Minus),
             simple_pattern("=", operators::Equals),
             simple_pattern(r"\^", operators::Deref),
             simple_pattern(r":", tokens::Colon),
             simple_pattern(r";", tokens::Semicolon),
             simple_pattern(r",", tokens::Comma),
             simple_pattern(r"\.", tokens::Period),
+            func_pattern(r"-?[0-9]+", parse_literal_integer), // decimal int
+            func_pattern(r"#[0-9]{1,3}", parse_literal_integer), // char
+            func_pattern(r"\$[0-9A-Fa-f]+", parse_literal_integer), //hex int
+            func_pattern(r"'(:?[^']|'{2})*'", parse_literal_string),
+            simple_pattern(r"\-", operators::Minus),
+            func_pattern(r"[a-zA-Z_][a-zA-Z0-9_]*", parse_name),
         ];
 
         /* compile token pattern regexes */
         let token_matchers = token_patterns.into_iter()
             .map(|(pattern, token_parser)| {
+                /* we expect tokens to match at the start of the stream. also, add
+                the case-insensitive flag if appropriate */
                 let whole_token_pattern = if opts.case_sensitive() {
-                    pattern
+                    format!("^{}", pattern)
                 } else {
-                    format!("(?i){}", pattern)
+                    format!("(?i)^{}", pattern)
                 };
 
                 let token_regex = Regex::new(&whole_token_pattern)
@@ -115,33 +117,21 @@ impl<'a> Tokenizer<'a> {
         let file_name = Rc::new(file_name.to_string());
         self.out_buf.clear();
 
-        let mut col_it: Box<Iterator<Item=(usize, char)>> = Box::new(line.chars()
-            .enumerate()
-            .skip(0)
-            .filter(|(_, col_char)| !col_char.is_whitespace()));
-
+        let mut col = 0;
         loop {
-            let (col, _) = match col_it.next() {
-                Some(next @ _) => next,
+            col = match line[col..].find(|c| !char::is_whitespace(c)) {
+                Some(next_col) => col + next_col,
                 None => break,
             };
 
             let token = self.token_matchers.iter()
                 .filter_map(|(pattern, token_matcher)| {
-                    let captures = pattern.captures(&line[col..])?;
-                    let token_match = captures.get(0)?;
+                    let token_str = &line[col..];
+                    let token_match = pattern.find(token_str)?;
 
-                    if token_match.start() == 0 {
-                        let matched = token_matcher.try_parse(&captures, self.opts)?;
-                        col_it = Box::new(line.chars()
-                            .enumerate()
-                            .skip(col + token_match.end())
-                            .filter(|(_, col_char)| !col_char.is_whitespace()));
-
-                        Some(matched)
-                    } else {
-                        None
-                    }
+                    let matched = token_matcher.try_parse(&token_match, self.opts)?;
+                    col += token_match.end();
+                    Some(matched)
                 })
                 .next()
                 .map(|token| source::Token::new(token, source::Location {
@@ -163,32 +153,33 @@ impl<'a> Tokenizer<'a> {
     }
 }
 
-fn parse_literal_string(token_match: &Captures, _opts: &CompileOptions) -> Option<tokens::Token> {
+fn parse_literal_string(token_match: &Match, _opts: &CompileOptions) -> Option<tokens::Token> {
     //group 1 must be the inner content of the string (eg, minus the outer quotes)
-    let text = token_match.get(1).unwrap().as_str().to_owned()
+    let matched_text = token_match.as_str();
+    let inner_text = matched_text[1..matched_text.len() - 1]
         .replace("''", "'");
 
-    Some(tokens::LiteralString(text))
+    Some(tokens::LiteralString(inner_text))
 }
 
-fn parse_literal_integer(token_match: &Captures,
+fn parse_literal_integer(token_match: &Match,
                          _opts: &CompileOptions)
                          -> Option<tokens::Token> {
-    let int_text = token_match.get(0).unwrap().as_str();
+    let int_text = token_match.as_str();
 
     let val = IntConstant::parse_str(int_text)?;
 
     Some(tokens::LiteralInteger(val))
 }
 
-fn parse_name(token_match: &Captures, opts: &CompileOptions) -> Option<tokens::Token> {
-    let text = token_match.get(0).unwrap().as_str().to_owned();
+fn parse_name(token_match: &Match, opts: &CompileOptions) -> Option<tokens::Token> {
+    let text = token_match.as_str();
 
-    Some(keywords::Keyword::try_parse(&text, opts)
+    Some(keywords::Keyword::try_parse(text, opts)
         .map(|kw| tokens::Keyword(kw))
-        .or_else(|| operators::Operator::try_parse_text(&text, opts)
+        .or_else(|| operators::Operator::try_parse_text(text, opts)
             .map(|op| tokens::Operator(op)))
-        .unwrap_or_else(|| tokens::Identifier(text)))
+        .unwrap_or_else(|| tokens::Identifier(text.to_string())))
 }
 
 fn simple_pattern<T>(pattern: &str, token: T) -> (String, TokenMatchParser)
@@ -198,7 +189,7 @@ fn simple_pattern<T>(pattern: &str, token: T) -> (String, TokenMatchParser)
 }
 
 fn func_pattern<TFn>(pattern: &str, f: TFn) -> (String, TokenMatchParser)
-    where TFn: Fn(&Captures, &CompileOptions) -> Option<tokens::Token> + 'static
+    where TFn: Fn(&Match, &CompileOptions) -> Option<tokens::Token> + 'static
 {
     (pattern.to_owned(), TokenMatchParser::ParseFn(Box::new(f)))
 }
