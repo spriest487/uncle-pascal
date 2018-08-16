@@ -42,7 +42,14 @@ impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
 fn compile(source: &str) -> Result<(), CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
-    let program = syntax::program::Program::parse(tokens.into_iter())?
+    //no context!
+    let empty_context = tokenizer::SourceToken{
+        token: tokens::Keyword(keywords::Program),
+        line: 0,
+        col: 0,
+    };
+
+    let program = syntax::program::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
 
     println!("{}", program.to_source());

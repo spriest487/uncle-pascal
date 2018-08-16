@@ -108,7 +108,14 @@ impl Token {
     pub fn unwrap_identifier(&self) -> &str {
         match self {
             &Identifier(ref name) => name,
-            _ => panic!("calling unwrap_identifier on something that is not an identifier"),
+            _ => panic!("calling unwrap_identifier on {}", self),
+        }
+    }
+
+    pub fn unwrap_binary_operator(&self) -> &operators::BinaryOperator {
+        match self {
+            &BinaryOperator(ref op) => op,
+            _ => panic!("calling unwrap_binary_operator on {}", self),
         }
     }
 }

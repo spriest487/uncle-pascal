@@ -58,14 +58,14 @@ fn parse_literal_string(token_match: &regex::Captures) -> Option<tokens::Token> 
     let text = token_match.get(1).unwrap().as_str().to_owned()
         .replace("''", "'");
 
-    Some(tokens::Token::LiteralString(text))
+    Some(tokens::LiteralString(text))
 }
 
 fn parse_literal_integer(token_match: &regex::Captures) -> Option<tokens::Token> {
     let int_text = token_match.get(0).unwrap().as_str();
 
     int_text.parse()
-        .map(|int_val| tokens::Token::LiteralInteger(int_val))
+        .map(|int_val| tokens::LiteralInteger(int_val))
         .ok()
 }
 
@@ -73,8 +73,8 @@ fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
     let text = token_match.get(0).unwrap().as_str().to_owned();
 
     Some(keywords::Keyword::try_parse(&text)
-        .map(|kw| tokens::Token::Keyword(kw))
-        .unwrap_or_else(|| tokens::Token::Identifier(text)))
+        .map(|kw| tokens::Keyword(kw))
+        .unwrap_or_else(|| tokens::Identifier(text)))
 }
 
 fn token_patterns() -> Vec<(String, TokenMatchParser)> {
@@ -93,38 +93,38 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         ),
         (
             r"\(".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::BracketLeft)),
+            TokenMatchParser::Simple(tokens::BracketLeft)),
         (
             r"\)".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::BracketRight)),
+            TokenMatchParser::Simple(tokens::BracketRight)),
         (
             r":=".to_owned(),
             {
-                let op = tokens::Token::BinaryOperator(operators::BinaryOperator::Assignment);
+                let op = tokens::BinaryOperator(operators::Assignment);
                 TokenMatchParser::Simple(op)
             }
         ),
         (
             r":".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::Colon)),
+            TokenMatchParser::Simple(tokens::Colon)),
         (
             r";".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::Semicolon)),
+            TokenMatchParser::Simple(tokens::Semicolon)),
         (
             r",".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::Comma)),
+            TokenMatchParser::Simple(tokens::Comma)),
         (
             r"\.".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::Period)),
+            TokenMatchParser::Simple(tokens::Period)),
         (
             r"\+".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Plus))),
+            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Plus))),
         (
             r"\-".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Minus))),
+            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Minus))),
         (
             "=".to_owned(),
-            TokenMatchParser::Simple(tokens::Token::BinaryOperator(operators::BinaryOperator::Equals))),
+            TokenMatchParser::Simple(tokens::BinaryOperator(operators::Equals))),
         (
             r"[1-9][0-9]*".to_owned(),
             {

@@ -19,7 +19,7 @@ impl ToSource for Vars {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
             .map(|decl| {
-                format!("    {}: {};", decl.name, decl.decl_type)
+                format!("\t{}: {};", decl.name, decl.decl_type)
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -29,14 +29,15 @@ impl ToSource for Vars {
 }
 
 impl Vars {
-    pub fn parse<TIter, TToken>(in_tokens: TIter) -> ParseResult<Vars, TToken>
-        where TIter: IntoIterator<Item=TToken> + 'static,
-              TToken: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vars, TIter::Item>
+        where TIter: IntoIterator + 'static,
+              TIter::Item: tokens::AsToken + 'static
     {
         let match_kw = Matcher::Keyword(keywords::Var);
-        let (_, after_kw) = match_kw.match_one(in_tokens.into_iter())?.unwrap();
+        let (_, _, after_kw) = match_kw.match_one(in_tokens.into_iter(), context)?.unwrap();
 
         let mut next_tokens = after_kw;
+        let mut last_context = context.clone();
 
         let mut decls = Vec::new();
         loop {
@@ -48,7 +49,7 @@ impl Vars {
                         .and_then(Matcher::AnyIdentifier)
                         .and_then(Matcher::Exact(tokens::Semicolon));
 
-                    let (decl, after_decl) = match_decl.match_sequence(peekable_tokens)?
+                    let (decl, _, after_decl) = match_decl.match_sequence(peekable_tokens, &last_context)?
                         .unwrap();
 
                     let name = decl[0].as_token().unwrap_identifier().to_owned();
@@ -56,17 +57,18 @@ impl Vars {
                     decls.push(VarDecl { name, decl_type });
 
                     next_tokens = after_decl;
+                    last_context = decl[3].clone();
                 }
                 Some(ref _unexpected) => {
                     next_tokens = WrapIter::new(peekable_tokens);
                     break;
                 }
                 None => {
-                    return Err(ParseError::UnexpectedEOF(Matcher::AnyIdentifier));
+                    return Err(ParseError::UnexpectedEOF(Matcher::AnyIdentifier, last_context));
                 },
             }
         }
 
-        Ok(ParseOutput::new(Vars{ decls}, next_tokens.into_iter()))
+        Ok(ParseOutput::new(Vars{ decls}, last_context, next_tokens.into_iter()))
     }
 }

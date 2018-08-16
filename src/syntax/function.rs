@@ -11,14 +11,14 @@ pub struct Function {
     return_type: types::Identifier,
 
     local_vars: Vars,
-    //TODO
-    body: Vec<tokens::Token>,
+
+    body: Block,
 }
 
 impl Function {
-    pub fn parse<TIter, TToken>(in_tokens: TIter) -> ParseResult<Self, TToken>
-        where TIter: IntoIterator<Item=TToken> + 'static,
-              TToken: tokens::AsToken + 'static
+    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self, TIter::Item>
+        where TIter: IntoIterator + 'static,
+              TIter::Item: tokens::AsToken + 'static
     {
         //match the sig
         let sig_match = Matcher::Keyword(keywords::Function)
@@ -27,43 +27,42 @@ impl Function {
             .and_then(Matcher::AnyIdentifier)
             .and_then(Matcher::Exact(tokens::Semicolon));
 
-        let (sig, after_sig) = sig_match.match_sequence(in_tokens.into_iter())?.unwrap();
+        let (sig, sig_last, after_sig) = sig_match.match_sequence(in_tokens.into_iter(), context)?.unwrap();
 
         let fn_name = &sig[1];
         let fn_return_type = &sig[3];
 
-        let (first_after_sig, after_sig) = Matcher::Keyword(keywords::Var)
+        let (first_after_sig, _, after_sig) = Matcher::Keyword(keywords::Var)
             .or(Matcher::Keyword(keywords::Begin))
-            .match_peek(after_sig)?
+            .match_peek(after_sig, &sig_last)?
             .unwrap();
 
-        let (local_vars, after_local_vars) = if first_after_sig.as_token()
-            .is_keyword(keywords::Var) {
-            Vars::parse(after_sig)?.unwrap()
-        } else {
-            (Vars::default(), after_sig)
+        let local_vars = match first_after_sig {
+            Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {
+                Vars::parse(after_sig, &sig_last)?
+            }
+            _ => ParseOutput::new(Vars::default(), sig_last, after_sig)
         };
 
-        let (body_match, after_body) = Matcher::Keyword(keywords::Begin)
-            .paired_with(Matcher::Keyword(keywords::End))
-            .match_pair(after_local_vars)?
-            .unwrap();
+        let body_block = Block::parse(local_vars.next, &local_vars.last_parsed)?;
 
         let match_semicolon = Matcher::Exact(tokens::Semicolon);
-        let (_, remaining) = match_semicolon.match_one(after_body)?.unwrap();
+        let (_, after_last_semicolon, remaining) = match_semicolon
+            .match_one(body_block.next, &body_block.value.end)?
+            .unwrap();
 
         let function = Function {
             name: fn_name.as_token().unwrap_identifier().to_owned(),
             return_type: types::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
-            local_vars,
+            local_vars: local_vars.value,
 
-            body: body_match.inner.into_iter()
-                .map(|t| t.as_token().clone())
-                .collect(),
+            body: body_block.value.block,
         };
 
-        Ok(ParseOutput::new(function, remaining))
+        Ok(ParseOutput::new(function,
+                            after_last_semicolon,
+                            remaining))
     }
 }
 
@@ -76,9 +75,7 @@ impl ToSource for Function {
             lines.push(self.local_vars.to_source());
         }
 
-        lines.push("begin".to_owned());
-        lines.push(self.body.iter().map(|t| t.to_source()).collect::<Vec<_>>().join(" "));
-        lines.push("end;".to_owned());
+        lines.push(self.body.to_source() + ";");
 
         lines.join("\n")
     }

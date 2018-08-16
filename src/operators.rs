@@ -14,10 +14,10 @@ pub enum BinaryOperator {
 impl BinaryOperator {
     pub fn try_parse(from: &str) -> Option<Self> {
         match from {
-            ":=" => Some(BinaryOperator::Assignment),
-            "=" => Some(BinaryOperator::Equals),
-            "+" => Some(BinaryOperator::Plus),
-            "-" => Some(BinaryOperator::Minus),
+            ":=" => Some(Assignment),
+            "=" => Some(Equals),
+            "+" => Some(Plus),
+            "-" => Some(Minus),
             _ => None
         }
     }
@@ -26,10 +26,10 @@ impl BinaryOperator {
 impl fmt::Display for BinaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            &BinaryOperator::Assignment => ":=",
-            &BinaryOperator::Equals => "=",
-            &BinaryOperator::Plus => "+",
-            &BinaryOperator::Minus => "-",
+            &Assignment => ":=",
+            &Equals => "=",
+            &Plus => "+",
+            &Minus => "-",
         })
     }
 }
