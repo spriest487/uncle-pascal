@@ -12,42 +12,70 @@ pub type TypeDecl = node::TypeDecl<ParsedSymbol>;
 impl TypeDecl {
     pub fn parse(tokens: impl IntoIterator<Item=source::Token> + 'static,
                  context: &source::Token)
-                 -> ParseResult<Self> {
-        let match_name = keywords::Type
-            .and_then(Matcher::AnyIdentifier)
-            .and_then(operators::Equals)
-            .match_sequence(tokens, context)?;
+                 -> ParseResult<Vec<Self>> {
+        let match_kw = keywords::Type.match_one(tokens, &context)?;
 
-        let decl_name = match_name.value[1].unwrap_identifier();
+        let mut decls = Vec::new();
 
-        let peek_kind = keywords::Record.or(keywords::Class)
-            .or(operators::Deref)
-            .or(Matcher::AnyIdentifier)
-            .match_peek(match_name.next_tokens, &match_name.last_token)?;
+        let mut next_tokens: Box<Iterator<Item=source::Token>> = Box::new(match_kw.next_tokens);
+        let mut last_token = match_kw.last_token;
 
-        let type_decl = match peek_kind.value {
-            Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
-                RecordDecl::parse(decl_name, peek_kind.next_tokens, &peek_kind.last_token)?
-                    .map(|record_decl| {
-                        node::TypeDecl::Record(record_decl)
-                    })
+        loop {
+            let match_name = Matcher::AnyIdentifier
+                    .and_then(operators::Equals)
+                    .match_sequence(next_tokens, &last_token)?;
+
+            let decl_name = match_name.value[0].unwrap_identifier();
+
+            let peek_kind = keywords::Record.or(keywords::Class)
+                .or(operators::Deref)
+                .or(Matcher::AnyIdentifier)
+                .match_peek(match_name.next_tokens, &match_name.last_token)?;
+
+            let type_decl = match peek_kind.value {
+                Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
+                    RecordDecl::parse(decl_name, peek_kind.next_tokens, &peek_kind.last_token)?
+                        .map(|record_decl| {
+                            node::TypeDecl::Record(record_decl)
+                        })
+                }
+
+                _ => {
+                    let alias_context = peek_kind.last_token.clone();
+
+                    ParsedType::parse(peek_kind.next_tokens, &peek_kind.last_token)?
+                        .map(|aliased_type| {
+                            node::TypeDecl::Alias {
+                                alias: decl_name.to_string(),
+                                of: aliased_type,
+                                context: alias_context,
+                            }
+                        })
+                }
+            };
+
+            decls.push(type_decl.value);
+
+            /* the decl must be terminated either by a semicolon or a newline */
+            let separator = tokens::Semicolon.match_or_endl(type_decl.next_tokens,
+                                                            &type_decl.last_token)?;
+
+            /* but if the token after that is another identifier, there's another decl
+            in this type decl block */
+            let next_identifier = tokens::Semicolon.or(Matcher::AnyIdentifier)
+                .match_peek(separator.next_tokens, &separator.last_token)?;
+
+            match next_identifier.value {
+                Some(_) => {
+                    next_tokens = Box::new(next_identifier.next_tokens);
+                    last_token = next_identifier.last_token;
+                }
+
+                None => break Ok({
+                    ParseOutput::new(decls, next_identifier.last_token, next_identifier.next_tokens)
+                })
             }
-
-            _ => {
-                let alias_context = peek_kind.last_token.clone();
-
-                ParsedType::parse(peek_kind.next_tokens, &peek_kind.last_token)?
-                    .map(|aliased_type| {
-                        node::TypeDecl::Alias {
-                            alias: decl_name.to_string(),
-                            of: aliased_type,
-                            context: alias_context,
-                        }
-                    })
-            }
-        };
-
-        Ok(type_decl)
+        }
     }
 }
 

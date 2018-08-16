@@ -4,10 +4,14 @@ uses System.*
 
 interface
 
-type Vector = class
-  Elements: ^Byte
-  Length: Integer
-end
+type
+  Element = Byte
+  Index = Integer
+
+  Vector = class
+    Elements: ^Element
+    Length: Index
+  end
 
 constructor Create: Vector
 begin
@@ -20,7 +24,7 @@ begin
     FreeMem(self.Elements)
 end
 
-procedure Add(self: Vector; p: Byte)
+procedure Add(self: Vector; p: Element)
 begin
   let newElements := GetMem(self.Length + 1)
 

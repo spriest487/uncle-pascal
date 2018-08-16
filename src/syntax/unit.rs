@@ -159,11 +159,13 @@ impl Unit {
                 }
 
                 Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
-                    let type_decl = TypeDecl::parse(tokens, &peek_decl.last_token)?;
-                    decls.push(node::UnitDeclaration::Type(type_decl.value));
+                    let type_decls = TypeDecl::parse(tokens, &peek_decl.last_token)?;
+                    decls.extend(type_decls.value.into_iter().map(|type_decl| {
+                        node::UnitDeclaration::Type(type_decl)
+                    }));
 
-                    tokens = Box::from(type_decl.next_tokens);
-                    last_parsed = type_decl.last_token;
+                    tokens = Box::from(type_decls.next_tokens);
+                    last_parsed = type_decls.last_token;
                 }
 
                 Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {

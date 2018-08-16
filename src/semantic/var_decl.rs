@@ -21,7 +21,6 @@ impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope, kind: SemanticVarsKind) -> Result<Self, SemanticError> {
         let mut var_type = scope.get_type(&decl.decl_type.name)
             .ok_or_else(|| {
-                eprintln!("{:?}", scope);
                 SemanticError::unknown_type(decl.decl_type.name.clone(),
                                             decl.context.clone())
             })?;
