@@ -3,7 +3,20 @@ program HelloWorld;
 
 uses System;
 
-function Greet: System.String;
+type String = record
+  Chars: System.Pointer;
+  Length: System.Integer;
+end;
+
+type Vector = record
+  Elements: System.Pointer;
+  Length: System.Integer;
+end;
+
+//function malloc(System.Integer): System.Pointer; extern 'C';
+//function free(System.Pointer); extern 'C';
+
+function Greet(name: System.String): System.String;
 var
   msg: System.String;
 begin
@@ -14,6 +27,7 @@ end;
 var
   x: System.Integer;
   y: System.Integer;
+
 begin
   x := 1;
   y := 2;

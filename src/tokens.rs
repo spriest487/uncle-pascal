@@ -45,6 +45,13 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
+    fn is_binary_operator(&self, op: &operators::BinaryOperator) -> bool {
+        match self.as_token() {
+            &Token::BinaryOperator(ref token_op) => token_op.eq(op),
+            _ => false
+        }
+    }
+
     fn is_any_binary_operator(&self) -> bool {
         match self.as_token() {
             &Token::BinaryOperator(_) => true,

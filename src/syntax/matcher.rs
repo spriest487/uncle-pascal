@@ -2,6 +2,7 @@ use std::fmt;
 
 use syntax::*;
 use keywords;
+use operators;
 use tokens;
 
 pub struct SplitResult<TToken> {
@@ -13,6 +14,7 @@ pub struct SplitResult<TToken> {
 #[derive(Clone, Debug)]
 pub enum Matcher {
     Keyword(keywords::Keyword),
+    BinaryOperator(operators::BinaryOperator),
     AnyKeyword,
     AnyIdentifier,
     AnyBinaryOperator,
@@ -25,6 +27,12 @@ pub enum Matcher {
 impl From<tokens::Token> for Matcher {
     fn from(token: tokens::Token) -> Self {
         Matcher::Exact(token)
+    }
+}
+
+impl From<operators::BinaryOperator> for Matcher {
+    fn from(op: operators::BinaryOperator) -> Self {
+        Matcher::BinaryOperator(op)
     }
 }
 
@@ -68,6 +76,7 @@ impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(kw)),
+            &Matcher::BinaryOperator(ref op) => write!(f, "{}", op),
             &Matcher::AnyKeyword => write!(f, "keyword"),
             &Matcher::AnyIdentifier => write!(f, "identifier"),
             &Matcher::AnyBinaryOperator => write!(f, "binary operator"),
@@ -89,6 +98,7 @@ impl Matcher {
         match self {
             &Matcher::Keyword(kw) => token.is_keyword(kw),
             &Matcher::AnyKeyword => token.is_any_keyword(),
+            &Matcher::BinaryOperator(ref op) => token.is_binary_operator(op),
             &Matcher::AnyIdentifier => token.is_any_identifier(),
             &Matcher::AnyBinaryOperator => token.is_any_binary_operator(),
             &Matcher::AnyLiteralInteger => token.is_any_literal_int(),
@@ -138,8 +148,8 @@ pub trait Matchable {
     fn as_matcher(&self) -> Matcher;
 
     fn match_one<TIter>(&self,
-                        in_tokens:
-                        TIter, context: &TIter::Item) -> ParseResult<TIter::Item, TIter::Item>
+                        in_tokens: TIter,
+                        context: &TIter::Item) -> ParseResult<TIter::Item, TIter::Item>
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken {
         let mut tokens = in_tokens.into_iter();
@@ -265,6 +275,12 @@ impl Matchable for tokens::Token {
 impl Matchable for keywords::Keyword {
     fn as_matcher(&self) -> Matcher {
         Matcher::Keyword(self.clone())
+    }
+}
+
+impl Matchable for operators::BinaryOperator {
+    fn as_matcher(&self) -> Matcher {
+        Matcher::BinaryOperator(self.clone())
     }
 }
 

@@ -6,7 +6,6 @@ use node;
 use ToSource;
 
 pub type Program = node::Program<node::Identifier>;
-pub type RecordDecl = node::RecordDecl<node::Identifier>;
 
 fn parse_uses<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Vec<node::Identifier>, TIter::Item>
     where TIter: IntoIterator + 'static,
@@ -67,7 +66,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
 
     loop {
         let match_decl_first = keywords::Function
-            //.or(Matcher::Keyword(keywords::Uses)) TODO?
+            .or(keywords::Type)
             .or(keywords::Var)
             .or(keywords::Begin);
 
@@ -84,7 +83,11 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
             }
 
             Some(ref type_kw) if type_kw.as_token().is_keyword(keywords::Type) => {
-                unimplemented!()
+                let record = RecordDecl::parse(tokens, &peek_decl.last_token)?;
+                program_type_decls.push(record.value);
+
+                tokens = Box::from(record.next_tokens);
+                last_parsed = record.last_token;
             }
 
             Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {

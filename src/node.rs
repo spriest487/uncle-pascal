@@ -181,8 +181,8 @@ pub struct RecordDecl<TSymbol>
     where TSymbol: Symbol + Clone + fmt::Debug,
           TSymbol::Type: Clone + fmt::Debug
 {
-    name: String,
-    members: Vec<VarDecl<TSymbol>>,
+    pub name: String,
+    pub members: Vec<VarDecl<TSymbol>>,
 }
 
 #[derive(Clone, Debug)]
