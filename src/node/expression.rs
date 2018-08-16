@@ -11,47 +11,47 @@ use consts::{
 use types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ExpressionValue<TSymbol, TContext> {
+pub enum ExpressionValue<TContext> {
     PrefixOperator {
         op: operators::Operator,
-        rhs: Box<Expression<TSymbol, TContext>>,
+        rhs: Box<Expression<TContext>>,
     },
     BinaryOperator {
-        lhs: Box<Expression<TSymbol, TContext>>,
+        lhs: Box<Expression<TContext>>,
         op: operators::Operator,
-        rhs: Box<Expression<TSymbol, TContext>>,
+        rhs: Box<Expression<TContext>>,
     },
     FunctionCall {
-        target: Box<Expression<TSymbol, TContext>>,
-        args: Vec<Expression<TSymbol, TContext>>,
+        target: Box<Expression<TContext>>,
+        args: Vec<Expression<TContext>>,
     },
     Constant(ConstantExpression),
-    Identifier(TSymbol),
+    Identifier(Identifier),
     LetBinding {
         name: String,
-        value: Box<Expression<TSymbol, TContext>>,
+        value: Box<Expression<TContext>>,
     },
     Member {
-        of: Box<Expression<TSymbol, TContext>>,
+        of: Box<Expression<TContext>>,
         name: String,
     },
     If {
-        condition: Box<Expression<TSymbol, TContext>>,
-        then_branch: Box<Expression<TSymbol, TContext>>,
-        else_branch: Option<Box<Expression<TSymbol, TContext>>>,
+        condition: Box<Expression<TContext>>,
+        then_branch: Box<Expression<TContext>>,
+        else_branch: Option<Box<Expression<TContext>>>,
     },
-    Block(Block<TSymbol, TContext>),
+    Block(Block<TContext>),
     ForLoop {
-        from: Box<Expression<TSymbol, TContext>>,
-        to: Box<Expression<TSymbol, TContext>>,
-        body: Box<Expression<TSymbol, TContext>>,
+        from: Box<Expression<TContext>>,
+        to: Box<Expression<TContext>>,
+        body: Box<Expression<TContext>>,
     },
 }
 
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Expression<TSymbol, TContext> {
-    pub value: ExpressionValue<TSymbol, TContext>,
+pub struct Expression<TContext> {
+    pub value: ExpressionValue<TContext>,
     pub context: TContext,
 }
 
@@ -102,9 +102,8 @@ impl ConstantExpression {
     }
 }
 
-impl<TSymbol, TContext> fmt::Display for Expression<TSymbol, TContext>
-    where TSymbol: fmt::Debug,
-          TContext: Context + fmt::Debug,
+impl<TContext> fmt::Display for Expression<TContext>
+    where TContext: Context + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "expression: {:?} ({})", self.value, self.context.token()) //TODO better display
@@ -112,9 +111,8 @@ impl<TSymbol, TContext> fmt::Display for Expression<TSymbol, TContext>
 }
 
 #[allow(dead_code)]
-impl<TSymbol, TContext> Expression<TSymbol, TContext>
-    where TSymbol: fmt::Debug,
-          TContext: Context + Clone + fmt::Debug
+impl<TContext> Expression<TContext>
+    where TContext: Context + Clone + fmt::Debug
 {
     pub fn prefix_op(op: operators::Operator, rhs: Self, context: impl Into<TContext>) -> Self {
         Expression {
@@ -197,7 +195,7 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         }
     }
 
-    pub fn identifier(id: TSymbol, context: impl Into<TContext>) -> Self {
+    pub fn identifier(id: Identifier, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Identifier(id),
             context: context.into(),
@@ -273,7 +271,7 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         }
     }
 
-    pub fn block(block: Block<TSymbol, TContext>) -> Self {
+    pub fn block(block: Block<TContext>) -> Self {
         Expression {
             context: block.context.clone(),
             value: ExpressionValue::Block(block),
@@ -402,9 +400,7 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
 }
 
 #[allow(dead_code)]
-impl<TSymbol, TContext> Expression<TSymbol, TContext>
-    where TSymbol: PartialEq
-{
+impl<TContext> Expression<TContext> {
     pub fn is_any_identifier(&self) -> bool {
         match &self.value {
             ExpressionValue::Identifier(_) => true,
@@ -412,7 +408,7 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         }
     }
 
-    pub fn is_identifier(&self, id: &TSymbol) -> bool {
+    pub fn is_identifier(&self, id: &Identifier) -> bool {
         match &self.value {
             &ExpressionValue::Identifier(ref expr_id) => expr_id == id,
             _ => false,
@@ -420,12 +416,11 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
     }
 }
 
-pub fn transform_expressions<TSymbol, TContext>(
-    root_expr: Expression<TSymbol, TContext>,
-    replace: &mut FnMut(Expression<TSymbol, TContext>) -> Expression<TSymbol, TContext>)
-    -> Expression<TSymbol, TContext>
-    where TSymbol: fmt::Debug,
-          TContext: Context + Clone + fmt::Debug
+pub fn transform_expressions<TContext>(
+    root_expr: Expression<TContext>,
+    replace: &mut FnMut(Expression<TContext>) -> Expression<TContext>)
+    -> Expression<TContext>
+    where TContext: Context + Clone + fmt::Debug
 {
     match root_expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {

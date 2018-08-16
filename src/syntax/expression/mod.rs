@@ -9,7 +9,7 @@ use node;
 use source;
 use operators;
 
-pub type Expression = node::Expression<ParsedSymbol, ParsedContext>;
+pub type Expression = node::Expression<ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -357,7 +357,7 @@ impl Expression {
         let id = node::Identifier::parse(tokens)?;
 
         // safe to unwrap context because a token must have existed if the identifier parsed
-        Ok(Expression::identifier(ParsedSymbol(id), context.unwrap()))
+        Ok(Expression::identifier(id, context.unwrap()))
     }
 
     fn parse_literal_string(tokens: &mut TokenStream) -> ExpressionResult {

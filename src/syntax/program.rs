@@ -4,7 +4,7 @@ use tokens::AsToken;
 use keywords;
 use node;
 
-pub type Program = node::Program<ParsedSymbol, ParsedContext>;
+pub type Program = node::Program<ParsedContext>;
 
 impl Program {
     pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {

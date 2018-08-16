@@ -13,9 +13,9 @@ use types::{
 
 const RESULT_VAR_NAME: &str = "result";
 
-pub type FunctionDecl = node::FunctionDecl<ScopedSymbol, SemanticContext>;
-pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol, SemanticContext>;
-pub type FunctionArg = node::FunctionArg<ScopedSymbol, SemanticContext>;
+pub type FunctionDecl = node::FunctionDecl<SemanticContext>;
+pub type FunctionDeclBody = node::FunctionDeclBody<SemanticContext>;
+pub type FunctionArg = node::FunctionArg<SemanticContext>;
 
 impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
@@ -33,12 +33,6 @@ impl FunctionDecl {
             None => None
         };
 
-        let qualified_name = if function.name.namespace.len() == 0 {
-            scope.qualify_local_name(&function.name.name)
-        } else {
-            return Err(SemanticError::illegal_name(function.name.to_string(), context));
-        };
-
         let args: Vec<FunctionArg> = function.args.iter()
             .map(|arg| {
                 let arg_context = SemanticContext {
@@ -53,6 +47,12 @@ impl FunctionDecl {
                     decl_type: arg_type,
                     context: arg_context,
                     modifier: arg.modifier.clone(),
+                    default_value: match arg.default_value.as_ref() {
+                        Some(default_expr) => {
+                            Some(Expression::annotate(default_expr, scope.clone())?)
+                        },
+                        None => None
+                    }
                 })
             })
             .collect::<SemanticResult<_>>()?;
@@ -112,7 +112,7 @@ impl FunctionDecl {
         };
 
         Ok(FunctionDecl {
-            name: qualified_name,
+            name: function.name.clone(),
             context,
             kind: function.kind,
             return_type,
@@ -142,7 +142,9 @@ impl FunctionDecl {
 
             let is_valid_destructed_type = |ty: &Type| {
                 match ty {
-                    Type::Class(class_name) => class_name.namespace == self.name.namespace,
+                    Type::Class(class_name) => {
+                        class_name.parent().as_ref() == self.scope().local_namespace()
+                    },
                     _ => false,
                 }
             };

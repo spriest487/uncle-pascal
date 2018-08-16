@@ -4,8 +4,8 @@ use semantic::*;
 use syntax;
 use node::{self};
 
-pub type ConstDecls = node::ConstDecls<ScopedSymbol, SemanticContext>;
-pub type ConstDecl = node::ConstDecl<ScopedSymbol, SemanticContext>;
+pub type ConstDecls = node::ConstDecls<SemanticContext>;
+pub type ConstDecl = node::ConstDecl<SemanticContext>;
 
 impl ConstDecl {
     pub fn annotate(decl: &syntax::ConstDecl, scope: Rc<Scope>) -> SemanticResult<(Self, Scope)> {

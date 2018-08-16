@@ -44,6 +44,8 @@ pub struct ParsedContext {
 }
 
 impl Context for ParsedContext {
+    type Type = TypeName;
+
     fn token(&self) -> &source::Token {
         &self.token
     }

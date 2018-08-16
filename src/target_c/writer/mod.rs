@@ -2,6 +2,7 @@ mod module_globals;
 
 use std::{
     fmt::{self, Write},
+    rc::Rc,
 };
 
 use operators;
@@ -12,6 +13,7 @@ use semantic::{
 };
 use node::{
     self,
+    Context,
     ExpressionValue,
     Identifier,
     FunctionKind,
@@ -104,18 +106,6 @@ pub fn identifier_to_c(id: &Identifier) -> String {
     parts.push(id.name.clone());
 
     parts.join("_")
-}
-
-pub fn symbol_to_c(sym: &semantic::ScopedSymbol) -> String {
-    match sym {
-        semantic::ScopedSymbol::Local { name, .. } => {
-            identifier_to_c(&name)
-        }
-
-        semantic::ScopedSymbol::RecordMember { record_id, name, .. } => {
-            format!("{}.{}", identifier_to_c(record_id), name)
-        }
-    }
 }
 
 pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
@@ -372,7 +362,7 @@ pub fn write_expr(out: &mut String,
         }
 
         ExpressionValue::Identifier(ref sym) => {
-            write!(out, "{}", symbol_to_c(sym))
+            write!(out, "{}", identifier_to_c(sym))
         }
 
         ExpressionValue::Member { ref of, ref name } => {
@@ -459,13 +449,14 @@ fn write_statement(out: &mut String,
                 decl_type: binding_type.clone(),
             })?;
 
-            let binding_sym = semantic::ScopedSymbol::Local {
-                name: binding_id,
-                decl_type: binding_type,
-            };
-
-            let context: semantic::SemanticContext = context;
-            let binding_id_expr = semantic::Expression::identifier(binding_sym, context.clone());
+            /* the scope of the assignment needs the let-bound variable added to it,
+            because a let binding doesn't have itself in scope */
+            let context = semantic::SemanticContext::new(
+                context.token().clone(),
+                Rc::new(statement.scope().clone()
+                    .with_symbol_local(&name, binding_type)),
+            );
+            let binding_id_expr = semantic::Expression::identifier(binding_id, context.clone());
 
             let binary_op = semantic::Expression::binary_op(binding_id_expr,
                                                             operators::Assignment,
@@ -495,23 +486,18 @@ fn write_statement(out: &mut String,
             .expect("called function target must be of function type");
 
         // returning an instance of an rc class..
-        let class_type = match &call_func.return_type {
-            Some(Type::Class(class_name)) => Type::Class(class_name.clone()),
-            _ => return subexpr,
-        };
+        if !call_func.return_type.as_ref().map(|t| t.is_class()).unwrap_or(false) {
+            return subexpr;
+        }
 
         let name = format!("internal_rc_binding_{}", next_binding);
         next_binding += 1;
 
-        let binding_sym = semantic::ScopedSymbol::Local {
-            name: Identifier::from(&name),
-            decl_type: class_type.clone(),
-        };
         let binding_context = subexpr.context.clone();
+        let binding_expr = semantic::Expression::identifier(Identifier::from(&name), binding_context);
 
         bindings.push((name, subexpr));
-
-        semantic::Expression::identifier(binding_sym, binding_context)
+        binding_expr
     });
 
     if bindings.len() > 0 {
@@ -650,8 +636,10 @@ pub fn write_function(out: &mut String,
     let return_type_c = function.return_type.as_ref()
         .map(|return_type| type_to_c(return_type, function.scope()));
 
+    let qualified_name = function.scope().qualify_local_name(&function.name);
+
     write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
-    write!(out, "{} ", identifier_to_c(&function.name))?;
+    write!(out, "{} ", identifier_to_c(&qualified_name))?;
 
     write!(out, "({})", function.args.iter()
         .map(|arg_decl|  {
@@ -818,7 +806,10 @@ pub fn write_static_init<'a>(out: &mut String,
             .next();
 
         let destructor_ptr = match destructor {
-            Some(destructor) => format!("(System_Internal_Destructor)&{}", identifier_to_c(&destructor.name)),
+            Some(destructor) => {
+                let qualified_name = destructor.scope().qualify_local_name(&destructor.name);
+                format!("(System_Internal_Destructor)&{}", identifier_to_c(&qualified_name))
+            },
             None => "nullptr".to_string(),
         };
 

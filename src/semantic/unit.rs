@@ -3,8 +3,8 @@ use node::{self, RecordKind};
 use syntax;
 use semantic::*;
 
-pub type Unit = node::Unit<ScopedSymbol, SemanticContext>;
-pub type UnitDeclaration = node::UnitDeclaration<ScopedSymbol, SemanticContext>;
+pub type Unit = node::Unit<SemanticContext>;
+pub type UnitDeclaration = node::UnitDeclaration<SemanticContext>;
 pub type UnitReference = node::UnitReference<SemanticContext>;
 
 impl Unit {
@@ -52,7 +52,7 @@ impl Unit {
                 node::UnitDeclaration::Function(parsed_func) => {
                     let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
 
-                    scope = scope.with_function(func_decl.name.clone(), func_decl.clone());
+                    scope = scope.with_function(func_decl.clone());
 
                     func_decl.type_check()?;
 

@@ -6,8 +6,8 @@ use node::{self, Identifier};
 use syntax;
 use semantic::*;
 
-pub type VarDecl = node::VarDecl<ScopedSymbol, SemanticContext>;
-pub type VarDecls = node::VarDecls<ScopedSymbol, SemanticContext>;
+pub type VarDecl = node::VarDecl<SemanticContext>;
+pub type VarDecls = node::VarDecls<SemanticContext>;
 
 impl Into<Symbol> for VarDecl {
     fn into(self) -> Symbol {
@@ -28,7 +28,7 @@ impl VarDecl {
             Some(default_expr) => {
                 Some(Expression::annotate(default_expr, scope.clone())?
                     .into_const_expr()?)
-            },
+            }
             None => None,
         };
 
@@ -36,7 +36,7 @@ impl VarDecl {
             name: decl.name.clone(),
             context: var_context,
             decl_type: var_type,
-            default_value
+            default_value,
         })
     }
 

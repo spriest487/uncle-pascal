@@ -11,9 +11,8 @@ impl ToSource for Identifier {
     }
 }
 
-impl<T, C> ToSource for Block<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for Block<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -33,18 +32,16 @@ impl<T, C> ToSource for Block<T, C>
     }
 }
 
-impl<T, C> ToSource for Expression<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for Expression<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         self.value.to_source()
     }
 }
 
-impl<T, C> ToSource for ExpressionValue<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for ExpressionValue<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         match self {
@@ -115,9 +112,8 @@ impl<T, C> ToSource for ExpressionValue<T, C>
     }
 }
 
-impl<T, C> ToSource for VarDecls<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for VarDecls<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
@@ -131,9 +127,8 @@ impl<T, C> ToSource for VarDecls<T, C>
     }
 }
 
-impl<T, C> ToSource for ConstDecls<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for ConstDecls<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
@@ -164,9 +159,8 @@ impl ToSource for ConstantExpression {
     }
 }
 
-impl<T, C> ToSource for FunctionDecl<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for FunctionDecl<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -184,9 +178,8 @@ impl<T, C> ToSource for FunctionDecl<T, C>
     }
 }
 
-impl<T, C> ToSource for Program<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for Program<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -221,9 +214,8 @@ impl<T, C> ToSource for Program<T, C>
     }
 }
 
-impl<T, C> ToSource for TypeDecl<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for TypeDecl<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         match self {
@@ -239,9 +231,8 @@ impl<T, C> ToSource for TypeDecl<T, C>
     }
 }
 
-impl<T, C> ToSource for RecordDecl<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for RecordDecl<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -275,9 +266,8 @@ impl<C> ToSource for SetDecl<C>
     }
 }
 
-impl<T, C> ToSource for UnitDeclaration<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for UnitDeclaration<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         match self {
@@ -296,9 +286,8 @@ impl<T, C> ToSource for UnitDeclaration<T, C>
     }
 }
 
-impl<T, C> ToSource for Unit<T, C>
-    where T: Symbol,
-          C: Context
+impl<C> ToSource for Unit<C>
+    where C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();

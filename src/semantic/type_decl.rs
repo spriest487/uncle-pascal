@@ -3,8 +3,8 @@ use node::{self, Identifier};
 use semantic::*;
 use syntax;
 
-pub type TypeDecl = node::TypeDecl<ScopedSymbol, SemanticContext>;
-pub type RecordDecl = node::RecordDecl<ScopedSymbol, SemanticContext>;
+pub type TypeDecl = node::TypeDecl<SemanticContext>;
+pub type RecordDecl = node::RecordDecl<SemanticContext>;
 pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
 pub type SetDecl = node::SetDecl<SemanticContext>;
 

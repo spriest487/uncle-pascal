@@ -253,8 +253,8 @@ impl Scope {
         self
     }
 
-    pub fn with_function(mut self, name: impl Into<Identifier>, decl: FunctionDecl) -> Self {
-        let name = name.into();
+    pub fn with_function(mut self, decl: FunctionDecl) -> Self {
+        let name = self.qualify_local_name(&decl.name);
         self.names.insert(name, Named::Function(decl));
         self
     }
@@ -308,10 +308,8 @@ impl Scope {
         self
     }
 
-    pub fn with_symbol_local(mut self, name: impl Into<Identifier>, decl_type: Type) -> Self {
-        let name = name.into();
-        assert_eq!(0, name.namespace.len());
-        self.names.insert(name, Named::Symbol(decl_type));
+    pub fn with_symbol_local(mut self, name: &str, decl_type: Type) -> Self {
+        self.names.insert(Identifier::from(name), Named::Symbol(decl_type));
         self
     }
 

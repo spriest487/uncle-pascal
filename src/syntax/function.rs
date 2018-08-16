@@ -5,16 +5,15 @@ use tokens;
 use tokens::AsToken;
 use node::{
     self,
-    Identifier,
     TypeName,
     FunctionKind,
     FunctionModifier,
     FunctionArgModifier,
 };
 
-pub type FunctionDecl = node::FunctionDecl<ParsedSymbol, ParsedContext>;
-pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol, ParsedContext>;
-pub type FunctionArg = node::FunctionArg<ParsedSymbol, ParsedContext>;
+pub type FunctionDecl = node::FunctionDecl<ParsedContext>;
+pub type FunctionDeclBody = node::FunctionDeclBody<ParsedContext>;
+pub type FunctionArg = node::FunctionArg<ParsedContext>;
 
 impl Parse for FunctionDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -96,7 +95,7 @@ impl Parse for FunctionDecl {
         };
 
         Ok(FunctionDecl {
-            name: Identifier::from(fn_name.unwrap_identifier()),
+            name: fn_name.unwrap_identifier().to_string(),
             context: fn_name.into(),
             return_type,
             modifiers,
@@ -224,6 +223,7 @@ impl FunctionDecl {
                     context: context.clone().into(),
                     decl_type: decl_type.clone(),
                     modifier,
+                    default_value: None,
                 }
             }));
 
@@ -247,7 +247,6 @@ impl FunctionDecl {
 mod test {
     use std::rc::Rc;
     use tokenizer;
-    use node::Identifier;
     use opts::CompileOptions;
     use super::*;
 
@@ -271,7 +270,7 @@ mod test {
     fn parses_sig_with_empty_args() {
         let func = parse_func("function hello(): System.String; begin end;");
 
-        assert_eq!(Identifier::from("hello"), func.name);
+        assert_eq!("hello", func.name);
         assert_eq!(Some(make_type_name("System.String")), func.return_type);
         assert_eq!(0, func.args.len());
     }
@@ -280,7 +279,7 @@ mod test {
     fn parses_sig_without_args() {
         let func = parse_func("function hello: String; begin end;");
 
-        assert_eq!(Identifier::from("hello"), func.name);
+        assert_eq!("hello", func.name);
         assert_eq!(Some(make_type_name("String")), func.return_type);
         assert_eq!(0, func.args.len());
     }
@@ -289,7 +288,7 @@ mod test {
     fn parses_sig_with_args() {
         let func = parse_func("function hello(x: System.Float; y: Integer): String; begin end;");
 
-        assert_eq!(Identifier::from("hello"), func.name);
+        assert_eq!("hello", func.name);
         assert_eq!(Some(make_type_name("String")), func.return_type);
         assert_eq!(2, func.args.len());
 

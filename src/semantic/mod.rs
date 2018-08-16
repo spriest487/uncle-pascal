@@ -51,7 +51,7 @@ pub enum SemanticErrorKind {
     InvalidConstructorType(Option<Type>),
     InvalidDestructorReturn(Type),
     InvalidDestructorArgs(Vec<Type>),
-    InvalidConstantValue(ExpressionValue<ScopedSymbol, SemanticContext>),
+    InvalidConstantValue(ExpressionValue<SemanticContext>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -348,6 +348,8 @@ impl fmt::Debug for SemanticContext {
 }
 
 impl Context for SemanticContext {
+    type Type = Type;
+
     fn token(&self) -> &source::Token {
         &self.token
     }

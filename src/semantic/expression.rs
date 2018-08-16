@@ -15,7 +15,7 @@ use types::{
 };
 use consts::IntConstant;
 
-pub type Expression = node::Expression<ScopedSymbol, SemanticContext>;
+pub type Expression = node::Expression<SemanticContext>;
 
 fn expect_valid_operation(operator: operators::Operator,
                           target: Option<&Type>,
@@ -131,14 +131,13 @@ fn annotate_identifier(name: &Identifier,
             /* transform identifiers that reference record members into
             record member expressions */
             ScopedSymbol::RecordMember { record_id, name, .. } => {
-                let record_sym = scope.get_symbol(&record_id)?;
-                let base = Expression::identifier(record_sym, identifier_context.clone());
+                let base = Expression::identifier(record_id, identifier_context.clone());
 
                 Some(Expression::member(base, &name))
             }
 
-            symbol @ ScopedSymbol::Local { .. } => {
-                Some(Expression::identifier(symbol, identifier_context.clone()))
+            ScopedSymbol::Local { name, .. } => {
+                Some(Expression::identifier(name.clone(), identifier_context.clone()))
             }
         })
         .or_else(|| {
@@ -292,8 +291,8 @@ fn annotate_ufcs(target: &Expression,
     let ufcs_name = ufcs_ns.child(func_name);
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
-    match ufcs_function.decl_type() {
-        Type::Function(sig) => {
+    match ufcs_function {
+        ScopedSymbol::Local { name: ufcs_func_name, decl_type: Type::Function(sig) } => {
             let first_arg_type = sig.arg_types.first()?;
 
             if first_arg_type.remove_indirection() != target_type.remove_indirection() {
@@ -307,14 +306,14 @@ fn annotate_ufcs(target: &Expression,
                 let mut ufcs_args = vec![ufcs_target_arg];
                 ufcs_args.extend(args.iter().cloned());
 
-                let ufcs_target_expr = Expression::identifier(ufcs_function.clone(),
+                let ufcs_target_expr = Expression::identifier(ufcs_func_name.clone(),
                                                               target.context.clone());
 
                 Some(Expression::function_call(ufcs_target_expr, ufcs_args))
             }
         }
 
-        _ => None
+        _ => None,
     }
 }
 
@@ -338,22 +337,21 @@ fn annotate_function_call(target: &syntax::Expression,
         }
 
         &ExpressionValue::Identifier(ref name) => {
-            let base_id: Option<Identifier> = name.0.parent();
+            name.parent().and_then(|base_id| {
+                let base_sym = scope.get_symbol(&base_id)?;
 
-            base_id.and_then(|base_id| scope.get_symbol(&base_id))
-                .and_then(|base_sym| {
-                    let func_name = &name.0.name;
-                    let base_expr = Expression::identifier(base_sym.clone(), SemanticContext {
-                        token: target.context.token().clone(),
-                        scope: scope.clone(),
-                    });
+                let func_name = &name.name;
+                let base_expr = Expression::identifier(base_id, SemanticContext {
+                    token: target.context.token().clone(),
+                    scope: scope.clone(),
+                });
 
-                    annotate_ufcs(&base_expr,
-                                  &base_sym.decl_type(),
-                                  func_name,
-                                  &typed_args,
-                                  scope.clone())
-                })
+                annotate_ufcs(&base_expr,
+                              &base_sym.decl_type(),
+                              func_name,
+                              &typed_args,
+                              scope.clone())
+            })
         }
 
         _ => None,
@@ -409,8 +407,8 @@ fn function_call_type(target: &Expression,
 
 fn is_lvalue(expr: &Expression) -> bool {
     match &expr.value {
-        ExpressionValue::Identifier(sym) => {
-            let is_declared_func = expr.scope().get_function(&sym.name()).is_some();
+        ExpressionValue::Identifier(name) => {
+            let is_declared_func = expr.scope().get_function(&name).is_some();
             !is_declared_func
         }
         ExpressionValue::PrefixOperator { op, .. } => match op {
@@ -574,7 +572,7 @@ impl Expression {
 
         match &expr.value {
             ExpressionValue::Identifier(name) =>
-                annotate_identifier(&name.0, scope, &expr.context),
+                annotate_identifier(name, scope, &expr.context),
 
             ExpressionValue::Block(block) => {
                 Ok(Expression::block(Block::annotate(block, scope)?))
@@ -669,8 +667,13 @@ impl Expression {
             ExpressionValue::FunctionCall { target, args } =>
                 function_call_type(target, args, &self.context),
 
-            ExpressionValue::Identifier(id) =>
-                Ok(Some(id.decl_type().clone())),
+            ExpressionValue::Identifier(id) => {
+                self.scope().get_symbol(id)
+                    .map(|sym| Some(sym.decl_type().clone()))
+                    .ok_or_else(|| {
+                        SemanticError::unknown_symbol(id.clone(), self.context.clone())
+                    })
+            }
 
             ExpressionValue::Block(block) => {
                 for statement in block.statements.iter() {
@@ -793,7 +796,7 @@ impl Expression {
                 }
             }
 
-            ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) => {
+            ExpressionValue::Identifier(name) => {
                 self.scope().get_const(name)
                     .map(|(_const_id, const_val)| const_val.clone())
                     .ok_or_else(|| {
@@ -878,8 +881,8 @@ pub(crate) mod test {
         let default_scope = Scope::default();
 
         let scope = default_scope.clone()
-            .with_function(test_func_name.clone(), FunctionDecl {
-                name: test_func_name.clone(),
+            .with_function(FunctionDecl {
+                name: test_func_name.name.clone(),
                 return_type: Some(Type::Int64),
                 modifiers: Vec::new(),
                 args: vec![
@@ -888,6 +891,7 @@ pub(crate) mod test {
                         modifier: None,
                         name: "x".to_string(),
                         decl_type: Type::Int64,
+                        default_value: None,
                     }
                 ],
                 body: None,
@@ -900,13 +904,10 @@ pub(crate) mod test {
 
         match expr.value {
             ExpressionValue::FunctionCall { target, args } => {
-                let expected_target = scope.get_symbol(&test_func_name).unwrap();
-
-                assert!(target.is_identifier(&expected_target));
+                assert!(target.is_identifier(&test_func_name));
                 assert_eq!(2, args.len());
 
-                let expected_first_arg = scope.get_symbol(&Identifier::from("a")).unwrap();
-                assert!(args[0].is_identifier(&expected_first_arg));
+                assert!(args[0].is_identifier(&Identifier::from("a")));
 
                 assert!(args[1].is_literal_integer(1));
             }

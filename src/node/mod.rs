@@ -14,6 +14,8 @@ pub use self::to_source::*;
 pub use self::function_signature::*;
 
 pub trait Context {
+    type Type: Clone + ToSource + fmt::Debug;
+
     fn token(&self) -> &source::Token;
 }
 
@@ -58,40 +60,37 @@ impl<TContext> fmt::Display for UnitReference<TContext>
 }
 
 #[derive(Clone, Debug)]
-pub enum UnitDeclaration<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub enum UnitDeclaration<TContext>
+    where TContext: Context
 {
-    Function(FunctionDecl<TSymbol, TContext>),
-    Type(TypeDecl<TSymbol, TContext>),
-    Vars(VarDecls<TSymbol, TContext>),
-    Consts(ConstDecls<TSymbol, TContext>),
+    Function(FunctionDecl<TContext>),
+    Type(TypeDecl<TContext>),
+    Vars(VarDecls<TContext>),
+    Consts(ConstDecls<TContext>),
 }
 
 #[derive(Clone, Debug)]
-pub struct Program<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct Program<TContext>
+    where TContext: Context
 {
     pub name: String,
 
     pub uses: Vec<UnitReference<TContext>>,
-    pub decls: Vec<UnitDeclaration<TSymbol, TContext>>,
+    pub decls: Vec<UnitDeclaration<TContext>>,
 
-    pub program_block: Block<TSymbol, TContext>,
+    pub program_block: Block<TContext>,
 }
 
 #[derive(Clone, Debug)]
-pub struct Unit<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct Unit<TContext>
+    where TContext: Context
 {
     pub name: String,
 
     pub uses: Vec<UnitReference<TContext>>,
 
-    pub interface: Vec<UnitDeclaration<TSymbol, TContext>>,
-    pub implementation: Vec<UnitDeclaration<TSymbol, TContext>>,
+    pub interface: Vec<UnitDeclaration<TContext>>,
+    pub implementation: Vec<UnitDeclaration<TContext>>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
@@ -102,13 +101,12 @@ pub enum FunctionKind {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDeclBody<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct FunctionDeclBody<TContext>
+    where TContext: Context
 {
-    pub local_vars: VarDecls<TSymbol, TContext>,
-    pub local_consts: ConstDecls<TSymbol, TContext>,
-    pub block: Block<TSymbol, TContext>,
+    pub local_vars: VarDecls<TContext>,
+    pub local_consts: ConstDecls<TContext>,
+    pub block: Block<TContext>,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -129,53 +127,51 @@ impl ToSource for FunctionArgModifier {
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionArg<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct FunctionArg<TContext>
+    where TContext: Context
 {
     pub name: String,
-    pub decl_type: TSymbol::Type,
+    pub decl_type: TContext::Type,
     pub modifier: Option<FunctionArgModifier>,
     pub context: TContext,
+    pub default_value: Option<Expression<TContext>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct FunctionDecl<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct FunctionDecl<TContext>
+    where TContext: Context
 {
-    pub name: Identifier,
+    pub name: String,
     pub context: TContext,
 
-    pub return_type: Option<TSymbol::Type>,
+    pub return_type: Option<TContext::Type>,
     pub kind: FunctionKind,
     pub modifiers: Vec<FunctionModifier>,
 
-    pub args: Vec<FunctionArg<TSymbol, TContext>>,
+    pub args: Vec<FunctionArg<TContext>>,
 
     // a function without a body is a forward declaration
-    pub body: Option<FunctionDeclBody<TSymbol, TContext>>,
+    pub body: Option<FunctionDeclBody<TContext>>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct Block<TSymbol, TContext> {
+pub struct Block<TContext> {
     pub context: TContext,
-    pub statements: Vec<Expression<TSymbol, TContext>>,
+    pub statements: Vec<Expression<TContext>>,
 }
 
 #[derive(Clone, Debug)]
-pub enum TypeDecl<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub enum TypeDecl<TContext>
+    where TContext: Context
 {
-    Record(RecordDecl<TSymbol, TContext>),
+    Record(RecordDecl<TContext>),
     Enumeration(EnumerationDecl<TContext>),
     Set(SetDecl<TContext>),
     Alias {
         context: TContext,
 
         alias: String,
-        of: TSymbol::Type,
+        of: TContext::Type,
     },
 }
 
@@ -207,49 +203,44 @@ pub enum RecordKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct RecordDecl<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct RecordDecl<TContext>
+    where TContext: Context
 {
     pub name: String,
     pub kind: RecordKind,
 
     pub context: TContext,
-    pub members: Vec<VarDecl<TSymbol, TContext>>,
+    pub members: Vec<VarDecl<TContext>>,
 }
 
-impl<TSymbol, TContext> RecordDecl<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+impl<TContext> RecordDecl<TContext>
+    where TContext: Context
 {
-    pub fn get_member(&self, name: &str) -> Option<&VarDecl<TSymbol, TContext>> {
+    pub fn get_member(&self, name: &str) -> Option<&VarDecl<TContext>> {
         self.members.iter()
             .find(|member| member.name.to_string() == name)
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct ConstDecl<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct ConstDecl<TContext>
+    where TContext: Context
 {
     pub name: String,
-    pub value: Expression<TSymbol, TContext>,
-    pub decl_type: Option<TSymbol::Type>,
+    pub value: Expression<TContext>,
+    pub decl_type: Option<TContext::Type>,
     pub context: TContext,
 }
 
 #[derive(Clone, Debug)]
-pub struct ConstDecls<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+pub struct ConstDecls<TContext>
+    where TContext: Context
 {
-    pub decls: Vec<ConstDecl<TSymbol, TContext>>,
+    pub decls: Vec<ConstDecl<TContext>>,
 }
 
-impl<TSymbol, TContext> Default for ConstDecls<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+impl<TContext> Default for ConstDecls<TContext>
+    where TContext: Context
 {
     fn default() -> Self {
         ConstDecls { decls: Vec::new() }
@@ -257,27 +248,26 @@ impl<TSymbol, TContext> Default for ConstDecls<TSymbol, TContext>
 }
 
 #[derive(Clone, Debug)]
-pub struct VarDecl<TSymbol, TContext>
-    where TSymbol: Symbol
+pub struct VarDecl<TContext>
+    where TContext: Context
 {
     pub name: String,
     pub context: TContext,
 
-    pub decl_type: TSymbol::Type,
+    pub decl_type: TContext::Type,
 
-    pub default_value: Option<Expression<TSymbol, TContext>>,
+    pub default_value: Option<Expression<TContext>>,
 }
 
 #[derive(Clone, Debug)]
-pub struct VarDecls<TSymbol, TContext>
-    where TSymbol: Symbol
+pub struct VarDecls<TContext>
+    where TContext: Context
 {
-    pub decls: Vec<VarDecl<TSymbol, TContext>>,
+    pub decls: Vec<VarDecl<TContext>>,
 }
 
-impl<TSymbol, TContext> Default for VarDecls<TSymbol, TContext>
-    where TSymbol: Symbol,
-          TContext: Context
+impl<TContext> Default for VarDecls<TContext>
+    where TContext: Context
 {
     fn default() -> Self {
         VarDecls { decls: Vec::new() }

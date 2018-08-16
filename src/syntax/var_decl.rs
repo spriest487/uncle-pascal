@@ -5,8 +5,8 @@ use node::{self, TypeName};
 use operators;
 use syntax::*;
 
-pub type VarDecl = node::VarDecl<ParsedSymbol, ParsedContext>;
-pub type VarDecls = node::VarDecls<ParsedSymbol, ParsedContext>;
+pub type VarDecl = node::VarDecl<ParsedContext>;
+pub type VarDecls = node::VarDecls<ParsedContext>;
 
 impl Parse for Vec<VarDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {

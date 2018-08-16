@@ -5,8 +5,8 @@ use tokens;
 use operators;
 use tokens::AsToken;
 
-pub type Unit = node::Unit<ParsedSymbol, ParsedContext>;
-pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol, ParsedContext>;
+pub type Unit = node::Unit<ParsedContext>;
+pub type UnitDeclaration = node::UnitDeclaration<ParsedContext>;
 pub type UnitReference = node::UnitReference<ParsedContext>;
 
 impl Unit {

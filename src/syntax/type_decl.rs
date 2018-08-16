@@ -4,8 +4,8 @@ use keywords;
 use tokens::{self, AsToken};
 use operators;
 
-pub type TypeDecl = node::TypeDecl<ParsedSymbol, ParsedContext>;
-pub type RecordDecl = node::RecordDecl<ParsedSymbol, ParsedContext>;
+pub type TypeDecl = node::TypeDecl<ParsedContext>;
+pub type RecordDecl = node::RecordDecl<ParsedContext>;
 pub type EnumerationDecl = node::EnumerationDecl<ParsedContext>;
 pub type SetDecl = node::SetDecl<ParsedContext>;
 

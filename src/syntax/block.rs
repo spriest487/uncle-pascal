@@ -3,7 +3,7 @@ use tokens;
 use keywords;
 use node;
 
-pub type Block = node::Block<ParsedSymbol, ParsedContext>;
+pub type Block = node::Block<ParsedContext>;
 
 impl Block {
     pub fn parse_exprs_multiline(tokens: &mut TokenStream) -> ParseResult<Vec<Expression>> {

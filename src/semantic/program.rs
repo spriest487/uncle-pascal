@@ -3,7 +3,7 @@ use node;
 use syntax;
 use semantic::*;
 
-pub type Program = node::Program<ScopedSymbol, SemanticContext>;
+pub type Program = node::Program<SemanticContext>;
 
 impl Program {
     pub fn annotate(program: &syntax::Program, scope: Scope) -> Result<Self, SemanticError> {

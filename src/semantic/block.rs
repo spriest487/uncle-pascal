@@ -6,7 +6,7 @@ use node;
 use syntax;
 use semantic::*;
 
-pub type Block = node::Block<ScopedSymbol, SemanticContext>;
+pub type Block = node::Block<SemanticContext>;
 
 impl Block {
     pub fn annotate(block: &syntax::Block, scope: Rc<Scope>) -> Result<Self, SemanticError> {

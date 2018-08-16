@@ -4,7 +4,6 @@ use node::{
 };
 use syntax::{
     ParsedContext,
-    ParsedSymbol,
     Parse,
     TokenStream,
     ParseResult,
@@ -18,8 +17,8 @@ use tokens::{
 };
 use operators;
 
-pub type ConstDecl = node::ConstDecl<ParsedSymbol, ParsedContext>;
-pub type ConstDecls = node::ConstDecls<ParsedSymbol, ParsedContext>;
+pub type ConstDecl = node::ConstDecl<ParsedContext>;
+pub type ConstDecls = node::ConstDecls<ParsedContext>;
 
 impl Parse for ConstDecls {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
