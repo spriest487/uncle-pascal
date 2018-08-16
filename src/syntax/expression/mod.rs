@@ -98,9 +98,9 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expre
 
             let (before_op, after_op) = parts.split_at(lo_op_index);
 
-            let mut parts_after_op = after_op.iter().skip(1).cloned();
+            let parts_after_op = &after_op[1..];
 
-            let rhs = parts_after_op.next().unwrap().unwrap_operand();
+            let rhs = parts_after_op[0].clone().unwrap_operand();
 
             let op_expr = Expression::prefix_op(lo_op.op, rhs.expr, lo_op.token);
 
@@ -110,7 +110,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expre
                     expr: op_expr,
                     last_token: rhs.last_token,
                 })])
-                .chain(parts_after_op)
+                .chain(parts_after_op[1..].iter().cloned())
                 .collect();
 
             assert!(merged_parts.len() > 0);
@@ -169,20 +169,19 @@ impl Expression {
         }
 
         /* parse args */
-        let mut arg_exprs = Vec::new();
-        loop {
-            if arg_exprs.len() > 0 {
+        let arg_exprs = tokens.match_repeating(|i, tokens| {
+            if i > 0 {
                 match tokens.look_ahead().match_one(tokens::Comma) {
                     /* finished parsing one arg and there's no comma indicating another one
                     is coming, this must be the end of the args list */
-                    None => break,
+                    None => return Ok(None),
                     Some(_comma) => tokens.advance(1),
                 }
             }
 
-            let arg_expr = Expression::parse(tokens)?;
-            arg_exprs.push(arg_expr);
-        }
+            Expression::parse(tokens).map(Option::from)
+        })?;
+
         tokens.match_one(tokens::BracketRight)?;
 
         Ok(Expression::function_call(base, arg_exprs))

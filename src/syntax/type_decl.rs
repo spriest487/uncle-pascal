@@ -25,9 +25,17 @@ impl Parse for Vec<TypeDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(keywords::Type)?;
 
-        let mut decls = Vec::new();
+        tokens.match_repeating(|i, tokens| {
+            if i > 0 {
+                /* decls after the first must be separated by a newline or ; */
+                tokens.match_or_endl(tokens::Semicolon)?;
+            }
 
-        loop {
+            let next_identifier = tokens.look_ahead().match_one(Matcher::AnyIdentifier);
+            if next_identifier.is_none() {
+                return Ok(None);
+            }
+
             let match_name = tokens.match_sequence(Matcher::AnyIdentifier
                 .and_then(operators::Equals))?;
 
@@ -63,18 +71,8 @@ impl Parse for Vec<TypeDecl> {
                 }
             };
 
-            decls.push(type_decl);
-
-            /* the decl must be terminated either by a semicolon or a newline */
-            tokens.match_or_endl(tokens::Semicolon)?;
-
-            /* but if the token after that is another identifier, there's another decl
-            in this type decl block */
-            let next_identifier = tokens.look_ahead().match_one(tokens::Semicolon.or(Matcher::AnyIdentifier));
-            if next_identifier.is_none() {
-                break Ok(decls);
-            }
-        }
+            Ok(Some(type_decl))
+        })
     }
 }
 
@@ -95,21 +93,20 @@ impl EnumerationDecl {
     fn parse_names(tokens: &mut TokenStream) -> ParseResult<Vec<String>> {
         tokens.match_one(tokens::BracketLeft)?;
 
-        let mut names = Vec::new();
-        loop {
-            if names.len() > 0 {
-                match tokens.look_ahead().match_one(tokens::Comma) {
-                    Some(_comma) => tokens.advance(1),
-                    None => break,
+        let names = tokens.match_repeating(|i, name_tokens| {
+            if i > 0 {
+                match name_tokens.look_ahead().match_one(tokens::Comma) {
+                    Some(_comma) => name_tokens.advance(1),
+                    None => return Ok(None),
                 }
             }
 
-            let next_name = tokens.match_one(Matcher::AnyIdentifier)?
+            let next_name = name_tokens.match_one(Matcher::AnyIdentifier)?
                 .unwrap_identifier()
                 .to_string();
 
-            names.push(next_name);
-        }
+            Ok(Some(next_name))
+        })?;
 
         tokens.match_one(tokens::BracketRight)?;
 

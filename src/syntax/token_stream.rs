@@ -164,6 +164,18 @@ impl TokenStream {
         self.finish()?;
         Ok(result)
     }
+
+    pub fn match_repeating<T>(&mut self,
+                              f: impl Fn(usize, &mut Self) -> ParseResult<Option<T>>)
+                              -> ParseResult<Vec<T>> {
+        let mut results = Vec::new();
+        loop {
+            match f(results.len(), self)? {
+                Some(result) => results.push(result),
+                None => break Ok(results),
+            }
+        }
+    }
 }
 
 pub trait Parse where Self: Sized {
