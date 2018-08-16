@@ -211,7 +211,7 @@ pub struct RecordDecl<TSymbol, TContext>
     where TSymbol: Symbol,
           TContext: Context
 {
-    pub name: Identifier,
+    pub name: String,
     pub kind: RecordKind,
 
     pub context: TContext,

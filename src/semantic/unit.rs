@@ -23,10 +23,10 @@ impl Unit {
                         node::TypeDecl::Record(record_decl) => {
                             scope = match record_decl.kind {
                                 RecordKind::Record => {
-                                    scope.with_record(record_decl.name.clone(), record_decl.clone())
+                                    scope.with_record(record_decl.clone())
                                 }
                                 RecordKind::Class => {
-                                    scope.with_class(record_decl.name.clone(), record_decl.clone())
+                                    scope.with_class(record_decl.clone())
                                 }
                             }
                         }

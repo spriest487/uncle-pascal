@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use node;
+use node::{self, Identifier};
 use semantic::*;
 use syntax;
 
@@ -56,7 +56,7 @@ impl RecordDecl {
         };
 
         if decl.members.len() == 0 {
-            Err(SemanticError::empty_record(decl.name.clone(), context))
+            Err(SemanticError::empty_record(scope.qualify_local_name(&decl.name), context))
         } else {
             let members = decl.members.iter()
                 .map(|member| {
@@ -64,14 +64,8 @@ impl RecordDecl {
                 })
                 .collect::<Result<_, _>>()?;
 
-            let qualified_name = if decl.name.namespace.len() == 0 {
-                scope.qualify_local_name(&decl.name.name)
-            } else {
-                return Err(SemanticError::illegal_name(decl.name.to_string(), context));
-            };
-
             Ok(RecordDecl {
-                name: qualified_name,
+                name: decl.name.clone(),
                 kind: decl.kind,
                 context,
                 members,
@@ -81,6 +75,10 @@ impl RecordDecl {
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+
+    pub fn qualified_name(&self) -> Identifier {
+        self.scope().qualify_local_name(&self.name)
     }
 }
 

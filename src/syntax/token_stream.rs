@@ -124,17 +124,6 @@ impl TokenStream {
         }
     }
 
-    pub fn peek(&mut self) -> Option<source::Token> {
-        self.lookahead_buffer.front()
-            .cloned()
-            .or_else(|| {
-                let peeked = self.tokens.next()?;
-                self.lookahead_buffer.push_back(peeked.clone());
-
-                Some(peeked)
-            })
-    }
-
     pub fn match_one(&mut self, matcher: impl Into<Matcher>) -> ParseResult<source::Token> {
         let matcher = matcher.into();
 

@@ -151,7 +151,7 @@ impl Expression {
                 let inner_expr: Expression = inner_expr_tokens.parse_to_end()?;
 
                 // seek to after brackets
-                assert_eq!(brackets_block.open, tokens.peek().unwrap());
+                assert_eq!(brackets_block.open, tokens.look_ahead().next().unwrap());
                 tokens.advance(brackets_block_len);
 
                 assert_eq!(brackets_block.close,
@@ -172,7 +172,7 @@ impl Expression {
     }
 
     fn parse_member_access_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
-        match tokens_after.peek() {
+        match tokens_after.look_ahead().next() {
             Some(ref period) if *period.as_token() == tokens::Period => {
                 // skip period
                 tokens_after.next();
@@ -282,7 +282,7 @@ impl Expression {
 
                         /* if there were parts left over they must belong to the next expression,
                     stop parsing this one and set the context to the last token of this expression */
-                        if let Some(_) = operand_tokens.peek() {
+                        if let Some(_) = operand_tokens.look_ahead().next() {
                             expr_context = operand_tokens.context().clone();
 
 //                        println!("finished 2 with `{}`, context: `{}`",
@@ -326,7 +326,7 @@ impl Expression {
     }
 
     fn parse_fn_call_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
-        match tokens_after.peek() {
+        match tokens_after.look_ahead().next() {
             Some(ref open_bracket) if *open_bracket.as_token() == tokens::BracketLeft => {
                 let args = tokens_after.match_groups(tokens::BracketLeft,
                                                      tokens::BracketRight,
@@ -353,7 +353,7 @@ impl Expression {
     fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
         /* the context of an identifier expression should be the first part of the
           identifier (if it has multiple parts) */
-        let context = tokens.peek();
+        let context = tokens.look_ahead().next();
         let id = node::Identifier::parse(tokens)?;
 
         // safe to unwrap context because a token must have existed if the identifier parsed
@@ -520,7 +520,7 @@ impl Expression {
                 Expression::parse_literal_bool(tokens)
             }
 
-            _ => match tokens.peek() {
+            _ => match tokens.look_ahead().next() {
                 Some(unexpected) =>
                     Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start))),
                 None =>

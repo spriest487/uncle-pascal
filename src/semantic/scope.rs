@@ -259,8 +259,8 @@ impl Scope {
         self
     }
 
-    pub fn with_class(mut self, name: impl Into<Identifier>, decl: RecordDecl) -> Self {
-        let name = name.into();
+    pub fn with_class(mut self, decl: RecordDecl) -> Self {
+        let name = self.qualify_local_name(&decl.name);
         assert_eq!(RecordKind::Class, decl.kind);
         self.names.insert(name, Named::Class(decl));
         self
@@ -301,8 +301,8 @@ impl Scope {
         self
     }
 
-    pub fn with_record(mut self, name: impl Into<Identifier>, decl: RecordDecl) -> Self {
-        let name = name.into();
+    pub fn with_record(mut self, decl: RecordDecl) -> Self {
+        let name = self.qualify_local_name(&decl.name);
         assert_eq!(RecordKind::Record, decl.kind);
         self.names.insert(name, Named::Record(decl));
         self
@@ -573,7 +573,7 @@ impl Scope {
                           member_name: &str) -> Option<ScopedSymbol> {
         let parent_sym = self.get_symbol(&parent_id)?;
 
-        let (_, record_decl) = match parent_sym.decl_type() {
+        let (record_id, record_decl) = match parent_sym.decl_type() {
             Type::Record(name) => self.get_record(name),
             Type::Class(name) => self.get_class(name),
 
@@ -597,7 +597,7 @@ impl Scope {
         Some(ScopedSymbol::RecordMember {
             record_id: parent_sym.name(),
             name: member_name.to_owned(),
-            record_type: record_decl.name.clone(),
+            record_type: record_id,
             member_type: member.decl_type.clone(),
         })
     }
@@ -690,5 +690,44 @@ impl Scope {
             Type::Array(array) =>
                 array.total_elements() as usize * self.size_of(&array.element),
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::rc::Rc;
+    use super::*;
+    use source;
+    use tokens;
+    use keywords;
+
+    fn fake_context() -> SemanticContext {
+        let location = source::Location::new("test", 0, 0);
+        let token = tokens::Keyword(keywords::Program);
+        SemanticContext {
+            token: source::Token::new(token, location),
+            scope: Rc::new(Scope::new()),
+        }
+    }
+
+    #[test]
+    fn add_record_adds_record_in_local_ns() {
+        let record_decl = RecordDecl {
+            context: fake_context(),
+            members: vec![],
+            name: "World".to_string(),
+            kind: RecordKind::Record,
+        };
+
+        let scope = Scope::default()
+            .with_local_namespace("Hello")
+            .with_record(record_decl);
+
+        let (result_id, result) = scope.get_record(&Identifier::from("Hello.World"))
+            .unwrap_or_else(|| {
+                panic!("get_record should return a result in scope {:?}", scope)
+            });
+        assert_eq!("World", &result.name);
+        assert_eq!(Identifier::from("Hello.World"), result_id);
     }
 }

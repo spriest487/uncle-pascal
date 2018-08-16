@@ -98,7 +98,7 @@ impl Identifier {
         let mut parts = Vec::new();
 
         loop {
-            match tokens.peek() {
+            match tokens.look_ahead().next() {
                 Some(ref id) if id.is_any_identifier() => {
                     parts.push(id.unwrap_identifier().to_owned());
                     tokens.next();
@@ -117,7 +117,7 @@ impl Identifier {
                 ))
             }
 
-            match tokens.peek() {
+            match tokens.look_ahead().next()  {
                 //there's a dot, we expect another part, so keep going
                 Some(ref period) if *period.as_token() == tokens::Period => {
                     tokens.next();

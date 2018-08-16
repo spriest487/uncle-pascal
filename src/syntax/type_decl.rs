@@ -180,7 +180,7 @@ impl RecordDecl {
         tokens.match_or_endl(tokens::Semicolon)?;
 
         Ok(RecordDecl {
-            name: Identifier::from(decl_name),
+            name: decl_name.to_string(),
             kind,
             context: match_kw.clone().into(),
             members,

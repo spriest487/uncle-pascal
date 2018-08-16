@@ -250,7 +250,7 @@ fn parses_assignment_followed_by_prefix_operator() {
 
     assert!(expr.is_binary_op(operators::Assignment));
     assert_eq!(Some(tokens::Operator(operators::Deref)),
-               tokens.peek().map(|head| head.as_token().clone()));
+               tokens.look_ahead().next().map(|head| head.as_token().clone()));
 
     let next_expr: Expression = tokens.parse().unwrap();
 
