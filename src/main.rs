@@ -3,8 +3,7 @@ extern crate getopts;
 
 use std::rc::*;
 use std::fmt;
-use std::io::{self, Read, Write};
-use std::process;
+use std::io::{self, Read};
 use std::fs;
 use std::path::*;
 use std::collections::HashMap;
@@ -23,7 +22,7 @@ mod semantic;
 mod node;
 mod source;
 
-enum CompileError {
+pub enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
     ParseError(syntax::ParseError),
     SemanticError(semantic::SemanticError),
@@ -119,8 +118,12 @@ fn pretty_path(path: &Path) -> String {
 fn compile_program(program_path: &Path) -> Result<ProgramModule, CompileError> {
     let tokens = load_source(program_path)?;
 
-    let source_dir = program_path.parent()
-        .unwrap()
+    let source_dir = program_path.canonicalize()?
+        .parent()
+        .ok_or_else(|| {
+            let msg = format!("unable to resolve source directory from source path `{}`", program_path.to_string_lossy());
+            io::Error::new(io::ErrorKind::NotFound, msg)
+        })?
         .canonicalize()?;
 
     let parsed_program = syntax::Program::parse(tokens.into_iter(), &empty_context())?;
@@ -168,50 +171,6 @@ fn print_usage(program: &str, opts: getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
-fn pas_to_c(in_path: &str,
-            out_path: &Path) -> Result<(), CompileError> {
-    let src_path = PathBuf::from(in_path)
-        .canonicalize()?;
-
-    let module = compile_program(&src_path)?;
-    let c_unit = target_c::write_c(&module)?;
-
-    let compile_with_clang = out_path.extension().map(|ext| ext != "c")
-        .unwrap_or(true);
-
-    if compile_with_clang {
-        invoke_clang(&c_unit, &out_path)?;
-    } else {
-        println!("Writing output to `{}`...", pretty_path(&out_path));
-
-        let mut out_file = fs::File::create(out_path)?;
-        out_file.write_all(c_unit.as_bytes())?;
-
-        println!("Done!");
-    }
-    Ok(())
-}
-
-fn invoke_clang(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
-    let mut clang = process::Command::new("clang")
-        .arg("-Wno-parentheses-equality")
-        .arg("-Wno-non-literal-null-conversion")
-        .arg("-x").arg("c")
-        .arg("-o").arg(out_path)
-        .arg("-")
-        .stdout(process::Stdio::inherit())
-        .stdin(process::Stdio::piped())
-        .spawn()?;
-
-    {
-        let clang_in = clang.stdin.as_mut().unwrap();
-        clang_in.write_all(c_src.to_owned().as_bytes())?;
-    }
-    clang.wait()?;
-
-    Ok(())
-}
-
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
     let program = args[0].clone();
@@ -229,12 +188,14 @@ fn main() {
                     .map(|out_dir_str| PathBuf::from(out_dir_str))
                     .unwrap_or_else(|| current_dir().unwrap());
 
-                match pas_to_c(&matched.free[0], &out_file) {
-                    Err(err) => {
-                        println!("error: {}", err);
-                        std::process::exit(1);
-                    }
-                    _ => ()
+                let src_path = &matched.free[0];
+
+                let build_result = compile_program(&PathBuf::from(src_path))
+                    .and_then(|module| target_c::pas_to_c(&module, &out_file));
+
+                if let Err(err) = build_result {
+                    println!("error: {}", err);
+                    std::process::exit(1);
                 }
             }
         }
