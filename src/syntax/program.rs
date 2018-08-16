@@ -23,30 +23,30 @@ fn parse_uses<TIter, TToken>(in_tokens: TIter) -> ParseResult<Vec<types::Identif
     where TIter: IntoIterator<Item=TToken> + 'static,
           TToken: tokens::AsToken + 'static
 {
-    let uses_matcher = TokenMatcher::Keyword(keywords::Uses);
+    let uses_matcher = Matcher::Keyword(keywords::Uses);
 
     let mut tokens = in_tokens.into_iter();
 
     let find_keyword = tokens.nth(0)
         .into_iter()
-        .filter(|first_token| uses_matcher.match_token(first_token))
+        .filter(|first_token| uses_matcher.is_match(first_token))
         .next();
 
     match find_keyword {
         Some(_) => {
-            let match_semicolon = TokenMatcher::Exact(tokens::Semicolon);
-            let (uses_tokens, after_uses) = match_semicolon.split(tokens)?.unwrap();
+            let match_semicolon = Matcher::Exact(tokens::Semicolon);
+            let (uses_tokens, after_uses) = match_semicolon.split_at_match(tokens)?.unwrap();
 
-            let match_comma = TokenMatcher::Exact(tokens::Comma);
-            let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.before
-                .split(|source_token| match_comma.match_token(source_token))
+            let match_comma = Matcher::Exact(tokens::Comma);
+            let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.before_split
+                .split(|source_token| match_comma.is_match(source_token))
                 .map(|source_tokens| {
                     if source_tokens.len() == 1 &&
                         source_tokens[0].as_token().is_any_identifier() {
                         Ok(types::Identifier::parse(source_tokens[0].as_token().unwrap_identifier()))
                     } else {
                         Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
-                                                        Some(TokenMatcher::AnyIdentifier)))
+                                                        Some(Matcher::AnyIdentifier)))
                     }
                 })
                 .collect();
@@ -107,9 +107,9 @@ fn parse_decls<TIter, TToken>(in_tokens: TIter) -> ParseResult<ProgramDecls, TTo
             }
 
             _ => {
-                let expected = TokenMatcher::OneOf(vec![
-                    Box::from(TokenMatcher::Keyword(keywords::Function)),
-                    Box::from(TokenMatcher::Keyword(keywords::Type)),
+                let expected = Matcher::OneOf(vec![
+                    Box::from(Matcher::Keyword(keywords::Function)),
+                    Box::from(Matcher::Keyword(keywords::Type)),
                 ]);
 
                 return Err(ParseError::UnexpectedToken(next.clone(), Some(expected)));
@@ -134,17 +134,17 @@ impl Program {
         where TIter: Iterator<Item=TToken>,
               TToken: tokens::AsToken + 'static
     {
-        let (program_statement, after_program_statment) = TokenMatcher::Keyword(keywords::Program)
-            .and_then(TokenMatcher::AnyIdentifier)
-            .and_then(TokenMatcher::Exact(tokens::Semicolon))
-            .match_tokens(tokens)?.unwrap();
+        let (program_statement, after_program_statement) = Matcher::Keyword(keywords::Program)
+            .and_then(Matcher::AnyIdentifier)
+            .and_then(Matcher::Exact(tokens::Semicolon))
+            .match_sequence(tokens)?.unwrap();
 
         let name = types::Identifier::parse(program_statement
             .get(1).unwrap()
             .as_token()
             .unwrap_identifier());
 
-        let (uses, after_uses) = parse_uses(after_program_statment)?.unwrap();
+        let (uses, after_uses) = parse_uses(after_program_statement)?.unwrap();
         let (decls, after_decls) = parse_decls(after_uses)?.unwrap();
 
         Ok(ParseOutput::new(Self {

@@ -14,25 +14,26 @@ impl VarDecl {
         where TIter: IntoIterator<Item=TToken> + 'static,
               TToken: tokens::AsToken + 'static
     {
-        let match_kw = TokenMatcher::Keyword(keywords::Var);
+        let match_kw = Matcher::Keyword(keywords::Var);
         let (_, after_kw) = match_kw.match_one(in_tokens.into_iter())?.unwrap();
 
-        let match_terminator = TokenMatcher::Exact(tokens::Semicolon);
-        let (until_terminator, remaining) = match_terminator.split(after_kw)?.unwrap();
+        let match_terminator = Matcher::Exact(tokens::Semicolon);
+        let (until_terminator, remaining) = match_terminator.split_at_match(after_kw)?
+            .unwrap();
 
-        let match_separator = TokenMatcher::Exact(tokens::Semicolon);
+        let match_separator = Matcher::Exact(tokens::Semicolon);
 
-        let decls = until_terminator.before.split(|token| {
-            match_separator.match_token(token)
+        let decls = until_terminator.before_split.split(|token| {
+            match_separator.is_match(token)
         });
 
         let parse_decls = decls
             .map(|decl_tokens| -> Result<VarDecl, ParseError<TToken>> {
-                let match_decl = TokenMatcher::AnyIdentifier
-                    .and_then(TokenMatcher::Exact(tokens::Colon))
-                    .and_then(TokenMatcher::AnyIdentifier);
+                let match_decl = Matcher::AnyIdentifier
+                    .and_then(Matcher::Exact(tokens::Colon))
+                    .and_then(Matcher::AnyIdentifier);
 
-                let decl = match_decl.match_tokens(decl_tokens
+                let decl = match_decl.match_sequence(decl_tokens
                     .into_iter()
                     .cloned())?
                     .finish()?;

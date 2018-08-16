@@ -19,19 +19,19 @@ impl Function {
               TToken: tokens::AsToken + 'static
     {
         //match the sig
-        let sig_match = TokenMatcher::Keyword(keywords::Function)
-            .and_then(TokenMatcher::AnyIdentifier)
-            .and_then(TokenMatcher::Exact(tokens::Colon))
-            .and_then(TokenMatcher::AnyIdentifier)
-            .and_then(TokenMatcher::Exact(tokens::Semicolon));
+        let sig_match = Matcher::Keyword(keywords::Function)
+            .and_then(Matcher::AnyIdentifier)
+            .and_then(Matcher::Exact(tokens::Colon))
+            .and_then(Matcher::AnyIdentifier)
+            .and_then(Matcher::Exact(tokens::Semicolon));
 
-        let (sig, after_sig) = sig_match.match_tokens(in_tokens.into_iter())?.unwrap();
+        let (sig, after_sig) = sig_match.match_sequence(in_tokens.into_iter())?.unwrap();
 
         let fn_name = &sig[1];
         let fn_return_type = &sig[3];
 
-        let (first_after_sig, after_sig) = TokenMatcher::Keyword(keywords::Var)
-            .or(TokenMatcher::Keyword(keywords::Begin))
+        let (first_after_sig, after_sig) = Matcher::Keyword(keywords::Var)
+            .or(Matcher::Keyword(keywords::Begin))
             .match_peek(after_sig)?
             .unwrap();
 
@@ -42,12 +42,12 @@ impl Function {
             (Vec::new(), after_sig)
         };
 
-        let (body_match, after_body) = TokenMatcher::Keyword(keywords::Begin)
-            .closed_with(TokenMatcher::Keyword(keywords::End))
+        let (body_match, after_body) = Matcher::Keyword(keywords::Begin)
+            .paired_with(Matcher::Keyword(keywords::End))
             .match_pair(after_local_vars)?
             .unwrap();
 
-        let match_semicolon = TokenMatcher::Exact(tokens::Semicolon);
+        let match_semicolon = Matcher::Exact(tokens::Semicolon);
         let (_, remaining) = match_semicolon.match_one(after_body)?.unwrap();
 
         let function = Function {
@@ -56,7 +56,7 @@ impl Function {
 
             local_vars,
 
-            body: body_match.between.into_iter()
+            body: body_match.inner.into_iter()
                 .map(|t| t.as_token().clone())
                 .collect(),
         };

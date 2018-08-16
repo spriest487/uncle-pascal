@@ -10,8 +10,8 @@ use tokens;
 
 #[derive(Clone, Debug)]
 pub enum ParseError<TToken> {
-    UnexpectedToken(TToken, Option<TokenMatcher>),
-    UnbalancedPair(TokenMatcher, TToken),
+    UnexpectedToken(TToken, Option<Matcher>),
+    UnbalancedPair(Matcher, TToken),
     UnterminatedBlock,
     UnexpectedEOF,
 }
@@ -84,11 +84,11 @@ type ParseResult<TValue, TToken> = Result<ParseOutput<TToken, TValue>, ParseErro
 
 pub struct SplitResult<TToken> {
     pub split_at: TToken,
-    pub before: Vec<TToken>,
+    pub before_split: Vec<TToken>,
 }
 
 #[derive(Clone, Debug)]
-pub enum TokenMatcher {
+pub enum Matcher {
     Keyword(keywords::Keyword),
     AnyKeyword,
     AnyIdentifier,
@@ -96,20 +96,20 @@ pub enum TokenMatcher {
     AnyLiteralInteger,
     AnyLiteralString,
     Exact(tokens::Token),
-    OneOf(Vec<Box<TokenMatcher>>),
+    OneOf(Vec<Box<Matcher>>),
 }
 
-impl fmt::Display for TokenMatcher {
+impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &TokenMatcher::Keyword(kw) => write!(f, "keyword {}", kw),
-            &TokenMatcher::AnyKeyword => write!(f, "keyword"),
-            &TokenMatcher::AnyIdentifier => write!(f, "identifier"),
-            &TokenMatcher::AnyBinaryOperator => write!(f, "binary operator"),
-            &TokenMatcher::AnyLiteralInteger => write!(f, "integer literal"),
-            &TokenMatcher::AnyLiteralString => write!(f, "string literal"),
-            &TokenMatcher::Exact(ref exact_token) => write!(f, "{}", exact_token),
-            &TokenMatcher::OneOf(ref matchers) => write!(f, "one of: {}", matchers.iter()
+            &Matcher::Keyword(kw) => write!(f, "keyword {}", kw),
+            &Matcher::AnyKeyword => write!(f, "keyword"),
+            &Matcher::AnyIdentifier => write!(f, "identifier"),
+            &Matcher::AnyBinaryOperator => write!(f, "binary operator"),
+            &Matcher::AnyLiteralInteger => write!(f, "integer literal"),
+            &Matcher::AnyLiteralString => write!(f, "string literal"),
+            &Matcher::Exact(ref exact_token) => write!(f, "{}", exact_token),
+            &Matcher::OneOf(ref matchers) => write!(f, "one of: {}", matchers.iter()
                 .map(|matcher| format!("{}", matcher))
                 .collect::<Vec<_>>()
                 .join(", ")),
@@ -117,31 +117,31 @@ impl fmt::Display for TokenMatcher {
     }
 }
 
-impl TokenMatcher {
-    pub fn match_token<T>(&self, token: &T) -> bool
+impl Matcher {
+    pub fn is_match<T>(&self, token: &T) -> bool
         where T: tokens::AsToken
     {
         match self {
-            &TokenMatcher::Keyword(kw) => token.as_token().is_keyword(kw),
-            &TokenMatcher::AnyKeyword => token.as_token().is_any_keyword(),
-            &TokenMatcher::AnyIdentifier => token.as_token().is_any_identifier(),
-            &TokenMatcher::AnyBinaryOperator => token.as_token().is_any_binary_operator(),
-            &TokenMatcher::AnyLiteralInteger => token.as_token().is_any_literal_int(),
-            &TokenMatcher::AnyLiteralString => token.as_token().is_any_literal_string(),
-            &TokenMatcher::Exact(ref exact_token) => token.as_token() == exact_token,
-            &TokenMatcher::OneOf(ref matchers) => matchers.iter()
-                .any(|matcher| matcher.match_token(token.as_token())),
+            &Matcher::Keyword(kw) => token.as_token().is_keyword(kw),
+            &Matcher::AnyKeyword => token.as_token().is_any_keyword(),
+            &Matcher::AnyIdentifier => token.as_token().is_any_identifier(),
+            &Matcher::AnyBinaryOperator => token.as_token().is_any_binary_operator(),
+            &Matcher::AnyLiteralInteger => token.as_token().is_any_literal_int(),
+            &Matcher::AnyLiteralString => token.as_token().is_any_literal_string(),
+            &Matcher::Exact(ref exact_token) => token.as_token() == exact_token,
+            &Matcher::OneOf(ref matchers) => matchers.iter()
+                .any(|matcher| matcher.is_match(token.as_token())),
         }
     }
 
-    pub fn or(self, or: TokenMatcher) -> TokenMatcher {
+    pub fn or(self, or: Matcher) -> Matcher {
         match self {
-            TokenMatcher::OneOf(mut options) => {
+            Matcher::OneOf(mut options) => {
                 options.push(Box::from(or));
-                TokenMatcher::OneOf(options)
+                Matcher::OneOf(options)
             },
             _ => {
-                TokenMatcher::OneOf(vec![
+                Matcher::OneOf(vec![
                     Box::new(self),
                     Box::new(or),
                 ])
@@ -149,13 +149,13 @@ impl TokenMatcher {
         }
     }
 
-    pub fn and_then(self, next_matcher: TokenMatcher) -> SequenceMatcher {
+    pub fn and_then(self, next_matcher: Matcher) -> SequenceMatcher {
         SequenceMatcher {
             sequence: vec![self, next_matcher]
         }
     }
 
-    pub fn closed_with(self, close: TokenMatcher) -> PairMatcher {
+    pub fn paired_with(self, close: Matcher) -> PairMatcher {
         PairMatcher {
             open: self,
             close
@@ -167,7 +167,7 @@ impl TokenMatcher {
               TToken: tokens::AsToken {
         let mut tokens = in_tokens.into_iter();
         match tokens.next() {
-            Some(ref token) if self.match_token(token) => {
+            Some(ref token) if self.is_match(token) => {
                 Ok(ParseOutput::new(token.clone(), tokens))
             },
 
@@ -187,7 +187,7 @@ impl TokenMatcher {
         let mut peekable = in_tokens.into_iter().peekable();
 
         match peekable.peek().cloned() {
-            Some(ref token) if self.match_token(token) => {
+            Some(ref token) if self.is_match(token) => {
                 Ok(ParseOutput::new(token.clone(), peekable))
             },
 
@@ -201,7 +201,7 @@ impl TokenMatcher {
         }
     }
 
-    pub fn split<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<SplitResult<TToken>, TToken>
+    pub fn split_at_match<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<SplitResult<TToken>, TToken>
         where TIter: IntoIterator<Item=TToken> + 'static,
               TToken: tokens::AsToken
     {
@@ -213,7 +213,7 @@ impl TokenMatcher {
         loop {
             match tokens.next() {
                 Some(next_token) => {
-                    if self.match_token(&next_token) {
+                    if self.is_match(&next_token) {
                         split_at = next_token.clone();
                         break;
                     }
@@ -231,23 +231,23 @@ impl TokenMatcher {
 
         Ok(ParseOutput::new(SplitResult {
             split_at: split_at,
-            before: before_split,
+            before_split: before_split,
         }, tokens))
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct SequenceMatcher {
-    sequence: Vec<TokenMatcher>,
+    sequence: Vec<Matcher>,
 }
 
 impl SequenceMatcher {
-    pub fn and_then(mut self, next_matcher: TokenMatcher) -> Self {
+    pub fn and_then(mut self, next_matcher: Matcher) -> Self {
         self.sequence.push(next_matcher);
         self
     }
 
-    pub fn match_tokens<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<Vec<TToken>, TToken>
+    pub fn match_sequence<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<Vec<TToken>, TToken>
         where TIter: Iterator<Item=TToken>,
               TToken: tokens::AsToken + Clone + 'static
     {
@@ -257,7 +257,7 @@ impl SequenceMatcher {
 
         let matches: Vec<_> = tokens.iter()
             .zip(self.sequence.iter())
-            .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.match_token(token)))
+            .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.is_match(token)))
             .collect();
 
         if matches.len() < expected_len {
@@ -291,13 +291,13 @@ pub struct PairMatch<TToken>
 {
     pub open: TToken,
     pub close: TToken,
-    pub between: Vec<TToken>,
+    pub inner: Vec<TToken>,
 }
 
 #[derive(Clone, Debug)]
 pub struct PairMatcher {
-    open: TokenMatcher,
-    close: TokenMatcher,
+    open: Matcher,
+    close: Matcher,
 }
 
 impl PairMatcher {
@@ -307,12 +307,12 @@ impl PairMatcher {
     {
         let (open_token, after_open) = self.open.match_one(in_tokens)?.unwrap();
 
-        let match_delim : TokenMatcher = self.open.clone().or(self.close.clone());
-        let (split_at_delim, after_next_delim) = match_delim.split(after_open)?.unwrap();
+        let match_delim : Matcher = self.open.clone().or(self.close.clone());
+        let (split_at_delim, after_next_delim) = match_delim.split_at_match(after_open)?.unwrap();
 
         let next_delim = split_at_delim.split_at.clone();
 
-        if self.open.match_token(next_delim.as_token()) {
+        if self.open.is_match(next_delim.as_token()) {
 //            let mut inner_tokens = Vec::new();
 
             /* found an inner pair, skip over it */
@@ -323,7 +323,7 @@ impl PairMatcher {
             let (_, after_inner_pair) = self.match_pair(inner_pair_tokens)?.unwrap();
 
             /* we must now be positioned after any inner pairs */
-            let (final_close_token, after_final_closer) = self.close.split(after_inner_pair)
+            let (final_close_token, after_final_closer) = self.close.split_at_match(after_inner_pair)
                 .map_err(|err| match err {
                     ParseError::UnexpectedEOF => {
                         ParseError::UnbalancedPair(self.close.clone(), next_delim.clone())
@@ -335,16 +335,16 @@ impl PairMatcher {
             let pair_match : PairMatch<TToken> = PairMatch {
                 open: open_token,
                 close: final_close_token.split_at,
-                between: Vec::new() //TODO
+                inner: Vec::new() //TODO
             };
 
             Ok(ParseOutput::new(pair_match, after_final_closer))
         }
-        else if self.close.match_token(next_delim.as_token()) {
+        else if self.close.is_match(next_delim.as_token()) {
             let pair_match : PairMatch<TToken> = PairMatch {
                 open: open_token,
                 close: split_at_delim.split_at,
-                between: split_at_delim.before,
+                inner: split_at_delim.before_split,
             };
 
             Ok(ParseOutput::new(pair_match, after_next_delim))
