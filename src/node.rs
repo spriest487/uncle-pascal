@@ -133,6 +133,7 @@ pub struct Function<TSymbol>
     pub name: String,
     pub return_type: TSymbol::Type,
 
+    pub args: Vars<TSymbol>,
     pub local_vars: Vars<TSymbol>,
 
     pub body: Block<TSymbol>,

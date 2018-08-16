@@ -51,6 +51,7 @@ impl Function {
             return_type: node::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
             local_vars: local_vars.value,
+            args: Vars{ decls: Vec::new() }, //TODO: steal vars parsing and make a match_list for ; vs , arg list
 
             body: body_block.value,
         };

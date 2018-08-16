@@ -4,7 +4,7 @@ use node;
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Symbol {
-    pub name: String,
+    pub name: node::Identifier,
     pub decl_type: DeclaredType,
 }
 
@@ -15,10 +15,10 @@ impl fmt::Display for Symbol {
 }
 
 impl Symbol {
-    pub fn new(name: &str, decl_type: DeclaredType) -> Self {
+    pub fn new(name: node::Identifier, decl_type: DeclaredType) -> Self {
         Self {
-            name: name.to_owned(),
-            decl_type
+            name,
+            decl_type,
         }
     }
 }
@@ -31,12 +31,14 @@ impl node::Symbol for Symbol {
 pub struct FunctionSignature {
     pub name: String,
     pub decl_type: DeclaredType,
-    pub args: Vec<Symbol>,
+    pub args_types: Vec<DeclaredType>,
 }
 
 impl fmt::Display for FunctionSignature {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let args_str = self.args.iter().map(|arg| format!("{}: {}", arg.name, arg.decl_type))
+        let args_str = self.args_types
+            .iter()
+            .map(|arg_type| format!("{}", arg_type))
             .collect::<Vec<_>>()
             .join(", ");
 
@@ -82,6 +84,12 @@ impl fmt::Display for DeclaredType {
             &DeclaredType::Function(ref sig) => format!("{}", sig),
             &DeclaredType::Record(ref record) => format!("{}", record),
         })
+    }
+}
+
+impl From<FunctionSignature> for DeclaredType {
+    fn from(sig: FunctionSignature) -> Self {
+        DeclaredType::Function(Box::new(sig))
     }
 }
 

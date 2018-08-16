@@ -54,7 +54,7 @@ impl Block {
             }
         }
 
-        if expr_tokens.len() > 0 {
+        if expr_tokens.len() == 0 {
             Ok(ParseOutput::new(None, last_expr_token, next_expr_tokens))
         }
         else {

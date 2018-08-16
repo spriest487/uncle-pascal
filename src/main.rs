@@ -64,8 +64,8 @@ fn compile(source: &str) -> Result<String, CompileError> {
         .finish()?;
 
     let typed_program = semantic::Program::annotate(&program.clone())?;
-    println!("{:?}", typed_program);
 
+    //println!("{:?}", typed_program);
     //println!("{}", program.to_source());
 
     Ok(target_c::write_c(&program))
