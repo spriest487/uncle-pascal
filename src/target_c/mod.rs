@@ -292,12 +292,13 @@ pub fn write_function(out: &mut String, function: &semantic::Function)
     write_vars(out, &function.local_vars)?;
     default_initialize_vars(out, &function.local_vars)?;
 
+    write_block(out, &function.body)?;
+
     match return_type {
         Some(_) => writeln!(out, "return result;")?,
         None => (),
     }
 
-    write_block(out, &function.body)?;
     writeln!(out, "}}")?;
     writeln!(out)
 }

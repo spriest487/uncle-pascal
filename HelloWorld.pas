@@ -5,19 +5,16 @@ uses System, Vector
 
 function Greet(name: System.String): System.String
 begin
-  let msg := 'hello world'
+  let msg := 'hello world!'
   result := msg
 end
 
 var
-  x: System.Integer
-  y: System.Integer
-
   vec: Vector.Vector
 
 begin
-  x := 1
-  y := 2
+  let x := 1
+  let y := 2
   x := x + y
 
   vec := Vector.Create()
@@ -26,7 +23,7 @@ begin
   Vector.Add(@vec, 3)
   Vector.Add(@vec, 4)
 
-  System.WriteLn('hello world')
+  System.WriteLn(Greet('world'))
 
   if x = 1 then begin
     System.WriteLn('one')
