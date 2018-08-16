@@ -17,7 +17,11 @@ type
         Length: NativeInt
     end
 
+{ io }
+
 procedure WriteLn(line: String)
+
+{ string manipulation }
 
 constructor StringCreate: String
 constructor StringFromBytes(bytes: ^Byte; len: NativeInt): String
@@ -27,8 +31,30 @@ function StringFromInt(i: Int32): String
 function StringToInt(s: String; outVal: ^Int32): Boolean
 function StringConcat(a: String; b: String): String
 
+{ native memory allocation }
+
 function GetMem(len: NativeInt): ^Byte
 procedure FreeMem(mem: ^Byte)
+
+{ standard math functions }
+
+function Abs(x: Float64): Float64
+
+function Tan(x: Float64): Float64
+function ArcTan(x: Float64): Float64
+
+function Cos(x: Float64): Float64
+function ArcCos(x: Float64): Float64
+
+function Sin(x: Float64): Float64
+function ArcSin(x: Float64): Float64
+
+function Exp(x, e: Float64): Float64
+
+function Round(f: Float64): Int32
+function Ceil(f: Float64): Int32
+function Floor(f: Float64): Int32
+function Trunc(f: Float64): Int32
 
 implementation
 
