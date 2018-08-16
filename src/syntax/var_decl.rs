@@ -15,12 +15,7 @@ impl Parse for Vec<VarDecl> {
             /* keep matching until the next thing in the token stream
             doesn't look like a valid var decl */
             match tokens.peeked().next().map(|t| t.as_token().clone()) {
-                Some(tokens::Identifier(_)) |
-                Some(tokens::Keyword(keywords::Const)) |
-                Some(tokens::Keyword(keywords::Var)) |
-                Some(tokens::Keyword(keywords::Out)) =>
-                    {}
-
+                Some(tokens::Identifier(_)) => {}
                 _ => break,
             }
 
