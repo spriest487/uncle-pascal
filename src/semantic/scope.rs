@@ -390,8 +390,8 @@ impl Scope {
         self
     }
 
-    pub fn with_const(mut self, name: impl Into<Identifier>, val: ConstantExpression) -> Self {
-        let name = name.into();
+    pub fn with_const(mut self, name: &str, val: ConstantExpression) -> Self {
+        let name = self.qualify_local_name(name);
         self.names.insert(name, Named::Const(val));
         self
     }
@@ -739,6 +739,7 @@ mod test {
     use source;
     use tokens;
     use keywords;
+    use consts::IntConstant;
 
     fn fake_context() -> SemanticContext {
         let location = source::Location::new("test", 0, 0);
@@ -768,5 +769,26 @@ mod test {
             });
         assert_eq!("World", &result.name);
         assert_eq!(Identifier::from("Hello.World"), result_id);
+    }
+
+    #[test]
+    fn resolves_consts_in_referenced_units() {
+        let const_val = ConstantExpression::Integer(IntConstant::from(3));
+
+        let imported = Scope::default()
+            .with_local_namespace("NS1")
+            .with_const("CONST1", const_val.clone());
+
+        let scope = Scope::default()
+            .reference(&imported, UnitReferenceKind::Namespaced);
+
+        let expected_id = Identifier::from("NS1.CONST1");
+        match scope.get_const(&expected_id) {
+            Some((result_id, result_val)) => {
+                assert_eq!(expected_id, result_id);
+                assert_eq!(const_val, *result_val);
+            },
+            None => panic!("name {} must be found in scope {:?}", expected_id, scope)
+        }
     }
 }
