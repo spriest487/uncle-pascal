@@ -48,7 +48,7 @@ pub enum TypeName {
         return_type: Option<Box<TypeName>>,
         arg_types: Vec<TypeName>,
         modifiers: Vec<FunctionModifier>,
-    },
+    }
 }
 
 impl ToSource for TypeName {

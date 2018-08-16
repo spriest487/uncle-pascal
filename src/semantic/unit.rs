@@ -32,7 +32,11 @@ impl Unit {
                         }
 
                         node::TypeDecl::Enumeration(enum_decl) => {
-                            scope = scope.with_enumeration(enum_decl.name.clone(), enum_decl.clone());
+                            scope = scope.with_enumeration(enum_decl.clone());
+                        }
+
+                        node::TypeDecl::Set(set_decl) => {
+                            scope = scope.with_set(set_decl.clone());
                         }
 
                         node::TypeDecl::Alias { alias, of, .. } => {

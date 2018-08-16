@@ -6,6 +6,7 @@ use syntax;
 pub type TypeDecl = node::TypeDecl<ScopedSymbol, SemanticContext>;
 pub type RecordDecl = node::RecordDecl<ScopedSymbol, SemanticContext>;
 pub type EnumerationDecl = node::EnumerationDecl<SemanticContext>;
+pub type SetDecl = node::SetDecl<SemanticContext>;
 
 impl TypeDecl {
     pub fn annotate(decl: &syntax::TypeDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
@@ -18,6 +19,11 @@ impl TypeDecl {
             node::TypeDecl::Enumeration(enum_decl) => {
                 let enum_decl = EnumerationDecl::annotate(enum_decl, scope.clone())?;
                 Ok(node::TypeDecl::Enumeration(enum_decl))
+            }
+
+            node::TypeDecl::Set(set_decl) => {
+                let set_decl = SetDecl::annotate(set_decl, scope.clone())?;
+                Ok(node::TypeDecl::Set(set_decl))
             }
 
             node::TypeDecl::Alias { alias, of, context } => {
@@ -88,6 +94,35 @@ impl EnumerationDecl {
         Ok(EnumerationDecl {
             name: enumeration.name.clone(),
             names: enumeration.names.clone(),
+            context,
+        })
+    }
+}
+
+impl SetDecl {
+    pub fn annotate(set_decl: &syntax::SetDecl,
+                    scope: Rc<Scope>) -> SemanticResult<Self> {
+        let context = SemanticContext {
+            scope: scope.clone(),
+            token: set_decl.context.token().clone(),
+        };
+
+        let enumeration = match &set_decl.enumeration {
+            node::SetEnumeration::Named(enum_name) => {
+                let (enum_id, _) = scope.get_enumeration(enum_name)
+                    .ok_or_else(|| {
+                        SemanticError::unknown_type(enum_name.clone(), context.clone())
+                    })?;
+
+                node::SetEnumeration::Named(enum_id)
+            }
+
+            inline @ node::SetEnumeration::Inline(_) => inline.clone(),
+        };
+
+        Ok(node::SetDecl{
+            name: set_decl.name.clone(),
+            enumeration,
             context,
         })
     }

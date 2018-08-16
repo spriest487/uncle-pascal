@@ -23,8 +23,8 @@ impl ConstDecl {
             None => None,
             Some(type_name) => {
                 let ty = scope.get_type(&type_name)
-                    .map_err(|_| {
-                        SemanticError::unknown_type(type_name.clone(), context.clone())
+                    .map_err(|not_found| {
+                        SemanticError::unknown_type(not_found, context.clone())
                     })?;
 
                 Some(ty)

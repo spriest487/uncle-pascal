@@ -1,6 +1,7 @@
 use std::{
     collections::hash_map::*,
     mem::size_of,
+    iter,
     fmt,
 };
 
@@ -13,7 +14,10 @@ use node::{
     RecordKind,
     ConstantExpression,
 };
-use consts::EnumConstant;
+use consts::{
+    EnumConstant,
+    SetConstant,
+};
 use semantic::*;
 
 #[derive(Clone, Debug)]
@@ -24,6 +28,7 @@ pub enum Named {
     Function(FunctionDecl),
     Const(ConstantExpression),
     Enumeration(EnumerationDecl),
+    Set(SetDecl),
     Symbol(Type),
 }
 
@@ -131,6 +136,7 @@ impl fmt::Debug for Scope {
         let mut records = Vec::new();
         let mut consts = Vec::new();
         let mut enums = Vec::new();
+        let mut sets = Vec::new();
 
         for (name, named) in self.names.iter() {
             match named {
@@ -141,6 +147,7 @@ impl fmt::Debug for Scope {
                 Named::Record(decl) => records.push((name, decl)),
                 Named::Const(val) => consts.push((name, val)),
                 Named::Enumeration(decl) => enums.push((name, decl)),
+                Named::Set(decl) => sets.push((name, decl)),
             }
         }
 
@@ -177,6 +184,12 @@ impl fmt::Debug for Scope {
         writeln!(f, "\tenumerations: [")?;
         for (name, enum_decl) in enums {
             writeln!(f, "\t\t{}: {}", name, enum_decl.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tsets: [")?;
+        for (name, set_decl) in sets {
+            writeln!(f, "\t\t{}: {}", name, set_decl.name)?;
         }
         writeln!(f, "\t]")?;
 
@@ -252,13 +265,37 @@ impl Scope {
         self
     }
 
-    pub fn with_enumeration(mut self, name: impl Into<Identifier>, decl: EnumerationDecl) -> Self {
+    pub fn with_enumeration(mut self, decl: EnumerationDecl) -> Self {
         for (ord, name) in decl.names.iter().enumerate() {
-            let enum_const = EnumConstant::new(ord as u64, name.clone(), decl.name.clone());
+            let const_name = self.qualify_local_name(&decl.name);
+            let enum_const = EnumConstant::new(ord as u64, name, const_name);
             let val = ConstantExpression::Enum(enum_const);
             self.names.insert(Identifier::from(name), Named::Const(val));
         }
-        self.names.insert(name.into(), Named::Enumeration(decl));
+
+        let qualified_name = self.qualify_local_name(&decl.name);
+        self.names.insert(qualified_name, Named::Enumeration(decl));
+        self
+    }
+
+    pub fn with_set(mut self, decl: SetDecl) -> Self {
+        let qualified_name = self.qualify_local_name(&decl.name);
+
+        /* it would make more sense to add the values first so we didn't
+        have to copy the set decl, but in the weird case that a set constant
+        has the same name as the set, we want the error to be raised on the
+        inner value, not the set decl */
+        self.names.insert(qualified_name.clone(), Named::Set(decl.clone()));
+
+        if let node::SetEnumeration::Inline(names) = &decl.enumeration {
+            for name in names.iter() {
+                let name_qualified = self.qualify_local_name(name);
+                let name_const = SetConstant::new(iter::once(name), qualified_name.clone());
+                let name_expr = ConstantExpression::Set(name_const);
+
+                self.names.insert(name_qualified, Named::Const(name_expr));
+            }
+        }
 
         self
     }
@@ -385,46 +422,52 @@ impl Scope {
                 self.get_symbol_global(name)
             })
             .or_else(|| {
-                let func = self.get_function(name)?;
+                let (func_id, func) = self.get_function(name)?;
 
                 Some(ScopedSymbol::Local {
-                    name: func.name.clone(),
+                    name: func_id,
                     decl_type: Type::Function(Box::from(func.signature())),
                 })
             })
     }
 
-    fn find_named(&self, name: &Identifier) -> Option<&Named> {
+    fn find_named(&self, name: &Identifier) -> Option<(Identifier, &Named)> {
         self.local_namespace.as_ref()
             .and_then(|local_name| {
                 /* local name? */
                 let name_in_local_ns = local_name.append(name);
-                self.names.get(&name_in_local_ns)
+                self.names.get(&name_in_local_ns).map(|named| (name_in_local_ns, named))
             })
             .or_else(|| {
                 /* name imported from another unit? */
                 let global_name = self.imported_names.get(name)?;
-                self.names.get(global_name)
+                self.names.get(global_name).map(|named| (global_name.clone(), named))
             })
             .or_else(|| {
                 /* fully-qualified global name? */
-                self.names.get(name)
+                self.names.get(name).map(|named| (name.clone(), named))
             })
     }
 
-    pub fn get_type(&self, parsed_type: &TypeName) -> Result<Type, TypeName> {
+    pub fn get_type(&self, parsed_type: &TypeName) -> Result<Type, Identifier> {
         match parsed_type {
             TypeName::Scalar { name, indirection, array_dimensions } => {
                 let mut result = match self.find_named(name) {
-                    Some(Named::Class(class)) => Type::Class(class.name.clone()),
-                    Some(Named::Record(record)) => Type::Record(record.name.clone()),
-                    Some(Named::Enumeration(enumeration)) => Type::Enumeration(enumeration.name.clone()),
-                    Some(Named::Alias(ty)) => ty.clone(),
+                    Some((class_name, Named::Class(_))) =>
+                        Type::Class(class_name),
+                    Some((record_name, Named::Record(_))) =>
+                        Type::Record(record_name),
+                    Some((enumeration_name, Named::Enumeration(_))) =>
+                        Type::Enumeration(enumeration_name),
+                    Some((set_name, Named::Set(_))) =>
+                        Type::Set(set_name),
+                    Some((_, Named::Alias(ty))) =>
+                        ty.clone(),
 
                     None |
-                    Some(Named::Const(_)) |
-                    Some(Named::Function(_)) |
-                    Some(Named::Symbol(_)) => return Err(parsed_type.clone()),
+                    Some((_, Named::Const(_))) |
+                    Some((_, Named::Function(_))) |
+                    Some((_, Named::Symbol(_))) => return Err(name.clone()),
                 };
 
                 for _ in 0..*indirection {
@@ -462,34 +505,63 @@ impl Scope {
         }
     }
 
-    pub fn get_enumeration(&self, name: &Identifier) -> Option<&EnumerationDecl> {
+    pub fn get_enumeration(&self, name: &Identifier) -> Option<(Identifier, &EnumerationDecl)> {
         match self.find_named(name) {
-            Some(Named::Enumeration(decl)) => Some(decl),
+            Some((ref id, Named::Enumeration(decl))) => Some((id.clone(), decl)),
             _ => None,
         }
     }
 
-    pub fn get_function(&self, name: &Identifier) -> Option<&FunctionDecl> {
+    pub fn get_set(&self, name: &Identifier) -> Option<(Identifier, &SetDecl)> {
         match self.find_named(name) {
-            Some(Named::Function(decl)) => Some(decl),
+            Some((ref id, Named::Set(decl))) => Some((id.clone(), decl)),
             _ => None,
         }
     }
 
-    pub fn get_record(&self, name: &Identifier) -> Option<&RecordDecl> {
+    pub fn get_set_enumeration(&self, name: &Identifier) -> Option<Vec<Identifier>> {
+        let (set_id, set) = self.get_set(name)?;
+        match &set.enumeration {
+            node::SetEnumeration::Inline(names) => {
+                let set_ns = set_id.parent();
+
+                Some(names.iter()
+                    .map(|name| Identifier::child_of_namespace(set_ns.as_ref(), name))
+                    .collect())
+            },
+
+            node::SetEnumeration::Named(enum_name) => {
+                let (enum_name, named_enum) = self.get_enumeration(enum_name)?;
+                let enum_ns = enum_name.parent();
+
+                Some(named_enum.names.iter()
+                    .map(|name| Identifier::child_of_namespace(enum_ns.as_ref(), name))
+                    .collect())
+            }
+        }
+    }
+
+    pub fn get_function(&self, name: &Identifier) -> Option<(Identifier, &FunctionDecl)> {
         match self.find_named(name) {
-            Some(Named::Record(decl)) => {
+            Some((ref id, Named::Function(decl))) => Some((id.clone(), decl)),
+            _ => None,
+        }
+    }
+
+    pub fn get_record(&self, name: &Identifier) -> Option<(Identifier, &RecordDecl)> {
+        match self.find_named(name) {
+            Some((ref id, Named::Record(decl))) => {
                 assert_eq!(RecordKind::Record, decl.kind);
-                Some(decl)
+                Some((id.clone(), decl))
             }
             _ => None,
         }
     }
 
-    pub fn get_const(&self, name: &Identifier) -> Option<&ConstantExpression> {
+    pub fn get_const(&self, name: &Identifier) -> Option<(Identifier, &ConstantExpression)> {
         match self.find_named(name) {
-            Some(Named::Const(const_expr)) => {
-                Some(const_expr)
+            Some((ref id, Named::Const(const_expr))) => {
+                Some((id.clone(), const_expr))
             }
             _ => None,
         }
@@ -500,7 +572,7 @@ impl Scope {
                           member_name: &str) -> Option<ScopedSymbol> {
         let parent_sym = self.get_symbol(&parent_id)?;
 
-        let record_decl = match parent_sym.decl_type() {
+        let (_, record_decl) = match parent_sym.decl_type() {
             Type::Record(name) => self.get_record(name),
             Type::Class(name) => self.get_class(name),
 
@@ -522,18 +594,18 @@ impl Scope {
             .find(|m| m.name.to_string() == *member_name)?;
 
         Some(ScopedSymbol::RecordMember {
-            record_id: parent_id.clone(),
+            record_id: parent_sym.name(),
             name: member_name.to_owned(),
             record_type: record_decl.name.clone(),
             member_type: member.decl_type.clone(),
         })
     }
 
-    pub fn get_class(&self, name: &Identifier) -> Option<&RecordDecl> {
+    pub fn get_class(&self, name: &Identifier) -> Option<(Identifier, &RecordDecl)> {
         match self.find_named(name)? {
-            Named::Class(decl) => {
+            (ref id, Named::Class(decl)) => {
                 assert_eq!(RecordKind::Class, decl.kind);
-                Some(decl)
+                Some((id.clone(), decl))
             }
             _ => None,
         }
@@ -563,6 +635,11 @@ impl Scope {
             8
         };
 
+        let set_size = |_enum_decl: &SetDecl| {
+            /* todo: all sets are u64s */
+            8
+        };
+
         match ty {
             Type::Nil |
             Type::RawPointer |
@@ -577,8 +654,14 @@ impl Scope {
             Type::Float64 =>
                 8,
 
+            Type::Set(id) => {
+                let (_, set_decl) = self.get_set(id)
+                    .expect("set type passed to size_of must exist");
+                set_size(set_decl)
+            }
+
             Type::Enumeration(id) => {
-                let enum_decl = self.get_enumeration(id)
+                let (_, enum_decl) = self.get_enumeration(id)
                     .expect("enum type passed to size_of must exist");
                 enum_size(enum_decl)
             }
@@ -594,12 +677,12 @@ impl Scope {
                 1,
 
             Type::Record(name) => {
-                let record_decl = self.get_record(name).expect("record type passed to size_of must exist");
+                let (_, record_decl) = self.get_record(name).expect("record type passed to size_of must exist");
                 record_size(record_decl)
             }
 
             Type::Class(name) => {
-                let class_decl = self.get_class(name).expect("class type passed to size_of must exist");
+                let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
                 record_size(class_decl)
             }
 

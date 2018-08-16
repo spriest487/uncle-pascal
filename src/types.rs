@@ -82,7 +82,7 @@ pub enum Type {
     Class(Identifier),
     Array(ArrayType),
     Enumeration(Identifier),
-//    Set(Identifier),
+    Set(Identifier),
 }
 
 impl ToSource for Type {
@@ -110,7 +110,7 @@ impl Type {
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig.to_source()),
                 Type::Enumeration(enum_id) => enum_id.to_string(),
-//                Type::Set(enum_id) => format!("set of {}", enum_id),
+                Type::Set(set_id) => format!("{}", set_id),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),
                 Type::Array(array) => {
@@ -211,7 +211,7 @@ impl Type {
             Type::Float64 |
             Type::Function(_) |
             Type::Enumeration(_) |
-//            Type::Set(_) |
+            Type::Set(_) |
             Type::Boolean => true,
 
             Type::Array { .. } |

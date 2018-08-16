@@ -65,27 +65,29 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             format!("System_Internal_Func<{}, {}>", return_type, arg_types)
         }
         Type::Class(name) => {
-            let class = scope.get_class(name)
+            let (class_id, _) = scope.get_class(name)
                 .expect("referenced class must exist");
 
-            format!("{}*", identifier_to_c(&class.name))
+            format!("{}*", identifier_to_c(&class_id))
         }
         Type::Record(name) => {
-            let record = scope.get_record(name)
+            let (record_id, _) = scope.get_record(name)
                 .expect("referenced record must exist");
 
-            format!("{}", identifier_to_c(&record.name))
+            format!("{}", identifier_to_c(&record_id))
         }
 
         Type::Enumeration(enum_id) => {
-            let enumeration = scope.get_enumeration(enum_id)
+            let (enum_id, _) = scope.get_enumeration(enum_id)
                 .expect("referenced enumeration must exist");
-            identifier_to_c(&enumeration.name)
+            identifier_to_c(&enum_id)
         }
 
-//        Type::Set(enum_id) => {
-//            format!("set of {}", enum_id)
-//        }
+        Type::Set(set_id) => {
+            let (set_id, _) = scope.get_set(set_id)
+                .expect("referenced set must exist");
+            identifier_to_c(&set_id)
+        }
 
         Type::Array(array) => {
             let element_name = type_to_c(array.element.as_ref(), scope);
@@ -135,6 +137,11 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
 
         Type::Enumeration(_enum_id) => {
             //todo: should use the first ordinal in the enum, not 0
+            writeln!(out, "{} = 0;", id)
+        }
+
+        Type::Set(_) => {
+            // sets can always be empty
             writeln!(out, "{} = 0;", id)
         }
 
@@ -273,6 +280,29 @@ pub fn write_expr(out: &mut String,
                 ConstantExpression::Enum(e) => {
                     let enum_name = identifier_to_c(&e.enumeration);
                     write!(out, "(({}){})", enum_name, e.ordinal)
+                }
+
+                ConstantExpression::Set(set) => {
+                    let (set_id, _set_decl) = expr.scope().get_set(&set.set)
+                        .unwrap();
+
+                    let enum_names = expr.scope().get_set_enumeration(&set_id)
+                        .unwrap();
+
+                    let set_mask = enum_names.iter()
+                        .enumerate()
+                        .filter_map(|(val_ordinal, val_name)| {
+                            if set.included_values.contains(val_name) {
+                                let val_mask = 1 << val_ordinal;
+                                Some(format!("{}", val_mask))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" | ");
+
+                    write!(out, "(({}) {})", identifier_to_c(&set_id), set_mask)
                 }
 
                 ConstantExpression::Float(f) => {
@@ -712,7 +742,15 @@ pub fn write_function(out: &mut String,
 
 pub fn write_decl(out: &mut String,
                   decl: &semantic::UnitDeclaration,
+                  unit_name: Option<&Identifier>,
                   globals: &mut ModuleGlobals) -> fmt::Result {
+    let qualify_name = |name: &str| {
+        match &unit_name {
+            Some(unit_name) => identifier_to_c(&unit_name.child(name)),
+            None => identifier_to_c(&Identifier::from(name))
+        }
+    };
+
     match decl {
         UnitDeclaration::Function(ref func_decl) =>
             write_function(out, func_decl, globals),
@@ -722,14 +760,21 @@ pub fn write_decl(out: &mut String,
                 node::TypeDecl::Record(record_decl) =>
                     write_record_decl(out, record_decl),
 
-                node::TypeDecl::Enumeration(enumeration_decl) => {
+                node::TypeDecl::Enumeration(enum_decl) => {
+                    let enum_name = qualify_name(&enum_decl.name);
                     // all enums are backed by u64 for now
-                    let enum_name = identifier_to_c(&enumeration_decl.name);
                     writeln!(out, "using {} = System_UInt64;", enum_name)
                 }
 
+                node::TypeDecl::Set(set_decl) => {
+                    let set_name = qualify_name(&set_decl.name);
+
+                    // all sets are backed by u64
+                    writeln!(out, "using {} = System_UInt64;", set_name)
+                }
+
                 node::TypeDecl::Alias { .. } => {
-                    //aliases don't do anything in the final output and can be ignored
+                    // these decls don't create any new types in the C++ output and can be ignored
                     Ok(())
                 }
             }
@@ -793,21 +838,23 @@ pub fn write_c(module: &ProgramModule)
     for unit in module.units.iter() {
         writeln!(c_decls, "/* {} interface */", unit.name)?;
 
+        let unit_name = Identifier::from(&unit.name);
         for decl in unit.interface.iter() {
-            write_decl(&mut c_decls, decl, &mut globals)?;
+            write_decl(&mut c_decls, decl, Some(&unit_name), &mut globals)?;
         }
     }
 
     for unit in module.units.iter() {
         writeln!(c_decls, "/* {} implementation */", unit.name)?;
         for decl in unit.implementation.iter() {
-            write_decl(&mut c_decls, decl, &mut globals)?;
+            let unit_name = Identifier::from(&unit.name);
+            write_decl(&mut c_decls, decl, Some(&unit_name), &mut globals)?;
         }
     }
 
     writeln!(c_decls, "/* program decls */")?;
     for decl in module.program.decls.iter() {
-        write_decl(&mut c_decls, decl, &mut globals)?;
+        write_decl(&mut c_decls, decl, None, &mut globals)?;
     }
 
     let var_decls: Vec<_> = module.program.decls.iter()

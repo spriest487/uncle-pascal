@@ -1,9 +1,9 @@
 use node::Identifier;
 
 use std::{
-    fmt,
-    ops::Add,
-    ops::Sub,
+    collections::HashSet,
+    fmt::{self, Write},
+    ops::{Add, Sub },
 };
 
 #[derive(Copy, Clone, Debug, PartialEq)]
@@ -206,5 +206,41 @@ impl EnumConstant {
 impl fmt::Display for EnumConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SetConstant {
+    pub included_values: HashSet<Identifier>,
+    pub set: Identifier,
+}
+
+impl SetConstant {
+    pub fn new(included_values: impl IntoIterator<Item=impl Into<Identifier>>,
+               set: impl Into<Identifier>)
+        -> Self {
+        SetConstant {
+            included_values: included_values.into_iter()
+                .map(|val| val.into())
+                .collect(),
+            set: set.into(),
+        }
+    }
+}
+
+impl fmt::Display for SetConstant {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_char('[')?;
+
+        let mut first = true;
+        for val in self.included_values.iter() {
+            if !first {
+                f.write_str(", ")?;
+                first = false;
+            }
+            write!(f, "{}", val)?;
+        }
+
+        f.write_char(']')
     }
 }

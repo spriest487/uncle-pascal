@@ -127,23 +127,22 @@ fn annotate_identifier(name: &Identifier,
     };
 
     scope.get_symbol(name)
-        .map(|symbol| match symbol {
+        .and_then(|symbol| match symbol {
             /* transform identifiers that reference record members into
             record member expressions */
             ScopedSymbol::RecordMember { record_id, name, .. } => {
-                let record_sym = scope.get_symbol(&record_id).unwrap();
-
+                let record_sym = scope.get_symbol(&record_id)?;
                 let base = Expression::identifier(record_sym, identifier_context.clone());
 
-                Expression::member(base, &name)
+                Some(Expression::member(base, &name))
             }
 
             symbol @ ScopedSymbol::Local { .. } => {
-                Expression::identifier(symbol, identifier_context.clone())
+                Some(Expression::identifier(symbol, identifier_context.clone()))
             }
         })
         .or_else(|| {
-            let const_val = scope.get_const(name)?;
+            let (_, const_val) = scope.get_const(name)?;
 
             Some(Expression::const_value(const_val.clone(), identifier_context.clone()))
         })
@@ -281,14 +280,14 @@ fn annotate_ufcs(target: &Expression,
                  func_name: &str,
                  args: &Vec<Expression>,
                  scope: Rc<Scope>) -> Option<Expression> {
-    let base_target_decl = match target_type.remove_indirection() {
+    let (base_target_id, _base_target_decl) = match target_type.remove_indirection() {
         Type::Class(name) => scope.get_class(name)?,
         Type::Record(name) => scope.get_record(name)?,
         _ => return None,
     };
 
     /* look for matching UFCS func in NS of target type */
-    let ufcs_ns = base_target_decl.name.parent()?;
+    let ufcs_ns = base_target_id.parent()?;
 
     let ufcs_name = ufcs_ns.child(func_name);
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
@@ -541,7 +540,7 @@ fn member_type(of: &Expression,
     };
 
     match base_decl {
-        Some(record) => {
+        Some((_record_id, record)) => {
             match record.get_member(name) {
                 Some(member) =>
                     Ok(Some(member.decl_type.clone())),
@@ -606,6 +605,10 @@ impl Expression {
 
             ExpressionValue::Constant(ConstantExpression::Enum(e)) => {
                 Ok(Expression::literal_enumeration(e.clone(), expr_context))
+            }
+
+            ExpressionValue::Constant(ConstantExpression::Set(set_const)) => {
+                Ok(Expression::literal_set(set_const.clone(), expr_context))
             }
 
             ExpressionValue::If { condition, then_branch, else_branch } =>
@@ -693,7 +696,7 @@ impl Expression {
     pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
             Some(Type::Class(name)) => {
-                let class_decl = self.context.scope.get_class(&name)
+                let (_class_id, class_decl) = self.context.scope.get_class(&name)
                     .expect("record must exist in scope of expression it's used in");
 
                 Ok(Some(class_decl))
@@ -777,7 +780,7 @@ impl Expression {
 
             ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) => {
                 scope.get_const(name)
-                    .cloned()
+                    .map(|(_const_id, const_val)| const_val.clone())
                     .ok_or_else(|| {
                         SemanticError::invalid_const_value(self.clone())
                     })

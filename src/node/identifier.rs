@@ -87,6 +87,13 @@ impl FromIterator<String> for Identifier {
 }
 
 impl Identifier {
+    pub fn child_of_namespace(ns: Option<&Identifier>, name: &str) -> Self {
+        match ns {
+            Some(ns_id) => ns_id.child(name),
+            None => Identifier::from(name),
+        }
+    }
+
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<node::Identifier> {
         let mut parts = Vec::new();
 

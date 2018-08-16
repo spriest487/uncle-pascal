@@ -6,6 +6,7 @@ use consts::{
     IntConstant,
     FloatConstant,
     EnumConstant,
+    SetConstant,
 };
 use types::Type;
 
@@ -61,6 +62,7 @@ pub enum ConstantExpression {
     String(String),
     Boolean(bool),
     Enum(EnumConstant),
+    Set(SetConstant),
     Nil,
 }
 
@@ -90,6 +92,9 @@ impl ConstantExpression {
 
             ConstantExpression::Boolean(_) =>
                 Type::Boolean,
+
+            ConstantExpression::Set(set_const) =>
+                Type::Set(set_const.set.clone()),
 
             ConstantExpression::Nil =>
                 Type::Nil,
@@ -174,6 +179,13 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
     pub fn literal_enumeration(e: EnumConstant, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Constant(ConstantExpression::Enum(e)),
+            context: context.into(),
+        }
+    }
+
+    pub fn literal_set(set_const: SetConstant, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Constant(ConstantExpression::Set(set_const)),
             context: context.into(),
         }
     }

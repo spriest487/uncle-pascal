@@ -28,7 +28,6 @@ use std::{
 
 use node::{
     Identifier,
-    TypeName,
     Context,
     ToSource,
     ExpressionValue,
@@ -40,7 +39,7 @@ use types::*;
 
 #[derive(Clone, Debug)]
 pub enum SemanticErrorKind {
-    UnknownType(TypeName),
+    UnknownType(Identifier),
     UnknownSymbol(Identifier),
     UnexpectedType {
         expected: Option<Type>,
@@ -205,7 +204,7 @@ impl SemanticError {
         }
     }
 
-    pub fn unknown_type(missing_type: TypeName, context: SemanticContext) -> Self {
+    pub fn unknown_type(missing_type: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownType(missing_type),
             context,

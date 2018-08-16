@@ -78,7 +78,6 @@ impl<T, C> ToSource for ExpressionValue<T, C>
             ExpressionValue::Constant(ConstantExpression::Integer(i)) => format!("{}", i),
             ExpressionValue::Constant(ConstantExpression::Float(f)) => format!("{}", f),
 
-
             ExpressionValue::Constant(ConstantExpression::String(s)) =>
                 format!("'{}'", tokens::LiteralString(s.clone()).to_source()),
 
@@ -89,6 +88,9 @@ impl<T, C> ToSource for ExpressionValue<T, C>
 
             ExpressionValue::Constant(ConstantExpression::Enum(e)) =>
                 format!("{}", e.name),
+
+            ExpressionValue::Constant(ConstantExpression::Set(set)) =>
+                format!("{}", set.set),
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
                 let mut lines = Vec::new();
@@ -156,6 +158,7 @@ impl ToSource for ConstantExpression {
                 false => "false".to_string(),
             }
             ConstantExpression::Enum(enum_val) => enum_val.to_string(),
+            ConstantExpression::Set(set_val) => set_val.to_string(),
             ConstantExpression::String(s) => format!("'{}'", s),
         }
     }
@@ -229,6 +232,7 @@ impl<T, C> ToSource for TypeDecl<T, C>
             }
 
             TypeDecl::Enumeration(enum_decl) => enum_decl.to_source(),
+            TypeDecl::Set(set_decl) => set_decl.to_source(),
 
             TypeDecl::Record(record_decl) => record_decl.to_source()
         }
@@ -257,6 +261,17 @@ impl<C> ToSource for EnumerationDecl<C>
 {
     fn to_source(&self) -> String {
         format!("type {} = ({})", self.name, self.names.join(", "))
+    }
+}
+
+impl<C> ToSource for SetDecl<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        format!("type {} = set of {}", self.name, match &self.enumeration {
+            SetEnumeration::Named(enum_name) => enum_name.to_string(),
+            SetEnumeration::Inline(names) => format!("({})", names.join(", ")),
+        })
     }
 }
 
