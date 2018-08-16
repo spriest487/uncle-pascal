@@ -702,32 +702,42 @@ pub fn write_c(module: &ProgramModule)
 
     writeln!(c_main, "/* program block */")?;
 
-    // System.String is compiler magic so we have to manually initialize the class
-    writeln!(c_main, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
-
-    // declare initialize string literals before main, initialize them in main
-    globals.declare_string_literals(&mut c_decls)?;
-    globals.init_string_literals(&mut c_main)?;
-
     default_initialize_vars(&mut c_main, var_decls.iter().cloned())?;
-
-    for unit in module.units.iter() {
-        write_static_init(&mut c_main, &unit.interface)?;
-        write_static_init(&mut c_main, &unit.implementation)?;
-    }
-    write_static_init(&mut c_main, &module.program.decls)?;
 
     write_block(&mut c_main, &module.program.program_block, &mut globals)?;
     release_vars(&mut c_main, var_decls)?;
+
+    /* at this point the whole program is finished writing so globals should
+    be ready to output */
 
     // combine sections into whole program
     let mut output = String::new();
 
     output.write_str(HEADER)?;
+
+    // forward declare System.String
+    writeln!(output, "struct System_String;")?;
+    // declare initialize string literal global vars
+    globals.declare_string_literals(&mut output)?;
+
+    // write program decls
     output.write_str(&c_decls)?;
 
     writeln!(output, "int main(int argc, char* argv[]) {{")?;
+
+    // init the string class and string literals
+    writeln!(output, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_DestroyString);")?;
+    globals.init_string_literals(&mut output)?;
+
+    // init other classes
+    for unit in module.units.iter() {
+        write_static_init(&mut output, &unit.interface)?;
+        write_static_init(&mut output, &unit.implementation)?;
+    }
+    write_static_init(&mut output, &module.program.decls)?;
+
     output.write_str(&c_main)?;
+
     writeln!(output, "return 0;")?;
     writeln!(output, "}}")?;
 

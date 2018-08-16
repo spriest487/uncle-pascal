@@ -2,12 +2,12 @@ unit System
 
 interface
 
+{$ifdef fpc}
 type
-    {$ifdef fpc}
     Cardinal = UInt32
     Integer = Int32
     LongWord = UInt32
-    {$endif}
+  {$endif}
 
 procedure WriteLn(line: String)
 

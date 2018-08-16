@@ -1,7 +1,6 @@
 use syntax::*;
 use tokens;
 use tokens::AsToken;
-use consts::IntConstant;
 use keywords;
 use node;
 
