@@ -13,7 +13,9 @@ var
   ints2: array[-1..1, -2..2] of Int32
 
 begin
-  let y = 2
+  let var y := 2
+  StringToInt('1', y)
+
   let x = 1 + y
 
   let vec = Vector.New()
@@ -30,6 +32,6 @@ begin
     WriteLn('one')
   end
   else begin
-    WriteLn('not one')
+    WriteLn('not one: ' + StringFromInt(x))
   end
 end.

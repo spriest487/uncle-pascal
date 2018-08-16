@@ -142,13 +142,13 @@ System_String* System_ReadLn() {
     }
 }
 
-System_Boolean System_StringToInt(System_String* str, System_Int32* result) {
+System_Boolean System_StringToInt(System_String* str, System_Int32& result) {
     auto stream = std::stringstream();
     stream.str(std::string(
         reinterpret_cast<const char*>(str->Chars),
         static_cast<std::size_t>(str->Length)));
 
-    if (stream >> *result) {
+    if (stream >> result) {
         return true;
     } else {
         return false;

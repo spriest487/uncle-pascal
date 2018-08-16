@@ -21,7 +21,10 @@ use node::{
     FunctionArgModifier,
 };
 use super::{
-    ops::expect_valid,
+    ops::{
+        expect_valid,
+        is_assignable,
+    },
     match_indirection,
     expect_initialized,
 };
@@ -209,7 +212,7 @@ fn annotate_ufcs(ufcs_call: UfcsCallSite,
         args,
         &ufcs_sig,
         &ufcs_call.target.context,
-        ufcs_call.scope_after_target
+        ufcs_call.scope_after_target,
     )?;
 
     let mut ufcs_args = vec![ufcs_target_arg];
@@ -239,7 +242,7 @@ pub fn call_type(target: &Expression,
                                                  context.clone()));
     };
 
-    let wrong_args = || {
+    let wrong_args = || -> SemanticResult<Option<Type>> {
         let actual_arg_types: Vec<_> = actual_args.iter()
             .map(|arg| arg.expr_type())
             .collect::<SemanticResult<_>>()?;
@@ -248,6 +251,23 @@ pub fn call_type(target: &Expression,
                                            actual_arg_types,
                                            context.clone(),
         ))
+    };
+
+    /*
+        all by-ref arg types: type in signature and actual type must be a 1:1 match,
+        and the result must be assignable from the call context
+    */
+    let valid_byref_arg = |arg_expr: &Expression, sig_ty: &Type| {
+        if !is_assignable(arg_expr) {
+            return Err(SemanticError::value_not_assignable(arg_expr.clone()));
+        }
+
+        let ty = arg_expr.expr_type()?;
+        if ty.as_ref() != Some(sig_ty) {
+            return wrong_args();
+        }
+
+        Ok(ty)
     };
 
     for (arg_index, arg_expr) in actual_args.iter().enumerate() {
@@ -272,20 +292,15 @@ pub fn call_type(target: &Expression,
                 expect_initialized(arg_expr)?
             }
 
-            /* by-ref var: must be initialized, must be exact type */
+            /* by-ref var: must be initialized */
             | Some(FunctionArgModifier::Var) => {
                 expect_initialized(arg_expr)?;
-
-                if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
-                    return wrong_args();
-                }
+                valid_byref_arg(arg_expr, &sig_arg.decl_type)?;
             }
 
-            /* by-ref out: may be uninitialized, must be exact type */
+            /* by-ref out: may be uninitialized */
             | Some(FunctionArgModifier::Out) => {
-                if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
-                    return wrong_args();
-                }
+                valid_byref_arg(arg_expr, &sig_arg.decl_type)?;
             }
         }
     }

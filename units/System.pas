@@ -29,7 +29,7 @@ function StringFromBytes(bytes: ^Byte; len: NativeInt): String
 destructor DestroyString(string: String)
 
 function StringFromInt(i: Int32): String
-function StringToInt(s: String; outVal: ^Int32): Boolean
+function StringToInt(s: String; out val: Int32): Boolean
 function StringConcat(a: String; b: String): String
 function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
 function StringLength(s: String): NativeInt
