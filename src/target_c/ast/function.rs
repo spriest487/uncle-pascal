@@ -9,19 +9,20 @@ use node::{
     FunctionKind,
     FunctionLocalDecl,
 };
-use target_c::writer::{
-    identifier_to_c,
-    write_block,
-    write_vars,
-    write_consts,
-    default_initialize_vars,
-    release_vars,
-};
 use types::Type;
 use target_c::{
-    ast::CType,
+    ast::{
+        CType,
+        TranslationResult,
+    },
     writer::{
-        module_globals::ModuleGlobals
+        module_globals::ModuleGlobals,
+        identifier_to_c,
+        write_block,
+        write_vars,
+        write_consts,
+        default_initialize_vars,
+        release_vars,
     },
 };
 
@@ -137,7 +138,9 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn from_function(function: &semantic::Function, globals: &mut ModuleGlobals) -> Result<FunctionDecl, fmt::Error> {
+    pub fn from_function(function: &semantic::Function,
+                         globals: &mut ModuleGlobals)
+                         -> TranslationResult<Self> {
         let mut body = String::new();
         writeln!(&mut body, "{{")?;
 

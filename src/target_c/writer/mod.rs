@@ -654,7 +654,8 @@ pub fn write_impl_decl(out: &mut String,
                        globals: &mut ModuleGlobals) -> fmt::Result {
     match impl_decl {
         Implementation::Function(func_impl) => {
-            let definition = ast::FunctionDecl::from_function(func_impl, globals)?;
+            let definition = ast::FunctionDecl::from_function(func_impl, globals)
+                .map_err(|_| fmt::Error)?; // todo: error type
             globals.declare_function(definition);
             Ok(())
         }
