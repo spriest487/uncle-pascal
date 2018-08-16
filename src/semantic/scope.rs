@@ -25,7 +25,7 @@ pub enum Named {
 
 #[derive(Clone)]
 pub struct Scope {
-    local_name: Option<Identifier>,
+    local_namespace: Option<Identifier>,
     names: HashMap<Identifier, Named>,
 
     /* map of imported name => global name
@@ -95,30 +95,32 @@ impl node::ToSource for ScopedSymbol {
 
 impl Default for Scope {
     fn default() -> Self {
-        Scope::new().reference(Scope::system(), UnitReferenceKind::Namespaced)
+        Scope::new().reference(&Scope::system(), UnitReferenceKind::Namespaced)
     }
 }
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Scope `{}` {{", match self.local_name {
+        writeln!(f, "Scope `{}` {{", match self.local_namespace {
             Some(ref ns) => ns.to_string(),
             None => "(root)".to_owned(),
         })?;
 
-        let types: Vec<_> = self.names.iter()
-            .flat_map(|(name, named)| match named {
-                &Named::Alias(ref dt) => Some((name, dt)),
-                _ => None
-            })
-            .collect();
+        let mut types = Vec::new();
+        let mut symbols = Vec::new();
+        let mut functions = Vec::new();
+        let mut classes = Vec::new();
+        let mut records = Vec::new();
 
-        let symbols: Vec<_> = self.names.iter()
-            .flat_map(|(name, named)| match named {
-                &Named::Symbol(ref dt) => Some((name, dt)),
-                _ => None,
-            })
-            .collect();
+        for (name, named) in self.names.iter() {
+            match named {
+                Named::Alias(ty) => types.push((name, ty)),
+                Named::Symbol(sym) => symbols.push((name, sym)),
+                Named::Function(func) => functions.push((name, func)),
+                Named::Class(decl) => classes.push((name, decl)),
+                Named::Record(decl) => records.push((name, decl)),
+            }
+        }
 
         writeln!(f, "\ttypes: [")?;
         for (name, declared_type) in types {
@@ -129,6 +131,24 @@ impl fmt::Debug for Scope {
         writeln!(f, "\tsymbols: [")?;
         for (name, sym_type) in symbols {
             writeln!(f, "\t\t{}: {}", name, sym_type)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tfunctions: [")?;
+        for (name, func) in functions {
+            writeln!(f, "\t\t{}: {}", name, func.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\tclasses: [")?;
+        for (name, class) in classes {
+            writeln!(f, "\t\t{}: {}", name, class.name)?;
+        }
+        writeln!(f, "\t]")?;
+
+        writeln!(f, "\trecords: [")?;
+        for (name, record) in records {
+            writeln!(f, "\t\t{}: {}", name, record.name)?;
         }
         writeln!(f, "\t]")?;
 
@@ -145,14 +165,14 @@ impl fmt::Debug for Scope {
 impl Scope {
     pub fn new() -> Self {
         Scope {
-            local_name: None,
+            local_namespace: None,
             names: HashMap::new(),
             imported_names: HashMap::new(),
         }
     }
 
-    pub fn local_name(&self) -> Option<&Identifier> {
-        self.local_name.as_ref()
+    pub fn local_namespace(&self) -> Option<&Identifier> {
+        self.local_namespace.as_ref()
     }
 
     pub fn system() -> Self {
@@ -173,50 +193,52 @@ impl Scope {
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {
-        match &self.local_name {
+        match &self.local_namespace {
             &Some(ref local_name) => local_name.child(&name),
             &None => Identifier::from(name)
         }
     }
 
-    pub fn with_alias(mut self, name: Identifier, named_type: Type) -> Self {
+    pub fn with_alias(mut self, name: impl Into<Identifier>, named_type: Type) -> Self {
+        let name = name.into();
         self.names.insert(name, Named::Alias(named_type));
         self
     }
 
-    pub fn with_function(mut self, name: Identifier, decl: FunctionDecl) -> Self {
+    pub fn with_function(mut self, name: impl Into<Identifier>, decl: FunctionDecl) -> Self {
+        let name = name.into();
         self.names.insert(name, Named::Function(decl));
         self
     }
 
-    pub fn with_class(mut self, name: Identifier, decl: RecordDecl) -> Self {
+    pub fn with_class(mut self, name: impl Into<Identifier>, decl: RecordDecl) -> Self {
+        let name = name.into();
         assert_eq!(RecordKind::Class, decl.kind);
         self.names.insert(name, Named::Class(decl));
         self
     }
 
-    pub fn with_record(mut self, name: Identifier, decl: RecordDecl) -> Self {
+    pub fn with_record(mut self, name: impl Into<Identifier>, decl: RecordDecl) -> Self {
+        let name = name.into();
         assert_eq!(RecordKind::Record, decl.kind);
         self.names.insert(name, Named::Record(decl));
         self
     }
 
-    pub fn with_symbol_local(mut self, name: &str, decl_type: Type) -> Self {
-        let name_id = Identifier::from(name);
-        assert_eq!(0, name_id.namespace.len(), "names passed to with_symbol_local must be unqualified, but got {}", name);
-        self.names.insert(name_id, Named::Symbol(decl_type));
+    pub fn with_symbol_local(mut self, name: impl Into<Identifier>, decl_type: Type) -> Self {
+        let name = name.into();
+        assert_eq!(0, name.namespace.len());
+        self.names.insert(name, Named::Symbol(decl_type));
         self
     }
 
-    pub fn with_symbol_absolute<TId>(mut self, name: TId, decl_type: Type) -> Self
-        where TId: Into<Identifier>
-    {
+    pub fn with_symbol_absolute(mut self, name: impl Into<Identifier>, decl_type: Type) -> Self {
         self.names.insert(name.into(), Named::Symbol(decl_type));
         self
     }
 
     pub fn with_local_namespace(mut self, name: &str) -> Self {
-        self.local_name = match self.local_name {
+        self.local_namespace = match self.local_namespace {
             Some(current_name) => Some(current_name.child(name)),
             None => Some(Identifier::from(name)),
         };
@@ -234,9 +256,9 @@ impl Scope {
     }
 
     pub fn reference(mut self,
-                     other: Scope,
+                     other: &Scope,
                      ref_kind: UnitReferenceKind) -> Self {
-        for (name, named) in other.names {
+        for (name, named) in other.names.iter() {
             match ref_kind {
                 UnitReferenceKind::All => {
                     let imported_name = Identifier::from(&name.name);
@@ -255,7 +277,7 @@ impl Scope {
                 }
             }
 
-            self.names.insert(name, named);
+            self.names.insert(name.clone(), named.clone());
         }
         self
     }
@@ -264,7 +286,7 @@ impl Scope {
                          others: impl IntoIterator<Item=Scope>)
                          -> Self {
         for scope in others {
-            self = self.reference(scope, UnitReferenceKind::Namespaced);
+            self = self.reference(&scope, UnitReferenceKind::Namespaced);
         }
         self
     }
@@ -276,13 +298,18 @@ impl Scope {
 
     fn get_symbol_global(&self, name: &Identifier) -> Option<ScopedSymbol> {
         match self.names.get(&name) {
-            Some(&Named::Symbol(ref symbol_type)) => {
-                let local_sym = ScopedSymbol::Local {
+            Some(Named::Symbol(symbol_type)) => {
+                Some(ScopedSymbol::Local {
                     name: name.clone(),
                     decl_type: symbol_type.clone(),
-                };
+                })
+            }
 
-                Some(local_sym)
+            Some(Named::Function(func)) => {
+                Some(ScopedSymbol::Local {
+                    name: name.clone(),
+                    decl_type: Type::Function(func.name.clone()),
+                })
             }
             _ => None
         }
@@ -290,10 +317,9 @@ impl Scope {
 
     pub fn get_symbol(&self, name: &Identifier) -> Option<ScopedSymbol> {
         /* todo: can this use find_named? */
-        self.local_name.as_ref()
-            .and_then(|local_name| {
-                let name_in_local_ns = local_name.append(name);
-
+        self.local_namespace.as_ref()
+            .and_then(|local_namespace| {
+                let name_in_local_ns = local_namespace.append(name);
                 self.get_symbol_global(&name_in_local_ns)
             })
             .or_else(|| {
@@ -320,7 +346,7 @@ impl Scope {
     }
 
     fn find_named(&self, name: &Identifier) -> Option<&Named> {
-        self.local_name.as_ref()
+        self.local_namespace.as_ref()
             .and_then(|local_name| {
                 /* local name? */
                 let name_in_local_ns = local_name.append(name);
@@ -336,26 +362,6 @@ impl Scope {
                 self.names.get(name)
             })
     }
-//
-//    fn get_type_imported(&self, name: &Identifier) -> Option<Type> {
-//        self.imported_names.get(name)
-//            .and_then(|global_name| self.get_type_global(global_name))
-//    }
-//
-//    fn find_base_type(&self, name: &Identifier) -> Option<Type> {
-//        self.local_name.as_ref()
-//            .and_then(|local_name| {
-//                let name_in_local_ns = local_name.append(name);
-//
-//                self.get_type_global(&name_in_local_ns)
-//            })
-//            .or_else(|| {
-//                self.get_type_imported(name)
-//            })
-//            .or_else(|| {
-//                self.get_type_global(name)
-//            })
-//    }
 
     pub fn get_type(&self, parsed_type: &TypeName) -> Option<Type> {
         let mut result = match self.find_named(&parsed_type.name)? {
@@ -434,8 +440,8 @@ impl Scope {
     }
 
     pub fn get_class(&self, name: &Identifier) -> Option<&RecordDecl> {
-        match self.names.get(name) {
-            Some(Named::Class(decl)) => {
+        match self.find_named(name)? {
+            Named::Class(decl) => {
                 assert_eq!(RecordKind::Class, decl.kind);
                 Some(decl)
             },

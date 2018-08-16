@@ -174,7 +174,7 @@ fn scope_from_uses(uses: &[syntax::UnitReference],
 
         match unit_scopes.get(&ref_name) {
             Some(ref_scope) => {
-                scope = scope.reference(ref_scope.clone(), unit_ref.kind.clone());
+                scope = scope.reference(&ref_scope, unit_ref.kind.clone());
             }
             None => return Err({
                 CompileError::UnresolvedUnit(ref_name.clone())

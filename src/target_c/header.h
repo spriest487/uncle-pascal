@@ -43,12 +43,7 @@ static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, 
 static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);
 
-/* strings have special support in the compiler (e.g. concatenation sugar)
-so we need to declare them here instead of in a Pascal file */
-struct System_String : System_Internal_Object {
-    System_Byte* Chars;
-    System_NativeInt Length; //todo: use NativeUInt when numbers work better
-};
+struct System_String;
 
 /* procedure System.WriteLn(line: System.String) */
 static void System_WriteLn(System_String* lineRc);

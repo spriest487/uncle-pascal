@@ -95,8 +95,8 @@ impl Type {
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig),
-                Type::Record(record) => format!("{}", record.name),
-                Type::Class(class) => format!("{}", class.name),
+                Type::Record(record) => format!("{}", record),
+                Type::Class(class) => format!("{}", class),
                 Type::Array(array) => {
                     let mut name = "array ".to_string();
                     name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));

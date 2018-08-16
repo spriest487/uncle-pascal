@@ -84,10 +84,15 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::InvalidFunctionType(ref actual) => {
                 let actual_name = actual.as_ref()
-                    .map(|t| t.to_string())
+                    .map(|t| match t {
+                        Type::Record(name) => format!("record `{}`", name),
+                        Type::Class(name) => format!("class`{}`", name),
+                        Type::Function(name) => format!("function `{}`", name),
+                        _ => format!("type `{}`", t)
+                    })
                     .unwrap_or_else(|| "(none)".to_owned());
 
-                write!(f, "type `{}` is not a callable function", actual_name)
+                write!(f, "{} is not a callable function", actual_name)
             }
 
             SemanticErrorKind::InvalidConstructorType(ref actual) => {
@@ -295,7 +300,7 @@ pub struct SemanticContext {
 
 impl fmt::Debug for SemanticContext {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} in {}", self.token, self.scope.local_name()
+        write!(f, "{} in {}", self.token, self.scope.local_namespace()
             .map(|id| id.to_string())
             .unwrap_or("module root".to_string()))
     }

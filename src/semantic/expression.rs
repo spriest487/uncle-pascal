@@ -30,9 +30,12 @@ fn expect_valid_operation(operator: operators::Operator,
     };
 
     let actual = actual_expr.expr_type()?;
+
     if operator == operators::Equals || operator == operators::NotEquals {
         return expect_comparable(target, actual.as_ref(), context);
     }
+
+    let string_class = Type::Class(Identifier::from("System.String"));
 
     match (target, actual) {
         (None, _) =>
@@ -45,7 +48,14 @@ fn expect_valid_operation(operator: operators::Operator,
                 operators::Assignment =>
                     a.assignable_from(&b),
 
-                operators::Plus |
+                operators::Plus => {
+                    /* special case for string concat sugar */
+                    if *a == string_class && b == string_class {
+                        true
+                    } else {
+                        a.can_offset_by(&b)
+                    }
+                }
                 operators::Minus =>
                     a.can_offset_by(&b),
 
@@ -255,10 +265,14 @@ fn annotate_ufcs(target: &Expression,
                  func_name: &str,
                  args: &Vec<Expression>,
                  scope: Rc<Scope>) -> Option<Expression> {
-    let target_type_name = Type::name(Some(target_type.remove_indirection()));
+    let base_target_decl = match target_type.remove_indirection() {
+        Type::Class(name) => scope.get_class(name)?,
+        Type::Record(name) => scope.get_record(name)?,
+        _ => return None,
+    };
 
     /* look for matching UFCS func in NS of target type */
-    let ufcs_ns = Identifier::from(&target_type_name).parent()?;
+    let ufcs_ns = base_target_decl.name.parent()?;
 
     let ufcs_name = ufcs_ns.child(func_name);
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
@@ -360,8 +374,10 @@ fn function_call_type(target: &Expression,
     if let Some(Type::Function(func_name)) = &target_type {
         let sig = match target.scope().get_function(&func_name) {
             Some(sig) => sig,
-            None => return Err(SemanticError::invalid_function_type(target_type.clone(),
-                                                                    context.clone())),
+            None => {
+                return Err(SemanticError::invalid_function_type(target_type.clone(),
+                                                                context.clone()))
+            },
         };
 
         if args.len() != sig.args.decls.len() {
@@ -604,7 +620,7 @@ impl Expression {
                 prefix_op_type(*op, rhs, &self.context),
 
             &node::ExpressionValue::LiteralString(_) => {
-                Ok(Some(Type::Record(Identifier::from("System.String"))))
+                Ok(Some(Type::Class(Identifier::from("System.String"))))
             }
 
             &node::ExpressionValue::LiteralInteger(int_const) =>

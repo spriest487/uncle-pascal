@@ -109,6 +109,7 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
             writeln!(out, "{} = 0;", id)
         }
 
+        Type::Class(_) |
         Type::RawPointer |
         Type::Pointer(_) => {
             writeln!(out, "{} = nullptr;", id)
@@ -124,6 +125,18 @@ pub fn write_expr(out: &mut String,
                   -> fmt::Result {
     match &expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+            let string_type = Some(Type::Class(Identifier::from("System.String")));
+            if lhs.expr_type().unwrap() == string_type
+                && rhs.expr_type().unwrap() == string_type {
+                write!(out, "System_StringConcat(")?;
+                write_expr(out, lhs.as_ref(), globals)?;
+                write!(out, ", ")?;
+                write_expr(out, rhs.as_ref(), globals)?;
+                write!(out, ")")?;
+
+                return Ok(())
+            }
+
             let c_op = match op {
                 operators::Assignment => "=",
                 operators::Equals => "==",
@@ -639,6 +652,11 @@ pub fn write_static_init<'a>(out: &mut String,
         });
 
     for class in classes {
+        /* string is magically initialized earlier */
+        if class.name.to_string() == "System.String" {
+            continue;
+        }
+
         let destructor = decls.iter()
             .filter_map(|decl| match decl {
                 UnitDeclaration::Function(func_decl)
