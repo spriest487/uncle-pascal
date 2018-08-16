@@ -138,6 +138,13 @@ impl<TSymbol, TContext> Expression<TSymbol, TContext>
         }
     }
 
+    pub fn const_value(const_val: ConstantExpression, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Constant(const_val),
+            context: context.into(),
+        }
+    }
+
     pub fn member(of: Self, name: &str) -> Self {
         let context = of.context.clone();
 

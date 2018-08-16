@@ -77,7 +77,8 @@ impl FunctionDecl {
                     .unwrap_or(Ok(()))?;
 
                 let mut local_vars = VarDecls::annotate(&function_body.local_vars, scope.clone())?;
-                let mut local_consts = ConstDecls::annotate(&function_body.local_consts, scope.clone())?;
+//                let mut local_consts = ConstDecls::annotate(&function_body.local_consts, scope.clone())?;
+                let mut local_consts = ConstDecls::default();
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {
@@ -93,10 +94,9 @@ impl FunctionDecl {
                         local_scope = local_scope.with_symbol_local(&arg.name,
                                                                     arg.decl_type.clone());
                     }
-                    for const_decl in local_consts.decls.iter() {
-                        let val = const_decl.value.const_value(Rc::new(local_scope.clone()))?;
-
-                        local_scope = local_scope.with_const(&const_decl.name, val);
+                    for parsed_const in function_body.local_consts.decls.iter() {
+                        let const_decl = ConstDecl::annotate(parsed_const, &mut local_scope)?;
+                        local_consts.decls.push(const_decl);
                     }
                     for var in local_vars.decls.iter() {
                         local_scope = local_scope.with_symbol_local(&var.name,

@@ -31,6 +31,7 @@ use node::{
     TypeName,
     Context,
     ToSource,
+    ExpressionValue,
 };
 use operators;
 use source;
@@ -49,6 +50,7 @@ pub enum SemanticErrorKind {
     InvalidConstructorType(Option<Type>),
     InvalidDestructorReturn(Type),
     InvalidDestructorArgs(Vec<Type>),
+    InvalidConstantValue(ExpressionValue<ScopedSymbol, SemanticContext>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -101,6 +103,10 @@ impl fmt::Display for SemanticErrorKind {
                     .unwrap_or_else(|| "(none)".to_owned());
 
                 write!(f, "{} is not a callable function", actual_name)
+            }
+
+            &SemanticErrorKind::InvalidConstantValue(ref expr) => {
+                write!(f, "`{}` is not a valid constant value", expr.to_source())
             }
 
             SemanticErrorKind::InvalidConstructorType(ref actual) => {
@@ -238,6 +244,13 @@ impl SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
             context,
+        }
+    }
+
+    pub fn invalid_const_value(value_expr: Expression) -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidConstantValue(value_expr.value),
+            context: value_expr.context,
         }
     }
 

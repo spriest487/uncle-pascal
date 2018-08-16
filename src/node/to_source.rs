@@ -38,7 +38,16 @@ impl<T, C> ToSource for Expression<T, C>
           C: Context
 {
     fn to_source(&self) -> String {
-        match &self.value {
+        self.value.to_source()
+    }
+}
+
+impl<T, C> ToSource for ExpressionValue<T, C>
+    where T: Symbol,
+          C: Context
+{
+    fn to_source(&self) -> String {
+        match &self {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 format!("({} {} {})", lhs.to_source(), op, rhs.to_source())
             }

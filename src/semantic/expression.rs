@@ -142,6 +142,11 @@ fn annotate_identifier(name: &Identifier,
                 Expression::identifier(symbol, identifier_context.clone())
             }
         })
+        .or_else(|| {
+            let const_val = scope.get_const(name)?;
+
+            Some(Expression::const_value(const_val.clone(), identifier_context.clone()))
+        })
         .ok_or_else(|| {
             SemanticError::unknown_symbol(name.clone(), identifier_context)
         })
@@ -713,8 +718,24 @@ impl Expression {
         self.context.scope.as_ref()
     }
 
-    pub fn const_value(&self, _scope: Rc<Scope>) -> SemanticResult<ConstantExpression> {
-        unimplemented!()
+    pub fn to_const_value(&self, scope: Rc<Scope>) -> SemanticResult<ConstantExpression> {
+        match &self.value {
+            ExpressionValue::Constant(val) => {
+                Ok(val.clone())
+            },
+
+            ExpressionValue::Identifier(ScopedSymbol::Local { name, .. }) => {
+                scope.get_const(name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        SemanticError::invalid_const_value(self.clone())
+                    })
+            },
+
+            _ => {
+                Err(SemanticError::invalid_const_value(self.clone()))
+            }
+        }
     }
 }
 

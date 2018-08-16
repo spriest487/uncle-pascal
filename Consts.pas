@@ -11,7 +11,8 @@ const
 procedure Test
 const
     NAME = 'jane'
-    GREETING: String = 'hello'
+    HELLO = 'hello'
+    GREETING: String = HELLO
 begin
     WriteLn(GREETING + ' ' + NAME + ', num is ' + StringFromInt(NUM))
 end

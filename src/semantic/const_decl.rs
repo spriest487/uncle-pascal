@@ -7,28 +7,17 @@ use node::{self};
 pub type ConstDecls = node::ConstDecls<ScopedSymbol, SemanticContext>;
 pub type ConstDecl = node::ConstDecl<ScopedSymbol, SemanticContext>;
 
-impl ConstDecls {
-    pub fn annotate(const_decls: &syntax::ConstDecls, scope: Rc<Scope>) -> SemanticResult<Self> {
-        let decls = const_decls.decls.iter()
-            .map(|decl| {
-                ConstDecl::annotate(decl, scope.clone())
-            })
-            .collect::<SemanticResult<_>>()?;
-
-        Ok(ConstDecls {
-            decls
-        })
-    }
-}
-
 impl ConstDecl {
-    pub fn annotate(decl: &syntax::ConstDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
+    pub fn annotate(decl: &syntax::ConstDecl, scope: &mut Scope) -> SemanticResult<Self> {
         let context = SemanticContext {
             token: decl.context.token().clone(),
-            scope: scope.clone(),
+            scope: Rc::new(scope.clone()),
         };
 
-        let value = Expression::annotate(&decl.value, scope.clone())?;
+        let value = Expression::annotate(&decl.value, Rc::new(scope.clone()))?;
+        let const_value = value.to_const_value(Rc::new(scope.clone()))?;
+
+        *scope = scope.clone().with_const(&decl.name, const_value);
 
         let decl_type = match &decl.decl_type {
             None => None,

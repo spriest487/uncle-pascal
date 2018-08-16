@@ -457,6 +457,15 @@ impl Scope {
         }
     }
 
+    pub fn get_const(&self, name: &Identifier) -> Option<&ConstantExpression> {
+        match self.find_named(name) {
+            Some(Named::Const(const_expr)) => {
+                Some(const_expr)
+            }
+            _ => None,
+        }
+    }
+
     fn find_record_member(&self,
                           parent_id: &Identifier,
                           member_name: &str) -> Option<ScopedSymbol> {

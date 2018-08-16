@@ -60,12 +60,11 @@ impl Unit {
                 }
 
                 node::UnitDeclaration::Consts(parsed_consts) => {
-                    let consts = ConstDecls::annotate(parsed_consts, Rc::new(scope.clone()))?;
+                    let mut consts = ConstDecls::default();
 
-                    for const_decl in consts.decls.iter() {
-                        let val = const_decl.value.const_value(Rc::new(scope.clone()))?;
-
-                        scope = scope.with_const(&const_decl.name, val);
+                    for parsed_const in parsed_consts.decls.iter() {
+                        let const_decl = ConstDecl::annotate(parsed_const, &mut scope)?;
+                        consts.decls.push(const_decl);
                     }
 
                     result.push(node::UnitDeclaration::Consts(consts));
