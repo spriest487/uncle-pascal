@@ -10,7 +10,7 @@ use source;
 use operators;
 
 pub type Expression = node::Expression<ParsedSymbol>;
-pub type ExpressionResult = Result<ParseOutput<Expression>, ParseError>;
+pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
 struct OperatorToken {
@@ -133,34 +133,27 @@ impl Expression {
         }
     }
 
-    fn parse_operand<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
+    fn parse_operand(tokens: &mut TokenStream) -> ExpressionResult {
         /* if there's brackets around it, we know exactly where it begins and ends */
-        let outer_brackets = tokens::BracketLeft
-            .terminated_by(tokens::BracketRight)
-            .match_block_peek(in_tokens, context)?;
+        let outer_brackets = tokens.match_block_peek(tokens::BracketLeft, tokens::BracketRight)?;
 
-        match outer_brackets.value {
+        match outer_brackets {
             Some(brackets_block) => {
                 let inner_len = brackets_block.inner.len();
-                let inner_expr = Expression::parse(brackets_block.inner,
-                                                   &brackets_block.open)?
-                    .finish()?;
 
-                let mut after_brackets = outer_brackets.next_tokens
-                    .skip(inner_len + 2) //inner size + open + close
-                    .peekable();
+                let mut inner_expr_tokens = TokenStream::new(brackets_block.inner,
+                                                         &brackets_block.open);
+                let inner_expr = Expression::parse(&mut inner_expr_tokens)?;
+                inner_expr_tokens.finish()?;
 
-                let inner_result = ParseOutput::new(inner_expr, brackets_block.close, after_brackets);
-
-                Expression::parse_member_access_after(inner_result)
+                // seek to after brackets
+                for _ in 0..inner_len + 2 {
+                    tokens.next();
+                }
+                Expression::parse_member_access_after(inner_expr, tokens)
             }
 
-            None => {
-                Expression::parse(outer_brackets.next_tokens,
-                                  &outer_brackets.last_token)
-            }
+            None =>  Expression::parse(tokens)
         }
     }
 
@@ -309,17 +302,18 @@ impl Expression {
         Ok(ParseOutput::new(expr, last_token, tokens_after))
     }
 
-    fn parse_member_access_after(base: ParseOutput<Expression>) -> ExpressionResult {
-        let mut peek_after = base.next_tokens.peekable();
-        match peek_after.peek().cloned() {
+    fn parse_member_access_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
+        match tokens_after.peek() {
             Some(ref period) if *period.as_token() == tokens::Period => {
-                let member_name = node::Identifier::parse(peek_after.skip(1),
-                                                          period)?;
+                // skip period
+                tokens_after.next();
 
-                println!("found member name {} for base expr {:?}", member_name.value, base.value);
-                let member = Expression::member_deep(base.value, member_name.value);
+                let member_name = node::Identifier::parse(tokens_after)?;
 
-                Ok(ParseOutput::new(member, member_name.last_token, member_name.next_tokens))
+//                println!("found member name {} for base expr {:?}", member_name, base);
+
+                let member = Expression::member_deep(base.value, member_name);
+                Ok(member)
             }
 
             //nope, this expr ends at the close bracket
@@ -351,46 +345,29 @@ impl Expression {
         }
     }
 
-    fn parse_identifier<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let parse_id = node::Identifier::parse(in_tokens, context)?;
+    fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
+        let id = node::Identifier::parse(tokens)?;
 
-        Ok(parse_id.map(|id| {
-            Expression::identifier(ParsedSymbol(id), context.clone())
-        }))
+        Ok(Expression::identifier(ParsedSymbol(id), tokens.context().clone()))
     }
 
-    fn parse_literal_string<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let match_str = Matcher::AnyLiteralString.match_one(in_tokens, context)?;
+    fn parse_literal_string(tokens: &mut TokenStream) -> ExpressionResult {
+        let str_token = tokens.match_one(Matcher::AnyLiteralString)?;
 
-        Ok(match_str.map(|str_token| {
-            let s = str_token.unwrap_literal_string();
-            Expression::literal_string(s, str_token.clone())
-        }))
+        let s = str_token.unwrap_literal_string();
+        Ok(Expression::literal_string(s, tokens.context().clone()))
     }
 
-    fn parse_literal_integer<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static,
-    {
-        let match_int = Matcher::AnyLiteralInteger.match_one(in_tokens, context)?;
+    fn parse_literal_integer(tokens: &mut TokenStream) -> ExpressionResult {
+        let integer_token = tokens.match_one(Matcher::AnyLiteralInteger)?;
 
-        Ok(match_int.map(|integer_token| {
-            let i = integer_token.unwrap_literal_integer();
-            Expression::literal_int(i, integer_token.clone())
-        }))
+        let i = integer_token.unwrap_literal_integer();
+        Ok(Expression::literal_int(i, integer_token.clone()))
     }
 
-    fn parse_literal_nil(in_tokens: impl IntoIterator<Item=source::Token> + 'static,
-                         context: &source::Token) -> ExpressionResult
-    {
-        let match_nil = keywords::Nil.match_one(in_tokens, context)?;
-
-        Ok(match_nil.map(|nil_token| {
-            Expression::literal_nil(&nil_token)
-        }))
+    fn parse_literal_nil(tokens: &mut TokenStream) -> ExpressionResult {
+        let match_nil = tokens.match_one(keywords::Nil)?;
+        Expression::literal_nil(tokens.context())
     }
 
     fn parse_let_binding<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -452,33 +429,31 @@ impl Expression {
         }
     }
 
-    fn parse_for_loop<TIter>(in_tokens: TIter, context: &source::Token)
-                             -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let for_do_pair = keywords::For.terminated_by(keywords::Do)
-            .match_block(in_tokens, context)?;
+    fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
+        let for_do_pair = tokens.match_block(keywords::For, keywords::Do)?;
 
         /* can't nest for loops in either the from or the to expression, so
         it's safe just to look for the next "to" */
-        let split_at_to = keywords::To.split_at_match(for_do_pair.value.inner,
-                                                      &for_do_pair.value.open)?;
+        let mut for_cond_tokens = TokenStream::new(for_do_pair.inner, for_do_pair.open);
+        let split_at_to = for_cond_tokens.split_at_match(keywords::To)?;
 
-        let from_expr = Expression::parse(split_at_to.value.before_split,
-                                          &for_do_pair.value.open)?.finish()?;
+        // the part before the "to" becomes the "from" expr
+        let from_expr = Expression::parse(&mut TokenStream::new(
+            split_at_to.before_split,
+            split_at_to.split_at.clone()))?;
 
-        let to_expr = Expression::parse(split_at_to.next_tokens,
-                                        &split_at_to.value.split_at)?.finish()?;
+        // the part between the "to" and the "do" becomes the "to" expr
+        let to_expr = Expression::parse(&mut for_cond_tokens)?;
 
-        let body_expr = Expression::parse(for_do_pair.next_tokens,
-                                          &for_do_pair.last_token)?;
+        // there should be no more tokens before the "do"
+        tokens.finish()?;
 
-        let for_loop = Expression::for_loop(from_expr,
-                                            to_expr,
-                                            body_expr.value,
-                                            for_do_pair.value.open);
+        let body_expr = Expression::parse(tokens)?;
 
-        Ok(ParseOutput::new(for_loop, body_expr.last_token, body_expr.next_tokens))
+        Ok(Expression::for_loop(from_expr,
+                                to_expr,
+                                body_expr.value,
+                                for_do_pair.value.open))
     }
 
     fn parse_base<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -552,10 +527,8 @@ impl Expression {
         }
     }
 
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let base = Expression::parse_base(in_tokens, context)?;
+    pub fn parse(tokens: &mut TokenStream) -> ExpressionResult {
+        let base = Expression::parse_base(tokens)?;
 
         match &base.value.value {
             &node::ExpressionValue::Identifier(_) |
@@ -563,8 +536,8 @@ impl Expression {
             &node::ExpressionValue::PrefixOperator { .. } |
             &node::ExpressionValue::Member { .. } |
             &node::ExpressionValue::FunctionCall { .. } => {
-                let with_member_access = Expression::parse_member_access_after(base)?;
-                Expression::parse_fn_call_after(with_member_access)
+                let with_member_access = Expression::parse_member_access_after(base, tokens)?;
+                Expression::parse_fn_call_after(with_member_access, tokens)
             }
 
             _ => Ok(base)

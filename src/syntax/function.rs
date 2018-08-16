@@ -4,7 +4,6 @@ use keywords;
 use tokens;
 use tokens::AsToken;
 use node::{self, Identifier, FunctionKind};
-use source;
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol>;
@@ -17,113 +16,92 @@ impl FunctionDecl {
             .or(keywords::Destructor)
     }
 
-    pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
+    pub fn parse<TIter>(tokens: &mut TokenStream) -> ParseResult<Self> {
         //match the name
-        let name_match = Self::match_any_function_keyword()
-            .and_then(Matcher::AnyIdentifier)
-            .match_sequence(in_tokens, context)?;
+        let name_match = tokens.match_sequence(vec![
+            Self::match_any_function_keyword(),
+            Matcher::AnyIdentifier
+        ])?;
 
-        let kind_kw = name_match.value[0].unwrap_keyword();
+        let kind_kw = name_match[0].unwrap_keyword();
         let kind = match kind_kw {
             keywords::Constructor => FunctionKind::Constructor,
             keywords::Destructor => FunctionKind::Destructor,
             _ => FunctionKind::Function,
         };
 
-        let fn_name = name_match.value[1].clone();
-        let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
-                                                       &name_match.last_token)?;
+        let fn_name = name_match[1].clone();
 
-        let arg_groups = match open_args.value {
+        let arg_groups = match tokens.match_peek(tokens::BracketLeft)? {
             Some(_) => {
-                tokens::BracketLeft.terminated_by(tokens::BracketRight)
-                    .match_groups(tokens::Semicolon,
-                                  open_args.next_tokens,
-                                  &open_args.last_token)?
-                    .map(|groups_match| groups_match.groups)
+                tokens.match_groups(tokens::BracketLeft, tokens::BracketRight, tokens::Semicolon)?
+                    .groups
             }
-            None => {
-                ParseOutput::new(Vec::new(),
-                                 open_args.last_token.clone(),
-                                 open_args.next_tokens)
-            }
+            None => Vec::new(),
         };
 
-        let args = arg_groups.value.into_iter()
+        let args = arg_groups.into_iter()
             .map(|arg_tokens| {
-                VarDecl::parse(arg_tokens.tokens, &arg_tokens.context)?
-                    .finish()
+                let mut arg_tokens = TokenStream::new(arg_tokens.tokens, &arg_tokens.context);
+
+                let var_decl = VarDecl::parse(&mut arg_tokens)?;
+                arg_tokens.finish()?;
+
+                Ok(var_decl)
             })
             .collect::<Result<_, _>>()?;
 
         let return_type = match kind_kw {
+            // procedures return nothing
             keywords::Procedure |
-            keywords::Destructor => {
-                // procedures return nothing
-                ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
-            }
+            keywords::Destructor =>  None,
+
             _ => {
                 //functions and constructors must return something
-                let colon = tokens::Colon.match_one(arg_groups.next_tokens,
-                                                    &arg_groups.last_token)?;
+                tokens.match_one(tokens::Colon)?;
+                let type_id = ParsedType::parse(tokens)?;
 
-                let type_id = ParsedType::parse(colon.next_tokens, &colon.last_token)?;
-
-                ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
+                Some(type_id)
             }
         };
 
-        let semicolon_after_sig = tokens::Semicolon.match_or_endl(return_type.next_tokens,
-                                                                  &return_type.last_token)?;
+        //body (if present) appears after separator or newline
+        tokens.match_or_endl(tokens::Semicolon)?;
 
-        let peek_after_sig = keywords::Var.or(keywords::Begin)
-            .match_peek(semicolon_after_sig.next_tokens,
-                        &semicolon_after_sig.last_token)?;
+        let peek_after_sig = tokens.match_peek(keywords::Var.or(keywords::Begin))?;
 
-        let body = match peek_after_sig.value {
+        let body = match peek_after_sig {
             // forward decl
-            None => ParseOutput::new(None,
-                                     peek_after_sig.last_token,
-                                     peek_after_sig.next_tokens),
+            None => None,
 
             // decl with body
             Some(body_kw) => {
                 let local_vars = if body_kw.is_keyword(keywords::Var) {
-                    VarDecls::parse(peek_after_sig.next_tokens, &peek_after_sig.last_token)?
+                    VarDecls::parse(tokens)?
                 } else {
-                    ParseOutput::new(VarDecls::default(),
-                                     peek_after_sig.last_token,
-                                     peek_after_sig.next_tokens)
+                    VarDecls::default()
                 };
 
-                let block = Block::parse(local_vars.next_tokens, &local_vars.last_token)?;
+                let block = Block::parse(tokens)?;
 
-                let body = FunctionDeclBody {
-                    block: block.value,
-                    local_vars: local_vars.value,
-                };
+                // body is followed by semicolon or newline
+                tokens.match_or_endl(tokens::Semicolon)?;
 
-                ParseOutput::new(Some(body), block.last_token, block.next_tokens)
+                Some(FunctionDeclBody {
+                    block,
+                    local_vars,
+                })
             }
         };
 
-        let last_semicolon = tokens::Semicolon.match_or_endl(body.next_tokens,
-                                                             &body.last_token)?;
-
-        let function = FunctionDecl {
+        Ok(FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name,
-            return_type: return_type.value,
+            return_type,
             args: VarDecls { decls: args },
             kind,
-            body: body.value,
-        };
-
-        Ok(ParseOutput::new(function,
-                            last_semicolon.last_token,
-                            last_semicolon.next_tokens))
+            body,
+        })
     }
 }
 

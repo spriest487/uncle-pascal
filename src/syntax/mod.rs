@@ -7,6 +7,7 @@ pub mod expression;
 pub mod iter;
 pub mod matcher;
 pub mod unit;
+pub mod token_stream;
 
 pub use self::function::*;
 pub use self::block::*;
@@ -17,6 +18,7 @@ pub use self::expression::*;
 pub use self::iter::*;
 pub use self::matcher::*;
 pub use self::unit::*;
+pub use self::token_stream::TokenStream;
 
 use std::fmt;
 
@@ -25,7 +27,7 @@ use source;
 use node::{
     Identifier,
     Symbol,
-    ToSource
+    ToSource,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -58,28 +60,20 @@ impl ParsedType {
         }
     }
 
-    pub fn parse(tokens: impl IntoIterator<Item = source::Token> + 'static,
-                 context: &source::Token) -> ParseResult<ParsedType> {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<ParsedType> {
         let mut indirection = 0;
 
-        let mut next_tokens: Box<Iterator<Item = source::Token>> = Box::from(tokens.into_iter());
-        let mut last_token = context.clone();
-
         loop {
-            let pointer_sigil = operators::Deref.match_peek(next_tokens, &last_token)?;
-            if pointer_sigil.value.is_some() {
+            let pointer_sigil = tokens.match_peek(operators::Deref)?;
+            if pointer_sigil.is_some() {
                 indirection += 1;
-
-                next_tokens = Box::from(pointer_sigil.next_tokens.skip(1));
-                last_token = pointer_sigil.last_token;
             } else {
-                let name = Identifier::parse(pointer_sigil.next_tokens, &pointer_sigil.last_token)?;
-                let parsed_type = ParsedType {
-                    name: name.value,
-                    indirection,
-                };
+                let name = Identifier::parse(tokens)?;
 
-                break Ok(ParseOutput::new(parsed_type, name.last_token, name.next_tokens))
+                break Ok(ParsedType {
+                    name,
+                    indirection,
+                });
             }
         }
     }
@@ -124,7 +118,7 @@ pub enum ParseError {
     EmptyOperand {
         operator: source::Token,
         before: bool,
-    }
+    },
 }
 
 #[allow(dead_code)]
@@ -194,4 +188,5 @@ impl<TValue> ParseOutput<TValue> {
     }
 }
 
-pub type ParseResult<TValue> = Result<ParseOutput<TValue>, ParseError>;
+pub type ParseResult<TValue> = Result<TValue, ParseError>;
+pub type ParseOutputResult<TValue> = Result<ParseOutput<TValue>, ParseError>;

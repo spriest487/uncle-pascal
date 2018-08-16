@@ -170,7 +170,8 @@ fn compile_program(program_path: &Path,
         })?
         .canonicalize()?;
 
-    let parsed_program = syntax::Program::parse(tokens.into_iter(), &empty_context())?;
+    let token_stream = syntax::TokenStream::new(tokens, &empty_context());
+    let parsed_program = syntax::Program::parse(token_stream)?;
 
     let mut loaded_units: Vec<semantic::Unit> = Vec::new();
     let mut unit_scopes: HashMap<String, semantic::Scope> = HashMap::new();
@@ -186,7 +187,8 @@ fn compile_program(program_path: &Path,
                      pretty_path(&unit_path));
 
             let unit_source = load_source(unit_path, pp_symbols.clone())?;
-            let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
+            let unit_tokens = syntax::TokenStream::new(unit_source, &empty_context());
+            let parsed_unit = syntax::Unit::parse(unit_tokens)?;
 
             /* each unit imports all the units before it in the programs' units
             clause (used units can't import any new units not referenced in the main

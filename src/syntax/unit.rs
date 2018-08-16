@@ -1,4 +1,3 @@
-use source;
 use node;
 use syntax::*;
 use keywords;
@@ -10,134 +9,108 @@ pub type Unit = node::Unit<ParsedSymbol>;
 pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol>;
 
 impl Unit {
-    pub fn parse<TIter>(tokens: TIter, context: &source::Token) -> Result<Unit, ParseError>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let match_name = keywords::Unit.and_then(Matcher::AnyIdentifier)
-            .match_sequence(tokens, context)?;
+    pub fn parse(mut tokens: TokenStream) -> ParseResult<Unit> {
+        let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
+        tokens.match_or_endl(tokens::Semicolon)?;
 
-        let after_name = tokens::Semicolon.match_or_endl(match_name.next_tokens,
-                                                         &match_name.last_token)?;
+        let uses = Unit::parse_uses(tokens)?;
 
-        let uses = Unit::parse_uses(after_name.next_tokens, &after_name.last_token)?;
+        let interface_kw = tokens.match_one(keywords::Interface)?;
+        let interface_decls = Unit::parse_decls(tokens)?;
 
-        let interface_kw = keywords::Interface.match_one(uses.next_tokens,
-                                                         &uses.last_token)?;
+        let impl_kw = tokens.match_one(keywords::Implementation)?;
+        let impl_decls = Unit::parse_decls(tokens)?;
 
-        let interface_decls = Unit::parse_decls(interface_kw.next_tokens,
-                                                &interface_kw.last_token)?;
-
-        let impl_kw = keywords::Implementation.match_one(interface_decls.next_tokens,
-                                                         &interface_decls.last_token)?;
-
-        let impl_decls = Unit::parse_decls(impl_kw.next_tokens, &impl_kw.last_token)?;
-
-        let _unit_end = keywords::End.and_then(tokens::Period)
-            .match_sequence(impl_decls.next_tokens, &impl_decls.last_token)?;
+        tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
+        tokens.finish()?;
 
         Ok(Unit {
-            name: match_name.value[1].unwrap_identifier().to_owned(),
-            uses: uses.value,
+            name: match_name[1].unwrap_identifier().to_owned(),
+            uses,
 
-            interface: interface_decls.value,
-            implementation: impl_decls.value,
+            interface: interface_decls,
+            implementation: impl_decls,
         })
     }
 
-    pub fn parse_uses<TIter>(in_tokens: TIter,
-                             context: &source::Token)
-                             -> ParseResult<Vec<node::UnitReference>>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let uses_kw = keywords::Uses.match_peek(in_tokens, context)?;
+    pub fn parse_uses(tokens: &mut TokenStream)-> ParseResult<Vec<node::UnitReference>> {
+        let uses_kw = tokens.match_peek(keywords::Uses)?;
 
-        if uses_kw.value.is_none() {
+        if uses_kw.is_none() {
             //no uses
-            return Ok(ParseOutput::new(Vec::new(),
-                                       context.clone(),
-                                       uses_kw.next_tokens));
+            return Ok(Vec::new());
         }
 
         let mut units = Vec::new();
-        let mut units_tokens = WrapIter::new(uses_kw.next_tokens.skip(1));
-        let mut units_context = uses_kw.last_token;
         loop {
-            let unit_id = Matcher::AnyIdentifier.match_one(units_tokens, &units_context)?;
+            let unit_id = tokens.match_one(Matcher::AnyIdentifier)?;
+            let unit_context = tokens.context().clone();
 
             // might have a . if a non-default uses mode is specified
             // e.g. System.*
-            let peek_uses_kind = tokens::Period.match_peek(unit_id.next_tokens, &unit_id.last_token)?;
+            let peek_uses_kind = tokens.match_peek(tokens::Period)?;
 
-            let uses_kind = if peek_uses_kind.value.is_some() {
-                tokens::Period.and_then(operators::Multiply.or(Matcher::AnyIdentifier))
-                    .match_sequence(peek_uses_kind.next_tokens, &peek_uses_kind.last_token)?
-                    .map(|matched_imported_name| {
-                        match matched_imported_name[1].as_token() {
-                            tokens::Operator(operators::Multiply) => {
-                                node::UnitReferenceKind::All
-                            },
-                            tokens::Identifier(name) => {
-                                node::UnitReferenceKind::Name(name.to_string())
-                            },
-                            _ => unreachable!("excluded by token matcher")
-                        }
-                    })
-            } else {
-                peek_uses_kind.map(|_| node::UnitReferenceKind::Namespaced)
+            let uses_kind = match peek_uses_kind {
+                Some(_) => {
+                    let matched_imported_name = tokens.match_sequence(
+                        tokens::Period.and_then(operators::Multiply.or(Matcher::AnyIdentifier))
+                    )?;
+
+                    match matched_imported_name[1].as_token() {
+                        tokens::Operator(operators::Multiply) =>
+                            node::UnitReferenceKind::All,
+
+                        tokens::Identifier(name) =>
+                            node::UnitReferenceKind::Name(name.to_string()),
+
+                        _ => unreachable!("excluded by token matcher")
+                    }
+                }
+
+                None => node::UnitReferenceKind::Namespaced
             };
 
             units.push(node::UnitReference {
-                name: node::Identifier::from(unit_id.value.unwrap_identifier()),
-                context: unit_id.last_token.clone(),
-                kind: uses_kind.value,
+                name: node::Identifier::from(unit_id.unwrap_identifier()),
+                context: unit_context,
+                kind: uses_kind,
             });
 
-            units_context = uses_kind.last_token;
-
-            let mut peek_after_unit = uses_kind.next_tokens.peekable();
-            match peek_after_unit.peek().cloned() {
+            match tokens.peek() {
                 //end of uses (either unexpected token on new line, or explicit semicolon)
                 Some(ref t) if (t.is_token(&tokens::Semicolon) ||
-                    t.location.line > units_context.location.line) => {
+                    t.location.line > tokens.context().location.line) => {
 
                     //skip the semicolon if there was one
-                    let skip = if t.is_token(&tokens::Semicolon) { 1 } else { 0 };
-                    units_tokens = WrapIter::new(peek_after_unit.skip(skip));
-                    units_context = t.clone();
-                    break;
+                    if t.is_token(&tokens::Semicolon) {
+                        tokens.next();
+                    }
+
+                    break Ok(units);
                 }
 
                 Some(ref comma) if comma.is_token(&tokens::Comma) => {
                     //continue looking for unit names after this comma in next iter
-                    units_tokens = WrapIter::new(peek_after_unit.skip(1));
-                    units_context = comma.clone();
+                    tokens.next();
                 }
 
                 Some(unexpected) => {
-                    let err = ParseError::UnexpectedToken(unexpected,
-                                                          Some(Matcher::from(tokens::Comma)));
-                    return Err(err);
+                    let expected = Some(Matcher::from(tokens::Comma));
+                    let err = ParseError::UnexpectedToken(unexpected, expected);
+
+                    break Err(err);
                 }
 
                 None => {
-                    return Err(ParseError::UnexpectedEOF(tokens::Comma.into(), units_context));
+                    let context = tokens.context().clone();
+                    break Err(ParseError::UnexpectedEOF(tokens::Comma.into(), context));
                 }
             }
         }
-
-        Ok(ParseOutput::new(units, units_context, units_tokens))
     }
 
-    pub fn parse_decls<TIter>(in_tokens: TIter,
-                              context: &source::Token)
-                              -> ParseResult<Vec<UnitDeclaration>>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let mut tokens: Box<Iterator<Item=source::Token>> = Box::from(in_tokens.into_iter());
-
+    pub fn parse_decls(tokens: &mut TokenStream) -> ParseResult<Vec<UnitDeclaration>> {
         let mut decls = Vec::new();
-
-        let mut last_parsed = context.clone();
 
         loop {
             let match_decl_first = FunctionDecl::match_any_function_keyword()
@@ -145,41 +118,29 @@ impl Unit {
                 .or(keywords::Var)
                 .or(keywords::Begin);
 
-            let peek_decl = match_decl_first.match_peek(tokens, &last_parsed)?;
-            tokens = Box::from(peek_decl.next_tokens);
+            let peek_decl = tokens.match_peek(match_decl_first)?;
 
-            match peek_decl.value {
+            match peek_decl {
                 Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
                 => {
-                    let func = FunctionDecl::parse(tokens, &peek_decl.last_token)?;
+                    let func = FunctionDecl::parse(tokens)?;
                     decls.push(node::UnitDeclaration::Function(func.value));
-
-                    tokens = Box::from(func.next_tokens);
-                    last_parsed = func.last_token;
                 }
 
                 Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
-                    let type_decls = TypeDecl::parse(tokens, &peek_decl.last_token)?;
+                    let type_decls = TypeDecl::parse(tokens)?;
                     decls.extend(type_decls.value.into_iter().map(|type_decl| {
                         node::UnitDeclaration::Type(type_decl)
                     }));
-
-                    tokens = Box::from(type_decls.next_tokens);
-                    last_parsed = type_decls.last_token;
                 }
 
                 Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                    let vars = VarDecls::parse(tokens, &peek_decl.last_token)?;
+                    let vars = VarDecls::parse(tokens)?;
                     decls.push(node::UnitDeclaration::Vars(vars.value));
-
-                    tokens = Box::from(vars.next_tokens);
-                    last_parsed = vars.last_token;
                 }
 
-                _ => break,
+                _ => break Ok(decls),
             }
         }
-
-        Ok(ParseOutput::new(decls, last_parsed, tokens))
     }
 }

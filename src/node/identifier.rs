@@ -7,7 +7,6 @@ use std::{
 use tokens::{self, AsToken};
 use node::{self, Symbol};
 use syntax::*;
-use source;
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct Identifier {
@@ -88,23 +87,14 @@ impl FromIterator<String> for Identifier {
 }
 
 impl Identifier {
-    pub fn parse<TIter>(iter: TIter,
-                        context: &source::Token)
-                        -> ParseResult<node::Identifier>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let mut last_token = context.clone();
-        let mut next_tokens = WrapIter::new(iter.into_iter());
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<node::Identifier> {
         let mut parts = Vec::new();
 
         loop {
-            let mut next_peekable = next_tokens.peekable();
-            match next_peekable.peek().cloned() {
+            match tokens.peek() {
                 Some(ref id) if id.is_any_identifier() => {
                     parts.push(id.unwrap_identifier().to_owned());
-
-                    next_peekable.next();
-                    last_token = id.clone();
+                    tokens.next();
                 }
 
                 Some(unexpected) => return Err(ParseError::UnexpectedToken(
@@ -116,38 +106,28 @@ impl Identifier {
                 //and it should never be missing
                 None => return Err(ParseError::UnexpectedEOF(
                     Matcher::AnyIdentifier,
-                    last_token,
+                    tokens.context().clone(),
                 ))
             }
 
-            let done = match next_peekable.peek().cloned() {
+            match tokens.peek() {
                 //there's a dot, we expect another part, so keep going
                 Some(ref period) if *period.as_token() == tokens::Period => {
-                    last_token = period.clone();
-                    next_peekable.next();
-                    false
+                    tokens.next();
                 }
 
                 //anything else and stop parsing
-                _ => true,
-            };
-
-            next_tokens = WrapIter::new(next_peekable);
-
-            if done {
-                break;
+                _ => break,
             }
         }
 
         assert!(parts.len() > 0, "must have at least one part in identifier after parsing");
 
         let name = parts.pop().unwrap();
-        let id = Identifier {
+        Ok(Identifier {
             name,
             namespace: parts,
-        };
-
-        Ok(ParseOutput::new(id, last_token, next_tokens))
+        })
     }
 
     pub fn parts(&self) -> impl Iterator<Item=&String> {
@@ -254,7 +234,7 @@ mod test {
     use tokenizer::*;
     use operators;
 
-    fn try_parse_name(source: &str) -> ParseResult<Identifier> {
+    fn try_parse_name(source: &str) -> ParseOutputResult<Identifier> {
         let tokens = tokenize("test", source).unwrap();
         let context = tokens[0].clone();
 

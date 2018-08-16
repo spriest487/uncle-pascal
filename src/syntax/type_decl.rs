@@ -1,6 +1,5 @@
 use syntax::*;
 use node::{self, Identifier};
-use source;
 use keywords;
 use types::RecordKind;
 use tokens::{self, AsToken};
@@ -10,144 +9,106 @@ pub type RecordDecl = node::RecordDecl<ParsedSymbol>;
 pub type TypeDecl = node::TypeDecl<ParsedSymbol>;
 
 impl TypeDecl {
-    pub fn parse(tokens: impl IntoIterator<Item=source::Token> + 'static,
-                 context: &source::Token)
-                 -> ParseResult<Vec<Self>> {
-        let match_kw = keywords::Type.match_one(tokens, &context)?;
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        tokens.match_one(keywords::Type)?;
 
         let mut decls = Vec::new();
 
-        let mut next_tokens: Box<Iterator<Item=source::Token>> = Box::new(match_kw.next_tokens);
-        let mut last_token = match_kw.last_token;
-
         loop {
-            let match_name = Matcher::AnyIdentifier
-                    .and_then(operators::Equals)
-                    .match_sequence(next_tokens, &last_token)?;
+            let match_name = tokens.match_sequence(Matcher::AnyIdentifier
+                .and_then(operators::Equals))?;
 
-            let decl_name = match_name.value[0].unwrap_identifier();
+            let decl_name = match_name[0].unwrap_identifier();
 
-            let peek_kind = keywords::Record.or(keywords::Class)
+            let peek_kind = tokens.match_peek(keywords::Record.or(keywords::Class)
                 .or(operators::Deref)
-                .or(Matcher::AnyIdentifier)
-                .match_peek(match_name.next_tokens, &match_name.last_token)?;
+                .or(Matcher::AnyIdentifier))?;
 
-            let type_decl = match peek_kind.value {
+            let type_decl = match peek_kind {
                 Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {
-                    RecordDecl::parse(decl_name, peek_kind.next_tokens, &peek_kind.last_token)?
-                        .map(|record_decl| {
-                            node::TypeDecl::Record(record_decl)
-                        })
+                    let record_decl = RecordDecl::parse(decl_name, tokens)?;
+                    node::TypeDecl::Record(record_decl)
                 }
 
                 _ => {
-                    let alias_context = peek_kind.last_token.clone();
+                    let alias_context = tokens.context().clone();
+                    let aliased_type = ParsedType::parse(tokens)?;
 
-                    ParsedType::parse(peek_kind.next_tokens, &peek_kind.last_token)?
-                        .map(|aliased_type| {
-                            node::TypeDecl::Alias {
-                                alias: decl_name.to_string(),
-                                of: aliased_type,
-                                context: alias_context,
-                            }
-                        })
+                    node::TypeDecl::Alias {
+                        alias: decl_name.to_string(),
+                        of: aliased_type,
+                        context: alias_context,
+                    }
                 }
             };
 
-            decls.push(type_decl.value);
+            decls.push(type_decl);
 
             /* the decl must be terminated either by a semicolon or a newline */
-            let separator = tokens::Semicolon.match_or_endl(type_decl.next_tokens,
-                                                            &type_decl.last_token)?;
+            let separator = tokens.match_or_endl(tokens::Semicolon)?;
 
             /* but if the token after that is another identifier, there's another decl
             in this type decl block */
-            let next_identifier = tokens::Semicolon.or(Matcher::AnyIdentifier)
-                .match_peek(separator.next_tokens, &separator.last_token)?;
-
-            match next_identifier.value {
-                Some(_) => {
-                    next_tokens = Box::new(next_identifier.next_tokens);
-                    last_token = next_identifier.last_token;
-                }
-
-                None => break Ok({
-                    ParseOutput::new(decls, next_identifier.last_token, next_identifier.next_tokens)
-                })
+            let next_identifier = tokens.match_peek(tokens::Semicolon.or(Matcher::AnyIdentifier))?;
+            if next_identifier.is_none() {
+                break Ok(decls);
             }
         }
     }
 }
 
 impl RecordDecl {
-    pub fn parse<TIter>(decl_name: &str,
-                        in_tokens: TIter,
-                        context: &source::Token) -> ParseResult<Self>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let match_kw = keywords::Record.or(keywords::Class)
-            .match_one(in_tokens, context)?;
+    fn parse(decl_name: &str, tokens: &mut TokenStream) -> ParseResult<Self> {
+        let match_kw = tokens.match_one(keywords::Record.or(keywords::Class))?;
 
-        let kind = if match_kw.value.is_keyword(keywords::Class) {
+        let kind = if match_kw.is_keyword(keywords::Class) {
             RecordKind::Class
         } else {
             RecordKind::Record
         };
 
-        let match_end = keywords::End.split_at_match(match_kw.next_tokens,
-                                                     &match_kw.last_token)?;
+        let match_end = tokens.split_at_match(keywords::End)?;
 
-        let mut decl_next_tokens = WrapIter::new(match_end.value.before_split.into_iter());
-        let mut decl_last_token = match_kw.last_token;
-
+        let mut decls_tokens = TokenStream::new(match_end.before_split, &match_kw);
         let mut decls = Vec::new();
+
         loop {
             /* we can have empty tokens in a field decl which is fine, it means
             there was a semicolon after the last field which we accept */
-            let mut peek_decl_tokens = decl_next_tokens.peekable();
-            if peek_decl_tokens.peek().is_none() {
+            if decls_tokens.peek().is_none() {
                 break;
             }
 
-            let decl = VarDecl::parse(peek_decl_tokens, &decl_last_token)?;
-
-            decls.push(decl.value);
-            decl_last_token = decl.last_token;
+            let decl = VarDecl::parse(&mut decls_tokens)?;
+            decls.push(decl);
 
             /* after each field decl we expect to find either a semicolon, a newline
              or the end of the decl tokens stream */
-            let mut after_field_decl = decl.next_tokens.peekable();
-            match after_field_decl.peek().cloned() {
+            match decls_tokens.peek() {
                 None => break,
                 Some(token_after) => {
                     let skip = if token_after.is_token(&tokens::Semicolon) {
                         1
                     } else if token_after.is_any_identifier()
-                        && token_after.location.line > decl_last_token.location.line {
+                        && token_after.location.line > decls_tokens.context().location.line {
                         0
                     } else {
                         let expected = Matcher::AnyIdentifier.or(tokens::Semicolon);
                         return Err(ParseError::UnexpectedToken(token_after, Some(expected)));
                     };
-
-                    decl_last_token = token_after;
-                    decl_next_tokens = WrapIter::new(after_field_decl.skip(skip));
                 }
             }
         }
 
         //after the "end", there should always be a semicolon
         //TODO: this isn't necessary, this should be up to the unit
-        let terminator = tokens::Semicolon.match_or_endl(match_end.next_tokens,
-                                                         &match_end.last_token)?;
+        tokens.match_or_endl(tokens::Semicolon)?;
 
-        let record = RecordDecl {
+        Ok(RecordDecl {
             name: Identifier::from(decl_name),
             kind,
-            context: match_kw.value.clone(),
+            context: match_kw.clone(),
             members: decls,
-        };
-
-        Ok(ParseOutput::new(record, terminator.last_token, terminator.next_tokens))
+        })
     }
 }

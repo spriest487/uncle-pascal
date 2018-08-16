@@ -1,7 +1,6 @@
 use std::iter;
 
 use syntax::*;
-use source;
 use tokens;
 use tokens::AsToken;
 use keywords;
@@ -55,42 +54,25 @@ fn replace_block_string_literals(mut block: Block) -> Block {
 }
 
 impl Program {
-    pub fn parse<TIter>(tokens: TIter,
-                        context: &source::Token) -> Result<Self, ParseError>
-        where TIter: Iterator<Item=source::Token> + 'static
-    {
-        let program_statement = keywords::Program
-            .and_then(Matcher::AnyIdentifier)
-            .match_sequence(tokens, context)?;
+    pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {
+        let program_statement = tokens.match_sequence(keywords::Program
+            .and_then(Matcher::AnyIdentifier))?;
 
-        let name = program_statement.value
-            .get(1).unwrap()
-            .as_token()
-            .unwrap_identifier()
-            .to_owned();
+        let name = program_statement[0].as_token().unwrap_identifier().to_owned();
+        let end_name = tokens.match_or_endl(tokens::Semicolon)?;
 
-        let end_name = tokens::Semicolon
-            .match_or_endl(program_statement.next_tokens,
-                           &program_statement.last_token)?;
+        let uses = Unit::parse_uses(&mut tokens)?;
+        let decls = Unit::parse_decls(&mut tokens)?;
+        let program_block = Block::parse(&mut tokens)?;
 
-        let uses = Unit::parse_uses(end_name.next_tokens,
-                              &end_name.last_token)?;
-
-        let decls = Unit::parse_decls(uses.next_tokens, &uses.last_token)?;
-
-        let program_block = Block::parse(decls.next_tokens, &decls.last_token)?;
-
-        let _last_period = tokens::Period.match_one(program_block.next_tokens,
-                                                   &program_block.last_token)?
-            .finish()?;
+        tokens.match_one(tokens::Period)?;
+        tokens.finish()?;
 
         let mut program = Program {
             name,
-            uses: uses.value,
-
-            decls: decls.value,
-
-            program_block: program_block.value,
+            uses,
+            decls,
+            program_block,
         };
 
         program = transform_blocks(program, |block| {

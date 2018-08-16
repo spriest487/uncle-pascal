@@ -3,66 +3,49 @@ use tokens::AsToken;
 use keywords;
 use node::{self, Identifier};
 use syntax::*;
-use source;
 
 pub type VarDecl = node::VarDecl<ParsedSymbol>;
 pub type VarDecls = node::VarDecls<ParsedSymbol>;
 
 impl VarDecl {
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecl>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecl> {
         /* var names can't be fully-qualified, so we only need to match a
         single name token here */
-        let id_tokens = Matcher::AnyIdentifier
-            .and_then(tokens::Colon)
-            .match_sequence(in_tokens, &context)?;
+        let id_tokens = tokens.match_sequence(Matcher::AnyIdentifier
+            .and_then(tokens::Colon))?;
 
-        let name_token = id_tokens.value[0].clone();
+        let name_token = id_tokens[0].clone();
         let name = Identifier::from(name_token.as_token().unwrap_identifier());
 
-        let type_id = ParsedType::parse(id_tokens.next_tokens, &id_tokens.last_token)?;
+        let decl_type = ParsedType::parse(tokens)?;
 
-        let decl = VarDecl {
+        Ok(VarDecl {
             name,
-            decl_type: type_id.value,
-            context: name_token.clone(),
-        };
-
-        Ok(ParseOutput::new(decl, type_id.last_token, type_id.next_tokens))
+            decl_type,
+            context: name_token,
+        })
     }
 }
 
 impl VarDecls {
-    pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<VarDecls>
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let var_kw = keywords::Var.match_one(in_tokens, context)?;
-
-        let mut next_tokens = WrapIter::new(var_kw.next_tokens);
-        let mut last_context = var_kw.last_token;
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
+        tokens.match_one(keywords::Var)?;
 
         let mut decls = Vec::new();
         loop {
-            let mut peekable_tokens = next_tokens.peekable();
-            match peekable_tokens.peek().cloned() {
+            match tokens.peek() {
                 Some(ref id) if id.as_token().is_any_identifier() => {
-                    let decl = VarDecl::parse(peekable_tokens, &last_context)?;
-                    let semicolon = tokens::Semicolon.match_or_endl(decl.next_tokens,
-                                                                    &decl.last_token)?;
-                    decls.push(decl.value);
+                    let decl = VarDecl::parse(tokens)?;
+                    tokens.match_or_endl(tokens::Semicolon)?;
 
-                    next_tokens = WrapIter::new(semicolon.next_tokens);
-                    last_context = semicolon.last_token;
+                    decls.push(decl);
                 }
-                _ => {
-                    next_tokens = WrapIter::new(peekable_tokens);
-                    break;
-                }
+
+                _ => break Ok(VarDecls {
+                    decls
+                }),
             }
         }
-
-        Ok(ParseOutput::new(VarDecls { decls }, last_context, next_tokens))
     }
 }
 

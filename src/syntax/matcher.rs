@@ -151,7 +151,7 @@ pub trait Matchable {
     fn match_one<TIter>(&self,
                         in_tokens: TIter,
                         context: &source::Token)
-                        -> ParseResult<source::Token>
+                        -> ParseOutputResult<source::Token>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut tokens = in_tokens.into_iter();
@@ -172,7 +172,7 @@ pub trait Matchable {
 
     fn match_peek<TIter>(&self, in_tokens: TIter,
                          context: &source::Token)
-                         -> ParseResult<Option<source::Token>>
+                         -> ParseOutputResult<Option<source::Token>>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut peekable = in_tokens.into_iter().peekable();
@@ -198,7 +198,7 @@ pub trait Matchable {
     /// match but will not be consumed, and the end of the input will be treated as a
     /// success
     fn match_or_endl<TIter>(&self, in_tokens: TIter,
-                            context: &source::Token) -> ParseResult<()>
+                            context: &source::Token) -> ParseOutputResult<()>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut peekable = in_tokens.into_iter().peekable();
@@ -223,7 +223,7 @@ pub trait Matchable {
     fn split_at_match<TIter>(&self,
                              in_tokens: TIter,
                              context: &source::Token)
-                             -> ParseResult<SplitResult>
+                             -> ParseOutputResult<SplitResult>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut before_split = Vec::new();
@@ -257,7 +257,7 @@ pub trait Matchable {
 
     fn match_until<TIter>(&self, in_tokens: TIter,
                           context: &source::Token)
-                          -> ParseResult<Vec<source::Token>>
+                          -> ParseOutputResult<Vec<source::Token>>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let mut tokens_until = Vec::new();
@@ -317,6 +317,15 @@ pub struct SequenceMatcher {
     sequence: Vec<Matcher>,
 }
 
+impl IntoIterator for SequenceMatcher {
+    type Item = Matcher;
+    type IntoIter = <Vec<Matcher> as IntoIterator>::IntoIter;
+
+    fn into_iter(self) -> <Self as IntoIterator>::IntoIter {
+        self.sequence.into_iter()
+    }
+}
+
 impl SequenceMatcher {
     pub fn and_then<TMatchable>(mut self, next_matcher: TMatchable) -> Self
         where TMatchable: Into<Matcher>
@@ -327,7 +336,7 @@ impl SequenceMatcher {
 
     pub fn match_sequence<TIter>(&self, in_tokens: TIter,
                                  context: &source::Token)
-                                 -> ParseResult<Vec<source::Token>>
+                                 -> ParseOutputResult<Vec<source::Token>>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let tokens: Vec<_> = in_tokens.into_iter().collect();
@@ -534,7 +543,7 @@ impl BlockMatcher {
                                                   separator_matcher: TSepMatcher,
                                                   in_tokens: TIter,
                                                   context: &source::Token)
-                                                  -> ParseResult<GroupsMatch>
+                                                  -> ParseOutputResult<GroupsMatch>
         where TIter: IntoIterator<Item=source::Token> + 'static,
               TSepMatcher: Into<Matcher>
     {
@@ -614,7 +623,7 @@ impl BlockMatcher {
                                             separator_matcher: TSepMatcher,
                                             in_tokens: TIter,
                                             context: &source::Token)
-                                            -> ParseResult<BlockGroupsMatch>
+                                            -> ParseOutputResult<BlockGroupsMatch>
         where TIter: IntoIterator<Item=source::Token> + 'static,
               TSepMatcher: Into<Matcher>
     {
