@@ -9,6 +9,15 @@ pub enum Position {
     Binary,
 }
 
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            &Position::Prefix => "prefix",
+            &Position::Binary => "binary"
+        })
+    }
+}
+
 #[derive(Eq, PartialEq, Clone, Debug, Copy)]
 pub enum Operator {
     Assignment,
@@ -36,7 +45,9 @@ impl Operator {
         PRECEDENCE.iter().enumerate()
             .find(|&(_, &(op, pos))| op.eq(self) && pos == in_pos)
             .map(|(index, _)| index)
-            .unwrap()
+            .unwrap_or_else(|| {
+                panic!("operator {} must have a precedence value in position {}", self, in_pos)
+            })
     }
 
     pub fn is_valid_in_pos(&self, in_pos: Position) -> bool {

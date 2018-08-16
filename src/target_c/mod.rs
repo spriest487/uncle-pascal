@@ -226,20 +226,25 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
 pub fn write_function(out: &mut String, function: &semantic::Function)
     -> fmt::Result {
     let return_type = function.return_type.as_ref()
-        .map(type_to_c)
-        .unwrap_or_else(|| "void".to_owned());
+        .map(type_to_c);
 
-    let args = function.args.decls.iter()
+    write!(out, "{} ", return_type.clone().unwrap_or_else(|| "void".to_owned()))?;
+    write!(out, "{} ", function.name)?;
+
+    writeln!(out, "({}) {{", function.args.decls.iter()
         .map(|arg_decl| {
             format!("{} {}", type_to_c(&arg_decl.decl_type), &arg_decl.name)
         })
         .collect::<Vec<_>>()
-        .join(", ");
-
-    writeln!(out, "{} {}({}) {{", return_type, function.name, args)?;
+        .join(", "))?;
 
     write_vars(out, &function.local_vars)?;
     default_initialize_vars(out, &function.local_vars)?;
+
+    match return_type {
+        Some(_) => writeln!(out, "return result;")?,
+        None => (),
+    }
 
     write_block(out, &function.body)?;
     writeln!(out, "}}")?;

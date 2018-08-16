@@ -49,9 +49,9 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
-    fn is_operator(&self, op: &operators::Operator) -> bool {
+    fn is_operator(&self, op: operators::Operator) -> bool {
         match self.as_token() {
-            &Token::Operator(ref token_op) => token_op.eq(op),
+            &Token::Operator(ref token_op) => *token_op == op,
             _ => false
         }
     }
@@ -84,9 +84,9 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
         }
     }
 
-    fn unwrap_operator(&self) -> &operators::Operator {
+    fn unwrap_operator(&self) -> operators::Operator {
         match self.as_token() {
-            &Operator(ref op) => op,
+            &Operator(ref op) => *op,
             _ => panic!("calling unwrap_binary_operator on {}", self),
         }
     }
@@ -135,7 +135,7 @@ impl fmt::Display for Token {
         match self {
             &Keyword(kw) => write!(f, "keyword `{}`", kw),
             &Identifier(ref name) => write!(f, "identifier `{}`", name),
-            &Operator(ref op) => write!(f, "binary operator `{}`", op),
+            &Operator(ref op) => write!(f, "operator `{}`", op),
             &LiteralString(ref s) => write!(f, "string literal `{}`", s),
             &LiteralInteger(i) => write!(f, "integer literal `{}`", i),
             _ => write!(f, "{}", self.to_source())

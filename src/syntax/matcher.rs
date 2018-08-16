@@ -99,7 +99,7 @@ impl Matcher {
         match self {
             &Matcher::Keyword(kw) => token.is_keyword(kw),
             &Matcher::AnyKeyword => token.is_any_keyword(),
-            &Matcher::Operator(ref op) => token.is_operator(op),
+            &Matcher::Operator(ref op) => token.is_operator(*op),
             &Matcher::AnyIdentifier => token.is_any_identifier(),
             &Matcher::AnyOperator => token.is_any_operator(),
             &Matcher::AnyLiteralInteger => token.is_any_literal_int(),

@@ -21,6 +21,7 @@ impl VarDecl {
             name: decl.name.clone(),
             context: decl.context.clone(),
             decl_type: var_type,
+            modifiers: decl.modifiers.clone(),
         })
     }
 }

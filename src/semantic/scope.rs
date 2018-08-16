@@ -78,20 +78,6 @@ impl ScopedSymbol {
             }
         }
     }
-//
-//    pub fn qualified_id(&self) -> node::Identifier {
-//        match self {
-//            &ScopedSymbol::Local { ref name } => node::Identifier::from(name),
-//            &ScopedSymbol::Child { ref scope, ref name } => scope.child(name),
-//            &ScopedSymbol::RecordMember { ref scope, ref name, .. } => {
-//                let member = record_type.members.iter()
-//                    .find(|m| m.name.to_string() == *name)
-//                    .unwrap();
-//
-//                member.decl_type.clone()
-//            }
-//        }
-//    }
 }
 
 impl fmt::Display for ScopedSymbol {
@@ -122,6 +108,7 @@ impl Default for Scope {
                 names: HashMap::new(),
                 children: HashMap::new(),
             }
+            .with_type("Byte".to_owned(), DeclaredType::Byte)
             .with_type("Integer".to_owned(), DeclaredType::Integer)
             .with_type("String".to_owned(), DeclaredType::String)
             .with_type("Pointer".to_owned(), DeclaredType::Pointer)

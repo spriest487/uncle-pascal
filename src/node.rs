@@ -1,4 +1,5 @@
 use std::fmt;
+use std::collections::HashSet;
 
 use operators;
 use source;
@@ -394,6 +395,11 @@ pub struct RecordDecl<TSymbol>
     pub members: Vec<VarDecl<TSymbol>>,
 }
 
+#[derive(Clone, Debug, Copy, Hash, Eq, PartialEq)]
+pub enum VarModifier {
+    Pointer,
+}
+
 #[derive(Clone, Debug)]
 pub struct VarDecl<TSymbol>
     where TSymbol: Symbol
@@ -402,6 +408,7 @@ pub struct VarDecl<TSymbol>
     pub context: source::Token,
 
     pub decl_type: TSymbol::Type,
+    pub modifiers: HashSet<VarModifier>,
 }
 
 #[derive(Clone, Debug)]

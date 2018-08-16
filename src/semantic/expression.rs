@@ -167,12 +167,6 @@ impl Expression {
                                                                self.context.clone()));
                 }
 
-//                if lhs_type != rhs_type {
-//                    println!("checking assignable: lhs is `{}` of type {:?}, rhs is `{}` of type {:?}",
-//                             lhs, lhs_type,
-//                             rhs, rhs_type);
-//                }
-
                 expect_assignable(lhs_type, rhs_type, &self.context)
             }
 
@@ -222,7 +216,7 @@ impl Expression {
                             let sig_type = sig.arg_types[arg_index].clone();
                             let actual_type = arg_expr.expr_type();
 
-                            expect_type_eq(Some(sig_type), actual_type, arg_expr.context.clone())?;
+                            expect_assignable(Some(sig_type), actual_type, &arg_expr.context)?
                         }
 
                         Ok(())

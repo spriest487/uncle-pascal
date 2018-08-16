@@ -1,8 +1,7 @@
 //this is a line comment
 program HelloWorld
 
-uses System,
-  System
+uses System
 
 type String = record
   Chars: System.Pointer
@@ -20,7 +19,7 @@ begin
   result.Length := 0
 end
 
-procedure Add(self: Vector; p: System.Pointer)
+procedure Vector_Add(self: ^Vector; p: System.Byte)
 var
   newElements: System.Pointer
   i: System.Integer
@@ -32,11 +31,14 @@ begin
     for i := 0 to self.Length - 1 do
       ^(newElements + i) := ^(self.Elements + i)
 
+
     System.FreeMem(self.Elements)
   end
 
   self.Length := self.Length + 1
   self.Elements := newElements
+
+  //^(self.Elements + self.Length - 1) := p
 end
 
 function Greet(name: System.String): System.String
@@ -51,10 +53,18 @@ var
   x: System.Integer
   y: System.Integer
 
+  vec: Vector
+
 begin
   x := 1
   y := 2
   x := x + y
+
+  vec := Vector_Create()
+//  Vector_Add(vec, 12345)
+//  Vector_Add(vec, 12345)
+//  Vector_Add(vec, 12345)
+//  Vector_Add(vec, 12345)
 
   System.WriteLn('hello world')
 

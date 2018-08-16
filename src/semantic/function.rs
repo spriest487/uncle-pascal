@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use node;
 use syntax;
 use semantic::*;
@@ -33,7 +35,8 @@ impl Function {
             local_vars.decls.push(VarDecl {
                 name: RESULT_VAR_NAME.to_owned(),
                 context: function.context.clone(),
-                decl_type: result_var_type.clone()
+                decl_type: result_var_type.clone(),
+                modifiers: HashSet::default(),
             });
         }
 

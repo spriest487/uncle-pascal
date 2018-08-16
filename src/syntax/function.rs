@@ -39,19 +39,8 @@ impl Function {
 
         let args = arg_groups.value.into_iter()
             .map(|arg_tokens| {
-                let fn_arg = Matcher::AnyIdentifier
-                    .and_then(tokens::Colon)
-                    .and_then(Matcher::AnyIdentifier)
-                    .match_sequence(arg_tokens.tokens, &arg_tokens.context)?;
-
-                let name = String::from(fn_arg.value[0].unwrap_identifier());
-                let decl_type = node::Identifier::parse(fn_arg.value[2].unwrap_identifier());
-
-                Ok(VarDecl {
-                    name,
-                    context: fn_arg.value[0].clone(),
-                    decl_type,
-                })
+                VarDecl::parse(arg_tokens.tokens, &arg_tokens.context)?
+                    .finish()
             })
             .collect::<Result<_, _>>()?;
 
