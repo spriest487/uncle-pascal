@@ -47,6 +47,8 @@ struct Tokenizer<'a> {
     all_tokens_regex: Regex,
     token_matchers: Vec<(Regex, TokenMatchParser)>,
     opts: &'a CompileOptions,
+
+    out_buf: Vec<source::Token>,
 }
 
 impl<'a> Tokenizer<'a> {
@@ -118,61 +120,63 @@ impl<'a> Tokenizer<'a> {
             all_tokens_regex,
             token_matchers,
             opts,
+
+            out_buf: Vec::with_capacity(64),
         }
     }
 }
 
 impl<'a> Tokenizer<'a> {
-    fn parse_line(&self,
+    fn parse_line(&mut self,
                   file_name: &str,
                   line_num: usize,
-                  line: &str) -> TokenizeResult<Vec<source::Token>> {
+                  line: &str) -> TokenizeResult<&mut Vec<source::Token>> {
+        self.out_buf.clear();
+
         let file_name_shared = Rc::new(String::from(file_name));
 
-        let parsed_tokens = self.all_tokens_regex.captures_iter(&line)
-            .filter_map(|capture| {
-                let token_match = capture.get(0).unwrap();
-                let token_source = token_match.as_str().trim();
-                let col = token_match.start() + 1;
+        for capture in self.all_tokens_regex.captures_iter(&line) {
+            let token_match = capture.get(0).unwrap();
+            let token_source = token_match.as_str().trim();
+            let col = token_match.start() + 1;
 
-                if token_source.len() == 0 {
-                    /* token is purely whitespace, ignore it */
-                    None
-                } else {
-                    let first_matching_token = self.token_matchers.iter()
-                        .find(|pattern| {
-                            pattern.0.is_match(&token_source)
-                        })
-                        .and_then(|pattern| {
-                            //match against this regex only to get the expected groups
-                            let pattern_captures = pattern.0.captures(&token_source)
-                                .unwrap();
+            if token_source.len() == 0 {
+                /* token is purely whitespace, ignore it */
+                continue;
+            }
 
-                            /* a pattern matched this token, use the parsing
-                            function associated with this pattern */
-                            pattern.1.try_parse(&pattern_captures, self.opts)
-                        })
-                        .map(|token| source::Token {
-                            token: Rc::from(token),
-                            location: source::Location {
-                                file: file_name_shared.clone(),
-                                line: line_num,
-                                col,
-                            },
-                        })
-                        .ok_or_else(|| IllegalToken {
-                            text: token_source.to_owned(),
-                            file: String::from(file_name),
-                            col,
-                            line: line_num,
-                        });
+            let first_matching_token = self.token_matchers.iter()
+                .find(|pattern| {
+                    pattern.0.is_match(&token_source)
+                })
+                .and_then(|pattern| {
+                    //match against this regex only to get the expected groups
+                    let pattern_captures = pattern.0.captures(&token_source)
+                        .unwrap();
 
-                    Some(first_matching_token)
-                }
-            })
-            .collect::<TokenizeResult<_>>()?;
+                    /* a pattern matched this token, use the parsing
+                    function associated with this pattern */
+                    pattern.1.try_parse(&pattern_captures, self.opts)
+                })
+                .map(|token| source::Token {
+                    token: Rc::from(token),
+                    location: source::Location {
+                        file: file_name_shared.clone(),
+                        line: line_num,
+                        col,
+                    },
+                })
+                .ok_or_else(|| IllegalToken {
+                    text: token_source.to_owned(),
+                    file: String::from(file_name),
+                    col,
+                    line: line_num,
+                })?;
 
-        Ok(parsed_tokens)
+            self.out_buf.push(first_matching_token);
+        }
+
+        Ok(&mut self.out_buf)
     }
 }
 
@@ -226,15 +230,15 @@ pub fn tokenize(file_name: &str,
         .map(str::to_owned)
         .collect();
 
-    let tokenizer = Tokenizer::new(opts);
-    let parsed_lines: Vec<_> = lines.into_iter()
-        .enumerate()
-        .map(|(line_num, line)| {
-            tokenizer.parse_line(file_name, line_num + 1, &line)
-        })
-        .collect::<TokenizeResult<_>>()?;
+    let mut tokenizer = Tokenizer::new(opts);
 
-    if parsed_lines.len() == 0 {
+    let mut tokens = Vec::new();
+    for (line_num, line) in lines.into_iter().enumerate() {
+        let line_tokens = tokenizer.parse_line(file_name, line_num + 1, &line)?;
+        tokens.extend(line_tokens.drain(0..));
+    }
+
+    if tokens.len() == 0 {
         return Err(IllegalToken {
             file: file_name.to_string(),
             line: 0,
@@ -243,9 +247,7 @@ pub fn tokenize(file_name: &str,
         });
     }
 
-    Ok(parsed_lines.into_iter()
-        .flat_map(|line_tokens| line_tokens)
-        .collect())
+    Ok(tokens)
 }
 
 #[cfg(test)]
