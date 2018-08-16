@@ -153,7 +153,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         }
 
         &node::ExpressionValue::LiteralString(ref s) => {
-            write!(out, "(({})\"{}\")", type_to_c(&types::DeclaredType::String), s)
+            write!(out, "(({})\"{}\")", type_to_c(&types::DeclaredType::Byte.pointer()), s)
         }
 
         &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } => {
@@ -318,37 +318,7 @@ pub fn write_c(module: &ProgramModule)
                -> Result<String, fmt::Error> {
     let mut output = String::new();
 
-    writeln!(output, "#include <stdint.h>")?;
-    writeln!(output, "#include <stdlib.h>")?;
-    writeln!(output, "#include <stdio.h>")?;
-    writeln!(output, "#include <string.h>")?;
-    writeln!(output, "#include <stdbool.h>")?;
-
-    writeln!(output, "typedef int8_t System_Byte;")?;
-    writeln!(output, "typedef int64_t System_Integer;")?;
-    writeln!(output, "typedef const char* System_String;")?;
-    writeln!(output, "typedef void* System_Pointer;")?;
-    writeln!(output, "typedef bool System_Boolean;")?;
-
-
-    writeln!(output,
-             r"static void System_WriteLn(System_String ln) {{
-    if (!ln) abort();
-
-    puts(ln);
-}}
-
-static System_Byte* System_GetMem(System_Integer bytes) {{
-    if (bytes > 0) {{
-        return malloc((size_t) bytes);
-    }} else {{
-        return NULL;
-    }}
-}}
-
-static void System_FreeMem(System_Byte* p) {{
-    free(p);
-}}")?;
+    output.write_str(include_str!("header.h"))?;
 
     for unit in module.units.iter() {
         writeln!(output, "/* {} interface */", unit.name)?;

@@ -247,15 +247,15 @@ fn annotate_function_call(target: &syntax::Expression,
             let base_type = base_expr.expr_type()?;
 
             base_type.and_then(|base_type|
-                annotate_ufcs(&base_expr, &base_type, name, &typed_args, scope))
+                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope))
         }
 
         &node::ExpressionValue::Identifier(ref name) => {
-            let base_id: Option<Identifier> = name.parent();
+            let base_id: Option<Identifier> = name.0.parent();
 
             base_id.and_then(|base_id| scope.get_symbol(&base_id))
                 .and_then(|base_sym| {
-                    let func_name = &name.name;
+                    let func_name = &name.0.name;
                     let base_expr = Expression::identifier(base_sym.clone(), target.context.clone());
 
                     annotate_ufcs(&base_expr, &base_sym.decl_type(), func_name, &typed_args, scope)
@@ -421,7 +421,7 @@ impl Expression {
     pub fn annotate(expr: &syntax::Expression, scope: &Scope) -> SemanticResult<Self> {
         match &expr.value {
             &node::ExpressionValue::Identifier(ref name) =>
-                annotate_identifier(name, scope, &expr.context),
+                annotate_identifier(&name.0, scope, &expr.context),
 
             &node::ExpressionValue::Block(ref block) => {
                 Ok(Expression::block(Block::annotate(block, scope)?))
@@ -490,7 +490,7 @@ impl Expression {
                 prefix_op_type(*op, rhs, &self.context),
 
             &node::ExpressionValue::LiteralString(_) =>
-                Ok(Some(DeclaredType::String)),
+                Ok(Some(DeclaredType::Byte.pointer())),
 
             &node::ExpressionValue::LiteralInteger(_) =>
                 Ok(Some(DeclaredType::Integer)),

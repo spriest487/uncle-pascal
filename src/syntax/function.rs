@@ -6,7 +6,7 @@ use tokens::AsToken;
 use node::{self, Identifier};
 use source;
 
-pub type Function = node::FunctionDecl<Identifier>;
+pub type Function = node::FunctionDecl<ParsedSymbol>;
 
 impl Function {
     pub fn parse<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Self>
@@ -48,8 +48,7 @@ impl Function {
             let colon = tokens::Colon.match_one(arg_groups.next_tokens,
                                                 &arg_groups.last_token)?;
 
-            let type_id = Identifier::parse(colon.next_tokens,
-                                                  &colon.last_token)?;
+            let type_id = ParsedType::parse(colon.next_tokens, &colon.last_token)?;
 
             ParseOutput::new(Some(type_id.value), type_id.last_token, type_id.next_tokens)
         } else {
@@ -131,7 +130,7 @@ mod test {
         let func = parse_func("function hello(): System.String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(Identifier::from("System.String")), func.return_type);
+        assert_eq!(Some(ParsedType::with_name("System.String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
@@ -140,7 +139,7 @@ mod test {
         let func = parse_func("function hello: String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(Identifier::from("String")), func.return_type);
+        assert_eq!(Some(ParsedType::with_name("String")), func.return_type);
         assert_eq!(0, func.args.decls.len());
     }
 
@@ -149,13 +148,13 @@ mod test {
         let func = parse_func("function hello(x: System.Float; y: Integer): String; begin end;");
 
         assert_eq!(Identifier::from("hello"), func.name);
-        assert_eq!(Some(Identifier::from("String")), func.return_type);
+        assert_eq!(Some(ParsedType::with_name("String")), func.return_type);
         assert_eq!(2, func.args.decls.len());
 
         assert_eq!(Identifier::from("x"), func.args.decls[0].name);
-        assert_eq!(Identifier::from("System.Float"), func.args.decls[0].decl_type);
+        assert_eq!(ParsedType::with_name("System.Float"), func.args.decls[0].decl_type);
 
         assert_eq!(Identifier::from("y"), func.args.decls[1].name);
-        assert_eq!(Identifier::from("Integer"), func.args.decls[1].decl_type);
+        assert_eq!(ParsedType::with_name("Integer"), func.args.decls[1].decl_type);
     }
 }

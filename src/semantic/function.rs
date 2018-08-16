@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
@@ -15,9 +13,16 @@ impl Function {
                     scope: &Scope) -> Result<Self, SemanticError> {
         let return_type = match function.return_type {
             Some(ref func_return_type) => {
-                let found_type = scope.get_type(func_return_type);
+                let mut found_type = scope.get_type(&func_return_type.name)
+                    .map(|mut return_type| {
+                        for _ in 0..func_return_type.indirection {
+                            return_type = return_type.pointer();
+                        }
+                        return_type
+                    });
+
                 let return_type = found_type
-                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.clone(),
+                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.name.clone(),
                                                                function.context.clone()))?;
 
                 Some(return_type)
@@ -42,7 +47,6 @@ impl Function {
                 name: result_id,
                 context: function.context.clone(),
                 decl_type: result_var_type.clone(),
-                modifiers: HashSet::default(),
             });
         }
 

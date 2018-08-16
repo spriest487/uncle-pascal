@@ -20,7 +20,83 @@ pub use self::unit::*;
 
 use std::fmt;
 
+use operators;
 use source;
+use node::{
+    Identifier,
+    Symbol,
+};
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ParsedSymbol(pub Identifier);
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ParsedType {
+    pub name: Identifier,
+    pub indirection: usize,
+}
+
+impl ParsedType {
+    pub fn with_name(name: impl Into<Identifier>) -> Self {
+        ParsedType {
+            name: name.into(),
+            indirection: 0,
+        }
+    }
+
+    pub fn pointer(self) -> Self {
+        ParsedType {
+            name: self.name,
+            indirection: self.indirection + 1,
+        }
+    }
+
+    pub fn parse(tokens: impl IntoIterator<Item = source::Token> + 'static,
+                 context: &source::Token) -> ParseResult<ParsedType> {
+        let mut indirection = 0;
+
+        let mut next_tokens: Box<Iterator<Item = source::Token>> = Box::from(tokens.into_iter());
+        let mut last_token = context.clone();
+
+        loop {
+            let pointer_sigil = operators::Deref.match_peek(next_tokens, &last_token)?;
+            if pointer_sigil.value.is_some() {
+                indirection += 1;
+
+                next_tokens = Box::from(pointer_sigil.next_tokens.skip(1));
+                last_token = pointer_sigil.last_token;
+            } else {
+                let name = Identifier::parse(pointer_sigil.next_tokens, &pointer_sigil.last_token)?;
+                let parsed_type = ParsedType {
+                    name: name.value,
+                    indirection,
+                };
+
+                break Ok(ParseOutput::new(parsed_type, name.last_token, name.next_tokens))
+            }
+        }
+    }
+}
+
+impl fmt::Display for ParsedType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        for _ in 0..self.indirection {
+            f.write_str("^")?;
+        }
+
+        self.name.fmt(f)
+    }
+}
+
+impl Symbol for ParsedSymbol {
+    type Type = ParsedType;
+}
+
+impl fmt::Display for ParsedSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        self.0.fmt(f)
+    }
+}
 
 pub trait ToContext {
     type Context;
@@ -32,7 +108,6 @@ pub trait ToContext {
 pub enum ParseError {
     UnexpectedToken(source::Token, Option<Matcher>),
     UnexpectedEOF(Matcher, source::Token),
-//    UnrecognizedSequence(Vec<source::Token>),
 }
 
 #[allow(dead_code)]
@@ -58,9 +133,6 @@ impl fmt::Display for ParseError {
 
             &ParseError::UnexpectedEOF(ref expected, ref context) =>
                 write!(f, "unexpected end of input: expected {} after {}", expected, context),
-
-//            &ParseError::UnrecognizedSequence(ref tokens) =>
-//                write!(f, "tokens `{}` could not be parsed", source::tokens_to_source(tokens)),
         }
     }
 }

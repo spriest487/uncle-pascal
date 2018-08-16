@@ -154,7 +154,7 @@ impl Scope {
             .with_symbol_absolute(node::Identifier::from("System.WriteLn"),
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("WriteLn"),
-                                      arg_types: vec![DeclaredType::String],
+                                      arg_types: vec![DeclaredType::String.pointer()],
                                       return_type: None,
                                   }))
             .with_symbol_absolute(node::Identifier::from("System.GetMem"),
@@ -168,6 +168,15 @@ impl Scope {
                                       name: Identifier::from("FreeMem"),
                                       arg_types: vec![DeclaredType::Byte.pointer()],
                                       return_type: None,
+                                  }))
+            .with_symbol_absolute(node::Identifier::from("System.StringFromBytes"),
+                                  DeclaredType::from(FunctionSignature {
+                                      name: Identifier::from("StringFromBytes"),
+                                      arg_types: vec![
+                                          DeclaredType::Byte.pointer(),
+                                          DeclaredType::Integer,
+                                      ],
+                                      return_type: Some(DeclaredType::String.pointer()),
                                   }))
     }
 

@@ -6,8 +6,8 @@ use tokens;
 use tokens::AsToken;
 use node::ToSource;
 
-pub type Unit = node::Unit<node::Identifier>;
-pub type UnitDeclaration = node::UnitDeclaration<node::Identifier>;
+pub type Unit = node::Unit<ParsedSymbol>;
+pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol>;
 
 impl Unit {
     pub fn parse<TIter>(tokens: TIter, context: &source::Token) -> Result<Unit, ParseError>

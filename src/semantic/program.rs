@@ -18,7 +18,6 @@ impl Program {
             program_block,
         };
 
-
         Ok(program)
     }
 }

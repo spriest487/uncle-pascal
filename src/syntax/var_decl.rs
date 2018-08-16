@@ -1,15 +1,12 @@
-use std::collections::HashSet;
-
 use tokens;
 use tokens::AsToken;
 use keywords;
-use operators;
 use node::{self, Identifier};
 use syntax::*;
 use source;
 
-pub type VarDecl = node::VarDecl<Identifier>;
-pub type VarDecls = node::VarDecls<Identifier>;
+pub type VarDecl = node::VarDecl<ParsedSymbol>;
+pub type VarDecls = node::VarDecls<ParsedSymbol>;
 
 impl node::ToSource for VarDecls {
     fn to_source(&self) -> String {
@@ -37,56 +34,12 @@ impl VarDecl {
         let name_token = id_tokens.value[0].clone();
         let name = Identifier::from(name_token.as_token().unwrap_identifier());
 
-        /* match any number of unique modifiers */
-        let mut modifier_tokens = WrapIter::new(id_tokens.next_tokens);
-        let mut modifier_context = id_tokens.last_token;
-        let mut modifiers = HashSet::new();
-        let match_any_modifier = Matcher::from(operators::Deref);
-
-        loop {
-            let match_modifier = match_any_modifier.match_peek(modifier_tokens,
-                                                               &modifier_context)?;
-
-            modifier_tokens = WrapIter::new(match_modifier.next_tokens
-                .skip(if match_modifier.value.is_some() {
-                    1
-                } else {
-                    0
-                }));
-
-            modifier_context = match_modifier.last_token;
-
-            let mut add_or_err = |modifier: node::VarModifier| {
-                if modifiers.contains(&modifier) {
-                    let expected = match_any_modifier
-                        .clone()
-                        .or(Matcher::AnyIdentifier);
-
-                    Err(ParseError::UnexpectedToken(modifier_context.clone(),
-                                                    Some(expected)))
-                } else {
-                    modifiers.insert(modifier);
-                    Ok(())
-                }
-            };
-
-            match match_modifier.value {
-                Some(ref t) if t.is_operator(operators::Deref) => {
-                    add_or_err(node::VarModifier::Pointer)?;
-                }
-
-                _ => break,
-            }
-        }
-
-        let type_id = Identifier::parse(modifier_tokens,
-        &modifier_context)?;
+        let type_id = ParsedType::parse(id_tokens.next_tokens, &id_tokens.last_token)?;
 
         let decl = VarDecl {
             name,
             decl_type: type_id.value,
             context: name_token.clone(),
-            modifiers,
         };
 
         Ok(ParseOutput::new(decl, type_id.last_token, type_id.next_tokens))
@@ -154,7 +107,7 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(Identifier::from("Integer"), vars.decls[0].decl_type);
+        assert_eq!(ParsedType::with_name("Integer"), vars.decls[0].decl_type);
     }
 
     #[test]
@@ -164,19 +117,18 @@ mod test {
         assert_eq!(2, vars.decls.len());
 
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(Identifier::from("System.Integer"), vars.decls[0].decl_type);
+        assert_eq!(ParsedType::with_name("System.Integer"), vars.decls[0].decl_type);
 
         assert_eq!(Identifier::from("y"), vars.decls[1].name);
-        assert_eq!(Identifier::from("System.String"), vars.decls[1].decl_type);
+        assert_eq!(ParsedType::with_name("System.String"), vars.decls[1].decl_type);
     }
 
     #[test]
-    fn parses_var_with_modifier() {
+    fn parses_var_with_indirection() {
         let vars = parse_vars("var x: ^T.B");
 
         assert_eq!(1, vars.decls.len());
         assert_eq!(Identifier::from("x"), vars.decls[0].name);
-        assert_eq!(Identifier::from("T.B"), vars.decls[0].decl_type);
-        assert!(vars.decls[0].modifiers.contains(&node::VarModifier::Pointer))
+        assert_eq!(ParsedType::with_name("T.B").pointer(), vars.decls[0].decl_type);
     }
 }

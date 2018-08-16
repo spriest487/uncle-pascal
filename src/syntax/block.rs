@@ -4,7 +4,7 @@ use keywords;
 use node;
 use source;
 
-pub type Block = node::Block<node::Identifier>;
+pub type Block = node::Block<ParsedSymbol>;
 
 impl Block {
     pub fn parse_exprs_multiline<TIter>(in_tokens: TIter, context: &source::Token)

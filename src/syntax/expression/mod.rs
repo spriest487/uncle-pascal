@@ -9,7 +9,7 @@ use node;
 use source;
 use operators;
 
-pub type Expression = node::Expression<node::Identifier>;
+pub type Expression = node::Expression<ParsedSymbol>;
 pub type ExpressionResult = Result<ParseOutput<Expression>, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -338,7 +338,7 @@ impl Expression {
         let parse_id = node::Identifier::parse(in_tokens, context)?;
 
         Ok(parse_id.map(|id| {
-            Expression::identifier(id, context.clone())
+            Expression::identifier(ParsedSymbol(id), context.clone())
         }))
     }
 

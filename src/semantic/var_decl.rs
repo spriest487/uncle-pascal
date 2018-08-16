@@ -19,15 +19,13 @@ impl Into<Symbol> for VarDecl {
 
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope, kind: SemanticVarsKind) -> Result<Self, SemanticError> {
-        let base_var_type = scope.get_type(&decl.decl_type)
-            .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.clone(),
+        let mut var_type = scope.get_type(&decl.decl_type.name)
+            .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.name.clone(),
                                                        decl.context.clone()))?;
 
-        let var_type = if decl.modifiers.contains(&node::VarModifier::Pointer) {
-            base_var_type.pointer()
-        } else {
-            base_var_type
-        };
+        for _ in 0..decl.decl_type.indirection {
+            var_type = var_type.pointer()
+        }
 
         let qualified_name = if decl.name.namespace.len() != 0 {
             return Err(SemanticError::illegal_name(decl.name.to_string(), decl.context.clone()))
@@ -42,7 +40,6 @@ impl VarDecl {
             name: qualified_name,
             context: decl.context.clone(),
             decl_type: var_type,
-            modifiers: decl.modifiers.clone(),
         })
     }
 }

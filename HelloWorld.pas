@@ -3,7 +3,7 @@ program HelloWorld
 
 uses System, Vector
 
-function Greet(name: System.String): System.String
+function Greet(name: ^System.String): ^System.String
 begin
   let msg := 'hello world!'
   result := msg

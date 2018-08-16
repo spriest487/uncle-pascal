@@ -5,7 +5,7 @@ use keywords;
 use tokens::{self, AsToken};
 use operators;
 
-pub type RecordDecl = node::RecordDecl<Identifier>;
+pub type RecordDecl = node::RecordDecl<ParsedSymbol>;
 
 impl RecordDecl {
     pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Self>

@@ -101,9 +101,13 @@ pub struct ProgramModule {
 }
 
 fn pretty_path(path: &Path) -> String {
-    let canon = path.canonicalize()
-        .map(|canon_path| canon_path.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| "(unknown)".to_owned());
+    let canon = if path.exists() {
+        path.canonicalize()
+            .map(|canon_path| canon_path.to_string_lossy().into_owned())
+            .unwrap_or_else(|_| "(unknown)".to_owned())
+    } else {
+        path.to_string_lossy().into_owned()
+    };
 
     if cfg!(windows) && canon.starts_with(r"\\?\") {
         canon[4..].to_owned()
@@ -168,30 +172,46 @@ fn print_usage(program: &str, opts: getopts::Options) {
 }
 
 fn pas_to_c(in_path: &str,
-            out_path: &Path,
-            clang: bool) -> Result<(), CompileError> {
+            out_path: &Path) -> Result<(), CompileError> {
     let src_path = PathBuf::from(in_path)
         .canonicalize()?;
 
     let module = compile_program(&src_path)?;
     let c_unit = target_c::write_c(&module)?;
 
-    if clang {
-        invoke_clang(&c_unit, &src_path)?;
+    let compile_with_clang = out_path.extension().map(|ext| ext != "c")
+        .unwrap_or(true);
+
+    if compile_with_clang {
+        invoke_clang(&c_unit, &out_path)?;
     } else {
-        fs::create_dir_all(out_path)?;
+        println!("Writing output to `{}`...", pretty_path(&out_path));
 
-        let out_file_path = out_path
-            .canonicalize()?
-            .join(format!("{}.c", module.program.name));
-
-        println!("Writing output to `{}`...", pretty_path(&out_file_path));
-
-        let mut out_file = fs::File::create(out_file_path)?;
+        let mut out_file = fs::File::create(out_path)?;
         out_file.write_all(c_unit.as_bytes())?;
 
         println!("Done!");
     }
+    Ok(())
+}
+
+fn invoke_clang(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
+    let mut clang = process::Command::new("clang")
+        .arg("-Wno-parentheses-equality")
+        .arg("-Wno-non-literal-null-conversion")
+        .arg("-x").arg("c")
+        .arg("-o").arg(out_path)
+        .arg("-")
+        .stdout(process::Stdio::inherit())
+        .stdin(process::Stdio::piped())
+        .spawn()?;
+
+    {
+        let clang_in = clang.stdin.as_mut().unwrap();
+        clang_in.write_all(c_src.to_owned().as_bytes())?;
+    }
+    clang.wait()?;
+
     Ok(())
 }
 
@@ -200,8 +220,7 @@ fn main() {
     let program = args[0].clone();
 
     let mut opts = getopts::Options::new();
-    opts.optflag("c", "invoke-clang", "Invoke clang to compile the generated C unit");
-    opts.optopt("o", "outdir", "Output directory", "");
+    opts.optopt("o", "outdir", "Output file (use .c extension to emit C intermediate files)", "");
 
     match opts.parse(&args[1..]) {
         Ok(matched) => {
@@ -209,12 +228,11 @@ fn main() {
                 print_usage(&program, opts);
                 std::process::exit(1);
             } else {
-                let clang = matched.opt_present("c");
-                let out_dir = matched.opt_str("o")
+                let out_file = matched.opt_str("o")
                     .map(|out_dir_str| PathBuf::from(out_dir_str))
                     .unwrap_or_else(|| current_dir().unwrap());
 
-                match pas_to_c(&matched.free[0], &out_dir, clang) {
+                match pas_to_c(&matched.free[0], &out_file) {
                     Err(err) => {
                         println!("error: {}", err);
                         std::process::exit(1);
@@ -232,33 +250,3 @@ fn main() {
     }
 }
 
-fn invoke_clang(c_src: &str, source_path: &Path) -> Result<(), CompileError> {
-    let os_ext = if cfg!(windows) {
-        "exe"
-    } else {
-        ""
-    };
-
-    let target_path = PathBuf::from(source_path)
-        .with_extension(os_ext);
-
-    let name = target_path.file_name()
-        .unwrap()
-        .to_string_lossy();
-
-    let mut clang = process::Command::new("clang")
-        .arg("-x").arg("c")
-        .arg("-o").arg(name.to_string())
-        .arg("-")
-        .stdout(process::Stdio::inherit())
-        .stdin(process::Stdio::piped())
-        .spawn()?;
-
-    {
-        let clang_in = clang.stdin.as_mut().unwrap();
-        clang_in.write_all(c_src.to_owned().as_bytes())?;
-    }
-    clang.wait()?;
-
-    Ok(())
-}
