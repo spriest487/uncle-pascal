@@ -10,20 +10,22 @@ begin
 end
 
 var
-  vec: Vector.Vector
+  //vec: Vector.Vector
 
 begin
   let x := 1
   let y := 2
   x := x + y
 
-  vec := Vector.Create()
+  let vec := Vector.Create()
   vec.Add(1)
   vec.Add(2)
   Vector.Add(vec, 3)
   Vector.Add(vec, 4)
 
-  System.WriteLn(Greet('wuuuorld'))
+  let name := 'wuuuorld'
+
+  System.WriteLn(Greet(name))
 
   if x = 1 then begin
     System.WriteLn('one')

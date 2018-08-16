@@ -32,18 +32,22 @@ static struct System_Internal_Rc System_Internal_Rc_GetMem(System_Integer size, 
         abort();
     }
 
-    rc.RefCount->StrongCount = 1;
+    rc.RefCount->StrongCount = 0;
 
     fprintf(stderr, "rc allocated %lld bytes for %s\n", size, constructorName);
     return rc;
 }
 
-static void System_Internal_Rc_Release(struct System_Internal_Rc* rc) {
-    if (!rc->Value) {
-        fprintf(stderr, "tried to release an invalid rc @ %p + <invalid>\n", rc->RefCount);
+static void System_Internal_Rc_Retain(struct System_Internal_Rc* rc) {
+    if (!rc->RefCount) {
+        fprintf(stderr, "retained rc that was already deallocated @ %p + %p\n", rc->RefCount, rc->Value);
         abort();
     }
 
+    rc->RefCount->StrongCount += 1;
+}
+
+static void System_Internal_Rc_Release(struct System_Internal_Rc* rc) {
     if (!rc->RefCount || rc->RefCount->StrongCount <= 0) {
         fprintf(stderr, "released rc that was already released @ %p + %p\n", rc->RefCount, rc->Value);
         abort();

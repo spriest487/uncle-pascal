@@ -145,6 +145,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
             let value_type = value.expr_type().unwrap().unwrap();
 
             write!(out, "{} {} =", type_to_c(&value_type), name)?;
+
             write_expr(out, value)
         }
 
@@ -254,8 +255,57 @@ pub fn write_block(out: &mut String, block: &semantic::Block)
     writeln!(out, "{{")?;
 
     for statement in block.statements.iter() {
-        write_expr(out, statement)?;
-        writeln!(out, ";")?;
+        // after assigning or binding a class instance, retain the reference
+        // for the duration of the block
+        match &statement.value {
+            node::ExpressionValue::LetBinding { name, value } => {
+                write_expr(out, statement)?;
+                writeln!(out, ";")?;
+
+                if let Some(_) = value.class_type().unwrap() {
+                    writeln!(out, "System_Internal_Rc_Retain(&{});", name)?;
+                }
+            }
+
+            node::ExpressionValue::BinaryOperator { lhs, op, .. } => {
+                let is_class_assignment = match lhs.class_type().unwrap() {
+                    Some(_) => *op == operators::Assignment,
+                    _ => false,
+                };
+
+                let mut lhs_expr = String::new();
+                write_expr(&mut lhs_expr, &lhs)?;
+
+                if is_class_assignment {
+                    writeln!(out, "if ({}.RefCount && {}.RefCount->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
+                    writeln!(out, " System_Internal_Rc_Release(&{});", lhs_expr)?;
+                    writeln!(out, "}}")?;
+                }
+
+                write_expr(out, statement)?;
+                writeln!(out, ";")?;
+
+                if is_class_assignment {
+                    writeln!(out, " System_Internal_Rc_Retain(&{});", lhs_expr)?;
+                }
+            }
+
+            _ => {
+                write_expr(out, statement)?;
+                writeln!(out, ";")?;
+            }
+        }
+    }
+
+    // release all references
+    for stmt in block.statements.iter() {
+        if let node::ExpressionValue::LetBinding { name, value } = &stmt.value {
+            if let types::DeclaredType::Record(decl) = value.expr_type().unwrap().unwrap() {
+                if decl.kind == types::RecordKind::Class {
+                    writeln!(out, "System_Internal_Rc_Release(&{});", name)?;
+                }
+            }
+        }
     }
 
     writeln!(out, "}}")

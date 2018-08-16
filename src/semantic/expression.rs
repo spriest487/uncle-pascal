@@ -566,6 +566,19 @@ impl Expression {
         self.expr_type()?;
         Ok(())
     }
+
+    pub fn class_type(&self) -> SemanticResult<Option<types::DeclaredRecord>> {
+        match self.expr_type()? {
+            Some(DeclaredType::Record(decl)) => {
+                if decl.kind == types::RecordKind::Class {
+                    Ok(Some(decl))
+                } else {
+                    Ok(None)
+                }
+            }
+            _ => Ok(None),
+        }
+    }
 }
 
 #[cfg(test)]
