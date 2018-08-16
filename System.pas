@@ -7,7 +7,13 @@ type
     Cardinal = UInt32
     Integer = Int32
     LongWord = UInt32
-  {$endif}
+{$endif}
+
+type
+    String = class
+        Chars: ^Byte
+        Length: NativeInt
+    end
 
 procedure WriteLn(line: String)
 

@@ -1,6 +1,5 @@
 use std::{
     fmt,
-    mem::size_of,
 };
 
 use node::{self, Identifier, ToSource, IndexRange};
@@ -40,66 +39,6 @@ impl node::Symbol for Symbol {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub struct FunctionSignature {
-    pub name: Identifier,
-    pub return_type: Option<Type>,
-    pub arg_types: Vec<Type>,
-}
-
-impl fmt::Display for FunctionSignature {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let args_str = self.arg_types
-            .iter()
-            .map(|arg_type| format!("{}", arg_type))
-            .collect::<Vec<_>>()
-            .join(", ");
-
-        if let Some(ref return_type) = self.return_type {
-            write!(f, "function {}({}): {}", self.name, args_str, return_type)
-        } else {
-            write!(f, "procedure {}({})", self.name, args_str)
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum RecordKind {
-    Record,
-    Class,
-}
-
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub struct DeclaredRecord {
-    pub name: Identifier,
-    pub kind: RecordKind,
-    pub members: Vec<Symbol>,
-}
-
-impl DeclaredRecord {
-    pub fn get_member(&self, name: &str) -> Option<&Symbol> {
-        self.members.iter().find(|m| m.name.to_string() == name)
-    }
-
-    pub fn size_of(&self) -> usize {
-        self.members.iter()
-            .map(|member| member.decl_type.align_of())
-            .sum()
-    }
-}
-
-impl fmt::Display for DeclaredRecord {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "record")?;
-
-        for member in self.members.iter() {
-            writeln!(f, "\t{}", member)?;
-        }
-
-        writeln!(f, "end")
-    }
-}
-
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct ArrayType {
     pub element: Box<Type>,
     pub first_dim: IndexRange,
@@ -127,8 +66,9 @@ pub enum Type {
     NativeUInt,
     RawPointer,
     Pointer(Box<Type>),
-    Function(Box<FunctionSignature>),
-    Record(DeclaredRecord),
+    Function(Identifier),
+    Record(Identifier),
+    Class(Identifier),
     Array(ArrayType),
 }
 
@@ -156,6 +96,7 @@ impl Type {
                 Type::Pointer(target) => format!("^{}", target.to_source()),
                 Type::Function(sig) => format!("{}", sig),
                 Type::Record(record) => format!("{}", record.name),
+                Type::Class(class) => format!("{}", class.name),
                 Type::Array(array) => {
                     let mut name = "array ".to_string();
                     name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));
@@ -173,61 +114,19 @@ impl Type {
 //
 //    }
 //
-    pub fn align_of(&self) -> usize {
-        const WORD_SIZE: usize = size_of::<usize>();
 
-        let size = self.size_of();
-        let mut align = 0;
-
-        while align < size {
-            align += WORD_SIZE
-        }
-        align
-    }
-
-    pub fn size_of(&self) -> usize {
-        match self {
-            Type::Nil |
-            Type::RawPointer |
-            Type::Pointer(_) |
-            Type::Function(_) |
-            Type::NativeInt |
-            Type::NativeUInt =>
-                size_of::<usize>() as usize,
-
-            Type::Int64 |
-            Type::UInt64 =>
-                8,
-
-            Type::UInt32 |
-            Type::Int32 =>
-                4,
-
-            Type::Byte =>
-                1,
-
-            Type::Boolean =>
-                1,
-
-            Type::Record(rec) =>
-                rec.size_of(),
-
-            Type::Array(array) =>
-                array.total_elements() as usize * array.element.size_of(),
-        }
-    }
 
     pub fn is_record(&self) -> bool {
         match self {
-            &Type::Record(_) => true,
+            Type::Record(_) => true,
             _ => false,
         }
     }
 
-    pub fn unwrap_record(self) -> DeclaredRecord {
+    pub fn is_class(&self) -> bool {
         match self {
-            Type::Record(record) => record,
-            _ => panic!("called unwrap_record on {}", self)
+            Type::Class(_) => true,
+            _ => false,
         }
     }
 
@@ -248,7 +147,7 @@ impl Type {
         let mut next = self;
         loop {
             match next {
-                &Type::Pointer(ref target) => next = target.as_ref(),
+                Type::Pointer(target) => next = target.as_ref(),
                 _ => break next
             }
         }
@@ -268,7 +167,7 @@ impl Type {
 
         loop {
             match next {
-                &Type::Pointer(ref target) => {
+                Type::Pointer(target) => {
                     level += 1;
                     next = target.as_ref();
                 }
@@ -292,6 +191,7 @@ impl Type {
             Type::Pointer(_) |
             Type::Byte |
             Type::Record(_) |
+            Type::Class(_) |
             Type::RawPointer |
             Type::Int32 |
             Type::UInt32 |
@@ -407,20 +307,10 @@ impl Type {
 
         can_compare(self, other) || can_compare(other, self)
     }
-
-    pub fn function(sig: FunctionSignature) -> Self {
-        Type::Function(Box::new(sig))
-    }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", Type::name(Some(self)))
-    }
-}
-
-impl From<FunctionSignature> for Type {
-    fn from(sig: FunctionSignature) -> Self {
-Type::Function(Box::new(sig))
     }
 }

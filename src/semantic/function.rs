@@ -4,7 +4,7 @@ use std::{
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
-use types::{Type, FunctionSignature, RecordKind};
+use types::Type;
 
 const RESULT_VAR_NAME: &str = "result";
 
@@ -89,24 +89,15 @@ impl FunctionDecl {
         })
     }
 
-    pub fn signature_type(&self) -> Type {
-        let sig = FunctionSignature {
-            return_type: self.return_type.clone(),
-            name: self.name.clone(),
-            arg_types: self.args.decls.iter().map(|arg| arg.decl_type.clone()).collect(),
-        };
-
-        Type::Function(Box::from(sig))
-    }
-
     pub fn type_check(&self) -> Result<(), SemanticError> {
+        let returns_class = self.return_type.as_ref()
+            .map(|ty| ty.is_class())
+            .unwrap_or(false);
+
         // make sure constructors return something constructible
-        if self.kind == node::FunctionKind::Constructor {
-            match self.return_type.as_ref() {
-                Some(Type::Record(decl)) if decl.kind == RecordKind::Class => {}
-                _ => return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
-                                                                        self.context.clone()))
-            }
+        if self.kind == node::FunctionKind::Constructor && !returns_class {
+            return Err(SemanticError::invalid_constructor_type(self.return_type.clone(),
+                                                               self.context.clone()));
         }
 
         //make sure destructors take one arg of a type in their module, and return nothing
@@ -118,13 +109,7 @@ impl FunctionDecl {
 
             let is_valid_destructed_type = |ty: &Type| {
                 match ty {
-                    Type::Record(record) => {
-                        let is_class = record.kind == RecordKind::Class;
-                        let is_in_same_unit = record.name.namespace == self.name.namespace;
-
-                        is_class && is_in_same_unit
-                    }
-
+                    Type::Class(class_name) => class_name.namespace == self.name.namespace,
                     _ => false,
                 }
             };
@@ -156,9 +141,13 @@ impl FunctionDecl {
 
         match self.args.decls.iter().next().map(|arg| &arg.decl_type) {
             Some(Type::Record(arg_record)) =>
-                arg_record.name == class_type.name,
+                arg_record.name == class_type.name.to_string(),
             _ =>
                 false,
         }
+    }
+
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
     }
 }

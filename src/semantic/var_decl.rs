@@ -50,6 +50,10 @@ impl VarDecl {
             decl_type: var_type,
         })
     }
+
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
+    }
 }
 
 impl Vars {

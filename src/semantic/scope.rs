@@ -1,13 +1,25 @@
-use std::collections::hash_map::*;
-use std::fmt;
+use std::{
+    collections::hash_map::*,
+    mem::size_of,
+    fmt,
+};
 
 use types::*;
-use node::{self, Identifier, UnitReferenceKind, TypeName};
+use node::{
+    self,
+    Identifier,
+    UnitReferenceKind,
+    TypeName,
+    RecordKind,
+};
 use semantic::*;
 
 #[derive(Clone, Debug)]
 pub enum Named {
-    Type(Type),
+    Alias(Type),
+    Record(RecordDecl),
+    Class(RecordDecl),
+    Function(FunctionDecl),
     Symbol(Type),
 }
 
@@ -32,43 +44,20 @@ pub enum ScopedSymbol {
 
     RecordMember {
         record_id: Identifier,
-        record_type: DeclaredRecord,
+        record_type: Identifier,
         name: String,
-    }
+        member_type: Type,
+    },
 }
 
 impl ScopedSymbol {
-    #[allow(dead_code)]
-    pub fn to_symbol(&self) -> Symbol {
+    pub fn decl_type(&self) -> &Type {
         match self {
-            &ScopedSymbol::Local { ref name, ref decl_type } => {
-                Symbol::new(name.clone(), decl_type.clone())
-            }
+            ScopedSymbol::Local { decl_type, .. } =>
+                decl_type,
 
-            &ScopedSymbol::RecordMember { ref record_id, ref name, ref record_type } => {
-                let member_type = record_type.get_member(name)
-                    .unwrap()
-                    .decl_type
-                    .clone();
-                let member_id = record_id.child(name);
-
-                Symbol::new(member_id, member_type)
-            }
-        }
-    }
-
-    pub fn decl_type(&self) -> Type {
-        match self {
-            &ScopedSymbol::Local { ref decl_type, .. } =>
-                decl_type.clone(),
-
-            &ScopedSymbol::RecordMember { ref record_type, ref name, .. } => {
-                let member = record_type.members.iter()
-                    .find(|m| m.name.to_string() == *name)
-                    .unwrap();
-
-                member.decl_type.clone()
-            }
+            ScopedSymbol::RecordMember { member_type, .. } =>
+                member_type,
         }
     }
 }
@@ -76,13 +65,13 @@ impl ScopedSymbol {
 impl fmt::Display for ScopedSymbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &ScopedSymbol::Local { ref name, ref decl_type } =>
+            ScopedSymbol::Local { name, decl_type } =>
                 write!(f, "{} ({})", name, decl_type),
 
-            &ScopedSymbol::RecordMember { ref record_id, ref name, ref record_type } => {
+            ScopedSymbol::RecordMember { record_id, name, member_type, record_type } => {
                 write!(f, "{} ({} member of record {})",
                        record_id.child(name),
-                       self.decl_type(),
+                       member_type,
                        record_type.name)
             }
         }
@@ -119,7 +108,7 @@ impl fmt::Debug for Scope {
 
         let types: Vec<_> = self.names.iter()
             .flat_map(|(name, named)| match named {
-                &Named::Type(ref dt) => Some((name, dt)),
+                &Named::Alias(ref dt) => Some((name, dt)),
                 _ => None
             })
             .collect();
@@ -167,38 +156,20 @@ impl Scope {
     }
 
     pub fn system() -> Self {
-        let string_type = Type::Record(DeclaredRecord {
-            name: Identifier::from("System.String"),
-            kind: RecordKind::Class,
-            members: vec![
-                Symbol::new(Identifier::from("Chars"), Type::Byte.pointer()),
-                Symbol::new(Identifier::from("Length"), Type::NativeInt),
-            ],
-        });
-
         Scope::new()
             .with_local_namespace("System")
             /* standard primitives */
-            .with_type(Identifier::from("System.Byte"), Type::Byte)
-//            .with_type(Identifier::from("System.Int16"), DeclaredType::Int16)
-//            .with_type(Identifier::from("System.UInt16"), DeclaredType::UInt16)
-            .with_type(Identifier::from("System.Int32"), Type::Int32)
-            .with_type(Identifier::from("System.UInt32"), Type::UInt32)
-            .with_type(Identifier::from("System.Int64"), Type::Int64)
-            .with_type(Identifier::from("System.UInt64"), Type::UInt64)
-            .with_type(Identifier::from("System.NativeInt"), Type::NativeInt)
-            .with_type(Identifier::from("System.NativeUInt"), Type::NativeUInt)
-            .with_type(Identifier::from("System.Pointer"), Type::RawPointer)
-            .with_type(Identifier::from("System.Boolean"), Type::Boolean)
-
-            /* these decls need to be built in to support string concatenation sugar */
-            .with_type(Identifier::from("System.String"), string_type.clone())
-            .with_symbol_absolute(Identifier::from("System.StringConcat"),
-                                  Type::from(FunctionSignature {
-                                      name: Identifier::from("StringConcat"),
-                                      arg_types: vec![string_type.clone(), string_type.clone()],
-                                      return_type: Some(string_type.clone()),
-                                  }))
+            .with_alias(Identifier::from("System.Byte"), Type::Byte)
+//            .with_alias(Identifier::from("System.Int16"), DeclaredType::Int16)
+//            .with_alias(Identifier::from("System.UInt16"), DeclaredType::UInt16)
+            .with_alias(Identifier::from("System.Int32"), Type::Int32)
+            .with_alias(Identifier::from("System.UInt32"), Type::UInt32)
+            .with_alias(Identifier::from("System.Int64"), Type::Int64)
+            .with_alias(Identifier::from("System.UInt64"), Type::UInt64)
+            .with_alias(Identifier::from("System.NativeInt"), Type::NativeInt)
+            .with_alias(Identifier::from("System.NativeUInt"), Type::NativeUInt)
+            .with_alias(Identifier::from("System.Pointer"), Type::RawPointer)
+            .with_alias(Identifier::from("System.Boolean"), Type::Boolean)
     }
 
     pub fn qualify_local_name(&self, name: &str) -> Identifier {
@@ -208,8 +179,25 @@ impl Scope {
         }
     }
 
-    pub fn with_type(mut self, name: Identifier, named_type: Type) -> Self {
-        self.names.insert(name, Named::Type(named_type));
+    pub fn with_alias(mut self, name: Identifier, named_type: Type) -> Self {
+        self.names.insert(name, Named::Alias(named_type));
+        self
+    }
+
+    pub fn with_function(mut self, name: Identifier, decl: FunctionDecl) -> Self {
+        self.names.insert(name, Named::Function(decl));
+        self
+    }
+
+    pub fn with_class(mut self, name: Identifier, decl: RecordDecl) -> Self {
+        assert_eq!(RecordKind::Class, decl.kind);
+        self.names.insert(name, Named::Class(decl));
+        self
+    }
+
+    pub fn with_record(mut self, name: Identifier, decl: RecordDecl) -> Self {
+        assert_eq!(RecordKind::Record, decl.kind);
+        self.names.insert(name, Named::Record(decl));
         self
     }
 
@@ -245,15 +233,6 @@ impl Scope {
         self
     }
 
-    pub fn with_vars_absolute<'a>(mut self,
-                                  vars: impl IntoIterator<Item=&'a VarDecl>)
-                                  -> Self {
-        for var in vars {
-            self = self.with_symbol_absolute(var.name.clone(), var.decl_type.clone());
-        }
-        self
-    }
-
     pub fn reference(mut self,
                      other: Scope,
                      ref_kind: UnitReferenceKind) -> Self {
@@ -269,11 +248,11 @@ impl Scope {
                         self.imported_names.insert(Identifier::from(imported_name),
                                                    name.clone());
                     }
-                },
+                }
 
                 UnitReferenceKind::Namespaced => {
                     //do nothing
-                },
+                }
             }
 
             self.names.insert(name, named);
@@ -310,6 +289,7 @@ impl Scope {
     }
 
     pub fn get_symbol(&self, name: &Identifier) -> Option<ScopedSymbol> {
+        /* todo: can this use find_named? */
         self.local_name.as_ref()
             .and_then(|local_name| {
                 let name_in_local_ns = local_name.append(name);
@@ -331,35 +311,53 @@ impl Scope {
             })
     }
 
-    fn get_type_global(&self, name: &Identifier) -> Option<Type> {
-        match self.names.get(&name) {
-            Some(Named::Type(result)) => Some(result.clone()),
-            _ => None
-        }
-    }
-
-    fn get_type_imported(&self, name: &Identifier) -> Option<Type> {
-        self.imported_names.get(name)
-            .and_then(|global_name| self.get_type_global(global_name))
-    }
-
-    fn find_base_type(&self, name: &Identifier) -> Option<Type> {
+    fn find_named(&self, name: &Identifier) -> Option<&Named> {
         self.local_name.as_ref()
             .and_then(|local_name| {
+                /* local name? */
                 let name_in_local_ns = local_name.append(name);
-
-                self.get_type_global(&name_in_local_ns)
+                self.names.get(&name_in_local_ns)
             })
             .or_else(|| {
-                self.get_type_imported(name)
+                /* name imported from another unit? */
+                let global_name = self.imported_names.get(name)?;
+                self.names.get(global_name)
             })
             .or_else(|| {
-                self.get_type_global(name)
+                /* fully-qualified global name? */
+                self.names.get(name)
             })
     }
+//
+//    fn get_type_imported(&self, name: &Identifier) -> Option<Type> {
+//        self.imported_names.get(name)
+//            .and_then(|global_name| self.get_type_global(global_name))
+//    }
+//
+//    fn find_base_type(&self, name: &Identifier) -> Option<Type> {
+//        self.local_name.as_ref()
+//            .and_then(|local_name| {
+//                let name_in_local_ns = local_name.append(name);
+//
+//                self.get_type_global(&name_in_local_ns)
+//            })
+//            .or_else(|| {
+//                self.get_type_imported(name)
+//            })
+//            .or_else(|| {
+//                self.get_type_global(name)
+//            })
+//    }
 
     pub fn get_type(&self, parsed_type: &TypeName) -> Option<Type> {
-        let mut result = self.find_base_type(&parsed_type.name)?;
+        let mut result = match self.find_named(&parsed_type.name)? {
+            Named::Class(class) => Type::Class(class.name.clone()),
+            Named::Record(record) => Type::Record(record.name.clone()),
+            Named::Alias(ty) => ty.clone(),
+
+            Named::Function(_) |
+            Named::Symbol(_) => return None,
+        };
 
         for _ in 0..parsed_type.indirection {
             result = result.pointer();
@@ -376,25 +374,122 @@ impl Scope {
         Some(result)
     }
 
+    pub fn get_function(&self, name: &Identifier) -> Option<&FunctionDecl> {
+        match self.find_named(name) {
+            Some(Named::Function(decl)) => Some(decl),
+            _ => None,
+        }
+    }
+
+    pub fn get_record(&self, name: &Identifier) -> Option<&RecordDecl> {
+        match self.find_named(name) {
+            Some(Named::Record(decl)) => {
+                assert_eq!(RecordKind::Record, decl.kind);
+                Some(decl)
+            }
+            _ => None,
+        }
+    }
+
     fn find_record_member(&self,
                           parent_id: &Identifier,
-                          child_name: &str) -> Option<ScopedSymbol> {
+                          member_name: &str) -> Option<ScopedSymbol> {
         let parent_sym = self.get_symbol(&parent_id)?;
 
         let record_decl = match parent_sym.decl_type() {
-            Type::Record(record_type) =>
-                Some(record_type),
+            Type::Record(name) => self.get_record(name),
+            Type::Class(name) => self.get_class(name),
 
-            Type::Pointer(ref ptr_to_record) if ptr_to_record.is_record() =>
-                Some(ptr_to_record.clone().unwrap_record()),
+            /* records and classes are auto-derefed, so consider pointers to records of any
+            indirection level */
+            Type::Pointer(ptr) => {
+                /* remove remaining levels of indirection */
+                match ptr.remove_indirection() {
+                    Type::Record(name) => self.get_record(name),
+                    Type::Class(name) => self.get_class(name),
+                    _ => None,
+                }
+            }
 
             _ => None
         }?;
 
+        let member = record_decl.members.iter()
+            .find(|m| m.name.to_string() == *member_name)
+            .unwrap();
+
         Some(ScopedSymbol::RecordMember {
             record_id: parent_id.clone(),
-            name: child_name.to_owned(),
-            record_type: record_decl,
+            name: member_name.to_owned(),
+            record_type: record_decl.name.clone(),
+            member_type: member.decl_type.clone(),
         })
+    }
+
+    pub fn get_class(&self, name: &Identifier) -> Option<&RecordDecl> {
+        match self.names.get(name) {
+            Some(Named::Class(decl)) => {
+                assert_eq!(RecordKind::Class, decl.kind);
+                Some(decl)
+            },
+            _ => None,
+        }
+    }
+
+    pub fn align_of(&self, ty: &Type) -> usize {
+        const WORD_SIZE: usize = size_of::<usize>();
+
+        let size = self.size_of(ty);
+        let mut align = 0;
+
+        while align < size {
+            align += WORD_SIZE
+        }
+        align
+    }
+
+    pub fn size_of(&self, ty: &Type) -> usize {
+        let record_size = |record: &RecordDecl| {
+            record.members.iter()
+                .map(|member| self.align_of(&member.decl_type))
+                .sum()
+        };
+
+        match ty {
+            Type::Nil |
+            Type::RawPointer |
+            Type::Pointer(_) |
+            Type::Function(_) |
+            Type::NativeInt |
+            Type::NativeUInt =>
+                size_of::<usize>() as usize,
+
+            Type::Int64 |
+            Type::UInt64 =>
+                8,
+
+            Type::UInt32 |
+            Type::Int32 =>
+                4,
+
+            Type::Byte =>
+                1,
+
+            Type::Boolean =>
+                1,
+
+            Type::Record(name) => {
+                let record_decl = self.get_record(name).expect("record type passed to size_of must exist");
+                record_size(record_decl)
+            }
+
+            Type::Class(name) => {
+                let class_decl = self.get_class(name).expect("class type passed to size_of must exist");
+                record_size(class_decl)
+            }
+
+            Type::Array(array) =>
+                array.total_elements() as usize * self.size_of(&array.element),
+        }
     }
 }

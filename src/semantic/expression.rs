@@ -264,21 +264,22 @@ fn annotate_ufcs(target: &Expression,
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
     match ufcs_function.decl_type() {
-        Type::Function(sig) => {
-            let first_arg = sig.arg_types.first()?;
+        Type::Function(name) => {
+            let sig = scope.get_function(name)?;
+            let first_arg = sig.args.decls.first()?;
 
-            if first_arg.remove_indirection() != target_type.remove_indirection() {
+            if first_arg.decl_type.remove_indirection() != target_type.remove_indirection() {
                 None
             } else {
                 /* match target arg expression indirection level to level of expected first arg,
                  taking the address or derefing the pointer as necessary */
-                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg);
+                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg.decl_type);
 
                 /* the target becomes the first arg */
                 let mut ufcs_args = vec![ufcs_target_arg];
                 ufcs_args.extend(args.iter().cloned());
 
-                let ufcs_target_expr = Expression::identifier(ufcs_function,
+                let ufcs_target_expr = Expression::identifier(ufcs_function.clone(),
                                                               target.context.clone());
 
                 Some(Expression::function_call(ufcs_target_expr, ufcs_args))
@@ -356,19 +357,25 @@ fn function_call_type(target: &Expression,
                       args: &Vec<Expression>,
                       context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
-    if let Some(Type::Function(ref sig)) = target_type {
-        if args.len() != sig.arg_types.len() {
-            Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
+    if let Some(Type::Function(func_name)) = &target_type {
+        let sig = match target.scope().get_function(&func_name) {
+            Some(sig) => sig,
+            None => return Err(SemanticError::invalid_function_type(target_type.clone(),
+                                                                    context.clone())),
+        };
+
+        if args.len() != sig.args.decls.len() {
+            Err(SemanticError::wrong_num_args(sig.clone(),
                                               args.len(),
                                               context.clone()))
         } else {
             for (arg_index, arg_expr) in args.iter().enumerate() {
                 arg_expr.expr_type()?;
 
-                let sig_type = sig.arg_types[arg_index].clone();
+                let sig_type = &sig.args.decls[arg_index].decl_type;
 
                 expect_valid_operation(operators::Assignment,
-                                       Some(&sig_type),
+                                       Some(sig_type),
                                        &arg_expr,
                                        &arg_expr.context)?;
             }
@@ -376,8 +383,7 @@ fn function_call_type(target: &Expression,
             Ok(sig.return_type.clone())
         }
     } else {
-        Err(SemanticError::invalid_function_type(target_type,
-                                                 context.clone()))
+        Err(SemanticError::invalid_function_type(target_type.clone(), context.clone()))
     }
 }
 
@@ -474,8 +480,15 @@ fn member_type(of: &Expression,
     let base_type = of.expr_type()?
         .map(|dt| dt.remove_indirection().clone());
 
-    match base_type {
-        Some(Type::Record(ref record)) => {
+    /* treat records and classes the same for this purpose */
+    let base_decl = match &base_type {
+        Some(Type::Record(name)) => of.scope().get_record(name),
+        Some(Type::Class(name)) => of.scope().get_class(name),
+        _ => None,
+    };
+
+    match base_decl {
+        Some(record) => {
             match record.get_member(name) {
                 Some(member) =>
                     Ok(Some(member.decl_type.clone())),
@@ -486,9 +499,9 @@ fn member_type(of: &Expression,
             }
         }
 
-        bad @ _ => {
-            Err(SemanticError::member_of_non_record(bad,
-                                                    name.to_owned(),
+        _ => {
+            Err(SemanticError::member_of_non_record(base_type.clone(),
+                                                    name.to_string(),
                                                     of.context.clone()))
         }
     }
@@ -591,15 +604,7 @@ impl Expression {
                 prefix_op_type(*op, rhs, &self.context),
 
             &node::ExpressionValue::LiteralString(_) => {
-                //todo: forward class decl or typename ref or something
-                Ok(Some(Type::Record(types::DeclaredRecord {
-                    name: Identifier::from("System.String"),
-                    kind: types::RecordKind::Class,
-                    members: vec![
-                        types::Symbol::new(Identifier::from("Chars"), Type::Byte.pointer()),
-                        types::Symbol::new(Identifier::from("Length"), Type::NativeInt),
-                    ],
-                })))
+                Ok(Some(Type::Record(Identifier::from("System.String"))))
             }
 
             &node::ExpressionValue::LiteralInteger(int_const) =>
@@ -649,17 +654,31 @@ impl Expression {
         Ok(())
     }
 
-    pub fn class_type(&self) -> SemanticResult<Option<types::DeclaredRecord>> {
+    pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
-            Some(Type::Record(decl)) => {
-                if decl.kind == types::RecordKind::Class {
-                    Ok(Some(decl))
-                } else {
-                    Ok(None)
-                }
+            Some(Type::Record(name)) => {
+                let class_decl = self.context.scope.get_class(&name)
+                    .expect("record must exist in scope of expression it's used in");
+
+                Ok(Some(class_decl))
             }
             _ => Ok(None),
         }
+    }
+
+    pub fn function_type(&self) -> SemanticResult<Option<&FunctionDecl>> {
+        match self.expr_type()? {
+            Some(Type::Function(name)) => {
+                let function = self.context.scope.get_function(&name)
+                    .expect("function must exist in scope of expression it's used in");
+                Ok(Some(function))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
     }
 }
 
@@ -712,7 +731,7 @@ pub(crate) mod test {
         let test_func_name = Identifier::from("System.TestAdd");
 
         let scope = Scope::default()
-            .with_symbol_absolute(test_func_name.clone(),
+            .with_symbol_local(test_func_name.clone(),
                                   Type::Function(Box::from(FunctionSignature {
                                       name: test_func_name.clone(),
                                       return_type: Some(Type::Int64),

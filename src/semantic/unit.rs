@@ -1,5 +1,5 @@
 use std::rc::Rc;
-use node;
+use node::{self, RecordKind};
 use syntax;
 use semantic::*;
 
@@ -21,14 +21,20 @@ impl Unit {
                     let type_decl = TypeDecl::annotate(parsed_type_decl, Rc::new(scope.clone()))?;
                     match &type_decl {
                         node::TypeDecl::Record(record_decl) => {
-                            scope = scope.with_type(record_decl.name.clone(),
-                                                    record_decl.record_type());
+                            scope = match record_decl.kind {
+                                RecordKind::Record => {
+                                    scope.with_record(record_decl.name.clone(), record_decl.clone())
+                                },
+                                RecordKind::Class => {
+                                    scope.with_class(record_decl.name.clone(), record_decl.clone())
+                                },
+                            }
                         }
 
                         node::TypeDecl::Alias { alias, of, .. } => {
                             let alias_name = node::Identifier::from(alias);
 
-                            scope = scope.with_type(alias_name, of.clone());
+                            scope = scope.with_alias(alias_name, of.clone());
                         }
                     }
 
@@ -38,8 +44,7 @@ impl Unit {
                 node::UnitDeclaration::Function(parsed_func) => {
                     let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
 
-                    scope = scope.with_symbol_absolute(func_decl.name.clone(),
-                                                       func_decl.signature_type());
+                    scope = scope.with_function(func_decl.name.clone(), func_decl.clone());
 
                     func_decl.type_check()?;
 
@@ -51,7 +56,7 @@ impl Unit {
                                               Rc::new(scope.clone()),
                                               SemanticVarsKind::Namespaced)?;
 
-                    scope = scope.with_vars_absolute(vars.decls.iter());
+                    scope = scope.with_vars_local(vars.decls.iter());
 
                     result.push(node::UnitDeclaration::Vars(vars))
                 }

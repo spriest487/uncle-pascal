@@ -1,7 +1,6 @@
 use syntax::*;
-use node::{self, Identifier};
+use node::{self, Identifier, RecordKind};
 use keywords;
-use types::RecordKind;
 use tokens::{self, AsToken};
 use operators;
 

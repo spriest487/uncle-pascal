@@ -7,25 +7,25 @@ use std::{
 use operators;
 use semantic::{
     self,
-    ProgramModule};
+    ProgramModule,
+    Scope,
+};
 use node::{
     self,
     ExpressionValue,
     Identifier,
     FunctionKind,
+    RecordKind,
     UnitDeclaration,
 };
 use types::{
-    DeclaredRecord,
     Type,
-    RecordKind,
-    FunctionSignature,
     Symbol,
 };
 use self::module_globals::ModuleGlobals;
 use super::{HEADER, RT};
 
-pub fn type_to_c(pascal_type: &Type) -> String {
+pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
     match pascal_type {
         Type::Nil => panic!("cannot output `nil` as a type in C"),
         Type::Byte => "System_Byte".to_owned(),
@@ -38,29 +38,37 @@ pub fn type_to_c(pascal_type: &Type) -> String {
         Type::Boolean => "System_Boolean".to_owned(),
         Type::RawPointer => "System_Pointer".to_owned(),
         Type::Pointer(target) => {
-            let target_c = type_to_c(target.as_ref());
+            let target_c = type_to_c(target.as_ref(), scope);
             format!("{}*", target_c)
         }
-        Type::Function(sig) => {
-            let name = sig.name.clone(); //TODO: should be identifier
-            let return_type = sig.return_type.as_ref().map(type_to_c)
+        Type::Function(name) => {
+            let sig = scope.get_function(name)
+                .expect("reference type must exist");
+            let return_type = sig.return_type.as_ref()
+                .map(|ty| type_to_c(ty, scope))
                 .unwrap_or_else(|| "void".to_owned());
-            let arg_types = sig.arg_types.iter()
-                .map(type_to_c)
+            let arg_types = sig.args.decls.iter()
+                .map(|arg| type_to_c(&arg.decl_type, scope))
                 .collect::<Vec<_>>()
                 .join(", ");
 
             format!("({} (*{})({}))", return_type, name, arg_types)
         }
-        Type::Record(decl) => {
-            match decl.kind {
-                RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
-                RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
-            }
+        Type::Class(name) => {
+            let class = scope.get_class(name)
+                .expect("referenced class must exist");
+
+            format!("{}*", identifier_to_c(&class.name))
+        }
+        Type::Record(name) => {
+            let record = scope.get_record(name)
+                .expect("referenced record must exist");
+
+            format!("{}", identifier_to_c(&record.name))
         }
 
         Type::Array(array) => {
-            let element_name = type_to_c(array.element.as_ref());
+            let element_name = type_to_c(array.element.as_ref(), scope);
             let element_count = array.total_elements();
 
             format!("System_Internal_Array<{}[{}]>", element_name, element_count)
@@ -193,13 +201,13 @@ pub fn write_expr(out: &mut String,
         ExpressionValue::LetBinding { name, value } => {
             let value_type = value.expr_type().unwrap().unwrap();
 
-            write!(out, "{} {} =", type_to_c(&value_type), name)?;
+            write!(out, "{} {} =", type_to_c(&value_type, expr.scope()), name)?;
 
             write_expr(out, value, globals)
         }
 
         ExpressionValue::LiteralInteger(i) => {
-            write!(out, "(({}) {})", type_to_c(&Type::Int64), i)
+            write!(out, "(({}) {})", type_to_c(&Type::Int64, expr.scope()), i)
         }
 
         ExpressionValue::LiteralString(s) => {
@@ -281,14 +289,11 @@ pub fn write_expr(out: &mut String,
                 write!(member_out, ")")?;
             }
 
-            match &of_type {
-                Type::Record(decl) if decl.kind == RecordKind::Class => {
-                    write!(member_out, "->{}", name)?;
-                }
-                _ => {
-                    write!(member_out, ".{}", name)?;
-                }
-            };
+            if of_type.is_class() {
+                write!(member_out, "->{}", name)?;
+            } else {
+                write!(member_out, ".{}", name)?;
+            }
 
             out.write_str(&member_out)
         }
@@ -313,10 +318,8 @@ pub fn write_block(out: &mut String,
     // release all references
     for stmt in block.statements.iter() {
         if let ExpressionValue::LetBinding { name, value } = &stmt.value {
-            if let Type::Record(decl) = value.expr_type().unwrap().unwrap() {
-                if decl.kind == RecordKind::Class {
-                    writeln!(out, "System_Internal_Rc_Release({});", name)?;
-                }
+            if value.expr_type().unwrap().unwrap().is_class() {
+                writeln!(out, "System_Internal_Rc_Release({});", name)?;
             }
         }
     }
@@ -336,7 +339,7 @@ fn write_statement(out: &mut String,
             let binding_type: Type = value.expr_type()
                 .expect("let binding target must be a valid type")
                 .expect("let binding type must not be None");
-            writeln!(out, "{} {};", type_to_c(&binding_type), name)?;
+            writeln!(out, "{} {};", type_to_c(&binding_type, value.scope()), name)?;
 
             let binding_id = Identifier::from(&name);
             default_initialize(out, &Symbol {
@@ -371,17 +374,13 @@ fn write_statement(out: &mut String,
         };
 
         // calling a function...
-        let call_sig: FunctionSignature = match call_target.expr_type() {
-            Ok(Some(Type::Function(sig))) => *sig,
-            _ => return subexpr,
-        };
+        let call_func = call_target.function_type()
+            .expect("called function must have a valid type")
+            .expect("called function target must be of function type");
 
         // returning an instance of an rc class..
-        let class_decl = match call_sig.return_type {
-            Some(Type::Record(
-                     class_decl @ DeclaredRecord { kind: RecordKind::Class, .. })) =>
-                class_decl,
-
+        let class_type = match &call_func.return_type {
+            Some(Type::Class(class_name)) => Type::Class(class_name.clone()),
             _ => return subexpr,
         };
 
@@ -390,7 +389,7 @@ fn write_statement(out: &mut String,
 
         let binding_sym = semantic::ScopedSymbol::Local {
             name: Identifier::from(&name),
-            decl_type: Type::Record(class_decl),
+            decl_type: class_type.clone(),
         };
         let binding_context = subexpr.context.clone();
 
@@ -404,9 +403,10 @@ fn write_statement(out: &mut String,
         writeln!(out, "{{")?;
 
         for (tmp_name, tmp_val) in bindings.iter() {
-            let val_c_type = type_to_c(&tmp_val.expr_type()
+            let tmp_type = tmp_val.expr_type()
                 .expect("temporary rc values should always be valid types")
-                .expect("temproary rc values should never have no type"));
+                .expect("temproary rc values should never have no type");
+            let val_c_type = type_to_c(&tmp_type, tmp_val.scope());
 
             write!(out, "{} {} =", val_c_type, tmp_name)?;
             write_expr(out, tmp_val, globals)?;
@@ -465,7 +465,7 @@ pub fn write_vars(out: &mut String, vars: &semantic::Vars) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
             writeln!(out, "{} {};",
-                     type_to_c(&decl.decl_type),
+                     type_to_c(&decl.decl_type, decl.scope()),
                      identifier_to_c(&decl.name))
         })
         .collect()
@@ -475,11 +475,8 @@ pub fn release_vars<'a>(out: &mut String,
                         vars: impl IntoIterator<Item=&'a semantic::VarDecl>)
                         -> fmt::Result {
     for decl in vars {
-        match &decl.decl_type {
-            Type::Record(record) if record.kind == RecordKind::Class => {
-                writeln!(out, "System_Internal_Rc_Release({});", decl.name)?;
-            }
-            _ => {}
+        if decl.decl_type.is_class() {
+            writeln!(out, "System_Internal_Rc_Release({});", decl.name)?;
         }
     }
 
@@ -509,7 +506,7 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
 
     for member in record_decl.members.iter() {
         writeln!(out, "{} {};",
-                 type_to_c(&member.decl_type),
+                 type_to_c(&member.decl_type, record_decl.scope()),
                  identifier_to_c(&member.name))?;
     }
     writeln!(out, "}};")?;
@@ -521,14 +518,14 @@ pub fn write_function(out: &mut String,
                       globals: &mut ModuleGlobals)
                       -> fmt::Result {
     let return_type_c = function.return_type.as_ref()
-        .map(type_to_c);
+        .map(|return_type| type_to_c(return_type, function.scope()));
 
     write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
     write!(out, "{} ", identifier_to_c(&function.name))?;
 
     write!(out, "({})", function.args.decls.iter()
         .map(|arg_decl| {
-            format!("{} {}", type_to_c(&arg_decl.decl_type),
+            format!("{} {}", type_to_c(&arg_decl.decl_type, arg_decl.scope()),
                     identifier_to_c(&arg_decl.name))
         })
         .collect::<Vec<_>>()
@@ -546,8 +543,8 @@ pub fn write_function(out: &mut String,
             if function.kind == FunctionKind::Constructor {
                 //the actual return type is an Rc, but we need to pass the class type to sizeof
                 let constructed_class_c_name = match function.return_type.as_ref().unwrap() {
-                    Type::Record(decl) if decl.kind == RecordKind::Class => {
-                        identifier_to_c(&decl.name)
+                    Type::Class(name) => {
+                        identifier_to_c(&name)
                     }
                     _ => panic!("constructor must return a class type"),
                 };
@@ -560,10 +557,8 @@ pub fn write_function(out: &mut String,
 
             let rc_args: Vec<_> = function.args.decls.iter()
                 .filter_map(|arg| {
-                    if let Type::Record(record) = &arg.decl_type {
-                        if record.kind == RecordKind::Class {
-                            return Some(arg);
-                        }
+                    if let Type::Class(_) = &arg.decl_type {
+                        return Some(arg);
                     }
                     None
                 }).collect();

@@ -6,7 +6,6 @@ pub mod to_source;
 use std::fmt;
 
 use source;
-use types::RecordKind;
 pub use self::type_name::{TypeName, IndexRange};
 pub use self::identifier::*;
 pub use self::expression::*;
@@ -145,6 +144,12 @@ pub enum TypeDecl<TSymbol, TContext>
     },
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum RecordKind {
+    Record,
+    Class,
+}
+
 #[derive(Clone, Debug)]
 pub struct RecordDecl<TSymbol, TContext>
     where TSymbol: Symbol,
@@ -155,6 +160,16 @@ pub struct RecordDecl<TSymbol, TContext>
 
     pub context: TContext,
     pub members: Vec<VarDecl<TSymbol, TContext>>,
+}
+
+impl<TSymbol, TContext> RecordDecl<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
+{
+    pub fn get_member(&self, name: &str) -> Option<&VarDecl<TSymbol, TContext>> {
+        self.members.iter()
+            .find(|member| member.name.to_string() == name)
+    }
 }
 
 #[derive(Clone, Debug)]

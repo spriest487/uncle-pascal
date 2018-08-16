@@ -2,7 +2,6 @@ use std::rc::Rc;
 use node;
 use semantic::*;
 use syntax;
-use types;
 
 pub type TypeDecl = node::TypeDecl<ScopedSymbol, SemanticContext>;
 pub type RecordDecl = node::RecordDecl<ScopedSymbol, SemanticContext>;
@@ -67,17 +66,7 @@ impl RecordDecl {
         }
     }
 
-    pub fn record_type(&self) -> types::Type {
-        let record = types::DeclaredRecord {
-            name: self.name.clone(),
-            kind: self.kind,
-            members: self.members.iter()
-                .map(|member| {
-                    types::Symbol::new(member.name.clone(), member.decl_type.clone())
-                })
-                .collect()
-        };
-
-        types::Type::Record(record)
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
     }
 }

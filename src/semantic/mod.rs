@@ -43,7 +43,7 @@ pub enum SemanticErrorKind {
     InvalidDestructorReturn(Type),
     InvalidDestructorArgs(Vec<Type>),
     WrongNumberOfArgs {
-        expected_sig: FunctionSignature,
+        expected_sig: FunctionDecl,
         actual: usize,
     },
     MemberAccessOfNonRecord(Option<Type>, String),
@@ -118,7 +118,7 @@ impl fmt::Display for SemanticErrorKind {
 
             &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
                 write!(f, "wrong number if arguments to function `{}`, expected {}, found {}",
-                       expected_sig.name, expected_sig.arg_types.len(), actual)
+                       expected_sig.name, expected_sig.args.decls.len(), actual)
             }
 
             &SemanticErrorKind::IllegalName(ref name) => {
@@ -205,7 +205,7 @@ impl SemanticError {
         }
     }
 
-    pub fn wrong_num_args(sig: FunctionSignature,
+    pub fn wrong_num_args(sig: FunctionDecl,
                           actual: usize,
                           context: SemanticContext) -> Self {
         SemanticError {
