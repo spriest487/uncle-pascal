@@ -1,6 +1,5 @@
 # TODO
 
-* make let-bindings constant
 * set literals
 * sets supporting ..
 * sets of numeric types
@@ -9,7 +8,6 @@
 * "uses" should be able to appear at any position in the decls
 * RC struct members on the stack
 * weak variables
-* casting
 * variable length arrays
 * Interfaces and interface methods
 * Reflection

@@ -398,8 +398,12 @@ pub fn write_expr(out: &mut String,
             write!(out, "{}", identifier_to_c(sym))
         }
 
-        ExpressionValue::ArrayElement { /*of, index_expr*/.. } => {
-            unimplemented!("array element access (c++ backend)")
+        ExpressionValue::ArrayElement { of, index_expr } => {
+            write!(out, "(")?;
+            write_expr(out, of, globals)?;
+            write!(out, "[")?;
+            write_expr(out, index_expr, globals)?;
+            write!(out, "])")
         }
 
         ExpressionValue::Member { of, name } => {

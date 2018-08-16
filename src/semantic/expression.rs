@@ -499,7 +499,7 @@ fn type_cast_type(target_type: &Type,
         // unsupported type of cast
         (from, to) => {
             Err(SemanticError::invalid_typecast(to.clone(), Some(from), context.clone()))
-        },
+        }
     }
 }
 
@@ -914,10 +914,39 @@ impl Expression {
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
-                let _of_type = of.expr_type()?;
-                let _index_type = index_expr.expr_type()?;
+                let check_index_type_is_isize = expect_valid_operation(
+                    operators::Assignment,
+                    Some(&Type::NativeInt),
+                    index_expr,
+                    &self.context);
 
-                unimplemented!("array element typechecking")
+                if check_index_type_is_isize.is_err() {
+                    return Err(SemanticError::invalid_array_index(index_expr.expr_type()?,
+                                                                  self.context.clone()));
+                }
+
+                match of.expr_type()? {
+                    Some(Type::Pointer(ptr_to)) => {
+                        Ok(Some(*ptr_to))
+                    }
+
+                    Some(Type::DynamicArray(dyn_array_type)) => {
+                        Ok(Some(*dyn_array_type.element))
+                    }
+
+                    Some(Type::Array(array_type)) => {
+                        match array_type.next_rank() {
+                            Some(next_array) => Ok(Some(Type::Array(next_array))),
+                            None => Ok(Some(*array_type.element))
+                        }
+                    }
+
+                    //pointers can also be dereferenced via indexing
+                    invalid @ _ => return Err(SemanticError::invalid_array_type(
+                        invalid,
+                        self.context.clone(),
+                    ))
+                }
             }
 
             ExpressionValue::SetConstructor(_members) => {

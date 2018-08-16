@@ -73,7 +73,7 @@ begin
     result.Length := len
 
     for let c = 0 to result.Length do
-        ^(result.Chars + c) := ^(bytes + c)
+        result.Chars[c] := bytes[c]
 end
 
 destructor DestroyString(string: String)
@@ -102,10 +102,10 @@ begin
         result.Chars := GetMem(result.Length);
 
         for let c = 0 to a.Length do
-            ^(result.Chars + c) := ^(a.Chars + c);
+            result.Chars[c] := a.Chars[c];
 
         for let c = 0 to b.Length do
-            ^(result.Chars + a.Length + c) := ^(b.Chars + c);
+            result.Chars[a.Length + c] := b.Chars[c];
     end;
 end
 
@@ -115,9 +115,9 @@ begin
         result := false
     else begin
         for let i = 0 to s.Length do
-            ^(bytes + i) := ^(s.Chars + i)
+            bytes[i] := s.Chars[i]
 
-        ^(bytes + s.Length) := #0
+        bytes[s.Length] := #0
         result := true
     end
 end

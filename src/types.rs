@@ -59,6 +59,23 @@ impl ArrayType {
             total * dim.elements()
         })
     }
+
+    pub fn next_rank(&self) -> Option<ArrayType> {
+        let mut next_dims = self.rest_dims.iter().cloned();
+
+        match next_dims.next() {
+            Some(next_dim) => {
+                Some(ArrayType {
+                    element: self.element.clone(),
+                    first_dim: next_dim,
+                    rest_dims: next_dims.collect(),
+
+                })
+            }
+
+            None => None
+        }
+    }
 }
 
 pub type FunctionSignature = node::FunctionSignature<Type>;

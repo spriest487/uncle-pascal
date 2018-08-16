@@ -53,6 +53,8 @@ pub enum SemanticErrorKind {
     InvalidDestructorReturn(Type),
     InvalidDestructorArgs(Vec<Type>),
     InvalidConstantValue(ExpressionValue<SemanticContext>),
+    InvalidArrayIndex(Option<Type>),
+    InvalidArrayType(Option<Type>),
     WrongNumberOfArgs {
         expected_sig: FunctionSignature,
         actual: usize,
@@ -208,6 +210,14 @@ impl fmt::Display for SemanticErrorKind {
                     .join(", ");
 
                 write!(f, "the operator {} cannot be applied to the argument types {}", op, args_list)
+            }
+
+            SemanticErrorKind::InvalidArrayType(actual) => {
+                write!(f, "type `{}` cannot be indexed as an array", Type::name(actual.as_ref()))
+            }
+
+            SemanticErrorKind::InvalidArrayIndex(actual) => {
+                write!(f, "type `{}` cannot be used as an array index", Type::name(actual.as_ref()))
             }
 
             SemanticErrorKind::TypeNotAssignable(t) => {
@@ -386,6 +396,24 @@ impl SemanticError {
                 args: args.into_iter().collect(),
             },
             context,
+        }
+    }
+
+    pub fn invalid_array_type(actual: impl Into<Option<Type>>,
+                              context: impl Into<SemanticContext>)
+                              -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidArrayType(actual.into()),
+            context: context.into()
+        }
+    }
+
+    pub fn invalid_array_index(actual: impl Into<Option<Type>>,
+                               context: impl Into<SemanticContext>)
+                               -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::InvalidArrayIndex(actual.into()),
+            context: context.into()
         }
     }
 
