@@ -29,7 +29,7 @@ use node::{
     Identifier,
     UnitReferenceKind,
     RecordKind,
-    ConstantExpression,
+    ConstExpression,
 };
 use consts::{
     EnumConstant,
@@ -71,7 +71,7 @@ enum Named {
     Record(RecordDecl),
     Class(RecordDecl),
     Function(NamedFunction),
-    Const(ConstantExpression),
+    Const(ConstExpression, Type),
     Enumeration(EnumerationDecl),
     Interface(Interface),
     Set(SetDecl),
@@ -290,14 +290,16 @@ impl Scope {
     }
 
     pub fn with_enumeration(mut self, decl: EnumerationDecl) -> Self {
+        let qualified_name = self.namespace_qualify(&decl.name);
+        let enum_type = Type::Enumeration(qualified_name.clone());
+
         for (ord, name) in decl.names.iter().enumerate() {
             let const_name = self.namespace_qualify(&decl.name);
             let enum_const = EnumConstant::new(ord as u64, name, const_name);
-            let val = ConstantExpression::Enum(enum_const);
-            self.names.insert(Identifier::from(name), Named::Const(val));
+            let val = node::ConstExpression::Enum(enum_const);
+            self.names.insert(Identifier::from(name), Named::Const(val, enum_type.clone()));
         }
 
-        let qualified_name = self.namespace_qualify(&decl.name);
         self.names.insert(qualified_name, Named::Enumeration(decl));
         self
     }
@@ -312,12 +314,14 @@ impl Scope {
         self.names.insert(qualified_name.clone(), Named::Set(decl.clone()));
 
         if let node::SetEnumeration::Inline(names) = &decl.enumeration {
+            let set_type = Type::Set(qualified_name.clone());
+
             for name in names.iter() {
                 let name_qualified = self.namespace_qualify(name);
                 let name_const = SetConstant::new(iter::once(name), qualified_name.clone());
-                let name_expr = ConstantExpression::Set(name_const);
+                let name_expr = node::ConstExpression::Set(name_const);
 
-                self.names.insert(name_qualified, Named::Const(name_expr));
+                self.names.insert(name_qualified, Named::Const(name_expr, set_type.clone()));
             }
         }
 
@@ -360,9 +364,11 @@ impl Scope {
         self
     }
 
-    pub fn with_const(mut self, name: &str, val: ConstantExpression) -> Self {
+    pub fn with_const(mut self, name: &str, val: ConstExpression, as_type: Option<Type>) -> Self {
         let name = self.namespace_qualify(name);
-        self.names.insert(name, Named::Const(val));
+        let val_type = as_type.unwrap_or_else(|| val.value_type());
+
+        self.names.insert(name, Named::Const(val, val_type));
         self
     }
 
@@ -542,7 +548,7 @@ impl Scope {
             => ty.clone(),
 
             | None
-            | Some((_, Named::Const(_)))
+            | Some((_, Named::Const(_, _)))
             | Some((_, Named::Function(_)))
             | Some((_, Named::Symbol(_)))
             => return None,
@@ -604,10 +610,10 @@ impl Scope {
         }
     }
 
-    pub fn get_const(&self, name: &Identifier) -> Option<(&Identifier, &ConstantExpression)> {
+    pub fn get_const(&self, name: &Identifier) -> Option<(&Identifier, &ConstExpression, &Type)> {
         match self.find_named(name) {
-            Some((id, Named::Const(const_expr))) => {
-                Some((id, const_expr))
+            Some((id, Named::Const(const_expr, val_type))) => {
+                Some((id, const_expr, val_type))
             }
             _ => None,
         }
@@ -854,7 +860,7 @@ impl fmt::Debug for Scope {
                 Named::Function(func) => functions.push((name, func)),
                 Named::Class(decl) => classes.push((name, decl)),
                 Named::Record(decl) => records.push((name, decl)),
-                Named::Const(val) => consts.push((name, val)),
+                Named::Const(val, _) => consts.push((name, val)),
                 Named::Enumeration(decl) => enums.push((name, decl)),
                 Named::Set(decl) => sets.push((name, decl)),
                 Named::Interface(iface) => interfaces.push((name, iface)),

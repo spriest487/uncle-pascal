@@ -16,19 +16,20 @@ fn fake_context() -> SemanticContext {
 
 #[test]
 fn resolves_consts_in_referenced_units() {
-    let const_val = ConstantExpression::Integer(IntConstant::from(3));
+    let const_val = node::ConstExpression::Integer(IntConstant::from(3));
 
     let imported = Scope::new_unit("NS1")
-        .with_const("CONST1", const_val.clone());
+        .with_const("CONST1", const_val.clone(), None);
 
     let scope = Scope::new_unit("NS2")
         .reference(&imported, UnitReferenceKind::Namespaced);
 
     let expected_id = Identifier::from("NS1.CONST1");
     match scope.get_const(&expected_id) {
-        Some((result_id, result_val)) => {
+        Some((result_id, result_val, result_type)) => {
             assert_eq!(expected_id, *result_id);
             assert_eq!(const_val, *result_val);
+            assert_eq!(Type::Int32, *result_type);
         }
         None => panic!("name {} must be found in scope {:?}", expected_id, scope)
     }

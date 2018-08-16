@@ -137,7 +137,7 @@ pub type ParseResult<TValue> = Result<TValue, ParseError>;
 pub(crate) mod test {
     use super::*;
     use opts::CompileOptions;
-    use node::{ ExpressionValue, ConstantExpression };
+    use node::{ExpressionValue, ConstExpression};
 
     pub fn try_parse<T>(src: &str) -> ParseResult<T>
         where T: Parse
@@ -162,7 +162,7 @@ pub(crate) mod test {
 
         let assert_is_const_dim = |dim_expr: &Expression, dim_val: i128| {
             match dim_expr.value {
-                ExpressionValue::Constant(ConstantExpression::Integer(int)) => {
+                ExpressionValue::Constant(ConstExpression::Integer(int)) => {
                     assert_eq!(dim_val, int.as_i128())
                 }
 

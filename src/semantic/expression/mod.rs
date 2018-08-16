@@ -21,12 +21,10 @@ use node::{
     Context,
     Identifier,
     ExpressionValue,
-    ConstantExpression,
+    ConstExpression,
 };
 use operators;
-use types::{
-    Type,
-};
+use types::Type;
 use consts::IntConstant;
 
 pub type Expression = node::Expression<SemanticContext>;
@@ -56,31 +54,31 @@ impl Expression {
                 bindings::annotate_let(binding, expr_context)
             }
 
-            ExpressionValue::Constant(ConstantExpression::String(s)) => {
+            ExpressionValue::Constant(node::ConstExpression::String(s)) => {
                 Ok((Expression::literal_string(s, expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Integer(i)) => {
+            ExpressionValue::Constant(node::ConstExpression::Integer(i)) => {
                 Ok((Expression::literal_int(*i, expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Nil) => {
+            ExpressionValue::Constant(node::ConstExpression::Nil) => {
                 Ok((Expression::literal_nil(expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Boolean(b)) => {
+            ExpressionValue::Constant(node::ConstExpression::Boolean(b)) => {
                 Ok((Expression::literal_bool(*b, expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Float(f)) => {
+            ExpressionValue::Constant(node::ConstExpression::Float(f)) => {
                 Ok((Expression::literal_float(*f, expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Enum(e)) => {
+            ExpressionValue::Constant(node::ConstExpression::Enum(e)) => {
                 Ok((Expression::literal_enumeration(e.clone(), expr_context), scope))
             }
 
-            ExpressionValue::Constant(ConstantExpression::Set(set_const)) => {
+            ExpressionValue::Constant(node::ConstExpression::Set(set_const)) => {
                 Ok((Expression::literal_set(set_const.clone(), expr_context), scope))
             }
 
@@ -257,26 +255,36 @@ impl Expression {
         self.context.scope.as_ref()
     }
 
-    pub fn into_const_expr(self) -> SemanticResult<Self> {
+    pub fn into_const_expr(self, as_type: Option<&Type>) -> SemanticResult<Self> {
         let const_value = self.to_const_value()?;
-
-        Ok(Expression {
-            context: self.context,
+        let const_expr = Expression {
+            context: self.context.clone(),
             value: ExpressionValue::Constant(const_value),
-        })
+        };
+
+        expect_valid_op(
+            operators::Assignment,
+            as_type,
+            &const_expr,
+            &self.context,
+        )?;
+
+        Ok(const_expr)
     }
 
-    pub fn to_const_value(&self) -> SemanticResult<ConstantExpression> {
+    pub fn to_const_value(&self) -> SemanticResult<ConstExpression> {
         match &self.value {
-            ExpressionValue::Constant(val) => {
-                Ok(val.clone())
-            }
+            ExpressionValue::Constant(val) =>
+                Ok(val.clone()),
 
             ExpressionValue::PrefixOperator { op, rhs } => {
                 let rhs_val = rhs.to_const_value()?;
                 match (*op, rhs_val) {
-                    (operators::Minus, ConstantExpression::Integer(rhs_int)) => {
-                        Ok(ConstantExpression::Integer(IntConstant::from(0) - rhs_int))
+                    (operators::Minus, node::ConstExpression::Integer(rhs_int)) => {
+                        let negated = node::ConstExpression::Integer(IntConstant::from(0) - rhs_int);
+
+                        Expression::const_value(negated, self.context.clone())
+                            .to_const_value()
                     }
 
                     (_, rhs_val) => {
@@ -287,50 +295,46 @@ impl Expression {
             }
 
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let lhs_val: ConstantExpression = lhs.to_const_value()?;
-                let rhs_val: ConstantExpression = rhs.to_const_value()?;
+                use operators::{Plus, Minus};
+
+                let lhs_val = lhs.to_const_value()?;
+                let rhs_val = rhs.to_const_value()?;
 
                 match (lhs_val, *op, rhs_val) {
                     /* const string concatenation */
-                    (
-                        ConstantExpression::String(lhs_str),
-                        operators::Plus,
-                        ConstantExpression::String(rhs_str)
-                    ) => {
-                        Ok(ConstantExpression::String(lhs_str + &rhs_str))
-                    }
+                    (ConstExpression::String(lhs_str), Plus, ConstExpression::String(rhs_str)) =>
+                        Ok(ConstExpression::String(lhs_str + &rhs_str)),
 
-                    /* const int + */
-                    (
-                        ConstantExpression::Integer(lhs_int),
-                        operators::Plus,
-                        ConstantExpression::Integer(rhs_int)
-                    ) => {
-                        Ok(ConstantExpression::Integer(lhs_int + rhs_int))
-                    }
+                    /* const int +/- */
+                    (ConstExpression::Integer(lhs_int), Plus, ConstExpression::Integer(rhs_int)) =>
+                        Ok(ConstExpression::Integer(lhs_int + rhs_int)),
+                    (ConstExpression::Integer(lhs_int), Minus, ConstExpression::Integer(rhs_int)) =>
+                        Ok(ConstExpression::Integer(lhs_int - rhs_int)),
 
-                    /* const int - */
-                    (
-                        ConstantExpression::Integer(lhs_int),
-                        operators::Minus,
-                        ConstantExpression::Integer(rhs_int)
-                    ) => {
-                        Ok(ConstantExpression::Integer(lhs_int - rhs_int))
-                    }
+                    /* float +/- */
+                    (ConstExpression::Float(lhs_flt), Plus, ConstExpression::Float(rhs_flt)) =>
+                        Ok(ConstExpression::Float(lhs_flt + rhs_flt)),
+                    (ConstExpression::Float(lhs_flt), Minus, ConstExpression::Float(rhs_flt)) =>
+                        Ok(ConstExpression::Float(lhs_flt - rhs_flt)),
 
+                    /* anything else is an error */
                     (lhs_val, _, rhs_val) => {
                         let operands = vec![
                             Some(lhs_val.value_type()),
                             Some(rhs_val.value_type()),
                         ];
-                        Err(SemanticError::invalid_operator(*op, operands, self.context.clone()))
+                        return Err(SemanticError::invalid_operator(
+                            *op,
+                            operands,
+                            self.context.clone(),
+                        ));
                     }
                 }
             }
 
             ExpressionValue::Identifier(name) => {
                 self.scope().get_const(name)
-                    .map(|(_const_id, const_val)| const_val.clone())
+                    .map(|(_const_id, const_val, _const_type)| const_val.clone())
                     .ok_or_else(|| {
                         SemanticError::invalid_const_value(self.clone())
                     })
@@ -370,7 +374,7 @@ fn annotate_identifier(name: &Identifier,
         }
     }
 
-    if let Some((_, const_val)) = context.scope.get_const(name) {
+    if let Some((_, const_val, _)) = context.scope.get_const(name) {
         return Ok(Expression::const_value(const_val.clone(), context.clone()));
     }
 

@@ -170,7 +170,7 @@ pub enum ExpressionValue<TContext>
         constant enum: `Apple`
         constant set: `[Apple, Banana]`. `[Apple..Pear, Cherry]`, `[]`
     */
-    Constant(ConstantExpression),
+    Constant(ConstExpression),
 
     /**
         a local or fully-qualified name
@@ -353,7 +353,7 @@ pub struct LetBinding<TContext>
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum ConstantExpression {
+pub enum ConstExpression {
     Integer(IntConstant),
     Float(FloatConstant),
     String(String),
@@ -363,14 +363,14 @@ pub enum ConstantExpression {
     Nil,
 }
 
-impl ConstantExpression {
+impl ConstExpression {
     pub fn value_type(&self) -> Type {
         match self {
-            ConstantExpression::String(_) => {
+            ConstExpression::String(_) => {
                 Type::Class(Identifier::from("System.String"))
             }
 
-            ConstantExpression::Integer(int_const) =>
+            ConstExpression::Integer(int_const) =>
                 match int_const {
                     IntConstant::Char(_) => Type::Byte,
                     IntConstant::I32(_) => Type::Int32,
@@ -379,36 +379,36 @@ impl ConstantExpression {
                     IntConstant::U64(_) => Type::UInt64,
                 },
 
-            ConstantExpression::Enum(enum_const) =>
+            ConstExpression::Enum(enum_const) =>
                 Type::Enumeration(enum_const.enumeration.clone()),
 
-            ConstantExpression::Float(float_const) =>
+            ConstExpression::Float(float_const) =>
                 match float_const {
                     FloatConstant::F64(_) => Type::Float64,
                 }
 
-            ConstantExpression::Boolean(_) =>
+            ConstExpression::Boolean(_) =>
                 Type::Boolean,
 
-            ConstantExpression::Set(set_const) =>
+            ConstExpression::Set(set_const) =>
                 Type::Set(set_const.set.clone()),
 
-            ConstantExpression::Nil =>
+            ConstExpression::Nil =>
                 Type::Nil,
         }
     }
 }
 
-impl fmt::Display for ConstantExpression {
+impl fmt::Display for ConstExpression {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ConstantExpression::Integer(int) => write!(f, "{}", int),
-            ConstantExpression::Float(float) => write!(f, "{}", float),
-            ConstantExpression::Nil => write!(f, "nil"),
-            ConstantExpression::Boolean(val) => write!(f, "{}", val),
-            ConstantExpression::Enum(enum_val) => write!(f, "{}", enum_val),
-            ConstantExpression::Set(set_val) => write!(f, "{}", set_val),
-            ConstantExpression::String(s) => write!(f, "'{}'", s),
+            ConstExpression::Integer(int) => write!(f, "{}", int),
+            ConstExpression::Float(float) => write!(f, "{}", float),
+            ConstExpression::Nil => write!(f, "nil"),
+            ConstExpression::Boolean(val) => write!(f, "{}", val),
+            ConstExpression::Enum(enum_val) => write!(f, "{}", enum_val),
+            ConstExpression::Set(set_val) => write!(f, "{}", set_val),
+            ConstExpression::String(s) => write!(f, "'{}'", s),
         }
     }
 }
@@ -472,22 +472,22 @@ impl<C> fmt::Display for ExpressionValue<C>
                 }
             }
 
-            ExpressionValue::Constant(ConstantExpression::Integer(i)) => write!(f, "{}", i),
-            ExpressionValue::Constant(ConstantExpression::Float(float)) => write!(f, "{}", float),
+            ExpressionValue::Constant(ConstExpression::Integer(i)) => write!(f, "{}", i),
+            ExpressionValue::Constant(ConstExpression::Float(float)) => write!(f, "{}", float),
 
-            ExpressionValue::Constant(ConstantExpression::String(s)) =>
+            ExpressionValue::Constant(ConstExpression::String(s)) =>
                 write!(f, "{}", tokens::LiteralString(s.clone())),
 
-            ExpressionValue::Constant(ConstantExpression::Boolean(b)) =>
+            ExpressionValue::Constant(ConstExpression::Boolean(b)) =>
                 write!(f, "{}", if *b { "true" } else { "false" }),
 
-            ExpressionValue::Constant(ConstantExpression::Nil) =>
+            ExpressionValue::Constant(ConstExpression::Nil) =>
                 f.write_str("nil"),
 
-            ExpressionValue::Constant(ConstantExpression::Enum(e)) =>
+            ExpressionValue::Constant(ConstExpression::Enum(e)) =>
                 write!(f, "{}", e.name),
 
-            ExpressionValue::Constant(ConstantExpression::Set(set)) =>
+            ExpressionValue::Constant(ConstExpression::Set(set)) =>
                 write!(f, "{}", set.set),
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
@@ -621,35 +621,35 @@ impl<TContext> Expression<TContext>
 
     pub fn literal_int(i: IntConstant, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstantExpression::Integer(i)),
+            value: ExpressionValue::Constant(ConstExpression::Integer(i)),
             context: context.into(),
         }
     }
 
     pub fn literal_float(f: FloatConstant, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstantExpression::Float(f)),
+            value: ExpressionValue::Constant(ConstExpression::Float(f)),
             context: context.into(),
         }
     }
 
     pub fn literal_enumeration(e: EnumConstant, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstantExpression::Enum(e)),
+            value: ExpressionValue::Constant(ConstExpression::Enum(e)),
             context: context.into(),
         }
     }
 
     pub fn literal_set(set_const: SetConstant, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstantExpression::Set(set_const)),
+            value: ExpressionValue::Constant(ConstExpression::Set(set_const)),
             context: context.into(),
         }
     }
 
     pub fn literal_string(s: &str, context: impl Into<TContext>) -> Self {
         Expression {
-            value: ExpressionValue::Constant(ConstantExpression::String(s.to_owned())),
+            value: ExpressionValue::Constant(ConstExpression::String(s.to_owned())),
             context: context.into(),
         }
     }
@@ -661,9 +661,11 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn const_value(const_val: ConstantExpression, context: impl Into<TContext>) -> Self {
+    pub fn const_value(const_val: impl Into<ConstExpression>,
+                       context: impl Into<TContext>)
+                       -> Self {
         Expression {
-            value: ExpressionValue::Constant(const_val),
+            value: ExpressionValue::Constant(const_val.into()),
             context: context.into(),
         }
     }
@@ -795,14 +797,14 @@ impl<TContext> Expression<TContext>
     pub fn literal_nil(context: impl Into<TContext>) -> Self {
         Expression {
             context: context.into(),
-            value: ExpressionValue::Constant(ConstantExpression::Nil),
+            value: ExpressionValue::Constant(ConstExpression::Nil),
         }
     }
 
     pub fn literal_bool(val: bool, context: impl Into<TContext>) -> Self {
         Expression {
             context: context.into(),
-            value: ExpressionValue::Constant(ConstantExpression::Boolean(val)),
+            value: ExpressionValue::Constant(ConstExpression::Boolean(val)),
         }
     }
 
@@ -843,28 +845,28 @@ impl<TContext> Expression<TContext>
 
     pub fn unwrap_literal_string(self) -> String {
         match self.value {
-            ExpressionValue::Constant(ConstantExpression::String(s)) => s,
+            ExpressionValue::Constant(ConstExpression::String(s)) => s,
             _ => panic!("called unwrap_literal_string on something other than a string literal expr")
         }
     }
 
     pub fn is_any_literal_string(&self) -> bool {
         match &self.value {
-            ExpressionValue::Constant(ConstantExpression::String(_)) => true,
+            ExpressionValue::Constant(ConstExpression::String(_)) => true,
             _ => false,
         }
     }
 
     pub fn is_literal_integer(&self, val: impl Into<IntConstant>) -> bool {
         match &self.value {
-            ExpressionValue::Constant(ConstantExpression::Integer(i)) => *i == val.into(),
+            ExpressionValue::Constant(ConstExpression::Integer(i)) => *i == val.into(),
             _ => false,
         }
     }
 
     pub fn is_any_literal_integer(&self) -> bool {
         match &self.value {
-            &ExpressionValue::Constant(ConstantExpression::Integer(_)) => true,
+            &ExpressionValue::Constant(ConstExpression::Integer(_)) => true,
             _ => false
         }
     }

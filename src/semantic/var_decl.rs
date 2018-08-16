@@ -25,7 +25,7 @@ impl VarDecl {
                     default_expr,
                     Some(&var_type),
                     scope.clone())?;
-                Some(default_val.into_const_expr()?)
+                Some(default_val.into_const_expr(Some(&var_type))?)
             }
             None => None,
         };

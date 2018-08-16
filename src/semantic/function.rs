@@ -51,7 +51,7 @@ impl FunctionDecl {
                             Some(&arg_type),
                             scope.clone(),
                         )?;
-                        Some(val.into_const_expr()?)
+                        Some(val.into_const_expr(Some(&arg_type))?)
                     }
                     None => None
                 };

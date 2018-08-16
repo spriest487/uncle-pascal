@@ -11,7 +11,7 @@ use semantic::{
 use node::{
     Identifier,
     ExpressionValue,
-    ConstantExpression,
+    ConstExpression,
 };
 use types::Type;
 use syntax;
@@ -210,7 +210,7 @@ pub fn expect_valid(operator: operators::Operator,
         (
             operators::Assignment,
             Some(lhs_type),
-            ExpressionValue::Constant(ConstantExpression::Integer(int))
+            ExpressionValue::Constant(ConstExpression::Integer(int))
         ) =>
             if let Some(u8_val) = int.as_u8() {
                 let assigning_u8_to_byte = *lhs_type == Type::Byte;

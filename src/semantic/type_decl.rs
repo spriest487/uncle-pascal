@@ -107,7 +107,7 @@ impl RecordVariantPart {
                     .collect::<SemanticResult<_>>()?;
 
                 Ok(RecordVariantCase {
-                    tag_value: tag_value.into_const_expr()?,
+                    tag_value: tag_value.into_const_expr(tag_type)?,
                     members,
                 })
             })

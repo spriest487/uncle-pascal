@@ -1,9 +1,6 @@
 # TODO
 
 ## urgent/in progress
-* Interfaces and interface methods
-* Disposable interface (get rid of destructors)
-* const decls should use the explicit type they're given
 * => function syntax
 * add Name node in C++ AST for renaming (--> remove pascal names from C++ output)
 * shadowing breaks initialization checks which are done by name

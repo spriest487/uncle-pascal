@@ -191,6 +191,22 @@ impl From<f64> for FloatConstant {
     }
 }
 
+impl Sub for FloatConstant {
+    type Output = FloatConstant;
+
+    fn sub(self, rhs: FloatConstant) -> FloatConstant {
+        FloatConstant::F64(self.as_f64() - rhs.as_f64())
+    }
+}
+
+impl Add for FloatConstant {
+    type Output = FloatConstant;
+
+    fn add(self, rhs: FloatConstant) -> FloatConstant {
+        FloatConstant::F64(self.as_f64() + rhs.as_f64())
+    }
+}
+
 impl fmt::Display for FloatConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

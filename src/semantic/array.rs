@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use syntax;
-use node::ConstantExpression;
+use node::ConstExpression;
 use types::Type;
 use semantic::{
     SemanticResult,
@@ -18,7 +18,7 @@ pub struct IndexRange {
 impl IndexRange {
     fn const_to_array_dim(expr: Expression) -> SemanticResult<i64> {
         match expr.to_const_value()? {
-            ConstantExpression::Integer(int) => {
+            ConstExpression::Integer(int) => {
                 match int.as_i64() {
                     Some(i) => Ok(i),
                     None => Err(SemanticError::invalid_const_value(expr.clone())),

@@ -3,14 +3,14 @@ use std::rc::Rc;
 use semantic::{
     Expression,
     Scope,
-    SemanticError,
     SemanticContext,
     SemanticResult,
+    SemanticError,
     expect_valid_op,
 };
 use syntax;
-use operators;
 use node::{self};
+use operators;
 
 pub type ConstDecl = node::ConstDecl<SemanticContext>;
 
@@ -36,7 +36,7 @@ impl ConstDecl {
         };
 
         let result_scope = scope.as_ref().clone()
-            .with_const(&decl.name, const_value);
+            .with_const(&decl.name, const_value, explicit_type);
 
         Ok(Rc::new(result_scope))
     }

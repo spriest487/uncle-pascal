@@ -21,7 +21,7 @@ use node::{
     Context,
     Identifier,
     ExpressionValue,
-    ConstantExpression,
+    ConstExpression,
     FunctionCall,
 };
 use types::Type;
@@ -560,7 +560,7 @@ impl Expression {
 
             ExpressionValue::Constant(const_expr) => {
                 match const_expr {
-                    ConstantExpression::Integer(i) => {
+                    ConstExpression::Integer(i) => {
                         let int_type = const_expr.value_type();
                         let cast_target = CType::translate(&int_type, expr.scope());
 
@@ -575,7 +575,7 @@ impl Expression {
                         Ok(Expression::cast(cast_target, cast_val, CastKind::Static))
                     }
 
-                    ConstantExpression::Enum(e) => {
+                    ConstExpression::Enum(e) => {
                         let enum_name = Name::user_type(&e.enumeration);
                         Ok(Expression::cast(
                             CType::Named(enum_name),
@@ -586,11 +586,11 @@ impl Expression {
                         ))
                     }
 
-                    ConstantExpression::Set(_set) => {
+                    ConstExpression::Set(_set) => {
                         unimplemented!("set literals (c++ backend)")
                     }
 
-                    ConstantExpression::Float(f) => {
+                    ConstExpression::Float(f) => {
                         let float_type = const_expr.value_type();
 
                         let cast_target = CType::translate(&float_type, expr.scope());
@@ -605,18 +605,18 @@ impl Expression {
                         ))
                     }
 
-                    ConstantExpression::String(s) => {
+                    ConstExpression::String(s) => {
                         Ok(Expression::Name(unit.string_literal_name(s)))
                     }
 
-                    ConstantExpression::Boolean(val) => {
+                    ConstExpression::Boolean(val) => {
                         match *val {
                             true => Ok(Expression::True),
                             false => Ok(Expression::False),
                         }
                     }
 
-                    ConstantExpression::Nil => {
+                    ConstExpression::Nil => {
                         Ok(Expression::Null)
                     }
                 }

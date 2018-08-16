@@ -45,8 +45,13 @@ struct System_Internal_Array {
     E Elements;
 };
 
+#ifdef _WIN32
 template<typename R, typename... Args>
 using System_Internal_Func_Stdcall = R (__stdcall *)(Args...);
+#else
+template<typename R, typename... Args>
+using System_Internal_Func_Stdcall = R (*)(Args...);
+#endif
 
 template<typename R, typename... Args>
 using System_Internal_Func_Cdecl = R (__cdecl *)(Args...);
