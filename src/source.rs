@@ -4,7 +4,7 @@ use std::fmt;
 use tokens::{self, AsToken};
 use node::ToSource;
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Location {
     pub file: Rc<String>,
 
@@ -31,6 +31,16 @@ impl Location {
         self.line > other.line ||
             (self.line == other.line && self.col >= other.col)
     }
+
+    pub fn gt(&self, other: &Location) -> bool {
+        self.line > other.line ||
+            (self.line == other.line && self.col > other.col)
+    }
+
+    pub fn le(&self, other: &Location) -> bool {
+        self.line < other.line ||
+            (self.line == other.line && self.col <= other.col)
+    }
 }
 
 impl fmt::Display for Location {
@@ -39,7 +49,7 @@ impl fmt::Display for Location {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Eq, PartialEq)]
 pub struct Token {
     pub token: Rc<tokens::Token>,
     pub location: Location,

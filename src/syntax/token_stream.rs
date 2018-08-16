@@ -99,6 +99,15 @@ impl TokenStream {
         }
     }
 
+    pub fn rewind(&mut self, rewind_from: TokenStream) {
+        self.context = rewind_from.context.clone();
+
+        let rewind_tokens: Vec<_> = rewind_from.collect();
+        for token in rewind_tokens.into_iter().rev() {
+            self.peeked.push_front(token);
+        }
+    }
+
     pub fn finish(mut self) -> ParseResult<()> {
         match self.next() {
             Some(unexpected) => {
@@ -616,5 +625,33 @@ mod test {
 
         assert_eq!(1, groups_match.groups.len());
         assert_eq!(4, groups_match.separators.len());
+    }
+
+    #[test]
+    fn rewind_retains_original_sequence() {
+        let sequence = tokens_to_source(vec![
+            tokens::LiteralInteger(1),
+            tokens::LiteralInteger(2),
+            tokens::LiteralInteger(3),
+            tokens::LiteralInteger(4),
+            tokens::LiteralInteger(5),
+        ]);
+
+        let mut tokens = TokenStream::from(sequence.clone());
+
+        let consumed = vec![
+            tokens.next().unwrap(),
+            tokens.next().unwrap(),
+            tokens.next().unwrap()
+        ];
+        tokens.peek_to_end();
+
+        assert_eq!(2, tokens.peeked.len());
+
+        tokens.rewind(TokenStream::from(consumed));
+        assert_eq!(5, tokens.peeked.len());
+
+        assert_eq!(&sequence[0], tokens.context());
+        assert_eq!(sequence, tokens.collect::<Vec<_>>());
     }
 }

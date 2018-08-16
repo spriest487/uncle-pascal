@@ -18,6 +18,7 @@ impl Block {
                     be on a different line */
                     if let Some(token_after) = tokens.peek() {
                         if token_after.location.line <= tokens.context().location.line {
+                            //panic!("last expr: {}, offending token: {}, current context: {}", expr.to_source(), token_after, tokens.context());
                             return Err(ParseError::UnexpectedToken(token_after.clone(), None));
                         }
                     }

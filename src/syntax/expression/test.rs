@@ -241,16 +241,22 @@ fn parses_namespaced_fn_call_with_prefix_operator_in_args() {
 
 #[test]
 fn parses_assignment_followed_by_prefix_operator() {
-    let (expr, mut remaining) = try_parse_expr(r"a := b
+    let mut tokens = TokenStream::tokenize("", r"a := b
         ^a")
         .unwrap();
 
-    assert!(expr.is_binary_op(operators::Assignment));
+    let expr = Expression::parse(&mut tokens).unwrap();
 
-    let next_expr = Expression::parse(&mut remaining)
+    assert!(expr.is_binary_op(operators::Assignment));
+    assert_eq!(Some(tokens::Operator(operators::Deref)),
+               tokens.peek().map(|head| head.as_token().clone()));
+
+    let next_expr = Expression::parse(&mut tokens)
         .unwrap();
 
-    assert!(next_expr.is_prefix_op(operators::Deref));
+    assert!(next_expr.is_prefix_op(operators::Deref),
+            "after parsing first expr, second expr should be ^a but was {}",
+            next_expr.to_source());
 }
 
 #[test]
