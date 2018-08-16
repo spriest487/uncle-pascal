@@ -21,6 +21,10 @@ pub enum PreprocessorError {
         filename: String,
         line: usize,
     },
+    UnterminatedCondition {
+        filename: String,
+        from_line: usize,
+    },
     IOError(io::Error),
 }
 
@@ -35,6 +39,9 @@ impl fmt::Display for PreprocessorError {
 
             PreprocessorError::UnexpectedEndIf { filename, line } =>
                 write!(f, "else or endif without matching ifdef or ifndef ({}:{})", filename, line),
+
+            PreprocessorError::UnterminatedCondition { filename, from_line } =>
+                write!(f, "unterminated conditional block ({}:{})", filename, from_line),
 
             PreprocessorError::IOError(err) =>
                 write!(f, "{}", err),
@@ -77,13 +84,13 @@ struct DirectiveParser {
 impl DirectiveParser {
     fn new() -> Self {
         Self {
-            define_pattern: Regex::new(r#"define\s+(\w+)"#).unwrap(),
-            undef_pattern: Regex::new(r#"undef\s+(\w+)"#).unwrap(),
-            ifdef_pattern: Regex::new(r#"ifdef\s+(\w+)"#).unwrap(),
-            ifndef_pattern: Regex::new(r#"ifndef\s+(\w+)"#).unwrap(),
-            endif_pattern: Regex::new(r#"endif"#).unwrap(),
-            else_pattern: Regex::new(r#"else"#).unwrap(),
-            elseif_pattern: Regex::new(r#"elseif\s+(\w+)"#).unwrap(),
+            define_pattern: Regex::new(r#"^define\s+(\w+)$"#).unwrap(),
+            undef_pattern: Regex::new(r#"^undef\s+(\w+)$"#).unwrap(),
+            ifdef_pattern: Regex::new(r#"^ifdef\s+(\w+)$"#).unwrap(),
+            ifndef_pattern: Regex::new(r#"^ifndef\s+(\w+)$"#).unwrap(),
+            endif_pattern: Regex::new("^endif$").unwrap(),
+            else_pattern: Regex::new("^else$").unwrap(),
+            elseif_pattern: Regex::new(r#"^elseif\s+(\w+)$"#).unwrap(),
         }
     }
 
@@ -118,10 +125,15 @@ impl DirectiveParser {
     }
 }
 
+struct SymbolCondition {
+    value: bool,
+    start_line: usize,
+}
+
 pub struct Preprocessor {
     directive_parser: DirectiveParser,
 
-    condition_stack: Vec<bool>,
+    condition_stack: Vec<SymbolCondition>,
 
     symbols: HashSet<String>,
 
@@ -154,9 +166,16 @@ impl Preprocessor {
     pub fn preprocess(mut self, source: impl Read) -> Result<String, PreprocessorError> {
         let read_buf = io::BufReader::new(source);
         for (line_num, line) in read_buf.lines().enumerate() {
-            self.current_line = line_num;
+            self.current_line = line_num + 1;
 
             self.process_line(line?)?;
+        }
+
+        if let Some(condition) = self.condition_stack.last() {
+            return Err(PreprocessorError::UnterminatedCondition {
+                from_line: condition.start_line,
+                filename: self.filename,
+            });
         }
 
         Ok(self.output)
@@ -194,15 +213,18 @@ impl Preprocessor {
     compilation flags in the current stack are true */
     fn condition_active(&self) -> bool {
         self.condition_stack.iter().fold(true, |active, symbol_condition| {
-            active && *symbol_condition
+            active && symbol_condition.value
         })
     }
 
     fn push_condition(&mut self, symbol: String, positive: bool) -> Result<(), PreprocessorError> {
-        self.condition_stack.push({
-            let has_symbol = self.symbols.contains(&symbol);
+        self.condition_stack.push(SymbolCondition {
+            value: {
+                let has_symbol = self.symbols.contains(&symbol);
 
-            if positive { has_symbol} else { !has_symbol }
+                if positive { has_symbol } else { !has_symbol }
+            },
+            start_line: self.current_line,
         });
 
         Ok(())
@@ -226,7 +248,7 @@ impl Preprocessor {
         /* skip 2 for `{$` and take 1 less for the closing `}` */
         let directive_name = self.comment_block.chars()
             .skip(2)
-            .take(self.comment_block.len() - 1)
+            .take(self.comment_block.len() - 3)
             .collect::<String>()
             .to_ascii_lowercase()
             .trim()
@@ -267,8 +289,8 @@ impl Preprocessor {
                         filename: self.filename.clone(),
                         line: self.current_line,
                     }),
-                    Some(value) => {
-                        *value = !*value;
+                    Some(condition) => {
+                        condition.value = !condition.value;
                         Ok(())
                     }
                 }
