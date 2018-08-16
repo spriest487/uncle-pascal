@@ -4,6 +4,7 @@ use std::{
 use node::{
     self,
     FunctionArgSignature,
+    FunctionArgModifier,
 };
 use syntax;
 use semantic::*;
@@ -191,9 +192,9 @@ impl Function {
         for arg in decl.args.iter() {
             let arg_type: Type = arg.decl_type.clone();
             let binding_kind = match arg.modifier {
-                Some(node::FunctionArgModifier::Const) => BindingKind::Immutable,
-                Some(node::FunctionArgModifier::Var) => BindingKind::Mutable,
-                Some(node::FunctionArgModifier::Out) => BindingKind::Uninitialized,
+                Some(FunctionArgModifier::Const) => BindingKind::Immutable,
+                Some(FunctionArgModifier::Var) => BindingKind::Mutable,
+                Some(FunctionArgModifier::Out) => BindingKind::Uninitialized,
                 None => BindingKind::Mutable,
             };
             local_scope = Rc::new(local_scope
@@ -217,11 +218,10 @@ impl Function {
 
         /* add a "result" var if this function returns something */
         if let Some(ref result_var_type) = &decl.return_type {
-            /* todo: we should be able to mark `result` as uninitialized! */
             local_scope = Rc::new(local_scope.as_ref().clone().with_binding(
                 RESULT_VAR_NAME,
                 result_var_type.clone(),
-                BindingKind::Mutable,
+                BindingKind::Uninitialized,
             ));
         }
 
@@ -232,13 +232,63 @@ impl Function {
             .map(|var| node::FunctionLocalDecl::Var(var)));
 
         /* we don't keep anything from the local scope after the function */
-        let (block, _) = Block::annotate(&function.block, local_scope)?;
+        let (block, after_block_scope) = Block::annotate(&function.block, local_scope)?;
 
-        Ok((Function {
+//        if decl.return_type.is_some() {
+//            let result = after_block_scope
+//                .get_symbol(&Identifier::from(RESULT_VAR_NAME))
+//                .unwrap();
+//
+//            if !result.initialized() {
+//                return Err(SemanticError::output_uninitialized(
+//                    RESULT_VAR_NAME,
+//                    block.context.clone()
+//                ));
+//            }
+//        }
+
+        let function = Function {
             decl,
             block,
             local_decls,
-        }, scope))
+        };
+
+        function.check_outputs_initialized(after_block_scope.as_ref())?;
+
+        Ok((function, scope))
+    }
+
+    fn check_outputs_initialized(&self, scope: &Scope) -> SemanticResult<()> {
+        let outputs = self.decl.args.iter()
+            // all `out` parameters
+            .filter_map(|arg| match arg.modifier {
+                | Some(FunctionArgModifier::Out)
+                => Some(arg.name.clone()),
+
+                | Some(_)
+                | None
+                => None,
+            });
+
+        // the `result` var, if present
+        let return_type = self.decl.return_type.as_ref()
+            .map(|_| RESULT_VAR_NAME.to_string());
+
+        for output_name in outputs.chain(return_type) {
+            /* todo: it's currently permitted to write a let binding with the same name
+            this would shadow the out var and break this check!! */
+            let out_var = scope.get_symbol(&Identifier::from(&output_name))
+                .unwrap();
+
+            if !out_var.initialized() {
+                return Err(SemanticError::output_uninitialized(
+                    output_name,
+                    self.block.context.clone()
+                ));
+            }
+        }
+
+        Ok(())
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
@@ -321,7 +371,9 @@ mod test {
     fn function_with_uninitialized_record_result_is_err() {
         let scope = Scope::new_root();
 
-        let record_decl: syntax::RecordDecl = try_parse_record("Point1D", "record x: Int32 end")
+        let record_decl: syntax::RecordDecl = try_parse_record(
+            "Point1D",
+            "record x: System.Int32 end")
             .unwrap();
         let (_, scope) = RecordDecl::annotate(&record_decl, Rc::new(scope))
             .unwrap();
@@ -335,7 +387,45 @@ mod test {
 
         match result {
             Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name), .. }) => {
-                assert_eq!("x", name);
+                assert_eq!("result", name);
+            }
+
+            _ => panic!("expected OutputUninitialized error, got {:?}", result)
+        }
+    }
+
+    #[test]
+    fn function_with_unassigned_out_is_err() {
+        let scope = Scope::new_root();
+        let result = try_parse_func_def(
+            r"function x(a: System.Int32; out b: System.Int32)
+            begin
+            end",
+            Rc::new(scope),
+        );
+
+        match result {
+            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name), .. }) => {
+                assert_eq!("b", name);
+            }
+
+            _ => panic!("expected OutputUninitialized error, got {:?}", result)
+        }
+    }
+
+    #[test]
+    fn function_with_multiple_unassigned_out_is_err() {
+        let scope = Scope::new_root();
+        let result = try_parse_func_def(
+            r"function x(out a: System.Int32; out b: System.Int32)
+            begin
+            end",
+            Rc::new(scope),
+        );
+
+        match result {
+            Err(SemanticError { kind: SemanticErrorKind::OutputUninitialized(name), .. }) => {
+                assert_eq!("a", name);
             }
 
             _ => panic!("expected OutputUninitialized error, got {:?}", result)

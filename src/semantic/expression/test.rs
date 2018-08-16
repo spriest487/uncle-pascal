@@ -15,31 +15,31 @@ use opts::CompileOptions;
 
 pub fn parse_expr(src: &str, scope: Rc<Scope>) -> (Expression, Rc<Scope>) {
     let tokens = tokenize("test", src, &CompileOptions::default())
-        .expect(&format!("test expr `{}` must not contain illegal tokens", src));
+        .unwrap();
 
     let mut stream = syntax::TokenStream::from(tokens);
 
     let parsed: syntax::Expression = stream.parse()
-        .expect(&format!("test expr `{}` must parse correctly", src));
+        .unwrap();
 
-    stream.finish().expect("expr must not contain trailing tokens");
+    stream.finish().unwrap();
 
     Expression::annotate(&parsed, None, scope)
-        .expect(&format!("test expr `{}` must have valid types", src))
+        .unwrap()
 }
 
 fn parse_func_decl(src: &str, scope: Rc<Scope>) -> FunctionDecl {
     let tokens = tokenize("test", src, &CompileOptions::default())
-        .expect(&format!("test decl `{}` must not contain illegal tokens", src));
+        .unwrap();
 
     let mut stream = syntax::TokenStream::from(tokens);
     let parsed: syntax::FunctionDecl = stream.parse()
-        .expect(&format!("test decl `{}` must parse correctly", src));
+        .unwrap();
 
     stream.finish().expect("expr must not contain trailing tokens");
 
     FunctionDecl::annotate(&parsed, scope)
-        .expect(&format!("test expr `{}` must have valid types", src))
+        .unwrap()
         .0
 }
 

@@ -1,5 +1,6 @@
 # TODO
 
+* shadowing breaks initialization checks which are done by name
 * remove pascal names from C++ output
 * Disposable interface (get rid of destructors)
 * const decls should use the explicit type they're given

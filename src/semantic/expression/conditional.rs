@@ -7,7 +7,8 @@ use semantic::{
     SemanticResult,
 };
 use super::{
-    ops::expect_comparable
+    ops::expect_comparable,
+    expect_initialized,
 };
 use syntax;
 
@@ -22,6 +23,7 @@ pub fn annotate(condition: &syntax::Expression,
         cond_type.as_ref(),
         context.scope.clone()
     )?;
+    expect_initialized(&cond_expr)?;
 
     let (then_expr, scope_after_then) = Expression::annotate(then_branch, None, scope_after_condition.clone())?;
     let (else_expr, scope_after_else) = match else_branch {

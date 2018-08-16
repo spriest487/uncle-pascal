@@ -90,6 +90,7 @@ pub fn annotate_call(target: &syntax::Expression,
     }
 
     let (target, scope) = Expression::annotate(target, None, scope)?;
+    expect_initialized(&target)?;
 
     /* ordinary function call */
     let sig = match target.expr_type()? {
@@ -210,7 +211,6 @@ fn annotate_ufcs(ufcs_call: UfcsCallSite,
         &ufcs_call.target.context,
         ufcs_call.scope_after_target
     )?;
-
 
     let mut ufcs_args = vec![ufcs_target_arg];
     ufcs_args.extend(typed_args.iter().cloned());

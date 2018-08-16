@@ -15,6 +15,7 @@ use node::{
 };
 use types::Type;
 use syntax;
+use super::expect_initialized;
 
 pub fn unary_type(op: operators::Operator,
                   rhs: &Expression,
@@ -93,6 +94,11 @@ pub fn annotate_binary(lhs: &syntax::Expression,
 
     let (rhs, lhs_scope) = Expression::annotate(rhs, rhs_assigned_type.as_ref(), context.scope.clone())?;
     let (lhs, scope_after) = Expression::annotate(lhs, None, lhs_scope)?;
+
+    expect_initialized(&rhs)?;
+    if op != operators::Assignment {
+        expect_initialized(&lhs)?;
+    }
 
     let scope_out = match (op, &lhs.value) {
         (operators::Assignment, ExpressionValue::Identifier(name)) =>

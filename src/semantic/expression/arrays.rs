@@ -9,7 +9,10 @@ use semantic::{
 };
 use types::Type;
 use operators;
-use super::ops;
+use super::{
+    ops,
+    expect_initialized,
+};
 
 pub fn annotate_element(of: &syntax::Expression,
                         index_expr: &syntax::Expression,
@@ -21,8 +24,11 @@ pub fn annotate_element(of: &syntax::Expression,
         index_expr, index_type.as_ref(),
         context.scope.clone(),
     )?;
+    expect_initialized(&index_expr)?;
 
     let (of, scope) = Expression::annotate(of, None, scope)?;
+
+    expect_initialized(&of)?;
 
     Ok((Expression::array_element(of, index_expr), scope))
 }

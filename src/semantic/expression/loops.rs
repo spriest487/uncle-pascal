@@ -11,7 +11,10 @@ use semantic::{
 };
 use types::Type;
 use node::ExpressionValue;
-use super::ops;
+use super::{
+    ops,
+    expect_initialized,
+};
 
 pub fn annotate_for(from: &syntax::Expression,
                     to: &syntax::Expression,
@@ -20,6 +23,7 @@ pub fn annotate_for(from: &syntax::Expression,
                     -> SemanticResult<(Expression, Rc<Scope>)> {
     let (from_expr, to_scope) = Expression::annotate(from, None, context.scope.clone())?;
     let (to_expr, body_scope) = Expression::annotate(to, None, to_scope.clone())?;
+    expect_initialized(&to_expr)?;
 
     /*  we don't use the resulting scope of the loop body, because the loop
         may run 0 times
@@ -40,10 +44,10 @@ pub fn annotate_for(from: &syntax::Expression,
     Ok((for_loop, scope_out))
 }
 
-pub fn annotate_if(from: &Expression,
-                   to: &Expression,
-                   body: &Expression,
-                   context: &SemanticContext) -> SemanticResult<()> {
+pub fn for_type(from: &Expression,
+                to: &Expression,
+                body: &Expression,
+                context: &SemanticContext) -> SemanticResult<()> {
     let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
 
@@ -58,6 +62,7 @@ pub fn annotate_if(from: &Expression,
 
             ops::expect_comparable(Some(&Type::Int32), lhs_type.as_ref(),
                                    context)?;
+
             Ok(())
         }
 
@@ -87,6 +92,8 @@ pub fn annotate_while(condition: &syntax::Expression,
         cond_type.as_ref(),
         context.scope.clone(),
     )?;
+
+    expect_initialized(&cond_expr)?;
 
     /* anything initialized or declared in the scope of the body is strictly
     confined to the body, because it may never execute */

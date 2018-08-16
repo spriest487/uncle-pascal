@@ -112,14 +112,17 @@ impl Expression {
                 Ok((op_expr, scope))
             }
 
-            ExpressionValue::FunctionCall { target, args } =>
-                function::annotate_call(target, args, expr_context),
+            ExpressionValue::FunctionCall { target, args } => {
+                function::annotate_call(target, args, expr_context)
+            }
 
             ExpressionValue::TypeCast { target_type, from_value } =>
                 annotate_type_cast(target_type, from_value, expr_context),
 
             ExpressionValue::Member { of, name } => {
                 let (typed_of, scope) = Expression::annotate(of, expected_type, scope)?;
+                expect_initialized(&typed_of)?;
+
                 Ok((Expression::member(typed_of, name), scope))
             }
 
@@ -192,7 +195,7 @@ impl Expression {
                     .map(|_| None),
 
             ExpressionValue::ForLoop { from, to, body } =>
-                loops::annotate_if(from.as_ref(), to.as_ref(), body.as_ref(), &self.context)
+                loops::for_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context)
                     .map(|_| None),
 
             ExpressionValue::While { condition, body } =>
@@ -342,28 +345,35 @@ impl Expression {
 fn annotate_identifier(name: &Identifier,
                        context: SemanticContext)
                        -> SemanticResult<Expression> {
-    context.scope.get_symbol(name)
-        .and_then(|symbol| match symbol {
+    if let Some(symbol) = context.scope.get_symbol(name) {
+        match symbol {
             /* transform identifiers that reference record members into
             record member expressions */
             ScopedSymbol::RecordMember { record_id, name, .. } => {
-                let base = Expression::identifier(record_id, context.clone());
+                /* do the transform using syntax ast nodes so we don't have
+                to duplicate any semantic checks the regular typechecking func
+                for ::Member does */
+                let base = syntax::Expression::identifier(record_id, context.token().clone());
+                let member = syntax::Expression::member(base, &name);
 
-                Some(Expression::member(base, &name))
+                /* it should be safe to ignore the result scope here? a simple
+                identifier can't initialize anything or introduce a new name */
+                let (member, _) = Expression::annotate(&member, None, context.scope.clone())?;
+
+                return Ok(member);
             }
 
             ScopedSymbol::Local { name, .. } => {
-                Some(Expression::identifier(name.clone(), context.clone()))
+                return Ok(Expression::identifier(name.clone(), context.clone()));
             }
-        })
-        .or_else(|| {
-            let (_, const_val) = context.scope.get_const(name)?;
+        }
+    }
 
-            Some(Expression::const_value(const_val.clone(), context.clone()))
-        })
-        .ok_or_else(|| {
-            SemanticError::unknown_symbol(name.clone(), context)
-        })
+    if let Some((_, const_val)) = context.scope.get_const(name) {
+        return Ok(Expression::const_value(const_val.clone(), context.clone()));
+    }
+
+    Err(SemanticError::unknown_symbol(name.clone(), context))
 }
 
 fn identifier_type(name: &Identifier,
@@ -407,6 +417,7 @@ fn annotate_type_cast(target_type: &node::TypeName,
         Some(&target_type),
         context.scope.clone(),
     )?;
+    expect_initialized(&from_value)?;
 
     let context = SemanticContext {
         token: context.token().clone(),
@@ -422,7 +433,7 @@ fn type_cast_type(target_type: &Type,
                   context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let from_expr_type = from_value.expr_type()?
         .ok_or_else(|| {
-            // expr has no type, can't cast it
+// expr has no type, can't cast it
             SemanticError::invalid_typecast(target_type.clone(), None, context.clone())
         })?;
 
@@ -435,7 +446,7 @@ fn type_cast_type(target_type: &Type,
 
         (ref from, to) if from.promotes_to(to) => Ok(Some(to.clone())),
 
-        // unsupported type of cast
+// unsupported type of cast
         (from, to) => {
             Err(SemanticError::invalid_typecast(to.clone(), Some(from), context.clone()))
         }
@@ -488,28 +499,26 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
 }
 
 fn expect_initialized(expr: &Expression) -> SemanticResult<()> {
-    node::try_visit_expressions(expr, &mut |each_expr| {
-        match &each_expr.value {
-            ExpressionValue::Identifier(name) => {
-                match expr.scope().get_symbol(name) {
-                    | Some(ScopedSymbol::RecordMember { binding_kind, .. })
-                    | Some(ScopedSymbol::Local { binding_kind, .. }) => {
-                        match binding_kind {
-                            BindingKind::Uninitialized => {
-                                let context = expr.context.clone();
-                                Err(SemanticError::uninitialized_symbol(name.clone(), context))
-                            }
-
-                            _ =>
-                                Ok(())
-                        }
-                    }
-
-                    _ => Err(SemanticError::unknown_symbol(name.clone(), expr.context.clone()))
-                }
+    /*
+        if the expression isn't an identifier, the only way it can fail this check
+        is if it references an uninitialized identifier somewhere inside itself, in
+        which case it's up to the typechecking code for that node type to call this
+        function and check that
+    */
+    if let ExpressionValue::Identifier(name) = &expr.value {
+        match expr.scope().get_symbol(name) {
+            | Some(ScopedSymbol::RecordMember { binding_kind: BindingKind::Uninitialized, .. })
+            | Some(ScopedSymbol::Local { binding_kind: BindingKind::Uninitialized, .. })
+            => {
+                let context = expr.context.clone();
+                Err(SemanticError::uninitialized_symbol(name.clone(), context))
             }
 
-            _ => Ok(())
+            | Some(_) => Ok(()),
+
+            | None => Err(SemanticError::unknown_symbol(name.clone(), expr.context.clone())),
         }
-    })
+    } else {
+        Ok(())
+    }
 }

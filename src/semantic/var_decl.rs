@@ -11,7 +11,7 @@ pub type VarDecl = node::VarDecl<SemanticContext>;
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl,
                     scope: Rc<Scope>,
-                    mut binding_kind: BindingKind)
+                    binding_kind: BindingKind)
                     -> SemanticResult<(Self, Rc<Scope>)> {
         let var_context = SemanticContext {
             scope: scope.clone(),
@@ -29,11 +29,6 @@ impl VarDecl {
             }
             None => None,
         };
-
-        // todo: we always default-initialize records right now, but we shouldn't
-        if var_type.is_record() {
-            binding_kind = BindingKind::Mutable;
-        }
 
         let new_scope = Rc::new(scope.as_ref().clone()
             .with_binding(&decl.name, var_type.clone(), binding_kind));

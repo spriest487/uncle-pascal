@@ -15,6 +15,7 @@ use semantic::{
     BindingKind,
 };
 use types::Type;
+use super::expect_initialized;
 
 pub type LetBinding = node::LetBinding<SemanticContext>;
 
@@ -31,6 +32,8 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
         explicit_type.as_ref(),
         context.scope.clone(),
     )?;
+
+    expect_initialized(&value)?;
 
     let bound_type: Type = value.expr_type()?
         .ok_or_else(|| {
