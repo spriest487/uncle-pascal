@@ -33,11 +33,11 @@ pub enum CompileError {
 impl fmt::Display for CompileError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &CompileError::TokenizeError(ref token) => write!(f, "{}", token),
-            &CompileError::ParseError(ref err) => write!(f, "{}", err),
-            &CompileError::SemanticError(ref err) => write!(f, "{}", err),
-            &CompileError::WriterError(ref err) => write!(f, "{}", err),
-            &CompileError::IOError(ref err) => write!(f, "{}", err),
+            &CompileError::TokenizeError(ref token) => write!(f, "failed to read file: {}", token),
+            &CompileError::ParseError(ref err) => write!(f, "syntax error: {}", err),
+            &CompileError::SemanticError(ref err) => write!(f, "semantic error: {}", err),
+            &CompileError::WriterError(ref err) => write!(f, "output error: {}", err),
+            &CompileError::IOError(ref err) => write!(f, "io error: {}", err),
         }
     }
 }
@@ -194,13 +194,13 @@ fn main() {
                     .and_then(|module| target_c::pas_to_c(&module, &out_file));
 
                 if let Err(err) = build_result {
-                    println!("error: {}", err);
+                    println!("{}", err);
                     std::process::exit(1);
                 }
             }
         }
         Err(err) => {
-            println!("error: {}", err);
+            println!("{}", err);
             print_usage(&program, opts);
 
             std::process::exit(1);

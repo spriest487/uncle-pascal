@@ -52,11 +52,11 @@ impl fmt::Display for SemanticErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &SemanticErrorKind::UnknownType(ref missing_type) => {
-                write!(f, "type not found: `{}`", missing_type)
+                write!(f, "`{}` not found", missing_type)
             }
 
             &SemanticErrorKind::UnknownSymbol(ref missing_sym) => {
-                write!(f, "symbol not found: `{}`", missing_sym)
+                write!(f, "symbol not found `{}`", missing_sym)
             }
 
             &SemanticErrorKind::MemberAccessOfNonRecord(ref actual, ref name) => {
@@ -113,7 +113,7 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             &SemanticErrorKind::IllegalName(ref name) => {
-                write!(f, "illegal name: `{}`", name)
+                write!(f, "illegal name `{}`", name)
             }
 
             &SemanticErrorKind::EmptyRecord(ref name) => {
@@ -135,7 +135,7 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
-                write!(f, "types cannot be compared: `{}` and `{}`",
+                write!(f, "`{}` cannot be used in comparison operations with `{}`",
                        DeclaredType::name(a.as_ref()),
                        DeclaredType::name(b.as_ref()))
             }
@@ -272,7 +272,7 @@ impl SemanticError {
 
 impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.context, self.kind)
+        write!(f, "{}\n  {}", self.context, self.kind)
     }
 }
 

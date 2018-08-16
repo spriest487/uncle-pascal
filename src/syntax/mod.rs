@@ -141,7 +141,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ParseError::UnexpectedToken(source_token, expected) => {
-                write!(f, "unexpected token: {}", source_token)?;
+                write!(f, "unexpected token {}", source_token)?;
 
                 expected.as_ref()
                     .map(|matcher| write!(f, " (expected: {})", matcher))
@@ -149,7 +149,7 @@ impl fmt::Display for ParseError {
             }
 
             ParseError::UnexpectedEOF(expected, context) =>
-                write!(f, "unexpected end of input: expected {} after {}", expected, context),
+                write!(f, "unexpected< end of input - expected {} after {}", expected, context),
 
             ParseError::EmptyOperand { operator, before } => {
                 let position = if *before { "before" } else { "after" };
