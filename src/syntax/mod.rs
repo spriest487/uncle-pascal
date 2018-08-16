@@ -139,6 +139,12 @@ mod test {
         let parsed = TypeName::parse(&mut tokens)
             .unwrap();
 
-        assert_eq!(parsed.array_dimensions, vec![IndexRange { from: 0,  to: 10 }]);
+        match parsed {
+            TypeName::DataType { array_dimensions, .. } =>
+                assert_eq!(array_dimensions, vec![IndexRange { from: 0,  to: 10 }]),
+
+            _ =>
+                panic!("wrong type")
+        }
     }
 }

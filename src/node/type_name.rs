@@ -1,4 +1,6 @@
-use std::fmt;
+use std::{
+    fmt,
+};
 
 use syntax::{
     TokenStream,
@@ -12,6 +14,7 @@ use syntax::{
 use node::{
     Identifier,
     ToSource,
+    FunctionModifier,
 };
 use tokens::{
     self,
@@ -46,6 +49,7 @@ pub enum TypeName {
     FunctionType {
         return_type: Option<Box<TypeName>>,
         arg_types: Vec<TypeName>,
+        modifiers: Vec<FunctionModifier>,
     },
 }
 
@@ -70,7 +74,7 @@ impl ToSource for TypeName {
                 result.push_str(&name.to_string())
             }
 
-            TypeName::FunctionType { return_type, arg_types } => {
+            TypeName::FunctionType { return_type, arg_types, modifiers } => {
                 if return_type.is_some() {
                     result.push_str("function");
                 } else {
@@ -85,6 +89,11 @@ impl ToSource for TypeName {
                 if let Some(ty) = return_type {
                     result.push_str(": ");
                     result.push_str(&ty.to_source());
+                }
+
+                for modifier in modifiers {
+                    result.push_str("; ");
+                    result.push_str(&modifier.to_source());
                 }
             }
         }
@@ -163,9 +172,12 @@ fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
         Some(Box::new(return_type))
     };
 
+    let modifiers = FunctionDecl::parse_modifiers(tokens)?;
+
     Ok(TypeName::FunctionType {
         return_type,
         arg_types,
+        modifiers,
     })
 }
 

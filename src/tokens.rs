@@ -1,6 +1,4 @@
-use std::{
-    fmt,
-};
+use std::fmt;
 
 use keywords;
 use operators;
@@ -50,6 +48,13 @@ pub trait AsToken: Clone + fmt::Debug + fmt::Display {
     fn is_any_keyword(&self) -> bool {
         match self.as_token() {
             &Token::Keyword(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_identifier(&self, id: &str) -> bool {
+        match self.as_token() {
+            Token::Identifier(token_id) => id == token_id,
             _ => false,
         }
     }

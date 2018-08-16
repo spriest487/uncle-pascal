@@ -84,6 +84,7 @@ impl FunctionDecl {
             context,
             kind: function.kind,
             return_type,
+            modifiers: function.modifiers.clone(),
             args,
             body,
         })
@@ -157,6 +158,7 @@ impl FunctionDecl {
                 .map(|decl| decl.decl_type.clone())
                 .collect(),
             return_type: self.return_type.clone(),
+            modifiers: self.modifiers.clone(),
         }
     }
 }

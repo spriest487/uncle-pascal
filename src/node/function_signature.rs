@@ -1,10 +1,36 @@
-use std::fmt;
-use node::ToSource;
+use std::{
+    fmt,
+};
+use node::{
+    ToSource,
+};
+
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+pub enum FunctionModifier {
+    Cdecl,
+    Stdcall,
+}
+
+impl ToSource for FunctionModifier {
+    fn to_source(&self) -> String {
+        match self {
+            FunctionModifier::Cdecl => "cdecl".to_string(),
+            FunctionModifier::Stdcall => "stdcall".to_string(),
+        }
+    }
+}
+
+impl fmt::Display for FunctionModifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.to_source())
+    }
+}
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct FunctionSignature<TType> {
     pub return_type: Option<TType>,
     pub arg_types: Vec<TType>,
+    pub modifiers: Vec<FunctionModifier>,
 }
 
 impl<TType> ToSource for FunctionSignature<TType>
@@ -28,6 +54,11 @@ impl<TType> ToSource for FunctionSignature<TType>
                 .collect::<Vec<_>>()
                 .join(";"));
             source.push(')');
+        }
+
+        for modifier in self.modifiers.iter() {
+            source.push_str("; ");
+            source.push_str(&modifier.to_source());
         }
 
         source

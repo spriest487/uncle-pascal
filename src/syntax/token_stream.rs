@@ -182,6 +182,41 @@ impl TokenStream {
         }
     }
 
+    pub fn match_sequence_peek(&mut self,
+                               sequence: impl Into<SequenceMatcher>)
+                               -> ParseResult<Option<Vec<source::Token>>> {
+        let mut sequence = sequence.into().into_iter();
+        let mut matches = Vec::new();
+
+        let mut peeked = PeekedTokenStream::new(self);
+
+        loop {
+            let seq_next_matcher = match sequence.next() {
+                Some(matcher) => matcher,
+                None => {
+                    /* reached end of sequence without incident */
+                    break Ok(Some(matches))
+                },
+            };
+
+            match peeked.next() {
+                Some(peeked_token) => {
+                    if seq_next_matcher.is_match(&peeked_token) {
+                        matches.push(peeked_token);
+                    } else {
+                        // no match
+                        break Ok(None)
+                    }
+                },
+                None => {
+                    println!("ran out of tokens @ {}", peeked.peek_pos);
+                    /* there are less tokens in the stream than in the sequence */
+                    break Ok(None);
+                }
+            };
+        }
+    }
+
     pub fn match_until(&mut self, until: impl Into<Matcher>) -> ParseResult<Vec<source::Token>> {
         let until = until.into();
         let mut result = Vec::new();
@@ -487,6 +522,37 @@ impl TokenStream {
 
 pub trait Parse where Self: Sized {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
+}
+
+pub struct PeekedTokenStream<'tokens> {
+    tokens: &'tokens mut TokenStream,
+    peek_pos: usize,
+}
+
+impl<'tokens> PeekedTokenStream<'tokens> {
+    pub fn new(tokens: &'tokens mut TokenStream) -> Self {
+        Self {
+            tokens,
+            peek_pos: 0,
+        }
+    }
+}
+
+impl<'tokens> Iterator for PeekedTokenStream<'tokens> {
+    type Item = source::Token;
+
+    fn next(&mut self) -> Option<source::Token> {
+        let next = if self.peek_pos < self.tokens.peeked.len() {
+            self.tokens.peeked.get(self.peek_pos).cloned()
+        } else {
+            let next_token = self.tokens.tokens.next()?;
+            self.tokens.peeked.push_back(next_token.clone());
+            Some(next_token)
+        };
+
+        self.peek_pos += 1;
+        next
+    }
 }
 
 #[cfg(test)]

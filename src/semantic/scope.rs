@@ -405,7 +405,7 @@ impl Scope {
                 Ok(result)
             }
 
-            TypeName::FunctionType { arg_types, return_type } => {
+            TypeName::FunctionType { arg_types, return_type, modifiers } => {
                 let found_return_type = match return_type {
                     Some(ty) => Some(self.get_type(ty.as_ref())?),
                     None => None,
@@ -419,6 +419,7 @@ impl Scope {
                 Ok(Type::Function(Box::new(FunctionSignature {
                     return_type: found_return_type,
                     arg_types: found_arg_types,
+                    modifiers: modifiers.clone(),
                 })))
             }
         }

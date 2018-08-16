@@ -699,7 +699,9 @@ impl Expression {
 
 #[cfg(test)]
 pub(crate) mod test {
-    use std::rc::Rc;
+    use std::{
+        rc::Rc,
+    };
 
     use tokens;
     use source;
@@ -707,7 +709,10 @@ pub(crate) mod test {
     use tokenizer::*;
     use semantic::*;
     use syntax;
-    use node::{self, FunctionKind};
+    use node::{
+        FunctionKind,
+        ExpressionValue
+    };
     use operators;
     use types::Type;
 
@@ -764,6 +769,7 @@ pub(crate) mod test {
             .with_function(test_func_name.clone(), FunctionDecl {
                 name: test_func_name.clone(),
                 return_type: Some(Type::Int64),
+                modifiers: Vec::new(),
                 args: Vars {
                     decls: vec![
                         VarDecl {

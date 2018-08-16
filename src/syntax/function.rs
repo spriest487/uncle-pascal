@@ -3,7 +3,7 @@ use syntax::var_decl::*;
 use keywords;
 use tokens;
 use tokens::AsToken;
-use node::{self, Identifier, FunctionKind};
+use node::{self, Identifier, FunctionKind, FunctionModifier};
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol, ParsedContext>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol, ParsedContext>;
@@ -41,6 +41,8 @@ impl Parse for FunctionDecl {
             }
         };
 
+        let modifiers = Self::parse_modifiers(tokens)?;
+
         //body (if present) appears after separator or newline
         tokens.match_or_endl(tokens::Semicolon)?;
 
@@ -74,6 +76,7 @@ impl Parse for FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name.into(),
             return_type,
+            modifiers,
             args,
             kind,
             body,
@@ -87,6 +90,31 @@ impl FunctionDecl {
             .or(keywords::Procedure)
             .or(keywords::Constructor)
             .or(keywords::Destructor)
+    }
+
+    pub fn parse_modifiers(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionModifier>> {
+        let mut modifiers = Vec::new();
+
+        loop {
+            let next_mod_tokens = tokens.match_sequence_peek(tokens::Semicolon
+                .and_then(Matcher::AnyIdentifier))?;
+
+            match next_mod_tokens {
+                Some(mod_tokens) => {
+                    if mod_tokens[1].is_identifier("cdecl") {
+                        modifiers.push(node::FunctionModifier::Cdecl);
+                        tokens.advance(mod_tokens.len());
+                    } else if mod_tokens[1].is_identifier("stdcall") {
+                        modifiers.push(node::FunctionModifier::Stdcall);
+                        tokens.advance(mod_tokens.len());
+                    } else {
+                        break Ok(modifiers);
+                    }
+                }
+
+                None => break Ok(modifiers),
+            }
+        }
     }
 
     pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<VarDecls> {

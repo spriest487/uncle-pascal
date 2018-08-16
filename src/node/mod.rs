@@ -4,7 +4,9 @@ pub mod expression;
 pub mod to_source;
 pub mod function_signature;
 
-use std::fmt;
+use std::{
+    fmt,
+};
 
 use source;
 pub use self::type_name::{TypeName, IndexRange};
@@ -119,6 +121,7 @@ pub struct FunctionDecl<TSymbol, TContext>
 
     pub return_type: Option<TSymbol::Type>,
     pub kind: FunctionKind,
+    pub modifiers: Vec<FunctionModifier>,
 
     pub args: VarDecls<TSymbol, TContext>,
 
