@@ -91,6 +91,7 @@ impl Operator {
         match from {
             "or" => Some(Or),
             "and" => Some(And),
+            "not" => Some(Not),
             _ => None
         }
     }
