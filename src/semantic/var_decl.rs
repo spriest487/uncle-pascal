@@ -1,7 +1,7 @@
 use std::{
     rc::Rc,
 };
-use types::Symbol;
+use types::TypedSymbol;
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
@@ -9,9 +9,9 @@ use semantic::*;
 pub type VarDecl = node::VarDecl<SemanticContext>;
 pub type VarDecls = node::VarDecls<SemanticContext>;
 
-impl Into<Symbol> for VarDecl {
-    fn into(self) -> Symbol {
-        Symbol::new(Identifier::from(&self.name), self.decl_type)
+impl Into<TypedSymbol> for VarDecl {
+    fn into(self) -> TypedSymbol {
+        TypedSymbol::new(Identifier::from(&self.name), self.decl_type)
     }
 }
 

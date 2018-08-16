@@ -48,7 +48,7 @@ pub struct Scope {
     imported_names: HashMap<Identifier, Identifier>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum ScopedSymbol {
     /* symbol refers to a name that is in the current scope */
     Local {
@@ -614,7 +614,7 @@ impl Scope {
             Type::NativeInt |
             Type::UntypedRef |
             Type::NativeUInt =>
-                size_of::<usize>() as usize,
+                size_of::<usize>(),
 
             Type::Int64 |
             Type::UInt64 |
@@ -651,6 +651,12 @@ impl Scope {
             Type::Class(name) => {
                 let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
                 record_size(class_decl)
+            }
+
+            Type::DynamicArray(_array) => {
+                /* dynamic arrays are heap-allocated and so they *should* just
+                be a single pointer... currently this is probably not true */
+                size_of::<usize>()
             }
 
             Type::Array(array) =>

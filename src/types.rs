@@ -7,25 +7,25 @@ use node::{
 };
 use semantic::IndexRange;
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub struct Symbol {
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct TypedSymbol {
     pub name: Identifier,
     pub decl_type: Type,
 }
 
-impl ToSource for Symbol {
+impl ToSource for TypedSymbol {
     fn to_source(&self) -> String {
         self.name.to_source()
     }
 }
 
-impl fmt::Display for Symbol {
+impl fmt::Display for TypedSymbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} : {}", self.name, self.decl_type)
     }
 }
 
-impl Symbol {
+impl TypedSymbol {
     pub fn new<T, TId>(name: TId, decl_type: T) -> Self
         where T: Into<Type>,
               TId: Into<Identifier>,
@@ -37,11 +37,16 @@ impl Symbol {
     }
 }
 
-impl node::Symbol for Symbol {
+impl node::Symbol for TypedSymbol {
     type Type = Type;
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash)]
+pub struct DynamicArrayType {
+    pub element: Box<Type>,
+}
+
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub struct ArrayType {
     pub element: Box<Type>,
     pub first_dim: IndexRange,
@@ -58,17 +63,7 @@ impl ArrayType {
 
 pub type FunctionSignature = node::FunctionSignature<Type>;
 
-//#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-//pub struct EnumerationType {
-//    names: Vec<Identifier>,
-//}
-//
-//#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-//pub struct SetType {
-//    enum_type: EnumerationType
-//}
-
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+#[derive(PartialEq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
     Byte,
@@ -87,6 +82,7 @@ pub enum Type {
     Record(Identifier),
     Class(Identifier),
     Array(ArrayType),
+    DynamicArray(DynamicArrayType),
     Enumeration(Identifier),
     Set(Identifier),
 }
@@ -120,6 +116,7 @@ impl Type {
                 Type::Set(set_id) => format!("{}", set_id),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),
+                Type::DynamicArray(array) => format!("array of {}", array.element.to_source()),
                 Type::Array(array) => {
                     let mut name = "array ".to_string();
                     name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));
@@ -143,6 +140,14 @@ impl Type {
     pub fn is_class(&self) -> bool {
         match self {
             Type::Class(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_ref_counted(&self) -> bool {
+        match self {
+            Type::Class(_) |
+            Type::DynamicArray(_) => true,
             _ => false,
         }
     }
@@ -234,6 +239,7 @@ impl Type {
             Type::Function(_) |
             Type::Enumeration(_) |
             Type::Set(_) |
+            Type::DynamicArray(_) |
             Type::Boolean => true,
 
             Type::Array { .. } |

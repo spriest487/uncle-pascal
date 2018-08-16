@@ -32,6 +32,7 @@ use source;
 use types::{
     Type,
     ArrayType,
+    DynamicArrayType,
 };
 use semantic::{
     self,
@@ -47,8 +48,15 @@ pub enum TypeName {
         context: ParsedContext,
         name: Identifier,
         indirection: usize,
-
-        array_dimensions: Vec<IndexRange>,
+    },
+    Array {
+        context: ParsedContext,
+        element: Box<TypeName>,
+        dimensions: Vec<IndexRange>,
+    },
+    DynamicArray {
+        context: ParsedContext,
+        element: Box<TypeName>,
     },
     Function {
         context: ParsedContext,
@@ -64,19 +72,30 @@ pub enum TypeName {
 impl PartialEq for TypeName {
     fn eq(&self, other: &Self) -> bool {
         match self {
-            TypeName::Scalar { name, indirection, array_dimensions, .. } => {
+            TypeName::Scalar { name, indirection, .. } => {
                 match other {
-                    TypeName::Scalar {
-                        name: other_name,
-                        indirection: other_indirection,
-                        array_dimensions: other_dims,
-                        ..
-                    } => {
-                        other_name == name
-                            && other_indirection == indirection
-                            && other_dims == array_dimensions
+                    TypeName::Scalar { name: other_name, indirection: other_indirection, .. } => {
+                        other_name == name && other_indirection == indirection
                     }
 
+                    _ => false,
+                }
+            }
+
+            TypeName::DynamicArray { element, .. } => {
+                match other {
+                    TypeName::DynamicArray { element: other_element, .. } => {
+                        element == other_element
+                    }
+                    _ => false,
+                }
+            }
+
+            TypeName::Array { element, dimensions, .. } => {
+                match other {
+                    TypeName::Array { element: other_element, dimensions: other_dims, .. } => {
+                        element == other_element && dimensions == other_dims
+                    }
                     _ => false,
                 }
             }
@@ -116,21 +135,26 @@ impl ToSource for TypeName {
                 result.push_str("<untyped ref>");
             }
 
-            TypeName::Scalar { name, indirection, array_dimensions, .. } => {
-                if array_dimensions.len() > 0 {
-                    result.push_str("array [");
-                    result.push_str(&array_dimensions.iter()
-                        .map(|dim| format!("{}..{}", dim.from, dim.to))
-                        .collect::<Vec<_>>()
-                        .join(", "));
-                    result.push_str("] of ");
-                }
-
+            TypeName::Scalar { name, indirection, .. } => {
                 for _ in 0..*indirection {
                     result.push_str("^");
                 }
 
                 result.push_str(&name.to_string())
+            }
+
+            TypeName::Array { element, dimensions, .. } => {
+                result.push_str("array [");
+                result.push_str(&dimensions.iter()
+                    .map(|dim| format!("{}..{}", dim.from, dim.to))
+                    .collect::<Vec<_>>()
+                    .join(", "));
+                result.push_str("] of ");
+                result.push_str(&element.to_source());
+            }
+
+            TypeName::DynamicArray { element, .. } => {
+                result = format!("array of {}", element.to_source());
             }
 
             TypeName::Function { return_type, arg_types, modifiers, .. } => {
@@ -161,17 +185,22 @@ impl ToSource for TypeName {
     }
 }
 
-fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> ParseResult<TypeName> {
-    let array_kw = tokens.look_ahead().match_one(keywords::Array);
+fn parse_as_array(tokens: &mut TokenStream) -> ParseResult<TypeName> {
+    let context = ParsedContext::from(tokens.match_one(keywords::Array)?);
 
-    let array_dimensions = match array_kw {
+    match tokens.look_ahead().match_one(tokens::SquareBracketLeft) {
         Some(_) => {
-            tokens.advance(1);
-
+            // fixed size array
             tokens.match_one(tokens::SquareBracketLeft)?;
-            let mut dims = Vec::new();
-            loop {
-                let dim_expr: Expression = tokens.parse()?;
+            let dimensions = tokens.match_repeating(|i, tokens: &mut TokenStream| {
+                if i > 0 {
+                    match tokens.look_ahead().match_one(tokens::Comma) {
+                        Some(_) => tokens.advance(1),
+                        None => return Ok(None),
+                    }
+                }
+
+                let dim_expr = Expression::parse(tokens)?;
                 let (from, to) = match dim_expr.value {
                     ExpressionValue::BinaryOperator { lhs, op: operators::RangeInclusive, rhs } => {
                         (lhs, rhs)
@@ -189,28 +218,40 @@ fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> Parse
                     }
                 };
 
-                dims.push(IndexRange {
+                Ok(Some(IndexRange {
                     from: *from,
                     to: *to,
-                });
-
-                // if there's a comma, there's another dimension following
-                match tokens.look_ahead().match_one(tokens::Comma) {
-                    Some(_) => tokens.advance(1),
-                    None => break,
-                }
-            }
-
+                }))
+            })?;
             tokens.match_one(tokens::SquareBracketRight)?;
             tokens.match_one(keywords::Of)?;
 
-            dims
+            let element = Box::new(parse_as_data_type(tokens)?);
+
+            Ok(TypeName::Array {
+                dimensions,
+                element,
+                context,
+            })
         }
 
-        None => Vec::new(),
-    };
+        None => {
+            // dynamic array
+            tokens.match_one(keywords::Of)?;
+            let element = Box::new(parse_as_data_type(tokens)?);
 
+            Ok(TypeName::DynamicArray {
+                element,
+                context,
+            })
+        }
+    }
+}
+
+fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
     let mut indirection = 0;
+
+    let context = tokens.look_ahead().next();
 
     loop {
         let pointer_sigil = tokens.look_ahead().match_one(operators::Deref);
@@ -221,11 +262,9 @@ fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> Parse
             let name = Identifier::parse(tokens)?;
 
             break Ok(TypeName::Scalar {
-                context: ParsedContext::from(context),
+                context: ParsedContext::from(context.unwrap()),
                 name,
                 indirection,
-
-                array_dimensions,
             });
         }
     }
@@ -272,8 +311,12 @@ impl Parse for TypeName {
                 parse_as_function_type(tokens, t.clone())
             }
 
-            Some(t) => {
-                parse_as_data_type(tokens, t)
+            Some(ref t) if t.is_keyword(keywords::Array) => {
+                parse_as_array(tokens)
+            }
+
+            Some(_) => {
+                parse_as_data_type(tokens)
             }
 
             None => {
@@ -289,21 +332,21 @@ impl TypeName {
             context: context.into(),
             name: name.into(),
             indirection: 0,
-
-            array_dimensions: Vec::new(),
         }
     }
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::Scalar { name, indirection, array_dimensions, context } =>
+            TypeName::Scalar { name, indirection, context } =>
                 TypeName::Scalar {
                     context,
                     name,
-                    array_dimensions,
-
                     indirection: indirection + 1,
                 },
+
+            TypeName::DynamicArray { ..} |
+            TypeName::Array { .. } =>
+                unimplemented!("pointer to array"),
 
             TypeName::UntypedRef { .. } =>
                 unimplemented!("pointer to untyped ref"),
@@ -315,32 +358,47 @@ impl TypeName {
 
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
-            TypeName::Scalar { context, name, indirection, array_dimensions } => {
-                let mut result = scope.get_type_alias(name)
+            TypeName::Scalar { context, name, indirection } => {
+                let result = scope.get_type_alias(name)
                     .ok_or_else(|| {
                         let err_context = SemanticContext::new(context.token.clone(),
                                                                scope.clone());
                         SemanticError::unknown_type(name.clone(), err_context)
                     })?;
 
-                for _ in 0..*indirection {
-                    result = result.pointer();
-                }
+                let indirected = (0..*indirection).into_iter()
+                    .fold(result, |result, _| {
+                        result.pointer()
+                    });
 
-                if array_dimensions.len() > 0 {
-                    result = Type::Array(ArrayType {
-                        element: Box::new(result),
-                        first_dim: semantic::IndexRange::annotate(&array_dimensions[0],
-                                                                  scope.clone())?,
-                        rest_dims: array_dimensions[1..].iter()
-                            .map(|index_range| {
-                                semantic::IndexRange::annotate(index_range, scope.clone())
-                            })
-                            .collect::<SemanticResult<_>>()?,
+                Ok(indirected)
+            }
+
+            TypeName::Array { element, dimensions, .. } => {
+                let element = Box::new(element.resolve(scope.clone())?);
+
+                let first_dim = semantic::IndexRange::annotate(
+                    &dimensions[0], scope.clone())?;
+
+                let rest_dims = dimensions[1..].iter()
+                    .map(|index_range| {
+                        semantic::IndexRange::annotate(index_range, scope.clone())
                     })
-                }
+                    .collect::<SemanticResult<_>>()?;
 
-                Ok(result)
+                Ok(Type::Array(ArrayType {
+                    element,
+                    first_dim,
+                    rest_dims,
+                }))
+            }
+
+            TypeName::DynamicArray { element, .. } => {
+                let element = Box::new(element.resolve(scope.clone())?);
+
+                Ok(Type::DynamicArray(DynamicArrayType {
+                    element,
+                }))
             }
 
             TypeName::Function { return_type, arg_types, modifiers, .. } => {

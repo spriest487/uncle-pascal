@@ -27,7 +27,7 @@ use node::{
 };
 use types::{
     Type,
-    Symbol,
+    TypedSymbol,
 };
 use consts::{
     IntConstant,
@@ -95,6 +95,11 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             identifier_to_c(&set_id)
         }
 
+        Type::DynamicArray(dynamic_array_type) => {
+            let element_type = type_to_c(&dynamic_array_type.element, scope);
+            format!("std::shared_ptr<{}[]>", element_type)
+        }
+
         Type::Array(array) => {
             let element_name = type_to_c(array.element.as_ref(), scope);
             let element_count = array.total_elements();
@@ -111,7 +116,7 @@ pub fn identifier_to_c(id: &Identifier) -> String {
     parts.join("_")
 }
 
-pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
+pub fn default_initialize(out: &mut String, target: &TypedSymbol) -> fmt::Result {
     let id = identifier_to_c(&target.name);
 
     match &target.decl_type {
@@ -478,7 +483,7 @@ fn write_statement(out: &mut String,
             writeln!(out, "{} {};", type_to_c(&binding_type, value.scope()), name)?;
 
             let binding_id = Identifier::from(&name);
-            default_initialize(out, &Symbol {
+            default_initialize(out, &TypedSymbol {
                 name: binding_id.clone(),
                 decl_type: binding_type.clone(),
             })?;
@@ -651,7 +656,7 @@ pub fn default_initialize_vars<'a>(out: &mut String,
             let decl_id = Identifier::from(&decl.name);
             let decl_type = decl.decl_type.clone();
 
-            default_initialize(out, &Symbol::new(decl_id, decl_type))
+            default_initialize(out, &TypedSymbol::new(decl_id, decl_type))
         })
         .collect()
 }
