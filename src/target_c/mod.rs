@@ -7,7 +7,7 @@ use std::{
 
 use pretty_path;
 use CompileError;
-use ProgramModule;
+use semantic::ProgramModule;
 
 mod writer;
 

@@ -2,8 +2,10 @@ use std::{
     fmt::{self, Write},
 };
 
-use semantic;
 use operators;
+use semantic::{
+    self,
+    ProgramModule};
 use node::{
     self,
     ExpressionValue,
@@ -18,7 +20,6 @@ use types::{
     FunctionSignature,
     Symbol,
 };
-use ProgramModule;
 use super::{HEADER, RT};
 
 pub fn type_to_c(pascal_type: &DeclaredType) -> String {

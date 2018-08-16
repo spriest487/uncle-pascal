@@ -6,6 +6,7 @@ pub mod function;
 pub mod type_decl;
 pub mod program;
 pub mod unit;
+pub mod module;
 
 pub use self::{
     block::*,
@@ -16,6 +17,7 @@ pub use self::{
     type_decl::*,
     unit::*,
     var_decl::*,
+    module::*,
 };
 
 use node::{Identifier, TypeName};

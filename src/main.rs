@@ -145,10 +145,7 @@ fn load_source<TPath: AsRef<Path>>(path: TPath,
     Ok(tokens)
 }
 
-pub struct ProgramModule {
-    pub program: semantic::Program,
-    pub units: Vec<semantic::Unit>,
-}
+
 
 fn pretty_path(path: &Path) -> String {
     let canon = if path.exists() {
@@ -188,7 +185,7 @@ fn scope_from_uses(uses: &[node::UnitReference],
 
 fn compile_program(program_path: &Path,
                    opts: CompileOptions)
-                   -> Result<ProgramModule, CompileError> {
+                   -> Result<semantic::ProgramModule, CompileError> {
     let tokens = load_source(program_path, opts.clone())?;
 
     let source_dir = program_path.canonicalize()?
@@ -236,7 +233,7 @@ fn compile_program(program_path: &Path,
 
     let program = semantic::Program::annotate(&parsed_program, program_scope)?;
 
-    Ok(ProgramModule {
+    Ok(semantic::ProgramModule {
         program,
         units: loaded_units,
     })
