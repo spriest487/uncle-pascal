@@ -27,9 +27,9 @@ impl Location {
         }
     }
 
-    pub fn after(&self, other: &Location) -> bool {
+    pub fn ge(&self, other: &Location) -> bool {
         self.line > other.line ||
-            (self.line == other.line && self.col > other.col)
+            (self.line == other.line && self.col >= other.col)
     }
 }
 

@@ -181,16 +181,20 @@ impl Expression {
 
                     parts.push(CompoundExpressionPart::Operand(operand_expr.value));
 
-                    match after_expr.peek() {
+                    match after_expr.peek().cloned() {
                         None => {
                             //continue
                             next_operand_tokens = Vec::new();
                         }
                         Some(token_after) => {
                             let all_tokens_after = all_tokens.iter()
-                                .filter(|t| t.location.after(&token_after.location))
+                                .filter(|t| t.location.ge(&token_after.location))
                                 .cloned()
                                 .collect();
+
+//                            println!("leftovers in operand: `{}`, following tokens: `{}`",
+//                                     source::tokens_to_source(&after_expr.collect::<Vec<_>>()),
+//                                     source::tokens_to_source(&all_tokens_after));
 
                             /* this expression is finished, and there's tokens left over */
                             break all_tokens_after;

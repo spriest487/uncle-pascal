@@ -15,7 +15,7 @@ fn try_parse_expr(src: &str) -> ExpressionResult {
 fn parse_expr(src: &str) -> Expression {
     try_parse_expr(src).unwrap()
         .finish()
-        .unwrap()
+        .expect("expression must parse with no trailing tokens")
 }
 
 #[test]
