@@ -2,6 +2,7 @@ use std::fmt;
 
 use semantic;
 use target_c::ast::{
+    rc_release,
     TranslationUnit,
     TranslationResult,
     Expression,
@@ -33,10 +34,7 @@ impl Block {
         for stmt in block.statements.iter() {
             if let ExpressionValue::LetBinding(binding) = &stmt.value {
                 if binding.value.expr_type().unwrap().unwrap().is_class() {
-                    statements.push(Expression::function_call(
-                        Name::internal_symbol("Rc_Release"),
-                        vec![Expression::Name(Name::local(&binding.name))]
-                    ));
+                    statements.push(rc_release(Name::local(&binding.name)));
                 }
             }
         }
@@ -53,10 +51,7 @@ impl Block {
 
             // release all rc local vars for this block
             for decl in locals.iter().rev().filter(|decl| decl.decl_type.is_class()) {
-                statements.push(Expression::function_call(
-                    Name::internal_symbol("Rc_Release"),
-                    vec![Expression::Name(Name::local(&decl.name))]
-                ));
+                statements.push(rc_release(Name::local(&decl.name)));
             }
         }
 

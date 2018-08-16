@@ -20,6 +20,8 @@ pub use self::interface::*;
 pub use self::expression::*;
 pub use self::name::*;
 
+use node::Identifier;
+
 pub type TranslationResult<T> = Result<T, TranslationError>;
 
 #[derive(Debug)]
@@ -39,4 +41,28 @@ impl fmt::Display for TranslationError {
             TranslationError::WriteFailed(err) => write!(f, "{}", err),
         }
     }
+}
+
+/* runtime functions */
+pub fn rc_getmem(struct_name: impl Into<Name>, class_name: &Identifier) -> Expression {
+    Expression::function_call(Name::internal_symbol("Rc_GetMem"), vec![
+        Expression::function_call(Name::internal_symbol("SizeOf"), vec![
+            Expression::Name(struct_name.into())
+        ]),
+        Expression::string_literal(&class_name.to_string())
+    ])
+}
+
+pub fn rc_retain(expr: impl Into<Expression>) -> Expression {
+    Expression::function_call(
+        Name::internal_symbol("Rc_Retain"),
+        vec![expr.into()],
+    )
+}
+
+pub fn rc_release(expr: impl Into<Expression>) -> Expression {
+    Expression::function_call(
+        Name::internal_symbol("Rc_Release"),
+        vec![expr.into()],
+    )
 }

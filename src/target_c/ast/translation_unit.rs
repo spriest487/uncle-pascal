@@ -11,6 +11,7 @@ use node::{
     RecordKind,
 };
 use target_c::ast::{
+    rc_release,
     TranslationResult,
     Declaration,
     Block,
@@ -282,10 +283,7 @@ impl TranslationUnit {
             for decl in global_vars.iter().rev().filter(|decl| decl.decl_type.is_class()) {
                 let name = Name::user_symbol(&decl.qualified_name());
 
-                release_global_vars.push(Expression::function_call(
-                    Name::internal_symbol("Rc_Release"),
-                    vec![Expression::Name(name)],
-                ));
+                release_global_vars.push(rc_release(name));
             }
 
             Block::new(release_global_vars)

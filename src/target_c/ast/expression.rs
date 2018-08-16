@@ -4,6 +4,8 @@ use std::{
 };
 
 use target_c::ast::{
+    rc_release,
+    rc_retain,
     TranslationResult,
     Name,
     TranslationUnit,
@@ -347,10 +349,7 @@ impl Expression {
                             // if (lhs) release(lhs)
                             translated_exprs.push(Expression::if_then(
                                 lhs_expr.clone(),
-                                Expression::function_call(
-                                    Name::internal_symbol("Rc_Release"),
-                                    vec![lhs_expr.clone()],
-                                ),
+                                rc_release(lhs_expr.clone()),
                             ));
                         }
                     }
@@ -363,11 +362,7 @@ impl Expression {
                     /* retain rc variables: if it came from a function call, it'll be released once
                     (from the code above which releases all rc results from functions), and if it's an
                     existing value we now have two references to it */
-                    translated_exprs.push({
-                        Expression::function_call(
-                            Name::internal_symbol("Rc_Retain"),
-                            vec![lhs_expr.clone()])
-                    });
+                    translated_exprs.push(rc_retain(lhs_expr.clone()));
                 }
 
                 translated_exprs
@@ -409,11 +404,7 @@ impl Expression {
             // ...then release temp bindings and close the block
             for (tmp_id, _tmp_val) in bindings.iter().enumerate() {
                 let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-
-                bindings_block.push(Expression::function_call(
-                    Name::internal_symbol("Rc_Release"),
-                    vec![Expression::Name(tmp_name)],
-                ));
+                bindings_block.push(rc_release(tmp_name));
             }
 
             vec![Expression::Block(Block::new(bindings_block))]

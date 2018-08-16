@@ -1,5 +1,6 @@
 use std::fmt;
 use target_c::ast::{
+    rc_getmem,
     Name,
     CType,
     FunctionDecl,
@@ -309,12 +310,7 @@ impl Struct {
                     result_name.clone(), "=",
                     Expression::cast(
                         return_type.clone(),
-                        Expression::function_call(Name::internal_symbol("Rc_GetMem"), vec![
-                            Expression::function_call(Name::internal_symbol("SizeOf"), vec![
-                                Expression::Name(struct_name.clone())
-                            ]),
-                            Expression::string_literal(&record.qualified_name().to_string())
-                        ]),
+                        rc_getmem(struct_name.clone(), &record.qualified_name()),
                         CastKind::Static,
                     ),
                 ));

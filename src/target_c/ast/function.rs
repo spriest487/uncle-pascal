@@ -8,6 +8,8 @@ use node::{
     FunctionLocalDecl,
 };
 use target_c::ast::{
+    rc_release,
+    rc_retain,
     CType,
     TranslationResult,
     Block,
@@ -235,14 +237,8 @@ impl FunctionDecl {
             .collect();
 
         for arg in rc_args.iter() {
-            body.statements.insert(0, Expression::function_call(
-                Name::internal_symbol("Rc_Retain"),
-                vec![Expression::Name(Name::local(&arg.name))],
-            ));
-            body.statements.push(Expression::function_call(
-                Name::internal_symbol("Rc_Release"),
-                vec![Expression::Name(Name::local(&arg.name))],
-            ));
+            body.statements.insert(0, rc_retain(Name::local_internal(&arg.name)));
+            body.statements.push(rc_release(Name::local(&arg.name)));
         }
 
         if !decl.return_type.is_void() {
