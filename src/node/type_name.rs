@@ -13,7 +13,7 @@ pub struct IndexRange {
 }
 
 impl IndexRange {
-    pub fn len(&self) -> usize {
+    pub fn elements(&self) -> usize {
         //todo: can this overflow
         (self.to - self.from) as usize
     }

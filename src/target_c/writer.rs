@@ -52,16 +52,10 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
         }
 
         DeclaredType::Array(array) => {
-            let mut name = String::new();
-            name.push_str("System_Internal_Array_");
-            name.push_str(&format!("{}_", type_to_c(array.element.as_ref())));
-            name.push_str(&format!("{}", array.first_dim.len()));
+            let element_name = type_to_c(array.element.as_ref());
+            let element_count = array.total_elements();
 
-            for dim in array.rest_dims.iter() {
-                name.push_str(&format!("_{}", dim.len()));
-            }
-            name
-
+            format!("System_Internal_Array<{}[{}]>", element_name, element_count)
         }
     }.to_owned()
 }
@@ -89,7 +83,8 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
     let id = identifier_to_c(&target.name);
 
     match &target.decl_type {
-        DeclaredType::Record(ref _decl) => {
+        DeclaredType::Array(_) |
+        DeclaredType::Record(_) => {
             /* zero initializing works for both record instances and RCd classes */
             writeln!(out, "memset(&{}, 0, sizeof({}));", id, id)
         }

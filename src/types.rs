@@ -106,6 +106,14 @@ pub struct ArrayType {
     pub rest_dims: Vec<IndexRange>,
 }
 
+impl ArrayType {
+    pub fn total_elements(&self) -> usize {
+        self.rest_dims.iter().fold(self.first_dim.elements(), |total, dim| {
+            total + dim.elements()
+        })
+    }
+}
+
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum DeclaredType {
     Nil,
@@ -181,8 +189,8 @@ impl DeclaredType {
             DeclaredType::Record(rec) => rec.size_of(),
             DeclaredType::Array(array) => {
                 let total_len = array.rest_dims.iter()
-                    .fold(array.first_dim.len(), |total, dim| {
-                        total * dim.len()
+                    .fold(array.first_dim.elements(), |total, dim| {
+                        total * dim.elements()
                     });
 
                 total_len * array.element.size_of()

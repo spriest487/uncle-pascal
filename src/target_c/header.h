@@ -13,6 +13,11 @@ typedef std::int64_t System_Integer;
 typedef void* System_Pointer;
 typedef std::uint8_t System_Boolean;
 
+template<typename E>
+struct System_Internal_Array {
+    E Elements;
+};
+
 struct System_Internal_Class;
 
 struct System_Internal_Object {
