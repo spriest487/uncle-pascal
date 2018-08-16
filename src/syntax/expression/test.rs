@@ -168,6 +168,29 @@ fn parses_assign_deref_to_deref() {
 }
 
 #[test]
+fn parse_for_loop_with_assignment() {
+    let expr = parse_expr("for x := 0 to y do begin end");
+
+    match expr.value {
+        node::ExpressionValue::ForLoop { from, to, body } => {
+            match &from.value {
+                node::ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, rhs } => {
+                    assert!(lhs.is_identifier(&node::Identifier::from("x")));
+                    assert!(rhs.is_literal_integer(0));
+                }
+
+                _ => panic!("expected for-loop 'from' expr to be binary op, got {}", from.to_source())
+            }
+
+            assert!(to.is_identifier(&node::Identifier::from("y")));
+            assert!(body.is_block());
+        }
+
+        _ => panic!("expected for-loop expression, got {}", expr.to_source())
+    }
+}
+
+#[test]
 fn parses_nested_function_calls() {
     let expr = parse_expr("test(hello('world'), goodbye(cruel('world')))");
 
