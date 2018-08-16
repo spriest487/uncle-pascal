@@ -41,7 +41,7 @@ use semantic::{
     SemanticContext,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub enum TypeName {
     Scalar {
         context: ParsedContext,
@@ -58,6 +58,53 @@ pub enum TypeName {
     },
     UntypedRef {
         context: ParsedContext,
+    },
+}
+
+impl PartialEq for TypeName {
+    fn eq(&self, other: &Self) -> bool {
+        match self {
+            TypeName::Scalar { name, indirection, array_dimensions, .. } => {
+                match other {
+                    TypeName::Scalar {
+                        name: other_name,
+                        indirection: other_indirection,
+                        array_dimensions: other_dims,
+                        ..
+                    } => {
+                        other_name == name
+                            && other_indirection == indirection
+                            && other_dims == array_dimensions
+                    }
+
+                    _ => false,
+                }
+            }
+
+            TypeName::Function { return_type, arg_types, modifiers, .. } => {
+                match other {
+                    TypeName::Function {
+                        return_type: other_return,
+                        arg_types: other_args,
+                        modifiers: other_mods,
+                        ..
+                    } => {
+                        other_return == return_type
+                            && other_args == arg_types
+                            && other_mods == modifiers
+                    }
+
+                    _ => false,
+                }
+            }
+
+            TypeName::UntypedRef { .. } => {
+                match other {
+                    TypeName::UntypedRef { .. } => true,
+                    _ => false
+                }
+            }
+        }
     }
 }
 
@@ -125,7 +172,7 @@ fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> Parse
             let mut dims = Vec::new();
             loop {
                 let dim_expr: Expression = tokens.parse()?;
-                let (from, to) =  match dim_expr.value {
+                let (from, to) = match dim_expr.value {
                     ExpressionValue::BinaryOperator { lhs, op: operators::RangeInclusive, rhs } => {
                         (lhs, rhs)
                     }
@@ -139,12 +186,12 @@ fn parse_as_data_type(tokens: &mut TokenStream, context: source::Token) -> Parse
                         let context = dim_expr.context.token.clone();
                         let expected = operators::RangeInclusive;
                         return Err(ParseError::UnexpectedToken(context, Some(expected.into())));
-                    },
+                    }
                 };
 
                 dims.push(IndexRange {
                     from: *from,
-                    to: *to
+                    to: *to,
                 });
 
                 // if there's a comma, there's another dimension following
