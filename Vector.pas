@@ -22,7 +22,7 @@ begin
   if self.Elements <> 0 then
   begin
     for let i := 0 to self.Length do
-    ^(newElements + i) := ^(self.Elements + i)
+      ^(newElements + i) := ^(self.Elements + i)
 
 
     System.FreeMem(self.Elements)
@@ -37,7 +37,7 @@ end
 procedure AddAll(self: ^Vector; other: ^Vector)
 begin
   for let i := 0 to other.Length do
-    Add(self, ^(other.Elements + i))
+    self.Add(^(other.Elements + i))
 end
 
 implementation

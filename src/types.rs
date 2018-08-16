@@ -1,10 +1,10 @@
 use std::fmt;
 
-use node;
+use node::{self, Identifier};
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Symbol {
-    pub name: node::Identifier,
+    pub name: Identifier,
     pub decl_type: DeclaredType,
 }
 
@@ -17,7 +17,7 @@ impl fmt::Display for Symbol {
 impl Symbol {
     pub fn new<T, TId>(name: TId, decl_type: T) -> Self
         where T: Into<DeclaredType>,
-              TId: Into<node::Identifier>,
+              TId: Into<Identifier>,
     {
         Self {
             name: name.into(),
@@ -32,7 +32,7 @@ impl node::Symbol for Symbol {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct FunctionSignature {
-    pub name: node::Identifier,
+    pub name: Identifier,
     pub return_type: Option<DeclaredType>,
     pub arg_types: Vec<DeclaredType>,
 }
@@ -55,7 +55,7 @@ impl fmt::Display for FunctionSignature {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct DeclaredRecord {
-    pub name: node::Identifier,
+    pub name: Identifier,
     pub members: Vec<Symbol>,
 }
 
@@ -105,9 +105,9 @@ impl DeclaredType {
                 &DeclaredType::Integer => "System.Integer".to_owned(),
                 &DeclaredType::String => "System.String".to_owned(),
                 &DeclaredType::RawPointer => "System.Pointer".to_owned(),
-                &DeclaredType::Pointer(ref target) => format!("^{}", target),
+                &DeclaredType::Pointer(ref target) => format!("^{}", DeclaredType::name(Some(target))),
                 &DeclaredType::Function(ref sig) => format!("{}", sig),
-                &DeclaredType::Record(ref record) => format!("record {}", record.name),
+                &DeclaredType::Record(ref record) => format!("{}", record.name),
             }
         }
     }
@@ -136,6 +136,22 @@ impl DeclaredType {
             match next {
                 &DeclaredType::Pointer(ref target) => next = target.as_ref(),
                 _ => break next
+            }
+        }
+    }
+
+    pub fn indirection_level(&self) -> usize {
+        let mut level = 0;
+        let mut next = self;
+
+        loop {
+            match next {
+                &DeclaredType::Pointer(ref target) => {
+                    level += 1;
+                    next = target.as_ref();
+                }
+
+                _ => break level
             }
         }
     }

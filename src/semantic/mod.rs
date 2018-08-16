@@ -222,3 +222,5 @@ impl fmt::Display for SemanticError {
         write!(f, "{}: {}", self.context, self.kind)
     }
 }
+
+pub type SemanticResult<T> = Result<T, SemanticError>;

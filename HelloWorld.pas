@@ -18,8 +18,8 @@ begin
   x := x + y
 
   vec := Vector.Create()
-  Vector.Add(@vec, 1)
-  Vector.Add(@vec, 2)
+  vec.Add(1)
+  vec.Add(2)
   Vector.Add(@vec, 3)
   Vector.Add(@vec, 4)
 
