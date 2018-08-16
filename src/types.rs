@@ -70,13 +70,23 @@ impl ToSource for FunctionSignature {
 
         if self.arg_types.len() > 0 {
             source.push('(');
-            for arg in self.arg_types.iter() {
-//                source.push_str(&arg.to_source());
-            }
+            source.push_str(&self.arg_types.iter()
+                .enumerate()
+                .map(|(arg_index, arg_type)| {
+                    format!("arg{}: {}", arg_index, arg_type.to_source())
+                })
+                .collect::<Vec<_>>()
+                .join(";"));
             source.push(')');
         }
 
         source
+    }
+}
+
+impl fmt::Display for FunctionSignature {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(&self.to_source())
     }
 }
 
@@ -93,8 +103,7 @@ pub enum Type {
     NativeUInt,
     RawPointer,
     Pointer(Box<Type>),
-    Function(Identifier),
-    FunctionPointer(FunctionSignature),
+    Function(Box<FunctionSignature>),
     Record(Identifier),
     Class(Identifier),
     Array(ArrayType),
@@ -122,7 +131,6 @@ impl Type {
                 Type::NativeUInt => "System.NativeUInt".to_string(),
                 Type::RawPointer => "System.Pointer".to_string(),
                 Type::Pointer(target) => format!("^{}", target.to_source()),
-                Type::Function(name) => format!("{}", name),
                 Type::Function(sig) => format!("{}", sig.to_source()),
                 Type::Record(record) => format!("{}", record),
                 Type::Class(class) => format!("{}", class),

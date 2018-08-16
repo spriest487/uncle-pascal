@@ -308,7 +308,7 @@ impl Scope {
             Some(Named::Function(func)) => {
                 Some(ScopedSymbol::Local {
                     name: name.clone(),
-                    decl_type: Type::Function(func.name.clone()),
+                    decl_type: Type::Function(Box::new(func.signature())),
                 })
             }
             _ => None
@@ -340,7 +340,7 @@ impl Scope {
 
                 Some(ScopedSymbol::Local {
                     name: func.name.clone(),
-                    decl_type: Type::Function(func.name.clone()),
+                    decl_type: Type::Function(Box::from(func.signature())),
                 })
             })
     }

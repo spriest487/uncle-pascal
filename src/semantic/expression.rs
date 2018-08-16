@@ -5,7 +5,7 @@ use node::{self, Identifier, TypeName};
 use operators;
 use types;
 use consts::IntConstant;
-use types::Type;
+use types::{Type, FunctionSignature};
 
 pub type Expression = node::Expression<ScopedSymbol, SemanticContext>;
 
@@ -278,16 +278,15 @@ fn annotate_ufcs(target: &Expression,
     let ufcs_function = scope.get_symbol(&ufcs_name)?;
 
     match ufcs_function.decl_type() {
-        Type::Function(name) => {
-            let sig = scope.get_function(name)?;
-            let first_arg = sig.args.decls.first()?;
+        Type::Function(sig) => {
+            let first_arg_type = sig.arg_types.first()?;
 
-            if first_arg.decl_type.remove_indirection() != target_type.remove_indirection() {
+            if first_arg_type.remove_indirection() != target_type.remove_indirection() {
                 None
             } else {
                 /* match target arg expression indirection level to level of expected first arg,
                  taking the address or derefing the pointer as necessary */
-                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg.decl_type);
+                let ufcs_target_arg = match_indirection(&target, target_type, &first_arg_type);
 
                 /* the target becomes the first arg */
                 let mut ufcs_args = vec![ufcs_target_arg];
@@ -371,24 +370,14 @@ fn function_call_type(target: &Expression,
                       args: &Vec<Expression>,
                       context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
-    if let Some(Type::Function(func_name)) = &target_type {
-        let sig = match target.scope().get_function(&func_name) {
-            Some(sig) => sig,
-            None => {
-                return Err(SemanticError::invalid_function_type(target_type.clone(),
-                                                                context.clone()));
-            }
-        };
-
-        if args.len() != sig.args.decls.len() {
-            Err(SemanticError::wrong_num_args(sig.clone(),
+    if let Some(Type::Function(sig)) = &target_type {
+        if args.len() != sig.arg_types.len() {
+            Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
                                               args.len(),
                                               context.clone()))
         } else {
             for (arg_index, arg_expr) in args.iter().enumerate() {
-                arg_expr.expr_type()?;
-
-                let sig_type = &sig.args.decls[arg_index].decl_type;
+                let sig_type = &sig.arg_types[arg_index];
 
                 expect_valid_operation(operators::Assignment,
                                        Some(sig_type),
@@ -683,13 +672,9 @@ impl Expression {
         }
     }
 
-    pub fn function_type(&self) -> SemanticResult<Option<&FunctionDecl>> {
+    pub fn function_type(&self) -> SemanticResult<Option<FunctionSignature>> {
         match self.expr_type()? {
-            Some(Type::Function(name)) => {
-                let function = self.context.scope.get_function(&name)
-                    .expect("function must exist in scope of expression it's used in");
-                Ok(Some(function))
-            }
+            Some(Type::Function(sig)) => Ok(Some(sig.as_ref().clone())),
             _ => Ok(None),
         }
     }

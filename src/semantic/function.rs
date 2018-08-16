@@ -4,7 +4,7 @@ use std::{
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
-use types::Type;
+use types::{Type, FunctionSignature};
 
 const RESULT_VAR_NAME: &str = "result";
 
@@ -149,5 +149,14 @@ impl FunctionDecl {
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+
+    pub fn signature(&self) -> FunctionSignature {
+        FunctionSignature {
+            arg_types: self.args.decls.iter()
+                .map(|decl| decl.decl_type.clone())
+                .collect(),
+            return_type: self.return_type.clone(),
+        }
     }
 }

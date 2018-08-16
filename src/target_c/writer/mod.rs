@@ -41,18 +41,16 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             let target_c = type_to_c(target.as_ref(), scope);
             format!("{}*", target_c)
         }
-        Type::Function(name) => {
-            let sig = scope.get_function(name)
-                .expect("reference type must exist");
+        Type::Function(sig) => {
             let return_type = sig.return_type.as_ref()
                 .map(|ty| type_to_c(ty, scope))
                 .unwrap_or_else(|| "void".to_owned());
-            let arg_types = sig.args.decls.iter()
-                .map(|arg| type_to_c(&arg.decl_type, scope))
+            let arg_types = sig.arg_types.iter()
+                .map(|arg| type_to_c(&arg, scope))
                 .collect::<Vec<_>>()
                 .join(", ");
 
-            format!("({} (*{})({}))", return_type, name, arg_types)
+            format!("({} (*)({}))", return_type, arg_types)
         }
         Type::Class(name) => {
             let class = scope.get_class(name)

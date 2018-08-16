@@ -57,7 +57,7 @@ static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, 
 
     obj->StrongCount = 1;
 
-    std::fprintf(stderr, "rc allocated %ld bytes for %s @ %p\n", size, constructorName, obj);
+    std::fprintf(stderr, "rc allocated %td bytes for %s @ %p\n", size, constructorName, obj);
     return obj;
 }
 
