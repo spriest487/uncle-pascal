@@ -126,7 +126,8 @@ pub fn write_expr(out: &mut String,
     match &expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let string_type = Some(Type::Class(Identifier::from("System.String")));
-            if lhs.expr_type().unwrap() == string_type
+            if *op == operators::Plus
+                && lhs.expr_type().unwrap() == string_type
                 && rhs.expr_type().unwrap() == string_type {
                 write!(out, "System_StringConcat(")?;
                 write_expr(out, lhs.as_ref(), globals)?;
@@ -134,7 +135,7 @@ pub fn write_expr(out: &mut String,
                 write_expr(out, rhs.as_ref(), globals)?;
                 write!(out, ")")?;
 
-                return Ok(())
+                return Ok(());
             }
 
             let c_op = match op {
@@ -325,7 +326,6 @@ pub fn write_block(out: &mut String,
 
     for statement in block.statements.iter() {
         write_statement(out, statement, globals)?;
-        writeln!(out, ";")?;
     }
 
     // release all references
@@ -368,7 +368,11 @@ fn write_statement(out: &mut String,
             let context: semantic::SemanticContext = context;
             let binding_id_expr = semantic::Expression::identifier(binding_sym, context.clone());
 
-            semantic::Expression::binary_op(binding_id_expr, operators::Assignment, *value, context)
+            let binary_op = semantic::Expression::binary_op(binding_id_expr,
+                                                            operators::Assignment,
+                                                            *value,
+                                                            context);
+            binary_op
         }
 
         stmt @ _ => stmt,
@@ -418,7 +422,7 @@ fn write_statement(out: &mut String,
         for (tmp_name, tmp_val) in bindings.iter() {
             let tmp_type = tmp_val.expr_type()
                 .expect("temporary rc values should always be valid types")
-                .expect("temproary rc values should never have no type");
+                .expect("temporary rc values should never have no type");
             let val_c_type = type_to_c(&tmp_type, tmp_val.scope());
 
             write!(out, "{} {} =", val_c_type, tmp_name)?;
@@ -439,6 +443,7 @@ fn write_statement(out: &mut String,
             let mut lhs_expr = String::new();
             write_expr(&mut lhs_expr, &lhs, globals)?;
 
+            /* release the old value of the variable, if it's initialized */
             if is_class_assignment {
                 writeln!(out, "if ({} && {}->StrongCount > 0) {{", lhs_expr, lhs_expr)?;
                 writeln!(out, " System_Internal_Rc_Release({});", lhs_expr)?;
