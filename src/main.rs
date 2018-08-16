@@ -8,6 +8,7 @@ mod operators;
 mod tokens;
 mod tokenizer;
 mod syntax;
+mod target_c;
 
 pub trait ToSource {
     fn to_source(&self) -> String;
@@ -39,7 +40,7 @@ impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
     }
 }
 
-fn compile(source: &str) -> Result<(), CompileError> {
+fn compile(source: &str) -> Result<String, CompileError> {
     let tokens = tokenizer::tokenize(source)?;
 
     //no context!
@@ -52,16 +53,18 @@ fn compile(source: &str) -> Result<(), CompileError> {
     let program = syntax::program::Program::parse(tokens.into_iter(), &empty_context)?
         .finish()?;
 
-    println!("{}", program.to_source());
+    //println!("{}", program.to_source());
 
-    Ok(())
+    Ok(target_c::write_c(&program))
 }
 
 fn main() {
     let hello_world_pas = include_str!("../HelloWorld.pas");
 
     match compile(hello_world_pas) {
-        Ok(_) => println!("Success!"),
+        Ok(c_unit) => {
+            println!("{}", c_unit);
+        },
         Err(err) => {
             println!("Error: {}", err);
             std::process::exit(1);

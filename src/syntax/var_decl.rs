@@ -7,8 +7,8 @@ use ToSource;
 
 #[derive(Clone, Debug)]
 pub struct VarDecl {
-    name: String,
-    decl_type: types::Identifier,
+    pub name: String,
+    pub decl_type: types::Identifier,
 }
 
 #[derive(Clone, Debug, Default)]

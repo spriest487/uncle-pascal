@@ -123,15 +123,15 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
 
 #[derive(Clone, Debug)]
 pub struct Program {
-    name: types::Identifier,
+    pub name: types::Identifier,
 
-    uses: Vec<types::Identifier>,
+    pub uses: Vec<types::Identifier>,
 
-    functions: Vec<Function>,
-    type_decls: Vec<RecordDecl>,
-    vars: Vars,
+    pub functions: Vec<Function>,
+    pub type_decls: Vec<RecordDecl>,
+    pub vars: Vars,
 
-    program_block: Block,
+    pub program_block: Block,
 }
 
 impl Program {

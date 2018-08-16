@@ -1,9 +1,15 @@
 use std::fmt;
 
+//#[derive(Eq, PartialEq, Clone, Debug)]
+//pub enum Type {
+//    Integer,
+//    String,
+//}
+
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Identifier {
-    namespace: Vec<String>,
-    name: String,
+    pub namespace: Vec<String>,
+    pub name: String,
 }
 
 impl fmt::Display for Identifier {
