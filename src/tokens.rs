@@ -20,6 +20,15 @@ pub enum Token {
     Comma,
 }
 
+pub trait AsToken : Clone + fmt::Display {
+    fn as_token(&self) -> &Token;
+}
+
+impl AsToken for Token {
+    fn as_token(&self) -> &Token {
+        self
+    }
+}
 
 pub trait ToSource {
     fn to_source(&self) -> String;

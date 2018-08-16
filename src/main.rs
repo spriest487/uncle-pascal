@@ -11,7 +11,7 @@ mod syntax;
 
 enum CompileError {
     TokenizeError(tokenizer::IllegalToken),
-    ParseError(syntax::ParseError),
+    ParseError(syntax::ParseError<tokenizer::SourceToken>),
 }
 
 impl fmt::Display for CompileError {
@@ -29,8 +29,8 @@ impl From<tokenizer::IllegalToken> for CompileError {
     }
 }
 
-impl From<syntax::ParseError> for CompileError {
-    fn from(err: syntax::ParseError) -> Self {
+impl From<syntax::ParseError<tokenizer::SourceToken>> for CompileError {
+    fn from(err: syntax::ParseError<tokenizer::SourceToken>) -> Self {
         CompileError::ParseError(err)
     }
 }

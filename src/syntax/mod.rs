@@ -1,21 +1,23 @@
 pub mod function;
 pub mod program;
+pub mod block;
 
 use std::fmt;
 
 use keywords;
 use tokens;
-use tokenizer;
 
 #[derive(Clone, Debug)]
-pub enum ParseError {
-    UnexpectedToken(tokenizer::SourceToken, Option<TokenMatcher>),
-    UnbalancedPair(TokenMatcher, tokenizer::SourceToken),
+pub enum ParseError<TToken> {
+    UnexpectedToken(TToken, Option<TokenMatcher>),
+    UnbalancedPair(TokenMatcher, TToken),
     UnterminatedBlock,
     UnexpectedEOF,
 }
 
-impl fmt::Display for ParseError {
+impl<TToken> fmt::Display for ParseError<TToken>
+    where TToken: tokens::AsToken + fmt::Display
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &ParseError::UnexpectedToken(ref source_token, ref expected) => {
@@ -35,14 +37,14 @@ impl fmt::Display for ParseError {
     }
 }
 
-pub struct ParseOutput<TValue> {
+pub struct ParseOutput<TToken, TValue> {
     pub value: TValue,
-    pub next: Box<Iterator<Item=tokenizer::SourceToken>>,
+    pub next: Box<Iterator<Item=TToken>>,
 }
 
-impl<TValue> ParseOutput<TValue> {
+impl<TToken, TValue> ParseOutput<TToken, TValue> {
     pub fn new<TNext>(value: TValue, next: TNext) -> Self
-        where TNext: IntoIterator<Item=tokenizer::SourceToken> + 'static
+        where TNext: IntoIterator<Item=TToken> + 'static
     {
         Self {
             value,
@@ -50,7 +52,7 @@ impl<TValue> ParseOutput<TValue> {
         }
     }
 
-    pub fn finish(mut self) -> Result<TValue, ParseError> {
+    pub fn finish(mut self) -> Result<TValue, ParseError<TToken>> {
         let unexpected = self.next.next();
         match unexpected {
             Some(token) => Err(ParseError::UnexpectedToken(token, None)),
@@ -58,7 +60,7 @@ impl<TValue> ParseOutput<TValue> {
         }
     }
 
-    pub fn unwrap(self) -> (TValue, WrapIter<tokenizer::SourceToken>) {
+    pub fn unwrap(self) -> (TValue, WrapIter<TToken>) {
         (self.value, WrapIter {
             wrapped: self.next
         })
@@ -77,7 +79,7 @@ impl<TItem> Iterator for WrapIter<TItem> {
     }
 }
 
-type ParseResult<T> = Result<ParseOutput<T>, ParseError>;
+type ParseResult<TValue, TToken> = Result<ParseOutput<TToken, TValue>, ParseError<TToken>>;
 
 #[derive(Clone, Debug)]
 pub enum TokenMatcher {
@@ -110,17 +112,19 @@ impl fmt::Display for TokenMatcher {
 }
 
 impl TokenMatcher {
-    pub fn match_token(&self, token: &tokens::Token) -> bool {
+    pub fn match_token<T>(&self, token: &T) -> bool
+        where T: tokens::AsToken
+    {
         match self {
-            &TokenMatcher::Keyword(kw) => token.is_keyword(kw),
-            &TokenMatcher::AnyKeyword => token.is_any_keyword(),
-            &TokenMatcher::AnyIdentifier => token.is_any_identifier(),
-            &TokenMatcher::AnyBinaryOperator => token.is_any_binary_operator(),
-            &TokenMatcher::AnyLiteralInteger => token.is_any_literal_int(),
-            &TokenMatcher::AnyLiteralString => token.is_any_literal_string(),
-            &TokenMatcher::Exact(ref exact_token) => token == exact_token,
+            &TokenMatcher::Keyword(kw) => token.as_token().is_keyword(kw),
+            &TokenMatcher::AnyKeyword => token.as_token().is_any_keyword(),
+            &TokenMatcher::AnyIdentifier => token.as_token().is_any_identifier(),
+            &TokenMatcher::AnyBinaryOperator => token.as_token().is_any_binary_operator(),
+            &TokenMatcher::AnyLiteralInteger => token.as_token().is_any_literal_int(),
+            &TokenMatcher::AnyLiteralString => token.as_token().is_any_literal_string(),
+            &TokenMatcher::Exact(ref exact_token) => token.as_token() == exact_token,
             &TokenMatcher::OneOf(ref matchers) => matchers.iter()
-                .any(|matcher| matcher.match_token(token)),
+                .any(|matcher| matcher.match_token(token.as_token())),
         }
     }
 
@@ -130,8 +134,9 @@ impl TokenMatcher {
         }
     }
 
-    pub fn until_match<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
-        where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
+    pub fn until_match<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<Vec<TToken>, TToken>
+        where TIter: IntoIterator<Item=TToken> + 'static,
+              TToken: tokens::AsToken + Clone
     {
         let mut until = Vec::new();
         let mut tokens = in_tokens.into_iter();
@@ -139,7 +144,7 @@ impl TokenMatcher {
         loop {
             match tokens.next() {
                 Some(next_token) => {
-                    if self.match_token(&next_token.token) {
+                    if self.match_token(&next_token) {
                         break;
                     }
                     else {
@@ -169,8 +174,9 @@ impl SequenceMatcher {
         self
     }
 
-    pub fn match_tokens<I>(&self, in_tokens: I) -> ParseResult<Vec<tokenizer::SourceToken>>
-        where I: Iterator<Item=tokenizer::SourceToken>
+    pub fn match_tokens<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<Vec<TToken>, TToken>
+        where TIter: Iterator<Item=TToken>,
+              TToken: tokens::AsToken + Clone + 'static
     {
         let tokens: Vec<_> = in_tokens.collect();
 
@@ -178,7 +184,7 @@ impl SequenceMatcher {
 
         let matches: Vec<_> = tokens.iter()
             .zip(self.sequence.iter())
-            .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.match_token(&token.token)))
+            .map(|(token, matcher)| (token.clone(), matcher.clone(), matcher.match_token(token)))
             .collect();
 
         if matches.len() < expected_len {

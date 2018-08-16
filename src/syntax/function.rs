@@ -1,5 +1,4 @@
 use syntax::*;
-use tokenizer;
 use keywords;
 use tokens;
 use types;
@@ -14,8 +13,9 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn parse<I>(in_tokens: I) -> ParseResult<Self>
-        where I: IntoIterator<Item=tokenizer::SourceToken> + 'static
+    pub fn parse<TIter, TToken>(in_tokens: TIter) -> ParseResult<Self, TToken>
+        where TIter: IntoIterator<Item=TToken> + 'static,
+              TToken: tokens::AsToken + 'static
     {
         //match the sig
         let sig_match = TokenMatcher::Keyword(keywords::Function)
@@ -36,13 +36,13 @@ impl Function {
             .unwrap();
 
         match after_end.next() {
-            Some(ref token) if token.token == tokens::Semicolon => {
+            Some(ref token) if *token.as_token() == tokens::Semicolon => {
                 let function = Function {
-                    name: fn_name.token.unwrap_identifier().to_owned(),
-                    return_type: types::Identifier::parse(fn_return_type.token.unwrap_identifier()),
+                    name: fn_name.as_token().unwrap_identifier().to_owned(),
+                    return_type: types::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
                     body: fn_tokens.into_iter()
-                        .map(|t| t.token)
+                        .map(|t| t.as_token().clone())
                         .collect(),
                 };
 

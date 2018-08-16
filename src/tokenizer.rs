@@ -19,6 +19,12 @@ impl fmt::Display for SourceToken {
     }
 }
 
+impl tokens::AsToken for SourceToken {
+    fn as_token(&self) -> &tokens::Token {
+        &self.token
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct IllegalToken {
     pub text: String,
