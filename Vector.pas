@@ -16,14 +16,12 @@ begin
 end
 
 procedure Add(self: ^Vector; p: System.Byte)
-var
-  i: System.Integer
 begin
   let newElements := System.GetMem(self.Length + 1)
 
   if self.Elements <> 0 then
   begin
-    for i := 0 to self.Length do
+    for let i := 0 to self.Length do
     ^(newElements + i) := ^(self.Elements + i)
 
 
@@ -37,10 +35,8 @@ begin
 end
 
 procedure AddAll(self: ^Vector; other: ^Vector)
-var
-  i: System.Integer
 begin
-  for i := 0 to other.Length do
+  for let i := 0 to other.Length do
     Add(self, ^(other.Elements + i))
 end
 

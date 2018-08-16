@@ -144,9 +144,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
         &node::ExpressionValue::LetBinding { ref name, ref value } => {
             let value_type = value.expr_type().unwrap().unwrap();
 
-            write!(out, ";{} {} =", type_to_c(&value_type), name)?;
-            write_expr(out, value)?;
-            write!(out, ";")
+            write!(out, "{} {} =", type_to_c(&value_type), name)?;
+            write_expr(out, value)
         }
 
         &node::ExpressionValue::LiteralInteger(ref i) => {
@@ -173,22 +172,23 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
 
         &node::ExpressionValue::ForLoop { ref from, ref to, ref body } => {
             let iter_expr = match &from.as_ref().value {
-                &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. } => {
-                    assert_eq!(operators::Assignment, *op);
-                    lhs.clone()
+                &node::ExpressionValue::BinaryOperator { ref lhs, ref op, .. }
+                if *op == operators::Assignment => {
+                    let mut iter_expr_out = String::new();
+                    write_expr(&mut iter_expr_out, lhs)?;
+                    iter_expr_out
                 }
-                _ => panic!("for loop 'from' clause must be an assignment")
+                &node::ExpressionValue::LetBinding { ref name, .. } => {
+                    name.clone()
+                }
+                _ => panic!("for loop 'from' clause must be an assignment or a let binding")
             };
 
             write!(out, "for (")?;
             write_expr(out, from)?;
-            write!(out, ";")?;
-            write_expr(out, iter_expr.as_ref())?;
-            write!(out, " < ")?;
+            write!(out, "; {} < ", iter_expr)?;
             write_expr(out, to)?;
-            write!(out, "; ++")?;
-            write_expr(out, iter_expr.as_ref())?;
-            writeln!(out, ") {{")?;
+            writeln!(out, "; {} += 1) {{", iter_expr)?;
             write_expr(out, body)?;
             writeln!(out, ";}}")
         }

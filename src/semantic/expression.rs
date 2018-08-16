@@ -109,7 +109,20 @@ impl Expression {
             &node::ExpressionValue::ForLoop { ref from, ref to, ref body } => {
                 let from_expr = Expression::annotate(from, scope)?;
                 let to_expr = Expression::annotate(to, scope)?;
-                let do_expr = Expression::annotate(body, scope)?;
+
+                let do_expr = if from_expr.is_let_binding() {
+                    let (from_name, from_value) = from_expr.clone().unwrap_let_binding();
+                    let from_type = from_value.expr_type()?
+                        .ok_or_else(|| SemanticError::type_not_assignable(
+                            None, from_expr.context.clone()))?;
+
+                    let body_scope = scope.clone()
+                        .with_symbol_local(&from_name, from_type);
+
+                    Expression::annotate(body, &body_scope)?
+                } else {
+                    Expression::annotate(body, scope)?
+                };
 
                 Ok(Expression::for_loop(from_expr, to_expr, do_expr, expr.context.clone()))
             }
@@ -232,7 +245,7 @@ impl Expression {
                 }
 
                 Ok(None)
-            },
+            }
 
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
                 let target_type = target.expr_type()?;
@@ -291,16 +304,24 @@ impl Expression {
                 let from_type = from.expr_type()?;
                 let to_type = to.expr_type()?;
 
+                expect_comparable(Some(&DeclaredType::Integer), to_type.as_ref(),
+                                  &self.context)?;
+
                 match &from.value {
                     &node::ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
                     if *op == operators::Operator::Assignment => {
                         let lhs_type = lhs.expr_type()?;
 
                         expect_comparable(Some(&DeclaredType::Integer), lhs_type.as_ref(),
-                                       &self.context)?;
-                        expect_comparable(Some(&DeclaredType::Integer), to_type.as_ref(),
-                                       &self.context)?;
+                                          &self.context)?;
+                        Ok(None)
+                    }
 
+                    &node::ExpressionValue::LetBinding { ref value, .. } => {
+                        let value_type = value.expr_type()?;
+
+                        expect_comparable(Some(&DeclaredType::Integer), value_type.as_ref(),
+                                          &self.context)?;
                         Ok(None)
                     }
 
