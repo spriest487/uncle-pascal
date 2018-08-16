@@ -233,6 +233,7 @@ impl Scope {
             .with_alias(Identifier::from("System.UInt32"), Type::UInt32)
             .with_alias(Identifier::from("System.Int64"), Type::Int64)
             .with_alias(Identifier::from("System.UInt64"), Type::UInt64)
+            .with_alias(Identifier::from("System.Float64"), Type::Float64)
             .with_alias(Identifier::from("System.NativeInt"), Type::NativeInt)
             .with_alias(Identifier::from("System.NativeUInt"), Type::NativeUInt)
             .with_alias(Identifier::from("System.Pointer"), Type::RawPointer)
