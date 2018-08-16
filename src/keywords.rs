@@ -92,6 +92,8 @@ impl ToSource for Keyword {
             Unit => "unit",
             Interface => "interface",
             Implementation => "implementation",
+            Array => "array",
+            Of => "of",
         }.to_string()
     }
 }

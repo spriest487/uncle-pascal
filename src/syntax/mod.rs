@@ -20,6 +20,8 @@ pub use self::token_stream::TokenStream;
 
 use std::fmt;
 
+use keywords;
+use tokens::{self, AsToken};
 use operators;
 use source;
 use node::{
@@ -33,11 +35,12 @@ pub struct ParsedSymbol(pub Identifier);
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct IndexRange {
-    from: isize,
-    to: isize,
+    /* TODO: non-64bit support */
+    from: i64,
+    to: i64,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParsedType {
     pub name: Identifier,
     pub indirection: usize,
@@ -66,12 +69,41 @@ impl ParsedType {
             name: self.name,
             indirection: self.indirection + 1,
 
-            array_dimensions: self.array_dimensions
+            array_dimensions: self.array_dimensions,
         }
     }
 
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<ParsedType> {
-        let array_kw = tokens.match_peek(keywords::Array);
+        let array_kw = tokens.match_peek(keywords::Array)?;
+        let array_dimensions = match array_kw {
+            Some(_) => {
+                tokens.advance(1);
+
+                let dims_groups = tokens.match_groups(tokens::SquareBracketLeft,
+                                                      tokens::SquareBracketRight,
+                                                      tokens::Comma)?;
+
+                let dims = dims_groups.groups.into_iter()
+                    .map(|dim_group| {
+                        let mut dim_tokens = TokenStream::new(dim_group.tokens, &dim_group.context);
+                        let dim_from = dim_tokens.match_one(Matcher::AnyLiteralInteger)?;
+                        dim_tokens.match_one(tokens::Period)?;
+                        dim_tokens.match_one(tokens::Period)?;
+                        let dim_to = dim_tokens.match_one(Matcher::AnyLiteralInteger)?;
+
+                        Ok(IndexRange {
+                            from: dim_from.unwrap_literal_integer(),
+                            to: dim_to.unwrap_literal_integer(),
+                        })
+                    })
+                    .collect::<ParseResult<_>>()?;
+
+                tokens.match_one(keywords::Of)?;
+                dims
+            }
+
+            None => Vec::new(),
+        };
 
         let mut indirection = 0;
 
@@ -86,6 +118,8 @@ impl ParsedType {
                 break Ok(ParsedType {
                     name,
                     indirection,
+
+                    array_dimensions,
                 });
             }
         }
@@ -168,3 +202,19 @@ impl fmt::Display for ParseError {
 
 
 pub type ParseResult<TValue> = Result<TValue, ParseError>;
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn parses_1d_array_type() {
+        let mut tokens = TokenStream::tokenize("test", "array [0..10] of Integer")
+            .unwrap();
+
+        let parsed = ParsedType::parse(&mut tokens)
+            .unwrap();
+
+        assert_eq!(parsed.array_dimensions, vec![IndexRange { from: 0,  to: 10 }]);
+    }
+}

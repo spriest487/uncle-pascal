@@ -83,6 +83,8 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         simple_pattern(r"[/]", operators::Divide),
         simple_pattern(r"\(", tokens::BracketLeft),
         simple_pattern(r"\)", tokens::BracketRight),
+        simple_pattern(r"\[", tokens::SquareBracketLeft),
+        simple_pattern(r"\]", tokens::SquareBracketRight),
         simple_pattern(r":=", operators::Assignment),
         simple_pattern(r">=", operators::Gte),
         simple_pattern(r">", operators::Gt),

@@ -19,6 +19,8 @@ pub enum Token {
     BracketLeft,
     BracketRight,
     Comma,
+    SquareBracketLeft,
+    SquareBracketRight,
 }
 
 pub trait AsToken : Clone + fmt::Debug + fmt::Display {
@@ -126,17 +128,19 @@ impl AsToken for Token {
 impl ToSource for Token {
     fn to_source(&self) -> String {
         match self {
-            &Keyword(kw) => kw.to_source(),
-            &Identifier(ref name) => name.clone(),
-            &Operator(ref op) => op.to_source(),
-            &LiteralInteger(i) => format!("{}", i),
-            &LiteralString(ref s) => format!("'{}'", s.replace("'", "''")),
-            &Period => ".".to_string(),
-            &Colon => ":".to_string(),
-            &Semicolon => ";".to_string(),
-            &BracketLeft => "(".to_string(),
-            &BracketRight => ")".to_string(),
-            &Comma => ",".to_string(),
+            Keyword(kw) => kw.to_source(),
+            Identifier(name) => name.clone(),
+            Operator(op) => op.to_source(),
+            LiteralInteger(i) => format!("{}", i),
+            LiteralString(s) => format!("'{}'", s.replace("'", "''")),
+            Period => ".".to_string(),
+            Colon => ":".to_string(),
+            Semicolon => ";".to_string(),
+            BracketLeft => "(".to_string(),
+            BracketRight => ")".to_string(),
+            Comma => ",".to_string(),
+            SquareBracketLeft => "[".to_string(),
+            SquareBracketRight => "]".to_string(),
         }
     }
 }
@@ -144,11 +148,11 @@ impl ToSource for Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            &Keyword(kw) => write!(f, "keyword `{}`", kw),
-            &Identifier(ref name) => write!(f, "identifier `{}`", name),
-            &Operator(ref op) => write!(f, "operator `{}`", op),
-            &LiteralString(ref s) => write!(f, "string literal `{}`", s),
-            &LiteralInteger(i) => write!(f, "integer literal `{}`", i),
+            Keyword(kw) => write!(f, "keyword `{}`", kw),
+            Identifier(name) => write!(f, "identifier `{}`", name),
+            Operator(op) => write!(f, "operator `{}`", op),
+            LiteralString(s) => write!(f, "string literal `{}`", s),
+            LiteralInteger(i) => write!(f, "integer literal `{}`", i),
             _ => write!(f, "{}", self.to_source())
         }
     }
