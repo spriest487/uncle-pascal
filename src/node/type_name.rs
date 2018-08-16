@@ -6,7 +6,7 @@ use tokens::{self, AsToken};
 use keywords;
 use operators;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct IndexRange {
     pub from: isize,
     pub to: isize,

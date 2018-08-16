@@ -5,7 +5,7 @@ use std::{
 
 use node::{self, Identifier, ToSource, IndexRange};
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct Symbol {
     pub name: Identifier,
     pub decl_type: DeclaredType,
@@ -39,7 +39,7 @@ impl node::Symbol for Symbol {
     type Type = DeclaredType;
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct FunctionSignature {
     pub name: Identifier,
     pub return_type: Option<DeclaredType>,
@@ -62,13 +62,13 @@ impl fmt::Display for FunctionSignature {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum RecordKind {
     Record,
     Class,
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct DeclaredRecord {
     pub name: Identifier,
     pub kind: RecordKind,
@@ -99,7 +99,14 @@ impl fmt::Display for DeclaredRecord {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+pub struct ArrayType {
+    pub element: Box<DeclaredType>,
+    pub first_dim: IndexRange,
+    pub rest_dims: Vec<IndexRange>,
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum DeclaredType {
     Nil,
     Byte,
@@ -109,11 +116,7 @@ pub enum DeclaredType {
     Pointer(Box<DeclaredType>),
     Function(Box<FunctionSignature>),
     Record(DeclaredRecord),
-    Array {
-        element: Box<DeclaredType>,
-        first_dim: IndexRange,
-        rest_dims: Vec<IndexRange>,
-    },
+    Array(ArrayType),
 }
 
 impl ToSource for DeclaredType {
@@ -135,13 +138,13 @@ impl DeclaredType {
                 DeclaredType::Pointer(target) => format!("^{}", target.to_source()),
                 DeclaredType::Function(sig) => format!("{}", sig),
                 DeclaredType::Record(record) => format!("{}", record.name),
-                DeclaredType::Array { element, first_dim, rest_dims } => {
+                DeclaredType::Array(array) => {
                     let mut name = "array ".to_string();
-                    name.push_str(&format!("[{}..{}", first_dim.from, first_dim.to));
-                    for dim in rest_dims.iter() {
+                    name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));
+                    for dim in array.rest_dims.iter() {
                         name.push_str(&format!(",{}..{}", dim.from, dim.to));
                     }
-                    name.push_str(&format!("] of {}", element.to_source()));
+                    name.push_str(&format!("] of {}", array.element.to_source()));
                     name
                 }
             }
@@ -176,13 +179,13 @@ impl DeclaredType {
             DeclaredType::Boolean => size_of::<u8>(),
 
             DeclaredType::Record(rec) => rec.size_of(),
-            DeclaredType::Array { element, first_dim, rest_dims } => {
-                let total_len = rest_dims.iter()
-                    .fold(first_dim.len(), |total, dim| {
+            DeclaredType::Array(array) => {
+                let total_len = array.rest_dims.iter()
+                    .fold(array.first_dim.len(), |total, dim| {
                         total * dim.len()
                     });
 
-                total_len * element.size_of()
+                total_len * array.element.size_of()
             }
         }
     }

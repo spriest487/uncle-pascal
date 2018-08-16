@@ -358,11 +358,11 @@ impl Scope {
         }
 
         if parsed_type.array_dimensions.len() > 0 {
-            result = DeclaredType::Array {
+            result = DeclaredType::Array(ArrayType {
                 element: Box::new(result),
                 first_dim: parsed_type.array_dimensions[0].clone(),
                 rest_dims: parsed_type.array_dimensions[1..].iter().cloned().collect(),
-            }
+            })
         }
 
         Some(result)

@@ -29,11 +29,11 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
         DeclaredType::Integer => "System_Integer".to_owned(),
         DeclaredType::Boolean => "System_Boolean".to_owned(),
         DeclaredType::RawPointer => "System_Pointer".to_owned(),
-        DeclaredType::Pointer(ref target) => {
+        DeclaredType::Pointer(target) => {
             let target_c = type_to_c(target.as_ref());
             format!("{}*", target_c)
         }
-        DeclaredType::Function(ref sig) => {
+        DeclaredType::Function(sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
             let return_type = sig.return_type.as_ref().map(type_to_c)
                 .unwrap_or_else(|| "void".to_owned());
@@ -44,20 +44,20 @@ pub fn type_to_c(pascal_type: &DeclaredType) -> String {
 
             format!("({} (*{})({}))", return_type, name, arg_types)
         }
-        DeclaredType::Record(ref decl) => {
+        DeclaredType::Record(decl) => {
             match decl.kind {
                 RecordKind::Class => format!("{}*", identifier_to_c(&decl.name)),
                 RecordKind::Record => format!("{}", identifier_to_c(&decl.name)),
             }
         }
 
-        DeclaredType::Array { element, first_dim, rest_dims } => {
+        DeclaredType::Array(array) => {
             let mut name = String::new();
             name.push_str("System_Internal_Array_");
-            name.push_str(&format!("{}_", type_to_c(element.as_ref())));
-            name.push_str(&format!("{}", first_dim.len()));
+            name.push_str(&format!("{}_", type_to_c(array.element.as_ref())));
+            name.push_str(&format!("{}", array.first_dim.len()));
 
-            for dim in rest_dims.iter() {
+            for dim in array.rest_dims.iter() {
                 name.push_str(&format!("_{}", dim.len()));
             }
             name
