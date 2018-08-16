@@ -14,9 +14,11 @@ struct System_Internal_Class {
 static const void* System_Internal_TryFindVTable(
         System_Internal_Object* obj,
         PascalType_System_NativeUInt interfaceID) {
-    auto objClass = obj->Class;
-    for (PascalType_System_NativeUInt i = 0; i < objClass->InterfaceCount; ++i) {
-        auto iface = &objClass->Interfaces[i];
+    struct System_Internal_Class* objClass = obj->Class;
+    for (PascalType_System_NativeUInt i = 0;
+            i < objClass->InterfaceCount;
+            ++i) {
+        struct System_Internal_InterfaceImpl* iface = &objClass->Interfaces[i];
 
         if (iface->ID == interfaceID) {
             return iface->VTable;
@@ -29,7 +31,7 @@ static const void* System_Internal_TryFindVTable(
 static const void* System_Internal_FindVTable(
         System_Internal_Object* obj,
         PascalType_System_NativeUInt interfaceID) {
-    auto vtable = System_Internal_TryFindVTable(obj, interfaceID);
+    const void* vtable = System_Internal_TryFindVTable(obj, interfaceID);
 
     if (!vtable) {
         std::fprintf(stderr, "missing vtable of interface $%td for class %s\n",
@@ -123,19 +125,23 @@ static System_Internal_Object* System_Internal_Rc_GetMem(
 }
 
 static void System_Internal_Rc_Retain(System_Internal_Object* obj) {
+#ifdef UNCLEPASCAL_RC_DEBUG
     if (!obj) {
         std::fprintf(stderr, "retained invalid rc @ %p\n", obj);
         std::abort();
     }
+#endif
 
     obj->StrongCount += 1;
 }
 
 static void System_Internal_Rc_Release(System_Internal_Object* obj) {
-    if (!obj || obj->StrongCount <= 0) {
-        std::fprintf(stderr, "released rc that was already released @ %p\n", obj);
+#ifdef UNCLEPASCAL_RC_DEBUG
+    if (!obj) {
+        std::fprintf(stderr, "released NULL rc\n");
         std::abort();
     }
+#endif
 
     obj->StrongCount -= 1;
     if (obj->StrongCount == 0) {
@@ -149,7 +155,7 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
             System_Internal_TryFindVTable(obj, System_Internal_DisposeInterfaceID)
         );
 
-        if (!disposeImpl) {
+        if (disposeImpl) {
             disposeImpl->member_Dispose(obj);
 
             if (obj->StrongCount > 0) {
