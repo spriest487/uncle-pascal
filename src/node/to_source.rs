@@ -105,6 +105,10 @@ impl<C> ToSource for ExpressionValue<C>
                 lines.join("\n")
             }
 
+            ExpressionValue::While { condition, body } => {
+                format!("while {} do {}", condition.to_source(), body.to_source())
+            }
+
             ExpressionValue::Block(block) => {
                 block.to_source()
             }

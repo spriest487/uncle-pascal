@@ -347,6 +347,14 @@ pub fn write_expr(out: &mut String,
             Ok(())
         }
 
+        ExpressionValue::While { condition, body } => {
+            write!(out, "while (")?;
+            write_expr(out, condition, globals)?;
+            writeln!(out, ") {{")?;
+            write_expr(out, body, globals)?;
+            writeln!(out, "}}")
+        }
+
         ExpressionValue::ForLoop { from, to, body } => {
             let iter_expr = match &from.as_ref().value {
                 ExpressionValue::BinaryOperator { lhs, op, .. }

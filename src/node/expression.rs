@@ -50,6 +50,10 @@ pub enum ExpressionValue<TContext> {
         then_branch: Box<Expression<TContext>>,
         else_branch: Option<Box<Expression<TContext>>>,
     },
+    While {
+        condition: Box<Expression<TContext>>,
+        body: Box<Expression<TContext>>,
+    },
     Block(Block<TContext>),
     ForLoop {
         from: Box<Expression<TContext>>,
@@ -292,6 +296,16 @@ impl<TContext> Expression<TContext>
         }
     }
 
+    pub fn while_loop(condition: Self, body: Self, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::While {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            },
+            context: context.into(),
+        }
+    }
+
     pub fn for_loop(from: Self, to: Self, body: Self, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::ForLoop {
@@ -455,7 +469,7 @@ pub fn transform_expressions<TContext>(
     where TContext: Context + Clone + fmt::Debug
 {
     match root_expr.value {
-            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+        ExpressionValue::BinaryOperator { lhs, op, rhs } => {
             let lhs = transform_expressions(*lhs, replace);
             let rhs = transform_expressions(*rhs, replace);
 
@@ -489,6 +503,13 @@ pub fn transform_expressions<TContext>(
             });
 
             replace(Expression::if_then_else(cond, if_branch, else_branch, root_expr.context))
+        }
+
+        ExpressionValue::While { condition, body } => {
+            let condition = transform_expressions(*condition, replace);
+            let body = transform_expressions(*body, replace);
+
+            replace(Expression::while_loop(condition, body, root_expr.context))
         }
 
         ExpressionValue::PrefixOperator { op, rhs } => {

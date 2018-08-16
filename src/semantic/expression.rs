@@ -150,6 +150,30 @@ fn annotate_identifier(name: &Identifier,
         })
 }
 
+fn annotate_while_loop(condition: &syntax::Expression,
+                       body: &syntax::Expression,
+                       scope: Rc<Scope>,
+                       context: &syntax::ParsedContext) -> SemanticResult<Expression> {
+    let cond_expr = Expression::annotate(condition, scope.clone())?;
+    let body_expr = Expression::annotate(body, scope.clone())?;
+
+    let context = SemanticContext {
+        token: context.token().clone(),
+        scope,
+    };
+
+    Ok(Expression::while_loop(cond_expr, body_expr, context))
+}
+
+fn while_type(condition: &Expression, body: &Expression) -> SemanticResult<()> {
+    let cond_type = condition.expr_type()?;
+    body.expr_type()?;
+
+    expect_comparable(Some(&Type::Boolean), cond_type.as_ref(), &condition.context)?;
+    Ok(())
+}
+
+
 fn annotate_if(condition: &syntax::Expression,
                then_branch: &syntax::Expression,
                else_branch: Option<&syntax::Expression>,
@@ -165,14 +189,14 @@ fn annotate_if(condition: &syntax::Expression,
 
     Ok(Expression::if_then_else(cond_expr, then_expr, else_expr, SemanticContext {
         token: context.token().clone(),
-        scope: scope.clone(),
+        scope,
     }))
 }
 
 fn if_type(condition: &Expression,
            then_branch: &Expression,
            else_branch: Option<&Expression>,
-           context: &SemanticContext) -> SemanticResult<Option<Type>> {
+           context: &SemanticContext) -> SemanticResult<()> {
     let condition_type = condition.expr_type()?;
 
     expect_comparable(Some(&Type::Boolean),
@@ -185,7 +209,7 @@ fn if_type(condition: &Expression,
         else_expr.expr_type()?;
     }
 
-    Ok(None)
+    Ok(())
 }
 
 fn annotate_for_loop(from: &syntax::Expression,
@@ -219,7 +243,7 @@ fn annotate_for_loop(from: &syntax::Expression,
 fn for_loop_type(from: &Expression,
                  to: &Expression,
                  body: &Expression,
-                 context: &SemanticContext) -> SemanticResult<Option<Type>> {
+                 context: &SemanticContext) -> SemanticResult<()> {
     let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
 
@@ -234,7 +258,7 @@ fn for_loop_type(from: &Expression,
 
             expect_comparable(Some(&Type::Int32), lhs_type.as_ref(),
                               context)?;
-            Ok(None)
+            Ok(())
         }
 
         &ExpressionValue::LetBinding { ref value, .. } => {
@@ -242,7 +266,7 @@ fn for_loop_type(from: &Expression,
 
             expect_comparable(Some(&Type::Int32), value_type.as_ref(),
                               context)?;
-            Ok(None)
+            Ok(())
         }
 
         //TODO better error
@@ -428,6 +452,7 @@ fn is_lvalue(expr: &Expression) -> bool {
         ExpressionValue::Block(_) |
         ExpressionValue::ForLoop { .. } |
         ExpressionValue::If { .. } |
+        ExpressionValue::While { .. } |
         ExpressionValue::LetBinding { .. } =>
             false
     }
@@ -624,6 +649,9 @@ impl Expression {
                             scope,
                             &expr.context),
 
+            ExpressionValue::While { condition, body } =>
+                annotate_while_loop(condition, body, scope, &expr.context),
+
             ExpressionValue::ForLoop { from, to, body } =>
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
@@ -699,10 +727,16 @@ impl Expression {
                 if_type(condition.as_ref(),
                         then_branch.as_ref(),
                         else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
-                        &self.context),
+                        &self.context)
+                    .map(|_| None),
 
             ExpressionValue::ForLoop { from, to, body } =>
-                for_loop_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context),
+                for_loop_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context)
+                    .map(|_| None),
+
+            ExpressionValue::While { condition, body } =>
+                while_type(condition, body)
+                    .map(|_| None),
 
             ExpressionValue::Member { of, name } => {
                 member_type(of, name)
@@ -754,7 +788,7 @@ impl Expression {
 
         Ok(Expression {
             context: self.context,
-            value: ExpressionValue::Constant(const_value)
+            value: ExpressionValue::Constant(const_value),
         })
     }
 

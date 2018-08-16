@@ -49,6 +49,7 @@ fn match_statement() -> Matcher {
     keywords::Let
         .or(keywords::Begin)
         .or(keywords::If)
+        .or(keywords::While)
         .or(keywords::For)
 }
 
@@ -275,6 +276,15 @@ fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(Expression::if_then_else(condition_expr, then_expr, else_expr, if_kw))
 }
 
+fn parse_while_loop(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(keywords::While)?;
+    let condition = Expression::parse(tokens)?;
+    tokens.match_one(keywords::Do)?;
+    let body = Expression::parse(tokens)?;
+
+    Ok(Expression::while_loop(condition, body, context))
+}
+
 fn parse_for_loop(tokens: &mut TokenStream) -> ExpressionResult {
     let for_kw = tokens.match_one(keywords::For)?;
     let from_expr: Expression = tokens.parse()?;
@@ -348,55 +358,32 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     }
 
     fn parse(mut self) -> ExpressionResult {
-        match self.tokens.look_ahead().match_one(match_statement()) {
-            /* it's a structured statement, it must consist of this one statement
-            and nothing else */
-            Some(ref kw) if kw.is_keyword(keywords::Let) => {
-                return parse_let_binding(self.tokens);
-            }
+        loop {
+            /* an operand can't be followed by another operand, so each time we finish
+            an operand, the next thing must be a member access, a list of arguments to
+            the function the operand referred to, an array element access, or a binary
+            operator connecting this operand to the next one */
+            let more = match self.last_was_operand {
+                false => self.parse_operand()?,
+                true => self.parse_operator()?,
+            };
 
-            Some(ref kw) if kw.is_keyword(keywords::For) => {
-                return parse_for_loop(self.tokens);
-            }
+            if !more {
+                break {
+                    if self.parts.len() == 0 {
+                        let expected = match_expr_start();
+                        return Err(match self.tokens.look_ahead().next() {
+                            Some(unexpected) =>
+                                ParseError::UnexpectedToken(unexpected, Some(expected)),
+                            None => {
+                                let after = self.tokens.context().clone();
+                                ParseError::UnexpectedEOF(expected, after)
+                            }
+                        });
+                    }
 
-            Some(ref kw) if kw.is_keyword(keywords::If) => {
-                return parse_if(self.tokens);
-            }
-
-            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
-                let parsed_block = Block::parse(self.tokens)?;
-                return Ok(Expression::block(parsed_block));
-            }
-
-            /* it's a compound value expression, parse parts until we run out
-            of valid-looking tokens and try to form an expression out of them */
-            _ => loop {
-                /* an operand can't be followed by another operand, so each time we finish
-                an operand, the next thing must be a member access, a list of arguments to
-                the function the operand referred to, an array element access, or a binary
-                operator connecting this operand to the next one */
-                let more = match self.last_was_operand {
-                    false => self.parse_operand()?,
-                    true => self.parse_operator()?,
+                    resolve_ops_by_precedence(self.parts)
                 };
-
-                if !more {
-                    break {
-                        if self.parts.len() == 0 {
-                            let expected = match_expr_start();
-                            return Err(match self.tokens.look_ahead().next() {
-                                Some(unexpected) =>
-                                    ParseError::UnexpectedToken(unexpected, Some(expected)),
-                                None => {
-                                    let after = self.tokens.context().clone();
-                                    ParseError::UnexpectedEOF(expected, after)
-                                }
-                            });
-                        }
-
-                        resolve_ops_by_precedence(self.parts)
-                    };
-                }
             }
         }
     }
@@ -417,7 +404,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 self.add_operand(constructor);
             }
 
-            /* it's an operator, but thanks to the match we know this operator
+            /* it's an operator, buet thanks to the match we know this operator
             is valid in prefix position, so it's part of this expression */
             Some(ref t) if t.is_any_operator() => {
                 // we need to parse another operand after this!
@@ -545,7 +532,33 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
 impl Parse for Expression {
     fn parse(tokens: &mut TokenStream) -> ExpressionResult {
-        CompoundExpressionParser::new(tokens)
-            .parse()
+        match tokens.look_ahead().match_one(match_statement()) {
+            /* it's a structured statement, it must consist of this one statement
+            and nothing else */
+            Some(ref kw) if kw.is_keyword(keywords::Let) => {
+                return parse_let_binding(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::For) => {
+                return parse_for_loop(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::If) => {
+                return parse_if(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::While) => {
+                return parse_while_loop(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
+                let parsed_block = Block::parse(tokens)?;
+                return Ok(Expression::block(parsed_block));
+            }
+
+            /* it's a compound value expression, parse parts until we run out
+            of valid-looking tokens and try to form an expression out of them */
+            _ => CompoundExpressionParser::new(tokens).parse(),
+        }
     }
 }
