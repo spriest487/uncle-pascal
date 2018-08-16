@@ -87,7 +87,7 @@ pub trait AsToken : Clone + fmt::Debug + fmt::Display {
     fn unwrap_operator(&self) -> operators::Operator {
         match self.as_token() {
             &Operator(ref op) => *op,
-            _ => panic!("calling unwrap_binary_operator on {}", self),
+            _ => panic!("calling unwrap_operator on {}", self),
         }
     }
 

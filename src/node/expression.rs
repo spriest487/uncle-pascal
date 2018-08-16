@@ -16,7 +16,7 @@ pub enum ExpressionValue<TSymbol> {
         rhs: Box<Expression<TSymbol>>,
     },
     FunctionCall {
-        target: TSymbol,
+        target: Box<Expression<TSymbol>>,
         args: Vec<Expression<TSymbol>>,
     },
     LiteralInteger(i64),
@@ -83,14 +83,15 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn function_call<TIter>(target: TSymbol,
-                                args: TIter,
-                                context: source::Token) -> Self
+    pub fn function_call<TIter>(target: Self,
+                                args: TIter) -> Self
         where TIter: IntoIterator<Item=Self>
     {
+        let context = target.context.clone();
+
         Expression {
             value: ExpressionValue::FunctionCall {
-                target,
+                target: Box::new(target),
                 args: args.into_iter().collect(),
             },
             context,

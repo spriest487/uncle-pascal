@@ -242,6 +242,29 @@ fn parses_namespaced_fn_call_with_prefix_operator_in_args() {
 }
 
 #[test]
+fn parses_assignment_followed_by_prefix_operator() {
+    let expr = try_parse_expr(r"a := b
+        ^a")
+        .unwrap();
+
+    assert!(expr.value.is_binary_op(operators::Assignment));
+
+    let next_expr = Expression::parse(expr.next_tokens, &expr.last_token)
+        .unwrap()
+        .finish()
+        .unwrap();
+
+    assert!(next_expr.is_prefix_op(operators::Deref));
+}
+
+#[test]
+fn parses_binay_plus_followed_by_unary_plus_in_brackets() {
+    let expr = try_parse_expr(r"1 + 2
+        (+a)")
+        .unwrap();
+}
+
+#[test]
 fn parses_binary_op_with_fn_call_on_rhs() {
     let expr = parse_expr("x := a.b()");
     assert!(expr.is_binary_op(operators::Assignment));

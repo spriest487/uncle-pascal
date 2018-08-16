@@ -99,11 +99,9 @@ impl Expression {
                     .map(|arg| Expression::annotate(arg, scope))
                     .collect::<Result<Vec<_>, _>>()?;
 
-                let target_symbol = scope.get_symbol(target)
-                    .ok_or_else(|| SemanticError::unknown_symbol(target.clone(),
-                                                                 expr.context.clone()))?;
+                let target = Expression::annotate(target, scope)?;
 
-                Ok(Expression::function_call(target_symbol, typed_args, expr.context.clone()))
+                Ok(Expression::function_call(target, typed_args))
             }
 
             &node::ExpressionValue::Member { ref of, ref name } => {
@@ -146,8 +144,8 @@ impl Expression {
             &node::ExpressionValue::LiteralString(_) => Some(DeclaredType::String),
             &node::ExpressionValue::LiteralInteger(_) => Some(DeclaredType::Integer),
             &node::ExpressionValue::FunctionCall { ref target, .. } => {
-                match target.decl_type() {
-                    types::DeclaredType::Function(sig) => sig.return_type,
+                match target.expr_type() {
+                    Some(types::DeclaredType::Function(sig)) => sig.return_type,
                     _ => panic!("function call target ({}) wasn't a function", self),
                 }
             }
@@ -246,7 +244,7 @@ impl Expression {
             }
 
             &node::ExpressionValue::FunctionCall { ref target, ref args } => {
-                if let DeclaredType::Function(ref sig) = target.decl_type() {
+                if let Some(DeclaredType::Function(ref sig)) = target.expr_type() {
                     if args.len() != sig.arg_types.len() {
                         Err(SemanticError::wrong_num_args(target.clone(),
                                                           sig.arg_types.len(),

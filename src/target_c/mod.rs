@@ -131,8 +131,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ");
 
-            let target_name = symbol_to_c(target);
-            write!(out, "{}({})", target_name, args_str)
+            write_expr(out, target)?;
+            write!(out, "({})", args_str)
         }
 
         &node::ExpressionValue::LiteralInteger(ref i) => {

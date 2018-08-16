@@ -124,28 +124,6 @@ impl Expression {
         }
     }
 
-    fn parse_member_access_after(base: ParseOutput<Expression>) -> ExpressionResult {
-        let mut peek_after = base.next_tokens.peekable();
-        match peek_after.peek().cloned() {
-            Some(ref period) if *period.as_token() == tokens::Period => {
-                let member_name = node::Identifier::parse(peek_after.skip(1),
-                                                          period)?;
-
-                let member_context = base.value.context.clone();
-                let member = Expression::member_deep(base.value,
-                                                     member_name.value,
-                                                     member_context);
-
-                Ok(ParseOutput::new(member, member_name.last_token, member_name.next_tokens))
-            }
-
-            //nope, this expr ends at the close bracket
-            _ => {
-                Ok(ParseOutput::new(base.value, base.last_token, peek_after))
-            },
-        }
-    }
-
     fn parse_compound<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static,
     {
@@ -165,14 +143,24 @@ impl Expression {
 
         let mut tokens_it = all_tokens.iter();
 
-        let tokens_after = loop {
+        let mut tokens_after = Vec::new();
+
+        loop {
             let next_token: Option<&source::Token> = tokens_it.next();
+
+            /* update the context if the token stream isn't finished */
+            if let &Some(token) = &next_token {
+                last_token = token.clone();
+            }
+
             let finish_operand = next_token.is_none() ||
-                (next_token.unwrap().is_any_operator() && bracket_depth == 0);
+                //more tokens, but we hit an operator
+                (next_token.unwrap().is_any_operator() &&
+                    bracket_depth == 0);
 
             if finish_operand {
                 if next_operand_tokens.len() > 0 {
-//                    println!("FINISHED OPERAND! {}", source::tokens_to_source(&next_operand_tokens));
+                    println!("FINISHED OPERAND! {}", source::tokens_to_source(&next_operand_tokens));
                     let context = next_operand_tokens[0].clone();
                     let operand_expr = Expression::parse_operand(next_operand_tokens,
                                                                  &context)?;
@@ -180,32 +168,23 @@ impl Expression {
                     let mut after_expr = operand_expr.next_tokens.peekable();
 
                     parts.push(CompoundExpressionPart::Operand(operand_expr.value));
+                    next_operand_tokens = Vec::new();
 
-                    match after_expr.peek().cloned() {
-                        None => {
-                            //continue
-                            next_operand_tokens = Vec::new();
-                        }
-                        Some(token_after) => {
-                            let all_tokens_after = all_tokens.iter()
-                                .filter(|t| t.location.ge(&token_after.location))
-                                .cloned()
-                                .collect();
+                    if let Some(token_after) = after_expr.peek().cloned() {
+                        let all_tokens_after = all_tokens.iter()
+                            .filter(|t| t.location.ge(&token_after.location))
+                            .cloned()
+                            .collect();
 
-//                            println!("leftovers in operand: `{}`, following tokens: `{}`",
-//                                     source::tokens_to_source(&after_expr.collect::<Vec<_>>()),
-//                                     source::tokens_to_source(&all_tokens_after));
+//                        println!("leftovers in operand: `{}`, following tokens: `{}`",
+//                                 source::tokens_to_source(&after_expr.collect::<Vec<_>>()),
+//                                 source::tokens_to_source(&all_tokens_after));
 
-                            /* this expression is finished, and there's tokens left over */
-                            break all_tokens_after;
-                        }
+                        /* this expression is finished, and there's tokens left over */
+                        tokens_after = all_tokens_after;
+                        break;
                     }
                 }
-            }
-
-            /* update the context if the token stream isn't finished */
-            if let &Some(token) = &next_token {
-                last_token = token.clone();
             }
 
             match next_token {
@@ -234,6 +213,14 @@ impl Expression {
                         operators::Position::Prefix
                     };
 
+                    if !op.is_valid_in_pos(pos) {
+                        tokens_after = all_tokens.iter()
+                            .filter(|t| t.location.ge(&last_token.location))
+                            .cloned()
+                            .collect();
+                        break;
+                    }
+
                     in_operand = false;
 
                     parts.push(CompoundExpressionPart::Operator(OperatorToken {
@@ -249,13 +236,71 @@ impl Expression {
                 }
 
                 /* finished reading the expression and there were no tokens left over */
-                None => break Vec::new(),
+                None => break,
             }
         };
+
+        if next_operand_tokens.len() > 0 {
+            let last_operand_context = next_operand_tokens[0].clone();
+            let last_operand_expr = Expression::parse(next_operand_tokens,
+                                                      &last_operand_context)?;
+            parts.push(CompoundExpressionPart::Operand(last_operand_expr.value));
+
+            let mut after_last_operand = last_operand_expr.next_tokens.peekable();
+            if after_last_operand.peek().is_some() {
+                tokens_after = after_last_operand.collect();
+            }
+        }
 
         let expr = Expression::resolve_ops_by_precedence(parts);
 
         Ok(ParseOutput::new(expr, last_token, tokens_after))
+    }
+
+    fn parse_member_access_after(base: ParseOutput<Expression>) -> ExpressionResult {
+        let mut peek_after = base.next_tokens.peekable();
+        match peek_after.peek().cloned() {
+            Some(ref period) if *period.as_token() == tokens::Period => {
+                let member_name = node::Identifier::parse(peek_after.skip(1),
+                                                          period)?;
+
+                let member_context = base.value.context.clone();
+                let member = Expression::member_deep(base.value,
+                                                     member_name.value,
+                                                     member_context);
+
+                Ok(ParseOutput::new(member, member_name.last_token, member_name.next_tokens))
+            }
+
+            //nope, this expr ends at the close bracket
+            _ => {
+                Ok(ParseOutput::new(base.value, base.last_token, peek_after))
+            }
+        }
+    }
+
+    fn parse_fn_call_after(base: ParseOutput<Expression>) -> ExpressionResult {
+        let mut peek_after = base.next_tokens.peekable();
+        match peek_after.peek().cloned() {
+            Some(ref open_bracket) if *open_bracket.as_token() == tokens::BracketLeft => {
+                let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
+                    .match_groups(tokens::Comma, peek_after, &base.last_token)?;
+
+                let all_args = args.value.groups
+                    .into_iter()
+                    .map(|arg_group| {
+                        let arg_expr = Expression::parse_compound(arg_group.tokens, &arg_group.context)?;
+                        arg_expr.finish()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                let fn_call = Expression::function_call(base.value, all_args);
+
+                Ok(ParseOutput::new(fn_call, args.last_token, args.next_tokens))
+            }
+
+            None => Ok(ParseOutput::new(base.value, base.last_token, peek_after))
+        }
     }
 
     fn parse_identifier<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
@@ -290,42 +335,42 @@ impl Expression {
         }))
     }
 
-    fn parse_function_call<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
-        where TIter: IntoIterator<Item=source::Token> + 'static
-    {
-        let func_name = node::Identifier::parse(in_tokens, context)?;
-
-        let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
-            .match_groups(tokens::Comma, func_name.next_tokens, &func_name.last_token)?;
-
-//        unsafe {
-//            static mut i: usize = 0;
-//            i += 1;
-//            if i > 10 {
-//                panic!();
-//            }
-//        }
-
-//        println!("ARG GROUPS ({}): {}", args.value.groups.len(), args.value.groups
-//            .iter()
-//            .map(|ag| source::tokens_to_source(&ag.tokens))
-//            .collect::<Vec<_>>()
-//            .join(", "));
-
-        let all_args = args.value.groups
-            .into_iter()
-            .map(|arg_group| {
-                let arg_expr = Expression::parse_compound(arg_group.tokens, &arg_group.context)?;
-                arg_expr.finish()
-            })
-            .collect::<Result<Vec<_>, _>>();
-
-        let call_expr = Expression::function_call(func_name.value,
-                                                  all_args?,
-                                                  context.clone());
-
-        Ok(ParseOutput::new(call_expr, args.last_token, args.next_tokens))
-    }
+//    fn parse_function_call<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
+//        where TIter: IntoIterator<Item=source::Token> + 'static
+//    {
+//        let func_name = node::Identifier::parse(in_tokens, context)?;
+//
+//        let args = tokens::BracketLeft.terminated_by(tokens::BracketRight)
+//            .match_groups(tokens::Comma, func_name.next_tokens, &func_name.last_token)?;
+//
+////        unsafe {
+////            static mut i: usize = 0;
+////            i += 1;
+////            if i > 10 {
+////                panic!();
+////            }
+////        }
+//
+////        println!("ARG GROUPS ({}): {}", args.value.groups.len(), args.value.groups
+////            .iter()
+////            .map(|ag| source::tokens_to_source(&ag.tokens))
+////            .collect::<Vec<_>>()
+////            .join(", "));
+//
+//        let all_args = args.value.groups
+//            .into_iter()
+//            .map(|arg_group| {
+//                let arg_expr = Expression::parse_compound(arg_group.tokens, &arg_group.context)?;
+//                arg_expr.finish()
+//            })
+//            .collect::<Result<Vec<_>, _>>();
+//
+//        let call_expr = Expression::function_call(func_name.value,
+//                                                  all_args?,
+//                                                  context.clone());
+//
+//        Ok(ParseOutput::new(call_expr, args.last_token, args.next_tokens))
+//    }
 
     fn parse_if<TIter>(in_tokens: TIter, context: &source::Token) -> ExpressionResult
         where TIter: IntoIterator<Item=source::Token> + 'static
@@ -435,13 +480,11 @@ impl Expression {
 
             Some(ref compound) if contains_operator ||
                 *compound.as_token() == tokens::BracketLeft => {
-                Expression::parse_function_call(all_tokens.clone(), context)
-                    .or_else(|_| Expression::parse_compound(all_tokens, context))
+                Expression::parse_compound(all_tokens, context)
             }
 
             Some(ref identifier) if identifier.is_any_identifier() => {
-                Expression::parse_function_call(all_tokens.clone(), context)
-                    .or_else(|_| Expression::parse_identifier(all_tokens, context))
+                Expression::parse_identifier(all_tokens, context)
             }
 
             Some(ref s) if s.is_any_literal_string() => {
