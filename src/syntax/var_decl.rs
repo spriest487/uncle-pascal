@@ -91,7 +91,7 @@ mod test {
         let vars = parse_vars("var x: Integer;");
 
         assert_eq!(1, vars.decls.len());
-        assert_eq!(Identifier::from("x"), vars.decls[0].name);
+        assert_eq!("x", vars.decls[0].name);
         assert_eq!(TypeName::with_name("Integer"), vars.decls[0].decl_type);
     }
 
@@ -101,10 +101,10 @@ mod test {
 
         assert_eq!(2, vars.decls.len());
 
-        assert_eq!(Identifier::from("x"), vars.decls[0].name);
+        assert_eq!("x", vars.decls[0].name);
         assert_eq!(TypeName::with_name("System.Integer"), vars.decls[0].decl_type);
 
-        assert_eq!(Identifier::from("y"), vars.decls[1].name);
+        assert_eq!("y", vars.decls[1].name);
         assert_eq!(TypeName::with_name("System.String"), vars.decls[1].decl_type);
     }
 
@@ -113,7 +113,7 @@ mod test {
         let vars = parse_vars("var x: ^T.B");
 
         assert_eq!(1, vars.decls.len());
-        assert_eq!(Identifier::from("x"), vars.decls[0].name);
+        assert_eq!("x", vars.decls[0].name);
         assert_eq!(TypeName::with_name("T.B").pointer(), vars.decls[0].decl_type);
     }
 }

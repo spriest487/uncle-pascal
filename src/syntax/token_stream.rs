@@ -164,59 +164,6 @@ impl TokenStream {
         }
     }
 
-    pub fn match_peek(&mut self, matcher: impl Into<Matcher>) -> ParseResult<Option<source::Token>> {
-        let matcher = matcher.into();
-        match self.peek() {
-            Some(token) => {
-                if !matcher.is_match(token.as_token()) {
-                    return Ok(None);
-                }
-
-                self.context = token.clone();
-                Ok(Some(token))
-            }
-
-            None => {
-                Err(ParseError::UnexpectedEOF(matcher, self.context.clone()))
-            }
-        }
-    }
-
-    pub fn match_sequence_peek(&mut self,
-                               sequence: impl Into<SequenceMatcher>)
-                               -> ParseResult<Option<Vec<source::Token>>> {
-        let mut sequence = sequence.into().into_iter();
-        let mut matches = Vec::new();
-
-        let mut peeked = PeekedTokenStream::new(self);
-
-        loop {
-            let seq_next_matcher = match sequence.next() {
-                Some(matcher) => matcher,
-                None => {
-                    /* reached end of sequence without incident */
-                    break Ok(Some(matches));
-                }
-            };
-
-            match peeked.next() {
-                Some(peeked_token) => {
-                    if seq_next_matcher.is_match(&peeked_token) {
-                        matches.push(peeked_token);
-                    } else {
-                        // no match
-                        break Ok(None);
-                    }
-                }
-                None => {
-                    println!("ran out of tokens @ {}", peeked.peek_pos);
-                    /* there are less tokens in the stream than in the sequence */
-                    break Ok(None);
-                }
-            };
-        }
-    }
-
     pub fn match_until(&mut self, until: impl Into<Matcher>) -> ParseResult<Vec<source::Token>> {
         let until = until.into();
         let mut result = Vec::new();
@@ -406,67 +353,6 @@ impl TokenStream {
         PeekedTokenStream::new(self)
     }
 
-    /* maybe matches a block. regardless of if the block is matched, the
-    next tokens and last token of the resulting output are the same as the
-    input, if no error occurs */
-    pub fn match_block_peek(&mut self,
-                            open: impl Into<Matcher>,
-                            close: impl Into<Matcher>)
-                            -> ParseResult<Option<BlockMatch>> {
-        let open_matcher = open.into();
-        let close_matcher = close.into();
-
-        let mut peeked = self.peeked();
-
-        let open_token = peeked.match_one(open_matcher.clone());
-        if open_token.is_none() {
-            return Ok(None);
-        }
-
-        let mut open_count = 1;
-        let mut inner_tokens = Vec::new();
-
-        let final_close_token = loop {
-            /* we might be using the peek buffer here */
-            let next = peeked.next();
-
-            match next {
-                Some(inner_token) => if close_matcher.is_match(&inner_token) {
-                    open_count -= 1;
-
-                    if open_count == 0 {
-                        break Some(inner_token);
-                    } else {
-                        inner_tokens.push(inner_token);
-                    }
-                } else {
-                    if open_matcher.is_match(&inner_token) {
-                        open_count += 1;
-                    }
-
-                    inner_tokens.push(inner_token);
-                }
-
-                None => break None,
-            }
-        };
-
-        match final_close_token {
-            Some(close_token) => {
-                let matched_block = BlockMatch {
-                    open: open_token.unwrap(),
-                    close: close_token,
-                    inner: inner_tokens,
-                };
-
-                Ok(Some(matched_block))
-            }
-            None => {
-                Ok(None)
-            }
-        }
-    }
-
     pub fn split_at_match(&mut self, matcher: impl Into<Matcher>)
                           -> ParseResult<SplitResult> {
         let matcher = matcher.into();
@@ -536,6 +422,96 @@ impl<'tokens> PeekedTokenStream<'tokens> {
                 false => None
             }
         })
+    }
+
+    pub fn match_sequence(&mut self,
+                          sequence: impl Into<SequenceMatcher>)
+                          -> Option<Vec<source::Token>> {
+        let mut sequence = sequence.into().into_iter();
+        let mut matches = Vec::new();
+
+        loop {
+            let seq_next_matcher = match sequence.next() {
+                Some(matcher) => matcher,
+                None => {
+                    /* reached end of sequence without incident */
+                    break Some(matches);
+                }
+            };
+
+            match self.next() {
+                Some(peeked_token) => {
+                    if seq_next_matcher.is_match(&peeked_token) {
+                        matches.push(peeked_token);
+                    } else {
+                        // no match
+                        break None;
+                    }
+                }
+                None => {
+                    /* there are less tokens in the stream than in the sequence */
+                    break None;
+                }
+            };
+        }
+    }
+
+    /* maybe matches a block. regardless of if the block is matched, the
+    next tokens and last token of the resulting output are the same as the
+    input, if no error occurs */
+    pub fn match_block(&mut self,
+                            open: impl Into<Matcher>,
+                            close: impl Into<Matcher>)
+                            -> Option<BlockMatch> {
+        let open_matcher = open.into();
+        let close_matcher = close.into();
+
+        let open_token = self.match_one(open_matcher.clone());
+        if open_token.is_none() {
+            return None;
+        }
+
+        let mut open_count = 1;
+        let mut inner_tokens = Vec::new();
+
+        let final_close_token = loop {
+            let next = self.next();
+
+            match next {
+                Some(inner_token) => if close_matcher.is_match(&inner_token) {
+                    open_count -= 1;
+
+                    if open_count == 0 {
+                        break Some(inner_token);
+                    } else {
+                        inner_tokens.push(inner_token);
+                    }
+                } else {
+                    if open_matcher.is_match(&inner_token) {
+                        open_count += 1;
+                    }
+
+                    inner_tokens.push(inner_token);
+                }
+
+                None => break None,
+            }
+        };
+
+        match final_close_token {
+            Some(close_token) => {
+                let matched_block = BlockMatch {
+                    open: open_token.unwrap(),
+                    close: close_token,
+                    inner: inner_tokens,
+                };
+
+                Some(matched_block)
+            }
+            None => {
+                None
+            }
+        }
     }
 }
 

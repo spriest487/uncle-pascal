@@ -53,9 +53,9 @@ impl Parse for FunctionDecl {
         //body (if present) appears after separator or newline
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let peek_after_sig = tokens.match_peek(keywords::Var
+        let peek_after_sig = tokens.peeked().match_one(keywords::Var
             .or(keywords::Const)
-            .or(keywords::Begin))?;
+            .or(keywords::Begin));
 
         let body = match peek_after_sig {
             // forward decl
@@ -118,8 +118,8 @@ impl FunctionDecl {
         let mut modifiers = Vec::new();
 
         loop {
-            let next_mod_tokens = tokens.match_sequence_peek(tokens::Semicolon
-                .and_then(Matcher::AnyIdentifier))?;
+            let next_mod_tokens = tokens.peeked().match_sequence(tokens::Semicolon
+                .and_then(Matcher::AnyIdentifier));
 
             match next_mod_tokens {
                 Some(mod_tokens) => {
@@ -205,7 +205,7 @@ mod test {
 
         assert_eq!(Identifier::from("hello"), func.name);
         assert_eq!(Some(TypeName::with_name("System.String")), func.return_type);
-        assert_eq!(0, func.args.decls.len());
+        assert_eq!(0, func.args.len());
     }
 
     #[test]
@@ -214,7 +214,7 @@ mod test {
 
         assert_eq!(Identifier::from("hello"), func.name);
         assert_eq!(Some(TypeName::with_name("String")), func.return_type);
-        assert_eq!(0, func.args.decls.len());
+        assert_eq!(0, func.args.len());
     }
 
     #[test]
@@ -223,12 +223,12 @@ mod test {
 
         assert_eq!(Identifier::from("hello"), func.name);
         assert_eq!(Some(TypeName::with_name("String")), func.return_type);
-        assert_eq!(2, func.args.decls.len());
+        assert_eq!(2, func.args.len());
 
-        assert_eq!(Identifier::from("x"), func.args.decls[0].name);
-        assert_eq!(TypeName::with_name("System.Float"), func.args.decls[0].decl_type);
+        assert_eq!("x", func.args[0].name);
+        assert_eq!(TypeName::with_name("System.Float"), func.args[0].decl_type);
 
-        assert_eq!(Identifier::from("y"), func.args.decls[1].name);
-        assert_eq!(TypeName::with_name("Integer"), func.args.decls[1].decl_type);
+        assert_eq!("y", func.args[1].name);
+        assert_eq!(TypeName::with_name("Integer"), func.args[1].decl_type);
     }
 }

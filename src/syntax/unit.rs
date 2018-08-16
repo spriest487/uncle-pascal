@@ -38,7 +38,7 @@ impl Unit {
 
 impl Parse for Vec<UnitReference> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let uses_kw = tokens.match_peek(keywords::Uses)?;
+        let uses_kw = tokens.peeked().match_one(keywords::Uses);
 
         if uses_kw.is_none() {
             //no uses
@@ -53,7 +53,7 @@ impl Parse for Vec<UnitReference> {
 
             // might have a . if a non-default uses mode is specified
             // e.g. System.*
-            let peek_uses_kind = tokens.match_peek(tokens::Period)?;
+            let peek_uses_kind = tokens.peeked().match_one(tokens::Period);
 
             let uses_kind = match peek_uses_kind {
                 Some(_) => {
@@ -126,7 +126,7 @@ impl Parse for Vec<UnitDeclaration> {
                 .or(keywords::Const)
                 .or(keywords::Begin);
 
-            let peek_decl = tokens.match_peek(match_decl_first)?;
+            let peek_decl = tokens.peeked().match_one(match_decl_first);
 
             match peek_decl {
                 Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)

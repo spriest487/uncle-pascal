@@ -40,12 +40,10 @@ impl CompoundExpressionPart {
     }
 }
 
-fn count_operators_at_base_level<'a>(tokens: impl IntoIterator<Item=&'a source::Token>)
-                                     -> Result<usize, ParseError> {
+fn any_operators_at_base_level(tokens: &mut TokenStream) -> ParseResult<bool> {
     let mut bracket_level = 0;
-    let mut ops = 0;
 
-    for token in tokens {
+    for token in tokens.peeked() {
         if *token.as_token() == tokens::BracketLeft {
             bracket_level += 1
         } else if *token.as_token() == tokens::BracketRight {
@@ -54,11 +52,11 @@ fn count_operators_at_base_level<'a>(tokens: impl IntoIterator<Item=&'a source::
             }
             bracket_level -= 1
         } else if bracket_level == 0 && token.is_any_operator() {
-            ops += 1
+            return Ok(true);
         }
     }
 
-    Ok(ops)
+    Ok(false)
 }
 
 impl Expression {
@@ -143,7 +141,7 @@ impl Expression {
 
     fn parse_operand(tokens: &mut TokenStream) -> ExpressionResult {
         /* if there's brackets around it, we know exactly where it begins and ends */
-        let outer_brackets = tokens.match_block_peek(tokens::BracketLeft, tokens::BracketRight)?;
+        let outer_brackets = tokens.peeked().match_block(tokens::BracketLeft, tokens::BracketRight);
 
         match outer_brackets {
             Some(brackets_block) => {
@@ -401,7 +399,7 @@ impl Expression {
         let cond_tokens = TokenStream::from(tokens.match_until(keywords::Then)?);
         let condition: Expression = cond_tokens.parse_to_end()?;
 
-        if let Some(then_tokens) = tokens.match_block_peek(keywords::Then, keywords::Else)? {
+        if let Some(then_tokens) = tokens.peeked().match_block(keywords::Then, keywords::Else) {
             let then_len = then_tokens.len();
 
             let then_stream = TokenStream::new(then_tokens.inner, &then_tokens.open);
@@ -456,11 +454,9 @@ impl Expression {
             .or(keywords::Nil)
             .or(Matcher::any_operator_in_position(operators::Position::Prefix));
 
-        let expr_first = tokens.match_peek(match_expr_start.clone())?;
+        let expr_first = tokens.peeked().match_one(match_expr_start.clone());
 
-        /* we need to read the whole stream to see if there's any operators ahead */
-        let all_tokens = tokens.peek_to_end();
-        let contains_operator = count_operators_at_base_level(all_tokens.iter())? > 0;
+        let contains_operator = any_operators_at_base_level(tokens)?;
 
         match expr_first {
             Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
@@ -510,7 +506,7 @@ impl Expression {
                 Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
             }
 
-            None => unreachable!("match_peek returns UnexpectedEOF if the stream is empty")
+            None => Err(ParseError::UnexpectedEOF(match_expr_start, tokens.context().clone())),
         }
     }
 }
