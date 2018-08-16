@@ -89,6 +89,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 operators::NotEquals => "!=",
                 operators::Minus => "-",
                 operators::Plus => "+",
+                operators::And => "&&",
+                operators::Or => "||",
 
                 operators::AddressOf |
                 operators::Deref => panic!("bad binary operator type: {}", op),
@@ -112,6 +114,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 &operators::Deref => "*",
                 &operators::AddressOf => "&",
 
+                &operators::And |
+                &operators::Or |
                 &operators::Equals |
                 &operators::NotEquals |
                 &operators::Assignment => panic!("bad prefix operator type: {}", op),

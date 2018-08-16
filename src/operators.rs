@@ -27,9 +27,11 @@ pub enum Operator {
     Minus,
     Deref,
     AddressOf,
+    And,
+    Or,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 9] = [
+pub static PRECEDENCE: [(Operator, Position); 11] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
@@ -41,6 +43,8 @@ pub static PRECEDENCE: [(Operator, Position); 9] = [
     (Equals, Position::Binary),
     (NotEquals, Position::Binary),
     (Assignment, Position::Binary),
+    (And, Position::Binary),
+    (Or, Position::Binary),
 ];
 
 impl Operator {
@@ -57,18 +61,32 @@ impl Operator {
         PRECEDENCE.iter()
             .any(|&(op, pos)| *self == op && in_pos == pos)
     }
+
+    /* parses operators with english names (and only those operators),
+     because these names might also be valid identifiers. the tokenizer
+     already knows how to parse the ones which have names which aren't
+     valid identifiers*/
+    pub fn try_parse_text(text: &str) -> Option<Operator> {
+        match text {
+            "or" => Some(Or),
+            "and" => Some(And),
+            _ => None
+        }
+    }
 }
 
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            &Deref => "^",
-            &AddressOf => "@",
-            &Assignment => ":=",
-            &Equals => "=",
-            &NotEquals => "<>",
-            &Plus => "+",
-            &Minus => "-",
+            Deref => "^",
+            AddressOf => "@",
+            Assignment => ":=",
+            Equals => "=",
+            NotEquals => "<>",
+            Plus => "+",
+            Minus => "-",
+            And => "and",
+            Or => "or",
         })
     }
 }

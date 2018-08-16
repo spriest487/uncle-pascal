@@ -24,10 +24,16 @@ fn expect_valid_operation(operator: operators::Operator,
 
         (Some(a), Some(b)) => {
             let valid = match operator {
-                operators::Assignment => a.assignable_from(b),
+                operators::Assignment =>
+                    a.assignable_from(b),
 
                 operators::Plus |
-                operators::Minus => a.can_offset_by(b),
+                operators::Minus =>
+                    a.can_offset_by(b),
+
+                operators::And |
+                operators::Or =>
+                    *a == DeclaredType::Boolean && *b == DeclaredType::Boolean,
 
                 _ => false,
             };
@@ -341,6 +347,8 @@ fn binary_op_type(lhs: &Expression,
     let rhs_type = rhs.expr_type()?;
 
     match op {
+        operators::And |
+        operators::Or |
         operators::NotEquals |
         operators::Equals => {
             expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
@@ -398,6 +406,8 @@ fn prefix_op_type(op: operators::Operator,
                 invalid_op_err(),
         }
 
+        operators::And |
+        operators::Or |
         operators::Assignment |
         operators::Equals |
         operators::NotEquals =>

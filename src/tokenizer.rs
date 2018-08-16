@@ -57,6 +57,8 @@ fn parse_name(token_match: &regex::Captures) -> Option<tokens::Token> {
 
     Some(keywords::Keyword::try_parse(&text)
         .map(|kw| tokens::Keyword(kw))
+        .or_else(|| operators::Operator::try_parse_text(&text)
+            .map(|op| tokens::Operator(op)))
         .unwrap_or_else(|| tokens::Identifier(text)))
 }
 
