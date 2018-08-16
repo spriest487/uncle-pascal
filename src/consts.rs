@@ -1,10 +1,12 @@
-use node::Identifier;
-
+use cast;
 use std::{
     collections::HashSet,
     fmt::{self, Write},
     ops::{Add, Sub },
+    i32,
 };
+
+use node::Identifier;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum IntConstant {
@@ -39,13 +41,11 @@ impl IntConstant {
     }
 
     pub fn as_u8(&self) -> Option<u8> {
-        match self {
-            IntConstant::Char(c) => Some(*c),
-            IntConstant::I32(i) => if *i >= 0 && *i < 256 { Some(*i as u8) } else { None },
-            IntConstant::U32(i) => if *i < 256 { Some(*i as u8) } else { None },
-            IntConstant::I64(i) => if *i >= 0 && *i < 256 { Some(*i as u8) } else { None },
-            IntConstant::U64(i) => if *i < 256 { Some(*i as u8) } else { None },
-        }
+        cast::u8(self.as_i128()).ok()
+    }
+
+    pub fn as_i32(&self) -> Option<i32> {
+        cast::u8(self.as_i32()).ok()
     }
 
     pub fn parse_str(s: &str) -> Option<Self> {
@@ -99,10 +99,7 @@ impl IntConstant {
             IntConstant::I32(i) => Some(*i as i64),
             IntConstant::U32(i) => Some(*i as i64),
             IntConstant::I64(i) => Some(*i),
-            IntConstant::U64(i) => match *i > i64::max_value() as u64 {
-                true => None,
-                false => Some(*i as i64),
-            },
+            IntConstant::U64(i) => cast::i64(i).ok(),
         }
     }
 }

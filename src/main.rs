@@ -2,6 +2,7 @@ extern crate regex;
 extern crate getopts;
 extern crate linked_hash_set;
 extern crate linked_hash_map;
+extern crate cast;
 
 use std::{
     rc::*,
