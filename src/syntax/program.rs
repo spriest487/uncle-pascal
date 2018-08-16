@@ -35,13 +35,14 @@ fn parse_uses<TIter, TToken>(in_tokens: TIter) -> ParseResult<Vec<types::Identif
     match find_keyword {
         Some(_) => {
             let match_semicolon = TokenMatcher::Exact(tokens::Semicolon);
-            let uses_tokens = match_semicolon.until_match(tokens)?;
+            let (uses_tokens, after_uses) = match_semicolon.split(tokens)?.unwrap();
 
             let match_comma = TokenMatcher::Exact(tokens::Comma);
-            let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.value
-                .split(|source_token| match_comma.match_token(source_token.as_token()))
+            let uses_identifiers: Result<Vec<_>, ParseError<_>> = uses_tokens.before
+                .split(|source_token| match_comma.match_token(source_token))
                 .map(|source_tokens| {
-                    if source_tokens.len() == 1 && source_tokens[0].as_token().is_any_identifier() {
+                    if source_tokens.len() == 1 &&
+                        source_tokens[0].as_token().is_any_identifier() {
                         Ok(types::Identifier::parse(source_tokens[0].as_token().unwrap_identifier()))
                     } else {
                         Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
@@ -50,7 +51,7 @@ fn parse_uses<TIter, TToken>(in_tokens: TIter) -> ParseResult<Vec<types::Identif
                 })
                 .collect();
 
-            Ok(ParseOutput::new(uses_identifiers?, uses_tokens.next))
+            Ok(ParseOutput::new(uses_identifiers?, after_uses))
         }
         None => {
             //no uses

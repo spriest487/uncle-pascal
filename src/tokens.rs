@@ -20,7 +20,7 @@ pub enum Token {
     Comma,
 }
 
-pub trait AsToken : Clone + fmt::Display {
+pub trait AsToken : Clone + fmt::Debug + fmt::Display {
     fn as_token(&self) -> &Token;
 }
 

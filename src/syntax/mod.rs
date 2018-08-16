@@ -1,4 +1,5 @@
 pub mod function;
+pub mod var_decl;
 pub mod program;
 pub mod block;
 
@@ -81,6 +82,11 @@ impl<TItem> Iterator for WrapIter<TItem> {
 
 type ParseResult<TValue, TToken> = Result<ParseOutput<TToken, TValue>, ParseError<TToken>>;
 
+pub struct SplitResult<TToken> {
+    pub split_at: TToken,
+    pub before: Vec<TToken>,
+}
+
 #[derive(Clone, Debug)]
 pub enum TokenMatcher {
     Keyword(keywords::Keyword),
@@ -128,27 +134,91 @@ impl TokenMatcher {
         }
     }
 
+    pub fn or(self, or: TokenMatcher) -> TokenMatcher {
+        match self {
+            TokenMatcher::OneOf(mut options) => {
+                options.push(Box::from(or));
+                TokenMatcher::OneOf(options)
+            },
+            _ => {
+                TokenMatcher::OneOf(vec![
+                    Box::new(self),
+                    Box::new(or),
+                ])
+            }
+        }
+    }
+
     pub fn and_then(self, next_matcher: TokenMatcher) -> SequenceMatcher {
         SequenceMatcher {
             sequence: vec![self, next_matcher]
         }
     }
 
-    pub fn until_match<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<Vec<TToken>, TToken>
+    pub fn closed_with(self, close: TokenMatcher) -> PairMatcher {
+        PairMatcher {
+            open: self,
+            close
+        }
+    }
+
+    pub fn match_one<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<TToken, TToken>
         where TIter: IntoIterator<Item=TToken> + 'static,
-              TToken: tokens::AsToken + Clone
+              TToken: tokens::AsToken {
+        let mut tokens = in_tokens.into_iter();
+        match tokens.next() {
+            Some(ref token) if self.match_token(token) => {
+                Ok(ParseOutput::new(token.clone(), tokens))
+            },
+
+            Some(ref unexpected) => {
+                Err(ParseError::UnexpectedToken(unexpected.clone(), Some(self.clone())))
+            },
+
+            None => {
+                Err(ParseError::UnexpectedEOF)
+            }
+        }
+    }
+
+    pub fn match_peek<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<TToken, TToken>
+        where TIter: IntoIterator<Item=TToken> + 'static,
+              TToken: tokens::AsToken {
+        let mut peekable = in_tokens.into_iter().peekable();
+
+        match peekable.peek().cloned() {
+            Some(ref token) if self.match_token(token) => {
+                Ok(ParseOutput::new(token.clone(), peekable))
+            },
+
+            Some(ref unexpected) => {
+                Err(ParseError::UnexpectedToken(unexpected.clone(), Some(self.clone())))
+            },
+
+            None => {
+                Err(ParseError::UnexpectedEOF)
+            }
+        }
+    }
+
+    pub fn split<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<SplitResult<TToken>, TToken>
+        where TIter: IntoIterator<Item=TToken> + 'static,
+              TToken: tokens::AsToken
     {
-        let mut until = Vec::new();
+        let mut before_split = Vec::new();
+        let split_at;
+
         let mut tokens = in_tokens.into_iter();
 
         loop {
             match tokens.next() {
                 Some(next_token) => {
                     if self.match_token(&next_token) {
+                        split_at = next_token.clone();
                         break;
                     }
                     else {
-                        until.push(next_token.clone());
+                        before_split.push(next_token.clone());
                     }
                 },
 
@@ -159,7 +229,10 @@ impl TokenMatcher {
             }
         }
 
-        Ok(ParseOutput::new(until, tokens))
+        Ok(ParseOutput::new(SplitResult {
+            split_at: split_at,
+            before: before_split,
+        }, tokens))
     }
 }
 
@@ -212,6 +285,75 @@ impl SequenceMatcher {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PairMatch<TToken>
+    where TToken: Clone + fmt::Debug
+{
+    pub open: TToken,
+    pub close: TToken,
+    pub between: Vec<TToken>,
+}
+
+#[derive(Clone, Debug)]
+pub struct PairMatcher {
+    open: TokenMatcher,
+    close: TokenMatcher,
+}
+
+impl PairMatcher {
+    pub fn match_pair<TIter, TToken>(&self, in_tokens: TIter) -> ParseResult<PairMatch<TToken>, TToken>
+        where TIter: IntoIterator<Item=TToken> + 'static,
+              TToken: tokens::AsToken + 'static
+    {
+        let (open_token, after_open) = self.open.match_one(in_tokens)?.unwrap();
+
+        let match_delim : TokenMatcher = self.open.clone().or(self.close.clone());
+        let (split_at_delim, after_next_delim) = match_delim.split(after_open)?.unwrap();
+
+        let next_delim = split_at_delim.split_at.clone();
+
+        if self.open.match_token(next_delim.as_token()) {
+//            let mut inner_tokens = Vec::new();
+
+            /* found an inner pair, skip over it */
+            let inner_pair_tokens = vec![next_delim.clone()]
+                .into_iter()
+                .chain(after_next_delim);
+
+            let (_, after_inner_pair) = self.match_pair(inner_pair_tokens)?.unwrap();
+
+            /* we must now be positioned after any inner pairs */
+            let (final_close_token, after_final_closer) = self.close.split(after_inner_pair)
+                .map_err(|err| match err {
+                    ParseError::UnexpectedEOF => {
+                        ParseError::UnbalancedPair(self.close.clone(), next_delim.clone())
+                    },
+                    _ => err
+                })?
+                .unwrap();
+
+            let pair_match : PairMatch<TToken> = PairMatch {
+                open: open_token,
+                close: final_close_token.split_at,
+                between: Vec::new() //TODO
+            };
+
+            Ok(ParseOutput::new(pair_match, after_final_closer))
+        }
+        else if self.close.match_token(next_delim.as_token()) {
+            let pair_match : PairMatch<TToken> = PairMatch {
+                open: open_token,
+                close: split_at_delim.split_at,
+                between: split_at_delim.before,
+            };
+
+            Ok(ParseOutput::new(pair_match, after_next_delim))
+        }
+        else {
+            Err(ParseError::UnexpectedToken(next_delim, Some(match_delim)))
+        }
+    }
+}
 
 
 

@@ -8,6 +8,7 @@ pub struct Function {
     name: String,
     return_type: types::Identifier,
 
+    local_vars: Vec<var_decl::VarDecl>,
     //TODO
     body: Vec<tokens::Token>,
 }
@@ -29,36 +30,37 @@ impl Function {
         let fn_name = &sig[1];
         let fn_return_type = &sig[3];
 
-        //TODO: just stop at next END for now
-        let match_end = TokenMatcher::Keyword(keywords::End);
-
-        let (fn_tokens, mut after_end) = match_end.until_match(after_sig)?
+        let (first_after_sig, after_sig) = TokenMatcher::Keyword(keywords::Var)
+            .or(TokenMatcher::Keyword(keywords::Begin))
+            .match_peek(after_sig)?
             .unwrap();
 
-        match after_end.next() {
-            Some(ref token) if *token.as_token() == tokens::Semicolon => {
-                let function = Function {
-                    name: fn_name.as_token().unwrap_identifier().to_owned(),
-                    return_type: types::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
+        let (local_vars, after_local_vars) = if first_after_sig.as_token()
+            .is_keyword(keywords::Var) {
+            var_decl::VarDecl::parse(after_sig)?.unwrap()
+        } else {
+            (Vec::new(), after_sig)
+        };
 
-                    body: fn_tokens.into_iter()
-                        .map(|t| t.as_token().clone())
-                        .collect(),
-                };
+        let (body_match, after_body) = TokenMatcher::Keyword(keywords::Begin)
+            .closed_with(TokenMatcher::Keyword(keywords::End))
+            .match_pair(after_local_vars)?
+            .unwrap();
 
-                Ok(ParseOutput::new(function, after_end))
-            },
+        let match_semicolon = TokenMatcher::Exact(tokens::Semicolon);
+        let (_, remaining) = match_semicolon.match_one(after_body)?.unwrap();
 
-            Some(unexpected) => {
-                Err(ParseError::UnexpectedToken(
-                    unexpected,
-                    Some(TokenMatcher::Exact(tokens::Semicolon)),
-                ))
-            },
+        let function = Function {
+            name: fn_name.as_token().unwrap_identifier().to_owned(),
+            return_type: types::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
 
-            None => {
-                Err(ParseError::UnexpectedEOF)
-            },
-        }
+            local_vars,
+
+            body: body_match.between.into_iter()
+                .map(|t| t.as_token().clone())
+                .collect(),
+        };
+
+        Ok(ParseOutput::new(function, remaining))
     }
 }

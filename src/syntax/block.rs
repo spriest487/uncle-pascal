@@ -1,13 +1,8 @@
 use syntax::*;
-use types;
-
-pub struct VarDecl {
-    name: String,
-    decl_type: types::Identifier,
-}
+use tokens;
 
 pub struct Block {
-    vars: Vec<VarDecl>,
+    statements: Vec<Vec<tokens::Token>>
 }
 
 impl Block {

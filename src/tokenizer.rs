@@ -198,12 +198,12 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
 }
 
 pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
-    let lines: Vec<String> = source.replace("\r\n", "\n")
+    let lines: Vec<_> = source.replace("\r\n", "\n")
         .split("\n")
         .map(str::to_owned)
         .collect();
 
-    let parsed_lines: TokenizeResult<Vec<Vec<SourceToken>>> = lines.into_iter()
+    let parsed_lines: TokenizeResult<Vec<_>> = lines.into_iter()
         .enumerate()
         .map(|(line_num, line)| parse_line(line_num, &line))
         .collect();
