@@ -1,14 +1,15 @@
 use syntax::*;
-use tokens::{self, AsToken};
+use tokens;
 use keywords;
 use node;
 
 pub type Block = node::Block<ParsedContext>;
 
-impl Parse for Block {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let begin = tokens.match_one(keywords::Begin)?;
-
+impl Block {
+    pub fn parse_statements(tokens: &mut TokenStream,
+                            terminator: impl Into<Matcher>)
+                            -> ParseResult<Vec<Expression>> {
+        let terminator = terminator.into();
         let mut statements = Vec::new();
         loop {
             // handle empty statements
@@ -17,7 +18,7 @@ impl Parse for Block {
             }
 
             match tokens.look_ahead().next() {
-                Some(ref t) if t.is_keyword(keywords::End) => {
+                Some(ref t) if terminator.is_match(t) => {
                     //done
                     tokens.advance(1);
                     break;
@@ -31,6 +32,16 @@ impl Parse for Block {
                 }
             }
         }
+
+        Ok(statements)
+    }
+}
+
+impl Parse for Block {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let begin = tokens.match_one(keywords::Begin)?;
+
+        let statements = Block::parse_statements(tokens, keywords::End)?;
 
         Ok(Block {
             statements,

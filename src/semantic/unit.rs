@@ -141,15 +141,28 @@ impl Unit {
             unit.interface.iter(),
             unit_scope.clone())?;
 
-        let (impl_decls, _) = Unit::annotate_impls(
+        let (impl_decls, impl_scope) = Unit::annotate_impls(
             unit.implementation.iter(),
             interface_scope.clone())?;
+
+        let impl_scope = Rc::new(impl_scope);
+
+        let initialization = match unit.initialization.as_ref() {
+            Some(block) => Some(Block::annotate(block, impl_scope.clone())?),
+            None => None,
+        };
+        let finalization = match unit.finalization.as_ref() {
+            Some(block) => Some(Block::annotate(block, impl_scope.clone())?),
+            None => None,
+        };
 
         let unit = Unit {
             interface: interface_decls,
             implementation: impl_decls,
             name: unit.name.clone(),
             uses: Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope)),
+            initialization,
+            finalization,
         };
 
         Ok((unit, interface_scope))

@@ -25,14 +25,23 @@ pub trait Symbol: ToSource {
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum UnitReferenceKind {
-    /** `uses System` adds all symbols from the unit to the scope,
-        under their original namespace **/
+    /**
+        adds all symbols from the unit to the scope,
+        under their original namespace
+
+        `uses System`
+    */
     Namespaced,
 
-    /** `uses System.*` adds all symbols from the unit to the scope, */
+    /**
+        adds all symbols from the unit to the scope,
+        `uses System.*`
+    */
     All,
 
-    /** `uses System.String` reference a particular name */
+    /**
+        `uses System.String` reference a particular name
+    */
     Name(String),
 }
 
@@ -99,6 +108,9 @@ pub struct Unit<TContext>
 
     pub interface: Vec<UnitDecl<TContext>>,
     pub implementation: Vec<Implementation<TContext>>,
+
+    pub initialization: Option<Block<TContext>>,
+    pub finalization: Option<Block<TContext>>,
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]

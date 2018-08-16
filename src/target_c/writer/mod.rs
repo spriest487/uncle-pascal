@@ -965,8 +965,20 @@ pub fn write_c(module: &ProgramModule)
 
     default_initialize_vars(&mut c_main, var_decls.iter().cloned())?;
 
+    for unit in module.units.iter() {
+        if let Some(init_block) = unit.initialization.as_ref() {
+            write_block(&mut c_main, &init_block, &mut globals)?;
+        }
+    }
+
     write_block(&mut c_main, &module.program.program_block, &mut globals)?;
     release_vars(&mut c_main, var_decls)?;
+
+    for unit in module.units.iter().rev() {
+        if let Some(finalize_block) = unit.finalization.as_ref() {
+            write_block(&mut c_main, &finalize_block, &mut globals)?;
+        }
+    }
 
     /* at this point the whole program is finished writing so globals should
     be ready to output */

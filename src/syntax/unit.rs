@@ -11,6 +11,27 @@ pub type Implementation = node::Implementation<ParsedContext>;
 pub type UnitReference = node::UnitReference<ParsedContext>;
 
 impl Unit {
+    fn parse_optional_block(tokens: &mut TokenStream,
+                            start: impl Into<Matcher>,
+                            end: impl Into<Matcher>) -> ParseResult<Option<Block>> {
+        let start = start.into();
+        let end = end.into();
+
+        match tokens.look_ahead().match_one(start.clone()) {
+            Some(_) => {
+                let context = tokens.match_one(start)?;
+                let statements = Block::parse_statements(tokens, end)?;
+
+                Ok(Some(Block {
+                    context: context.into(),
+                    statements,
+                }))
+            }
+
+            None => Ok(None),
+        }
+    }
+
     pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {
         let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
         tokens.match_or_endl(tokens::Semicolon)?;
@@ -24,6 +45,11 @@ impl Unit {
         tokens.match_one(keywords::Implementation)?;
         let impl_decls: Vec<Implementation> = tokens.parse()?;
 
+        let initialization = Self::parse_optional_block(
+            &mut tokens, keywords::Initialization, keywords::End.or(keywords::Finalization))?;
+        let finalization = Self::parse_optional_block(
+            &mut tokens, keywords::Finalization, keywords::End)?;
+
         tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
         tokens.finish()?;
 
@@ -33,6 +59,9 @@ impl Unit {
 
             interface: interface_decls,
             implementation: impl_decls,
+
+            initialization,
+            finalization,
         })
     }
 }
@@ -193,7 +222,7 @@ impl UnitDecl {
 
             None => {
                 Err(ParseError::UnexpectedEOF(decl_first_matcher(), tokens.context().clone()))
-            },
+            }
         }
     }
 }

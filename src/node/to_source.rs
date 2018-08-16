@@ -11,6 +11,23 @@ impl ToSource for Identifier {
     }
 }
 
+fn block_statements_to_source<C>(statements: &[Expression<C>]) -> Vec<String>
+    where C: Context
+{
+    let mut lines = Vec::new();
+
+    for (i, statement) in statements.iter().enumerate() {
+        let mut line = statement.to_source();
+        if i < statements.len() - 1 {
+            line = line + ";";
+        }
+
+        lines.push(format!("\t{}", line));
+    }
+
+    lines
+}
+
 impl<C> ToSource for Block<C>
     where C: Context
 {
@@ -18,14 +35,7 @@ impl<C> ToSource for Block<C>
         let mut lines = Vec::new();
         lines.push("begin".to_owned());
 
-        for (i, statement) in self.statements.iter().enumerate() {
-            let mut line = statement.to_source();
-            if i < self.statements.len() - 1 {
-                line = line + ";";
-            }
-
-            lines.push(format!("\t{}", line));
-        }
+        lines.extend(block_statements_to_source(&self.statements));
 
         lines.push("end".to_string()).to_owned();
         lines.join("\n")
@@ -360,6 +370,17 @@ impl<C> ToSource for Unit<C>
             lines.push(decl.to_source())
         }
 
+        if let Some(block) = self.initialization.as_ref() {
+            lines.push("initialization".to_string());
+            lines.extend(block_statements_to_source(&block.statements));
+        }
+
+        if let Some(block) = self.finalization.as_ref() {
+            lines.push("finalization".to_string());
+            lines.extend(block_statements_to_source(&block.statements));
+        }
+
+        lines.push("end.".to_string());
         lines.join("\n\n")
     }
 }
