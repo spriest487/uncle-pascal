@@ -138,17 +138,15 @@ impl Expression {
 
         match outer_brackets {
             Some(brackets_block) => {
-                let inner_len = brackets_block.inner.len();
-
+                let brackets_block_len = brackets_block.len();
                 let mut inner_expr_tokens = TokenStream::new(brackets_block.inner,
                                                              &brackets_block.open);
                 let inner_expr = Expression::parse(&mut inner_expr_tokens)?;
                 inner_expr_tokens.finish()?;
 
                 // seek to after brackets
-                for _ in 0..inner_len + 2 {
-                    tokens.next();
-                }
+                tokens.advance(brackets_block_len);
+
                 Expression::parse_member_access_after(inner_expr, tokens)
             }
 

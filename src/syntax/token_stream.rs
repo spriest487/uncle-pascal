@@ -84,9 +84,18 @@ impl TokenStream {
         &self.context
     }
 
-    pub fn advance(&mut self, count: usize) {
+    pub fn advance(&mut self, mut count: usize) {
+        /* discard peeked elements, because next() and peek() use those first */
+        while count > 0 && self.peeked.len() > 0 {
+            self.peeked.pop_front();
+            count -= 1;
+        }
+
+        /* skip new stream elements */
         for _ in 0..count {
-            self.next().expect("must not reach unexpected EOF while advancing token stream");
+            if self.next().is_none() {
+                panic!("must not reach unexpected EOF while advancing token stream (last token: {})", self.context);
+            }
         }
     }
 
@@ -372,19 +381,28 @@ impl TokenStream {
             return Ok(None);
         }
 
-        self.advance(1);
-
         let mut open_count = 1;
-
         let mut inner_tokens = Vec::new();
 
+        /* we're peeking far ahead, so we have to be careful to read from the peek
+         buffer instead of consuming new elements, until the peek buffer is empty.
+         we already peeked one token (the block opener) */
+        let mut peek_pos = 1;
+
         let final_close_token = loop {
-            /* for each token we examine, store it into the peeked list so we can rebuild
-            the original sequence of tokens later */
-            let next = self.tokens.next();
-            if let Some(next) = &next {
-                self.peeked.push_back(next.clone());
-            }
+            /* we might be using the peek buffer here */
+            let next = if peek_pos < self.peeked.len() {
+                Some(self.peeked[peek_pos].clone())
+            } else {
+                let next = self.tokens.next();
+
+                if let Some(next) = &next {
+                    self.peeked.push_back(next.clone());
+                }
+
+                next
+            };
+            peek_pos += 1;
 
             match next {
                 /* found a nested block opener */

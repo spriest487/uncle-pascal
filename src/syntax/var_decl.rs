@@ -41,11 +41,18 @@ impl VarDecls {
                     decls.push(decl);
                 }
 
-                _ => break Ok(VarDecls {
-                    decls
-                }),
+                _ => break,
             }
         }
+
+        // it's legal for a var section to be nothing but a terminator
+        if decls.len() == 0 {
+            tokens.match_or_endl(tokens::Semicolon)?;
+        }
+
+        Ok(VarDecls {
+            decls
+        })
     }
 }
 

@@ -65,6 +65,7 @@ impl ParsedType {
             let pointer_sigil = tokens.match_peek(operators::Deref)?;
             if pointer_sigil.is_some() {
                 indirection += 1;
+                tokens.advance(1);
             } else {
                 let name = Identifier::parse(tokens)?;
 

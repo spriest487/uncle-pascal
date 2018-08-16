@@ -1,12 +1,9 @@
 use super::*;
 use tokenizer::*;
-use source;
 use operators;
 use node::ToSource;
 
 fn try_parse_expr(src: &str) -> Result<(Expression, TokenStream), ParseError> {
-    let context = source::test::empty_context();
-
     let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
 
     let expr = Expression::parse(&mut tokens)?;
