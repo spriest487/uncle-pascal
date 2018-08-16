@@ -65,6 +65,7 @@ pub enum UnitDeclaration<TSymbol, TContext>
     Function(FunctionDecl<TSymbol, TContext>),
     Type(TypeDecl<TSymbol, TContext>),
     Vars(VarDecls<TSymbol, TContext>),
+    Consts(ConstDecls<TSymbol, TContext>),
 }
 
 #[derive(Clone, Debug)]

@@ -93,6 +93,11 @@ impl FunctionDecl {
                         local_scope = local_scope.with_symbol_local(&arg.name,
                                                                     arg.decl_type.clone());
                     }
+                    for const_decl in local_consts.decls.iter() {
+                        let const_type = const_decl.value.expr_type()?
+                            .expect("constants always have a type");
+                        local_scope = local_scope.with_symbol_local(&const_decl.name, const_type);
+                    }
                     for var in local_vars.decls.iter() {
                         local_scope = local_scope.with_symbol_local(&var.name,
                                                                     var.decl_type.clone());

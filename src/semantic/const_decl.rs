@@ -37,3 +37,9 @@ impl ConstDecl {
         })
     }
 }
+
+impl ConstDecl {
+    pub fn scope(&self) -> &Scope {
+        self.context.scope.as_ref()
+    }
+}

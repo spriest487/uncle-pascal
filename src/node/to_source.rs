@@ -112,6 +112,22 @@ impl<T, C> ToSource for VarDecls<T, C>
     }
 }
 
+impl<T, C> ToSource for ConstDecls<T, C>
+    where T: Symbol,
+          C: Context
+{
+    fn to_source(&self) -> String {
+        let decl_lines = self.decls.iter()
+            .map(|decl| {
+                format!("\t{} = {};", decl.name, decl.value.to_source())
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        format!("const\n{}", decl_lines)
+    }
+}
+
 impl<T, C> ToSource for FunctionDecl<T, C>
     where T: Symbol,
           C: Context
@@ -157,6 +173,9 @@ impl<T, C> ToSource for Program<T, C>
 
                 UnitDeclaration::Vars(var_decls) =>
                     lines.push(var_decls.to_source()),
+
+                UnitDeclaration::Consts(const_decls) =>
+                    lines.push(const_decls.to_source()),
             }
         }
 
@@ -211,6 +230,9 @@ impl<T, C> ToSource for UnitDeclaration<T, C>
 
             UnitDeclaration::Vars(var_decls) =>
                 var_decls.to_source(),
+
+            UnitDeclaration::Consts(const_decls) =>
+                const_decls.to_source(),
         }
     }
 }

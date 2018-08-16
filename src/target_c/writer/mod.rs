@@ -492,7 +492,9 @@ pub fn write_consts(out: &mut String,
                     -> fmt::Result {
     consts.decls.iter()
         .map(|decl| {
-            write!(out, "const {} = ", decl.name)?;
+            let const_type = decl.value.expr_type().unwrap().unwrap();
+
+            write!(out, "{} const {} = ", type_to_c(&const_type, decl.scope()), decl.name)?;
             write_expr(out, &decl.value, globals)?;
             writeln!(out, ";")
         })
@@ -667,6 +669,9 @@ pub fn write_decl(out: &mut String,
             }
         UnitDeclaration::Vars(ref vars_decl) =>
             write_vars(out, vars_decl),
+
+        UnitDeclaration::Consts(ref consts_decl) =>
+            write_consts(out, consts_decl, globals),
     }
 }
 

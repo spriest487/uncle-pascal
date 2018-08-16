@@ -123,6 +123,7 @@ impl Parse for Vec<UnitDeclaration> {
             let match_decl_first = FunctionDecl::match_any_function_keyword()
                 .or(keywords::Type)
                 .or(keywords::Var)
+                .or(keywords::Const)
                 .or(keywords::Begin);
 
             let peek_decl = tokens.match_peek(match_decl_first)?;
@@ -144,6 +145,11 @@ impl Parse for Vec<UnitDeclaration> {
                 Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
                     let vars = VarDecls::parse(tokens)?;
                     decls.push(node::UnitDeclaration::Vars(vars));
+                }
+
+                Some(ref const_kw) if const_kw.is_keyword(keywords::Const) => {
+                    let consts = ConstDecls::parse(tokens)?;
+                    decls.push(node::UnitDeclaration::Consts(consts));
                 }
 
                 _ => break Ok(decls),

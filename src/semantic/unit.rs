@@ -24,10 +24,10 @@ impl Unit {
                             scope = match record_decl.kind {
                                 RecordKind::Record => {
                                     scope.with_record(record_decl.name.clone(), record_decl.clone())
-                                },
+                                }
                                 RecordKind::Class => {
                                     scope.with_class(record_decl.name.clone(), record_decl.clone())
-                                },
+                                }
                             }
                         }
 
@@ -38,7 +38,7 @@ impl Unit {
                         }
                     }
 
-                    result.push(node::UnitDeclaration::Type(type_decl))
+                    result.push(node::UnitDeclaration::Type(type_decl));
                 }
 
                 node::UnitDeclaration::Function(parsed_func) => {
@@ -48,7 +48,7 @@ impl Unit {
 
                     func_decl.type_check()?;
 
-                    result.push(node::UnitDeclaration::Function(func_decl))
+                    result.push(node::UnitDeclaration::Function(func_decl));
                 }
 
                 node::UnitDeclaration::Vars(parsed_vars) => {
@@ -56,7 +56,19 @@ impl Unit {
 
                     scope = scope.with_vars_local(vars.decls.iter());
 
-                    result.push(node::UnitDeclaration::Vars(vars))
+                    result.push(node::UnitDeclaration::Vars(vars));
+                }
+
+                node::UnitDeclaration::Consts(parsed_consts) => {
+                    let consts = ConstDecls::annotate(parsed_consts, Rc::new(scope.clone()))?;
+
+                    for const_decl in consts.decls.iter() {
+                        let const_type = const_decl.value.expr_type()?
+                            .expect("constants always have a type");
+                        scope = scope.with_symbol_local(&const_decl.name, const_type);
+                    }
+
+                    result.push(node::UnitDeclaration::Consts(consts));
                 }
             }
         }
