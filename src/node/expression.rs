@@ -87,10 +87,7 @@ impl<TSymbol> Expression<TSymbol>
         }
     }
 
-    pub fn function_call<TIter>(target: Self,
-                                args: TIter) -> Self
-        where TIter: IntoIterator<Item=Self>
-    {
+    pub fn function_call(target: Self, args: impl IntoIterator<Item=Self>) -> Self {
         let context = target.context.clone();
 
         Expression {

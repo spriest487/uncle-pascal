@@ -16,7 +16,7 @@ impl FunctionDecl {
             .or(keywords::Destructor)
     }
 
-    pub fn parse<TIter>(tokens: &mut TokenStream) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         //match the name
         let name_match = tokens.match_sequence(vec![
             Self::match_any_function_keyword(),
@@ -114,9 +114,8 @@ mod test {
     fn parse_func(src: &str) -> FunctionDecl {
         let tokens = tokenizer::tokenize("test", src).unwrap();
 
-        FunctionDecl::parse(tokens, &source::test::empty_context())
+        FunctionDecl::parse(&mut TokenStream::from(tokens))
             .unwrap()
-            .value
     }
 
     #[test]

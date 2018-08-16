@@ -143,7 +143,7 @@ impl fmt::Display for ParseError {
             }
 
             ParseError::UnexpectedEOF(expected, context) =>
-                write!(f, "unexpected< end of input - expected {} after {}", expected, context),
+                write!(f, "unexpected end of input - expected {} after {}", expected, context),
 
             ParseError::EmptyOperand { operator, before } => {
                 let position = if *before { "before" } else { "after" };

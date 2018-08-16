@@ -184,12 +184,21 @@ pub fn tokenize(file_name: &str,
         .map(str::to_owned)
         .collect();
 
-    let parsed_lines: TokenizeResult<Vec<_>> = lines.into_iter()
+    let parsed_lines: Vec<_> = lines.into_iter()
         .enumerate()
         .map(|(line_num, line)| parse_line(file_name, line_num + 1, &line))
-        .collect();
+        .collect::<TokenizeResult<_>>()?;
 
-    Ok(parsed_lines?.into_iter()
+    if parsed_lines.len() == 0 {
+        return Err(IllegalToken {
+            file: file_name.to_string(),
+            line: 0,
+            col: 0,
+            text: "<EOF>".to_string(),
+        })
+    }
+
+    Ok(parsed_lines.into_iter()
         .flat_map(|line_tokens| line_tokens)
         .collect())
 }

@@ -4,18 +4,17 @@ use source;
 use operators;
 use node::ToSource;
 
-fn try_parse_expr(src: &str) -> ExpressionResult {
+fn try_parse_expr(src: &str) -> Result<(Expression, TokenStream), ParseError> {
     let context = source::test::empty_context();
 
-    let tokens = tokenize("test", src).unwrap();
+    let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
 
-    Expression::parse(tokens, &context)
+    let expr = Expression::parse(&mut tokens)?;
+    Ok((expr, tokens))
 }
 
 fn parse_expr(src: &str) -> Expression {
-    try_parse_expr(src).unwrap()
-        .finish()
-        .expect("expression must parse with no trailing tokens")
+    try_parse_expr(src).unwrap().0
 }
 
 #[test]
@@ -77,18 +76,12 @@ fn simple_prefix_op() {
 
 #[test]
 fn parses_multiple_line_compound_expr() {
-    let expr = try_parse_expr(r"a.b := 1
+    let (expr, mut remaining) = try_parse_expr(r"a.b := 1
         b.c := 2")
         .unwrap();
-    assert!(expr.value.is_binary_op(operators::Assignment));
+    assert!(expr.is_binary_op(operators::Assignment));
 
-    let remaining: Vec<_> = expr.next_tokens.collect();
-    assert_eq!(5, remaining.len(), "expected `b := 2` to be left over but got tokens {:?}", remaining);
-
-    let second_ctx = remaining[0].clone();
-    let second_expr = Expression::parse(remaining, &second_ctx)
-        .unwrap()
-        .finish()
+    let second_expr = Expression::parse(&mut remaining)
         .unwrap();
 
     assert!(second_expr.is_binary_op(operators::Assignment));
@@ -96,13 +89,11 @@ fn parses_multiple_line_compound_expr() {
 
 #[test]
 fn parses_binary_expr_followed_by_func_call() {
-    let expr_result = try_parse_expr(r"
+    let expr = parse_expr(r"
             ^a := ^(b + 1)
 
-            System.FreeMem(self.Elements)")
-        .unwrap();
+            System.FreeMem(self.Elements)");
 
-    let expr: Expression = expr_result.value;
     match &expr.value {
         &node::ExpressionValue::BinaryOperator { .. } => (),
         _ => panic!("expected first expr in stream to be assignment, found {:?}", expr)
@@ -253,15 +244,13 @@ fn parses_namespaced_fn_call_with_prefix_operator_in_args() {
 
 #[test]
 fn parses_assignment_followed_by_prefix_operator() {
-    let expr = try_parse_expr(r"a := b
+    let (expr, mut remaining) = try_parse_expr(r"a := b
         ^a")
         .unwrap();
 
-    assert!(expr.value.is_binary_op(operators::Assignment));
+    assert!(expr.is_binary_op(operators::Assignment));
 
-    let next_expr = Expression::parse(expr.next_tokens, &expr.last_token)
-        .unwrap()
-        .finish()
+    let next_expr = Expression::parse(&mut remaining)
         .unwrap();
 
     assert!(next_expr.is_prefix_op(operators::Deref));
@@ -269,13 +258,12 @@ fn parses_assignment_followed_by_prefix_operator() {
 
 #[test]
 fn parses_binary_plus_followed_by_unary_plus_in_brackets() {
-    let expr = try_parse_expr(r"1 + abc
-        (+a)")
-        .unwrap();
+    let expr = parse_expr(r"1 + abc
+        (+a)");
 
-    assert!(expr.value.is_binary_op(operators::Plus));
+    assert!(expr.is_binary_op(operators::Plus));
 
-    let (lhs, _, rhs) = expr.value.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.unwrap_binary_op();
     assert!(lhs.is_literal_integer(1));
     assert!(rhs.is_function_call());
 }
@@ -332,16 +320,16 @@ fn parses_assignment_to_member_of_deref() {
 
 #[test]
 fn parses_fn_call_then_expr_on_next_line() {
-    let expr = try_parse_expr(r"a.b('hello world')
+    let (expr, mut remaining) = try_parse_expr(r"a.b('hello world')
     if x = 0 then begin end")
         .expect("expression should parse successfully");
 
-    assert!(expr.value.is_function_call());
+    assert!(expr.is_function_call());
 
-    let next_expr = Expression::parse(expr.next_tokens, &expr.last_token)
-        .expect("second expression must parse successfully")
-        .finish()
-        .expect("second expression must parse with no trailing tokens");
+    let next_expr = Expression::parse(&mut remaining)
+        .expect("second expression must parse successfully");
+
+    remaining.finish().expect("second expression must parse with no trailing tokens");
 
     assert!(next_expr.is_if());
 }

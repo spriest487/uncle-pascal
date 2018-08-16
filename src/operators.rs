@@ -58,6 +58,15 @@ pub static PRECEDENCE: [(Operator, Position); 17] = [
     (Assignment, Position::Binary),
 ];
 
+pub fn for_position(position: Position) -> impl Iterator<Item = Operator> {
+    PRECEDENCE.iter()
+        .filter_map(move |(op, pos)| if *pos == position {
+            Some(*op)
+        } else {
+            None
+        })
+}
+
 impl Operator {
     pub fn precedence(&self, in_pos: Position) -> usize {
         PRECEDENCE.iter().enumerate()

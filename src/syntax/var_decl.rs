@@ -53,15 +53,15 @@ impl VarDecls {
 mod test {
     use super::*;
     use tokenizer::*;
-    use source;
 
     fn parse_vars(src: &str) -> VarDecls {
-        let vars = VarDecls::parse(tokenize("test", src).unwrap(),
-                                   &source::test::empty_context());
+        let mut tokens = TokenStream::from(tokenize("test", src).unwrap());
+        let vars = VarDecls::parse(&mut tokens);
+        tokens.finish().expect("test source should not contain extra tokens");
 
         assert!(vars.is_ok(), "test source `{}` must parse correctly", src);
 
-        vars.unwrap().value
+        vars.unwrap()
     }
 
     #[test]

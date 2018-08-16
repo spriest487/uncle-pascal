@@ -221,7 +221,7 @@ impl Identifier {
                         None
                     } else {
                         Some(Identifier::from_iter(result.into_iter()))
-                    }
+                    };
                 }
             }
         }
@@ -233,18 +233,16 @@ mod test {
     use super::*;
     use tokenizer::*;
     use operators;
+    use syntax::TokenStream;
 
-    fn try_parse_name(source: &str) -> ParseOutputResult<Identifier> {
-        let tokens = tokenize("test", source).unwrap();
-        let context = tokens[0].clone();
+    fn try_parse_name(source: &str) -> ParseResult<Identifier> {
+        let mut tokens = TokenStream::from(tokenize("test", source).unwrap());
 
-        Identifier::parse(tokens, &context)
+        Identifier::parse(&mut tokens)
     }
 
     fn parse_name(source: &str) -> Identifier {
-        try_parse_name(source)
-            .map(|out| out.value)
-            .unwrap()
+        try_parse_name(source).unwrap()
     }
 
     #[test]
@@ -268,7 +266,7 @@ mod test {
             Err(ParseError::UnexpectedToken(t, _)) =>
                 assert_eq!(tokens::Operator(operators::Plus), *t.as_token()),
             Err(unexpected) => panic!("error should be UnexpectedToken when parsing incomplete name with extra tokens, was: {}", unexpected),
-            Ok(unexpected) => panic!("incomplete name should not parse OK (was: {})", unexpected.value)
+            Ok(unexpected) => panic!("incomplete name should not parse OK (was: {})", unexpected)
         }
     }
 
@@ -279,16 +277,17 @@ mod test {
         match id {
             Err(ParseError::UnexpectedEOF(_, _)) => (),
             Err(unexpected) => panic!("error should be UnexpectedEOF when parsing incomplete name with unexpected EOF, was: {}", unexpected),
-            Ok(unexpected) => panic!("incomplete name should not parse OK (was: {})", unexpected.value)
+            Ok(unexpected) => panic!("incomplete name should not parse OK (was: {})", unexpected)
         }
     }
 
     #[test]
     fn next_tokens_is_correct_after_consuming_id() {
-        let id = try_parse_name("System.String;")
-            .unwrap();
+        let mut tokens = TokenStream::tokenize("", "System.String;").unwrap();
 
-        let after = id.next_tokens.collect::<Vec<_>>();
+        Identifier::parse(&mut tokens).unwrap();
+
+        let after = tokens.collect::<Vec<_>>();
         assert_eq!(1, after.len());
         assert_eq!(tokens::Semicolon, *after[0].as_token());
     }

@@ -93,6 +93,12 @@ impl fmt::Display for Matcher {
 }
 
 impl Matcher {
+    pub fn any_operator_in_position(pos: operators::Position) -> Self {
+        Matcher::OneOf(operators::for_position(pos)
+            .map(|op| Matcher::Operator(op))
+            .collect())
+    }
+
     pub fn is_match<T>(&self, token: &T) -> bool
         where T: tokens::AsToken
     {
@@ -382,6 +388,12 @@ pub struct BlockMatch {
     pub open: source::Token,
     pub close: source::Token,
     pub inner: Vec<source::Token>,
+}
+
+impl BlockMatch {
+    pub fn len(&self) -> usize {
+        self.inner.len() + 2
+    }
 }
 
 #[derive(Clone, Debug)]

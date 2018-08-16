@@ -13,13 +13,13 @@ impl Unit {
         let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let uses = Unit::parse_uses(tokens)?;
+        let uses = Unit::parse_uses(&mut tokens)?;
 
         let interface_kw = tokens.match_one(keywords::Interface)?;
-        let interface_decls = Unit::parse_decls(tokens)?;
+        let interface_decls = Unit::parse_decls(&mut tokens)?;
 
         let impl_kw = tokens.match_one(keywords::Implementation)?;
-        let impl_decls = Unit::parse_decls(tokens)?;
+        let impl_decls = Unit::parse_decls(&mut tokens)?;
 
         tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
         tokens.finish()?;
@@ -124,19 +124,19 @@ impl Unit {
                 Some(ref func_kw) if FunctionDecl::match_any_function_keyword().is_match(func_kw)
                 => {
                     let func = FunctionDecl::parse(tokens)?;
-                    decls.push(node::UnitDeclaration::Function(func.value));
+                    decls.push(node::UnitDeclaration::Function(func));
                 }
 
                 Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
                     let type_decls = TypeDecl::parse(tokens)?;
-                    decls.extend(type_decls.value.into_iter().map(|type_decl| {
+                    decls.extend(type_decls.into_iter().map(|type_decl| {
                         node::UnitDeclaration::Type(type_decl)
                     }));
                 }
 
                 Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
                     let vars = VarDecls::parse(tokens)?;
-                    decls.push(node::UnitDeclaration::Vars(vars.value));
+                    decls.push(node::UnitDeclaration::Vars(vars));
                 }
 
                 _ => break Ok(decls),

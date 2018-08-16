@@ -467,14 +467,14 @@ fn member_type(of: &Expression,
 impl Expression {
     pub fn annotate(expr: &syntax::Expression, scope: &Scope) -> SemanticResult<Self> {
         match &expr.value {
-            &node::ExpressionValue::Identifier(ref name) =>
+            node::ExpressionValue::Identifier(name) =>
                 annotate_identifier(&name.0, scope, &expr.context),
 
-            &node::ExpressionValue::Block(ref block) => {
+            node::ExpressionValue::Block(block) => {
                 Ok(Expression::block(Block::annotate(block, scope)?))
             }
 
-            &node::ExpressionValue::LetBinding { ref name, ref value } => {
+            node::ExpressionValue::LetBinding { name, value } => {
                 /* it's not our job to update the scope, the enclosing block
                 needs to do that (it's responsible for the scope passed to its
                 enclosed statements) */
@@ -483,29 +483,29 @@ impl Expression {
                 Ok(Expression::let_binding(expr.context.clone(), name, typed_value))
             }
 
-            &node::ExpressionValue::LiteralString(ref s) => {
+            node::ExpressionValue::LiteralString(s) => {
                 Ok(Expression::literal_string(s, expr.context.clone()))
             }
 
-            &node::ExpressionValue::LiteralInteger(i) => {
-                Ok(Expression::literal_int(i, expr.context.clone()))
+            node::ExpressionValue::LiteralInteger(i) => {
+                Ok(Expression::literal_int(*i, expr.context.clone()))
             }
 
-            &node::ExpressionValue::LiteralNil => {
+            node::ExpressionValue::LiteralNil => {
                 Ok(Expression::literal_nil(&expr.context))
             }
 
-            &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } =>
+            node::ExpressionValue::If { condition, then_branch, else_branch } =>
                 annotate_if(condition.as_ref(),
                             then_branch.as_ref(),
                             else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
                             scope,
                             &expr.context),
 
-            &node::ExpressionValue::ForLoop { ref from, ref to, ref body } =>
+            node::ExpressionValue::ForLoop { from, to, body } =>
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
-            &node::ExpressionValue::BinaryOperator { ref lhs, op, ref rhs } => {
+            node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 let lhs = Expression::annotate(lhs, scope)?;
                 let rhs = Expression::annotate(rhs, scope)?;
 
@@ -518,7 +518,7 @@ impl Expression {
                 let lhs_is_string = lhs_type.map(|ty| ty == string_type).unwrap_or(false);
                 let rhs_is_string = rhs_type.map(|ty| ty == string_type).unwrap_or(false);
 
-                if lhs_is_string && rhs_is_string && op == operators::Plus {
+                if lhs_is_string && rhs_is_string && *op == operators::Plus {
                     //desugar string concatenation
                     let strcat_sym = scope.get_symbol(&Identifier::from("System.StringConcat")).unwrap();
                     let strcat = Expression::identifier(strcat_sym, expr.context.clone());
@@ -529,7 +529,7 @@ impl Expression {
                 }
             }
 
-            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } => {
+            node::ExpressionValue::PrefixOperator { op, rhs } => {
                 Ok(Expression::prefix_op(
                     op.clone(),
                     Expression::annotate(rhs, scope)?,
@@ -537,10 +537,10 @@ impl Expression {
                 ))
             }
 
-            &node::ExpressionValue::FunctionCall { ref target, ref args } =>
+            node::ExpressionValue::FunctionCall { target, args } =>
                 annotate_function_call(target, args, scope, &expr.context),
 
-            &node::ExpressionValue::Member { ref of, ref name } => {
+            node::ExpressionValue::Member { of, name } => {
                 let typed_of = Expression::annotate(of, scope)?;
                 Ok(Expression::member(typed_of, name))
             }
@@ -621,16 +621,18 @@ pub(crate) mod test {
     use syntax;
     use node;
     use operators;
-    use source;
     use types::{DeclaredType, FunctionSignature};
 
     pub fn parse_expr(src: &str, scope: &Scope) -> Expression {
         let tokens = tokenize("test", src)
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
-        let parsed = syntax::Expression::parse(tokens, &source::test::empty_context())
-            .and_then(|expr_out| expr_out.finish())
+        let mut stream = syntax::TokenStream::from(tokens);
+
+        let parsed = syntax::Expression::parse(&mut stream)
             .expect(&format!("test expr `{}` must parse correctly", src));
+
+        stream.finish().expect("expr must not contain trailing tokens");
 
         Expression::annotate(&parsed, scope)
             .expect(&format!("test expr `{}` must have valid types", src))
