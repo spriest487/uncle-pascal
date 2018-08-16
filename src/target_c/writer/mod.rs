@@ -46,10 +46,11 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             let return_type = sig.return_type.as_ref()
                 .map(|ty| type_to_c(ty, scope))
                 .unwrap_or_else(|| "void".to_owned());
-            let arg_types = if sig.arg_types.len() > 0 { sig.arg_types.iter()
-                .map(|arg| type_to_c(&arg, scope))
-                .collect::<Vec<_>>()
-                .join(", ")
+            let arg_types = if sig.arg_types.len() > 0 {
+                sig.arg_types.iter()
+                    .map(|arg| type_to_c(&arg, scope))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             } else {
                 "void".to_string()
             };
@@ -485,6 +486,19 @@ fn write_statement(out: &mut String,
     Ok(())
 }
 
+pub fn write_consts(out: &mut String,
+                    consts: &semantic::ConstDecls,
+                    globals: &mut ModuleGlobals)
+                    -> fmt::Result {
+    consts.decls.iter()
+        .map(|decl| {
+            write!(out, "const {} = ", decl.name)?;
+            write_expr(out, &decl.value, globals)?;
+            writeln!(out, ";")
+        })
+        .collect()
+}
+
 pub fn write_vars(out: &mut String, vars: &semantic::VarDecls) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
@@ -563,10 +577,11 @@ pub fn write_function(out: &mut String,
     match &function.body {
         None => writeln!(out, ";")?,
 
-        Some(node::FunctionDeclBody { block, local_vars }) => {
+        Some(node::FunctionDeclBody { block, local_vars, local_consts }) => {
             writeln!(out, "{{")?;
 
-            write_vars(out, &local_vars)?;
+            write_consts(out, local_consts, globals)?;
+            write_vars(out, local_vars)?;
             default_initialize_vars(out, local_vars.decls.iter())?;
 
             if function.kind == FunctionKind::Constructor {

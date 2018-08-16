@@ -7,6 +7,7 @@ pub mod expression;
 pub mod matcher;
 pub mod unit;
 pub mod token_stream;
+pub mod const_decl;
 
 pub use self::function::*;
 pub use self::block::*;
@@ -16,6 +17,7 @@ pub use self::program::*;
 pub use self::expression::*;
 pub use self::matcher::*;
 pub use self::unit::*;
+pub use self::const_decl::*;
 pub use self::token_stream::{
     TokenStream,
     Parse,

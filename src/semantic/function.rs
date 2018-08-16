@@ -77,6 +77,7 @@ impl FunctionDecl {
                     .unwrap_or(Ok(()))?;
 
                 let mut local_vars = VarDecls::annotate(&function_body.local_vars, scope.clone())?;
+                let mut local_consts = ConstDecls::annotate(&function_body.local_consts, scope.clone())?;
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {
@@ -104,6 +105,7 @@ impl FunctionDecl {
                 Some(FunctionDeclBody {
                     block: body_block,
                     local_vars,
+                    local_consts,
                 })
             }
             None => None,

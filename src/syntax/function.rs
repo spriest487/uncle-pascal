@@ -53,19 +53,33 @@ impl Parse for FunctionDecl {
         //body (if present) appears after separator or newline
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let peek_after_sig = tokens.match_peek(keywords::Var.or(keywords::Begin))?;
+        let peek_after_sig = tokens.match_peek(keywords::Var
+            .or(keywords::Const)
+            .or(keywords::Begin))?;
 
         let body = match peek_after_sig {
             // forward decl
             None => None,
 
             // decl with body
-            Some(body_kw) => {
-                let local_vars = if body_kw.is_keyword(keywords::Var) {
-                    VarDecls::parse(tokens)?
-                } else {
-                    VarDecls::default()
-                };
+            Some(_) => {
+                /* parse consts and vars until we run out of those */
+                let mut local_consts = ConstDecls::default();
+                let mut local_vars = VarDecls::default();
+
+                loop {
+                    match tokens.peeked().match_one(keywords::Var.or(keywords::Const)) {
+                        Some(t) => if t.is_keyword(keywords::Var) {
+                            let vars: VarDecls = tokens.parse()?;
+                            local_vars.decls.extend(vars.decls);
+                        } else {
+                            let consts: ConstDecls = tokens.parse()?;
+                            local_consts.decls.extend(consts.decls);
+                        }
+
+                        None => break,
+                    }
+                }
 
                 let block = Block::parse(tokens)?;
 
@@ -75,6 +89,7 @@ impl Parse for FunctionDecl {
                 Some(FunctionDeclBody {
                     block,
                     local_vars,
+                    local_consts,
                 })
             }
         };

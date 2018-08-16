@@ -1,6 +1,7 @@
 pub mod scope;
 pub mod expression;
 pub mod var_decl;
+pub mod const_decl;
 pub mod block;
 pub mod function;
 pub mod type_decl;
@@ -18,6 +19,7 @@ pub use self::{
     unit::*,
     var_decl::*,
     module::*,
+    const_decl::*,
 };
 
 use std::{

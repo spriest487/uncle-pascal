@@ -106,6 +106,7 @@ pub struct FunctionDeclBody<TSymbol, TContext>
           TContext: Context
 {
     pub local_vars: VarDecls<TSymbol, TContext>,
+    pub local_consts: ConstDecls<TSymbol, TContext>,
     pub block: Block<TSymbol, TContext>,
 }
 
@@ -205,6 +206,33 @@ impl<TSymbol, TContext> RecordDecl<TSymbol, TContext>
 }
 
 #[derive(Clone, Debug)]
+pub struct ConstDecl<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
+{
+    pub name: String,
+    pub value: Expression<TSymbol, TContext>,
+    pub context: TContext,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConstDecls<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
+{
+    pub decls: Vec<ConstDecl<TSymbol, TContext>>,
+}
+
+impl<TSymbol, TContext> Default for ConstDecls<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
+{
+    fn default() -> Self {
+        ConstDecls { decls: Vec::new() }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub struct VarDecl<TSymbol, TContext>
     where TSymbol: Symbol
 {
@@ -222,9 +250,11 @@ pub struct VarDecls<TSymbol, TContext>
 }
 
 impl<TSymbol, TContext> Default for VarDecls<TSymbol, TContext>
-    where TSymbol: Symbol
+    where TSymbol: Symbol,
+          TContext: Context
 {
     fn default() -> Self {
-        Self { decls: Vec::new() }
+        VarDecls { decls: Vec::new() }
     }
 }
+

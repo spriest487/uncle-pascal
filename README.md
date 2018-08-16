@@ -1,6 +1,7 @@
 # TODO
 
 * const/var/out need to do stuff
+* consts should be added to the scope
 * ToString for ints!!
 * "uses" should be able to appear at any position in the decls
 * RC struct members on the stack
