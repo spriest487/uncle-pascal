@@ -7,27 +7,24 @@ pub mod type_decl;
 pub mod program;
 pub mod unit;
 
-pub use self::scope::*;
-pub use self::var_decl::*;
-pub use self::expression::*;
-pub use self::block::*;
-pub use self::function::*;
-pub use self::type_decl::*;
-pub use self::program::*;
-pub use self::unit::*;
-
-use std::fmt;
-
+use node::Identifier;
 use operators;
-use node;
-use types::*;
-
+pub use self::block::*;
+pub use self::expression::*;
+pub use self::function::*;
+pub use self::program::*;
+pub use self::scope::*;
+pub use self::type_decl::*;
+pub use self::unit::*;
+pub use self::var_decl::*;
 use source;
+use std::fmt;
+use types::*;
 
 #[derive(Clone, Debug)]
 pub enum SemanticErrorKind {
-    UnknownType(node::Identifier),
-    UnknownSymbol(node::Identifier),
+    UnknownType(Identifier),
+    UnknownSymbol(Identifier),
     UnexpectedType {
         expected: Option<DeclaredType>,
         actual: Option<DeclaredType>,
@@ -39,7 +36,7 @@ pub enum SemanticErrorKind {
     },
     MemberAccessOfNonRecord(Option<DeclaredType>, String),
     IllegalName(String),
-    EmptyRecord(String),
+    EmptyRecord(Identifier),
     InvalidOperator {
         op: operators::Operator,
         args: Vec<Option<DeclaredType>>,
@@ -131,7 +128,7 @@ impl SemanticError {
         }
     }
 
-    pub fn unknown_symbol(name: node::Identifier, context: source::Token) -> Self {
+    pub fn unknown_symbol(name: Identifier, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownSymbol(name),
             context,
@@ -147,14 +144,14 @@ impl SemanticError {
         }
     }
 
-    pub fn unknown_type(missing_type: node::Identifier, context: source::Token) -> Self {
+    pub fn unknown_type(missing_type: Identifier, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownType(missing_type),
             context,
         }
     }
 
-    pub fn empty_record(record_id: String, context: source::Token) -> Self {
+    pub fn empty_record(record_id: Identifier, context: source::Token) -> Self {
         SemanticError {
             kind: SemanticErrorKind::EmptyRecord(record_id),
             context,

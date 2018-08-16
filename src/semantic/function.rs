@@ -27,23 +27,26 @@ impl Function {
         };
 
         /* there can't already be a local symbol called "result" */
-        function.local_vars.decls.iter().find(|decl| decl.name == RESULT_VAR_NAME)
+        let result_id = Identifier::from(RESULT_VAR_NAME);
+        function.local_vars.decls.iter().find(|decl| decl.name == result_id)
             .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
                                                      function.context.clone())))
             .unwrap_or(Ok(()))?;
 
-        let mut local_vars = Vars::annotate(&function.local_vars, &scope)?;
+        let mut local_vars = Vars::annotate(&function.local_vars,
+                                            &scope,
+                                            SemanticVarsKind::Local)?;
 
         if let &Some(ref result_var_type) = &return_type {
             local_vars.decls.push(VarDecl {
-                name: RESULT_VAR_NAME.to_owned(),
+                name: result_id,
                 context: function.context.clone(),
                 decl_type: result_var_type.clone(),
                 modifiers: HashSet::default(),
             });
         }
 
-        let args = Vars::annotate(&function.args, scope)?;
+        let args = Vars::annotate(&function.args, scope, SemanticVarsKind::Local)?;
 
         let local_scope = scope.clone()
             .with_vars_local(args.decls.iter())
@@ -51,10 +54,15 @@ impl Function {
 
         let body = Block::annotate(&function.body, &local_scope)?;
 
-        let qualified_name = local_scope.qualify_local_name(&function.name);
+        let qualified_name = if function.name.namespace.len() == 0{
+            local_scope.qualify_local_name(&function.name.name)
+        } else {
+            return Err(SemanticError::illegal_name(function.name.to_string(),
+                                                   function.context.clone()));
+        };
 
         Ok(Function {
-            name: qualified_name.to_string(),
+            name: qualified_name,
             context: function.context.clone(),
             return_type,
             local_vars,
@@ -66,7 +74,7 @@ impl Function {
     pub fn signature_type(&self) -> DeclaredType {
         let sig = FunctionSignature {
             return_type: self.return_type.clone(),
-            name: Identifier::from(self.name.as_str()),
+            name: self.name.clone(),
             arg_types: self.args.decls.iter().map(|arg| arg.decl_type.clone()).collect(),
         };
 

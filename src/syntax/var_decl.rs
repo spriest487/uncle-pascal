@@ -4,12 +4,12 @@ use tokens;
 use tokens::AsToken;
 use keywords;
 use operators;
-use node;
+use node::{self, Identifier};
 use syntax::*;
 use source;
 
-pub type VarDecl = node::VarDecl<node::Identifier>;
-pub type VarDecls = node::VarDecls<node::Identifier>;
+pub type VarDecl = node::VarDecl<Identifier>;
+pub type VarDecls = node::VarDecls<Identifier>;
 
 impl node::ToSource for VarDecls {
     fn to_source(&self) -> String {
@@ -35,7 +35,7 @@ impl VarDecl {
             .match_sequence(in_tokens, &context)?;
 
         let name_token = id_tokens.value[0].clone();
-        let name = name_token.as_token().unwrap_identifier().to_owned();
+        let name = Identifier::from(name_token.as_token().unwrap_identifier());
 
         /* match any number of unique modifiers */
         let mut modifier_tokens = WrapIter::new(id_tokens.next_tokens);
@@ -79,7 +79,7 @@ impl VarDecl {
             }
         }
 
-        let type_id = node::Identifier::parse(modifier_tokens,
+        let type_id = Identifier::parse(modifier_tokens,
         &modifier_context)?;
 
         let decl = VarDecl {
@@ -154,7 +154,7 @@ mod test {
 
         assert_eq!(1, vars.decls.len());
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(node::Identifier::from("Integer"), vars.decls[0].decl_type);
+        assert_eq!(Identifier::from("Integer"), vars.decls[0].decl_type);
     }
 
     #[test]
@@ -164,10 +164,10 @@ mod test {
         assert_eq!(2, vars.decls.len());
 
         assert_eq!("x", vars.decls[0].name);
-        assert_eq!(node::Identifier::from("System.Integer"), vars.decls[0].decl_type);
+        assert_eq!(Identifier::from("System.Integer"), vars.decls[0].decl_type);
 
         assert_eq!("y", vars.decls[1].name);
-        assert_eq!(node::Identifier::from("System.String"), vars.decls[1].decl_type);
+        assert_eq!(Identifier::from("System.String"), vars.decls[1].decl_type);
     }
 
     #[test]

@@ -1,10 +1,11 @@
 use syntax::*;
-use node;
+use node::{self, Identifier};
+use source;
 use keywords;
 use tokens::{self, AsToken};
 use operators;
 
-pub type RecordDecl = node::RecordDecl<node::Identifier>;
+pub type RecordDecl = node::RecordDecl<Identifier>;
 
 impl RecordDecl {
     pub fn parse<TIter>(in_tokens: TIter, context: &source::Token) -> ParseResult<Self>
@@ -16,7 +17,7 @@ impl RecordDecl {
             .and_then(keywords::Record)
             .match_sequence(in_tokens, context)?;
 
-        let type_name = match_name.value[1].unwrap_identifier().to_owned();
+        let type_name = Identifier::from(match_name.value[1].unwrap_identifier());
 
         let match_end = keywords::End.split_at_match(match_name.next_tokens,
                                                      &match_name.last_token)?;

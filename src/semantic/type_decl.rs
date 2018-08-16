@@ -1,6 +1,6 @@
 use node;
-use syntax;
 use semantic::*;
+use syntax;
 use types;
 
 pub type RecordDecl = node::RecordDecl<ScopedSymbol>;
@@ -12,13 +12,18 @@ impl RecordDecl {
             Err(SemanticError::empty_record(decl.name.clone(), decl.context.clone()))
         } else {
             let members = decl.members.iter()
-                .map(|member| VarDecl::annotate(member, scope))
+                .map(|member| VarDecl::annotate(member, scope, SemanticVarsKind::Local))
                 .collect::<Result<_, _>>()?;
 
-            let qualified_name = scope.qualify_local_name(&decl.name);
+            let qualified_name = if decl.name.namespace.len() == 0 {
+                scope.qualify_local_name(&decl.name.name)
+            } else {
+                return Err(SemanticError::illegal_name(decl.name.to_string(),
+                                                       decl.context.clone()));
+            };
 
             Ok(RecordDecl {
-                name: qualified_name.to_string(),
+                name: qualified_name,
                 context: decl.context.clone(),
                 members
             })
@@ -27,10 +32,10 @@ impl RecordDecl {
 
     pub fn record_type(&self) -> types::DeclaredType {
         let record = types::DeclaredRecord {
-            name: node::Identifier::from(self.name.as_str()),
+            name: self.name.clone(),
             members: self.members.iter()
                 .map(|member| {
-                    types::Symbol::new(member.name.as_str(), member.decl_type.clone())
+                    types::Symbol::new(member.name.clone(), member.decl_type.clone())
                 })
                 .collect()
         };

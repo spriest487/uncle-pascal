@@ -1,9 +1,9 @@
 use std::collections::hash_map::*;
 use std::fmt;
 
-use semantic::*;
-use node::{self, Identifier};
 use types::*;
+use node::{self, Identifier};
+use semantic::*;
 
 #[derive(Clone, Debug)]
 pub enum Named {
@@ -217,17 +217,18 @@ impl Scope {
         where TIter: IntoIterator<Item=&'a VarDecl>
     {
         for var in vars {
-            self = self.with_symbol_local(&var.name, var.decl_type.clone());
+            assert_eq!(var.name.namespace.len(), 0, "vars passed to with_vars_local should not be namespaced! was {}", var.name);
+
+            self = self.with_symbol_local(&var.name.name, var.decl_type.clone());
         }
         self
     }
 
-    pub fn with_vars_absolute<'a, TIter>(mut self, vars: TIter, ns: node::Identifier) -> Self
+    pub fn with_vars_absolute<'a, TIter>(mut self, vars: TIter) -> Self
         where TIter: IntoIterator<Item=&'a VarDecl>
     {
         for var in vars {
-            let qualified_name = ns.child(&var.name);
-            self = self.with_symbol_absolute(qualified_name, var.decl_type.clone());
+            self = self.with_symbol_absolute(var.name.clone(), var.decl_type.clone());
         }
         self
     }

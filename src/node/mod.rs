@@ -65,7 +65,7 @@ pub struct Unit<TSymbol>
 pub struct FunctionDecl<TSymbol>
     where TSymbol: Symbol
 {
-    pub name: String,
+    pub name: Identifier,
     pub context: source::Token,
 
     pub return_type: Option<TSymbol::Type>,
@@ -86,7 +86,7 @@ pub struct Block<TSymbol> {
 pub struct RecordDecl<TSymbol>
     where TSymbol: Symbol
 {
-    pub name: String,
+    pub name: Identifier,
     pub context: source::Token,
     pub members: Vec<VarDecl<TSymbol>>,
 }
@@ -100,7 +100,7 @@ pub enum VarModifier {
 pub struct VarDecl<TSymbol>
     where TSymbol: Symbol
 {
-    pub name: String,
+    pub name: Identifier,
     pub context: source::Token,
 
     pub decl_type: TSymbol::Type,
