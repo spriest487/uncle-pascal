@@ -1,3 +1,6 @@
+//#define UNCLEPASCAL_RC_DEBUG
+//#define UNCLEPASCAL_REFLECTION_DEBUG
+
 struct System_Internal_Class {
     std::string Name;
     System_Internal_Destructor Destructor;
@@ -36,7 +39,9 @@ static void System_Internal_InitClass(const char* name,
 
     System_Internal_Classes.insert(make_pair(nameStr, move(classObj)));
 
+#ifdef UNCLEPASCAL_REFLECTION_DEBUG
     std::fprintf(stderr, "initialized class %s\n", name);
+#endif
 }
 
 static System_Internal_Class* System_Internal_FindClass(const char* name) {
@@ -57,7 +62,10 @@ static System_Internal_Object* System_Internal_Rc_GetMem(System_NativeInt size, 
 
     obj->StrongCount = 1;
 
+#ifdef UNCLEPASCAL_RC_DEBUG
     std::fprintf(stderr, "rc allocated %td bytes for %s @ %p\n", size, constructorName, obj);
+#endif
+
     return obj;
 }
 
@@ -89,7 +97,10 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
         }
 
         std::free(obj);
+
+#ifdef UNCLEPASCAL_RC_DEBUG
         fprintf(stderr, "rc deallocated %s @ %p\n", className.c_str(), obj);
+#endif
     }
 }
 
