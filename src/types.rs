@@ -53,42 +53,7 @@ impl ArrayType {
     }
 }
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
-pub struct FunctionSignature {
-    pub return_type: Option<Type>,
-    pub arg_types: Vec<Type>,
-}
-
-impl ToSource for FunctionSignature {
-    fn to_source(&self) -> String {
-        let mut source = String::new();
-        source.push_str(if self.return_type.is_some() {
-            "function"
-        } else {
-            "procedure"
-        });
-
-        if self.arg_types.len() > 0 {
-            source.push('(');
-            source.push_str(&self.arg_types.iter()
-                .enumerate()
-                .map(|(arg_index, arg_type)| {
-                    format!("arg{}: {}", arg_index, arg_type.to_source())
-                })
-                .collect::<Vec<_>>()
-                .join(";"));
-            source.push(')');
-        }
-
-        source
-    }
-}
-
-impl fmt::Display for FunctionSignature {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_source())
-    }
-}
+pub type FunctionSignature = node::FunctionSignature<Type>;
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum Type {
@@ -230,11 +195,12 @@ impl Type {
             Type::UInt64 |
             Type::NativeInt |
             Type::NativeUInt |
+            Type::Function(_) |
             Type::Boolean => true,
 
             Type::Array { .. } |
-            Type::Nil |
-            Type::Function(_) => false,
+            Type::Nil
+                => false
         }
     }
 

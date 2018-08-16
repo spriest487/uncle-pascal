@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use syntax;
 use semantic::*;
-use node::{self, Identifier, TypeName};
+use node::{self, Identifier, ExpressionValue};
 use operators;
 use types;
 use consts::IntConstant;
@@ -16,7 +16,7 @@ fn expect_valid_operation(operator: operators::Operator,
     /* special case for assigning 0 to any numeric type, or assigning integers in
      the range 0...255 to bytes */
     match (operator, target, &actual_expr.value) {
-        (operators::Assignment, Some(lhs_type), node::ExpressionValue::LiteralInteger(int)) =>
+        (operators::Assignment, Some(lhs_type), ExpressionValue::LiteralInteger(int)) =>
             if let Some(u8_val) = int.as_u8() {
                 let assigning_u8_to_byte = *lhs_type == Type::Byte;
                 let assigning_zero_to_num = u8_val == 0 && lhs_type.is_numeric();
@@ -45,8 +45,7 @@ fn expect_valid_operation(operator: operators::Operator,
 
         (Some(a), Some(b)) => {
             let valid = match operator {
-                operators::Assignment =>
-                    a.assignable_from(&b),
+                operators::Assignment => a.assignable_from(&b),
 
                 operators::Plus => {
                     /* special case for string concat sugar */
@@ -214,7 +213,7 @@ fn for_loop_type(from: &Expression,
     let _body_type = body.expr_type()?;
 
     match &from.value {
-        &node::ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
+        &ExpressionValue::BinaryOperator { ref op, ref lhs, .. }
         if *op == operators::Operator::Assignment => {
             let lhs_type = lhs.expr_type()?;
 
@@ -223,7 +222,7 @@ fn for_loop_type(from: &Expression,
             Ok(None)
         }
 
-        &node::ExpressionValue::LetBinding { ref value, .. } => {
+        &ExpressionValue::LetBinding { ref value, .. } => {
             let value_type = value.expr_type()?;
 
             expect_comparable(Some(&Type::Int32), value_type.as_ref(),
@@ -314,7 +313,7 @@ fn annotate_function_call(target: &syntax::Expression,
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
     let ufcs_call = match &target.value {
-        &node::ExpressionValue::Member { ref of, ref name } => {
+        &ExpressionValue::Member { ref of, ref name } => {
             let base_expr = Expression::annotate(of, scope.clone())?;
             let base_type = base_expr.expr_type()?;
 
@@ -322,7 +321,7 @@ fn annotate_function_call(target: &syntax::Expression,
                 annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope.clone()))
         }
 
-        &node::ExpressionValue::Identifier(ref name) => {
+        &ExpressionValue::Identifier(ref name) => {
             let base_id: Option<Identifier> = name.0.parent();
 
             base_id.and_then(|base_id| scope.get_symbol(&base_id))
@@ -392,6 +391,33 @@ fn function_call_type(target: &Expression,
     }
 }
 
+fn is_lvalue(expr: &Expression) -> bool {
+    match &expr.value {
+        ExpressionValue::Identifier(sym) => {
+            let is_declared_func = expr.scope().get_function(&sym.name()).is_some();
+            !is_declared_func
+        },
+        ExpressionValue::PrefixOperator { op, rhs } => match op {
+            operators::Deref =>
+                is_lvalue(rhs),
+            _ =>
+                false,
+        },
+
+        ExpressionValue::FunctionCall { .. } |
+        ExpressionValue::LiteralInteger(_) |
+        ExpressionValue::LiteralNil |
+        ExpressionValue::LiteralString(_) |
+        ExpressionValue::BinaryOperator { .. } |
+        ExpressionValue::Block(_) |
+        ExpressionValue::ForLoop { .. } |
+        ExpressionValue::If { .. } |
+        ExpressionValue::LetBinding { .. } |
+        ExpressionValue::Member { .. } =>
+            false
+    }
+}
+
 fn binary_op_type(lhs: &Expression,
                   op: operators::Operator,
                   rhs: &Expression,
@@ -407,8 +433,12 @@ fn binary_op_type(lhs: &Expression,
         operators::Lt |
         operators::Lte |
         operators::Equals => {
-            expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
-            Ok(Some(Type::Boolean))
+            if op == operators::Assignment && !is_lvalue(lhs) {
+                Err(SemanticError::value_not_assignable(lhs.clone()))
+            } else {
+                expect_valid_operation(op, lhs_type.as_ref(), &rhs, context)?;
+                Ok(Some(Type::Boolean))
+            }
         }
 
         operators::Multiply |
@@ -520,14 +550,14 @@ impl Expression {
         };
 
         match &expr.value {
-            node::ExpressionValue::Identifier(name) =>
+            ExpressionValue::Identifier(name) =>
                 annotate_identifier(&name.0, scope, &expr.context),
 
-            node::ExpressionValue::Block(block) => {
+            ExpressionValue::Block(block) => {
                 Ok(Expression::block(Block::annotate(block, scope)?))
             }
 
-            node::ExpressionValue::LetBinding { name, value } => {
+            ExpressionValue::LetBinding { name, value } => {
                 /* it's not our job to update the scope, the enclosing block
                 needs to do that (it's responsible for the scope passed to its
                 enclosed statements) */
@@ -536,53 +566,36 @@ impl Expression {
                 Ok(Expression::let_binding(name, typed_value, expr_context))
             }
 
-            node::ExpressionValue::LiteralString(s) => {
+            ExpressionValue::LiteralString(s) => {
                 Ok(Expression::literal_string(s, expr_context))
             }
 
-            node::ExpressionValue::LiteralInteger(i) => {
+            ExpressionValue::LiteralInteger(i) => {
                 Ok(Expression::literal_int(*i, expr_context))
             }
 
-            node::ExpressionValue::LiteralNil => {
+            ExpressionValue::LiteralNil => {
                 Ok(Expression::literal_nil(expr_context))
             }
 
-            node::ExpressionValue::If { condition, then_branch, else_branch } =>
+            ExpressionValue::If { condition, then_branch, else_branch } =>
                 annotate_if(condition.as_ref(),
                             then_branch.as_ref(),
                             else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
                             scope,
                             &expr.context),
 
-            node::ExpressionValue::ForLoop { from, to, body } =>
+            ExpressionValue::ForLoop { from, to, body } =>
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
-            node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
                 let lhs = Expression::annotate(lhs, scope.clone())?;
                 let rhs = Expression::annotate(rhs, scope.clone())?;
 
-                let lhs_type = lhs.expr_type()?;
-                let rhs_type = rhs.expr_type()?;
-
-                let string_type = scope.get_type(&TypeName::with_name("System.String"))
-                    .unwrap();
-
-                let lhs_is_string = lhs_type.map(|ty| ty == string_type).unwrap_or(false);
-                let rhs_is_string = rhs_type.map(|ty| ty == string_type).unwrap_or(false);
-
-                if lhs_is_string && rhs_is_string && *op == operators::Plus {
-                    //desugar string concatenation
-                    let strcat_sym = scope.get_symbol(&Identifier::from("System.StringConcat")).unwrap();
-                    let strcat = Expression::identifier(strcat_sym, expr_context);
-
-                    Ok(Expression::function_call(strcat, vec![lhs, rhs]))
-                } else {
-                    Ok(Expression::binary_op(lhs, op.clone(), rhs, expr_context))
-                }
+                Ok(Expression::binary_op(lhs, op.clone(), rhs, expr_context))
             }
 
-            node::ExpressionValue::PrefixOperator { op, rhs } => {
+            ExpressionValue::PrefixOperator { op, rhs } => {
                 Ok(Expression::prefix_op(
                     op.clone(),
                     Expression::annotate(rhs, scope)?,
@@ -590,10 +603,10 @@ impl Expression {
                 ))
             }
 
-            node::ExpressionValue::FunctionCall { target, args } =>
+            ExpressionValue::FunctionCall { target, args } =>
                 annotate_function_call(target, args, scope, &expr.context),
 
-            node::ExpressionValue::Member { of, name } => {
+            ExpressionValue::Member { of, name } => {
                 let typed_of = Expression::annotate(of, scope)?;
                 Ok(Expression::member(typed_of, name))
             }
@@ -602,17 +615,17 @@ impl Expression {
 
     pub fn expr_type(&self) -> Result<Option<Type>, SemanticError> {
         match &self.value {
-            &node::ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } =>
+            &ExpressionValue::BinaryOperator { ref lhs, ref op, ref rhs } =>
                 binary_op_type(lhs, *op, rhs, &self.context),
 
-            &node::ExpressionValue::PrefixOperator { ref op, ref rhs } =>
+            &ExpressionValue::PrefixOperator { ref op, ref rhs } =>
                 prefix_op_type(*op, rhs, &self.context),
 
-            &node::ExpressionValue::LiteralString(_) => {
+            &ExpressionValue::LiteralString(_) => {
                 Ok(Some(Type::Class(Identifier::from("System.String"))))
             }
 
-            &node::ExpressionValue::LiteralInteger(int_const) =>
+            &ExpressionValue::LiteralInteger(int_const) =>
                 Ok(Some(match int_const {
                     IntConstant::Char(_) => Type::Byte,
                     IntConstant::I32(_) => Type::Int32,
@@ -621,19 +634,19 @@ impl Expression {
                     IntConstant::U64(_) => Type::UInt64,
                 })),
 
-            &node::ExpressionValue::LiteralNil =>
+            &ExpressionValue::LiteralNil =>
                 Ok(Some(Type::Nil)),
 
-            &node::ExpressionValue::LetBinding { ref value, .. } =>
+            &ExpressionValue::LetBinding { ref value, .. } =>
                 let_binding_type(value, &self.context),
 
-            &node::ExpressionValue::FunctionCall { ref target, ref args } =>
+            &ExpressionValue::FunctionCall { ref target, ref args } =>
                 function_call_type(target, args, &self.context),
 
-            &node::ExpressionValue::Identifier(ref id) =>
+            &ExpressionValue::Identifier(ref id) =>
                 Ok(Some(id.decl_type().clone())),
 
-            &node::ExpressionValue::Block(ref block) => {
+            &ExpressionValue::Block(ref block) => {
                 for statement in block.statements.iter() {
                     statement.expr_type()?;
                 }
@@ -641,16 +654,16 @@ impl Expression {
                 Ok(None)
             }
 
-            &node::ExpressionValue::If { ref condition, ref then_branch, ref else_branch } =>
+            &ExpressionValue::If { ref condition, ref then_branch, ref else_branch } =>
                 if_type(condition.as_ref(),
                         then_branch.as_ref(),
                         else_branch.as_ref().map(|else_expr| else_expr.as_ref()),
                         &self.context),
 
-            &node::ExpressionValue::ForLoop { ref from, ref to, ref body } =>
+            &ExpressionValue::ForLoop { ref from, ref to, ref body } =>
                 for_loop_type(from.as_ref(), to.as_ref(), body.as_ref(), &self.context),
 
-            &node::ExpressionValue::Member { ref of, ref name } =>
+            &ExpressionValue::Member { ref of, ref name } =>
                 member_type(of, name, &self.context)
         }
     }
@@ -769,7 +782,7 @@ pub(crate) mod test {
         let expr = parse_expr(r"a.TestAdd(1)", Rc::new(scope.clone()));
 
         match expr.value {
-            node::ExpressionValue::FunctionCall { target, args } => {
+            ExpressionValue::FunctionCall { target, args } => {
                 let expected_target = scope.get_symbol(&test_func_name).unwrap();
 
                 assert!(target.is_identifier(&expected_target));

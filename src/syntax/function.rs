@@ -25,24 +25,7 @@ impl Parse for FunctionDecl {
 
         let fn_name = name_match[1].clone();
 
-        let arg_groups = match tokens.match_peek(tokens::BracketLeft)? {
-            Some(_) => {
-                tokens.match_groups(tokens::BracketLeft, tokens::BracketRight, tokens::Semicolon)?
-                    .groups
-            }
-            None => Vec::new(),
-        };
-
-        let args = arg_groups.into_iter()
-            .map(|arg_tokens| {
-                let mut arg_tokens = TokenStream::new(arg_tokens.tokens, &arg_tokens.context);
-
-                let var_decl = VarDecl::parse(&mut arg_tokens)?;
-                arg_tokens.finish()?;
-
-                Ok(var_decl)
-            })
-            .collect::<Result<_, _>>()?;
+        let args = Self::parse_argument_list(tokens)?;
 
         let return_type = match kind_kw {
             // procedures return nothing
@@ -52,7 +35,7 @@ impl Parse for FunctionDecl {
             _ => {
                 //functions and constructors must return something
                 tokens.match_one(tokens::Colon)?;
-                let type_id = TypeName::parse(tokens)?;
+                let type_id: TypeName = tokens.parse()?;
 
                 Some(type_id)
             }
@@ -91,7 +74,7 @@ impl Parse for FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
             context: fn_name.into(),
             return_type,
-            args: VarDecls { decls: args },
+            args,
             kind,
             body,
         })
@@ -104,6 +87,31 @@ impl FunctionDecl {
             .or(keywords::Procedure)
             .or(keywords::Constructor)
             .or(keywords::Destructor)
+    }
+
+    pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
+        let arg_groups = match tokens.match_peek(tokens::BracketLeft)? {
+            Some(_) => {
+                tokens.match_groups(tokens::BracketLeft, tokens::BracketRight, tokens::Semicolon)?
+                    .groups
+            }
+            None => Vec::new(),
+        };
+
+        let args = arg_groups.into_iter()
+            .map(|arg_tokens| {
+                let mut arg_tokens = TokenStream::new(arg_tokens.tokens, &arg_tokens.context);
+
+                let var_decl = VarDecl::parse(&mut arg_tokens)?;
+                arg_tokens.finish()?;
+
+                Ok(var_decl)
+            })
+            .collect::<Result<_, _>>()?;
+
+        Ok(VarDecls {
+            decls: args
+        })
     }
 }
 

@@ -7,6 +7,16 @@ use operators;
 pub type RecordDecl = node::RecordDecl<ParsedSymbol, ParsedContext>;
 pub type TypeDecl = node::TypeDecl<ParsedSymbol, ParsedContext>;
 
+fn any_valid_type_decl_first() -> Matcher {
+    keywords::Record
+        .or(keywords::Class)
+        .or(keywords::Function)
+        .or(keywords::Procedure)
+        .or(keywords::Array)
+        .or(operators::Deref)
+        .or(Matcher::AnyIdentifier)
+}
+
 impl Parse for Vec<TypeDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(keywords::Type)?;
@@ -19,9 +29,7 @@ impl Parse for Vec<TypeDecl> {
 
             let decl_name = match_name[0].unwrap_identifier();
 
-            let peek_kind = tokens.match_peek(keywords::Record.or(keywords::Class)
-                .or(operators::Deref)
-                .or(Matcher::AnyIdentifier))?;
+            let peek_kind = tokens.match_peek(any_valid_type_decl_first())?;
 
             let type_decl = match peek_kind {
                 Some(ref t) if t.is_keyword(keywords::Class) || t.is_keyword(keywords::Record) => {

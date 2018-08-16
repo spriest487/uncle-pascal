@@ -24,6 +24,9 @@ struct System_Internal_Array {
     E Elements;
 };
 
+template<typename R, typename... Args>
+using System_Internal_Func = R (*)(Args...);
+
 struct System_Internal_Class;
 
 struct System_Internal_Object {

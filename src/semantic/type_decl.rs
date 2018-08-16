@@ -22,13 +22,13 @@ impl TypeDecl {
                 };
 
                 let aliased_type = scope.get_type(&of)
-                    .ok_or_else(|| {
-                        SemanticError::unknown_type(of.clone(), context.clone())
+                    .map_err(|not_found| {
+                        SemanticError::unknown_type(not_found, context.clone())
                     })?;
 
                 Ok(node::TypeDecl::Alias {
                     alias: alias.clone(),
-                    of: aliased_type.with_indirection(of.indirection),
+                    of: aliased_type,
                     context,
                 })
             }

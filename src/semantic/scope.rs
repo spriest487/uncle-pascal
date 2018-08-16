@@ -23,6 +23,11 @@ pub enum Named {
     Symbol(Type),
 }
 
+#[derive(Clone, Debug)]
+pub struct TypeNotFound {
+    not_found_names: Vec<TypeName>
+}
+
 #[derive(Clone)]
 pub struct Scope {
     local_namespace: Option<Identifier>,
@@ -58,6 +63,15 @@ impl ScopedSymbol {
 
             ScopedSymbol::RecordMember { member_type, .. } =>
                 member_type,
+        }
+    }
+
+    pub fn name(&self) -> Identifier {
+        match self {
+            ScopedSymbol::Local { name, .. } =>
+                name.clone(),
+            ScopedSymbol::RecordMember { record_id, name, .. } =>
+                record_id.child(name),
         }
     }
 }
@@ -363,29 +377,51 @@ impl Scope {
             })
     }
 
-    pub fn get_type(&self, parsed_type: &TypeName) -> Option<Type> {
-        let mut result = match self.find_named(&parsed_type.name)? {
-            Named::Class(class) => Type::Class(class.name.clone()),
-            Named::Record(record) => Type::Record(record.name.clone()),
-            Named::Alias(ty) => ty.clone(),
+    pub fn get_type(&self, parsed_type: &TypeName) -> Result<Type, TypeName> {
+        match parsed_type {
+            TypeName::DataType { name, indirection, array_dimensions } => {
+                let mut result = match self.find_named(name) {
+                    Some(Named::Class(class)) => Type::Class(class.name.clone()),
+                    Some(Named::Record(record)) => Type::Record(record.name.clone()),
+                    Some(Named::Alias(ty)) => ty.clone(),
 
-            Named::Function(_) |
-            Named::Symbol(_) => return None,
-        };
+                    None |
+                    Some(Named::Function(_)) |
+                    Some(Named::Symbol(_)) => return Err(parsed_type.clone()),
+                };
 
-        for _ in 0..parsed_type.indirection {
-            result = result.pointer();
+                for _ in 0..*indirection {
+                    result = result.pointer();
+                }
+
+                if array_dimensions.len() > 0 {
+                    result = Type::Array(ArrayType {
+                        element: Box::new(result),
+                        first_dim: array_dimensions[0].clone(),
+                        rest_dims: array_dimensions[1..].iter().cloned().collect(),
+                    })
+                }
+
+                Ok(result)
+            }
+
+            TypeName::FunctionType { arg_types, return_type } => {
+                let found_return_type = match return_type {
+                    Some(ty) => Some(self.get_type(ty.as_ref())?),
+                    None => None,
+                };
+
+                let mut found_arg_types = Vec::new();
+                for ty in arg_types.iter() {
+                    found_arg_types.push(self.get_type(ty)?);
+                }
+
+                Ok(Type::Function(Box::new(FunctionSignature {
+                    return_type: found_return_type,
+                    arg_types: found_arg_types,
+                })))
+            }
         }
-
-        if parsed_type.array_dimensions.len() > 0 {
-            result = Type::Array(ArrayType {
-                element: Box::new(result),
-                first_dim: parsed_type.array_dimensions[0].clone(),
-                rest_dims: parsed_type.array_dimensions[1..].iter().cloned().collect(),
-            })
-        }
-
-        Some(result)
     }
 
     pub fn get_function(&self, name: &Identifier) -> Option<&FunctionDecl> {
@@ -444,7 +480,7 @@ impl Scope {
             Named::Class(decl) => {
                 assert_eq!(RecordKind::Class, decl.kind);
                 Some(decl)
-            },
+            }
             _ => None,
         }
     }

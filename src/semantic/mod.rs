@@ -24,7 +24,7 @@ use std::{
     rc::Rc
 };
 
-use node::{Identifier, TypeName, Context};
+use node::{Identifier, TypeName, Context, ToSource};
 use operators;
 use source;
 use std::fmt;
@@ -54,6 +54,7 @@ pub enum SemanticErrorKind {
         args: Vec<Option<Type>>,
     },
     TypeNotAssignable(Option<Type>),
+    ValueNotAssignable(Expression),
     TypesNotComparable(Option<Type>, Option<Type>),
 }
 
@@ -146,6 +147,10 @@ impl fmt::Display for SemanticErrorKind {
             &SemanticErrorKind::TypeNotAssignable(ref t) => {
                 write!(f, "type `{}` cannot be assigned to",
                        Type::name(t.as_ref()))
+            }
+
+            &SemanticErrorKind::ValueNotAssignable(ref expr) => {
+                write!(f, "expression `{}` cannot be assigned to", expr.to_source())
             }
 
             &SemanticErrorKind::TypesNotComparable(ref a, ref b) => {
@@ -271,6 +276,14 @@ impl SemanticError {
                                context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypeNotAssignable(t),
+            context,
+        }
+    }
+
+    pub fn value_not_assignable(expr: Expression) -> SemanticError {
+        let context = expr.context.clone();
+        SemanticError {
+            kind: SemanticErrorKind::ValueNotAssignable(expr),
             context,
         }
     }

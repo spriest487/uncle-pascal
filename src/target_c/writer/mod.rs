@@ -45,12 +45,15 @@ pub fn type_to_c(pascal_type: &Type, scope: &Scope) -> String {
             let return_type = sig.return_type.as_ref()
                 .map(|ty| type_to_c(ty, scope))
                 .unwrap_or_else(|| "void".to_owned());
-            let arg_types = sig.arg_types.iter()
+            let arg_types = if sig.arg_types.len() > 0 { sig.arg_types.iter()
                 .map(|arg| type_to_c(&arg, scope))
                 .collect::<Vec<_>>()
-                .join(", ");
+                .join(", ")
+            } else {
+                "void".to_string()
+            };
 
-            format!("({} (*)({}))", return_type, arg_types)
+            format!("System_Internal_Func<{}, {}>", return_type, arg_types)
         }
         Type::Class(name) => {
             let class = scope.get_class(name)
@@ -110,6 +113,10 @@ pub fn default_initialize(out: &mut String, target: &Symbol) -> fmt::Result {
         Type::Class(_) |
         Type::RawPointer |
         Type::Pointer(_) => {
+            writeln!(out, "{} = nullptr;", id)
+        }
+
+        Type::Function(_sig) => {
             writeln!(out, "{} = nullptr;", id)
         }
 

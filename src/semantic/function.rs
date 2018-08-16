@@ -23,8 +23,8 @@ impl FunctionDecl {
             Some(func_return_type) => {
                 let found_type = scope.get_type(&func_return_type);
 
-                let return_type = found_type.ok_or_else(|| {
-                    SemanticError::unknown_type(func_return_type.clone(), context.clone())
+                let return_type = found_type.map_err(|not_found| {
+                    SemanticError::unknown_type(not_found, context.clone())
                 })?;
 
                 Some(return_type)

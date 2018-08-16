@@ -1,5 +1,6 @@
 # TODO
 
+* ToString for ints!!
 * "uses" should be able to appear at any position in the decls
 * RC struct members on the stack
 * casting

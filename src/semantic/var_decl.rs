@@ -25,18 +25,18 @@ impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl,
                     scope: Rc<Scope>,
                     kind: SemanticVarsKind)
-        -> Result<Self, SemanticError> {
+                    -> Result<Self, SemanticError> {
         let var_context = SemanticContext {
             scope: scope.clone(),
             token: decl.context.token().clone(),
         };
         let var_type = scope.get_type(&decl.decl_type)
-            .ok_or_else(|| {
-                SemanticError::unknown_type(decl.decl_type.clone(), var_context.clone())
+            .map_err(|not_found| {
+                SemanticError::unknown_type(not_found, var_context.clone())
             })?;
 
         let qualified_name = if decl.name.namespace.len() != 0 {
-            return Err(SemanticError::illegal_name(decl.name.to_string(), var_context))
+            return Err(SemanticError::illegal_name(decl.name.to_string(), var_context));
         } else {
             match kind {
                 SemanticVarsKind::Local => decl.name.clone(),

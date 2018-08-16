@@ -2,6 +2,7 @@ pub mod identifier;
 pub mod type_name;
 pub mod expression;
 pub mod to_source;
+pub mod function_signature;
 
 use std::fmt;
 
@@ -10,6 +11,7 @@ pub use self::type_name::{TypeName, IndexRange};
 pub use self::identifier::*;
 pub use self::expression::*;
 pub use self::to_source::*;
+pub use self::function_signature::*;
 
 pub trait Context {
     fn token(&self) -> &source::Token;
