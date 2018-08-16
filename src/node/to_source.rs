@@ -148,13 +148,7 @@ impl<C> ToSource for ExpressionValue<C>
             }
 
             ExpressionValue::ObjectConstructor(members) => {
-                format!("({})", members.iter()
-                    .map(|member| {
-                        let value_src = member.value.to_source();
-                        format!("{}: {}", member.name, value_src)
-                    })
-                    .collect::<Vec<_>>()
-                    .join("; "))
+                members.to_source()
             }
 
             ExpressionValue::With { value, body } => {
@@ -165,6 +159,20 @@ impl<C> ToSource for ExpressionValue<C>
                 format!("raise {}", error.to_source())
             }
         }
+    }
+}
+
+impl<C> ToSource for ObjectConstructor<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        format!("({})", self.members.iter()
+            .map(|member| {
+                let value_src = member.value.to_source();
+                format!("{}: {}", member.name, value_src)
+            })
+            .collect::<Vec<_>>()
+            .join("; "))
     }
 }
 

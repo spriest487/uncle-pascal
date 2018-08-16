@@ -34,6 +34,7 @@ use node::{
     ToSource,
     ExpressionValue,
 };
+use syntax;
 use operators;
 use source;
 use std::fmt;
@@ -84,6 +85,12 @@ pub enum SemanticErrorKind {
         member_name: String,
         from_ns: Option<Identifier>,
     },
+    DuplicateConstructorMember {
+        constructed: Type,
+        member_name: String,
+    },
+    NotConstructable(Type),
+    UnableToInferType(syntax::Expression),
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -243,6 +250,22 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "`{}` cannot be used in comparison operations with `{}`",
                        Type::name(a.as_ref()),
                        Type::name(b.as_ref()))
+            }
+
+            SemanticErrorKind::DuplicateConstructorMember { constructed, member_name } => {
+                write!(f, "duplicate member `{}` in constructor for `{}`",
+                       member_name,
+                       constructed,
+                )
+            }
+
+            SemanticErrorKind::NotConstructable(ty) => {
+                write!(f, "type `{}` cannot be initialized with a constructor expression",
+                       ty.to_source())
+            }
+
+            SemanticErrorKind::UnableToInferType(expr) => {
+                write!(f, "unable to infer type for `{}`", expr.to_source())
             }
         }
     }
@@ -466,6 +489,36 @@ impl SemanticError {
             context,
         }
     }
+
+    pub fn duplicate_constructor_member(constructed: impl Into<Type>,
+                                        member: impl ToString,
+                                        context: impl Into<SemanticContext>)
+                                        -> Self {
+        SemanticError {
+            context: context.into(),
+            kind: SemanticErrorKind::DuplicateConstructorMember {
+                member_name: member.to_string(),
+                constructed: constructed.into(),
+            },
+        }
+    }
+
+    pub fn not_constructable(ty: impl Into<Type>, context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            context: context.into(),
+            kind: SemanticErrorKind::NotConstructable(ty.into()),
+        }
+    }
+
+    pub fn unable_to_infer_type(expr: impl Into<syntax::Expression>,
+                                context: impl Into<SemanticContext>)
+                                -> Self {
+        let expr = expr.into();
+        SemanticError {
+            context: context.into(),
+            kind: SemanticErrorKind::UnableToInferType(expr),
+        }
+    }
 }
 
 impl fmt::Display for SemanticError {
@@ -502,5 +555,11 @@ impl Context for SemanticContext {
 
     fn token(&self) -> &source::Token {
         &self.token
+    }
+}
+
+impl PartialEq for SemanticContext {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token
     }
 }

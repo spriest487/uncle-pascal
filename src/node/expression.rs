@@ -18,12 +18,28 @@ pub struct SetMemberGroup<TContext>
     pub to: Option<Expression<TContext>>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct ObjectConstructorMember<TContext>
     where TContext: Context
 {
     pub name: String,
     pub value: Expression<TContext>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ObjectConstructor<TContext>
+    where TContext: Context
+{
+    pub members: Vec<ObjectConstructorMember<TContext>>,
+    pub object_type: Option<Type>,
+}
+
+impl<TContext> PartialEq for ObjectConstructorMember<TContext>
+    where TContext: Context
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.name.eq(&other.name) && self.value.eq(&other.value)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -221,7 +237,7 @@ pub enum ExpressionValue<TContext>
         let zeroPoint: Point2D = ()
         ```
     */
-    ObjectConstructor(Vec<ObjectConstructorMember<TContext>>),
+    ObjectConstructor(ObjectConstructor<TContext>),
 
     /**
         `with (value) do (body)`, where `value` is a class or record.
@@ -248,12 +264,20 @@ pub enum ExpressionValue<TContext>
     Raise(Box<Expression<TContext>>),
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct Expression<TContext>
     where TContext: Context,
 {
     pub value: ExpressionValue<TContext>,
     pub context: TContext,
+}
+
+impl<TContext> PartialEq for Expression<TContext>
+    where TContext: Context
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.value.eq(&other.value)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -262,7 +286,7 @@ pub struct LetBinding<TContext>
 {
     pub name: String,
     pub value: Box<Expression<TContext>>,
-//    pub explicit_type: Option<TContext::Type>,
+    //    pub explicit_type: Option<TContext::Type>,
     pub mutable: bool,
 }
 
@@ -465,11 +489,11 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn object_constructor(members: impl IntoIterator<Item=ObjectConstructorMember<TContext>>,
+    pub fn object_constructor(members: impl Into<ObjectConstructor<TContext>>,
                               context: impl Into<TContext>)
                               -> Self {
         Expression {
-            value: ExpressionValue::ObjectConstructor(members.into_iter().collect()),
+            value: ExpressionValue::ObjectConstructor(members.into()),
             context: context.into(),
         }
     }
@@ -769,7 +793,7 @@ pub fn try_visit_expressions<TContext, TErr>(
         }
 
         | ExpressionValue::ObjectConstructor(obj) => {
-            for member in obj.iter() {
+            for member in obj.members.iter() {
                 try_visit_expressions(&member.value, &mut visit)?;
             }
         }
@@ -890,8 +914,8 @@ pub fn transform_expressions<TContext>(
             replace(Expression::set_constructor(members, root_expr.context))
         }
 
-        ExpressionValue::ObjectConstructor(members) => {
-            let members: Vec<_> = members.into_iter()
+        ExpressionValue::ObjectConstructor(obj) => {
+            let members: Vec<_> = obj.members.into_iter()
                 .map(|member| {
                     let value = transform_expressions(member.value, replace);
                     ObjectConstructorMember {
@@ -901,7 +925,12 @@ pub fn transform_expressions<TContext>(
                 })
                 .collect();
 
-            replace(Expression::object_constructor(members, root_expr.context))
+            let obj: ObjectConstructor<TContext> = ObjectConstructor {
+                members,
+                object_type: obj.object_type,
+            };
+
+            replace(Expression::object_constructor(obj, root_expr.context))
         }
 
         ExpressionValue::With { value, body } => {

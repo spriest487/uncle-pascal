@@ -16,9 +16,13 @@ pub fn annotate_element(of: &syntax::Expression,
                         context: SemanticContext)
                         -> SemanticResult<(Expression, Rc<Scope>)> {
     // index expr is evaluated first
-    let (index_expr, scope) = Expression::annotate(index_expr, context.scope.clone())?;
+    let index_type = Some(Type::Int64);
+    let (index_expr, scope) = Expression::annotate(
+        index_expr, index_type.as_ref(),
+        context.scope.clone(),
+    )?;
 
-    let (of, scope) = Expression::annotate(of, scope)?;
+    let (of, scope) = Expression::annotate(of, None, scope)?;
 
     Ok((Expression::array_element(of, index_expr), scope))
 }

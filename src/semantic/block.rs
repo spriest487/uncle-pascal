@@ -15,7 +15,7 @@ impl Block {
         let mut inner_scope = scope.clone();
 
         for src_statement in block.statements.iter() {
-            let (statement, new_scope) = Expression::annotate(src_statement, inner_scope)?;
+            let (statement, new_scope) = Expression::annotate(src_statement, None, inner_scope)?;
             inner_scope = new_scope;
             statements.push(statement);
         }
@@ -41,7 +41,9 @@ impl Block {
 
     pub fn type_check(&self) -> Result<(), SemanticError> {
         self.statements.iter()
-            .map(|statement| statement.type_check())
+            .map(|statement| {
+                statement.type_check()
+            })
             .collect()
     }
 }

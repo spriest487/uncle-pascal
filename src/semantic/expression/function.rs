@@ -26,28 +26,42 @@ use super::{
     expect_initialized,
 };
 
-pub fn annotate_call(target: &syntax::Expression,
-                     args: &Vec<syntax::Expression>,
-                     context: SemanticContext)
-                     -> SemanticResult<(Expression, Rc<Scope>)> {
-    let mut scope = context.scope.clone();
+pub fn annotate_args(args: &[syntax::Expression],
+                     sig: &FunctionSignature,
+                     context: &SemanticContext,
+                     mut scope: Rc<Scope>)
+                     -> SemanticResult<(Vec<Expression>, Rc<Scope>)> {
+    if args.len() != sig.args.len() {
+        return Err(SemanticError::wrong_num_args(sig.clone(), args.len(), context.clone()));
+    }
 
     let mut typed_args = Vec::new();
-    for arg in args.iter() {
-        let (arg_expr, next_arg_scope) = Expression::annotate(arg, scope)?;
+    for (arg, sig_arg) in args.iter().zip(sig.args.iter()) {
+        let expected_type = &sig_arg.decl_type;
+        let (arg_expr, next_arg_scope) = Expression::annotate(arg, Some(expected_type), scope)?;
+
         scope = next_arg_scope;
         typed_args.push(arg_expr);
     }
+
+    Ok((typed_args, scope))
+}
+
+pub fn annotate_call(target: &syntax::Expression,
+                     args: &[syntax::Expression],
+                     context: SemanticContext)
+                     -> SemanticResult<(Expression, Rc<Scope>)> {
+    let scope = context.scope.clone();
 
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
     let ufcs_call = match &target.value {
         &ExpressionValue::Member { ref of, ref name } => {
-            let (base_expr, scope) = Expression::annotate(of, scope.clone())?;
+            let (base_expr, scope) = Expression::annotate(of, None, scope.clone())?;
             let base_type = base_expr.expr_type()?;
 
             base_type.and_then(|base_type|
-                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope))
+                annotate_ufcs(&base_expr, &base_type, &name, args, scope, &context))
         }
 
         &ExpressionValue::Identifier(ref name) => {
@@ -63,8 +77,9 @@ pub fn annotate_call(target: &syntax::Expression,
                 annotate_ufcs(&base_expr,
                               &base_sym.decl_type(),
                               func_name,
-                              &typed_args,
-                              scope.clone())
+                              args,
+                              scope.clone(),
+                              &context)
             })
         }
 
@@ -80,12 +95,17 @@ pub fn annotate_call(target: &syntax::Expression,
                 name and the arg list is exactly 1 long
            */
             if let ExpressionValue::Identifier(name) = &target.value {
-                if scope.get_function(name).is_none() && typed_args.len() == 1 {
+                if scope.get_function(name).is_none() && args.len() == 1 {
                     if let Some(target_type) = scope.get_type_alias(name) {
                         // we already checked there's exactly 1 arg
-                        let from_value = typed_args.into_iter()
+                        let from_arg = args.into_iter()
                             .next()
                             .unwrap();
+                        let (from_value, scope) = Expression::annotate(
+                            from_arg,
+                            Some(&target_type),
+                            scope,
+                        )?;
 
                         let context = SemanticContext {
                             token: target.context.token().clone(),
@@ -98,7 +118,7 @@ pub fn annotate_call(target: &syntax::Expression,
                 }
             }
 
-            let (target, scope) = Expression::annotate(target, scope)?;
+            let (target, scope) = Expression::annotate(target, None, scope)?;
 
             /* ordinary function call */
             let sig = match target.expr_type()? {
@@ -111,6 +131,8 @@ pub fn annotate_call(target: &syntax::Expression,
                 }
             };
 
+            let (typed_args, scope) = annotate_args(args, &sig, &context, scope)?;
+
             let scope = scope_after_fn_call(&sig, &typed_args, scope);
             let func_call = Expression::function_call(target, typed_args);
 
@@ -122,8 +144,9 @@ pub fn annotate_call(target: &syntax::Expression,
 fn annotate_ufcs(target: &Expression,
                  target_type: &Type,
                  func_name: &str,
-                 args: &Vec<Expression>,
-                 scope: Rc<Scope>) -> Option<(Expression, Rc<Scope>)> {
+                 args: &[syntax::Expression],
+                 scope: Rc<Scope>,
+                 context: &SemanticContext) -> Option<(Expression, Rc<Scope>)> {
     /* look for matching UFCS func in NS of target type */
     let ufcs_ns = ufcs_ns_of_type(target_type, scope.as_ref())?;
 
@@ -142,15 +165,16 @@ fn annotate_ufcs(target: &Expression,
                  taking the address or derefing the pointer as necessary */
                 let ufcs_target_arg = match_indirection(&target, target_type, &first_arg.decl_type);
 
-                /* the target becomes the first arg */
-                let mut ufcs_args = vec![ufcs_target_arg];
-                ufcs_args.extend(args.iter().cloned());
-
                 let ufcs_target_expr = Expression::identifier(ufcs_func_name.clone(),
                                                               target.context.clone());
 
+                /* the target becomes the first arg */
+                let (typed_args, scope) = annotate_args(args, &sig, context, scope).ok()?;
+                let mut ufcs_args = vec![ufcs_target_arg];
+                ufcs_args.extend(typed_args.iter().cloned());
+
                 let func_call = Expression::function_call(ufcs_target_expr, ufcs_args);
-                let scope_after = scope_after_fn_call(&sig, args, scope.clone());
+                let scope_after = scope_after_fn_call(&sig, &typed_args, scope);
 
                 Some((func_call, scope_after))
             }
@@ -164,68 +188,72 @@ pub fn call_type(target: &Expression,
                  actual_args: &Vec<Expression>,
                  context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
-    if let Some(Type::Function(sig)) = &target_type {
-        if actual_args.len() != sig.args.len() {
-            Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
-                                              actual_args.len(),
-                                              context.clone()))
-        } else {
-            let wrong_args = || {
-                let actual_arg_types: Vec<_> = actual_args.iter()
-                    .map(|arg| arg.expr_type())
-                    .collect::<SemanticResult<_>>()?;
 
-                Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
-                                                   actual_arg_types,
-                                                   context.clone(),
-                ))
-            };
+    let sig = match &target_type {
+        | Some(Type::Function(sig)) => sig,
+        | _ => {
+            return Err(SemanticError::invalid_function_type(target_type.clone(), context.clone()));
+        }
+    };
 
-            for (arg_index, arg_expr) in actual_args.iter().enumerate() {
-                let sig_arg = &sig.args[arg_index];
+    if actual_args.len() != sig.args.len() {
+        return Err(SemanticError::wrong_num_args(sig.as_ref().clone(),
+                                                 actual_args.len(),
+                                                 context.clone()));
+    };
 
-                match sig_arg.modifier {
-                    /* by-value (and const-by-value) args: actual arg type may be
-                    any type assignable to the sig type, and must be initialized */
-                    | Some(FunctionArgModifier::Const)
-                    | None => {
-                        let check_arg_matches = expect_valid(
-                            operators::Assignment,
-                            Some(&sig_arg.decl_type),
-                            &arg_expr,
-                            &arg_expr.context,
-                        );
+    let wrong_args = || {
+        let actual_arg_types: Vec<_> = actual_args.iter()
+            .map(|arg| arg.expr_type())
+            .collect::<SemanticResult<_>>()?;
 
-                        if check_arg_matches.is_err() {
-                            return wrong_args();
-                        }
+        Err(SemanticError::wrong_arg_types(sig.as_ref().clone(),
+                                           actual_arg_types,
+                                           context.clone(),
+        ))
+    };
 
-                        expect_initialized(arg_expr)?
-                    }
+    for (arg_index, arg_expr) in actual_args.iter().enumerate() {
+        let sig_arg = &sig.args[arg_index];
 
-                    /* by-ref var: must be initialized, must be exact type */
-                    | Some(FunctionArgModifier::Var) => {
-                        expect_initialized(arg_expr)?;
+        match sig_arg.modifier {
+            /* by-value (and const-by-value) args: actual arg type may be
+            any type assignable to the sig type, and must be initialized */
+            | Some(FunctionArgModifier::Const)
+            | None => {
+                let check_arg_matches = expect_valid(
+                    operators::Assignment,
+                    Some(&sig_arg.decl_type),
+                    &arg_expr,
+                    &arg_expr.context,
+                );
 
-                        if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
-                            return wrong_args();
-                        }
-                    }
+                if check_arg_matches.is_err() {
+                    return wrong_args();
+                }
 
-                    /* by-ref out: may be uninitialized, must be exact type */
-                    | Some(FunctionArgModifier::Out) => {
-                        if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
-                            return wrong_args();
-                        }
-                    }
+                expect_initialized(arg_expr)?
+            }
+
+            /* by-ref var: must be initialized, must be exact type */
+            | Some(FunctionArgModifier::Var) => {
+                expect_initialized(arg_expr)?;
+
+                if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
+                    return wrong_args();
                 }
             }
 
-            Ok(sig.return_type.clone())
+            /* by-ref out: may be uninitialized, must be exact type */
+            | Some(FunctionArgModifier::Out) => {
+                if arg_expr.expr_type()?.as_ref() != Some(&sig_arg.decl_type) {
+                    return wrong_args();
+                }
+            }
         }
-    } else {
-        Err(SemanticError::invalid_function_type(target_type.clone(), context.clone()))
     }
+
+    Ok(sig.return_type.clone())
 }
 
 fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {

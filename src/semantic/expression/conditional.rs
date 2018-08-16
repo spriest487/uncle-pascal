@@ -15,13 +15,18 @@ pub fn annotate(condition: &syntax::Expression,
                 then_branch: &syntax::Expression,
                 else_branch: Option<&syntax::Expression>,
                 context: SemanticContext)
-                -> SemanticResult<(Expression, Rc<Scope>)>
-{
-    let (cond_expr, scope_after_condition) = Expression::annotate(condition, context.scope.clone())?;
-    let (then_expr, scope_after_then) = Expression::annotate(then_branch, scope_after_condition.clone())?;
+                -> SemanticResult<(Expression, Rc<Scope>)> {
+    let cond_type = Some(Type::Boolean);
+    let (cond_expr, scope_after_condition) = Expression::annotate(
+        condition,
+        cond_type.as_ref(),
+        context.scope.clone()
+    )?;
+
+    let (then_expr, scope_after_then) = Expression::annotate(then_branch, None, scope_after_condition.clone())?;
     let (else_expr, scope_after_else) = match else_branch {
         Some(expr) => {
-            let (else_expr, scope_after_else) = Expression::annotate(expr, scope_after_condition.clone())?;
+            let (else_expr, scope_after_else) = Expression::annotate(expr, None, scope_after_condition.clone())?;
             (Some(else_expr), scope_after_else)
         }
         None => (None, scope_after_condition.clone())

@@ -21,7 +21,7 @@ pub fn parse_expr(src: &str, scope: Rc<Scope>) -> (Expression, Rc<Scope>) {
 
     stream.finish().expect("expr must not contain trailing tokens");
 
-    Expression::annotate(&parsed, scope)
+    Expression::annotate(&parsed, None, scope)
         .expect(&format!("test expr `{}` must have valid types", src))
 }
 

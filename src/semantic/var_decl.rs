@@ -21,7 +21,10 @@ impl VarDecl {
 
         let default_value = match decl.default_value.as_ref() {
             Some(default_expr) => {
-                let (default_val, _) = Expression::annotate(default_expr, scope.clone())?;
+                let (default_val, _) = Expression::annotate(
+                    default_expr,
+                    Some(&var_type),
+                    scope.clone())?;
                 Some(default_val.into_const_expr()?)
             }
             None => None,

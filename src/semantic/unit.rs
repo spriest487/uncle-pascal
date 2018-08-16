@@ -64,6 +64,8 @@ impl Unit {
 
                 node::Implementation::Function(parsed_func) => {
                     let (func, new_scope) = Function::annotate(parsed_func, scope)?;
+                    func.type_check()?;
+
                     scope = new_scope;
 
                     result.push(node::Implementation::Function(func));

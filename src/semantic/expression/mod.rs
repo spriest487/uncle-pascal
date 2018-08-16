@@ -4,6 +4,7 @@ mod conditional;
 mod arrays;
 mod ops;
 mod bindings;
+mod constructors;
 
 #[cfg(test)]
 pub(crate) mod test;
@@ -15,6 +16,7 @@ use syntax;
 use semantic::*;
 use node::{
     self,
+    Context,
     Identifier,
     ExpressionValue,
     ConstantExpression,
@@ -30,6 +32,7 @@ pub type Expression = node::Expression<SemanticContext>;
 
 impl Expression {
     pub fn annotate(expr: &syntax::Expression,
+                    expected_type: Option<&Type>,
                     scope: Rc<Scope>)
                     -> SemanticResult<(Self, Rc<Scope>)> {
         let expr_context = SemanticContext {
@@ -99,7 +102,12 @@ impl Expression {
             }
 
             ExpressionValue::PrefixOperator { op, rhs } => {
-                let (rhs, scope) = Expression::annotate(rhs, scope)?;
+                let expected_type = match op {
+                    operators::Deref => expected_type.cloned().map(|ty| ty.pointer()),
+                    _ => None,
+                };
+
+                let (rhs, scope) = Expression::annotate(rhs, expected_type.as_ref(), scope)?;
                 let op_expr = Expression::prefix_op(op.clone(), rhs, expr_context);
                 Ok((op_expr, scope))
             }
@@ -111,7 +119,7 @@ impl Expression {
                 annotate_type_cast(target_type, from_value, expr_context),
 
             ExpressionValue::Member { of, name } => {
-                let (typed_of, scope) = Expression::annotate(of, scope)?;
+                let (typed_of, scope) = Expression::annotate(of, expected_type, scope)?;
                 Ok((Expression::member(typed_of, name), scope))
             }
 
@@ -123,8 +131,9 @@ impl Expression {
                 unimplemented!("set constructor typechecking");
             }
 
-            ExpressionValue::ObjectConstructor(_members) => {
-                unimplemented!("object constructor typechecking");
+            ExpressionValue::ObjectConstructor(obj) => {
+                let (obj, scope) = constructors::annotate_object(obj, expected_type, &expr_context)?;
+                Ok((Expression::object_constructor(obj, expr_context), scope))
             }
 
             ExpressionValue::With { value, body } => {
@@ -133,7 +142,7 @@ impl Expression {
 
             ExpressionValue::Raise(error) => {
                 // the raise expr is isolated
-                let (error, _) = Expression::annotate(error.as_ref(), scope.clone())?;
+                let (error, _) = Expression::annotate(error.as_ref(), None, scope.clone())?;
                 Ok((Expression::raise(error, expr_context), scope))
             }
         }
@@ -198,8 +207,11 @@ impl Expression {
                 arrays::element_type(of, index_expr, &self.context)
             }
 
-            ExpressionValue::ObjectConstructor(_members) => {
-                unimplemented!("object constructor type checking")
+            ExpressionValue::ObjectConstructor(obj) => {
+                for member in obj.members.iter() {
+                    member.value.expr_type()?;
+                }
+                Ok(obj.object_type.clone())
             }
 
             ExpressionValue::SetConstructor(_members) => {
@@ -390,7 +402,11 @@ fn annotate_type_cast(target_type: &node::TypeName,
                       context: SemanticContext)
                       -> SemanticResult<(Expression, Rc<Scope>)> {
     let target_type = target_type.resolve(context.scope.clone())?;
-    let (from_value, scope) = Expression::annotate(from_value, context.scope.clone())?;
+    let (from_value, scope) = Expression::annotate(
+        from_value,
+        Some(&target_type),
+        context.scope.clone(),
+    )?;
 
     let context = SemanticContext {
         token: context.token().clone(),

@@ -237,24 +237,26 @@ impl Type {
         }
 
         match (self, other) {
-// nil can be assigned to any pointer, and nothing else
-            (Type::RawPointer, Type::Nil) |
-            (Type::Pointer(_), Type::Nil) => true,
-            (_, Type::Nil) => false,
-            (ref a, ref b) if b.promotes_to(a) => true,
-            (ref x, ref y) => x == y,
+            // nil can be assigned to any pointer, and nothing else
+            |(Type::RawPointer, Type::Nil)
+            |(Type::Pointer(_), Type::Nil)
+            => true,
+
+            | (_, Type::Nil) => false,
+            | (ref a, ref b) if b.promotes_to(a) => true,
+            | (ref x, ref y) => x == y,
         }
     }
 
     // can we use the + and - arithmetic operations between these two types?
     pub fn can_offset_by(&self, other: &Type) -> bool {
         match (self, other) {
-// numbers can be offset, as long as the rhs is promotable to the lhs type
-            (a, b) if a.is_numeric() & &b.promotes_to(a) =>
+            // numbers can be offset, as long as the rhs is promotable to the lhs type
+            (a, b) if a.is_numeric() && b.promotes_to(a) =>
                 true,
 
-//pointers can be offset, as long as the rhs is promotable to NativeInt
-            (ptr, off) if ptr.is_pointer() & &off.promotes_to(&Type::NativeInt) =>
+            //pointers can be offset, as long as the rhs is promotable to NativeInt
+            (ptr, off) if ptr.is_pointer() && off.promotes_to(&Type::NativeInt) =>
                 true,
             _ =>
                 false,

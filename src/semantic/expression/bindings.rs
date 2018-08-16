@@ -22,6 +22,7 @@ pub fn annotate_let(parsed_binding: &syntax::LetBinding,
                     -> SemanticResult<(Expression, Rc<Scope>)> {
     let (value, mut binding_scope) = Expression::annotate(
         &parsed_binding.value,
+        None,
         context.scope.clone()
     )?;
 
@@ -52,7 +53,7 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
                      body: &syntax::Expression,
                      context: SemanticContext)
                      -> SemanticResult<(Expression, Rc<Scope>)> {
-    let (value, scope) = Expression::annotate(parsed_value, context.scope.clone())?;
+    let (value, scope) = Expression::annotate(parsed_value, None, context.scope.clone())?;
     let value_type: Option<Type> = value.expr_type()?;
 
     /* find the class or record decl of the type referred to by `value` */
@@ -97,8 +98,7 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
             .collect(),
     });
 
-    // don't need to change the scope - block + let bindings will take care of it
-    Expression::annotate(&body_block, scope.clone())
+    Expression::annotate(&body_block, None, scope.clone())
 }
 
 pub fn let_type(binding: &LetBinding, context: &SemanticContext) -> SemanticResult<Option<Type>> {

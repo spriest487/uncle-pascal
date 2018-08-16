@@ -75,9 +75,24 @@ pub fn annotate_binary(lhs: &syntax::Expression,
                        rhs: &syntax::Expression,
                        context: SemanticContext)
                        -> SemanticResult<(Expression, Rc<Scope>)> {
-    // rhs is evaluated first
-    let (rhs, lhs_scope) = Expression::annotate(rhs, context.scope.clone())?;
-    let (lhs, scope_after) = Expression::annotate(lhs, lhs_scope)?;
+    /*
+        rhs is evaluated first, but we attempt to evaluate the lhs on its own first
+        to figure out the type inference for the rhs when the operation is an assignment.
+        on any kind of error we just give up and don't infer a type
+    */
+    let rhs_assigned_type = match op {
+        operators::Assignment => {
+            Expression::annotate(lhs, None, context.scope.clone())
+                .map(|(lhs, _)| lhs.expr_type())
+                .unwrap_or(Ok(None))
+                .ok()
+                .unwrap_or(None)
+        }
+        _ => None,
+    };
+
+    let (rhs, lhs_scope) = Expression::annotate(rhs, rhs_assigned_type.as_ref(), context.scope.clone())?;
+    let (lhs, scope_after) = Expression::annotate(lhs, None, lhs_scope)?;
 
     let scope_out = match (op, &lhs.value) {
         (operators::Assignment, ExpressionValue::Identifier(name)) =>

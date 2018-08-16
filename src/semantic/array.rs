@@ -1,6 +1,7 @@
 use std::rc::Rc;
 use syntax;
 use node::ConstantExpression;
+use types::Type;
 use semantic::{
     SemanticResult,
     SemanticError,
@@ -29,9 +30,11 @@ impl IndexRange {
     }
 
     pub fn annotate(index_range: &syntax::IndexRange, scope: Rc<Scope>) -> SemanticResult<Self> {
-        let from = Expression::annotate(&index_range.from, scope.clone())
+        let index_type = Some(Type::Int64);
+
+        let from = Expression::annotate(&index_range.from, index_type.as_ref(), scope.clone())
             .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
-        let to = Expression::annotate(&index_range.to, scope.clone())
+        let to = Expression::annotate(&index_range.to, index_type.as_ref(), scope.clone())
             .and_then(|(expr, _)| Self::const_to_array_dim(expr))?;
 
         Ok(IndexRange {

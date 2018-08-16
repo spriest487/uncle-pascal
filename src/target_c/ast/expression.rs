@@ -144,7 +144,7 @@ impl Expression {
         }
     }
 
-    fn binary_op(lhs: impl Into<Self>, op: impl ToString, rhs: impl Into<Self>) -> Self {
+    pub fn binary_op(lhs: impl Into<Self>, op: impl ToString, rhs: impl Into<Self>) -> Self {
         Expression::BinaryOp {
             lhs: Box::new(lhs.into()),
             op: op.to_string(),

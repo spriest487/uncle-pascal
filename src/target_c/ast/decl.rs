@@ -7,6 +7,10 @@ use target_c::{
         TranslationResult,
         TranslationUnit,
         Expression,
+        CallingConvention,
+        FunctionDefinition,
+        FunctionArg,
+        Block,
     },
 };
 use semantic;
@@ -48,24 +52,28 @@ pub enum Declaration {
 impl Declaration {
     pub fn translate_decl(decl: &semantic::UnitDecl,
                           unit: &mut TranslationUnit)
-                          -> TranslationResult<Option<Declaration>> {
+                          -> TranslationResult<Vec<Declaration>> {
         match decl {
             UnitDecl::Function(func_decl) => {
                 let function = FunctionDecl::from(func_decl);
-                Ok(Some(Declaration::Function(function)))
+                Ok(vec!(Declaration::Function(function)))
             }
 
             UnitDecl::Type(ref type_decl) =>
                 match type_decl {
                     | TypeDecl::Record(record_decl) => {
-                        let declared_struct = Struct::translate(record_decl, unit)?;
+                        let (struct_decl, struct_ctor) = Struct::translate(record_decl, unit)?;
+                        let results = vec![
+                            Declaration::Struct(struct_decl),
+                            Declaration::Function(struct_ctor),
+                        ];
 
-                        Ok(Some(Declaration::Struct(declared_struct)))
+                        Ok(results)
                     }
 
                     | TypeDecl::Enumeration(enum_decl) => {
                         let name = identifier_to_c(&enum_decl.qualified_name());
-                        Ok(Some(Declaration::UsingAlias(
+                        Ok(vec!(Declaration::UsingAlias(
                             name,
                             "System_UInt64".to_string(),
                         )))
@@ -74,7 +82,7 @@ impl Declaration {
                     | TypeDecl::Set(set_decl) => {
                         //todo
                         let name = identifier_to_c(&set_decl.qualified_name());
-                        Ok(Some(Declaration::UsingAlias(
+                        Ok(vec!(Declaration::UsingAlias(
                             name,
                             "std::unordered_set<System_UInt64>".to_string(),
                         )))
@@ -82,29 +90,29 @@ impl Declaration {
 
                     | TypeDecl::Alias { .. } => {
                         //should be removed during typechecking, can be ignored here
-                        Ok(None)
+                        Ok(vec![])
                     }
                 }
 
             UnitDecl::Var(ref var_decl) => {
                 let variable = Variable::translate(var_decl, false, unit)?;
-                Ok(Some(Declaration::Variable(variable)))
+                Ok(vec!(Declaration::Variable(variable)))
             }
 
             UnitDecl::Const(_) => {
                 // consts are resolved at compile-time and don't need to be in the C++ output
-                Ok(None)
+                Ok(vec![])
             }
         }
     }
 
     pub fn translate_impl(decl: &semantic::Implementation,
                           unit: &mut TranslationUnit) ->
-                          TranslationResult<Option<Declaration>> {
+                          TranslationResult<Vec<Declaration>> {
         match decl {
             node::Implementation::Function(func_impl) => {
                 let definition = FunctionDecl::from_function(func_impl, unit)?;
-                Ok(Some(Declaration::Function(definition)))
+                Ok(vec!(Declaration::Function(definition)))
             }
             node::Implementation::Decl(decl) => {
                 Self::translate_decl(decl, unit)
@@ -150,7 +158,7 @@ impl Declaration {
 impl Struct {
     pub fn translate(record_decl: &semantic::RecordDecl,
                      _unit: &mut TranslationUnit)
-                     -> TranslationResult<Struct> {
+                     -> TranslationResult<(Struct, FunctionDecl)> {
         assert!(record_decl.members.len() > 0 || record_decl.variant_part.is_some(),
                 "structs must have at least one member");
 
@@ -208,11 +216,15 @@ impl Struct {
             RecordKind::Class => Some("System_Internal_Object".to_string()),
         };
 
-        Ok(Struct {
+        let struct_decl = Struct {
             name: Some(name),
             members,
             extends,
-        })
+        };
+
+        let constructor_decl = struct_decl.constructor_decl(record_decl.kind);
+
+        Ok((struct_decl, constructor_decl))
     }
 
     pub fn write_forward(&self, mut out: impl fmt::Write) -> fmt::Result {
@@ -238,6 +250,69 @@ impl Struct {
         }
 
         writeln!(out, "}};")
+    }
+
+    // todo: this should probably be based on semantic::RecordDecl instead
+    fn constructor_decl(&self, record_kind: RecordKind) -> FunctionDecl {
+        let struct_name = match &self.name {
+            Some(name) => name,
+            None => unimplemented!("anonymous struct constructor"),
+        };
+
+        let name = format!("{}_Internal_Constructor", struct_name);
+
+        let fields: Vec<_> = self.members.iter()
+            .filter_map(|member| match member {
+                StructMember::Field(var) => {
+                    Some(var)
+                }
+                _ => {
+                    //todo
+                    eprintln!("not yet implemented: struct constructors for variant parts");
+                    None
+                }
+            })
+            .collect::<>();
+
+        let args: Vec<_> = fields.iter().enumerate()
+            .map(|(mem_num, member)| FunctionArg {
+                name: format!("arg{}", mem_num),
+                ctype: member.ctype.clone(),
+            })
+            .collect();
+
+        let struct_type = CType::Struct(struct_name.clone());
+        let (return_type, member_access) = match record_kind {
+            RecordKind::Class => (struct_type.into_pointer(), "->"),
+            RecordKind::Record => (struct_type, "."),
+        };
+
+        let mut statements = Vec::new();
+        statements.push(Expression::raw(format!("{} result;", return_type)));
+        if record_kind == RecordKind::Class {
+            statements.push(Expression::function_call("System_Internal_Rc_GetMem", vec![
+                Expression::function_call("sizeof", vec![Expression::from(struct_name.as_str())]),
+                Expression::string_literal(struct_name)
+            ]));
+        }
+
+        for (mem_num, member) in fields.iter().enumerate() {
+            let result_member = format!("result{}{}", member_access, member.name);
+            let arg_name = format!("arg{}", mem_num);
+            statements.push(Expression::binary_op(result_member.as_str(), "=", arg_name.as_str()));
+        }
+
+        statements.push(Expression::raw("return result"));
+
+        let definition = FunctionDefinition::Defined(Block::new(statements));
+
+        FunctionDecl {
+            name,
+            args,
+            return_type,
+            calling_convention: CallingConvention::Stdcall,
+            definition,
+        }
     }
 }
 

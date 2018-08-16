@@ -13,7 +13,7 @@ pub use self::expression::*;
 pub use self::to_source::*;
 pub use self::function_signature::*;
 
-pub trait Context {
+pub trait Context: PartialEq {
     type Type: Clone + ToSource + PartialEq + fmt::Debug;
 
     fn token(&self) -> &source::Token;
@@ -322,7 +322,7 @@ pub struct RecordMember<TContext>
 {
     pub name: String,
     pub decl_type: TContext::Type,
-    pub context: TContext
+    pub context: TContext,
 }
 
 /*

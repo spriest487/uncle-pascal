@@ -27,7 +27,7 @@ begin
     WriteLn('for ' + name
             + ' I am having '
             + StringFromInt(iceCream.Scoops) + ' scoops of '
-            + StringFromInt(iceCream.Flavor) + '.')
+            + iceCream.Flavor + '.')
 end
 
 var
@@ -44,16 +44,16 @@ begin
     PrintAnimal('fish', fish)
 
     mainCourse := (
-        Flavour: 'Chocolate';
+        Flavor: 'Chocolate';
         Scoops: 3;
     )
 
     PrintIceCream('main course', mainCourse)
 
     dessert := (
-        Flavor: mainCourse.Flavour + ' and Strawberry'
+        Flavor: mainCourse.Flavor + ' and Strawberry'
         Scoops: 1
     )
 
-    PrintDessert('dessert', dessert)
+    PrintIceCream('dessert', dessert)
 end.

@@ -16,6 +16,7 @@ use operators;
 pub type Expression = node::Expression<ParsedContext>;
 pub type LetBinding = node::LetBinding<ParsedContext>;
 pub type ObjectConstructorMember = node::ObjectConstructorMember<ParsedContext>;
+pub type ObjectConstructor = node::ObjectConstructor<ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -472,8 +473,13 @@ fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
         }))
     })?;
 
+    let object_constructor = ObjectConstructor {
+        members,
+        object_type: None, // this is inferred during typechecking
+    };
+
     tokens.match_one(tokens::BracketRight)?;
-    Ok(Expression::object_constructor(members, context))
+    Ok(Expression::object_constructor(object_constructor, context))
 }
 
 struct CompoundExpressionParser<'tokens> {

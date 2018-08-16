@@ -94,15 +94,13 @@ impl TranslationUnit {
 
     fn add_unit(&mut self, unit: &semantic::Unit) -> TranslationResult<()> {
         for decl in unit.interface.iter() {
-            if let Some(decl) = Declaration::translate_decl(decl, self)? {
-                self.decls.push(decl);
-            }
+            let new_decls = Declaration::translate_decl(decl, self)?;
+            self.decls.extend(new_decls);
         }
 
         for decl in unit.implementation.iter() {
-            if let Some(decl) = Declaration::translate_impl(decl, self)? {
-                self.decls.push(decl);
-            }
+            let new_impls = Declaration::translate_impl(decl, self)?;
+            self.decls.extend(new_impls);
         }
 
         if let Some(init_block) = unit.initialization.as_ref() {

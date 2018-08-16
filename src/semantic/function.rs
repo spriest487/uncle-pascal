@@ -44,18 +44,24 @@ impl FunctionDecl {
 
                 let arg_type = arg.decl_type.resolve(scope.clone())?;
 
+                let default_value = match arg.default_value.as_ref() {
+                    Some(default_expr) => {
+                        let (val, _) = Expression::annotate(
+                            default_expr,
+                            Some(&arg_type),
+                            scope.clone()
+                        )?;
+                        Some(val.into_const_expr()?)
+                    }
+                    None => None
+                };
+
                 Ok(node::FunctionArg {
                     name: arg.name.clone(),
                     decl_type: arg_type,
                     context: arg_context,
                     modifier: arg.modifier.clone(),
-                    default_value: match arg.default_value.as_ref() {
-                        Some(default_expr) => {
-                            let (val, _) = Expression::annotate(default_expr, scope.clone())?;
-                            Some(val.into_const_expr()?)
-                        }
-                        None => None
-                    },
+                    default_value,
                 })
             })
             .collect::<SemanticResult<_>>()?;
