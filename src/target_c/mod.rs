@@ -7,15 +7,17 @@ use types;
 
 pub fn type_to_c(pascal_type: &types::DeclaredType) -> String {
     match pascal_type {
-        &types::DeclaredType::None => "void".to_owned(),
         &types::DeclaredType::Integer => identifier_to_c(&types::builtin_names::system_integer()),
         &types::DeclaredType::String => identifier_to_c(&types::builtin_names::system_string()),
         &types::DeclaredType::Boolean => identifier_to_c(&types::builtin_names::system_boolean()),
         &types::DeclaredType::Pointer => identifier_to_c(&types::builtin_names::system_pointer()),
         &types::DeclaredType::Function(ref sig) => {
             let name = sig.name.clone(); //TODO: should be identifier
-            let return_type = type_to_c(&sig.return_type);
-            let arg_types = sig.arg_types.iter().map(type_to_c)
+            let return_type = sig.return_type.as_ref()
+                .map(type_to_c)
+                .unwrap_or_else(|| "void".to_owned());
+            let arg_types = sig.arg_types.iter()
+                .map(type_to_c)
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -30,6 +32,22 @@ pub fn identifier_to_c(id: &node::Identifier) -> String {
     parts.push(id.name.clone());
 
     parts.join("_")
+}
+
+pub fn symbol_to_c(sym: &semantic::ScopedSymbol) -> String {
+    match sym {
+        &semantic::ScopedSymbol::Local { ref name, .. } => {
+            name.to_owned()
+        }
+
+        &semantic::ScopedSymbol::Child { ref name, ref scope, .. } => {
+            identifier_to_c(&scope.child(name))
+        }
+
+        &semantic::ScopedSymbol::RecordMember { ref record_id, ref name, .. } => {
+            format!("{}.{}", identifier_to_c(record_id), name)
+        }
+    }
 }
 
 pub fn default_initialize(out: &mut String, target: &types::Symbol) -> fmt::Result {
@@ -85,7 +103,7 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
                 .collect::<Result<Vec<_>, _>>()?
                 .join(", ");
 
-            let target_name = &target.name;//TODO should be an identifier
+            let target_name = symbol_to_c(target);
             write!(out, "{}({})", target_name, args_str)
         }
 
@@ -133,8 +151,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression) -> fmt::Result 
             writeln!(out, "}}")
         }
 
-        &node::Expression::Identifier(ref id) => {
-            write!(out, "{}", identifier_to_c(&id.name))
+        &node::Expression::Identifier(ref sym) => {
+            write!(out, "{}", symbol_to_c(sym))
         }
 
         &node::Expression::Block(ref block) => {
@@ -183,7 +201,9 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
 }
 
 pub fn write_function(out: &mut String, function: &semantic::Function) -> fmt::Result {
-    let return_type = type_to_c(&function.return_type);
+    let return_type = function.return_type.as_ref()
+        .map(type_to_c)
+        .unwrap_or_else(|| "void".to_owned());
 
     let args = function.args.decls.iter()
         .map(|arg_decl| {
@@ -229,7 +249,7 @@ static System_Pointer GetMem(System_Integer bytes) {{
     }}
 }}
 
-static void Dispose(System_Pointer p) {{
+static void FreeMem(System_Pointer p) {{
     free(p);
 }}")?;
 

@@ -2,7 +2,7 @@ use node;
 use syntax;
 use semantic::*;
 
-pub type VarDecl = node::VarDecl<Symbol>;
+pub type VarDecl = node::VarDecl<ScopedSymbol>;
 
 impl Into<Symbol> for VarDecl {
     fn into(self) -> Symbol {
@@ -23,7 +23,7 @@ impl VarDecl {
     }
 }
 
-pub type Vars = node::Vars<Symbol>;
+pub type Vars = node::Vars<ScopedSymbol>;
 
 impl Vars {
     pub fn annotate(vars: &syntax::Vars, scope: &Scope) -> Result<Self, SemanticError> {

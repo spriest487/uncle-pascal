@@ -208,9 +208,9 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
                 Some(first_matching_token)
             }
         })
-        .collect::<TokenizeResult<_>>();
+        .collect::<TokenizeResult<_>>()?;
 
-    Ok(parsed_tokens?)
+    Ok(parsed_tokens)
 }
 
 pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
@@ -221,7 +221,7 @@ pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
 
     let parsed_lines: TokenizeResult<Vec<_>> = lines.into_iter()
         .enumerate()
-        .map(|(line_num, line)| parse_line(line_num, &line))
+        .map(|(line_num, line)| parse_line(line_num + 1, &line))
         .collect();
 
     Ok(parsed_lines?.into_iter()

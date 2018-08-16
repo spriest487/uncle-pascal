@@ -14,9 +14,11 @@ impl Function {
               TIter::Item: tokens::AsToken + 'static
     {
         //match the name
-        let name_match = keywords::Function.and_then(Matcher::AnyIdentifier)
+        let name_match = keywords::Function.or(keywords::Procedure)
+            .and_then(Matcher::AnyIdentifier)
             .match_sequence(in_tokens, context)?;
 
+        let func_or_proc = name_match.value[0].clone();
         let fn_name = &name_match.value[1].clone();
         let open_args = tokens::BracketLeft.match_peek(name_match.next_tokens,
                                                        &name_match.last_token)?;
@@ -24,7 +26,7 @@ impl Function {
         let arg_groups = match open_args.value {
             Some(_) => {
                 tokens::BracketLeft.terminated_by(tokens::BracketRight)
-                    .match_groups(tokens::Comma,
+                    .match_groups(tokens::Semicolon,
                                   open_args.next_tokens,
                                   &open_args.last_token)?
                     .map(|groups_match| groups_match.groups)
@@ -50,15 +52,24 @@ impl Function {
             })
             .collect::<Result<_, _>>()?;
 
-        let match_return = tokens::Colon
-            .and_then(Matcher::AnyIdentifier)
-            .and_then(tokens::Semicolon)
-            .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
+        let return_type = if func_or_proc.is_keyword(keywords::Function) {
+            let match_return = tokens::Colon
+                .and_then(Matcher::AnyIdentifier)
+                .match_sequence(arg_groups.next_tokens, &arg_groups.last_token)?;
 
-        let fn_return_type = &match_return.value[1];
+            let type_id = node::Identifier::parse(match_return.value[1].unwrap_identifier());
+
+            ParseOutput::new(Some(type_id), match_return.last_token, match_return.next_tokens)
+        } else {
+            ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
+        };
+
+        let semicolon_after_sig = tokens::Semicolon.match_one(return_type.next_tokens,
+                                                              &return_type.last_token)?;
 
         let peek_after_sig = keywords::Var.or(keywords::Begin)
-            .match_peek(match_return.next_tokens, &match_return.last_token)?;
+            .match_peek(semicolon_after_sig.next_tokens,
+                        &semicolon_after_sig.last_token)?;
 
         let local_vars = match peek_after_sig.value {
             Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
@@ -78,7 +89,7 @@ impl Function {
 
         let function = Function {
             name: fn_name.as_token().unwrap_identifier().to_owned(),
-            return_type: node::Identifier::parse(fn_return_type.as_token().unwrap_identifier()),
+            return_type: return_type.value,
 
             local_vars: local_vars.value,
             args: Vars { decls: args },

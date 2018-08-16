@@ -66,6 +66,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
 
     loop {
         let match_decl_first = keywords::Function
+            .or(keywords::Procedure)
             .or(keywords::Type)
             .or(keywords::Var)
             .or(keywords::Begin);
@@ -74,7 +75,8 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
         tokens = Box::from(peek_decl.next_tokens);
 
         match peek_decl.value {
-            Some(ref func_kw) if func_kw.as_token().is_keyword(keywords::Function) => {
+            Some(ref func_kw) if func_kw.is_keyword(keywords::Function) ||
+                func_kw.is_keyword(keywords::Procedure) => {
                 let func = Function::parse(tokens, &peek_decl.last_token)?;
                 program_functions.push(func.value);
 
@@ -82,7 +84,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
                 last_parsed = func.last_token;
             }
 
-            Some(ref type_kw) if type_kw.as_token().is_keyword(keywords::Type) => {
+            Some(ref type_kw) if type_kw.is_keyword(keywords::Type) => {
                 let record = RecordDecl::parse(tokens, &peek_decl.last_token)?;
                 program_type_decls.push(record.value);
 
@@ -90,7 +92,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
                 last_parsed = record.last_token;
             }
 
-            Some(ref var_kw) if var_kw.as_token().is_keyword(keywords::Var) => {
+            Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
                 let vars = Vars::parse(tokens, &peek_decl.last_token)?;
                 program_vars.decls.extend(vars.value.decls);
 
@@ -98,7 +100,7 @@ fn parse_decls<TIter>(in_tokens: TIter, context: &TIter::Item) -> ParseResult<Pr
                 last_parsed = vars.last_token;
             }
 
-            Some(ref begin_kw) if begin_kw.as_token().is_keyword(keywords::Begin) => {
+            Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
                 break;
             }
 

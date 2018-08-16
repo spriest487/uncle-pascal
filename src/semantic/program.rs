@@ -2,35 +2,34 @@ use node;
 use syntax;
 use semantic::*;
 
-pub type Program = node::Program<Symbol>;
+pub type Program = node::Program<ScopedSymbol>;
 
 impl Program {
     pub fn annotate(program: &syntax::Program) -> Result<Self, SemanticError> {
-        let global_scope = Scope::default();
-
-        let vars = Vars::annotate(&program.vars, &global_scope)?;
-
-        let functions = program.functions.iter()
-            .map(|f| Function::annotate(f, &global_scope))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let mut program_scope = global_scope
-            .with_symbols(vars.decls.clone())
-            .with_symbols(functions.iter().cloned().map(|f| {
-                let identifier = node::Identifier::parse(&f.name);
-                let sig_type = f.signature_type();
-
-                Symbol::new(identifier, sig_type)
-            }));
+        let mut program_scope = Scope::default();
 
         let mut type_decls = Vec::new();
         for parsed_decl in program.type_decls.iter() {
             let record_decl = RecordDecl::annotate(parsed_decl, &program_scope)?;
 
-            program_scope = program_scope.with_type(node::Identifier::parse(&record_decl.name),
+            program_scope = program_scope.with_type(record_decl.name.clone(),
                                                     record_decl.record_type());
 
             type_decls.push(record_decl);
+        }
+
+        let vars = Vars::annotate(&program.vars, &program_scope)?;
+
+        let functions = program.functions.iter()
+            .map(|f| Function::annotate(f, &program_scope))
+            .collect::<Result<Vec<_>, _>>()?;
+
+        program_scope = program_scope
+            .with_vars(vars.decls.clone());
+
+        for function in functions.iter().cloned() {
+            let sig = function.signature_type();
+            program_scope = program_scope.with_symbol(function.name, sig);
         }
 
         let program_block = Block::annotate(&program.program_block, &program_scope)?;

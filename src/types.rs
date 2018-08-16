@@ -33,7 +33,7 @@ impl node::Symbol for Symbol {
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct FunctionSignature {
     pub name: String,
-    pub return_type: DeclaredType,
+    pub return_type: Option<DeclaredType>,
     pub arg_types: Vec<DeclaredType>,
 }
 
@@ -45,7 +45,11 @@ impl fmt::Display for FunctionSignature {
             .collect::<Vec<_>>()
             .join(", ");
 
-        write!(f, "function {}({}): {}", self.name, args_str, self.return_type)
+        if let Some(ref return_type) = self.return_type {
+            write!(f, "function {}({}): {}", self.name, args_str, return_type)
+        } else {
+            write!(f, "procedure {}({})", self.name, args_str)
+        }
     }
 }
 
@@ -53,6 +57,12 @@ impl fmt::Display for FunctionSignature {
 pub struct DeclaredRecord {
     pub name: String,
     pub members: Vec<Symbol>,
+}
+
+impl DeclaredRecord {
+    pub fn get_member(&self, name: &str) -> Option<&Symbol> {
+        self.members.iter().find(|m| m.name.to_string() == name)
+    }
 }
 
 impl fmt::Display for DeclaredRecord {
@@ -69,7 +79,6 @@ impl fmt::Display for DeclaredRecord {
 
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub enum DeclaredType {
-    None,
     Boolean,
     Integer,
     String,
@@ -81,7 +90,6 @@ pub enum DeclaredType {
 impl fmt::Display for DeclaredType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            &DeclaredType::None => "<untyped>".to_owned(),
             &DeclaredType::Boolean => "System.Boolean".to_owned(),
             &DeclaredType::Integer => "System.Integer".to_owned(),
             &DeclaredType::String => "System.String".to_owned(),
@@ -89,6 +97,22 @@ impl fmt::Display for DeclaredType {
             &DeclaredType::Function(ref sig) => format!("{}", sig),
             &DeclaredType::Record(ref record) => format!("{}", record),
         })
+    }
+}
+
+impl DeclaredType {
+    pub fn is_record(&self) -> bool {
+        match self {
+            &DeclaredType::Record(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn unwrap_record(self) -> DeclaredRecord {
+        match self {
+            DeclaredType::Record(record) => record,
+            _ => panic!("called unwrap_record on {}", self)
+        }
     }
 }
 

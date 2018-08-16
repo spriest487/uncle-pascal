@@ -15,23 +15,23 @@ end;
 
 function Vector_Create: Vector;
 begin
-  result.Elements := nil;
+  result.Elements := 0;
   result.Length := 0;
 end;
 
-procedure Vector_Add(self: Vector; p: Pointer);
+procedure Vector_Add(self: Vector; p: System.Pointer);
 var
-  newElements: Pointer;
-  i: Integer;
+  newElements: System.Pointer;
+  i: System.Integer;
 begin
-  newElements := GetMem(self.Length + 1);
+  newElements := System.GetMem(self.Length + 1);
 
-  if self.Elements <> nil then
+  if self.Elements <> 0 then
   begin
     for i := 0 to self.Length - 1 do
-      (newElements + i) := self.Elements + i;
+      newElements + i := self.Elements + i;
 
-    FreeMem(self.Elements);
+    System.FreeMem(self.Elements);
   end;
 
   self.Length := self.Length + 1;
@@ -58,13 +58,13 @@ begin
   y := 2;
   x := x + y;
 
-  WriteLn('hello world');
+  System.WriteLn('hello world');
 
   if x = 1 then begin
-    WriteLn('one')
+    System.WriteLn('one')
   end
   else begin
-    WriteLn('not one');
+    System.WriteLn('not one');
   end;
 
   //WriteLn(IntToStr(x + y));

@@ -24,12 +24,12 @@ pub enum SemanticError {
     UnknownType(node::Identifier),
     UnknownSymbol(node::Identifier),
     UnexpectedType{
-        expected: DeclaredType,
-        actual: DeclaredType
+        expected: Option<DeclaredType>,
+        actual: Option<DeclaredType>
     },
-    InvalidFunctionType(node::Identifier),
+    InvalidFunctionType(ScopedSymbol),
     WrongNumberOfArgs {
-        target: node::Identifier,
+        target: ScopedSymbol,
         expected: usize,
         actual: usize,
     },
@@ -49,7 +49,9 @@ impl fmt::Display for SemanticError {
             }
 
             &SemanticError::UnexpectedType { ref expected, ref actual } => {
-                write!(f, "expected type `{}`, found `{}`", expected, actual)
+                write!(f, "expected type `{}`, found `{}`",
+                       expected.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()),
+                       actual.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()))
             }
 
             &SemanticError::InvalidFunctionType(ref id) => {
@@ -57,7 +59,7 @@ impl fmt::Display for SemanticError {
             }
 
             &SemanticError::WrongNumberOfArgs { ref target, expected, actual } => {
-                write!(f, "wrong number if arguments to function `{}`, expected `{}`, found `{}`",
+                write!(f, "wrong number if arguments to function `{}`, expected {}, found `{}`",
                        target, expected, actual)
             }
 

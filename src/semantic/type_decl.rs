@@ -3,7 +3,7 @@ use syntax;
 use semantic::*;
 use types;
 
-pub type RecordDecl = node::RecordDecl<Symbol>;
+pub type RecordDecl = node::RecordDecl<ScopedSymbol>;
 
 impl RecordDecl {
     pub fn annotate(decl: &syntax::RecordDecl, scope: &Scope) -> Result<Self, SemanticError> {

@@ -40,7 +40,64 @@ impl Identifier {
 
         let name = parts.pop().unwrap_or(String::new());
 
-        Self { namespace: parts, name }
+        Identifier {
+            namespace: parts,
+            name,
+        }
+    }
+
+    pub fn child(&self, child_name: &str) -> Identifier {
+        let mut child_ns = self.namespace.clone();
+        child_ns.push(self.name.clone());
+
+        Identifier {
+            name: child_name.to_owned(),
+            namespace: child_ns,
+        }
+    }
+
+    pub fn parent(&self) -> Option<Identifier> {
+        if self.namespace.len() > 0 {
+            let parent_namespace = self.namespace[0..self.namespace.len() - 1]
+                .to_vec();
+
+            let parent_name = self.namespace.last().unwrap().clone();
+
+            Some(Identifier {
+                namespace: parent_namespace,
+                name: parent_name,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn append(&self, other: &Identifier) -> Self {
+        let mut result_ns = self.namespace.clone();
+        result_ns.push(self.name.clone());
+        result_ns.extend(other.namespace.clone());
+
+        Identifier {
+            name: other.name.clone(),
+            namespace: result_ns,
+        }
+    }
+
+    pub fn head(&self) -> String {
+        self.namespace.first()
+            .cloned()
+            .unwrap_or_else(|| self.name.clone())
+    }
+
+    pub fn tail(&self) -> Option<Identifier> {
+        if self.namespace.len() > 0 {
+            Some(Identifier {
+                name: self.name.clone(),
+                namespace: self.namespace.iter().cloned().skip(1).collect(),
+            })
+        } else {
+            None
+        }
     }
 }
 
@@ -188,7 +245,7 @@ pub struct Function<TSymbol>
           TSymbol::Type: Clone + fmt::Debug
 {
     pub name: String,
-    pub return_type: TSymbol::Type,
+    pub return_type: Option<TSymbol::Type>,
 
     pub args: Vars<TSymbol>,
     pub local_vars: Vars<TSymbol>,

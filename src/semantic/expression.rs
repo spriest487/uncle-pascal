@@ -4,9 +4,22 @@ use node;
 use operators;
 use types;
 
-pub type Expression = node::Expression<Symbol>;
+pub type Expression = node::Expression<ScopedSymbol>;
 
-fn expect_type_eq(expected: DeclaredType, actual: DeclaredType) -> Result<(), SemanticError> {
+fn expect_assignable(target: Option<DeclaredType>,
+                     actual: Option<DeclaredType>) -> Result<(), SemanticError> {
+    match (target, actual) {
+         //TODO: this just allows all int->ptr conversions which is bad
+        (Some(DeclaredType::Pointer), Some(DeclaredType::Integer)) => Ok(()),
+
+        (ref x, ref y) if x == y => Ok(()),
+
+        (x, y) => Err(SemanticError::UnexpectedType { expected: x, actual: y })
+    }
+}
+
+fn expect_type_eq(expected: Option<DeclaredType>,
+                  actual: Option<DeclaredType>) -> Result<(), SemanticError> {
     if expected != actual {
         Err(SemanticError::UnexpectedType { expected, actual })
     } else {
@@ -77,24 +90,24 @@ impl Expression {
         }
     }
 
-    pub fn expr_type(&self) -> DeclaredType {
+    pub fn expr_type(&self) -> Option<DeclaredType> {
         match self {
             &node::Expression::BinaryOperator { ref lhs, ref op, .. } => match op {
                 &operators::NotEquals |
-                &operators::Equals => DeclaredType::Boolean,
+                &operators::Equals => Some(DeclaredType::Boolean),
 
                 &operators::Assignment |
                 &operators::Plus |
                 &operators::Minus => lhs.expr_type()
             },
-            &node::Expression::LiteralString(_) => DeclaredType::String,
-            &node::Expression::LiteralInteger(_) => DeclaredType::Integer,
-            &node::Expression::FunctionCall { ref target, .. } => target.decl_type.clone(),
-            &node::Expression::Identifier(ref id) => id.decl_type.clone(),
+            &node::Expression::LiteralString(_) => Some(DeclaredType::String),
+            &node::Expression::LiteralInteger(_) => Some(DeclaredType::Integer),
+            &node::Expression::FunctionCall { ref target, .. } => Some(target.decl_type().clone()),
+            &node::Expression::Identifier(ref id) => Some(id.decl_type().clone()),
 
             &node::Expression::Block(_) |
             &node::Expression::ForLoop { .. } |
-            &node::Expression::If { .. } => DeclaredType::None,
+            &node::Expression::If { .. } => None,
         }
     }
 
@@ -107,7 +120,7 @@ impl Expression {
                 let lhs_type = lhs.expr_type();
                 let rhs_type = rhs.expr_type();
 
-                expect_type_eq(lhs_type, rhs_type)
+                expect_assignable(lhs_type, rhs_type)
             }
 
             &node::Expression::Identifier(_) |
@@ -115,10 +128,10 @@ impl Expression {
             &node::Expression::LiteralInteger(_) => Ok(()),
 
             &node::Expression::FunctionCall { ref target, ref args } => {
-                if let DeclaredType::Function(ref sig) = target.decl_type {
+                if let DeclaredType::Function(ref sig) = target.decl_type() {
                     if args.len() != sig.arg_types.len() {
                         Err(SemanticError::WrongNumberOfArgs {
-                            target: target.name.clone(),
+                            target: target.clone(),
                             expected: sig.arg_types.len(),
                             actual: args.len(),
                         })
@@ -129,13 +142,13 @@ impl Expression {
                             let sig_type = sig.arg_types[arg_index].clone();
                             let actual_type = arg_expr.expr_type();
 
-                            expect_type_eq(sig_type, actual_type)?;
+                            expect_type_eq(Some(sig_type), actual_type)?;
                         }
 
                         Ok(())
                     }
                 } else {
-                    Err(SemanticError::InvalidFunctionType(target.name.clone()))
+                    Err(SemanticError::InvalidFunctionType(target.clone()))
                 }
             }
 
@@ -145,8 +158,9 @@ impl Expression {
                 }
                 Ok(())
             }
+
             &node::Expression::If { ref condition, ref then_branch, ref else_branch } => {
-                expect_type_eq(DeclaredType::Boolean, condition.expr_type())?;
+                expect_type_eq(Some(DeclaredType::Boolean), condition.expr_type())?;
 
                 condition.type_check()?;
                 then_branch.type_check()?;
@@ -162,15 +176,15 @@ impl Expression {
                 match from.as_ref() {
                     &node::Expression::BinaryOperator { ref op, ref lhs, .. }
                     if *op == operators::BinaryOperator::Assignment => {
-                        expect_type_eq(DeclaredType::Integer, lhs.expr_type())?;
-                        expect_type_eq(DeclaredType::Integer, to.expr_type())?;
+                        expect_type_eq(Some(DeclaredType::Integer), lhs.expr_type())?;
+                        expect_type_eq(Some(DeclaredType::Integer), to.expr_type())?;
 
                         Ok(())
                     }
 
                     //TODO better error
                     _ => Err(SemanticError::UnexpectedType {
-                        expected: types::DeclaredType::Integer,
+                        expected: Some(types::DeclaredType::Integer),
                         actual: from.expr_type(),
                     })
                 }

@@ -2,7 +2,7 @@ use node;
 use syntax;
 use semantic::*;
 
-pub type Block = node::Block<Symbol>;
+pub type Block = node::Block<ScopedSymbol>;
 
 impl Block {
     pub fn annotate(block: &syntax::Block, scope: &Scope) -> Result<Self, SemanticError> {

@@ -4,13 +4,21 @@ use semantic::*;
 
 const RESULT_VAR_NAME : &str = "result";
 
-pub type Function = node::Function<Symbol>;
+pub type Function = node::Function<ScopedSymbol>;
 
 impl Function {
     pub fn annotate(function: &syntax::Function, scope: &Scope) -> Result<Self, SemanticError> {
-        let return_type = scope.get_type(&function.return_type)
-            .cloned()
-            .ok_or_else(|| SemanticError::UnknownType(function.return_type.clone()))?;
+        let return_type = match function.return_type {
+            Some(ref func_return_type) => {
+                let found_type = scope.get_type(func_return_type)
+                    .cloned()
+                    .ok_or_else(|| SemanticError::UnknownType(func_return_type.clone()))?;
+
+                Some(found_type)
+            }
+
+            None => None
+        };
 
         /* there can't already be a local symbol called "result" */
         function.local_vars.decls.iter().find(|decl| decl.name == RESULT_VAR_NAME)
@@ -18,16 +26,19 @@ impl Function {
             .unwrap_or(Ok(()))?;
 
         let mut local_vars = Vars::annotate(&function.local_vars, &scope)?;
-        local_vars.decls.push(VarDecl {
-            name: RESULT_VAR_NAME.to_owned(),
-            decl_type: return_type.clone()
-        });
+
+        if let &Some(ref result_var_type) = &return_type {
+            local_vars.decls.push(VarDecl {
+                name: RESULT_VAR_NAME.to_owned(),
+                decl_type: result_var_type.clone()
+            });
+        }
 
         let args = Vars::annotate(&function.args, scope)?;
 
         let local_scope = scope.clone()
-            .with_symbols(args.decls.clone())
-            .with_symbols(local_vars.decls.clone());
+            .with_vars(args.decls.clone())
+            .with_vars(local_vars.decls.clone());
 
         let body = Block::annotate(&function.body, &local_scope)?;
 
