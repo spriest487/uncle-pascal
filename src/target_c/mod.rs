@@ -43,6 +43,7 @@ fn invoke_clang<'a>(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
     let mut clang = process::Command::new("clang++");
     clang.arg("-Wno-parentheses-equality");
     clang.arg("-Wno-non-literal-null-conversion");
+    clang.arg("-Werror");
     clang.arg("-fno-exceptions");
     clang.arg("-fno-rtti");
     clang.arg("-x").arg("c++");
