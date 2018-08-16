@@ -1,5 +1,7 @@
 use std::fmt;
 
+use node;
+
 #[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Symbol {
     pub name: String,
@@ -19,6 +21,10 @@ impl Symbol {
             decl_type
         }
     }
+}
+
+impl node::Symbol for Symbol {
+    type Type = DeclaredType;
 }
 
 #[derive(Eq, PartialEq, Clone, Debug)]
