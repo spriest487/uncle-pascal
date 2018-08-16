@@ -17,7 +17,7 @@ pub fn pas_to_c(module: &ProgramModule,
                 out_path: &Path) -> Result<(), CompileError> {
     let c_unit = writer::write_c(&module)?;
 
-    let compile_with_clang = out_path.extension().map(|ext| ext != "c")
+    let compile_with_clang = out_path.extension().map(|ext| ext != "cpp" && ext != "cxx")
         .unwrap_or(true);
 
     let _out_dir = out_path.parent().ok_or_else(|| {
@@ -42,6 +42,8 @@ fn invoke_clang<'a>(c_src: &str, out_path: &Path) -> Result<(), CompileError> {
     let mut clang = process::Command::new("clang++");
     clang.arg("-Wno-parentheses-equality");
     clang.arg("-Wno-non-literal-null-conversion");
+    clang.arg("-fno-exceptions");
+    clang.arg("-fno-rtti");
     clang.arg("-x").arg("c++");
     clang.arg("-std=c++17");
 
