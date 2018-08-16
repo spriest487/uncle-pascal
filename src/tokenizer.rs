@@ -83,6 +83,7 @@ fn token_patterns() -> Vec<(String, TokenMatchParser)> {
         //anything between two quote marks, with double quote as literal quote mark
         func_pattern(r"'(([^']|'{2})*)'", parse_literal_string),
         func_pattern(r"-?[0-9]+", parse_literal_integer), // decimal int
+        func_pattern(r"#[0-9]{1,3}", parse_literal_integer), // char
         func_pattern(r"\$([0-9A-Fa-f]+)", parse_literal_integer), //hex int
         simple_pattern(r"\*", operators::Multiply),
         simple_pattern(r"[/]", operators::Divide),
@@ -212,7 +213,8 @@ pub fn tokenize(file_name: &str,
 #[cfg(test)]
 mod test {
     use tokenizer;
-    use tokens;
+    use tokens::{self, AsToken};
+    use consts::IntConstant;
 
     #[test]
     fn tokenizes_literal_string() {
@@ -223,5 +225,13 @@ mod test {
 
         assert_eq!(&tokens::LiteralString("hello world!".to_owned()),
                    result[0].token.as_ref());
+    }
+
+    #[test]
+    fn tokenizes_literal_char() {
+        let result = tokenizer::tokenize("test,", "#32").unwrap();
+        assert_eq!(1, result.len());
+        assert_eq!(&tokens::LiteralInteger(IntConstant::Char(32)),
+                   result[0].as_token());
     }
 }

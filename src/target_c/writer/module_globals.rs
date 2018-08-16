@@ -32,7 +32,8 @@ impl ModuleGlobals {
         Self::string_literal_index_to_name(index)
     }
 
-    pub fn declare_string_literals(&self, mut out: impl fmt::Write) -> fmt::Result {        for (index, _) in self.string_literals.iter().enumerate() {
+    pub fn declare_string_literals(&self, mut out: impl fmt::Write) -> fmt::Result {
+        for (index, _) in self.string_literals.iter().enumerate() {
             let name = Self::string_literal_index_to_name(index);
             writeln!(out, "static System_String* {};", name)?;
         }

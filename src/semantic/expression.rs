@@ -625,6 +625,7 @@ impl Expression {
 
             &node::ExpressionValue::LiteralInteger(int_const) =>
                 Ok(Some(match int_const {
+                    IntConstant::Char(_) => Type::Byte,
                     IntConstant::I32(_) => Type::Int32,
                     IntConstant::U32(_) => Type::UInt32,
                     IntConstant::I64(_) => Type::Int64,

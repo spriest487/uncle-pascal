@@ -1,7 +1,8 @@
-use std::fmt;
+use std::fmt::{self, Write};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum IntConstant {
+    Char(u8),
     I32(i32),
     I64(i64),
     U32(u32),
@@ -11,6 +12,7 @@ pub enum IntConstant {
 impl fmt::Display for IntConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            IntConstant::Char(c) => f.write_char(char::from(*c)),
             IntConstant::I32(i) => write!(f, "{}", i),
             IntConstant::I64(i) => write!(f, "{}", i),
             IntConstant::U32(i) => write!(f, "{}", i),
@@ -22,6 +24,7 @@ impl fmt::Display for IntConstant {
 impl IntConstant {
     pub fn is_zero(&self) -> bool {
         match self {
+            IntConstant::Char(c) => *c == 0,
             IntConstant::I32(i) => *i == 0,
             IntConstant::U32(i) => *i == 0,
             IntConstant::I64(i) => *i == 0,
@@ -31,6 +34,7 @@ impl IntConstant {
 
     pub fn as_u8(&self) -> Option<u8> {
         match self {
+            IntConstant::Char(c) => Some(*c),
             IntConstant::I32(i) => if *i >= 0 && *i < 256 { Some(*i as u8) } else { None },
             IntConstant::U32(i) => if *i < 256 { Some(*i as u8) } else { None },
             IntConstant::I64(i) => if *i >= 0 && *i < 256 { Some(*i as u8) } else { None },
@@ -43,6 +47,11 @@ impl IntConstant {
         let first_char = s.chars().next()?;
 
         match first_char {
+            '#' => {
+                let val: u8 = s[1..].parse().ok()?;
+                Some(IntConstant::from(val))
+            }
+
             '$' => {
                 let val = u64::from_str_radix(&s[1..], 16).ok()?;
 
@@ -66,6 +75,12 @@ impl IntConstant {
                 Some(IntConstant::from(val))
             }
         }
+    }
+}
+
+impl From<u8> for IntConstant {
+    fn from(val: u8) -> Self {
+        IntConstant::Char(val)
     }
 }
 
