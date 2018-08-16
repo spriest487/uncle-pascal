@@ -4,9 +4,7 @@ pub mod expression;
 pub mod to_source;
 pub mod function_signature;
 
-use std::{
-    fmt,
-};
+use std::fmt;
 
 use source;
 pub use self::type_name::{TypeName, IndexRange};
@@ -111,6 +109,34 @@ pub struct FunctionDeclBody<TSymbol, TContext>
     pub block: Block<TSymbol, TContext>,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FunctionArgModifier {
+    Const,
+    Var,
+    Out,
+}
+
+impl ToSource for FunctionArgModifier {
+    fn to_source(&self) -> String {
+        match self {
+            FunctionArgModifier::Const => "const".to_string(),
+            FunctionArgModifier::Var => "var".to_string(),
+            FunctionArgModifier::Out => "out".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionArg<TSymbol, TContext>
+    where TSymbol: Symbol,
+          TContext: Context
+{
+    pub name: String,
+    pub decl_type: TSymbol::Type,
+    pub modifier: Option<FunctionArgModifier>,
+    pub context: TContext,
+}
+
 #[derive(Debug, Clone)]
 pub struct FunctionDecl<TSymbol, TContext>
     where TSymbol: Symbol,
@@ -123,7 +149,7 @@ pub struct FunctionDecl<TSymbol, TContext>
     pub kind: FunctionKind,
     pub modifiers: Vec<FunctionModifier>,
 
-    pub args: VarDecls<TSymbol, TContext>,
+    pub args: Vec<FunctionArg<TSymbol, TContext>>,
 
     // a function without a body is a forward declaration
     pub body: Option<FunctionDeclBody<TSymbol, TContext>>,
@@ -155,6 +181,7 @@ pub enum RecordKind {
     Class,
 }
 
+
 #[derive(Clone, Debug)]
 pub struct RecordDecl<TSymbol, TContext>
     where TSymbol: Symbol,
@@ -181,28 +208,10 @@ impl<TSymbol, TContext> RecordDecl<TSymbol, TContext>
 pub struct VarDecl<TSymbol, TContext>
     where TSymbol: Symbol
 {
-    pub name: Identifier,
+    pub name: String,
     pub context: TContext,
 
     pub decl_type: TSymbol::Type,
-    pub modifier: Option<VarModifier>,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum VarModifier {
-    Const,
-    Var,
-    Out,
-}
-
-impl ToSource for VarModifier {
-    fn to_source(&self) -> String {
-        match self {
-            VarModifier::Const => "const".to_string(),
-            VarModifier::Var => "var".to_string(),
-            VarModifier::Out => "out".to_string(),
-        }
-    }
 }
 
 #[derive(Clone, Debug)]

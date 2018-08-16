@@ -160,7 +160,7 @@ fn parse_as_function_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
     let kind_kw = tokens.match_one(keywords::Function.or(keywords::Procedure))?;
 
     let arg_list = FunctionDecl::parse_argument_list(tokens)?;
-    let arg_types = arg_list.decls.into_iter()
+    let arg_types = arg_list.into_iter()
         .map(|decl| decl.decl_type)
         .collect();
 

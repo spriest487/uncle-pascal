@@ -17,6 +17,7 @@ use node::{
     FunctionKind,
     RecordKind,
     UnitDeclaration,
+    FunctionArgModifier,
 };
 use types::{
     Type,
@@ -487,9 +488,7 @@ fn write_statement(out: &mut String,
 pub fn write_vars(out: &mut String, vars: &semantic::VarDecls) -> fmt::Result {
     vars.decls.iter()
         .map(|decl| {
-            writeln!(out, "{} {};",
-                     type_to_c(&decl.decl_type, decl.scope()),
-                     identifier_to_c(&decl.name))
+            writeln!(out, "{} {};", type_to_c(&decl.decl_type, decl.scope()), decl.name)
         })
         .collect()
 }
@@ -511,8 +510,10 @@ pub fn default_initialize_vars<'a>(out: &mut String,
                                    -> fmt::Result {
     decls.into_iter()
         .map(|decl| {
-            default_initialize(out, &Symbol::new(decl.name.clone(),
-                                                 decl.decl_type.clone()))
+            let decl_id = Identifier::from(&decl.name);
+            let decl_type = decl.decl_type.clone();
+
+            default_initialize(out, &Symbol::new(decl_id, decl_type))
         })
         .collect()
 }
@@ -528,9 +529,7 @@ pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -
     }
 
     for member in record_decl.members.iter() {
-        writeln!(out, "{} {};",
-                 type_to_c(&member.decl_type, record_decl.scope()),
-                 identifier_to_c(&member.name))?;
+        writeln!(out, "{} {};", type_to_c(&member.decl_type, record_decl.scope()), &member.name)?;
     }
     writeln!(out, "}};")?;
     writeln!(out)
@@ -546,10 +545,17 @@ pub fn write_function(out: &mut String,
     write!(out, "{} ", return_type_c.clone().unwrap_or_else(|| "void".to_owned()))?;
     write!(out, "{} ", identifier_to_c(&function.name))?;
 
-    write!(out, "({})", function.args.decls.iter()
+    write!(out, "({})", function.args.iter()
         .map(|arg_decl| {
-            format!("{} {}", type_to_c(&arg_decl.decl_type, arg_decl.scope()),
-                    identifier_to_c(&arg_decl.name))
+            let c_arg_type_base = type_to_c(&arg_decl.decl_type, &arg_decl.scope());
+            let c_type = match arg_decl.modifier {
+                None => c_arg_type_base,
+                Some(FunctionArgModifier::Const) => format!("{} const", c_arg_type_base),
+                Some(FunctionArgModifier::Var) |
+                Some(FunctionArgModifier::Out) => format!("{}&", c_arg_type_base),
+            };
+
+            format!("{} {}", c_type, arg_decl.name)
         })
         .collect::<Vec<_>>()
         .join(", "))?;
@@ -578,13 +584,16 @@ pub fn write_function(out: &mut String,
                          function.return_type.as_ref().expect("constructor must have return type"))?;
             }
 
-            let rc_args: Vec<_> = function.args.decls.iter()
-                .filter_map(|arg| {
+            let rc_args: Vec<_> = function.args.iter()
+                .filter(|arg| arg.modifier != Some(FunctionArgModifier::Out))
+                .filter(|arg| {
                     if let Type::Class(_) = &arg.decl_type {
-                        return Some(arg);
+                        true
+                    } else {
+                        false
                     }
-                    None
-                }).collect();
+                })
+                .collect();
 
             // retain rc args to non-destructor functions
             // this is kind of a hack to make sure temporary values used as args get rc'd
@@ -594,16 +603,16 @@ pub fn write_function(out: &mut String,
             // in the result position
             if function.kind == FunctionKind::Function {
                 for arg in rc_args.iter() {
-                    writeln!(out, "System_Internal_Rc_Retain({});", identifier_to_c(&arg.name))?;
+                    writeln!(out, "System_Internal_Rc_Retain({});", arg.name)?;
                 }
             }
 
             write_block(out, block, globals)?;
 
             //release all local vars except the result
-            let result_id = Identifier::from("result");
+            let result_name = "result";
             release_vars(out, local_vars.decls.iter()
-                .filter(|decl| decl.name != result_id))?;
+                .filter(|decl| decl.name != result_name))?;
 
             if function.kind == FunctionKind::Function {
                 //release args

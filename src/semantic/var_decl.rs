@@ -2,29 +2,21 @@ use std::{
     rc::Rc,
 };
 use types::Symbol;
-use node;
+use node::{self, Identifier};
 use syntax;
 use semantic::*;
 
 pub type VarDecl = node::VarDecl<ScopedSymbol, SemanticContext>;
 pub type VarDecls = node::VarDecls<ScopedSymbol, SemanticContext>;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum SemanticVarsKind {
-    Local,
-    Namespaced,
-}
-
 impl Into<Symbol> for VarDecl {
     fn into(self) -> Symbol {
-        Symbol::new(self.name, self.decl_type)
+        Symbol::new(Identifier::from(&self.name), self.decl_type)
     }
 }
 
 impl VarDecl {
-    pub fn annotate(decl: &syntax::VarDecl,
-                    scope: Rc<Scope>,
-                    kind: SemanticVarsKind)
+    pub fn annotate(decl: &syntax::VarDecl, scope: Rc<Scope>)
                     -> Result<Self, SemanticError> {
         let var_context = SemanticContext {
             scope: scope.clone(),
@@ -35,20 +27,10 @@ impl VarDecl {
                 SemanticError::unknown_type(not_found, var_context.clone())
             })?;
 
-        let qualified_name = if decl.name.namespace.len() != 0 {
-            return Err(SemanticError::illegal_name(decl.name.to_string(), var_context));
-        } else {
-            match kind {
-                SemanticVarsKind::Local => decl.name.clone(),
-                SemanticVarsKind::Namespaced => scope.qualify_local_name(&decl.name.name),
-            }
-        };
-
         Ok(VarDecl {
-            name: qualified_name,
+            name: decl.name.clone(),
             context: var_context,
             decl_type: var_type,
-            modifier: decl.modifier,
         })
     }
 
@@ -58,12 +40,10 @@ impl VarDecl {
 }
 
 impl VarDecls {
-    pub fn annotate(vars: &syntax::VarDecls,
-                    scope: Rc<Scope>,
-                    kind: SemanticVarsKind) -> SemanticResult<Self> {
+    pub fn annotate(vars: &syntax::VarDecls, scope: Rc<Scope>) -> SemanticResult<Self> {
         let decls = vars.decls.iter()
             .map(|v| -> Result<VarDecl, SemanticError> {
-                VarDecl::annotate(v, scope.clone(), kind)
+                VarDecl::annotate(v, scope.clone())
             })
             .collect::<Result<_, _>>()?;
 

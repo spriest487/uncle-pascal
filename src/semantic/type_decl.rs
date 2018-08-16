@@ -49,12 +49,7 @@ impl RecordDecl {
         } else {
             let members = decl.members.iter()
                 .map(|member| {
-                    let member = VarDecl::annotate(member, scope.clone(), SemanticVarsKind::Local)?;
-                    if let Some(modifier) = member.modifier {
-                        Err(SemanticError::invalid_var_modifier(modifier, member.context.clone()))
-                    } else {
-                        Ok(member)
-                    }
+                    VarDecl::annotate(member, scope.clone())
                 })
                 .collect::<Result<_, _>>()?;
 

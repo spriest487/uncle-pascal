@@ -262,9 +262,7 @@ impl Scope {
 
     pub fn with_vars_local<'a>(mut self, vars: impl IntoIterator<Item=&'a VarDecl>) -> Self {
         for var in vars {
-            assert_eq!(var.name.namespace.len(), 0, "vars passed to with_vars_local should not be namespaced! was {}", var.name);
-
-            self = self.with_symbol_local(&var.name.name, var.decl_type.clone());
+            self = self.with_symbol_local(&var.name, var.decl_type.clone());
         }
         self
     }

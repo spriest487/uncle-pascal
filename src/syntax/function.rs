@@ -7,11 +7,13 @@ use node::{
     self,
     Identifier,
     FunctionKind,
-    FunctionModifier
+    FunctionModifier,
+    FunctionArgModifier,
 };
 
 pub type FunctionDecl = node::FunctionDecl<ParsedSymbol, ParsedContext>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol, ParsedContext>;
+pub type FunctionArg = node::FunctionArg<ParsedSymbol, ParsedContext>;
 
 impl Parse for FunctionDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -122,23 +124,50 @@ impl FunctionDecl {
         }
     }
 
-    pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
-        match tokens.match_block_peek(tokens::BracketLeft, tokens::BracketRight)? {
-            Some(args_block) => {
-                let arg_tokens_len = args_block.len();
+    pub fn parse_argument_list(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionArg>> {
+        if tokens.peeked().match_one(tokens::BracketLeft).is_none() {
+            return Ok(Vec::new());
+        }
 
-                let mut args_tokens = TokenStream::new(args_block.inner, &args_block.open);
-                let args: Vec<VarDecl> = args_tokens.parse()?;
-                
-                args_tokens.finish()?;
+        let arg_groups = tokens.match_groups(tokens::BracketLeft,
+                                             tokens::BracketRight,
+                                             tokens::Semicolon)?;
 
-                tokens.advance(arg_tokens_len);
+        let mut args = Vec::new();
+        for arg_group in arg_groups.groups {
+            let mut arg_group_tokens = TokenStream::new(arg_group.tokens, &arg_group.context);
 
-                Ok(VarDecls { decls: args })
+            /* the modifier comes first if there is one, and applies to all args in this group - e.g.
+            `const x, y: Integer` means x and y are consts of type Integer */
+            let modifier = arg_group_tokens.peeked().match_one(keywords::Var
+                .or(keywords::Const)
+                .or(keywords::Out))
+                .map(|t| match t.unwrap_keyword() {
+                    keywords::Var => FunctionArgModifier::Var,
+                    keywords::Const => FunctionArgModifier::Const,
+                    keywords::Out => FunctionArgModifier::Out,
+                    _ => unreachable!()
+                });
+            if modifier.is_some() {
+                arg_group_tokens.advance(1);
             }
 
-            None => Ok(VarDecls::default()),
+            /* the actual arg group (names, colon, type) works the same as a var decl so we can
+            just parse it like that */
+            let group_args: Vec<VarDecl> = arg_group_tokens.parse()?;
+            for group_arg in group_args {
+                args.push(FunctionArg {
+                    context: group_arg.context,
+                    decl_type: group_arg.decl_type,
+                    name: group_arg.name,
+                    modifier,
+                })
+            }
+
+            arg_group_tokens.finish()?;
         }
+
+        Ok(args)
     }
 }
 

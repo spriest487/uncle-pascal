@@ -3,8 +3,6 @@ use std::{
 };
 use node::{
     self,
-    Identifier,
-    VarModifier,
 };
 use syntax;
 use semantic::*;
@@ -17,6 +15,7 @@ const RESULT_VAR_NAME: &str = "result";
 
 pub type FunctionDecl = node::FunctionDecl<ScopedSymbol, SemanticContext>;
 pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol, SemanticContext>;
+pub type FunctionArg = node::FunctionArg<ScopedSymbol, SemanticContext>;
 
 impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
@@ -46,49 +45,59 @@ impl FunctionDecl {
             return Err(SemanticError::illegal_name(function.name.to_string(), context));
         };
 
-        let args = VarDecls::annotate(&function.args, scope.clone(), SemanticVarsKind::Local)?;
+        let args: Vec<_> = function.args.iter()
+            .map(|arg| {
+                let arg_context = SemanticContext {
+                    token: arg.context.token().clone(),
+                    scope: scope.clone(),
+                };
+
+                let arg_type = scope.get_type(&arg.decl_type)
+                    .map_err(|not_found| {
+                        SemanticError::unknown_type(not_found, arg_context.clone())
+                    })?;
+
+                Ok(FunctionArg {
+                    name: arg.name.clone(),
+                    decl_type: arg_type,
+                    context: arg_context,
+                    modifier: arg.modifier,
+                })
+            })
+            .collect::<SemanticResult<_>>()?;
 
         let body = match &function.body {
             Some(function_body) => {
                 /* there can't already be a local symbol called "result" */
-                let result_id = Identifier::from(RESULT_VAR_NAME);
+                let result_id = RESULT_VAR_NAME;
                 function_body.local_vars.decls.iter().find(|decl| decl.name == result_id)
                     .map(|_| Err({
                         SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(), context.clone())
                     }))
                     .unwrap_or(Ok(()))?;
 
-                let mut local_vars = VarDecls::annotate(&function_body.local_vars,
-                                                        scope.clone(),
-                                                        SemanticVarsKind::Local)?;
-                for local_var in local_vars.decls.iter() {
-                    match local_var.modifier {
-                        Some(bad_modifier @ VarModifier::Out) |
-                        Some(bad_modifier @ VarModifier::Var) =>
-                            return Err(SemanticError::invalid_var_modifier(
-                                bad_modifier,
-                                local_var.context.clone())),
-
-                        Some(VarModifier::Const) |
-                        None =>
-                            ()
-                    }
-                }
+                let mut local_vars = VarDecls::annotate(&function_body.local_vars, scope.clone())?;
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {
-                        name: result_id,
+                        name: result_id.to_string(),
                         context: context.clone(),
-                        modifier: Some(VarModifier::Out),
                         decl_type: result_var_type.clone(),
                     });
                 }
 
-                let local_scope = Rc::new(
-                    scope.as_ref().clone()
-                        .with_vars_local(args.decls.iter())
-                        .with_vars_local(local_vars.decls.iter())
-                );
+                let local_scope = Rc::new({
+                    let mut local_scope = scope.as_ref().clone();
+                    for arg in args.iter() {
+                        local_scope = local_scope.with_symbol_local(&arg.name,
+                                                                    arg.decl_type.clone());
+                    }
+                    for var in local_vars.decls.iter() {
+                        local_scope = local_scope.with_symbol_local(&var.name,
+                                                                    var.decl_type.clone());
+                    }
+                    local_scope
+                });
 
                 let body_block = Block::annotate(&function_body.block, local_scope.clone())?;
 
@@ -136,14 +145,13 @@ impl FunctionDecl {
                 }
             };
 
-            if self.args.decls.len() != 1
-                || !is_valid_destructed_type(&self.args.decls[0].decl_type) {
-                let arg_types = self.args.decls.iter()
+            if self.args.len() != 1
+                || !is_valid_destructed_type(&self.args[0].decl_type) {
+                let arg_types = self.args.iter()
                     .map(|arg_decl| &arg_decl.decl_type)
                     .cloned();
 
-                return Err(SemanticError::invalid_destructor_args(arg_types,
-                                                                  self.context.clone()));
+                return Err(SemanticError::invalid_destructor_args(arg_types, self.context.clone()));
             }
         }
 
@@ -161,7 +169,7 @@ impl FunctionDecl {
             return false;
         }
 
-        match self.args.decls.iter().next().map(|arg| &arg.decl_type) {
+        match self.args.iter().next().map(|arg| &arg.decl_type) {
             Some(Type::Record(arg_record)) =>
                 arg_record.name == class_type.name.to_string(),
             _ =>
@@ -175,11 +183,17 @@ impl FunctionDecl {
 
     pub fn signature(&self) -> FunctionSignature {
         FunctionSignature {
-            arg_types: self.args.decls.iter()
+            arg_types: self.args.iter()
                 .map(|decl| decl.decl_type.clone())
                 .collect(),
             return_type: self.return_type.clone(),
             modifiers: self.modifiers.clone(),
         }
+    }
+}
+
+impl FunctionArg {
+    pub fn scope(&self) -> &Scope {
+        &self.context.scope
     }
 }

@@ -1,7 +1,7 @@
 use tokens;
 use tokens::AsToken;
 use keywords;
-use node::{self, Identifier, TypeName, VarModifier};
+use node::{self, TypeName};
 use syntax::*;
 
 pub type VarDecl = node::VarDecl<ParsedSymbol, ParsedContext>;
@@ -24,29 +24,13 @@ impl Parse for Vec<VarDecl> {
                 _ => break,
             }
 
-            /* the modifier comes first if there is one, and applies to
-            all variables declared in a single decl list - e.g.
-            `const x, y: Integer` means x and y are consts of type Integer */
-            let modifier = tokens.peeked().match_one(keywords::Var
-                .or(keywords::Const)
-                .or(keywords::Out))
-                .map(|t| match t.unwrap_keyword() {
-                    keywords::Var => VarModifier::Var,
-                    keywords::Const => VarModifier::Const,
-                    keywords::Out => VarModifier::Out,
-                    _ => unreachable!()
-                });
-            if modifier.is_some() {
-                tokens.advance(1);
-            }
-
             /* parse names until the next colon */
             let mut names = Vec::new();
             loop {
                 let name_tokens = tokens.match_sequence(Matcher::AnyIdentifier
                     .and_then(tokens::Colon.or(tokens::Comma)))?;
 
-                let name = Identifier::from(name_tokens[0].unwrap_identifier());
+                let name = name_tokens[0].unwrap_identifier().to_string();
                 let context = ParsedContext::from(name_tokens[0].clone());
 
                 names.push((name, context));
@@ -63,7 +47,6 @@ impl Parse for Vec<VarDecl> {
                 decls.push(VarDecl {
                     name,
                     context,
-                    modifier,
                     decl_type: decl_type.clone(),
                 })
             }

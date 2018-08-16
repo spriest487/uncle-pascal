@@ -29,7 +29,6 @@ use node::{
     TypeName,
     Context,
     ToSource,
-    VarModifier,
 };
 use operators;
 use source;
@@ -44,7 +43,6 @@ pub enum SemanticErrorKind {
         expected: Option<Type>,
         actual: Option<Type>,
     },
-    InvalidVarModifier(VarModifier),
     InvalidFunctionType(Option<Type>),
     InvalidConstructorType(Option<Type>),
     InvalidDestructorReturn(Type),
@@ -88,10 +86,6 @@ impl fmt::Display for SemanticErrorKind {
                 write!(f, "expected type `{}`, found `{}`",
                        expected.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()),
                        actual.as_ref().map(|t| t.to_string()).unwrap_or_else(|| "(none)".to_string()))
-            }
-
-            &SemanticErrorKind::InvalidVarModifier(modifier) => {
-                write!(f, "the modifier {} may not appear in this location", modifier.to_source())
             }
 
             &SemanticErrorKind::InvalidFunctionType(ref actual) => {
@@ -234,13 +228,6 @@ impl SemanticError {
                 expected_sig: sig,
                 actual,
             },
-            context,
-        }
-    }
-
-    pub fn invalid_var_modifier(modifier: VarModifier, context: SemanticContext) -> Self {
-        SemanticError {
-            kind: SemanticErrorKind::InvalidVarModifier(modifier),
             context,
         }
     }
