@@ -156,7 +156,7 @@ pub enum FunctionLocalDecl<TContext>
 {
     Vars(VarDecls<TContext>),
     Consts(ConstDecls<TContext>),
-    NestedFunction(Box<FunctionDecl<TContext>>),
+    NestedFunction(Box<Function<TContext>>),
 }
 
 #[derive(Debug, Clone)]

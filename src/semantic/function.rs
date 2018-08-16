@@ -175,7 +175,7 @@ impl Function {
 
                 node::FunctionLocalDecl::NestedFunction(parsed_local_func) => {
                     let func_scope = Rc::new(local_scope.clone());
-                    let local_func = FunctionDecl::annotate(&parsed_local_func, func_scope)?;
+                    let local_func = Function::annotate(&parsed_local_func, func_scope)?;
                     let local_func = Box::new(local_func);
 
                     let func_decl = node::FunctionLocalDecl::NestedFunction(local_func);

@@ -81,10 +81,10 @@ impl Parse for Function {
         loop {
             match tokens.look_ahead().match_one(any_decl_kw.clone()) {
                 Some(ref kw) if nested_func_keyword.clone().is_match(kw.as_token()) => {
-                    let func_decl: FunctionDecl = tokens.parse()?;
+                    let nested_func: Function = tokens.parse()?;
 
                     local_decls.push(node::FunctionLocalDecl::NestedFunction({
-                        Box::new(func_decl)
+                        Box::new(nested_func)
                     }));
                 }
 
