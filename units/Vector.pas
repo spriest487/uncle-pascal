@@ -22,17 +22,13 @@ function AddAll(self: Vector; other: Vector)
 implementation
 
 function New: Vector
-begin
     result := (
         Elements: nil
         Length: 0
     )
-end
 
 destructor Destroy(self: Vector)
-begin
     FreeMem(self.Elements)
-end
 
 function Add(self: Vector; p: Element)
 begin
@@ -53,9 +49,7 @@ begin
 end
 
 function AddAll(self: Vector; other: Vector)
-begin
   for let i = 0 to other.Length do
     self.Add(other.Elements[i])
-end
 
 end.

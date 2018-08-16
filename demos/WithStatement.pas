@@ -9,10 +9,7 @@ type
   end
 
 function CreateDog(name: String; age: Int32): Dog
-begin
-  result.Age := age
-  result.Name := name
-end
+  result := (Age: age; Name: name)
 
 begin
   let spot = CreateDog('Spot', 2)

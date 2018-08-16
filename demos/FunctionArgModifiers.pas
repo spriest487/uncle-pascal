@@ -3,9 +3,7 @@ program FunctionArgModifiers
 uses System.*
 
 function OutParam(out s: String)
-begin
     s := 'hello jane!'
-end
 
 function RefParam(var i: Int32)
 begin

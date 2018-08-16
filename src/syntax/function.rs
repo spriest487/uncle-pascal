@@ -11,6 +11,7 @@ use node::{
     FunctionKind,
     FunctionModifier,
     FunctionArgModifier,
+    ExpressionValue,
 };
 
 pub type FunctionDecl = node::FunctionDecl<ParsedContext>;
@@ -119,7 +120,22 @@ impl Parse for Function {
             }
         }
 
-        let block: Block = tokens.parse()?;
+        /* the begin/end block is optional if the body consists of one expression,
+        but wrap it in a block in that case */
+        let body = Expression::parse(tokens)?;
+        let block = match body.value {
+            | ExpressionValue::Block(block) => block,
+            | single_expr_val @ _ => Block {
+                context: body.context.clone(),
+                statements: vec![
+                    Expression {
+                        context: body.context,
+                        value: single_expr_val,
+                    }
+                ]
+            },
+        };
+
         tokens.match_or_endl(tokens::Semicolon)?;
 
         Ok(Function {

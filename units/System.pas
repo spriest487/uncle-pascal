@@ -62,9 +62,7 @@ function Trunc(f: Float64): Int32
 implementation
 
 function StringCreate: String
-begin
     result := (Chars: nil; Length: 0)
-end
 
 function StringFromBytes(bytes: ^Byte; len: NativeInt): String
 begin
@@ -78,7 +76,6 @@ begin
 end
 
 destructor DestroyString(string: String)
-begin
     if string.Length > 0 then
     begin
         FreeMem(string.Chars)
@@ -86,10 +83,8 @@ begin
         string.Chars := nil
         string.Length := 0
     end
-end
 
 function StringConcat(a: String; b: String): String
-begin
     if a.Length = 0 and b.Length = 0 then
         result := StringCreate()
     else if a.Length = 0 then
@@ -107,11 +102,9 @@ begin
 
         for let c = 0 to b.Length do
             result.Chars[a.Length + c] := b.Chars[c];
-    end;
-end
+    end
 
 function StringToCString(s: String; bytes: ^Byte; len: NativeInt): Boolean
-begin
     if len < s.Length + 1 then
         result := false
     else begin
@@ -121,11 +114,8 @@ begin
         bytes[s.Length] := #0
         result := true
     end
-end
 
 function StringLength(s: String): NativeInt
-begin
     result := s.Length
-end
 
 end.

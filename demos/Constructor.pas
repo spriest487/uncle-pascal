@@ -15,20 +15,16 @@ type
     end
 
 function PrintAnimal(name: String; animal: Animal)
-begin
     WriteLn(name
         + ' is an animal with '
         + StringFromInt(animal.Ears) + ' ears and '
         + StringFromInt(animal.Legs) + ' legs.')
-end
 
 function PrintIceCream(name: String; iceCream: IceCream)
-begin
     WriteLn('for ' + name
             + ' I am having '
             + StringFromInt(iceCream.Scoops) + ' scoops of '
             + iceCream.Flavor + '.')
-end
 
 var
     fish: Animal

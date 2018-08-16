@@ -13,7 +13,7 @@ const
     FLOAT_BIG = 9.999E7
     FLOAT_ONE = 1.0; FLOAT_TWO = 3E1
 
-procedure Test
+function Test
 const
     NAME = 'ja' + 'ne'
     HELLO = 'hello'
@@ -21,6 +21,7 @@ const
 begin
     WriteLn(GREETING + ' ' + NAME + ', num is ' + StringFromInt(NUM))
 end
+
 
 begin
     if YES then

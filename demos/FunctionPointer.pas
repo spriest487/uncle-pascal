@@ -6,15 +6,11 @@ type
     Greeter = procedure(name: String)
     Adder = function(x: Int32): Int32; cdecl
 
-procedure HelloWorld(name: String) 
-begin
+procedure HelloWorld(name: String)
     WriteLn('hello ' + name)
-end
 
 function AddOne(x: Int32): Int32; cdecl;
-begin
     result := x + 1
-end
 
 var
     greeter: Greeter
@@ -24,6 +20,6 @@ begin
     adder := AddOne
 
     greeter('jane')
-    let added := adder(3)
+    let added = adder(3)
     WriteLn('added: ' + StringFromInt(added))
 end.
