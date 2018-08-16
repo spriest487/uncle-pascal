@@ -241,3 +241,17 @@ void Pascal_IO_FClose(PascalType_System_Pointer fileHandle) {
     }
 }
 
+PascalType_System_NativeUInt Pascal_IO_FRead(
+        PascalType_System_Pointer fileHandle,
+        PascalType_System_Byte* to,
+        PascalType_System_NativeUInt len) {
+    FILE* file = static_cast<FILE*>(fileHandle);
+    std::size_t readCount = std::fread(to, 1, len, file);
+    
+    return static_cast<PascalType_System_NativeUInt>(readCount);
+}
+
+PascalType_System_Boolean Pascal_IO_FEof(PascalType_System_Pointer fileHandle) {
+    FILE* file = static_cast<FILE*>(fileHandle);
+    return std::feof(file);
+}

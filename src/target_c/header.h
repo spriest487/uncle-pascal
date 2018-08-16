@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_DEPRECATE
+
 #include <cstdint>
 #include <cstdlib>
 #include <cstdio>

@@ -438,21 +438,17 @@ fn type_cast_type(target_type: &Type,
                   context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let from_expr_type = from_value.expr_type()?
         .ok_or_else(|| {
-// expr has no type, can't cast it
+            // expr has no type, can't cast it
             SemanticError::invalid_typecast(target_type.clone(), None, context.clone())
         })?;
 
     match (from_expr_type, target_type) {
-        (Type::UInt32, Type::Int32) => Ok(Some(Type::Int32)),
-        (Type::Int32, Type::UInt32) => Ok(Some(Type::UInt32)),
+        | (ref from, to)
+        if from.promotes_to(to) || (from.is_numeric() && to.is_numeric())
+        => Ok(Some(to.clone())),
 
-        (Type::UInt64, Type::Int64) => Ok(Some(Type::Int64)),
-        (Type::Int64, Type::UInt64) => Ok(Some(Type::UInt64)),
-
-        (ref from, to) if from.promotes_to(to) => Ok(Some(to.clone())),
-
-// unsupported type of cast
-        (from, to) => {
+        // unsupported type of cast
+        | (from, to) => {
             Err(SemanticError::invalid_typecast(to.clone(), Some(from), context.clone()))
         }
     }

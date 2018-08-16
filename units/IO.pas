@@ -6,6 +6,7 @@ uses System.*
 
 type FileStream = class
     FileHandle: Pointer
+    Status: Int32
 end
 
 type InStream = interface
@@ -14,6 +15,11 @@ type InStream = interface
 end
 
 const 
+    // todo: finish implementing enums!
+    OK: NativeInt = 0
+    EOF: NativeInt = 1
+    BAD: NativeInt = 2
+
     READ: NativeInt = 0
     WRITE: NativeInt = 1
 
@@ -25,6 +31,8 @@ function InStream.Ok(self: FileStream): Boolean
 
 function FOpen(filenameCStr: ^Byte; modeCStr: NativeInt): Pointer
 function FClose(handle: Pointer)
+function FRead(handle: Pointer; buf: ^Byte; len: NativeUInt): NativeUInt
+function FEof(handle: Pointer): Boolean
 
 implementation
 
@@ -34,20 +42,34 @@ begin
     let fileNameCStr = GetMem(fileNameBufLen)
     filename.StringToCString(fileNameCStr, fileNameBufLen)
 
-    result := (FileHandle: FOpen(fileNameCStr, mode))
+    let handle = FOpen(fileNameCStr, mode)
+    if handle = nil then
+        result := (FileHandle: nil; Status: BAD)
+    else
+        result := (FileHandle: handle; Status: OK)
 
     FreeMem(fileNameCStr)
 end
 
 function InStream.Ok(self: FileStream): Boolean
 begin
-    result := self.FileHandle <> nil
+    result := (self.FileHandle <> nil) and self.Status = OK
 end
 
 function InStream.Read(self: FileStream; buf: ^Byte; count: NativeUInt): NativeUInt
 begin
-    WriteLn('Reading')
-    result := 0
+    if self.Status <> OK then begin
+        result := 0
+    end
+    else begin
+        result := FRead(self.FileHandle, buf, count)
+
+        if result <> count then 
+            if FEof(self.FileHandle) then
+                self.Status := EOF
+            else
+                self.Status := BAD
+    end
 end
 
 function Disposable.Dispose(self: FileStream)

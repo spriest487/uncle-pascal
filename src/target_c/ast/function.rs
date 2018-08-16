@@ -241,7 +241,7 @@ impl FunctionDecl {
             .collect();
 
         for arg in rc_args.iter() {
-            body.statements.insert(0, rc_retain(Name::local_internal(&arg.name)));
+            body.statements.insert(0, rc_retain(Name::local(&arg.name)));
             body.statements.push(rc_release(Name::local(&arg.name)));
         }
 

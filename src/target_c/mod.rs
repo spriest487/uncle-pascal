@@ -103,12 +103,12 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
         decl.write_forward(&mut out)?;
     }
 
+    unit.declare_vtables(&mut out)?;
+
     /* write impls */
     for decl_impl in unit.decls().iter() {
         decl_impl.write_impl(&mut out)?;
     }
-
-    unit.declare_vtables(&mut out)?;
 
     /* write main function */
     writeln!(out, "int main(int argc, char* argv[]) {{")?;
