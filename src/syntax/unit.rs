@@ -206,8 +206,10 @@ impl UnitDecl {
             }
 
             Some(ref var_kw) if var_kw.is_keyword(keywords::Var) => {
-                let vars = VarDecls::parse(tokens)?;
-                Ok(vec![node::UnitDecl::Vars(vars)])
+                let vars = VarDecl::parse_vars(tokens)?;
+                Ok(vars.into_iter()
+                    .map(|var| node::UnitDecl::Var(var))
+                    .collect())
             }
 
             Some(ref const_kw) if const_kw.is_keyword(keywords::Const) => {

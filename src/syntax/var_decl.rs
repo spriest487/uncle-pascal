@@ -6,7 +6,6 @@ use operators;
 use syntax::*;
 
 pub type VarDecl = node::VarDecl<ParsedContext>;
-pub type VarDecls = node::VarDecls<ParsedContext>;
 
 impl Parse for Vec<VarDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -80,20 +79,25 @@ impl Parse for Vec<VarDecl> {
     }
 }
 
-impl Parse for VarDecls {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecls> {
+impl VarDecl {
+    /**
+        parse a "var" section, consisting of the "var" keyword followed by
+        0+ var declarations, separated by semicolon terminators and/or newlines
+
+        part of the implementation or interface section of
+        a unit, the global section of a program, or the decls section of a function
+     */
+    pub fn parse_vars(tokens: &mut TokenStream) -> ParseResult<Vec<VarDecl>> {
         tokens.match_one(keywords::Var)?;
 
-        let decls: Vec<VarDecl> = tokens.parse()?;
+        let vars = tokens.parse::<Vec<VarDecl>>()?;
 
         /* it's legal for a var section to be nothing but a terminator */
-        if decls.len() == 0 {
+        if vars.len() == 0 {
             tokens.match_or_endl(tokens::Semicolon)?;
         }
 
-        Ok(VarDecls {
-            decls
-        })
+        Ok(vars)
     }
 }
 
@@ -104,11 +108,11 @@ mod test {
     use super::*;
     use opts::CompileOptions;
 
-    fn parse_vars(src: &str) -> VarDecls {
-        TokenStream::tokenize("test", src, &CompileOptions::default())
-            .unwrap()
-            .parse_to_end()
-            .unwrap()
+    fn parse_vars(src: &str) -> Vec<VarDecl> {
+        let mut tokens = TokenStream::tokenize("test", src, &CompileOptions::default())
+            .unwrap();
+
+        VarDecl::parse_vars(&mut tokens).unwrap()
     }
 
     fn make_type_name(name: &str) -> TypeName {
@@ -123,37 +127,37 @@ mod test {
     fn parses_empty_vars() {
         let vars = parse_vars("var;");
 
-        assert_eq!(0, vars.decls.len());
+        assert_eq!(0, vars.len());
     }
 
     #[test]
     fn parses_var() {
         let vars = parse_vars("var x: Integer;");
 
-        assert_eq!(1, vars.decls.len());
-        assert_eq!("x", vars.decls[0].name);
-        assert_eq!(make_type_name("Integer"), vars.decls[0].decl_type);
+        assert_eq!(1, vars.len());
+        assert_eq!("x", vars[0].name);
+        assert_eq!(make_type_name("Integer"), vars[0].decl_type);
     }
 
     #[test]
     fn parses_var_list() {
         let vars = parse_vars("var x: System.Integer; y: System.String;");
 
-        assert_eq!(2, vars.decls.len());
+        assert_eq!(2, vars.len());
 
-        assert_eq!("x", vars.decls[0].name);
-        assert_eq!(make_type_name("System.Integer"), vars.decls[0].decl_type);
+        assert_eq!("x", vars[0].name);
+        assert_eq!(make_type_name("System.Integer"), vars[0].decl_type);
 
-        assert_eq!("y", vars.decls[1].name);
-        assert_eq!(make_type_name("System.String"), vars.decls[1].decl_type);
+        assert_eq!("y", vars[1].name);
+        assert_eq!(make_type_name("System.String"), vars[1].decl_type);
     }
 
     #[test]
     fn parses_var_with_indirection() {
         let vars = parse_vars("var x: ^T.B");
 
-        assert_eq!(1, vars.decls.len());
-        assert_eq!("x", vars.decls[0].name);
-        assert_eq!(make_type_name("T.B").pointer(), vars.decls[0].decl_type);
+        assert_eq!(1, vars.len());
+        assert_eq!("x", vars[0].name);
+        assert_eq!(make_type_name("T.B").pointer(), vars[0].decl_type);
     }
 }

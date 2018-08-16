@@ -74,7 +74,7 @@ pub enum UnitDecl<TContext>
 {
     Function(FunctionDecl<TContext>),
     Type(TypeDecl<TContext>),
-    Vars(VarDecls<TContext>),
+    Var(VarDecl<TContext>),
     Consts(ConstDecls<TContext>),
 }
 
@@ -122,13 +122,12 @@ impl<TContext> Program<TContext>
         self.decls.iter()
             .filter_map(|program_decl| match program_decl {
                 Implementation::Decl(decl) => match decl {
-                    UnitDecl::Vars(var_decl) => Some(var_decl),
+                    UnitDecl::Var(var_decl) => Some(var_decl),
                     _ => None,
                 }
 
                 _ => None,
             })
-            .flat_map(|vars| vars.decls.iter())
     }
 }
 
@@ -153,21 +152,19 @@ impl<TContext> Unit<TContext>
     pub fn vars(&self) -> impl Iterator<Item=&VarDecl<TContext>> {
         let interface_vars = self.interface.iter()
             .filter_map(|decl| match decl {
-                UnitDecl::Vars(vars) => Some(vars),
+                UnitDecl::Var(var) => Some(var),
                 _ => None,
-            })
-            .flat_map(|vars| vars.decls.iter());
+            });
 
         let impl_vars = self.implementation.iter()
             .filter_map(|program_decl| match program_decl {
                 Implementation::Decl(decl) => match decl {
-                    UnitDecl::Vars(vars) => Some(vars),
+                    UnitDecl::Var(var) => Some(var),
                     _ => None,
                 }
 
                 _ => None,
-            })
-            .flat_map(|vars| vars.decls.iter());
+            });
 
         interface_vars.chain(impl_vars)
     }
@@ -239,7 +236,7 @@ impl<TContext> FunctionDecl<TContext>
 pub enum FunctionLocalDecl<TContext>
     where TContext: Context,
 {
-    Vars(VarDecls<TContext>),
+    Var(VarDecl<TContext>),
     Consts(ConstDecls<TContext>),
     NestedFunction(Box<Function<TContext>>),
 }
@@ -259,12 +256,11 @@ impl<TContext> Function<TContext>
     pub fn local_vars(&self) -> impl Iterator<Item=&VarDecl<TContext>> {
         self.local_decls.iter()
             .filter_map(|decl| match decl {
-                FunctionLocalDecl::Vars(vars) => Some(vars.decls.iter()),
+                FunctionLocalDecl::Var(var) => Some(var),
 
                 FunctionLocalDecl::NestedFunction(_) |
                 FunctionLocalDecl::Consts(_) => None,
             })
-            .flat_map(|var_decls| var_decls)
     }
 }
 
@@ -422,19 +418,3 @@ pub struct VarDecl<TContext>
 
     pub default_value: Option<Expression<TContext>>,
 }
-
-#[derive(Clone, Debug)]
-pub struct VarDecls<TContext>
-    where TContext: Context
-{
-    pub decls: Vec<VarDecl<TContext>>,
-}
-
-impl<TContext> Default for VarDecls<TContext>
-    where TContext: Context
-{
-    fn default() -> Self {
-        VarDecls { decls: Vec::new() }
-    }
-}
-

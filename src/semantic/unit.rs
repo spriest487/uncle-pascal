@@ -27,10 +27,11 @@ impl Unit {
                 Ok((Some(node::UnitDecl::Function(func_decl)), scope))
             }
 
-            node::UnitDecl::Vars(parsed_vars) => {
-                let (vars, scope) = VarDecls::annotate(parsed_vars, scope)?;
+            node::UnitDecl::Var(parsed_var) => {
+                let global_binding_kind = BindingKind::Mutable;
+                let (var, new_scope) = VarDecl::annotate(parsed_var, scope, global_binding_kind)?;
 
-                Ok((Some(node::UnitDecl::Vars(vars)), scope))
+                Ok((Some(node::UnitDecl::Var(var)), new_scope))
             }
 
             node::UnitDecl::Consts(parsed_consts) => {

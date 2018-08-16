@@ -155,21 +155,6 @@ impl<C> ToSource for ExpressionValue<C>
     }
 }
 
-impl<C> ToSource for VarDecls<C>
-    where C: Context
-{
-    fn to_source(&self) -> String {
-        let decl_lines = self.decls.iter()
-            .map(|decl| {
-                format!("\t{}: {};", decl.name, decl.decl_type.to_source())
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-
-        format!("var\n{}", decl_lines)
-    }
-}
-
 impl<C> ToSource for ConstDecls<C>
     where C: Context
 {
@@ -207,7 +192,7 @@ impl<C> ToSource for FunctionLocalDecl<C>
 {
     fn to_source(&self) -> String {
         match self {
-            FunctionLocalDecl::Vars(vars) => vars.to_source(),
+            FunctionLocalDecl::Var(var) => format!("var {}", var.to_source()),
             FunctionLocalDecl::NestedFunction(func) => func.to_source(),
             FunctionLocalDecl::Consts(consts) => consts.to_source(),
         }
@@ -264,8 +249,8 @@ impl<C> ToSource for Program<C>
                 Implementation::Decl(UnitDecl::Function(func_decl)) =>
                     lines.push(func_decl.to_source()),
 
-                Implementation::Decl(UnitDecl::Vars(var_decls)) =>
-                    lines.push(var_decls.to_source()),
+                Implementation::Decl(UnitDecl::Var(var_decl)) =>
+                    lines.push(format!("var {}", var_decl.to_source())),
 
                 Implementation::Decl(UnitDecl::Consts(const_decls)) =>
                     lines.push(const_decls.to_source()),
@@ -341,12 +326,20 @@ impl<C> ToSource for UnitDecl<C>
             UnitDecl::Function(func_decl) =>
                 func_decl.to_source(),
 
-            UnitDecl::Vars(var_decls) =>
-                var_decls.to_source(),
+            UnitDecl::Var(var) =>
+                format!("var {}", var.to_source()),
 
             UnitDecl::Consts(const_decls) =>
                 const_decls.to_source(),
         }
+    }
+}
+
+impl<C> ToSource for VarDecl<C>
+    where C: Context
+{
+    fn to_source(&self) -> String {
+        format!("\t{}: {};", self.name, self.decl_type.to_source())
     }
 }
 

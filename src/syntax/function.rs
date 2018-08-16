@@ -89,9 +89,10 @@ impl Parse for Function {
                 }
 
                 Some(ref kw) if kw.is_keyword(keywords::Var) => {
-                    let vars: VarDecls = tokens.parse()?;
+                    let vars = VarDecl::parse_vars(tokens)?;
 
-                    local_decls.push(node::FunctionLocalDecl::Vars(vars));
+                    local_decls.extend(vars.into_iter()
+                        .map(|var| node::FunctionLocalDecl::Var(var)));
                 }
 
                 Some(ref kw) if kw.is_keyword(keywords::Const) => {

@@ -8,40 +8,6 @@ use node::{
 use semantic::IndexRange;
 
 #[derive(PartialEq, Clone, Debug, Hash)]
-pub struct TypedSymbol {
-    pub name: Identifier,
-    pub decl_type: Type,
-}
-
-impl ToSource for TypedSymbol {
-    fn to_source(&self) -> String {
-        self.name.to_source()
-    }
-}
-
-impl fmt::Display for TypedSymbol {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} : {}", self.name, self.decl_type)
-    }
-}
-
-impl TypedSymbol {
-    pub fn new<T, TId>(name: TId, decl_type: T) -> Self
-        where T: Into<Type>,
-              TId: Into<Identifier>,
-    {
-        Self {
-            name: name.into(),
-            decl_type: decl_type.into(),
-        }
-    }
-}
-
-impl node::Symbol for TypedSymbol {
-    type Type = Type;
-}
-
-#[derive(PartialEq, Clone, Debug, Hash)]
 pub struct DynamicArrayType {
     pub element: Box<Type>,
 }

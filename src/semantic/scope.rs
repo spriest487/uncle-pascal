@@ -403,17 +403,6 @@ impl Scope {
         self
     }
 
-    pub fn with_global_var(mut self, name: &str, decl_type: impl Into<Type>) -> Self {
-        let full_name = self.qualify_local_name(name);
-        let binding = SymbolBinding {
-            decl_type: decl_type.into(),
-            kind: BindingKind::Mutable,
-        };
-
-        self.names.insert(full_name, Named::Symbol(binding));
-        self
-    }
-
     pub fn initialize_symbol(mut self, name: &Identifier) -> Self {
         let find_symbol = self.find_named(name)
             .map(|(full_name, named)| (full_name, named.clone()));

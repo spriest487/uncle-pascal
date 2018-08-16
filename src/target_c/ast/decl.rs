@@ -48,66 +48,63 @@ pub enum Declaration {
 impl Declaration {
     pub fn translate_decl(decl: &semantic::UnitDecl,
                           unit: &mut TranslationUnit)
-                          -> TranslationResult<Vec<Declaration>> {
+                          -> TranslationResult<Option<Declaration>> {
         match decl {
             UnitDecl::Function(func_decl) => {
                 let function = FunctionDecl::from(func_decl);
-                Ok(vec![Declaration::Function(function)])
+                Ok(Some(Declaration::Function(function)))
             }
 
             UnitDecl::Type(ref type_decl) =>
                 match type_decl {
-                    | TypeDecl::Record(record_decl) =>
-                        Struct::translate(record_decl, unit)
-                            .map(|record| vec![
-                                Declaration::Struct(record)
-                            ]),
+                    | TypeDecl::Record(record_decl) => {
+                        let declared_struct = Struct::translate(record_decl, unit)?;
+
+                        Ok(Some(Declaration::Struct(declared_struct)))
+                    }
 
                     | TypeDecl::Enumeration(enum_decl) => {
                         let name = identifier_to_c(&enum_decl.qualified_name());
-                        Ok(vec![Declaration::UsingAlias(
+                        Ok(Some(Declaration::UsingAlias(
                             name,
-                            "System_UInt64".to_string()
-                        )])
+                            "System_UInt64".to_string(),
+                        )))
                     }
 
                     | TypeDecl::Set(set_decl) => {
                         //todo
                         let name = identifier_to_c(&set_decl.qualified_name());
-                        Ok(vec![Declaration::UsingAlias(
+                        Ok(Some(Declaration::UsingAlias(
                             name,
-                            "std::unordered_set<System_UInt64>".to_string()
-                        )])
+                            "std::unordered_set<System_UInt64>".to_string(),
+                        )))
                     }
 
-                    // these decls don't create any new types in the C++ output and can be ignored
-                    | TypeDecl::Alias { .. }
-                    => Ok(vec![])
+                    | TypeDecl::Alias { .. } => {
+                        //should be removed during typechecking, can be ignored here
+                        Ok(None)
+                    }
                 }
 
-            UnitDecl::Vars(ref vars_decl) => {
-                vars_decl.decls.iter()
-                    .map(|var_decl| {
-                        let variable = Variable::translate(var_decl, false, unit)?;
-                        Ok(Declaration::Variable(variable))
-                    })
-                    .collect()
+            UnitDecl::Var(ref var_decl) => {
+                let variable = Variable::translate(var_decl, false, unit)?;
+                Ok(Some(Declaration::Variable(variable)))
             }
 
             UnitDecl::Consts(_) => {
                 // consts are resolved at compile-time and don't need to be in the C++ output
-                Ok(vec![])
+                Ok(None)
             }
         }
     }
 
     pub fn translate_impl(decl: &semantic::Implementation,
                           unit: &mut TranslationUnit) ->
-                          TranslationResult<Vec<Declaration>> {
+                          TranslationResult<Option<Declaration>> {
         match decl {
             node::Implementation::Function(func_impl) => {
                 let definition = FunctionDecl::from_function(func_impl, unit)?;
-                Ok(vec![Declaration::Function(definition)])
+                Ok(Some(Declaration::Function(definition)))
             }
             node::Implementation::Decl(decl) => {
                 Self::translate_decl(decl, unit)

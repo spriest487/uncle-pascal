@@ -163,7 +163,7 @@ impl Function {
 
         for local_decl in function.local_decls.iter() {
             match local_decl {
-                node::FunctionLocalDecl::Vars(_) => {
+                node::FunctionLocalDecl::Var(_) => {
                     /* local vars are skipped here, other decls can't refer to them
                     so it's easiest just to process them last */
                 }
@@ -200,24 +200,17 @@ impl Function {
         }
 
         /* annotate variables and add them to the local scope */
-        let mut all_local_vars = VarDecls::default();
+        let mut all_local_vars = Vec::new();
 
         for parsed_local_var in function.local_vars() {
-            let local_var = VarDecl::annotate(parsed_local_var, local_scope.clone())?;
-            all_local_vars.decls.push(local_var);
-        }
+            let (local_var, new_scope) = VarDecl::annotate(
+                parsed_local_var,
+                local_scope.clone(),
+                BindingKind::Uninitialized
+            )?;
 
-        for local_var in all_local_vars.decls.iter() {
-            let binding_kind = match local_var.decl_type {
-                Type::Record(_) => BindingKind::Mutable,
-                _ => BindingKind::Uninitialized,
-            };
-
-            local_scope = Rc::new(local_scope.as_ref().clone().with_binding(
-                &local_var.name,
-                local_var.decl_type.clone(),
-                binding_kind,
-            ));
+            all_local_vars.push(local_var);
+            local_scope = new_scope;
         }
 
         /* add a "result" var if this function returns something */
@@ -232,7 +225,9 @@ impl Function {
 
         /* add the "result" var */
 
-        local_decls.push(node::FunctionLocalDecl::Vars(all_local_vars));
+        local_decls.extend(all_local_vars
+            .into_iter()
+            .map(|var| node::FunctionLocalDecl::Var(var)));
 
         /* we don't keep anything from the local scope after the function */
         let (block, _) = Block::annotate(&function.block, local_scope)?;

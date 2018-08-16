@@ -138,10 +138,9 @@ impl FunctionDecl {
                          -> TranslationResult<Self> {
         let local_vars: Vec<_> = function.local_decls.iter()
             .filter_map(|decl| match decl {
-                FunctionLocalDecl::Vars(local_vars) => Some(local_vars),
+                FunctionLocalDecl::Var(var) => Some(var),
                 _ => None,
             })
-            .flat_map(|vars_decl| vars_decl.decls.iter())
             .cloned()
             .collect();
 
