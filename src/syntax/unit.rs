@@ -5,15 +5,16 @@ use tokens;
 use operators;
 use tokens::AsToken;
 
-pub type Unit = node::Unit<ParsedSymbol>;
-pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol>;
+pub type Unit = node::Unit<ParsedSymbol, ParsedContext>;
+pub type UnitDeclaration = node::UnitDeclaration<ParsedSymbol, ParsedContext>;
+pub type UnitReference = node::UnitReference<ParsedContext>;
 
 impl Unit {
     pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {
         let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
         tokens.match_or_endl(tokens::Semicolon)?;
 
-        let uses: Vec<node::UnitReference> = tokens.parse()?;
+        let uses: Vec<UnitReference> = tokens.parse()?;
 
         tokens.match_one(keywords::Interface)?;
         let interface_decls: Vec<UnitDeclaration> = tokens.parse()?;
@@ -34,7 +35,7 @@ impl Unit {
     }
 }
 
-impl Parse for Vec<node::UnitReference> {
+impl Parse for Vec<UnitReference> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let uses_kw = tokens.match_peek(keywords::Uses)?;
 
@@ -75,7 +76,7 @@ impl Parse for Vec<node::UnitReference> {
 
             units.push(node::UnitReference {
                 name: node::Identifier::from(unit_id.unwrap_identifier()),
-                context: unit_context,
+                context: unit_context.into(),
                 kind: uses_kind,
             });
 

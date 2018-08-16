@@ -29,7 +29,27 @@ use node::{
     Symbol,
     ToSource,
     TypeName,
+    Context,
 };
+
+#[derive(Clone, Debug)]
+pub struct ParsedContext {
+    pub token: source::Token,
+}
+
+impl Context for ParsedContext {
+    fn token(&self) -> &source::Token {
+        &self.token
+    }
+}
+
+impl From<source::Token> for ParsedContext {
+    fn from(token: source::Token) -> Self {
+        Self {
+            token
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ParsedSymbol(pub Identifier);

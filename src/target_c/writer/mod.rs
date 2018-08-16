@@ -348,6 +348,8 @@ fn write_statement(out: &mut String,
                 name: binding_id,
                 decl_type: binding_type,
             };
+
+            let context: semantic::SemanticContext = context;
             let binding_id_expr = semantic::Expression::identifier(binding_sym, context.clone());
 
             semantic::Expression::binary_op(binding_id_expr, operators::Assignment, *value, context)

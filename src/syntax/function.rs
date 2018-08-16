@@ -5,8 +5,8 @@ use tokens;
 use tokens::AsToken;
 use node::{self, Identifier, FunctionKind};
 
-pub type FunctionDecl = node::FunctionDecl<ParsedSymbol>;
-pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol>;
+pub type FunctionDecl = node::FunctionDecl<ParsedSymbol, ParsedContext>;
+pub type FunctionDeclBody = node::FunctionDeclBody<ParsedSymbol, ParsedContext>;
 
 impl Parse for FunctionDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -89,7 +89,7 @@ impl Parse for FunctionDecl {
 
         Ok(FunctionDecl {
             name: Identifier::from(fn_name.unwrap_identifier()),
-            context: fn_name,
+            context: fn_name.into(),
             return_type,
             args: VarDecls { decls: args },
             kind,

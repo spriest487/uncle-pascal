@@ -4,8 +4,8 @@ use keywords;
 use node::{self, Identifier, TypeName};
 use syntax::*;
 
-pub type VarDecl = node::VarDecl<ParsedSymbol>;
-pub type VarDecls = node::VarDecls<ParsedSymbol>;
+pub type VarDecl = node::VarDecl<ParsedSymbol, ParsedContext>;
+pub type VarDecls = node::VarDecls<ParsedSymbol, ParsedContext>;
 
 impl Parse for VarDecl {
     fn parse(tokens: &mut TokenStream) -> ParseResult<VarDecl> {
@@ -22,7 +22,7 @@ impl Parse for VarDecl {
         Ok(VarDecl {
             name,
             decl_type,
-            context: name_token,
+            context: name_token.into(),
         })
     }
 }

@@ -1,9 +1,11 @@
+use std::rc::Rc;
 use node;
 use syntax;
 use semantic::*;
 
-pub type Unit = node::Unit<ScopedSymbol>;
-pub type UnitDeclaration = node::UnitDeclaration<ScopedSymbol>;
+pub type Unit = node::Unit<ScopedSymbol, SemanticContext>;
+pub type UnitDeclaration = node::UnitDeclaration<ScopedSymbol, SemanticContext>;
+pub type UnitReference = node::UnitReference<SemanticContext>;
 
 impl Unit {
     pub fn annotate_decls<'a, TDecls>(decls: TDecls,
@@ -16,7 +18,7 @@ impl Unit {
         for decl in decls {
             match decl {
                 node::UnitDeclaration::Type(parsed_type_decl) => {
-                    let type_decl = TypeDecl::annotate(parsed_type_decl, &scope)?;
+                    let type_decl = TypeDecl::annotate(parsed_type_decl, Rc::new(scope.clone()))?;
                     match &type_decl {
                         node::TypeDecl::Record(record_decl) => {
                             scope = scope.with_type(record_decl.name.clone(),
@@ -34,7 +36,7 @@ impl Unit {
                 }
 
                 node::UnitDeclaration::Function(parsed_func) => {
-                    let func_decl = FunctionDecl::annotate(parsed_func, &scope)?;
+                    let func_decl = FunctionDecl::annotate(parsed_func, Rc::new(scope.clone()))?;
 
                     scope = scope.with_symbol_absolute(func_decl.name.clone(),
                                                        func_decl.signature_type());
@@ -45,7 +47,9 @@ impl Unit {
                 }
 
                 node::UnitDeclaration::Vars(parsed_vars) => {
-                    let vars = Vars::annotate(parsed_vars, &scope, SemanticVarsKind::Namespaced)?;
+                    let vars = Vars::annotate(parsed_vars,
+                                              Rc::new(scope.clone()),
+                                              SemanticVarsKind::Namespaced)?;
 
                     scope = scope.with_vars_absolute(vars.decls.iter());
 
@@ -57,12 +61,31 @@ impl Unit {
         Ok((result, scope))
     }
 
+    pub fn annotate_uses<'a>(uses: impl IntoIterator<Item=&'a syntax::UnitReference>,
+                             scope: Rc<Scope>)
+                             -> Vec<UnitReference> {
+        uses.into_iter()
+            .map(|unit_ref| {
+                UnitReference {
+                    name: unit_ref.name.clone(),
+                    context: SemanticContext {
+                        /* at the moment, the scope provided must already have all the symbols
+                        imported from the uses section, so we don't need to do anything here */
+                        scope: scope.clone(),
+                        token: unit_ref.context.token().clone(),
+                    },
+                    kind: unit_ref.kind.clone(),
+                }
+            })
+            .collect()
+    }
+
     pub fn annotate(unit: &syntax::Unit, scope: Scope) -> Result<(Self, Scope), SemanticError> {
         let unit_scope = scope.with_local_namespace(&unit.name);
 
         let (interface_decls, interface_scope) = Unit::annotate_decls(
             unit.interface.iter(),
-            unit_scope)?;
+            unit_scope.clone())?;
 
         let (impl_decls, _) = Unit::annotate_decls(
             unit.implementation.iter(),
@@ -72,7 +95,7 @@ impl Unit {
             interface: interface_decls,
             implementation: impl_decls,
             name: unit.name.clone(),
-            uses: unit.uses.clone(),
+            uses: Self::annotate_uses(unit.uses.iter(), Rc::new(unit_scope)),
         };
 
         Ok((unit, interface_scope))

@@ -9,7 +9,7 @@ use node;
 use source;
 use operators;
 
-pub type Expression = node::Expression<ParsedSymbol>;
+pub type Expression = node::Expression<ParsedSymbol, ParsedContext>;
 pub type ExpressionResult = Result<Expression, ParseError>;
 
 #[derive(Debug, Clone)]
@@ -372,7 +372,7 @@ impl Expression {
 
     fn parse_literal_nil(tokens: &mut TokenStream) -> ExpressionResult {
         tokens.match_one(keywords::Nil)?;
-        Ok(Expression::literal_nil(tokens.context()))
+        Ok(Expression::literal_nil(tokens.context().clone()))
     }
 
     fn parse_let_binding(tokens: &mut TokenStream) -> ExpressionResult {
@@ -384,7 +384,7 @@ impl Expression {
 
         let value: Expression = tokens.parse()?;
 
-        Ok(Expression::let_binding(binding_tokens[0].clone(), name, value))
+        Ok(Expression::let_binding(name, value, binding_tokens[0].clone()))
     }
 
     fn parse_if(tokens: &mut TokenStream) -> ExpressionResult {

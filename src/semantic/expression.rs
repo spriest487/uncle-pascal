@@ -1,18 +1,18 @@
+use std::rc::Rc;
 use syntax;
 use semantic::*;
 use node::{self, Identifier, TypeName};
 use operators;
 use types;
-use source;
 use consts::IntConstant;
 use types::Type;
 
-pub type Expression = node::Expression<ScopedSymbol>;
+pub type Expression = node::Expression<ScopedSymbol, SemanticContext>;
 
 fn expect_valid_operation(operator: operators::Operator,
                           target: Option<&Type>,
                           actual_expr: &Expression,
-                          context: &source::Token) -> SemanticResult<()> {
+                          context: &SemanticContext) -> SemanticResult<()> {
     /* special case for assigning 0 to any numeric type, or assigning integers in
      the range 0...255 to bytes */
     match (operator, target, &actual_expr.value) {
@@ -78,7 +78,7 @@ fn expect_valid_operation(operator: operators::Operator,
 
 fn expect_comparable(target: Option<&Type>,
                      actual: Option<&Type>,
-                     context: &source::Token) -> SemanticResult<()> {
+                     context: &SemanticContext) -> SemanticResult<()> {
     match (target, actual) {
         (a @ None, b @ _) | (a @ _, b @ None) =>
             Err(SemanticError::types_not_comparable(a.cloned(),
@@ -97,9 +97,14 @@ fn expect_comparable(target: Option<&Type>,
 }
 
 fn annotate_identifier(name: &Identifier,
-                       scope: &Scope,
-                       context: &source::Token)
+                       scope: Rc<Scope>,
+                       context: &syntax::ParsedContext)
                        -> SemanticResult<Expression> {
+    let identifier_context = SemanticContext {
+        token: context.token().clone(),
+        scope: scope.clone(),
+    };
+
     scope.get_symbol(name)
         .map(|symbol| match symbol {
             /* transform identifiers that reference record members into
@@ -107,40 +112,43 @@ fn annotate_identifier(name: &Identifier,
             ScopedSymbol::RecordMember { record_id, name, .. } => {
                 let record_sym = scope.get_symbol(&record_id).unwrap();
 
-                let base = Expression::identifier(record_sym, context.clone());
+                let base = Expression::identifier(record_sym, identifier_context.clone());
 
                 Expression::member(base, &name)
             }
 
             symbol @ ScopedSymbol::Local { .. } => {
-                Expression::identifier(symbol, context.clone())
+                Expression::identifier(symbol, identifier_context.clone())
             }
         })
         .ok_or_else(|| {
-            SemanticError::unknown_symbol(name.clone(), context.clone())
+            SemanticError::unknown_symbol(name.clone(), identifier_context)
         })
 }
 
 fn annotate_if(condition: &syntax::Expression,
                then_branch: &syntax::Expression,
                else_branch: Option<&syntax::Expression>,
-               scope: &Scope,
-               context: &source::Token) -> SemanticResult<Expression>
+               scope: Rc<Scope>,
+               context: &syntax::ParsedContext) -> SemanticResult<Expression>
 {
-    let cond_expr = Expression::annotate(condition, scope)?;
-    let then_expr = Expression::annotate(then_branch, scope)?;
+    let cond_expr = Expression::annotate(condition, scope.clone())?;
+    let then_expr = Expression::annotate(then_branch, scope.clone())?;
     let else_expr = match else_branch {
-        Some(expr) => Some(Expression::annotate(expr, scope)?),
+        Some(expr) => Some(Expression::annotate(expr, scope.clone())?),
         None => None
     };
 
-    Ok(Expression::if_then_else(cond_expr, then_expr, else_expr, context.clone()))
+    Ok(Expression::if_then_else(cond_expr, then_expr, else_expr, SemanticContext {
+        token: context.token().clone(),
+        scope: scope.clone(),
+    }))
 }
 
 fn if_type(condition: &Expression,
            then_branch: &Expression,
            else_branch: Option<&Expression>,
-           context: &source::Token) -> SemanticResult<Option<Type>> {
+           context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let condition_type = condition.expr_type()?;
 
     expect_comparable(Some(&Type::Boolean),
@@ -159,10 +167,10 @@ fn if_type(condition: &Expression,
 fn annotate_for_loop(from: &syntax::Expression,
                      to: &syntax::Expression,
                      body: &syntax::Expression,
-                     scope: &Scope,
-                     context: &source::Token) -> SemanticResult<Expression> {
-    let from_expr = Expression::annotate(from, scope)?;
-    let to_expr = Expression::annotate(to, scope)?;
+                     scope: Rc<Scope>,
+                     context: &syntax::ParsedContext) -> SemanticResult<Expression> {
+    let from_expr = Expression::annotate(from, scope.clone())?;
+    let to_expr = Expression::annotate(to, scope.clone())?;
 
     let do_expr = if from_expr.is_let_binding() {
         let (from_name, from_value) = from_expr.clone().unwrap_let_binding();
@@ -170,26 +178,28 @@ fn annotate_for_loop(from: &syntax::Expression,
             .ok_or_else(|| SemanticError::type_not_assignable(
                 None, from_expr.context.clone()))?;
 
-        let body_scope = scope.clone()
-            .with_symbol_local(&from_name, from_type);
+        let body_scope = Rc::new(scope.as_ref().clone()
+            .with_symbol_local(&from_name, from_type));
 
-        Expression::annotate(body, &body_scope)?
+        Expression::annotate(body, body_scope)?
     } else {
-        Expression::annotate(body, scope)?
+        Expression::annotate(body, scope.clone())?
     };
 
-    Ok(Expression::for_loop(from_expr, to_expr, do_expr, context.clone()))
+    Ok(Expression::for_loop(from_expr, to_expr, do_expr, SemanticContext {
+        token: context.token().clone(),
+        scope: scope.clone(),
+    }))
 }
 
 fn for_loop_type(from: &Expression,
                  to: &Expression,
                  body: &Expression,
-                 context: &source::Token) -> SemanticResult<Option<Type>> {
+                 context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let from_type = from.expr_type()?;
     let to_type = to.expr_type()?;
 
-    expect_comparable(Some(&Type::Int32), to_type.as_ref(),
-                      context)?;
+    expect_comparable(Some(&Type::Int32), to_type.as_ref(), context)?;
 
     let _body_type = body.expr_type()?;
 
@@ -244,7 +254,7 @@ fn annotate_ufcs(target: &Expression,
                  target_type: &Type,
                  func_name: &str,
                  args: &Vec<Expression>,
-                 scope: &scope::Scope) -> Option<Expression> {
+                 scope: Rc<Scope>) -> Option<Expression> {
     let target_type_name = Type::name(Some(target_type.remove_indirection()));
 
     /* look for matching UFCS func in NS of target type */
@@ -281,21 +291,21 @@ fn annotate_ufcs(target: &Expression,
 
 fn annotate_function_call(target: &syntax::Expression,
                           args: &Vec<syntax::Expression>,
-                          scope: &Scope,
-                          _context: &source::Token) -> SemanticResult<Expression> {
+                          scope: Rc<Scope>,
+                          _context: &syntax::ParsedContext) -> SemanticResult<Expression> {
     let typed_args = args.iter()
-        .map(|arg| Expression::annotate(arg, scope))
+        .map(|arg| Expression::annotate(arg, scope.clone()))
         .collect::<Result<Vec<_>, _>>()?;
 
     /* expressions of the form x.a() should first check if a is function in the same namespace as
     type A, taking an A as the first param, and invoke it using UFCS instead if so */
     let ufcs_call = match &target.value {
         &node::ExpressionValue::Member { ref of, ref name } => {
-            let base_expr = Expression::annotate(of, scope)?;
+            let base_expr = Expression::annotate(of, scope.clone())?;
             let base_type = base_expr.expr_type()?;
 
             base_type.and_then(|base_type|
-                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope))
+                annotate_ufcs(&base_expr, &base_type, &name, &typed_args, scope.clone()))
         }
 
         &node::ExpressionValue::Identifier(ref name) => {
@@ -304,9 +314,16 @@ fn annotate_function_call(target: &syntax::Expression,
             base_id.and_then(|base_id| scope.get_symbol(&base_id))
                 .and_then(|base_sym| {
                     let func_name = &name.0.name;
-                    let base_expr = Expression::identifier(base_sym.clone(), target.context.clone());
+                    let base_expr = Expression::identifier(base_sym.clone(), SemanticContext {
+                        token: target.context.token().clone(),
+                        scope: scope.clone(),
+                    });
 
-                    annotate_ufcs(&base_expr, &base_sym.decl_type(), func_name, &typed_args, scope)
+                    annotate_ufcs(&base_expr,
+                                  &base_sym.decl_type(),
+                                  func_name,
+                                  &typed_args,
+                                  scope.clone())
                 })
         }
 
@@ -324,9 +341,7 @@ fn annotate_function_call(target: &syntax::Expression,
     }
 }
 
-fn let_binding_type(value: &Expression,
-                    context: &source::Token)
-                    -> SemanticResult<Option<Type>> {
+fn let_binding_type(value: &Expression, context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let value_type = value.expr_type()?
         .ok_or_else(|| SemanticError::type_not_assignable(None, context.clone()))?;
 
@@ -339,7 +354,7 @@ fn let_binding_type(value: &Expression,
 
 fn function_call_type(target: &Expression,
                       args: &Vec<Expression>,
-                      context: &source::Token) -> SemanticResult<Option<Type>> {
+                      context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let target_type = target.expr_type()?;
     if let Some(Type::Function(ref sig)) = target_type {
         if args.len() != sig.arg_types.len() {
@@ -369,7 +384,7 @@ fn function_call_type(target: &Expression,
 fn binary_op_type(lhs: &Expression,
                   op: operators::Operator,
                   rhs: &Expression,
-                  context: &source::Token) -> SemanticResult<Option<Type>> {
+                  context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let lhs_type = lhs.expr_type()?;
 
     match op {
@@ -408,7 +423,7 @@ fn binary_op_type(lhs: &Expression,
 
 fn prefix_op_type(op: operators::Operator,
                   rhs: &Expression,
-                  context: &source::Token)
+                  context: &SemanticContext)
                   -> SemanticResult<Option<Type>> {
     let rhs_type = rhs.expr_type()?;
 
@@ -455,7 +470,7 @@ fn prefix_op_type(op: operators::Operator,
 
 fn member_type(of: &Expression,
                name: &str,
-               _context: &source::Token) -> SemanticResult<Option<Type>> {
+               _context: &SemanticContext) -> SemanticResult<Option<Type>> {
     let base_type = of.expr_type()?
         .map(|dt| dt.remove_indirection().clone());
 
@@ -480,7 +495,12 @@ fn member_type(of: &Expression,
 }
 
 impl Expression {
-    pub fn annotate(expr: &syntax::Expression, scope: &Scope) -> SemanticResult<Self> {
+    pub fn annotate(expr: &syntax::Expression, scope: Rc<Scope>) -> SemanticResult<Self> {
+        let expr_context = SemanticContext {
+            token: expr.context.token().clone(),
+            scope: scope.clone(),
+        };
+
         match &expr.value {
             node::ExpressionValue::Identifier(name) =>
                 annotate_identifier(&name.0, scope, &expr.context),
@@ -495,19 +515,19 @@ impl Expression {
                 enclosed statements) */
                 let typed_value = Expression::annotate(value, scope)?;
 
-                Ok(Expression::let_binding(expr.context.clone(), name, typed_value))
+                Ok(Expression::let_binding(name, typed_value, expr_context))
             }
 
             node::ExpressionValue::LiteralString(s) => {
-                Ok(Expression::literal_string(s, expr.context.clone()))
+                Ok(Expression::literal_string(s, expr_context))
             }
 
             node::ExpressionValue::LiteralInteger(i) => {
-                Ok(Expression::literal_int(*i, expr.context.clone()))
+                Ok(Expression::literal_int(*i, expr_context))
             }
 
             node::ExpressionValue::LiteralNil => {
-                Ok(Expression::literal_nil(&expr.context))
+                Ok(Expression::literal_nil(expr_context))
             }
 
             node::ExpressionValue::If { condition, then_branch, else_branch } =>
@@ -521,8 +541,8 @@ impl Expression {
                 annotate_for_loop(from, to, body, scope, &expr.context),
 
             node::ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let lhs = Expression::annotate(lhs, scope)?;
-                let rhs = Expression::annotate(rhs, scope)?;
+                let lhs = Expression::annotate(lhs, scope.clone())?;
+                let rhs = Expression::annotate(rhs, scope.clone())?;
 
                 let lhs_type = lhs.expr_type()?;
                 let rhs_type = rhs.expr_type()?;
@@ -536,11 +556,11 @@ impl Expression {
                 if lhs_is_string && rhs_is_string && *op == operators::Plus {
                     //desugar string concatenation
                     let strcat_sym = scope.get_symbol(&Identifier::from("System.StringConcat")).unwrap();
-                    let strcat = Expression::identifier(strcat_sym, expr.context.clone());
+                    let strcat = Expression::identifier(strcat_sym, expr_context);
 
                     Ok(Expression::function_call(strcat, vec![lhs, rhs]))
                 } else {
-                    Ok(Expression::binary_op(lhs, op.clone(), rhs, expr.context.clone()))
+                    Ok(Expression::binary_op(lhs, op.clone(), rhs, expr_context))
                 }
             }
 
@@ -548,7 +568,7 @@ impl Expression {
                 Ok(Expression::prefix_op(
                     op.clone(),
                     Expression::annotate(rhs, scope)?,
-                    expr.context.clone(),
+                    expr_context,
                 ))
             }
 
@@ -578,7 +598,7 @@ impl Expression {
                     members: vec![
                         types::Symbol::new(Identifier::from("Chars"), Type::Byte.pointer()),
                         types::Symbol::new(Identifier::from("Length"), Type::NativeInt),
-                    ]
+                    ],
                 })))
             }
 

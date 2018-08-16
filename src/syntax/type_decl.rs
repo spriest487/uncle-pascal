@@ -5,8 +5,8 @@ use types::RecordKind;
 use tokens::{self, AsToken};
 use operators;
 
-pub type RecordDecl = node::RecordDecl<ParsedSymbol>;
-pub type TypeDecl = node::TypeDecl<ParsedSymbol>;
+pub type RecordDecl = node::RecordDecl<ParsedSymbol, ParsedContext>;
+pub type TypeDecl = node::TypeDecl<ParsedSymbol, ParsedContext>;
 
 impl Parse for Vec<TypeDecl> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -37,7 +37,7 @@ impl Parse for Vec<TypeDecl> {
                     node::TypeDecl::Alias {
                         alias: decl_name.to_string(),
                         of: aliased_type,
-                        context: alias_context,
+                        context: alias_context.into(),
                     }
                 }
             };
@@ -92,7 +92,7 @@ impl RecordDecl {
         Ok(RecordDecl {
             name: Identifier::from(decl_name),
             kind,
-            context: match_kw.clone(),
+            context: match_kw.clone().into(),
             members: decls,
         })
     }

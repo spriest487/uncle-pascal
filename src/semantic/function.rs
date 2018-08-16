@@ -1,3 +1,6 @@
+use std::{
+    rc::Rc,
+};
 use node::{self, Identifier};
 use syntax;
 use semantic::*;
@@ -5,19 +8,24 @@ use types::{Type, FunctionSignature, RecordKind};
 
 const RESULT_VAR_NAME: &str = "result";
 
-pub type FunctionDecl = node::FunctionDecl<ScopedSymbol>;
-pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol>;
+pub type FunctionDecl = node::FunctionDecl<ScopedSymbol, SemanticContext>;
+pub type FunctionDeclBody = node::FunctionDeclBody<ScopedSymbol, SemanticContext>;
 
 impl FunctionDecl {
     pub fn annotate(function: &syntax::FunctionDecl,
-                    scope: &Scope) -> Result<Self, SemanticError> {
+                    scope: Rc<Scope>) -> Result<Self, SemanticError> {
+        let context = SemanticContext {
+            token: function.context.token().clone(),
+            scope: scope.clone(),
+        };
+
         let return_type = match &function.return_type {
             Some(func_return_type) => {
                 let found_type = scope.get_type(&func_return_type);
 
-                let return_type = found_type
-                    .ok_or_else(|| SemanticError::unknown_type(func_return_type.clone(),
-                                                               function.context.clone()))?;
+                let return_type = found_type.ok_or_else(|| {
+                    SemanticError::unknown_type(func_return_type.clone(), context.clone())
+                })?;
 
                 Some(return_type)
             }
@@ -28,38 +36,40 @@ impl FunctionDecl {
         let qualified_name = if function.name.namespace.len() == 0 {
             scope.qualify_local_name(&function.name.name)
         } else {
-            return Err(SemanticError::illegal_name(function.name.to_string(),
-                                                   function.context.clone()));
+            return Err(SemanticError::illegal_name(function.name.to_string(), context));
         };
 
-        let args = Vars::annotate(&function.args, scope, SemanticVarsKind::Local)?;
+        let args = Vars::annotate(&function.args, scope.clone(), SemanticVarsKind::Local)?;
 
         let body = match &function.body {
             Some(function_body) => {
                 /* there can't already be a local symbol called "result" */
                 let result_id = Identifier::from(RESULT_VAR_NAME);
                 function_body.local_vars.decls.iter().find(|decl| decl.name == result_id)
-                    .map(|_| Err(SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(),
-                                                             function.context.clone())))
+                    .map(|_| Err({
+                        SemanticError::illegal_name(RESULT_VAR_NAME.to_owned(), context.clone())
+                    }))
                     .unwrap_or(Ok(()))?;
 
                 let mut local_vars = Vars::annotate(&function_body.local_vars,
-                                                    &scope,
+                                                    scope.clone(),
                                                     SemanticVarsKind::Local)?;
 
                 if let &Some(ref result_var_type) = &return_type {
                     local_vars.decls.push(VarDecl {
                         name: result_id,
-                        context: function.context.clone(),
+                        context: context.clone(),
                         decl_type: result_var_type.clone(),
                     });
                 }
 
-                let local_scope = scope.clone()
-                    .with_vars_local(args.decls.iter())
-                    .with_vars_local(local_vars.decls.iter());
+                let local_scope = Rc::new(
+                    scope.as_ref().clone()
+                        .with_vars_local(args.decls.iter())
+                        .with_vars_local(local_vars.decls.iter())
+                );
 
-                let body_block = Block::annotate(&function_body.block, &local_scope)?;
+                let body_block = Block::annotate(&function_body.block, local_scope.clone())?;
 
                 Some(FunctionDeclBody {
                     block: body_block,
@@ -71,7 +81,7 @@ impl FunctionDecl {
 
         Ok(FunctionDecl {
             name: qualified_name,
-            context: function.context.clone(),
+            context,
             kind: function.kind,
             return_type,
             args,

@@ -67,13 +67,13 @@ pub enum UnitDeclaration<TSymbol, TContext>
 }
 
 #[derive(Clone, Debug)]
-pub struct Program<TSymbo, TContext>
+pub struct Program<TSymbol, TContext>
     where TSymbol: Symbol,
           TContext: Context
 {
     pub name: String,
 
-    pub uses: Vec<UnitReference, TContext>,
+    pub uses: Vec<UnitReference<TContext>>,
     pub decls: Vec<UnitDeclaration<TSymbol, TContext>>,
 
     pub program_block: Block<TSymbol, TContext>,
@@ -86,7 +86,7 @@ pub struct Unit<TSymbol, TContext>
 {
     pub name: String,
 
-    pub uses: Vec<UnitReference, TContext>,
+    pub uses: Vec<UnitReference<TContext>>,
 
     pub interface: Vec<UnitDeclaration<TSymbol, TContext>>,
     pub implementation: Vec<UnitDeclaration<TSymbol, TContext>>,
@@ -104,8 +104,8 @@ pub struct FunctionDeclBody<TSymbol, TContext>
     where TSymbol: Symbol,
           TContext: Context
 {
-    pub local_vars: VarDecls<TSymbol>,
-    pub block: Block<TSymbol>,
+    pub local_vars: VarDecls<TSymbol, TContext>,
+    pub block: Block<TSymbol, TContext>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,7 +119,7 @@ pub struct FunctionDecl<TSymbol, TContext>
     pub return_type: Option<TSymbol::Type>,
     pub kind: FunctionKind,
 
-    pub args: VarDecls<TSymbol>,
+    pub args: VarDecls<TSymbol, TContext>,
 
     // a function without a body is a forward declaration
     pub body: Option<FunctionDeclBody<TSymbol, TContext>>,
@@ -133,7 +133,8 @@ pub struct Block<TSymbol, TContext> {
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<TSymbol, TContext>
-    where TSymbol: Symbol
+    where TSymbol: Symbol,
+          TContext: Context
 {
     Record(RecordDecl<TSymbol, TContext>),
     Alias {
@@ -153,7 +154,7 @@ pub struct RecordDecl<TSymbol, TContext>
     pub kind: RecordKind,
 
     pub context: TContext,
-    pub members: Vec<VarDecl<TSymbol>>,
+    pub members: Vec<VarDecl<TSymbol, TContext>>,
 }
 
 #[derive(Clone, Debug)]
@@ -167,13 +168,13 @@ pub struct VarDecl<TSymbol, TContext>
 }
 
 #[derive(Clone, Debug)]
-pub struct VarDecls<TSymbol>
+pub struct VarDecls<TSymbol, TContext>
     where TSymbol: Symbol
 {
-    pub decls: Vec<VarDecl<TSymbol>>,
+    pub decls: Vec<VarDecl<TSymbol, TContext>>,
 }
 
-impl<TSymbol> Default for VarDecls<TSymbol>
+impl<TSymbol, TContext> Default for VarDecls<TSymbol, TContext>
     where TSymbol: Symbol
 {
     fn default() -> Self {

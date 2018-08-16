@@ -165,7 +165,7 @@ fn pretty_path(path: &Path) -> String {
     }
 }
 
-fn scope_from_uses(uses: &[node::UnitReference],
+fn scope_from_uses(uses: &[syntax::UnitReference],
                    unit_scopes: &HashMap<String, semantic::Scope>)
                    -> Result<semantic::Scope, CompileError> {
     let mut scope = semantic::Scope::default();

@@ -11,8 +11,9 @@ impl ToSource for Identifier {
     }
 }
 
-impl<T> ToSource for Block<T>
-    where T: Symbol
+impl<T, C> ToSource for Block<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -32,8 +33,9 @@ impl<T> ToSource for Block<T>
     }
 }
 
-impl<T> ToSource for Expression<T>
-    where T: Symbol
+impl<T, C> ToSource for Expression<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         match &self.value {
@@ -94,8 +96,9 @@ impl<T> ToSource for Expression<T>
     }
 }
 
-impl<T> ToSource for VarDecls<T>
-    where T: Symbol
+impl<T, C> ToSource for VarDecls<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let decl_lines = self.decls.iter()
@@ -109,8 +112,9 @@ impl<T> ToSource for VarDecls<T>
     }
 }
 
-impl<T> ToSource for FunctionDecl<T>
-    where T: Symbol
+impl<T, C> ToSource for FunctionDecl<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -128,8 +132,9 @@ impl<T> ToSource for FunctionDecl<T>
     }
 }
 
-impl<T> ToSource for Program<T>
-    where T: Symbol
+impl<T, C> ToSource for Program<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -161,21 +166,23 @@ impl<T> ToSource for Program<T>
     }
 }
 
-impl<T> ToSource for TypeDecl<T>
-    where T: Symbol
+impl<T, C> ToSource for TypeDecl<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         match self {
             TypeDecl::Alias { alias, of, .. } => {
                 format!("type {} = {};", alias, of.to_source())
-            },
+            }
             TypeDecl::Record(record_decl) => record_decl.to_source()
         }
     }
 }
 
-impl<T> ToSource for RecordDecl<T>
-    where T: Symbol
+impl<T, C> ToSource for RecordDecl<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();
@@ -190,8 +197,9 @@ impl<T> ToSource for RecordDecl<T>
     }
 }
 
-impl<T> ToSource for UnitDeclaration<T>
-    where T: Symbol
+impl<T, C> ToSource for UnitDeclaration<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         match self {
@@ -207,8 +215,9 @@ impl<T> ToSource for UnitDeclaration<T>
     }
 }
 
-impl<T> ToSource for Unit<T>
-    where T: Symbol
+impl<T, C> ToSource for Unit<T, C>
+    where T: Symbol,
+          C: Context
 {
     fn to_source(&self) -> String {
         let mut lines = Vec::new();

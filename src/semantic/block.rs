@@ -1,17 +1,20 @@
+use std::{
+    rc::Rc
+};
+
 use node;
 use syntax;
 use semantic::*;
 
-pub type Block = node::Block<ScopedSymbol>;
+pub type Block = node::Block<ScopedSymbol, SemanticContext>;
 
 impl Block {
-    pub fn annotate(block: &syntax::Block, scope: &Scope)
-                    -> Result<Self, SemanticError> {
+    pub fn annotate(block: &syntax::Block, scope: Rc<Scope>) -> Result<Self, SemanticError> {
         let mut statements = Vec::new();
         let mut local_scope = scope.clone();
 
         for src_statement in block.statements.iter() {
-            let statement = Expression::annotate(src_statement, &local_scope)?;
+            let statement = Expression::annotate(src_statement, local_scope.clone())?;
 
             /* after each let binding, the scope for following statements
             includes that let binding */
@@ -23,14 +26,20 @@ impl Block {
                         SemanticError::type_not_assignable(None, statement.context.clone())
                     })?;
 
-                local_scope = local_scope.with_symbol_local(&name, inferred_type);
+                local_scope = Rc::new(local_scope
+                    .as_ref()
+                    .clone()
+                    .with_symbol_local(&name, inferred_type));
             }
             statements.push(statement);
         }
 
         let block = Block {
             statements,
-            context: block.context.clone(),
+            context: SemanticContext {
+                scope: scope.clone(),
+                token: block.context.token().clone(),
+            }
         };
 
         Ok(block)

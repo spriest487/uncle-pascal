@@ -24,7 +24,7 @@ use std::{
     rc::Rc
 };
 
-use node::{Identifier, TypeName};
+use node::{Identifier, TypeName, Context};
 use operators;
 use source;
 use std::fmt;
@@ -113,7 +113,7 @@ impl fmt::Display for SemanticErrorKind {
                 };
 
                 write!(f, "destructor must have one argument of a class type from its own module, but found {}",
-                    arg_names)
+                       arg_names)
             }
 
             &SemanticErrorKind::WrongNumberOfArgs { ref expected_sig, actual } => {
@@ -155,18 +155,18 @@ impl fmt::Display for SemanticErrorKind {
 #[derive(Clone, Debug)]
 pub struct SemanticError {
     kind: SemanticErrorKind,
-    context: source::Token,
+    context: SemanticContext,
 }
 
 impl SemanticError {
-    pub fn illegal_name(name: String, context: source::Token) -> Self {
+    pub fn illegal_name(name: String, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::IllegalName(name),
             context,
         }
     }
 
-    pub fn unknown_symbol(name: Identifier, context: source::Token) -> Self {
+    pub fn unknown_symbol(name: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownSymbol(name),
             context,
@@ -175,21 +175,21 @@ impl SemanticError {
 
     pub fn unexpected_type(expected: Option<Type>,
                            actual: Option<Type>,
-                           context: source::Token) -> Self {
+                           context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnexpectedType { expected, actual },
             context,
         }
     }
 
-    pub fn unknown_type(missing_type: TypeName, context: source::Token) -> Self {
+    pub fn unknown_type(missing_type: TypeName, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::UnknownType(missing_type),
             context,
         }
     }
 
-    pub fn empty_record(record_id: Identifier, context: source::Token) -> Self {
+    pub fn empty_record(record_id: Identifier, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::EmptyRecord(record_id),
             context,
@@ -198,7 +198,7 @@ impl SemanticError {
 
     pub fn member_of_non_record(actual: Option<Type>,
                                 name: String,
-                                context: source::Token) -> Self {
+                                context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::MemberAccessOfNonRecord(actual, name),
             context,
@@ -207,7 +207,7 @@ impl SemanticError {
 
     pub fn wrong_num_args(sig: FunctionSignature,
                           actual: usize,
-                          context: source::Token) -> Self {
+                          context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::WrongNumberOfArgs {
                 expected_sig: sig,
@@ -217,21 +217,21 @@ impl SemanticError {
         }
     }
 
-    pub fn invalid_function_type(actual: Option<Type>, context: source::Token) -> Self {
+    pub fn invalid_function_type(actual: Option<Type>, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidFunctionType(actual),
             context,
         }
     }
 
-    pub fn invalid_constructor_type(actual: Option<Type>, context: source::Token) -> Self {
+    pub fn invalid_constructor_type(actual: Option<Type>, context: SemanticContext) -> Self {
         SemanticError {
             kind: SemanticErrorKind::InvalidConstructorType(actual),
             context,
         }
     }
 
-    pub fn invalid_destructor_return(return_type: Type, context: source::Token)
+    pub fn invalid_destructor_return(return_type: Type, context: SemanticContext)
                                      -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidDestructorReturn(return_type),
@@ -240,17 +240,17 @@ impl SemanticError {
     }
 
     pub fn invalid_destructor_args(args: impl IntoIterator<Item=Type>,
-                                   context: source::Token)
+                                   context: SemanticContext)
                                    -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::InvalidDestructorArgs(args.into_iter().collect()),
-            context
+            context,
         }
     }
 
     pub fn invalid_operator<TArgs>(operator: operators::Operator,
                                    args: TArgs,
-                                   context: source::Token) -> SemanticError
+                                   context: SemanticContext) -> SemanticError
         where TArgs: IntoIterator<Item=Option<Type>>
     {
         SemanticError {
@@ -263,7 +263,7 @@ impl SemanticError {
     }
 
     pub fn type_not_assignable(t: Option<Type>,
-                               context: source::Token) -> SemanticError {
+                               context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypeNotAssignable(t),
             context,
@@ -271,7 +271,7 @@ impl SemanticError {
     }
 
     pub fn types_not_comparable(a: Option<Type>, b: Option<Type>,
-                                context: source::Token) -> SemanticError {
+                                context: SemanticContext) -> SemanticError {
         SemanticError {
             kind: SemanticErrorKind::TypesNotComparable(a, b),
             context,
@@ -281,13 +281,20 @@ impl SemanticError {
 
 impl fmt::Display for SemanticError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}\n  {}", self.context, self.kind)
+        write!(f, "{}\n  {}", self.context.token(), self.kind)
     }
 }
 
 pub type SemanticResult<T> = Result<T, SemanticError>;
 
+#[derive(Clone, Debug)]
 pub struct SemanticContext {
     token: source::Token,
     scope: Rc<Scope>,
+}
+
+impl Context for SemanticContext {
+    fn token(&self) -> &source::Token {
+        &self.token
+    }
 }

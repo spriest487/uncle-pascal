@@ -1,24 +1,23 @@
 use std::fmt;
 
 use operators;
-use source;
 use node::*;
 use consts::IntConstant;
 
 #[derive(Clone, Debug)]
-pub enum ExpressionValue<TSymbol> {
+pub enum ExpressionValue<TSymbol, TContext> {
     PrefixOperator {
         op: operators::Operator,
-        rhs: Box<Expression<TSymbol>>,
+        rhs: Box<Expression<TSymbol, TContext>>,
     },
     BinaryOperator {
-        lhs: Box<Expression<TSymbol>>,
+        lhs: Box<Expression<TSymbol, TContext>>,
         op: operators::Operator,
-        rhs: Box<Expression<TSymbol>>,
+        rhs: Box<Expression<TSymbol, TContext>>,
     },
     FunctionCall {
-        target: Box<Expression<TSymbol>>,
-        args: Vec<Expression<TSymbol>>,
+        target: Box<Expression<TSymbol, TContext>>,
+        args: Vec<Expression<TSymbol, TContext>>,
     },
     LiteralInteger(IntConstant),
     LiteralString(String),
@@ -26,65 +25,67 @@ pub enum ExpressionValue<TSymbol> {
     Identifier(TSymbol),
     LetBinding {
         name: String,
-        value: Box<Expression<TSymbol>>,
+        value: Box<Expression<TSymbol, TContext>>,
     },
     Member {
-        of: Box<Expression<TSymbol>>,
+        of: Box<Expression<TSymbol, TContext>>,
         name: String,
     },
     If {
-        condition: Box<Expression<TSymbol>>,
-        then_branch: Box<Expression<TSymbol>>,
-        else_branch: Option<Box<Expression<TSymbol>>>,
+        condition: Box<Expression<TSymbol, TContext>>,
+        then_branch: Box<Expression<TSymbol, TContext>>,
+        else_branch: Option<Box<Expression<TSymbol, TContext>>>,
     },
-    Block(Block<TSymbol>),
+    Block(Block<TSymbol, TContext>),
     ForLoop {
-        from: Box<Expression<TSymbol>>,
-        to: Box<Expression<TSymbol>>,
-        body: Box<Expression<TSymbol>>,
+        from: Box<Expression<TSymbol, TContext>>,
+        to: Box<Expression<TSymbol, TContext>>,
+        body: Box<Expression<TSymbol, TContext>>,
     },
 }
 
 
 #[derive(Clone, Debug)]
-pub struct Expression<TSymbol> {
-    pub value: ExpressionValue<TSymbol>,
-    pub context: source::Token,
+pub struct Expression<TSymbol, TContext> {
+    pub value: ExpressionValue<TSymbol, TContext>,
+    pub context: TContext,
 }
 
-impl<TSymbol> fmt::Display for Expression<TSymbol>
-    where TSymbol: fmt::Debug
+impl<TSymbol, TContext> fmt::Display for Expression<TSymbol, TContext>
+    where TSymbol: fmt::Debug,
+          TContext: Context + fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "expression: {:?} ({})", self.value, self.context) //TODO better display
+        write!(f, "expression: {:?} ({})", self.value, self.context.token()) //TODO better display
     }
 }
 
 #[allow(dead_code)]
-impl<TSymbol> Expression<TSymbol>
-    where TSymbol: fmt::Debug
+impl<TSymbol, TContext> Expression<TSymbol, TContext>
+    where TSymbol: fmt::Debug,
+          TContext: Context + Clone + fmt::Debug
 {
-    pub fn prefix_op(op: operators::Operator, rhs: Self, context: source::Token) -> Self {
+    pub fn prefix_op(op: operators::Operator, rhs: Self, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::PrefixOperator {
                 rhs: Box::from(rhs),
                 op,
             },
-            context,
+            context: context.into(),
         }
     }
 
     pub fn binary_op(lhs: Self,
                      op: operators::Operator,
                      rhs: Self,
-                     context: source::Token) -> Self {
+                     context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::BinaryOperator {
                 lhs: Box::new(lhs),
                 op,
                 rhs: Box::new(rhs),
             },
-            context,
+            context: context.into(),
         }
     }
 
@@ -96,38 +97,38 @@ impl<TSymbol> Expression<TSymbol>
                 target: Box::new(target),
                 args: args.into_iter().collect(),
             },
-            context,
+            context: context.into(),
         }
     }
 
-    pub fn let_binding(let_kw: source::Token, name: &str, value: Self) -> Self {
+    pub fn let_binding(name: &str, value: Self, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::LetBinding {
                 value: Box::new(value),
                 name: name.to_owned(),
             },
-            context: let_kw,
+            context: context.into(),
         }
     }
 
-    pub fn literal_int(i: IntConstant, context: source::Token) -> Self {
+    pub fn literal_int(i: IntConstant, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::LiteralInteger(i),
-            context,
+            context: context.into(),
         }
     }
 
-    pub fn literal_string(s: &str, context: source::Token) -> Self {
+    pub fn literal_string(s: &str, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::LiteralString(s.to_owned()),
-            context,
+            context: context.into(),
         }
     }
 
-    pub fn identifier(id: TSymbol, context: source::Token) -> Self {
+    pub fn identifier(id: TSymbol, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Identifier(id),
-            context,
+            context: context.into(),
         }
     }
 
@@ -139,7 +140,7 @@ impl<TSymbol> Expression<TSymbol>
                 of: Box::from(of),
                 name: name.to_owned(),
             },
-            context,
+            context: context.into(),
         }
     }
 
@@ -171,38 +172,38 @@ impl<TSymbol> Expression<TSymbol>
     pub fn if_then_else(condition: Self,
                         then_branch: Self,
                         else_branch: Option<Self>,
-                        context: source::Token) -> Self {
+                        context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::If {
                 condition: Box::new(condition),
                 then_branch: Box::new(then_branch),
                 else_branch: else_branch.map(Box::new),
             },
-            context,
+            context: context.into(),
         }
     }
 
-    pub fn for_loop(from: Self, to: Self, body: Self, context: source::Token) -> Self {
+    pub fn for_loop(from: Self, to: Self, body: Self, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::ForLoop {
                 from: Box::new(from),
                 to: Box::new(to),
                 body: Box::new(body),
             },
-            context,
+            context: context.into(),
         }
     }
 
-    pub fn block(block: Block<TSymbol>) -> Self {
+    pub fn block(block: Block<TSymbol, TContext>) -> Self {
         Expression {
             context: block.context.clone(),
             value: ExpressionValue::Block(block),
         }
     }
 
-    pub fn literal_nil(context: &source::Token) -> Self {
+    pub fn literal_nil(context: impl Into<TContext>) -> Self {
         Expression {
-            context: context.clone(),
+            context: context.into(),
             value: ExpressionValue::LiteralNil,
         }
     }
@@ -315,7 +316,7 @@ impl<TSymbol> Expression<TSymbol>
 }
 
 #[allow(dead_code)]
-impl<TSymbol> Expression<TSymbol>
+impl<TSymbol, TContext> Expression<TSymbol, TContext>
     where TSymbol: PartialEq
 {
     pub fn is_any_identifier(&self) -> bool {
@@ -333,9 +334,12 @@ impl<TSymbol> Expression<TSymbol>
     }
 }
 
-pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
-                         replace: &mut FnMut(Expression<TSymbol>) -> Expression<TSymbol>) -> Expression<TSymbol>
-    where TSymbol: fmt::Debug
+pub fn transform_expressions<TSymbol, TContext>(
+    root_expr: Expression<TSymbol, TContext>,
+    replace: &mut FnMut(Expression<TSymbol, TContext>) -> Expression<TSymbol, TContext>)
+    -> Expression<TSymbol, TContext>
+    where TSymbol: fmt::Debug,
+          TContext: Context + Clone + fmt::Debug
 {
     match root_expr.value {
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
@@ -382,7 +386,7 @@ pub fn transform_expressions<TSymbol>(root_expr: Expression<TSymbol>,
 
         ExpressionValue::LetBinding { name, value } => {
             let value = transform_expressions(*value, replace);
-            replace(Expression::let_binding(root_expr.context, &name, value))
+            replace(Expression::let_binding(&name, value, root_expr.context))
         }
 
         ExpressionValue::Member { of, name } => {
