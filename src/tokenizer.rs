@@ -149,14 +149,17 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
         .map(|(pattern, _)| pattern)
         .collect::<Vec<_>>()
         .join("|");
-    let all_tokens_and_unrecognized = all_tokens_pattern + "|.";
+    let all_tokens_and_unrecognized = all_tokens_pattern + "|\\s+|.";
     let all_tokens_regex = regex::Regex::new(&all_tokens_and_unrecognized)
         .expect("tokens regex must be valid");
 
     /* compile token pattern regexes */
     let patterns = token_patterns().into_iter()
         .map(|(pattern, token_parser)| {
-            let token_regex = regex::Regex::new(&pattern).expect("token regex must be valid");
+            let whole_token_pattern = format!("^{}$", pattern);
+            let token_regex = regex::Regex::new(&whole_token_pattern)
+                .expect("token regex must be valid");
+
             (token_regex, token_parser)
         })
         .collect::<Vec<_>>();
@@ -164,24 +167,30 @@ fn parse_line(line_num: usize, line: &str) -> TokenizeResult<Vec<SourceToken>> {
     let parsed_tokens = all_tokens_regex.captures_iter(&line_without_comment)
         .filter_map(|capture| {
             let token_match = capture.get(0).unwrap();
-            let token_source = token_match.as_str();
+            let token_source = token_match.as_str().trim();
             let col = token_match.start();
 
-            if token_source.chars().all(char::is_whitespace) {
+            if token_source.len() == 0 {
                 /* token is purely whitespace, ignore it */
                 None
             } else {
                 let first_matching_token = patterns.iter()
-                    .find(|pattern| pattern.0.is_match(&token_source))
+                    .find(|pattern| {
+                        pattern.0.is_match(&token_source)
+                    })
                     .and_then(|pattern| {
+                        //match against this regex only to get the expected groups
+                        let pattern_captures = pattern.0.captures(&token_source)
+                            .unwrap();
+
                         /* a pattern matched this token, use the parsing
                         function associated with this pattern */
-                        pattern.1.try_parse(&capture)
-                            .map(|token| SourceToken {
-                                token,
-                                col,
-                                line: line_num,
-                            })
+                        pattern.1.try_parse(&pattern_captures)
+                    })
+                    .map(|token| SourceToken {
+                        token,
+                        col,
+                        line: line_num,
                     })
                     .ok_or_else(|| IllegalToken {
                         text: token_source.to_owned(),
@@ -211,4 +220,20 @@ pub fn tokenize(source: &str) -> TokenizeResult<Vec<SourceToken>> {
     Ok(parsed_lines?.into_iter()
         .flat_map(|line_tokens| line_tokens)
         .collect())
+}
+
+#[cfg(test)]
+mod test {
+    use tokenizer;
+    use tokens;
+
+    #[test]
+    fn tokenizes_literal_string() {
+        let s = "  'hello world!'  "  ;
+
+        let result = tokenizer::tokenize(s).unwrap();
+        assert_eq!(1, result.len());
+
+        assert_eq!(tokens::LiteralString("hello world!".to_owned()), result[0].token);
+    }
 }
