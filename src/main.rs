@@ -10,7 +10,7 @@ use std::{
     ffi::OsStr,
     env::current_dir,
     collections::{
-        hash_map::{Entry, HashMap},
+        hash_map::HashMap,
         HashSet,
     },
 };
@@ -137,6 +137,26 @@ fn pretty_path(path: &Path) -> String {
     }
 }
 
+fn scope_from_uses(uses: &[node::UnitReference],
+                   unit_scopes: &HashMap<String, semantic::Scope>)
+                   -> Result<semantic::Scope, CompileError> {
+    let mut scope = semantic::Scope::default();
+    for unit_ref in uses.iter() {
+        let ref_name = unit_ref.name.to_string();
+
+        match unit_scopes.get(&ref_name) {
+            Some(ref_scope) => {
+                scope = scope.reference(ref_scope.clone(), unit_ref.kind.clone());
+            }
+            None => return Err({
+                CompileError::UnresolvedUnit(ref_name.clone())
+            })
+        }
+    }
+
+    Ok(scope)
+}
+
 fn compile_program(program_path: &Path,
                    pp_symbols: HashSet<String>)
                    -> Result<ProgramModule, CompileError> {
@@ -168,25 +188,10 @@ fn compile_program(program_path: &Path,
             let unit_source = load_source(unit_path, pp_symbols.clone())?;
             let parsed_unit = syntax::Unit::parse(unit_source, &empty_context())?;
 
-            let unit_imports = parsed_unit.uses.iter()
-                .map(|unit_ref| {
-                    let ref_name = unit_ref.name.to_string();
-
-                    match unit_scopes.entry(ref_name) {
-                        Entry::Occupied(scope_entry) => Ok({
-                            scope_entry.get().clone()
-                        }),
-                        Entry::Vacant(missing) => Err({
-                            CompileError::UnresolvedUnit(missing.key().clone())
-                        })
-                    }
-                })
-                .collect::<Result<Vec<semantic::Scope>, CompileError>>()?;
-
             /* each unit imports all the units before it in the programs' units
             clause (used units can't import any new units not referenced in the main
             uses clause) */
-            let unit_scope = semantic::Scope::default().import_all(unit_imports);
+            let unit_scope = scope_from_uses(&parsed_unit.uses, &unit_scopes)?;
 
             let (unit, unit_scope) = semantic::Unit::annotate(&parsed_unit, unit_scope)?;
 
@@ -195,10 +200,7 @@ fn compile_program(program_path: &Path,
         }
     }
 
-    let program_scope = unit_scopes.into_iter()
-        .fold(semantic::Scope::default(), |combined_scope, (_, unit_scope)| {
-            combined_scope.import(unit_scope)
-        });
+    let program_scope = scope_from_uses(&parsed_program.uses, &unit_scopes)?;
 
     let program = semantic::Program::annotate(&parsed_program, program_scope)?;
 

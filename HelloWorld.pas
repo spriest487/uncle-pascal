@@ -1,11 +1,11 @@
 //this is a line comment
 program HelloWorld
 
-uses System, Vector
+uses System.*, Vector.Vector
 
 {$define friendly}
 
-function Greet(name: System.String): System.String
+function Greet(name: String): String
 begin
   {$ifdef friendly}
   let greeting := 'hi '
@@ -23,7 +23,7 @@ begin
 end
 
 var
-  //vec: Vector.Vector
+  //vec: Vector
 
 begin
   let x := 1
@@ -38,12 +38,12 @@ begin
 
   let name := 'wuuuorld'
 
-  System.WriteLn(Greet(name))
+  WriteLn(Greet(name))
 
   if x = 1 then begin
-    System.WriteLn('one')
+    WriteLn('one')
   end
   else begin
-    System.WriteLn('not one')
+    WriteLn('not one')
   end
 end.

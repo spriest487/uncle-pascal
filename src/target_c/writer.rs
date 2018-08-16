@@ -61,11 +61,11 @@ pub fn identifier_to_c(id: &Identifier) -> String {
 
 pub fn symbol_to_c(sym: &semantic::ScopedSymbol) -> String {
     match sym {
-        &semantic::ScopedSymbol::Local { ref name, .. } => {
+        semantic::ScopedSymbol::Local { name, .. } => {
             identifier_to_c(&name)
         }
 
-        &semantic::ScopedSymbol::RecordMember { ref record_id, ref name, .. } => {
+        semantic::ScopedSymbol::RecordMember { record_id, name, .. } => {
             format!("{}.{}", identifier_to_c(record_id), name)
         }
     }
@@ -103,6 +103,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 operators::NotEquals => "!=",
                 operators::Minus => "-",
                 operators::Plus => "+",
+                operators::Multiply => "*",
+                operators::Divide => "/",
                 operators::And => "&&",
                 operators::Or => "||",
                 operators::Lt => "<",
@@ -136,6 +138,8 @@ pub fn write_expr(out: &mut String, expr: &semantic::Expression)
                 operators::Or |
                 operators::Equals |
                 operators::NotEquals |
+                operators::Multiply |
+                operators::Divide |
                 operators::Gt |
                 operators::Gte |
                 operators::Lt |

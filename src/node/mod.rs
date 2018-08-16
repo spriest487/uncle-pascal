@@ -14,15 +14,35 @@ pub trait Symbol: ToSource {
     type Type: Clone + ToSource + fmt::Debug;
 }
 
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum UnitReferenceKind {
+    /** `uses System` adds all symbols from the unit to the scope,
+        under their original namespace **/
+    Namespaced,
+
+    /** `uses System.*` adds all symbols from the unit to the scope, */
+    All,
+
+    /** `uses System.String` reference a particular name */
+    Name(String),
+}
+
 #[derive(Clone, Debug)]
 pub struct UnitReference {
     pub name: Identifier,
+    pub kind: UnitReferenceKind,
     pub context: source::Token,
 }
 
 impl fmt::Display for UnitReference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} ({})", self.name, self.context)
+        let name = match &self.kind {
+            UnitReferenceKind::Namespaced => self.name.to_string(),
+            UnitReferenceKind::All => format!("{}.*", self.name),
+            UnitReferenceKind::Name(name) => format!("{}.{}", self.name, name),
+        };
+
+        write!(f, "{} ({})", name, self.context)
     }
 }
 

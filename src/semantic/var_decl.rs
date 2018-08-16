@@ -20,8 +20,11 @@ impl Into<Symbol> for VarDecl {
 impl VarDecl {
     pub fn annotate(decl: &syntax::VarDecl, scope: &Scope, kind: SemanticVarsKind) -> Result<Self, SemanticError> {
         let mut var_type = scope.get_type(&decl.decl_type.name)
-            .ok_or_else(|| SemanticError::unknown_type(decl.decl_type.name.clone(),
-                                                       decl.context.clone()))?;
+            .ok_or_else(|| {
+                eprintln!("{:?}", scope);
+                SemanticError::unknown_type(decl.decl_type.name.clone(),
+                                            decl.context.clone())
+            })?;
 
         for _ in 0..decl.decl_type.indirection {
             var_type = var_type.pointer()

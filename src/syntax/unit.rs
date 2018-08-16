@@ -3,6 +3,7 @@ use node;
 use syntax::*;
 use keywords;
 use tokens;
+use operators;
 use tokens::AsToken;
 
 pub type Unit = node::Unit<ParsedSymbol>;
@@ -44,8 +45,8 @@ impl Unit {
     }
 
     pub fn parse_uses<TIter>(in_tokens: TIter,
-                         context: &source::Token)
-                         -> ParseResult<Vec<node::UnitReference>>
+                             context: &source::Token)
+                             -> ParseResult<Vec<node::UnitReference>>
         where TIter: IntoIterator<Item=source::Token> + 'static
     {
         let uses_kw = keywords::Uses.match_peek(in_tokens, context)?;
@@ -63,14 +64,37 @@ impl Unit {
         loop {
             let unit_id = Matcher::AnyIdentifier.match_one(units_tokens, &units_context)?;
 
+            // might have a . if a non-default uses mode is specified
+            // e.g. System.*
+            let peek_uses_kind = tokens::Period.match_peek(unit_id.next_tokens, &unit_id.last_token)?;
+
+            let uses_kind = if peek_uses_kind.value.is_some() {
+                tokens::Period.and_then(operators::Multiply.or(Matcher::AnyIdentifier))
+                    .match_sequence(peek_uses_kind.next_tokens, &peek_uses_kind.last_token)?
+                    .map(|matched_imported_name| {
+                        match matched_imported_name[1].as_token() {
+                            tokens::Operator(operators::Multiply) => {
+                                node::UnitReferenceKind::All
+                            },
+                            tokens::Identifier(name) => {
+                                node::UnitReferenceKind::Name(name.to_string())
+                            },
+                            _ => unreachable!("excluded by token matcher")
+                        }
+                    })
+            } else {
+                peek_uses_kind.map(|_| node::UnitReferenceKind::Namespaced)
+            };
+
             units.push(node::UnitReference {
                 name: node::Identifier::from(unit_id.value.unwrap_identifier()),
                 context: unit_id.last_token.clone(),
+                kind: uses_kind.value,
             });
 
-            units_context = unit_id.last_token;
+            units_context = uses_kind.last_token;
 
-            let mut peek_after_unit = unit_id.next_tokens.peekable();
+            let mut peek_after_unit = uses_kind.next_tokens.peekable();
             match peek_after_unit.peek().cloned() {
                 //end of uses (either unexpected token on new line, or explicit semicolon)
                 Some(ref t) if (t.is_token(&tokens::Semicolon) ||

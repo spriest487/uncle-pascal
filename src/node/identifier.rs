@@ -1,4 +1,8 @@
-use std::fmt;
+use std::{
+    fmt,
+    iter::{self, FromIterator},
+    vec,
+};
 
 use tokens::{self, AsToken};
 use node::{self, Symbol};
@@ -48,12 +52,38 @@ impl fmt::Display for Identifier {
 
 impl IntoIterator for Identifier {
     type Item = String;
-    type IntoIter = ::std::iter::Chain<::std::vec::IntoIter<Self::Item>, ::std::vec::IntoIter<Self::Item>>;
+    type IntoIter = iter::Chain<vec::IntoIter<String>, iter::Once<String>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.namespace.into_iter()
-            .chain(vec![self.name])
+            .chain(iter::once(self.name))
             .into_iter()
+    }
+}
+
+impl FromIterator<String> for Identifier {
+    fn from_iter<T: IntoIterator<Item=String>>(iter: T) -> Self {
+        let mut parts = iter.into_iter();
+        let mut last_part = String::new();
+        let mut ns = Vec::new();
+
+        let identifier = loop {
+            match parts.next() {
+                Some(next_part) => {
+                    if last_part.len() > 0 {
+                        ns.push(last_part);
+                    }
+                    last_part = next_part;
+                }
+
+                None => break Identifier {
+                    name: last_part.clone(),
+                    namespace: ns.clone(),
+                }
+            }
+        };
+
+        identifier
     }
 }
 
@@ -96,7 +126,7 @@ impl Identifier {
                     last_token = period.clone();
                     next_peekable.next();
                     false
-                },
+                }
 
                 //anything else and stop parsing
                 _ => true,
@@ -114,10 +144,15 @@ impl Identifier {
         let name = parts.pop().unwrap();
         let id = Identifier {
             name,
-            namespace: parts
+            namespace: parts,
         };
 
         Ok(ParseOutput::new(id, last_token, next_tokens))
+    }
+
+    pub fn parts(&self) -> impl Iterator<Item=&String> {
+        self.namespace.iter()
+            .chain(iter::once(&self.name))
     }
 
     pub fn child(&self, child_name: &str) -> Identifier {
@@ -171,6 +206,44 @@ impl Identifier {
             })
         } else {
             None
+        }
+    }
+
+    pub fn remove_namespace(&self, ns: &Identifier) -> Option<Identifier> {
+        let mut ns_parts = ns.parts();
+        let mut my_parts = self.parts();
+
+        let mut result = Vec::new();
+
+        loop {
+            match (ns_parts.next(), my_parts.next()) {
+                (Some(ns_part), Some(my_part)) => {
+                    // check it matches but don't add it to the result
+                    if ns_part != my_part {
+                        break None;
+                    }
+                }
+
+                // ran out of identifier parts to match to the namespace
+                (Some(_), None) => break None,
+
+                // ok, finished with the namespace and we have a name after that
+                (None, Some(part_after_ns)) => {
+                    result.push(part_after_ns.clone());
+                }
+
+                // reached end of this identifier, and the ns was complete
+                (None, None) => {
+                    let expected_len = (self.namespace.len() + 1)
+                        - (ns.namespace.len() + 1);
+
+                    break if result.len() != expected_len {
+                        None
+                    } else {
+                        Some(Identifier::from_iter(result.into_iter()))
+                    }
+                }
+            }
         }
     }
 }

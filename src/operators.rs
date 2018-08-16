@@ -25,6 +25,8 @@ pub enum Operator {
     NotEquals,
     Plus,
     Minus,
+    Multiply,
+    Divide,
     Deref,
     AddressOf,
     And,
@@ -35,13 +37,14 @@ pub enum Operator {
     Lte,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 15] = [
+pub static PRECEDENCE: [(Operator, Position); 17] = [
     (Deref, Position::Prefix),
     (AddressOf, Position::Prefix),
     (Plus, Position::Prefix),
     (Minus, Position::Prefix),
 
-    //(Period, Position::Binary),
+    (Multiply, Position::Binary),
+    (Divide, Position::Binary),
     (Plus, Position::Binary),
     (Minus, Position::Binary),
     (Equals, Position::Binary),
@@ -93,6 +96,8 @@ impl fmt::Display for Operator {
             NotEquals => "<>",
             Plus => "+",
             Minus => "-",
+            Multiply => "*",
+            Divide => "/",
             And => "and",
             Or => "or",
             Gt => ">",

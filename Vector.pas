@@ -1,12 +1,12 @@
 unit Vector
 
-uses System
+uses System.*
 
 interface
 
 type Vector = class
-  Elements: ^System.Byte
-  Length: System.Integer
+  Elements: ^Byte
+  Length: Integer
 end
 
 constructor Create: Vector
@@ -17,19 +17,19 @@ end
 
 destructor Destroy(self: Vector)
 begin
-    System.FreeMem(self.Elements)
+    FreeMem(self.Elements)
 end
 
-procedure Add(self: Vector; p: System.Byte)
+procedure Add(self: Vector; p: Byte)
 begin
-  let newElements := System.GetMem(self.Length + 1)
+  let newElements := GetMem(self.Length + 1)
 
   if self.Elements <> nil then
   begin
     for let i := 0 to self.Length do
       ^(newElements + i) := ^(self.Elements + i)
 
-    System.FreeMem(self.Elements)
+    FreeMem(self.Elements)
   end
 
   self.Length := self.Length + 1

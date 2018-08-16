@@ -2,7 +2,7 @@ use std::collections::hash_map::*;
 use std::fmt;
 
 use types::*;
-use node::{self, Identifier};
+use node::{self, Identifier, UnitReferenceKind};
 use semantic::*;
 
 #[derive(Clone, Debug)]
@@ -15,6 +15,11 @@ pub enum Named {
 pub struct Scope {
     local_name: Option<Identifier>,
     names: HashMap<Identifier, Named>,
+
+    /* map of imported name => global name
+     e.g. uses System.* adds String => System.String
+     */
+    imported_names: HashMap<Identifier, Identifier>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -101,13 +106,13 @@ impl node::ToSource for ScopedSymbol {
 
 impl Default for Scope {
     fn default() -> Self {
-        Scope::new().import(Scope::system())
+        Scope::new().reference(Scope::system(), UnitReferenceKind::Namespaced)
     }
 }
 
 impl fmt::Debug for Scope {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "Scope {} {{", match self.local_name {
+        writeln!(f, "Scope `{}` {{", match self.local_name {
             Some(ref ns) => ns.to_string(),
             None => "(root)".to_owned(),
         })?;
@@ -138,6 +143,12 @@ impl fmt::Debug for Scope {
         }
         writeln!(f, "\t]")?;
 
+        writeln!(f, "\timported names: [")?;
+        for (name, global_name) in self.imported_names.iter() {
+            writeln!(f, "\t\t{}: {}", name, global_name)?;
+        }
+        writeln!(f, "\t]")?;
+
         writeln!(f, "}}")
     }
 }
@@ -147,6 +158,7 @@ impl Scope {
         Scope {
             local_name: None,
             names: HashMap::new(),
+            imported_names: HashMap::new(),
         }
     }
 
@@ -161,7 +173,7 @@ impl Scope {
             members: vec![
                 Symbol::new(Identifier::from("Chars"), DeclaredType::Byte.pointer()),
                 Symbol::new(Identifier::from("Length"), DeclaredType::Integer),
-            ]
+            ],
         });
 
         Scope::new()
@@ -177,7 +189,7 @@ impl Scope {
                                   DeclaredType::from(FunctionSignature {
                                       name: Identifier::from("StringConcat"),
                                       arg_types: vec![string_type.clone(), string_type.clone()],
-                                      return_type: Some(string_type.clone())
+                                      return_type: Some(string_type.clone()),
                                   }))
     }
 
@@ -199,13 +211,6 @@ impl Scope {
         self.names.insert(name_id, Named::Symbol(decl_type));
         self
     }
-//
-//    pub fn with_symbol_relative(mut self, name: &str, decl_type: DeclaredType) -> Self {
-//        let qualified_id = self.qualify_local_name(name);
-//
-//        self.names.insert(qualified_id, Named::Symbol(decl_type));
-//        self
-//    }
 
     pub fn with_symbol_absolute<TId>(mut self, name: TId, decl_type: DeclaredType) -> Self
         where TId: Into<Identifier>
@@ -232,64 +237,54 @@ impl Scope {
         self
     }
 
-    pub fn with_vars_absolute<'a, TIter>(mut self, vars: TIter) -> Self
-        where TIter: IntoIterator<Item=&'a VarDecl>
-    {
+    pub fn with_vars_absolute<'a>(mut self,
+                                  vars: impl IntoIterator<Item=&'a VarDecl>)
+                                  -> Self {
         for var in vars {
             self = self.with_symbol_absolute(var.name.clone(), var.decl_type.clone());
         }
         self
     }
 
-    pub fn import(mut self, other: Scope) -> Self {
+    pub fn reference(mut self,
+                     other: Scope,
+                     ref_kind: UnitReferenceKind) -> Self {
         for (name, named) in other.names {
+            match ref_kind {
+                UnitReferenceKind::All => {
+                    let imported_name = Identifier::from(&name.name);
+                    self.imported_names.insert(imported_name, name.clone());
+                }
+
+                UnitReferenceKind::Name(ref imported_name) => {
+                    if name.name == *imported_name {
+                        self.imported_names.insert(Identifier::from(imported_name),
+                                                   name.clone());
+                    }
+                },
+
+                UnitReferenceKind::Namespaced => {
+                    //do nothing
+                },
+            }
+
             self.names.insert(name, named);
         }
         self
     }
 
-    pub fn import_all(mut self, others: impl IntoIterator<Item = Scope>) -> Self {
+    pub fn reference_all(mut self,
+                         others: impl IntoIterator<Item=Scope>)
+                         -> Self {
         for scope in others {
-            self = self.import(scope);
+            self = self.reference(scope, UnitReferenceKind::Namespaced);
         }
         self
     }
 
-    pub fn get_symbol(&self, name: &Identifier) -> Option<ScopedSymbol> {
-        match &self.local_name {
-            &None => self.get_symbol_global(name)
-                .or_else(|| {
-                    name.parent().and_then(|record_id| {
-                        self.find_record_member(&record_id, &name.name)
-                    })
-                }),
-
-            &Some(ref local_name) => {
-                let name_in_local_ns = local_name.append(name);
-
-                self.get_symbol_global(&name_in_local_ns)
-                    .or_else(|| self.get_symbol_global(name))
-                    .or_else(|| {
-                        name.parent().and_then(|record_id| {
-                            self.find_record_member(&record_id, &name.name)
-                        })
-                    })
-            }
-        }
-    }
-
-    pub fn get_type(&self, name: &Identifier) -> Option<DeclaredType> {
-        match &self.local_name {
-            &None => {
-                self.get_type_global(name)
-            }
-            &Some(ref local_name) => {
-                let name_in_local_ns = local_name.append(name);
-
-                self.get_type_global(&name_in_local_ns)
-                    .or_else(|| self.get_type_global(name))
-            }
-        }
+    fn get_symbol_imported(&self, name: &Identifier) -> Option<ScopedSymbol> {
+        self.imported_names.get(name)
+            .and_then(|global_name| self.get_symbol_global(global_name))
     }
 
     fn get_symbol_global(&self, name: &Identifier) -> Option<ScopedSymbol> {
@@ -304,6 +299,55 @@ impl Scope {
             }
             _ => None
         }
+    }
+
+    pub fn get_symbol(&self, name: &Identifier) -> Option<ScopedSymbol> {
+        self.local_name.as_ref()
+            .and_then(|local_name| {
+                let name_in_local_ns = local_name.append(name);
+
+                self.get_symbol_global(&name_in_local_ns)
+            })
+            .or_else(|| {
+                // search local names which refer to records to see if
+                // this is the field of a record
+                name.parent().and_then(|record_id| {
+                    self.find_record_member(&record_id, &name.name)
+                })
+            })
+            .or_else(|| {
+                self.get_symbol_imported(name)
+            })
+            .or_else(|| {
+                self.get_symbol_global(name)
+            })
+    }
+
+    fn get_type_global(&self, name: &Identifier) -> Option<DeclaredType> {
+        match self.names.get(&name) {
+            Some(Named::Type(result)) => Some(result.clone()),
+            _ => None
+        }
+    }
+
+    fn get_type_imported(&self, name: &Identifier) -> Option<DeclaredType> {
+        self.imported_names.get(name)
+            .and_then(|global_name| self.get_type_global(global_name))
+    }
+
+    pub fn get_type(&self, name: &Identifier) -> Option<DeclaredType> {
+        self.local_name.as_ref()
+            .and_then(|local_name| {
+                let name_in_local_ns = local_name.append(name);
+
+                self.get_type_global(&name_in_local_ns)
+            })
+            .or_else(|| {
+                self.get_type_imported(name)
+            })
+            .or_else(|| {
+                self.get_type_global(name)
+            })
     }
 
     fn find_record_member(&self,
@@ -326,12 +370,5 @@ impl Scope {
             name: child_name.to_owned(),
             record_type: record_decl,
         })
-    }
-
-    fn get_type_global(&self, name: &Identifier) -> Option<DeclaredType> {
-        match self.names.get(&name) {
-            Some(&Named::Type(ref result)) => Some(result.clone()),
-            _ => None
-        }
     }
 }

@@ -52,11 +52,11 @@ impl fmt::Display for SemanticErrorKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             &SemanticErrorKind::UnknownType(ref missing_type) => {
-                write!(f, "`{}` not found", missing_type)
+                write!(f, "type `{}` was not found", missing_type)
             }
 
             &SemanticErrorKind::UnknownSymbol(ref missing_sym) => {
-                write!(f, "symbol not found `{}`", missing_sym)
+                write!(f, "symbol `{}` was not found", missing_sym)
             }
 
             &SemanticErrorKind::MemberAccessOfNonRecord(ref actual, ref name) => {

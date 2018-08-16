@@ -31,6 +31,10 @@ fn expect_valid_operation(operator: operators::Operator,
                 operators::Minus =>
                     a.can_offset_by(b),
 
+                operators::Multiply |
+                operators::Divide =>
+                    a.is_numeric() && b.promotes_to(a),
+
                 operators::Gt |
                 operators::Gte |
                 operators::Lt |
@@ -364,6 +368,9 @@ fn binary_op_type(lhs: &Expression,
             expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
             Ok(Some(DeclaredType::Boolean))
         }
+
+        operators::Multiply |
+        operators::Divide |
         operators::Plus |
         operators::Minus => {
             expect_valid_operation(op, lhs_type.as_ref(), rhs_type.as_ref(), context)?;
@@ -416,6 +423,8 @@ fn prefix_op_type(op: operators::Operator,
                 invalid_op_err(),
         }
 
+        operators::Multiply |
+        operators::Divide |
         operators::And |
         operators::Or |
         operators::Assignment |
