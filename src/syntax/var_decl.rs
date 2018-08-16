@@ -60,8 +60,8 @@ impl VarDecls {
             match peekable_tokens.peek().cloned() {
                 Some(ref id) if id.as_token().is_any_identifier() => {
                     let decl = VarDecl::parse(peekable_tokens, &last_context)?;
-                    let semicolon = tokens::Semicolon.match_one(decl.next_tokens,
-                                                                &decl.last_token)?;
+                    let semicolon = tokens::Semicolon.match_or_endl(decl.next_tokens,
+                                                                    &decl.last_token)?;
                     decls.push(decl.value);
 
                     next_tokens = WrapIter::new(semicolon.next_tokens);

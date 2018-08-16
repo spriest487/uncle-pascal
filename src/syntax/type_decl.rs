@@ -26,43 +26,44 @@ impl RecordDecl {
 
         let mut decls = Vec::new();
         loop {
-            let decl = VarDecl::parse(decl_next_tokens, &decl_last_token)?;
+            /* we can have empty tokens in a field decl which is fine, it means
+            there was a semicolon after the last field which we accept */
+            let mut peek_decl_tokens = decl_next_tokens.peekable();
+            if peek_decl_tokens.peek().is_none() {
+                break;
+            }
+
+            let decl = VarDecl::parse(peek_decl_tokens, &decl_last_token)?;
 
             decls.push(decl.value);
+            decl_last_token = decl.last_token;
 
-            /* after each decl we expect to find either a semicolon or the end of the
-            decl tokens stream */
-            let mut peek_after_decl = decl.next_tokens.peekable();
-            match peek_after_decl.peek().cloned() {
-                Some(after_decl) => {
-                    if after_decl.as_token().eq(&tokens::Semicolon) {
-                        //ok, skip semicolon and move on
-                        peek_after_decl.next();
-
-                        //if there's EOF after the semicolon stop now
-                        if peek_after_decl.peek().is_none() {
-                            break
-                        }
-                        else {
-                            decl_next_tokens = WrapIter::new(peek_after_decl);
-                            decl_last_token = after_decl;
-                        }
-                    } else {
-                        let expected = tokens::Semicolon.or(Matcher::AnyIdentifier);
-
-                        return Err(ParseError::UnexpectedToken(after_decl, Some(expected)))
-                    }
-                },
-
-                //done
+            /* after each field decl we expect to find either a semicolon, a newline
+             or the end of the decl tokens stream */
+            let mut after_field_decl = decl.next_tokens.peekable();
+            match after_field_decl.peek().cloned() {
                 None => break,
+                Some(token_after) => {
+                    let skip = if token_after.is_token(&tokens::Semicolon) {
+                        1
+                    } else if token_after.is_any_identifier()
+                        && token_after.location.line > decl_last_token.location.line {
+                        0
+                    } else {
+                        let expected = Matcher::AnyIdentifier.or(tokens::Semicolon);
+                        return Err(ParseError::UnexpectedToken(token_after, Some(expected)));
+                    };
+
+                    decl_last_token = token_after;
+                    decl_next_tokens = WrapIter::new(after_field_decl.skip(skip));
+                }
             }
         }
 
         //after the "end", there should always be a semicolon
         //TODO: this isn't necessary, this should be up to the unit
-        let terminator = tokens::Semicolon.match_one(match_end.next_tokens,
-                                                     &match_end.last_token)?;
+        let terminator = tokens::Semicolon.match_or_endl(match_end.next_tokens,
+                                                         &match_end.last_token)?;
 
         let record = RecordDecl {
             name: type_name,

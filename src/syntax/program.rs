@@ -22,32 +22,51 @@ fn parse_uses<TIter>(in_tokens: TIter,
                                    uses_kw.next_tokens));
     }
 
-    //there is a uses, advance past it
-    let mut after_uses = uses_kw.next_tokens;
-    after_uses.next();
+    let mut units = Vec::new();
+    let mut units_tokens = WrapIter::new(uses_kw.next_tokens.skip(1));
+    let mut units_context = uses_kw.last_token;
+    loop {
+        let unit_id = Matcher::AnyIdentifier.match_one(units_tokens, &units_context)?;
 
-    let uses_tokens = tokens::Semicolon.split_at_match(after_uses, &uses_kw.last_token)?;
+        units.push(node::UnitReference {
+            name: node::Identifier::parse(unit_id.value.unwrap_identifier()),
+            context: unit_id.last_token.clone(),
+        });
 
-    let uses_identifiers: Result<Vec<_>, ParseError> = uses_tokens.value.before_split
-        .split(|source_token| tokens::Comma.eq(source_token.as_token()))
-        .map(|source_tokens| {
-            if source_tokens.len() == 1 && source_tokens[0].is_any_identifier() {
-                let name = node::Identifier::parse(source_tokens[0].unwrap_identifier());
+        units_context = unit_id.last_token;
 
-                Ok(node::UnitReference {
-                    name,
-                    context: context.clone(),
-                })
-            } else {
-                Err(ParseError::UnexpectedToken(source_tokens[0].clone(),
-                                                Some(Matcher::AnyIdentifier)))
+        let mut peek_after_unit = unit_id.next_tokens.peekable();
+        match peek_after_unit.peek().cloned() {
+            //end of uses (either unexpected token on new line, or explicit semicolon)
+            Some(ref t) if (t.is_token(&tokens::Semicolon) ||
+                t.location.line > units_context.location.line) => {
+
+                //skip the semicolon if there was one
+                let skip = if t.is_token(&tokens::Semicolon) { 1 } else { 0 };
+                units_tokens = WrapIter::new(peek_after_unit.skip(skip));
+                units_context = t.clone();
+                break;
             }
-        })
-        .collect();
 
-    Ok(ParseOutput::new(uses_identifiers?,
-                        uses_tokens.value.split_at,
-                        uses_tokens.next_tokens))
+            Some(ref comma) if comma.is_token(&tokens::Comma) => {
+                //continue looking for unit names after this comma in next iter
+                units_tokens = WrapIter::new(peek_after_unit.skip(1));
+                units_context = comma.clone();
+            }
+
+            Some(unexpected) => {
+                let err = ParseError::UnexpectedToken(unexpected,
+                                                      Some(Matcher::from(tokens::Comma)));
+                return Err(err);
+            }
+
+            None => {
+                return Err(ParseError::UnexpectedEOF(tokens::Comma.into(), units_context))
+            },
+        }
+    }
+
+    Ok(ParseOutput::new(units, units_context, units_tokens))
 }
 
 fn parse_decls<TIter>(in_tokens: TIter,
@@ -124,7 +143,6 @@ impl Program {
     {
         let program_statement = keywords::Program
             .and_then(Matcher::AnyIdentifier)
-            .and_then(tokens::Semicolon)
             .match_sequence(tokens, context)?;
 
         let name = program_statement.value
@@ -133,8 +151,12 @@ impl Program {
             .unwrap_identifier()
             .to_owned();
 
-        let uses = parse_uses(program_statement.next_tokens,
-                              &program_statement.last_token)?;
+        let end_name = tokens::Semicolon
+            .match_or_endl(program_statement.next_tokens,
+                           &program_statement.last_token)?;
+
+        let uses = parse_uses(end_name.next_tokens,
+                              &end_name.last_token)?;
 
         let decls = parse_decls(uses.next_tokens, &uses.last_token)?;
 

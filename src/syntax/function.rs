@@ -67,8 +67,8 @@ impl Function {
             ParseOutput::new(None, arg_groups.last_token, arg_groups.next_tokens)
         };
 
-        let semicolon_after_sig = tokens::Semicolon.match_one(return_type.next_tokens,
-                                                              &return_type.last_token)?;
+        let semicolon_after_sig = tokens::Semicolon.match_or_endl(return_type.next_tokens,
+                                                                  &return_type.last_token)?;
 
         let peek_after_sig = keywords::Var.or(keywords::Begin)
             .match_peek(semicolon_after_sig.next_tokens,
@@ -88,8 +88,8 @@ impl Function {
         let body_block = Block::parse(local_vars.next_tokens,
                                       &local_vars.last_token)?;
 
-        let last_semicolon = tokens::Semicolon.match_one(body_block.next_tokens,
-                                                         &body_block.last_token)?;
+        let last_semicolon = tokens::Semicolon.match_or_endl(body_block.next_tokens,
+                                                             &body_block.last_token)?;
 
         let function = Function {
             name: fn_name.unwrap_identifier().to_owned(),

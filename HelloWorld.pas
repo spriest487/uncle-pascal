@@ -1,70 +1,67 @@
 //this is a line comment
-program HelloWorld;
+program HelloWorld
 
-uses System;
+uses System,
+  System
 
 type String = record
-  Chars: System.Pointer;
-  Length: System.Integer;
-end;
+  Chars: System.Pointer
+  Length: System.Integer
+end
 
 type Vector = record
-  Elements: System.Pointer;
-  Length: System.Integer;
-end;
+  Elements: System.Pointer
+  Length: System.Integer
+end
 
-function Vector_Create: Vector;
+function Vector_Create: Vector
 begin
-  result.Elements := 0;
-  result.Length := 0;
-end;
+  result.Elements := 0
+  result.Length := 0
+end
 
-procedure Add(self: Vector; p: System.Pointer);
+procedure Add(self: Vector; p: System.Pointer)
 var
-  newElements: System.Pointer;
-  i: System.Integer;
+  newElements: System.Pointer
+  i: System.Integer
 begin
-  newElements := System.GetMem(self.Length + 1);
+  newElements := System.GetMem(self.Length + 1)
 
   if self.Elements <> 0 then
   begin
     for i := 0 to self.Length - 1 do
-      newElements + i := self.Elements + i;
+      newElements + i := self.Elements + i
 
-    System.FreeMem(self.Elements);
-  end;
+    System.FreeMem(self.Elements)
+  end
 
-  self.Length := self.Length + 1;
-  self.Elements := newElements;
-end;
+  self.Length := self.Length + 1
+  self.Elements := newElements
+end
 
-function Greet(name: System.String): System.String;
+function Greet(name: System.String): System.String
 var
-  msg: System.String;
+  msg: System.String
 begin
-  msg := 'hello world';
-  result := msg;
-end;
+  msg := 'hello world'
+  result := msg
+end
 
 var
-  x: System.Integer;
-  y: System.Integer;
+  x: System.Integer
+  y: System.Integer
 
 begin
-  x := 1;
-  y := 2;
-  x := x + y;
+  x := 1
+  y := 2
+  x := x + y
 
-  System.WriteLn('hello world');
+  System.WriteLn('hello world')
 
   if x = 1 then begin
     System.WriteLn('one')
   end
   else begin
-    System.WriteLn('not one');
-  end;
-
-  //WriteLn(IntToStr(x + y));
-
-  //WriteLn(Greet());
+    System.WriteLn('not one')
+  end
 end.

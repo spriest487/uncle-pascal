@@ -162,7 +162,7 @@ fn parse_line(file_name: &str,
         .filter_map(|capture| {
             let token_match = capture.get(0).unwrap();
             let token_source = token_match.as_str().trim();
-            let col = token_match.start();
+            let col = token_match.start() + 1;
 
             if token_source.len() == 0 {
                 /* token is purely whitespace, ignore it */

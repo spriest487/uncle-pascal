@@ -228,6 +228,7 @@ mod test {
             .expect(&format!("test expr `{}` must not contain illegal tokens", src));
 
         let parsed = syntax::Expression::parse(tokens, &source::test::empty_context())
+            .and_then(|expr_out| expr_out.finish())
             .expect(&format!("test expr `{}` must parse correctly", src));
 
         Expression::annotate(&parsed, scope)

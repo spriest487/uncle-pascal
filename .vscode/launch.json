@@ -9,7 +9,7 @@
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/target/debug/uncle_pascal.exe",
-            "args": [],
+            "args": ["HelloWorld.pas"],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",
             "environment": [],

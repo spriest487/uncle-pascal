@@ -24,6 +24,10 @@ pub enum Token {
 pub trait AsToken : Clone + fmt::Debug + fmt::Display {
     fn as_token(&self) -> &Token;
 
+    fn is_token(&self, t: &Token) -> bool {
+        *self.as_token() == *t
+    }
+
     fn is_keyword(&self, kw: keywords::Keyword) -> bool {
         match self.as_token() {
             &Token::Keyword(token_kw) => token_kw == kw,
