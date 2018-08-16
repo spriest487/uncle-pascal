@@ -157,15 +157,47 @@ impl Expression {
         where TIter: IntoIterator + 'static,
               TIter::Item: tokens::AsToken + 'static
     {
+        /* this matcher should cover anything which can appear at the start of an expr */
+        let match_expr_start = Matcher::AnyKeyword
+            .or(Matcher::AnyBinaryOperator)
+            .or(Matcher::AnyIdentifier)
+            .or(Matcher::AnyLiteralInteger)
+            .or(Matcher::AnyLiteralString)
+            .or(Matcher::Exact(tokens::BracketLeft));
+
         let all_tokens = in_tokens.into_iter().collect::<Vec<_>>();
 
-        //TODO, make this not dumb, guess expr type before parsing
-        parse_binary_op(all_tokens.clone(), context)
-            .or_else(|_| parse_function_call(all_tokens.clone(), context))
-            .or_else(|_| parse_identifier(all_tokens.clone(), context))
-            .or_else(|_| parse_literal_string(all_tokens.clone(), context))
-            .or_else(|_| parse_literal_integer(all_tokens.clone(), context))
-            .or_else(|_| parse_if(all_tokens.clone(), context))
+        //always try to parse it as a binary operation first
+        parse_binary_op(all_tokens.clone(), context).or_else(|_| {
+            let mut expr_first = match_expr_start.match_peek(all_tokens, context)?;
+
+            match expr_first.value {
+                Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
+                    parse_if(expr_first.next_tokens, &expr_first.last_token)
+                }
+
+                Some(ref identifier) if identifier.is_any_identifier() => {
+                    let identifier_tokens = expr_first.next_tokens.collect::<Vec<_>>();
+                    let last_token = expr_first.last_token;
+
+                    parse_function_call(identifier_tokens.clone(), &last_token)
+                        .or_else(|_| parse_identifier(identifier_tokens, &last_token))
+                }
+
+                Some(ref s) if s.is_any_literal_string() => {
+                    parse_literal_string(expr_first.next_tokens, &expr_first.last_token)
+                }
+
+                Some(ref i) if i.is_any_literal_int() => {
+                    parse_literal_integer(expr_first.next_tokens, &expr_first.last_token)
+                }
+
+                _ => {
+                    let unexpected = expr_first.next_tokens.next().unwrap().clone();
+                    Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start)))
+                },
+            }
+        })
     }
 }
 

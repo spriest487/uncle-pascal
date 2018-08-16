@@ -23,6 +23,76 @@ pub enum Token {
 
 pub trait AsToken : Clone + fmt::Debug + fmt::Display {
     fn as_token(&self) -> &Token;
+
+    fn is_keyword(&self, kw: keywords::Keyword) -> bool {
+        match self.as_token() {
+            &Token::Keyword(token_kw) => token_kw == kw,
+            _ => false,
+        }
+    }
+
+    fn is_any_keyword(&self) -> bool {
+        match self.as_token() {
+            &Token::Keyword(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_any_identifier(&self) -> bool {
+        match self.as_token() {
+            &Token::Identifier(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_any_binary_operator(&self) -> bool {
+        match self.as_token() {
+            &Token::BinaryOperator(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_any_literal_string(&self) -> bool {
+        match self.as_token() {
+            &Token::LiteralString(_) => true,
+            _ => false,
+        }
+    }
+
+    fn is_any_literal_int(&self) -> bool {
+        match self.as_token() {
+            &Token::LiteralInteger(_) => true,
+            _ => false,
+        }
+    }
+
+    fn unwrap_identifier(&self) -> &str {
+        match self.as_token() {
+            &Identifier(ref name) => name,
+            _ => panic!("calling unwrap_identifier on {}", self),
+        }
+    }
+
+    fn unwrap_binary_operator(&self) -> &operators::BinaryOperator {
+        match self.as_token() {
+            &BinaryOperator(ref op) => op,
+            _ => panic!("calling unwrap_binary_operator on {}", self),
+        }
+    }
+
+    fn unwrap_literal_string(&self) -> &str {
+        match self.as_token() {
+            &LiteralString(ref s) => s,
+            _ => panic!("calling unwrap_literal_string on {}", self),
+        }
+    }
+
+    fn unwrap_literal_integer(&self) -> i64 {
+        match self.as_token() {
+            &LiteralInteger(ref i) => *i,
+            _ => panic!("calling unwrap_literal_integer on {}", self),
+        }
+    }
 }
 
 impl AsToken for Token {
@@ -58,78 +128,6 @@ impl fmt::Display for Token {
             &LiteralString(ref s) => write!(f, "string literal '{}'", s),
             &LiteralInteger(i) => write!(f, "integer literal '{}'", i),
             _ => write!(f, "{}", self.to_source())
-        }
-    }
-}
-
-impl Token {
-    pub fn is_keyword(&self, kw: keywords::Keyword) -> bool {
-        match self {
-            &Token::Keyword(token_kw) => token_kw == kw,
-            _ => false,
-        }
-    }
-
-    pub fn is_any_keyword(&self) -> bool {
-        match self {
-            &Token::Keyword(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_any_identifier(&self) -> bool {
-        match self {
-            &Token::Identifier(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_any_binary_operator(&self) -> bool {
-        match self {
-            &Token::BinaryOperator(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_any_literal_string(&self) -> bool {
-        match self {
-            &Token::LiteralString(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn is_any_literal_int(&self) -> bool {
-        match self {
-            &Token::LiteralInteger(_) => true,
-            _ => false,
-        }
-    }
-
-    pub fn unwrap_identifier(&self) -> &str {
-        match self {
-            &Identifier(ref name) => name,
-            _ => panic!("calling unwrap_identifier on {}", self),
-        }
-    }
-
-    pub fn unwrap_binary_operator(&self) -> &operators::BinaryOperator {
-        match self {
-            &BinaryOperator(ref op) => op,
-            _ => panic!("calling unwrap_binary_operator on {}", self),
-        }
-    }
-
-    pub fn unwrap_literal_string(&self) -> &str {
-        match self {
-            &LiteralString(ref s) => s,
-            _ => panic!("calling unwrap_literal_string on {}", self),
-        }
-    }
-
-    pub fn unwrap_literal_integer(&self) -> i64 {
-        match self {
-            &LiteralInteger(ref i) => *i,
-            _ => panic!("calling unwrap_literal_integer on {}", self),
         }
     }
 }

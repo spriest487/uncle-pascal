@@ -112,15 +112,15 @@ impl Matcher {
         where T: tokens::AsToken
     {
         match self {
-            &Matcher::Keyword(kw) => token.as_token().is_keyword(kw),
-            &Matcher::AnyKeyword => token.as_token().is_any_keyword(),
-            &Matcher::AnyIdentifier => token.as_token().is_any_identifier(),
-            &Matcher::AnyBinaryOperator => token.as_token().is_any_binary_operator(),
-            &Matcher::AnyLiteralInteger => token.as_token().is_any_literal_int(),
-            &Matcher::AnyLiteralString => token.as_token().is_any_literal_string(),
+            &Matcher::Keyword(kw) => token.is_keyword(kw),
+            &Matcher::AnyKeyword => token.is_any_keyword(),
+            &Matcher::AnyIdentifier => token.is_any_identifier(),
+            &Matcher::AnyBinaryOperator => token.is_any_binary_operator(),
+            &Matcher::AnyLiteralInteger => token.is_any_literal_int(),
+            &Matcher::AnyLiteralString => token.is_any_literal_string(),
             &Matcher::Exact(ref exact_token) => token.as_token() == exact_token,
             &Matcher::OneOf(ref matchers) => matchers.iter()
-                .any(|matcher| matcher.is_match(token.as_token())),
+                .any(|matcher| matcher.is_match(token)),
         }
     }
 
@@ -184,11 +184,13 @@ impl Matcher {
                                     peekable))
             }
 
-            _ => {
+            Some(_) => {
                 Ok(ParseOutput::new(None,
                                     context.clone(),
                                     peekable))
-            }
+            },
+
+            None => Err(ParseError::UnexpectedEOF(self.clone(), context.clone())),
         }
     }
 
