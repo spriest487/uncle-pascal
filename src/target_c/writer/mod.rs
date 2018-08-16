@@ -702,7 +702,8 @@ pub fn default_initialize_vars<'a>(out: &mut String,
 }
 
 pub fn write_record_decl(out: &mut String, record_decl: &semantic::RecordDecl) -> fmt::Result {
-    assert!(record_decl.members.len() > 0, "structs must have at least one member");
+    assert!(record_decl.members.len() > 0 || record_decl.variant_part.is_some(),
+        "structs must have at least one member");
 
     let qualified_id = identifier_to_c(&record_decl.qualified_name());
     if record_decl.kind == RecordKind::Class {

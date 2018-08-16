@@ -104,28 +104,28 @@ impl RecordDecl {
             scope: scope.clone(),
         };
 
-        if decl.members.len() == 0 {
-            Err(SemanticError::empty_record(scope.qualify_local_name(&decl.name), context))
-        } else {
-            let members = decl.members.iter()
-                .map(|member| {
-                    RecordMember::annotate(member, scope.clone())
-                })
-                .collect::<Result<_, _>>()?;
-
-            let variant_part = match &decl.variant_part {
-                Some(part) => Some(RecordVariantPart::annotate(part, scope)?),
-                None => None,
-            };
-
-            Ok(RecordDecl {
-                name: decl.name.clone(),
-                kind: decl.kind,
-                context,
-                members,
-                variant_part,
-            })
+        if decl.members.len() == 0 && decl.variant_part.is_none() {
+            return Err(SemanticError::empty_record(scope.qualify_local_name(&decl.name), context));
         }
+
+        let members = decl.members.iter()
+            .map(|member| {
+                RecordMember::annotate(member, scope.clone())
+            })
+            .collect::<Result<_, _>>()?;
+
+        let variant_part = match &decl.variant_part {
+            Some(part) => Some(RecordVariantPart::annotate(part, scope)?),
+            None => None,
+        };
+
+        Ok(RecordDecl {
+            name: decl.name.clone(),
+            kind: decl.kind,
+            context,
+            members,
+            variant_part,
+        })
     }
 
     pub fn scope(&self) -> &Scope {
@@ -173,7 +173,7 @@ impl SetDecl {
             inline @ node::SetEnumeration::Inline(_) => inline.clone(),
         };
 
-        Ok(node::SetDecl{
+        Ok(node::SetDecl {
             name: set_decl.name.clone(),
             enumeration,
             context,
