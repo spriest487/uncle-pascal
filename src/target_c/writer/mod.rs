@@ -886,7 +886,8 @@ pub fn write_decl(out: &mut String,
 }
 
 fn write_static_init_impls<'a>(out: &mut String,
-                               impls: &'a [semantic::Implementation]) -> fmt::Result {
+                               impls: &'a [semantic::Implementation],
+                               ns: Option<&Identifier>) -> fmt::Result {
     let decls: Vec<_> = impls.iter()
         .filter_map(|impl_decl| match impl_decl {
             Implementation::Decl(decl) => Some(decl.clone()),
@@ -894,11 +895,12 @@ fn write_static_init_impls<'a>(out: &mut String,
         })
         .collect();
 
-    write_static_init(out, decls.as_slice())
+    write_static_init(out, decls.as_slice(), ns)
 }
 
 pub fn write_static_init<'a>(out: &mut String,
-                             decls: &'a [semantic::UnitDecl])
+                             decls: &'a [semantic::UnitDecl],
+                             namespace: Option<&Identifier>)
                              -> fmt::Result {
     let classes = decls.iter()
         .filter_map(|decl| {
@@ -913,8 +915,13 @@ pub fn write_static_init<'a>(out: &mut String,
         });
 
     for class in classes {
+        let qualified_name = match namespace {
+            Some(ns) => ns.child(&class.name),
+            None => Identifier::from(&class.name),
+        };
+
         /* string is magically initialized earlier */
-        if class.name.to_string() == "System.String" {
+        if qualified_name.to_string() == "System.String" {
             continue;
         }
 
@@ -929,14 +936,13 @@ pub fn write_static_init<'a>(out: &mut String,
 
         let destructor_ptr = match destructor {
             Some(destructor) => {
-                let qualified_name = destructor.scope().qualify_local_name(&destructor.name);
-                format!("(System_Internal_Destructor)&{}", identifier_to_c(&qualified_name))
+                let dtor_qualified = destructor.scope().qualify_local_name(&destructor.name);
+                format!("(System_Internal_Destructor)&{}", identifier_to_c(&dtor_qualified))
             }
             None => "nullptr".to_string(),
         };
 
-        let class: &semantic::RecordDecl = class;
-        writeln!(out, "System_Internal_InitClass(\"{}\", {});", class.name, destructor_ptr)?;
+        writeln!(out, "System_Internal_InitClass(\"{}\", {});", qualified_name, destructor_ptr)?;
     }
 
     Ok(())
@@ -1024,10 +1030,11 @@ pub fn write_c(module: &ProgramModule)
 
     // init other classes
     for unit in module.units.iter() {
-        write_static_init(&mut output, &unit.interface)?;
-        write_static_init_impls(&mut output, &unit.implementation)?;
+        let unit_ns = Identifier::from(&unit.name);
+        write_static_init(&mut output, &unit.interface, Some(&unit_ns))?;
+        write_static_init_impls(&mut output, &unit.implementation, Some(&unit_ns))?;
     }
-    write_static_init_impls(&mut output, &module.program.decls)?;
+    write_static_init_impls(&mut output, &module.program.decls, None)?;
 
     output.write_str(&c_main)?;
 
