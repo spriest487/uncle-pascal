@@ -1,26 +1,29 @@
 # TODO
 
-* shadowing breaks initialization checks which are done by name
-* remove pascal names from C++ output
+## urgent/in progress
+* Interfaces and interface methods
 * Disposable interface (get rid of destructors)
 * const decls should use the explicit type they're given
-* record members in local args shouldn't be initialized by default
-* `result` shouldn't be initialized by default and we should check this
-* check assignment to `out` params
+* => function syntax
+* add Name node in C++ AST for renaming (--> remove pascal names from C++ output)
+* shadowing breaks initialization checks which are done by name
 * RC struct members on the stack
-* implement `exit` and make arc work with alterate control flows 
-* variant fields with the same name
 
+## fixes
+* variant fields with the same name
+* Implement suffix operators (for ^)
+* weak variables to break RC cycles
+* "uses" should be able to appear at any position in the decls
+
+## missing features
 * set literals
 * sets supporting ..
 * sets of numeric types
-* implement Exit() or better replacement for result var
-* "uses" should be able to appear at any position in the decls
-* weak variables
 * variable length arrays
-* Interfaces and interface methods
+* implement `exit` and make arc work with alterate control flows
+
+## nice
 * Reflection
-* Implement suffix operators (for ^)
 * string formatting
 * Library compilation
 * Library imports/exports & external functions

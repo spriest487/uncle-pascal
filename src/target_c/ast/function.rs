@@ -20,6 +20,7 @@ use target_c::{
     identifier_to_c,
 };
 
+#[derive(Clone)]
 pub struct FunctionArg {
     pub name: String,
     pub ctype: CType,
@@ -37,9 +38,19 @@ pub enum FunctionDefinition {
     Defined(Block),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum CallingConvention {
     Cdecl,
     Stdcall,
+}
+
+impl CallingConvention {
+    pub fn from_modifiers(modifiers: &[FunctionModifier]) -> CallingConvention {
+        match modifiers.contains(&FunctionModifier::Stdcall) {
+            true => CallingConvention::Stdcall,
+            false => CallingConvention::Cdecl,
+        }
+    }
 }
 
 impl fmt::Display for CallingConvention {
@@ -67,15 +78,7 @@ impl<'a> From<&'a semantic::FunctionDecl> for FunctionDecl {
 
         let name = Self::translate_name(pascal_decl);
 
-        let calling_convention = if pascal_decl.modifiers.contains(&FunctionModifier::Stdcall) {
-            // todo: semantic error earlier?
-            assert!(!pascal_decl.modifiers.contains(&FunctionModifier::Cdecl),
-                    "function decl `{}` has multiple calling conventions",
-                    pascal_decl.name);
-            CallingConvention::Stdcall
-        } else {
-            CallingConvention::Cdecl
-        };
+        let calling_convention = CallingConvention::from_modifiers(&pascal_decl.modifiers);
 
         let args = pascal_decl.args.iter()
             .map(|arg_decl| {
@@ -134,9 +137,48 @@ impl FunctionDecl {
     pub fn interface_call_name(interface: &Identifier,
                                func_name: &str,
                                for_type: &Identifier) -> String {
-        let qualified_impl = interface.child(func_name);
+        identifier_to_c(&interface.child(func_name).append(for_type))
+    }
 
-        format!("{}_{}", identifier_to_c(&qualified_impl), identifier_to_c(&for_type))
+    pub fn virtual_call_name(decl: &semantic::FunctionDecl) -> String {
+        let implements = decl.implements.as_ref().unwrap();
+        let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
+
+        let qualified_name = implements.interface.child(&decl.name)
+            .append(&for_type_name)
+            .child("VirtualCall");
+
+        identifier_to_c(&qualified_name)
+    }
+
+    pub fn virtual_call_adaptor(decl: &semantic::FunctionDecl) -> Option<FunctionDecl> {
+        decl.implements.as_ref()?;
+
+        let mut adaptor = FunctionDecl::from(decl);
+        let real_self_type = adaptor.args[0].ctype.clone();
+        let real_func = adaptor.name.clone();
+
+        adaptor.name = Self::virtual_call_name(decl);
+        adaptor.args[0].ctype = CType::Struct("System_Internal_Object".to_string())
+            .into_pointer();
+
+        let adaptor_cast = Expression::function_call(
+            real_func,
+            vec![
+                Expression::static_cast(
+                    real_self_type,
+                    Expression::raw(&adaptor.args[0].name),
+                )
+            ],
+        );
+
+        adaptor.definition = FunctionDefinition::Defined(Block {
+            statements: vec![
+                Expression::raw(format!("return {}", adaptor_cast))
+            ]
+        });
+
+        Some(adaptor)
     }
 
     pub fn translate_name(decl: &semantic::FunctionDecl) -> String {
@@ -178,6 +220,7 @@ impl FunctionDecl {
                 default_value: None,
                 name: "result".to_string(),
                 ctype: decl.return_type.clone(),
+                array_size: None,
             };
 
             body.statements.insert(0, result_decl.decl_statement());
@@ -204,7 +247,7 @@ impl FunctionDecl {
 
         for arg in rc_args.iter() {
             body.statements.insert(0, Expression::Raw(
-                format!("System_Internal_Rc_Retain({});", arg.name)
+                format!("System_Internal_Rc_Retain({})", arg.name)
             ));
             body.statements.push(Expression::Raw(
                 format!("System_Internal_Rc_Release({})", arg.name)
@@ -239,7 +282,7 @@ impl FunctionDecl {
         )
     }
 
-    pub fn write_impl(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_impl(&self, out: &mut fmt::Write) -> fmt::Result {
         match &self.definition {
             FunctionDefinition::None => {}
 
@@ -276,7 +319,7 @@ impl FunctionDecl {
                          self.name,
                          self.args_list())?;
 
-                body.write(&mut out)?;
+                body.write(out)?;
             }
         }
 

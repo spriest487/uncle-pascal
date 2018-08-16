@@ -79,7 +79,7 @@ fn func_call_on_obj_uses_ufcs_from_target_ns() {
     match expr.value {
         ExpressionValue::FunctionCall(node::FunctionCall::Function { target, args }) => {
             assert!(target.is_identifier(&Identifier::from("System.TestAdd")),
-                    "expected identifier, found {:?}", target.to_source());
+                    "expected identifier, found `{}`", target);
 
             assert_eq!(2, args.len());
 

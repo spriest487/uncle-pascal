@@ -6,8 +6,30 @@
 
 struct System_Internal_Class {
     std::string Name;
+
+    System_Internal_InterfaceImpl* Interfaces;
+    System_NativeUInt InterfaceCount;
+
     System_Internal_Destructor Destructor;
 };
+
+static const void* System_Internal_FindVTable(
+        System_Internal_Object* obj,
+        System_NativeUInt interfaceID) {
+    auto objClass = obj->Class;
+    for (System_NativeUInt i = 0; i < objClass->InterfaceCount; ++i) {
+        auto iface = &objClass->Interfaces[i];
+
+        if (iface->ID == interfaceID) {
+            return iface->VTable;
+        }
+    }
+
+    std::fprintf(stderr, "missing vtable of interface $%td for class %s\n",
+        interfaceID,
+        obj->Class->Name.c_str());
+    std::abort();
+}
 
 static void System_Internal_Raise(const char* file, int line, int col, const char* msg) {
     std::fprintf(stderr, "Error raised in %s @ %d:%d: %s\n", file, line, col, msg);
@@ -34,7 +56,9 @@ static void System_FreeMem(System_Byte* p) {
 static std::unordered_map<std::string, std::unique_ptr<System_Internal_Class>> System_Internal_Classes;
 
 static void System_Internal_InitClass(const char* name,
-        System_Internal_Destructor destructor) {
+        System_Internal_Destructor destructor,
+        System_Internal_InterfaceImpl* interfaces,
+        System_NativeUInt interfaceCount) {
     auto nameStr = std::string(name);
     if (System_Internal_Classes.find(nameStr) != System_Internal_Classes.end()) {
         std::fprintf(stderr, "attempting to initialize class with duplicate name");
@@ -44,6 +68,9 @@ static void System_Internal_InitClass(const char* name,
     auto classObj = std::make_unique<System_Internal_Class>();
     classObj->Name = nameStr;
     classObj->Destructor = destructor;
+
+    classObj->Interfaces = interfaces,
+    classObj->InterfaceCount = interfaceCount;
 
     System_Internal_Classes.insert(make_pair(nameStr, move(classObj)));
 

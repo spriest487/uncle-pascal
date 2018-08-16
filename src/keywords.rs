@@ -1,7 +1,5 @@
 use std::fmt;
 
-use node::ToSource;
-
 pub use self::Keyword::*;
 use opts::CompileOptions;
 
@@ -98,9 +96,9 @@ impl Keyword {
     }
 }
 
-impl ToSource for Keyword {
-    fn to_source(&self) -> String {
-        match self {
+impl fmt::Display for Keyword {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
             Program => "program",
             Var => "var",
             Let => "let",
@@ -138,12 +136,6 @@ impl ToSource for Keyword {
             Finally => "finally",
             Raise => "raise",
             With => "with",
-        }.to_string()
-    }
-}
-
-impl fmt::Display for Keyword {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", ToSource::to_source(self))
+        })
     }
 }

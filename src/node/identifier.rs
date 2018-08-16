@@ -5,17 +5,12 @@ use std::{
 };
 
 use tokens::{self, AsToken};
-use node::Symbol;
 use syntax::*;
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub struct Identifier {
     pub namespace: Vec<String>,
     pub name: String,
-}
-
-impl Symbol for Identifier {
-    type Type = Self;
 }
 
 impl<'a> From<&'a str> for Identifier {

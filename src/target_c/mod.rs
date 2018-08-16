@@ -119,17 +119,17 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
         decl_impl.write_impl(&mut out)?;
     }
 
+    unit.declare_vtables(&mut out)?;
+
     /* write main function */
     writeln!(out, "int main(int argc, char* argv[]) {{")?;
 
-    // init the string class and string literals
-    writeln!(out, "System_Internal_InitClass(\"System.String\", (System_Internal_Destructor)&System_Disposable_Dispose_System_String);")?;
+    unit.write_internal_class_init(&mut out)?;
+
     unit.init_string_literals(&mut out)?;
 
     // init other classes
-    for class in unit.classes().iter() {
-        class.write_init(&mut out)?;
-    }
+    unit.write_class_init(&mut out)?;
 
     /* write initialization for each unit's initialization */
     for init_block in unit.initialization().iter() {

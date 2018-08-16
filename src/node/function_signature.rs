@@ -1,6 +1,7 @@
-use std::fmt;
+use std::{
+    fmt::{self, Write}
+};
 use node::{
-    ToSource,
     FunctionArgModifier,
     FunctionArg,
     Context,
@@ -19,30 +20,24 @@ pub enum FunctionModifier {
     External(ExternalName),
 }
 
-impl ToSource for FunctionModifier {
-    fn to_source(&self) -> String {
-        match self {
-            FunctionModifier::Cdecl => "cdecl".to_string(),
-            FunctionModifier::Stdcall => "stdcall".to_string(),
-            FunctionModifier::External(ExternalName { shared_lib, symbol_name }) => {
-                let mut parts = vec!["external".to_string()];
-
-                if let Some(shared_lib) = shared_lib {
-                    parts.push(format!("'{}'", shared_lib));
-                }
-                if let Some(name) = symbol_name {
-                    parts.push(format!("name '{}'", name))
-                }
-
-                parts.join(" ")
-            }
-        }
-    }
-}
-
 impl fmt::Display for FunctionModifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_source())
+        match self {
+            FunctionModifier::Cdecl => write!(f, "cdecl"),
+            FunctionModifier::Stdcall => write!(f, "stdcall"),
+            FunctionModifier::External(ExternalName { shared_lib, symbol_name }) => {
+                write!(f, "external")?;
+
+                if let Some(shared_lib) = shared_lib {
+                    write!(f, " '{}'", shared_lib)?;
+                }
+                if let Some(name) = symbol_name {
+                    write!(f, " name '{}'", name)?;
+                }
+
+                Ok(())
+            }
+        }
     }
 }
 
@@ -52,15 +47,15 @@ pub struct FunctionArgSignature<TType> {
     pub modifier: Option<FunctionArgModifier>,
 }
 
-impl<TType> ToSource for FunctionArgSignature<TType>
-    where TType: ToSource
+impl<TType> fmt::Display for FunctionArgSignature<TType>
+    where TType: fmt::Display
 {
-    fn to_source(&self) -> String {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.modifier {
             Some(modifier) =>
-                format!("{} {}", modifier.to_source(), self.decl_type.to_source()),
+                write!(f, "{} {}", modifier, self.decl_type),
             None =>
-                self.decl_type.to_source(),
+                write!(f, "{}", self.decl_type),
         }
     }
 }
@@ -83,41 +78,31 @@ pub struct FunctionSignature<TType> {
     pub modifiers: Vec<FunctionModifier>,
 }
 
-impl<TType> ToSource for FunctionSignature<TType>
-    where TType: ToSource
+impl<TType> fmt::Display for FunctionSignature<TType>
+    where TType: fmt::Display
 {
-    fn to_source(&self) -> String {
-        let mut source = "function".to_string();
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("function")?;
 
         if self.args.len() > 0 {
-            source.push('(');
-            source.push_str(&self.args.iter()
+            f.write_char('(')?;
+            f.write_str(&self.args.iter()
                 .map(|arg_type| {
-                    format!("{}", arg_type.to_source())
+                    format!("{}", arg_type)
                 })
                 .collect::<Vec<_>>()
-                .join(";"));
-            source.push(')');
+                .join(";"))?;
+            f.write_char(')')?;
         }
 
         if let Some(return_type) = self.return_type.as_ref() {
-            source.push_str(": ");
-            source.push_str(&return_type.to_source());
+            write!(f, ": {}", return_type)?;
         }
 
         for modifier in self.modifiers.iter() {
-            source.push_str("; ");
-            source.push_str(&modifier.to_source());
+            write!(f, "; {}", modifier)?;
         }
 
-        source
-    }
-}
-
-impl<TType> fmt::Display for FunctionSignature<TType>
-    where TType: ToSource
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str(&self.to_source())
+        Ok(())
     }
 }

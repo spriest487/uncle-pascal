@@ -2,6 +2,7 @@ use std::fmt;
 
 use operators;
 use node::*;
+use tokens;
 use consts::{
     IntConstant,
     FloatConstant,
@@ -48,6 +49,22 @@ impl<TContext> PartialEq for ObjectConstructorMember<TContext>
 {
     fn eq(&self, other: &Self) -> bool {
         self.name.eq(&other.name) && self.value.eq(&other.value)
+    }
+}
+
+impl<C> fmt::Display for ObjectConstructor<C>
+    where C: Context
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "(")?;
+        for (member_num, member) in self.members.iter().enumerate() {
+            write!(f, "{}: {}", member.name, member.value)?;
+
+            if member_num < self.members.len() - 1 {
+                write!(f, ";")?;
+            }
+        }
+        write!(f, ")")
     }
 }
 
@@ -382,11 +399,145 @@ impl ConstantExpression {
     }
 }
 
+impl fmt::Display for ConstantExpression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ConstantExpression::Integer(int) => write!(f, "{}", int),
+            ConstantExpression::Float(float) => write!(f, "{}", float),
+            ConstantExpression::Nil => write!(f, "nil"),
+            ConstantExpression::Boolean(val) => write!(f, "{}", val),
+            ConstantExpression::Enum(enum_val) => write!(f, "{}", enum_val),
+            ConstantExpression::Set(set_val) => write!(f, "{}", set_val),
+            ConstantExpression::String(s) => write!(f, "'{}'", s),
+        }
+    }
+}
+
 impl<TContext> fmt::Display for Expression<TContext>
-    where TContext: Context + fmt::Debug,
+    where TContext: Context,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "expression: {:?} ({})", self.value, self.context.token()) //TODO better display
+        write!(f, "{}", self.value)
+    }
+}
+
+impl<C> fmt::Display for ExpressionValue<C>
+    where C: Context
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExpressionValue::BinaryOperator { lhs, op, rhs } => {
+                write!(f, "({} {} {})", lhs, op, rhs)
+            }
+
+            ExpressionValue::Identifier(id) => f.write_str(&id.to_string()),
+
+            ExpressionValue::FunctionCall(call) => {
+                let args_str = call.args().iter()
+                    .map(|arg| arg.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+
+                match call {
+                    FunctionCall::Function { target, .. } => {
+                        write!(f, "{}({})", target, args_str)
+                    }
+
+                    FunctionCall::Method { interface_id, func_name, .. } => {
+                        write!(f, "{}.{}({})", interface_id, func_name, args_str)
+                    }
+                }
+            }
+
+            ExpressionValue::TypeCast { target_type, from_value } => {
+                write!(f, "{}({})", target_type, from_value)
+            }
+
+            ExpressionValue::PrefixOperator { op, rhs } => {
+                write!(f, "({} {})", op, rhs)
+            }
+
+            ExpressionValue::Member { of, name } => {
+                write!(f, "{}.{}", of, name)
+            }
+
+            ExpressionValue::ArrayElement { of, index_expr } => {
+                write!(f, "{}[{}]", of, index_expr)
+            }
+
+            ExpressionValue::LetBinding(binding) => {
+                match binding.mutable {
+                    true => write!(f, "let var {} := {}", binding.name, binding.value),
+                    false => write!(f, "let {} = {}", binding.name, binding.value),
+                }
+            }
+
+            ExpressionValue::Constant(ConstantExpression::Integer(i)) => write!(f, "{}", i),
+            ExpressionValue::Constant(ConstantExpression::Float(float)) => write!(f, "{}", float),
+
+            ExpressionValue::Constant(ConstantExpression::String(s)) =>
+                write!(f, "{}", tokens::LiteralString(s.clone())),
+
+            ExpressionValue::Constant(ConstantExpression::Boolean(b)) =>
+                write!(f, "{}", if *b { "true" } else { "false" }),
+
+            ExpressionValue::Constant(ConstantExpression::Nil) =>
+                f.write_str("nil"),
+
+            ExpressionValue::Constant(ConstantExpression::Enum(e)) =>
+                write!(f, "{}", e.name),
+
+            ExpressionValue::Constant(ConstantExpression::Set(set)) =>
+                write!(f, "{}", set.set),
+
+            ExpressionValue::If { condition, then_branch, else_branch } => {
+                writeln!(f, "if {} then", condition)?;
+                writeln!(f, "\t{}", then_branch)?;
+
+                if let &Some(ref else_expr) = else_branch {
+                    writeln!(f, "else")?;
+                    writeln!(f, "\t{}", else_expr)?;
+                }
+
+                Ok(())
+            }
+
+            ExpressionValue::While { condition, body } => {
+                writeln!(f, "while {} do {}", condition, body)
+            }
+
+            ExpressionValue::Block(block) => {
+                writeln!(f, "{}", block)
+            }
+
+            ExpressionValue::ForLoop { from, to, body } => {
+                writeln!(f, "for {} to {} do {}", from, to, body)
+            }
+
+            ExpressionValue::SetConstructor(members) => {
+                write!(f, "[{}]", members.iter()
+                    .map(|member| {
+                        match member.to.as_ref() {
+                            Some(to) => format!("{}..{}", member.from, to),
+                            None => member.from.to_string(),
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "))
+            }
+
+            ExpressionValue::ObjectConstructor(members) => {
+                write!(f, "{}", members)
+            }
+
+            ExpressionValue::With { value, body } => {
+                write!(f, "with {} do {}", value, body)
+            }
+
+            ExpressionValue::Raise(error) => {
+                write!(f, "raise {}", error)
+            }
+        }
     }
 }
 

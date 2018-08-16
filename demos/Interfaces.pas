@@ -39,4 +39,5 @@ begin
 
     let totalLegs = animal1.CountLegs() + animal2.CountLegs()
     WriteLn('total legs: ' + StringFromInt(totalLegs))
+
 end.

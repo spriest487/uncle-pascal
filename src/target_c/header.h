@@ -39,7 +39,10 @@ struct System_Internal_Array {
 };
 
 template<typename R, typename... Args>
-using System_Internal_Func = R (*)(Args...);
+using System_Internal_Func_Stdcall = R (__stdcall *)(Args...);
+
+template<typename R, typename... Args>
+using System_Internal_Func_Cdecl = R (__cdecl *)(Args...);
 
 struct System_Internal_Class;
 
@@ -48,9 +51,20 @@ struct System_Internal_Object {
     System_NativeUInt StrongCount;
 };
 
+struct System_Internal_InterfaceImpl {
+    System_NativeUInt ID;
+    const void* VTable;
+};
+
 typedef void (*System_Internal_Destructor)(System_Internal_Object*);
-static void System_Internal_InitClass(const char* name, System_Internal_Destructor destructor);
+
+static void System_Internal_InitClass(const char* name,
+    System_Internal_Destructor destructor,
+    System_Internal_InterfaceImpl* interfaces,
+    System_NativeUInt interfaceCount);
+
 static System_Internal_Class* System_Internal_FindClass(const char* name);
+static const void* System_Internal_FindVTable(System_Internal_Object* obj, System_NativeUInt interfaceID);
 
 static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);

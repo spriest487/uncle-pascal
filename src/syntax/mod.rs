@@ -32,8 +32,6 @@ use std::fmt;
 use source;
 use node::{
     Identifier,
-    Symbol,
-    ToSource,
     TypeName,
     Context,
 };
@@ -62,19 +60,9 @@ impl From<source::Token> for ParsedContext {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ParsedSymbol(pub Identifier);
 
-impl Symbol for ParsedSymbol {
-    type Type = TypeName;
-}
-
-impl ToSource for ParsedSymbol {
-    fn to_source(&self) -> String {
-        self.0.to_source()
-    }
-}
-
 impl fmt::Display for ParsedSymbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        self.0.fmt(f)
+        write!(f, "{}", self.0)
     }
 }
 

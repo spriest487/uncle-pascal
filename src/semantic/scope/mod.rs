@@ -902,15 +902,15 @@ impl fmt::Debug for Scope {
         for (name, iface) in interfaces {
             writeln!(f, "\t\t{}: {}", name, iface.decl.name)?;
 
-            for (func_name, impl_func) in iface.members.iter() {
-                for (impl_ty, impl_fn) in impl_func.impls_by_type.iter() {
+            for (method_name, method) in iface.methods.iter() {
+                for (impl_ty, method_func) in method.impls_by_type.iter() {
                     writeln!(
                         f,
                         "\t\t\t* `{}` implemented for {} in {} ({})",
-                        func_name,
+                        method_name,
                         impl_ty,
-                        impl_fn.decl.scope().namespace_description(),
-                        if impl_fn.defined { "defined" } else { "undefined" },
+                        method_func.decl.scope().namespace_description(),
+                        if method_func.defined { "defined" } else { "undefined" },
                     )?;
                 }
             }
@@ -937,7 +937,7 @@ impl fmt::Debug for Scope {
 
         writeln!(f, "\tconsts: [")?;
         for (name, val) in consts {
-            writeln!(f, "\t\t{}: {}", name, val.to_source())?;
+            writeln!(f, "\t\t{}: {}", name, val)?;
         }
         writeln!(f, "\t]")?;
 

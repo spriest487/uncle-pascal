@@ -19,21 +19,21 @@ use semantic::{
 };
 
 #[derive(Clone, Debug, Default)]
-pub struct InterfaceMember {
+pub struct InterfaceMethod {
     pub impls_by_type: HashMap<Identifier, NamedFunction>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Interface {
     pub decl: InterfaceDecl,
-    pub members: HashMap<String, InterfaceMember>,
+    pub methods: HashMap<String, InterfaceMethod>,
 }
 
 impl Interface {
     pub fn new(decl: InterfaceDecl) -> Self {
         Interface {
-            members: decl.functions.iter()
-                .map(|(fn_name, _)| (fn_name.clone(), InterfaceMember::default()))
+            methods: decl.methods.iter()
+                .map(|(fn_name, _)| (fn_name.clone(), InterfaceMethod::default()))
                 .collect(),
             decl,
         }
@@ -42,13 +42,13 @@ impl Interface {
     /* if impl_entry returns None, the function name isn't part of this interface */
     fn impl_entry(&mut self, for_type: Identifier, func: &str)
                   -> Option<Entry<Identifier, NamedFunction>> {
-        let member = self.members.get_mut(func)?;
+        let member = self.methods.get_mut(func)?;
 
         Some(member.impls_by_type.entry(for_type))
     }
 
     pub fn get_impl(&self, for_type: &Identifier, func: &str) -> Option<&FunctionDecl> {
-        self.members.get(func)
+        self.methods.get(func)
             .and_then(|member| member.impls_by_type.get(for_type))
             .map(|member_for_type| &member_for_type.decl)
     }
@@ -57,7 +57,7 @@ impl Interface {
         self.decl.scope().namespace_qualify(&self.decl.name)
     }
 
-    pub fn add_impl(&mut self,
+    pub(in super) fn add_impl(&mut self,
                 impl_type: Identifier,
                 new_func: NamedFunction)
                 -> SemanticResult<()> {
@@ -91,7 +91,7 @@ impl Interface {
 
     pub fn impls_for_type(&self, type_id: &Identifier) -> Vec<&FunctionDecl> {
         let mut result = Vec::new();
-        for (_fn_name, member) in self.members.iter() {
+        for (_fn_name, member) in self.methods.iter() {
             if let Some(impl_for_type) = member.impls_by_type.get(type_id) {
                 result.push(&impl_for_type.decl)
             }

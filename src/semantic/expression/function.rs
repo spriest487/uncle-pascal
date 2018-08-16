@@ -128,7 +128,7 @@ pub fn annotate_call(call: &syntax::FunctionCall,
     Ok((func_call, scope))
 }
 
-fn annotate_method(call_site: InterfaceCallSite,
+fn annotate_method(call_site: MethodCallSite,
                    args: &[syntax::Expression])
                    -> SemanticResult<(Expression, Rc<Scope>)> {
     let self_type = call_site.self_arg.expr_type()?.unwrap();
@@ -170,7 +170,7 @@ struct UfcsCallSite {
     scope_after_target: Rc<Scope>,
 }
 
-struct InterfaceCallSite {
+struct MethodCallSite {
     self_arg: Expression,
     interface_id: Identifier,
     method_name: String,
@@ -241,7 +241,7 @@ fn find_ufcs_call(candidate: &UfcsCandidate) -> Option<UfcsCallSite> {
     }
 }
 
-fn find_interface_call(candidate: &UfcsCandidate) -> Option<InterfaceCallSite> {
+fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
     let target_type = candidate.target.expr_type().ok()??;
     let scope = &candidate.scope_after_target;
 
@@ -255,9 +255,9 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<InterfaceCallSite> {
             }
         };
 
-        let method = interface.decl.functions.get(&candidate.func_name)?;
+        let method = interface.decl.methods.get(&candidate.func_name)?;
 
-        return Some(InterfaceCallSite {
+        return Some(MethodCallSite {
             interface_id: interface_id.clone(),
             scope_after_target: scope.clone(),
             method_name: candidate.func_name.clone(),
@@ -287,7 +287,7 @@ fn find_interface_call(candidate: &UfcsCandidate) -> Option<InterfaceCallSite> {
 
     let (interface_id, method) = interface_funcs[0];
 
-    Some(InterfaceCallSite {
+    Some(MethodCallSite {
         self_arg: candidate.target.clone(),
         interface_id: interface_id.clone(),
         method_name: method.name.to_string(),
@@ -364,7 +364,7 @@ pub fn call_type(call: &FunctionCall,
             match for_type {
                 /* this must be the right type of pointer, or annotate() would have failed */
                 Type::AnyImplementation(_) => {
-                    interface.decl.functions.get(func_name).cloned().unwrap()
+                    interface.decl.methods.get(func_name).cloned().unwrap()
                 }
 
                 _ => {

@@ -31,7 +31,6 @@ use std::{
 use node::{
     Identifier,
     Context,
-    ToSource,
     ExpressionValue,
 };
 use syntax;
@@ -170,7 +169,7 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             SemanticErrorKind::InvalidConstantValue(expr) => {
-                write!(f, "`{}` is not a valid constant value", expr.to_source())
+                write!(f, "`{}` is not a valid constant value", expr)
             }
 
             SemanticErrorKind::InvalidConstructorType(actual) => {
@@ -187,7 +186,7 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::InvalidSelfArg(arg_sig) => {
                 write!(f, "the argument signature `{}` is not valid as the self-param of an interface (must have the unmodified type `Self`)",
-                       arg_sig.to_source())
+                       arg_sig)
             }
 
             SemanticErrorKind::InterfaceSignatureMismatch { expected_sig, actual_sig, interface, func_name } => {
@@ -232,7 +231,7 @@ impl fmt::Display for SemanticErrorKind {
             SemanticErrorKind::WrongArgTypes { sig, actual } => {
                 writeln!(f, "invalid arguments to function! expected:")?;
                 for expected_arg in sig.args.iter() {
-                    writeln!(f, "\t{}", expected_arg.to_source())?;
+                    writeln!(f, "\t{}", expected_arg)?;
                 }
                 writeln!(f, "found: ")?;
                 for actual_arg in actual.iter() {
@@ -272,7 +271,7 @@ impl fmt::Display for SemanticErrorKind {
             }
 
             SemanticErrorKind::ValueNotAssignable(expr) => {
-                write!(f, "expression `{}` cannot be assigned to", expr.to_source())
+                write!(f, "expression `{}` cannot be assigned to", expr)
             }
 
             SemanticErrorKind::TypesNotComparable(a, b) => {
@@ -290,11 +289,11 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::NotConstructable(ty) => {
                 write!(f, "type `{}` cannot be initialized with a constructor expression",
-                       ty.to_source())
+                       ty)
             }
 
             SemanticErrorKind::UnableToInferType(expr) => {
-                write!(f, "unable to infer type for `{}`", expr.to_source())
+                write!(f, "unable to infer type for `{}`", expr)
             }
 
             SemanticErrorKind::OutputUninitialized(var_name) => {
@@ -311,13 +310,13 @@ impl fmt::Display for SemanticErrorKind {
                         write!(f, "interface member `{}.{}` ({}) is already defined (previous definition: {})`",
                                interface,
                                decl.name,
-                               decl.signature().to_source(),
+                               decl.signature(),
                                previous_decl.context.token())
                     }
                     None => {
                         write!(f, "function `{}` ({}) is already defined (previous definition: {})`",
                                decl.name,
-                               decl.signature().to_source(),
+                               decl.signature(),
                                previous_decl.context.token())
                     }
                 }

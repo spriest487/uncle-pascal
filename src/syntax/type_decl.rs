@@ -346,7 +346,7 @@ impl InterfaceDecl {
 
         Ok(InterfaceDecl {
             name: name.to_string(),
-            functions: functions.into_iter().collect(),
+            methods: functions.into_iter().collect(),
             context: ParsedContext::from(context),
         })
     }

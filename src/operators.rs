@@ -1,5 +1,4 @@
 use std::fmt;
-use node::ToSource;
 use opts::CompileOptions;
 
 pub use self::Operator::*;
@@ -136,8 +135,3 @@ impl fmt::Display for Operator {
     }
 }
 
-impl ToSource for Operator {
-    fn to_source(&self) -> String {
-        format!("{}", self)
-    }
-}

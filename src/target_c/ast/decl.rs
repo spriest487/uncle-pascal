@@ -27,6 +27,7 @@ use node::{
 pub struct Variable {
     pub name: String,
     pub ctype: CType,
+    pub array_size: Option<usize>,
     pub default_value: Option<Expression>,
 }
 
@@ -39,9 +40,9 @@ pub enum StructMember {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Struct {
-    name: Option<String>,
-    extends: Option<String>,
-    members: Vec<StructMember>,
+    pub name: Option<String>,
+    pub extends: Option<String>,
+    pub members: Vec<StructMember>,
 }
 
 pub enum Declaration {
@@ -119,8 +120,19 @@ impl Declaration {
         match decl {
             node::Implementation::Function(func_impl) => {
                 let definition = FunctionDecl::translate(func_impl, unit)?;
-                Ok(vec!(Declaration::Function(definition)))
+
+                let result = match FunctionDecl::virtual_call_adaptor(&func_impl.decl) {
+                    Some(virtual_call_adaptor) => vec![
+                        Declaration::Function(definition),
+                        Declaration::Function(virtual_call_adaptor)
+                    ],
+
+                    None => vec!(Declaration::Function(definition)),
+                };
+
+                Ok(result)
             }
+
             node::Implementation::Decl(decl) => {
                 Self::translate_decl(decl, unit)
             }
@@ -154,7 +166,7 @@ impl Declaration {
                 function.write_impl(&mut out),
 
             Declaration::Struct(record) =>
-                record.write_impl(&mut out),
+                record.write_def(&mut out),
 
             Declaration::UsingAlias(_alias, _target) =>
                 Ok(())
@@ -178,6 +190,7 @@ impl Struct {
                 Ok(StructMember::Field(Variable {
                     name: member_decl.name.clone(),
                     default_value: None,
+                    array_size: None,
                     ctype,
                 }))
             })
@@ -188,6 +201,7 @@ impl Struct {
                 name: variant_part.tag.name.clone(),
                 ctype: CType::translate(&variant_part.tag.decl_type, record_decl.scope()),
                 default_value: None,
+                array_size: None,
             };
             members.push(StructMember::Field(tag));
 
@@ -201,6 +215,7 @@ impl Struct {
                                 name: member.name.clone(),
                                 ctype: CType::translate(&member.decl_type, record_decl.scope()),
                                 default_value: None,
+                                array_size: None,
                             })
                         })
                         .collect();
@@ -241,7 +256,7 @@ impl Struct {
         Ok(())
     }
 
-    pub fn write_impl(&self, out: &mut fmt::Write) -> fmt::Result {
+    pub fn write_def(&self, out: &mut fmt::Write) -> fmt::Result {
         write!(out, "struct ")?;
         if let Some(name) = &self.name {
             write!(out, "{} ", name)?;
@@ -342,7 +357,7 @@ impl StructMember {
             }
 
             StructMember::Struct(nested_struct) => {
-                nested_struct.write_impl(out)?;
+                nested_struct.write_def(out)?;
             }
 
             StructMember::AnonymousUnion(cases) => {
@@ -384,15 +399,23 @@ impl Variable {
             name,
             ctype,
             default_value,
+            array_size: None,
         })
     }
 
     pub fn write_forward(&self, out: &mut fmt::Write) -> fmt::Result {
-        writeln!(out, "extern {} {};", self.ctype, self.name)
+        write!(out, "extern {} {}", self.ctype, self.name)?;
+        if let Some(array_size) = self.array_size.as_ref() {
+            write!(out, "[{}]", array_size)?;
+        }
+        writeln!(out, ";")
     }
 
     pub fn write_impl(&self, out: &mut fmt::Write) -> fmt::Result {
         write!(out, "{} {}", self.ctype, self.name)?;
+        if let Some(array_size) = self.array_size.as_ref() {
+            write!(out, "[{}]", array_size)?;
+        }
 
         if let Some(default_val) = &self.default_value {
             write!(out, " = ")?;
@@ -404,6 +427,10 @@ impl Variable {
 
     pub fn decl_statement(&self) -> Expression {
         let mut stmt = format!("{} {}", self.ctype, self.name);
+        if let Some(array_size) = self.array_size.as_ref() {
+            stmt.push_str(&format!("[{}]", array_size));
+        }
+
         if let Some(default_val) = &self.default_value {
             stmt.push_str(" = ");
             default_val.write(&mut stmt).expect("writing default val failed");

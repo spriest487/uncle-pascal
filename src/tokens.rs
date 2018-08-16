@@ -2,7 +2,6 @@ use std::fmt;
 
 use keywords;
 use operators;
-use node::ToSource;
 use consts::{
     IntConstant,
     FloatConstant,
@@ -10,7 +9,7 @@ use consts::{
 
 pub use self::Token::*;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Clone)]
 pub enum Token {
     Keyword(keywords::Keyword),
     Identifier(String),
@@ -151,28 +150,28 @@ impl AsToken for Token {
     }
 }
 
-impl ToSource for Token {
-    fn to_source(&self) -> String {
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Keyword(kw) => kw.to_source(),
-            Identifier(name) => name.clone(),
-            Operator(op) => op.to_source(),
-            LiteralInteger(i) => format!("{}", i),
-            LiteralString(s) => format!("'{}'", s.replace("'", "''")),
-            LiteralFloat(f) => format!("{}", f),
-            Period => ".".to_string(),
-            Colon => ":".to_string(),
-            Semicolon => ";".to_string(),
-            BracketLeft => "(".to_string(),
-            BracketRight => ")".to_string(),
-            Comma => ",".to_string(),
-            SquareBracketLeft => "[".to_string(),
-            SquareBracketRight => "]".to_string(),
+            Keyword(kw) => write!(f, "{}", kw),
+            Identifier(name) => f.write_str(&name),
+            Operator(op) => write!(f, "{}", op),
+            LiteralInteger(i) => write!(f, "{}", i),
+            LiteralString(s) => write!(f, "'{}'", s.replace("'", "''")),
+            LiteralFloat(float) => write!(f, "{}", float),
+            Period => f.write_str("."),
+            Colon => f.write_str(":"),
+            Semicolon => f.write_str(";"),
+            BracketLeft => f.write_str("("),
+            BracketRight => f.write_str(")"),
+            Comma => f.write_str(","),
+            SquareBracketLeft => f.write_str("["),
+            SquareBracketRight => f.write_str("]"),
         }
     }
 }
 
-impl fmt::Display for Token {
+impl fmt::Debug for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Keyword(kw) => write!(f, "keyword `{}`", kw),
@@ -181,19 +180,8 @@ impl fmt::Display for Token {
             LiteralString(s) => write!(f, "string literal `{}`", s),
             LiteralInteger(i) => write!(f, "integer literal `{}`", i),
             LiteralFloat(val) => write!(f, "float literal `{}`", val.as_f64()),
-            _ => write!(f, "{}", self.to_source())
+            _ => write!(f, "{}", self)
         }
-    }
-}
-
-impl<T> ToSource for Vec<T>
-    where T: AsToken
-{
-    fn to_source(&self) -> String {
-        self.iter()
-            .map(|t| t.as_token().to_source())
-            .collect::<Vec<_>>()
-            .join(" ")
     }
 }
 

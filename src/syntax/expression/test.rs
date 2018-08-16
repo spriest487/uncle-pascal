@@ -1,7 +1,6 @@
 use super::*;
 use tokenizer::*;
 use operators;
-use node::ToSource;
 use opts::CompileOptions;
 
 fn try_parse_expr(src: &str) -> Result<(Expression, TokenStream), ParseError> {
@@ -133,7 +132,7 @@ fn binary_op_precedence() {
             let lo_op = *if prec_a < prec_b { op_b } else { op_a };
 
             /* should parse as ((1 hi_op 2) lo_op 3) */
-            let hi_first = parse_expr(&format!("1 {} 2 {} 3", hi_op.to_source(), lo_op.to_source()));
+            let hi_first = parse_expr(&format!("1 {} 2 {} 3", hi_op, lo_op));
             assert!(hi_first.is_binary_op(lo_op), "{} should have precedence over {} (understood this as {:?})", hi_op, lo_op, hi_first);
 
             let (hi_first_1_then_2, _, hi_first_3) = hi_first.unwrap_binary_op();
@@ -155,7 +154,7 @@ fn binary_op_precedence() {
 fn parses_deref_on_lhs() {
     let expr = parse_expr("^a + 1");
 
-    assert!(expr.is_binary_op(operators::Plus), "result should be plus, was: {}", expr.to_source());
+    assert!(expr.is_binary_op(operators::Plus), "result should be plus, was: {}", expr);
     let (lhs, _, rhs) = expr.unwrap_binary_op();
 
     assert!(lhs.is_prefix_op(operators::Deref));
@@ -166,7 +165,7 @@ fn parses_deref_on_lhs() {
 fn parses_assign_deref_to_deref() {
     let expr = parse_expr("^(a.b + c) := ^(d.e + f)");
 
-    assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr.to_source());
+    assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr);
     let (lhs, _, rhs) = expr.unwrap_binary_op();
 
     assert!(lhs.is_prefix_op(operators::Deref));
@@ -185,14 +184,14 @@ fn parse_for_loop_with_assignment() {
                     assert!(rhs.is_literal_integer(0));
                 }
 
-                _ => panic!("expected for-loop 'from' expr to be binary op, got {}", from.to_source())
+                _ => panic!("expected for-loop 'from' expr to be binary op, got {}", from)
             }
 
             assert!(to.is_identifier(&node::Identifier::from("y")));
             assert!(body.is_block());
         }
 
-        _ => panic!("expected for-loop expression, got {}", expr.to_source())
+        _ => panic!("expected for-loop expression, got {}", expr)
     }
 }
 
@@ -289,7 +288,7 @@ fn parses_assignment_followed_by_prefix_operator() {
 
     assert!(next_expr.is_prefix_op(operators::Deref),
             "after parsing first expr, second expr should be ^a but was {}",
-            next_expr.to_source());
+            next_expr);
 }
 
 #[test]

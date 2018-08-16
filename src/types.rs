@@ -2,7 +2,6 @@ use std::fmt;
 
 use node::{
     Identifier,
-    ToSource,
 };
 use semantic::{
     IndexRange,
@@ -71,9 +70,38 @@ pub enum Type {
     AnyImplementation(Identifier),
 }
 
-impl ToSource for Type {
-    fn to_source(&self) -> String {
-        Type::name(Some(self))
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Type::Nil => write!(f, "nil"),
+            Type::Byte => write!(f, "System.Byte"),
+            Type::Boolean => write!(f, "System.Boolean"),
+            Type::Int32 => write!(f, "System.Int32"),
+            Type::UInt32 => write!(f, "System.UInt32"),
+            Type::Int64 => write!(f, "System.Int64"),
+            Type::UInt64 => write!(f, "System.UInt64"),
+            Type::NativeInt => write!(f, "System.NativeInt"),
+            Type::NativeUInt => write!(f, "System.NativeUInt"),
+            Type::Float64 => write!(f, "System.Float64"),
+            Type::UntypedRef => write!(f, "(untyped reference)"),
+            Type::RawPointer => write!(f, "System.Pointer"),
+            Type::Pointer(target) => write!(f, "^{}", target),
+            Type::Function(sig) => write!(f, "{}", sig),
+            Type::Enumeration(enum_id) => write!(f, "{}", enum_id),
+            Type::Set(set_id) => write!(f, "{}", set_id),
+            Type::Record(record) => write!(f, "{}", record),
+            Type::Class(class) => write!(f, "{}", class),
+            Type::AnyImplementation(interface) => write!(f, "{}", interface),
+            Type::DynamicArray(array) => write!(f, "array of {}", array.element),
+            Type::Array(array) => {
+                write!(f, "array ")?;
+                write!(f, "[{}..{}", array.first_dim.from, array.first_dim.to)?;
+                for dim in array.rest_dims.iter() {
+                    write!(f, ",{}..{}", dim.from, dim.to)?;
+                }
+                write!(f, "] of {}", array.element)
+            }
+        }
     }
 }
 
@@ -81,37 +109,7 @@ impl Type {
     pub fn name(decl_type: Option<&Self>) -> String {
         match decl_type {
             None => "(none)".to_string(),
-            Some(t) => match t {
-                Type::Nil => "nil".to_string(),
-                Type::Byte => "System.Byte".to_string(),
-                Type::Boolean => "System.Boolean".to_string(),
-                Type::Int32 => "System.Int32".to_string(),
-                Type::UInt32 => "System.UInt32".to_string(),
-                Type::Int64 => "System.Int64".to_string(),
-                Type::UInt64 => "System.UInt64".to_string(),
-                Type::NativeInt => "System.NativeInt".to_string(),
-                Type::NativeUInt => "System.NativeUInt".to_string(),
-                Type::Float64 => "System.Float64".to_string(),
-                Type::UntypedRef => "(untyped reference)".to_string(),
-                Type::RawPointer => "System.Pointer".to_string(),
-                Type::Pointer(target) => format!("^{}", target.to_source()),
-                Type::Function(sig) => format!("{}", sig.to_source()),
-                Type::Enumeration(enum_id) => enum_id.to_string(),
-                Type::Set(set_id) => format!("{}", set_id),
-                Type::Record(record) => format!("{}", record),
-                Type::Class(class) => format!("{}", class),
-                Type::AnyImplementation(interface) => format!("{}", interface),
-                Type::DynamicArray(array) => format!("array of {}", array.element.to_source()),
-                Type::Array(array) => {
-                    let mut name = "array ".to_string();
-                    name.push_str(&format!("[{}..{}", array.first_dim.from, array.first_dim.to));
-                    for dim in array.rest_dims.iter() {
-                        name.push_str(&format!(",{}..{}", dim.from, dim.to));
-                    }
-                    name.push_str(&format!("] of {}", array.element.to_source()));
-                    name
-                }
-            }
+            Some(t) => t.to_string()
         }
     }
 
@@ -322,8 +320,3 @@ impl Type {
     }
 }
 
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", Type::name(Some(self)))
-    }
-}

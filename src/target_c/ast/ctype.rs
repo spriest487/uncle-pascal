@@ -5,6 +5,7 @@ use semantic::Scope;
 use node::FunctionArgModifier;
 use target_c::{
     identifier_to_c,
+    ast::CallingConvention,
 };
 
 #[derive(Debug, PartialEq, Clone)]
@@ -24,6 +25,7 @@ pub enum CType {
     Function {
         return_type: Box<CType>,
         arg_types: Vec<CType>,
+        calling_convention: CallingConvention,
     },
     Struct(String),
 }
@@ -73,6 +75,7 @@ impl CType {
                 CType::Function {
                     return_type: Box::new(return_type),
                     arg_types,
+                    calling_convention: CallingConvention::from_modifiers(&sig.modifiers),
                 }
             }
             Type::Class(name) => {
@@ -186,13 +189,19 @@ impl fmt::Display for CType {
                 write!(f, "struct {}", name)
             }
 
-            CType::Function { return_type, arg_types } => {
+            CType::Function { return_type, arg_types, calling_convention } => {
                 let args_list = arg_types.iter()
                     .map(|arg_type| arg_type.to_string())
                     .collect::<Vec<_>>()
                     .join(", ");
 
-                write!(f, "System_Internal_Func<{}, {}>", return_type, args_list)
+                match calling_convention {
+                    CallingConvention::Cdecl => write!(f, "System_Internal_Func_Cdecl<{}, {}>",
+                           return_type, args_list),
+
+                    CallingConvention::Stdcall => write!(f, "System_Internal_Func_Stdcall<{}, {}>",
+                                                       return_type, args_list),
+                }
             }
         }
     }

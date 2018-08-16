@@ -17,7 +17,6 @@ use syntax::{
 };
 use node::{
     Identifier,
-    ToSource,
     FunctionModifier,
     FunctionSignature,
     FunctionArgSignature,
@@ -131,61 +130,62 @@ impl PartialEq for TypeName {
     }
 }
 
-impl ToSource for TypeName {
-    fn to_source(&self) -> String {
-        let mut result = String::new();
+impl fmt::Display for TypeName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             TypeName::UntypedRef { .. } => {
-                result.push_str("<untyped ref>");
+                write!(f, "var")
             }
 
             TypeName::Scalar(ScalarTypeName { name, indirection, .. }) => {
                 for _ in 0..*indirection {
-                    result.push_str("^");
+                    write!(f, "^")?;
                 }
 
-                result.push_str(&name.to_string())
+                write!(f, "{}", name)
             }
 
             TypeName::Array { element, dimensions, .. } => {
-                result.push_str("array [");
-                result.push_str(&dimensions.iter()
-                    .map(|dim| format!("{}..{}", dim.from, dim.to))
-                    .collect::<Vec<_>>()
-                    .join(", "));
-                result.push_str("] of ");
-                result.push_str(&element.to_source());
+                write!(f, "array [")?;
+                for (i, dim) in dimensions.iter().enumerate() {
+                    write!(f, "{}..{}", dim.from, dim.to)?;
+                    if i < dimensions.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+                write!(f, "] of {}", element)
             }
 
             TypeName::DynamicArray { element, .. } => {
-                result = format!("array of {}", element.to_source());
+                write!(f, "array of {}", element)
             }
 
             TypeName::Function { return_type, args, modifiers, .. } => {
-                if return_type.is_some() {
-                    result.push_str("function");
-                } else {
-                    result.push_str("procedure");
+                f.write_str("function")?;
+
+                if args.len() > 0 {
+                    f.write_str("(")?;
+                    for (i, arg) in args.iter().enumerate() {
+                        write!(f, "{}", arg)?;
+                        if i < args.len() - 1 {
+                            f.write_str("; ")?;
+                        }
+                    }
+                    f.write_str(")")?;
                 }
 
-                result.push_str(&format!("({})", &args.iter()
-                    .map(|arg| arg.to_source())
-                    .collect::<Vec<_>>()
-                    .join(", ")));
-
                 if let Some(ty) = return_type {
-                    result.push_str(": ");
-                    result.push_str(&ty.to_source());
+                    f.write_str(": ")?;
+                    write!(f, "{}", ty)?;
                 }
 
                 for modifier in modifiers {
-                    result.push_str("; ");
-                    result.push_str(&modifier.to_source());
+                    write!(f, "; {}", modifier)?;
                 }
+
+                Ok(())
             }
         }
-
-        result
     }
 }
 
@@ -351,7 +351,7 @@ impl TypeName {
 
     pub fn context(&self) -> &ParsedContext {
         match self {
-            | TypeName::UntypedRef { context} => context,
+            | TypeName::UntypedRef { context } => context,
             | TypeName::Scalar(scalar) => &scalar.context,
             | TypeName::Function { context, .. } => context,
             | TypeName::DynamicArray { context, .. } => context,
@@ -362,7 +362,7 @@ impl TypeName {
     pub fn pointer(self) -> Self {
         match self {
             TypeName::Scalar(ScalarTypeName { name, indirection, context }) =>
-                TypeName::Scalar(ScalarTypeName{
+                TypeName::Scalar(ScalarTypeName {
                     context,
                     name,
                     indirection: indirection + 1,
@@ -450,11 +450,5 @@ impl TypeName {
                 Ok(Type::UntypedRef)
             }
         }
-    }
-}
-
-impl fmt::Display for TypeName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        f.write_str(&self.to_source())
     }
 }

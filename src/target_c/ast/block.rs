@@ -62,10 +62,10 @@ impl Block {
         })
     }
 
-    pub fn write(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write(&self, out: &mut fmt::Write) -> fmt::Result {
         writeln!(out, "{{")?;
         for stmt in self.statements.iter() {
-            stmt.write(&mut out)?;
+            stmt.write(out)?;
             writeln!(out, ";")?;
 
         }

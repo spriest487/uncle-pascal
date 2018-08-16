@@ -243,7 +243,7 @@ impl InterfaceDecl {
     }
 
     pub fn get_implementation_sig(&self, name: &str, self_type: Type) -> Option<FunctionSignature> {
-        let mut sig = self.functions.get(name).cloned()?;
+        let mut sig = self.methods.get(name).cloned()?;
         sig.args[0] = FunctionArgSignature {
             decl_type: self_type,
             modifier: None,
@@ -264,15 +264,15 @@ impl InterfaceDecl {
             scope: scope.clone(),
         };
 
-        let mut functions = LinkedHashMap::new();
+        let mut methods = LinkedHashMap::new();
 
         let full_name = scope.namespace_qualify(&interface_decl.name);
 
-        for (func_name, parsed_sig) in interface_decl.functions.iter() {
-            assert!(!functions.contains_key(func_name),
-                    "interface should not contain duplicate functions");
+        for (method_name, parsed_sig) in interface_decl.methods.iter() {
+            assert!(!methods.contains_key(method_name),
+                    "interface should not contain duplicate methods");
             assert_eq!(1, parsed_sig.args.len(),
-                       "arg list length should be 1 for parsed interface funcs");
+                       "arg list length should be 1 for parsed interface methods");
 
             if !Self::valid_self_arg(&parsed_sig.args[0]) {
                 return Err(SemanticError::invalid_self_arg(parsed_sig.args[0].clone(), context));
@@ -297,12 +297,12 @@ impl InterfaceDecl {
                 modifier: None,
             };
 
-            functions.insert(func_name.to_string(), func_sig);
+            methods.insert(method_name.to_string(), func_sig);
         }
 
         let interface = InterfaceDecl {
             name: interface_decl.name.clone(),
-            functions,
+            methods,
             context,
         };
 

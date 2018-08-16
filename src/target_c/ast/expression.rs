@@ -21,7 +21,6 @@ use semantic::{
 };
 use node::{
     self,
-    ToSource,
     Context,
     Identifier,
     ExpressionValue,
@@ -39,6 +38,11 @@ use operators;
 pub enum Expression {
     Raw(String),
     Block(Block),
+    LocalDecl {
+        ctype: CType,
+        name: String,
+        value: Box<Expression>,
+    },
     If {
         condition: Box<Expression>,
         then_branch: Box<Expression>,
@@ -61,6 +65,7 @@ pub enum Expression {
     UnaryOp {
         op: String,
         operand: Box<Expression>,
+        before: bool,
     },
     BinaryOp {
         lhs: Box<Expression>,
@@ -72,6 +77,11 @@ pub enum Expression {
         value: Box<Expression>,
     },
     StringLiteral(String),
+    Member {
+        of: Box<Expression>,
+        name: String,
+    },
+    Return(Box<Expression>),
 }
 
 impl From<String> for Expression {
@@ -145,10 +155,11 @@ impl Expression {
         }
     }
 
-    fn unary_op(op: impl ToString, operand: impl Into<Self>) -> Self {
+    pub fn unary_op(op: impl ToString, operand: impl Into<Self>, before: bool) -> Self {
         Expression::UnaryOp {
             op: op.to_string(),
             operand: Box::new(operand.into()),
+            before,
         }
     }
 
@@ -165,6 +176,25 @@ impl Expression {
             target_type: target_type.into(),
             value: Box::new(value.into()),
         }
+    }
+
+    pub fn local_decl(ctype: impl Into<CType>, name: impl ToString, value: impl Into<Self>) -> Self {
+        Expression::LocalDecl {
+            ctype: ctype.into(),
+            name: name.to_string(),
+            value: Box::new(value.into()),
+        }
+    }
+
+    pub fn member(of: impl Into<Self>, name: impl ToString) -> Self {
+        Expression::Member {
+            of: Box::new(of.into()),
+            name: name.to_string(),
+        }
+    }
+
+    pub fn return_value(value: impl Into<Self>) -> Self {
+        Expression::Return(Box::new(value.into()))
     }
 
     pub fn translate_statement(stmt: &semantic::Expression,
@@ -198,6 +228,7 @@ impl Expression {
                     name: binding.name.clone(),
                     ctype: CType::translate(&binding_type, binding.value.scope()),
                     default_value: None,
+                    array_size: None,
                 };
                 lines.push(local_var.decl_statement());
 
@@ -236,17 +267,17 @@ impl Expression {
                 ExpressionValue::FunctionCall(FunctionCall::Method { interface_id, func_name, for_type, .. }) => {
                     // todo: getting the sig for an interface call is duplicated in call_type
                     match for_type {
-                       Type::AnyImplementation(_) => {
-                           let (_, interface) = subexpr.scope().get_interface(&interface_id).unwrap();
-                           interface.decl.functions.get(&func_name).cloned().unwrap()
-                       }
+                        Type::AnyImplementation(_) => {
+                            let (_, interface) = subexpr.scope().get_interface(&interface_id).unwrap();
+                            interface.decl.methods.get(&func_name).cloned().unwrap()
+                        }
 
-                       _ => {
-                           let (_, func) = subexpr.scope().get_interface_impl(&for_type, &interface_id, &func_name)
-                               .expect("interface call target must exist");
+                        _ => {
+                            let (_, func) = subexpr.scope().get_interface_impl(&for_type, &interface_id, &func_name)
+                                .expect("interface call target must exist");
 
-                           func.signature()
-                       }
+                            func.signature()
+                        }
                     }
                 }
 
@@ -356,6 +387,7 @@ impl Expression {
                     name: tmp_name.clone(),
                     ctype: val_c_type,
                     default_value: None,
+                    array_size: None,
                 };
 
                 bindings_block.push(tmp_var.decl_statement());
@@ -456,7 +488,7 @@ impl Expression {
                     operators::Assignment => panic!("bad prefix operator type: {}", op),
                 };
 
-                Ok(Expression::unary_op(c_op, Expression::translate_expression(rhs, unit)?))
+                Ok(Expression::unary_op(c_op, Expression::translate_expression(rhs, unit)?, true))
             }
 
             ExpressionValue::FunctionCall(call) => {
@@ -474,15 +506,18 @@ impl Expression {
                     FunctionCall::Method { interface_id, func_name, for_type, .. } => {
                         match for_type {
                             Type::AnyImplementation(_) => {
-                                unimplemented!("virtual function call (c++ backend)")
-                            },
+                                let call_name = unit.method_call_name(interface_id, func_name)
+                                    .unwrap();
+
+                                Expression::raw(call_name)
+                            }
 
                             _ => {
                                 let type_name = expr.scope().full_type_name(for_type).unwrap();
                                 let call_name = FunctionDecl::interface_call_name(
                                     interface_id,
                                     func_name,
-                                    &type_name
+                                    &type_name,
                                 );
 
 
@@ -650,7 +685,7 @@ impl Expression {
                 loop {
                     match of_type {
                         Type::Pointer(of_target) => {
-                            of_expr = Expression::unary_op("*", of_expr);
+                            of_expr = Expression::unary_op("*", of_expr, true);
                             of_type = *of_target;
                         }
 
@@ -712,7 +747,7 @@ impl Expression {
 
             ExpressionValue::Raise(error) => {
                 let location = &expr.context.token().location;
-                let msg = error.to_source();
+                let msg = error.to_string();
 
                 /* with absolutely no exception support the best thing we can do is convert
                 the error to a string */
@@ -773,9 +808,15 @@ impl Expression {
                 write!(out, "))")
             }
 
-            Expression::UnaryOp { operand, op } => {
-                write!(out, "({}", op)?;
-                operand.write(out)?;
+            Expression::UnaryOp { operand, op, before } => {
+                write!(out, "(")?;
+                if *before {
+                    write!(out, "{}", op)?;
+                    write!(out, "{}", operand)?;
+                } else {
+                    write!(out, "{}", operand)?;
+                    write!(out, "{}", op)?;
+                }
                 write!(out, ")")
             }
 
@@ -808,6 +849,24 @@ impl Expression {
             Expression::StringLiteral(s) => {
                 write!(out, "\"{}\"", s)
             }
+
+            Expression::LocalDecl { ctype, name, value } => {
+                write!(out, "{} {} = {}", ctype, name, value)
+            }
+
+            Expression::Member { of, name } => {
+                write!(out, "{}.{}", of, name)
+            }
+
+            Expression::Return(value) => {
+                write!(out, "return {}", value)
+            }
         }
+    }
+}
+
+impl fmt::Display for Expression {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.write(f)
     }
 }

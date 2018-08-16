@@ -1,4 +1,7 @@
-use std::fmt;
+use std::{
+    fmt,
+    rc::Rc,
+};
 use linked_hash_set::LinkedHashSet;
 use node::{
     Identifier,
@@ -46,37 +49,22 @@ impl TranslationUnit {
         &self.finalization
     }
 
-    pub fn classes(&self) -> &[Class] {
-        &self.classes
-    }
-
 //    pub fn interfaces(&self) -> &[Interface] {
 //        &self.interfaces
 //    }
 
     fn add_implementation_decl(&mut self,
                                decl: &semantic::Implementation,
-                               unit_scope: &Scope)
+                               unit_scope: Rc<Scope>)
                                -> TranslationResult<()> {
-        let impl_decl = Declaration::translate_impl(decl, self)?;
-        self.decls.extend(impl_decl);
-
         match decl {
             Implementation::Decl(decl) => {
-                match decl {
-                    UnitDecl::Type(TypeDecl::Record(class_record))
-                    if class_record.kind == RecordKind::Class => {
-                        self.add_class(class_record, unit_scope)?;
-                    }
-
-                    UnitDecl::Type(TypeDecl::Interface(interface_decl)) => {
-                        self.add_interface(interface_decl, unit_scope)?;
-                    }
-
-                    _ => {},
-                }
+                self.add_decl(decl, unit_scope)?;
             }
-            _ => {}
+            _ => {
+                let impl_decl = Declaration::translate_impl(decl, self)?;
+                self.decls.extend(impl_decl);
+            }
         }
 
         Ok(())
@@ -123,14 +111,36 @@ impl TranslationUnit {
         Ok(())
     }
 
-    fn add_class(&mut self, class_record: &semantic::RecordDecl, unit_scope: &Scope) -> TranslationResult<()> {
+    fn add_class(&mut self, class_record: &semantic::RecordDecl, unit_scope: Rc<Scope>) -> TranslationResult<()> {
         let class = Class::translate(class_record, unit_scope)?;
         self.classes.push(class);
         Ok(())
     }
 
-    fn add_interface(&mut self, iface_decl: &semantic::InterfaceDecl, unit_scope: &Scope) -> TranslationResult<()> {
-        let interface = Interface::translate(iface_decl, unit_scope)?;
+    fn add_decl(&mut self, decl: &semantic::UnitDecl, unit_scope: Rc<Scope>) -> TranslationResult<()> {
+        let c_decls = Declaration::translate_decl(decl, self)?;
+
+        match decl {
+            UnitDecl::Type(TypeDecl::Record(class_record))
+            if class_record.kind == RecordKind::Class => {
+                self.add_class(class_record, unit_scope)?;
+            }
+
+            UnitDecl::Type(TypeDecl::Interface(interface_decl)) => {
+                self.add_interface(interface_decl)?;
+            }
+
+            _ => {}
+        }
+
+        self.decls.extend(c_decls);
+        Ok(())
+    }
+
+    fn add_interface(&mut self, iface_decl: &semantic::InterfaceDecl) -> TranslationResult<()> {
+        let next_id = self.interfaces.len();
+
+        let interface = Interface::translate(iface_decl, next_id)?;
         self.interfaces.push(interface);
         Ok(())
     }
@@ -139,8 +149,7 @@ impl TranslationUnit {
         let unit = &module_unit.unit;
 
         for decl in unit.interface.iter() {
-            let new_decls = Declaration::translate_decl(decl, self)?;
-            self.decls.extend(new_decls);
+            self.add_decl(decl, module_unit.global_scope.clone())?;
         }
 
         for decl in unit.implementation.iter() {
@@ -156,24 +165,6 @@ impl TranslationUnit {
         if let Some(final_block) = unit.finalization.as_ref() {
             let final_block = Block::translate(final_block, None, self)?;
             self.finalization.push(final_block);
-        }
-
-        let string_name = Identifier::from("System.String");
-
-        let class_decls = unit.interface.iter()
-            .filter_map(|decl| decl.as_class_decl())
-            .chain(unit.implementation.iter()
-                .filter_map(|impl_decl| match impl_decl {
-                    Implementation::Decl(decl) => decl.as_class_decl(),
-                    _ => None,
-                }))
-            .filter(|class| {
-                /* string is magically initialized earlier */
-                class.qualified_name() != string_name
-            });
-
-        for class in class_decls {
-            self.add_class(class, module_unit.global_scope.as_ref())?;
         }
 
         Ok(())
@@ -197,7 +188,16 @@ impl TranslationUnit {
         }
 
         for impl_decl in module.program.decls.iter() {
-            result.add_implementation_decl(impl_decl, module.global_scope.as_ref())?;
+            result.add_implementation_decl(impl_decl, module.global_scope.clone())?;
+        }
+
+        /*
+            have to do this in a second pass, because we don't know all the interface IDs
+            before all decls are finished processing, and classes can be declared before
+            the interfaces they implement
+        */
+        for class in result.classes.iter_mut() {
+            class.update_vtables(&result.interfaces);
         }
 
         let global_vars: Vec<_> = module.units.values()
@@ -229,5 +229,46 @@ impl TranslationUnit {
         });
 
         Ok(result)
+    }
+
+    pub fn declare_vtables(&self, out: &mut fmt::Write) -> fmt::Result {
+        for iface in self.interfaces.iter() {
+            iface.vtable.write_def(out)?;
+        }
+
+        for iface in self.interfaces.iter() {
+            for method in iface.methods.values() {
+                method.write_impl(out)?;
+            }
+        }
+
+        for class in self.classes.iter() {
+            class.write_decl(out)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn method_call_name(&self, interface: &Identifier, method: &str) -> Option<&str> {
+        self.interfaces.iter()
+            .find(|iface| iface.pascal_name == *interface)
+            .and_then(|iface| iface.methods.get(method))
+            .map(|method| method.name.as_str())
+    }
+
+    pub fn write_internal_class_init(&self, out: &mut fmt::Write) -> fmt::Result {
+        if let Some(string_class) = self.classes.iter().find(|c| c.is_internal()) {
+            string_class.write_init(out)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn write_class_init(&self, out: &mut fmt::Write) -> fmt::Result {
+        for class in self.classes.iter().filter(|c| !c.is_internal()) {
+            class.write_init(out)?;
+        }
+
+        Ok(())
     }
 }

@@ -1,14 +1,12 @@
 use std::fmt;
 
 use node::{
-    Symbol,
-    ToSource,
     Identifier
 };
 use types::Type;
 use super::BindingKind;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub enum ScopedSymbol {
     /* symbol refers to a name that is in the current scope */
     Local {
@@ -73,7 +71,7 @@ impl ScopedSymbol {
     }
 }
 
-impl fmt::Display for ScopedSymbol {
+impl fmt::Debug for ScopedSymbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ScopedSymbol::Local { name, decl_type, binding_kind } =>
@@ -96,17 +94,13 @@ impl fmt::Display for ScopedSymbol {
     }
 }
 
-impl Symbol for ScopedSymbol {
-    type Type = Type;
-}
-
-impl ToSource for ScopedSymbol {
-    fn to_source(&self) -> String {
+impl fmt::Display for ScopedSymbol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ScopedSymbol::Local { name, .. } =>
-                name.to_source(),
+                write!(f, "{}", name),
             ScopedSymbol::RecordMember { record_id, name, .. } =>
-                format!("{}.{}", record_id.to_source(), name),
+                write!(f, "{}.{}", record_id, name),
         }
     }
 }
