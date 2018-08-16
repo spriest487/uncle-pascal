@@ -192,17 +192,27 @@ impl Function {
 
         /* annotate variables and add them to the local scope */
         let mut all_local_vars = VarDecls::default();
+        /* add a "result" var if this function returns something */
+        if let &Some(ref result_var_type) = &decl.return_type {
+            all_local_vars.decls.push(VarDecl {
+                name: RESULT_VAR_NAME.to_string(),
+                context: decl.context.clone(),
+                default_value: None,
+                decl_type: result_var_type.clone(),
+            })
+        }
+
         for parsed_local_var in function.local_vars() {
             let local_var = VarDecl::annotate(parsed_local_var, Rc::new(local_scope.clone()))?;
-            local_scope = local_scope.with_symbol_local(&local_var.name,
-                                                        local_var.decl_type.clone());
             all_local_vars.decls.push(local_var);
         }
 
-        /* add a "result" var if this function returns something */
-        if let &Some(ref result_var_type) = &decl.return_type {
-            local_scope = local_scope.with_symbol_local(RESULT_VAR_NAME, result_var_type.clone());
+        for local_var in all_local_vars.decls.iter() {
+            local_scope = local_scope.with_symbol_local(&local_var.name,
+                                                        local_var.decl_type.clone());
         }
+
+        local_decls.push(node::FunctionLocalDecl::Vars(all_local_vars));
 
         let block = Block::annotate(&function.block, Rc::new(local_scope.clone()))?;
 

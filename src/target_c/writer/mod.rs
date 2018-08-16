@@ -664,6 +664,7 @@ pub fn write_function(out: &mut String,
                       globals: &mut ModuleGlobals)
                       -> fmt::Result {
     write_function_decl(out, &function.decl, globals)?;
+
     writeln!(out, "{{")?;
 
     let mut all_local_vars = Vec::new();
@@ -683,7 +684,6 @@ pub fn write_function(out: &mut String,
                 unimplemented!("nested functions"),
         }
     }
-
 
     if function.decl.kind == FunctionKind::Constructor {
         //the actual return type is an Rc, but we need to pass the class type to sizeof
@@ -767,8 +767,10 @@ pub fn write_decl(out: &mut String,
     };
 
     match decl {
-        UnitDecl::Function(ref func_decl) =>
-            write_function_decl(out, func_decl, globals),
+        UnitDecl::Function(ref func_decl) => {
+            write_function_decl(out, func_decl, globals)?;
+            writeln!(out, ";")
+        }
 
         UnitDecl::Type(ref type_decl) =>
             match type_decl {
@@ -803,7 +805,7 @@ pub fn write_decl(out: &mut String,
 }
 
 fn write_static_init_impls<'a>(out: &mut String,
-                                   impls: &'a [semantic::Implementation]) -> fmt::Result {
+                               impls: &'a [semantic::Implementation]) -> fmt::Result {
     let decls: Vec<_> = impls.iter()
         .filter_map(|impl_decl| match impl_decl {
             Implementation::Decl(decl) => Some(decl.clone()),

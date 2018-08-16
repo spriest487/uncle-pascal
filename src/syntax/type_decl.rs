@@ -93,23 +93,27 @@ impl EnumerationDecl {
     }
 
     fn parse_names(tokens: &mut TokenStream) -> ParseResult<Vec<String>> {
-        let name_token_groups = tokens.match_groups(tokens::BracketLeft,
-                                                    tokens::BracketRight,
-                                                    tokens::Comma)?;
+        tokens.match_one(tokens::BracketLeft)?;
 
-        name_token_groups.groups.into_iter()
-            .map(|name_group| {
-                if name_group.tokens.len() > 1 {
-                    Err(ParseError::UnexpectedToken(name_group.tokens[1].clone(),
-                                                    Some(tokens::Comma.into())))
-                } else if !name_group.tokens[0].is_any_identifier() {
-                    Err(ParseError::UnexpectedToken(name_group.tokens[0].clone(),
-                                                    Some(Matcher::AnyIdentifier)))
-                } else {
-                    Ok(name_group.tokens[0].unwrap_identifier().to_string())
+        let mut names = Vec::new();
+        loop {
+            if names.len() > 0 {
+                match tokens.look_ahead().match_one(tokens::Comma) {
+                    Some(_comma) => tokens.advance(1),
+                    None => break,
                 }
-            })
-            .collect()
+            }
+
+            let next_name = tokens.match_one(Matcher::AnyIdentifier)?
+                .unwrap_identifier()
+                .to_string();
+
+            names.push(next_name);
+        }
+
+        tokens.match_one(tokens::BracketRight)?;
+
+        Ok(names)
     }
 }
 
@@ -169,14 +173,10 @@ impl RecordDecl {
             RecordKind::Record
         };
 
-        let match_end = tokens.split_at_match(keywords::End)?;
+        let members: Vec<VarDecl> = tokens.parse()?;
 
-        let mut decls_tokens = TokenStream::new(match_end.before_split, &match_kw);
-        let members: Vec<VarDecl> = decls_tokens.parse()?;
-        decls_tokens.finish()?;
+        tokens.match_one(keywords::End)?;
 
-        //after the "end", there should always be a semicolon
-        //TODO: this isn't necessary, this should be up to the unit
         tokens.match_or_endl(tokens::Semicolon)?;
 
         Ok(RecordDecl {

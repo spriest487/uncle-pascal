@@ -1,57 +1,40 @@
 use syntax::*;
-use tokens;
+use tokens::{self, AsToken};
 use keywords;
 use node;
 
 pub type Block = node::Block<ParsedContext>;
 
-impl Block {
-    pub fn parse_exprs_multiline(tokens: &mut TokenStream) -> ParseResult<Vec<Expression>> {
-        let mut exprs = Vec::new();
+impl Parse for Block {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let begin = tokens.match_one(keywords::Begin)?;
 
+        let mut statements = Vec::new();
         loop {
             match tokens.look_ahead().next() {
-                Some(_) => {
-                    let expr: Expression = tokens.parse()?;
-
-                    /* if there's another expression in this group, it must
-                    be on a different line */
-                    if let Some(token_after) = tokens.look_ahead().next() {
-                        if token_after.location.line <= tokens.context().location.line {
-                            return Err(ParseError::UnexpectedToken(token_after.clone(), None));
-                        }
-                    }
-
-                    exprs.push(expr);
+                Some(ref t) if t.is_keyword(keywords::End) => {
+                    //done
+                    tokens.advance(1);
+                    break;
                 }
 
-                None => break,
+                Some(ref t) if t.is_token(&tokens::Semicolon) => {
+                    //empty statement
+                    tokens.advance(1);
+                }
+
+                _ => {
+                    let next_expr: Expression = tokens.parse()?;
+                    tokens.match_or_endl(tokens::Semicolon)?;
+
+                    statements.push(next_expr);
+                }
             }
         }
 
-        Ok(exprs)
-    }
-}
-
-impl Parse for Block {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let statement_groups = tokens.match_groups(keywords::Begin,
-                                                   keywords::End,
-                                                   tokens::Semicolon)?;
-
-        let statements: Vec<_> = statement_groups.groups
-            .into_iter()
-            .map(|statement_group| {
-                Block::parse_exprs_multiline(&mut TokenStream::new(statement_group.tokens,
-                                                                   &statement_group.context))
-            })
-            .collect::<Result<_, _>>()?;
-
         Ok(Block {
-            statements: statements.into_iter()
-                .flat_map(|exprs| exprs)
-                .collect(),
-            context: statement_groups.open.into(),
+            statements,
+            context: begin.into(),
         })
     }
 }

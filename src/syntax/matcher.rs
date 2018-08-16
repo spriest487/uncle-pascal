@@ -3,14 +3,7 @@ use std::fmt;
 use keywords;
 use operators;
 use tokens;
-use source;
 
-pub struct SplitResult {
-    pub split_at: source::Token,
-    pub before_split: Vec<source::Token>,
-}
-
-#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum Matcher {
     Keyword(keywords::Keyword),
@@ -187,37 +180,4 @@ impl SequenceMatcher {
         self.sequence.push(next_matcher.into());
         self
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct BlockMatch {
-    pub open: source::Token,
-    pub close: source::Token,
-    pub inner: Vec<source::Token>,
-}
-
-impl BlockMatch {
-    pub fn len(&self) -> usize {
-        self.inner.len() + 2
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct GroupMatch {
-    pub tokens: Vec<source::Token>,
-    pub context: source::Token,
-}
-
-#[derive(Clone, Debug)]
-pub struct GroupsMatch {
-    pub groups: Vec<GroupMatch>,
-    pub separators: Vec<source::Token>,
-}
-
-#[derive(Clone, Debug)]
-pub struct BlockGroupsMatch {
-    pub open: source::Token,
-    pub close: source::Token,
-    pub groups: Vec<GroupMatch>,
-    pub separators: Vec<source::Token>,
 }

@@ -40,316 +40,152 @@ impl CompoundExpressionPart {
     }
 }
 
-fn any_operators_at_base_level(tokens: &mut TokenStream) -> ParseResult<bool> {
-    let mut bracket_level = 0;
+/* matches valueless statements/flow control */
+fn match_statement() -> Matcher {
+    keywords::Let
+        .or(keywords::Begin)
+        .or(keywords::If)
+        .or(keywords::For)
+}
 
-    for token in tokens.look_ahead() {
-        if *token.as_token() == tokens::BracketLeft {
-            bracket_level += 1
-        } else if *token.as_token() == tokens::BracketRight {
-            if bracket_level == 0 {
-                /* this bracket must be outside the expression because we don't
-                know where it started, so stop checking here */
-                break;
-            }
-            bracket_level -= 1
-        } else if bracket_level == 0 && token.is_any_operator() {
-            return Ok(true);
-        }
+/* this matcher should cover anything which can appear at the start of an expr */
+fn match_expr_start() -> Matcher {
+    match_statement().or(match_operand_start())
+}
+
+/* anything which can appear at the start of an operand subexpr (not let bindings
+or flow control statements) */
+fn match_operand_start() -> Matcher {
+    Matcher::AnyIdentifier
+        .or(tokens::BracketLeft)
+        .or(keywords::True)
+        .or(keywords::False)
+        .or(Matcher::AnyLiteralInteger)
+        .or(Matcher::AnyLiteralString)
+        .or(Matcher::AnyLiteralFloat)
+        .or(keywords::True)
+        .or(keywords::False)
+        .or(keywords::Nil)
+        .or(Matcher::any_operator_in_position(operators::Position::Prefix))
+}
+
+fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expression, ParseError> {
+    assert!(parts.len() > 0, "expression must not be empty");
+
+    if parts.len() == 1 {
+        return Ok(match parts.into_iter().next().unwrap() {
+            CompoundExpressionPart::Operand(CompoundOperand { expr, .. }) => expr,
+            CompoundExpressionPart::Operator(op_token) =>
+                panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
+        });
     }
 
-    Ok(false)
+    /* find the lowest-precedence operator in the expression, this becomes the
+     outer expression */
+    let (lo_op_index, lo_op) = parts.iter()
+        .enumerate()
+        .filter_map(|(i, part)| match part {
+            &CompoundExpressionPart::Operand { .. } => None,
+            &CompoundExpressionPart::Operator(ref op) => Some((i, op.clone())),
+        })
+        .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
+        .unwrap();
+
+    match lo_op.pos {
+        /* merge prefix operator with the operand that follows it*/
+        operators::Position::Prefix => {
+            assert!(parts.get(lo_op_index + 1).is_some(), "prefix operator must be followed by an operand");
+
+            let (before_op, after_op) = parts.split_at(lo_op_index);
+
+            let mut parts_after_op = after_op.iter().skip(1).cloned();
+
+            let rhs = parts_after_op.next().unwrap().unwrap_operand();
+
+            let op_expr = Expression::prefix_op(lo_op.op, rhs.expr, lo_op.token);
+
+            let merged_parts: Vec<_> = before_op.iter()
+                .cloned()
+                .chain(vec![CompoundExpressionPart::Operand(CompoundOperand {
+                    expr: op_expr,
+                    last_token: rhs.last_token,
+                })])
+                .chain(parts_after_op)
+                .collect();
+
+            assert!(merged_parts.len() > 0);
+            resolve_ops_by_precedence(merged_parts)
+        }
+
+        operators::Position::Binary => {
+            let (before_op, after_op) = parts.split_at(lo_op_index);
+
+            if before_op.len() == 0 {
+                return Err(ParseError::EmptyOperand {
+                    operator: lo_op.token,
+                    before: true,
+                });
+            }
+
+            //1 because the op is included in this (?)
+            if after_op.len() <= 1 {
+                return Err(ParseError::EmptyOperand {
+                    operator: lo_op.token,
+                    before: false,
+                });
+            }
+
+            let lhs_operand = resolve_ops_by_precedence(Vec::from(before_op))?;
+            let rhs_operand = resolve_ops_by_precedence(after_op.iter()
+                .skip(1)
+                .cloned()
+                .collect())?;
+
+            let expr_context = lhs_operand.context.clone();
+
+            Ok(Expression::binary_op(lhs_operand, lo_op.op, rhs_operand, expr_context))
+        }
+    }
 }
 
 impl Expression {
-    fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> Result<Expression, ParseError> {
-        assert!(parts.len() > 0, "expression must not be empty");
-
-        if parts.len() == 1 {
-            return Ok(match parts.into_iter().next().unwrap() {
-                CompoundExpressionPart::Operand(CompoundOperand { expr, .. }) => expr,
-                CompoundExpressionPart::Operator(op_token) =>
-                    panic!("expression with one part must not be an operator (got: `{:?}`)", op_token),
-            });
-        }
-
-        /* find the lowest-precedence operator in the expression, this becomes the
-         outer expression */
-        let (lo_op_index, lo_op) = parts.iter()
-            .enumerate()
-            .filter_map(|(i, part)| match part {
-                &CompoundExpressionPart::Operand { .. } => None,
-                &CompoundExpressionPart::Operator(ref op) => Some((i, op.clone())),
-            })
-            .max_by_key(|&(_, ref op)| op.op.precedence(op.pos))
-            .unwrap();
-
-        match lo_op.pos {
-            /* merge prefix operator with the operand that follows it*/
-            operators::Position::Prefix => {
-                assert!(parts.get(lo_op_index + 1).is_some(), "prefix operator must be followed by an operand");
-
-                let (before_op, after_op) = parts.split_at(lo_op_index);
-
-                let mut parts_after_op = after_op.iter().skip(1).cloned();
-
-                let rhs = parts_after_op.next().unwrap().unwrap_operand();
-
-                let op_expr = Expression::prefix_op(lo_op.op, rhs.expr, lo_op.token);
-
-                let merged_parts: Vec<_> = before_op.iter()
-                    .cloned()
-                    .chain(vec![CompoundExpressionPart::Operand(CompoundOperand {
-                        expr: op_expr,
-                        last_token: rhs.last_token,
-                    })])
-                    .chain(parts_after_op)
-                    .collect();
-
-                assert!(merged_parts.len() > 0);
-                Expression::resolve_ops_by_precedence(merged_parts)
-            }
-
-            operators::Position::Binary => {
-                let (before_op, after_op) = parts.split_at(lo_op_index);
-
-                if before_op.len() == 0 {
-                    return Err(ParseError::EmptyOperand {
-                        operator: lo_op.token,
-                        before: true,
-                    });
-                }
-
-                //1 because the op is included in this (?)
-                if after_op.len() <= 1 {
-                    return Err(ParseError::EmptyOperand {
-                        operator: lo_op.token,
-                        before: false,
-                    });
-                }
-
-                let lhs_operand = Expression::resolve_ops_by_precedence(Vec::from(before_op))?;
-                let rhs_operand = Expression::resolve_ops_by_precedence(after_op.iter()
-                    .skip(1)
-                    .cloned()
-                    .collect())?;
-
-                let expr_context = lhs_operand.context.clone();
-
-                Ok(Expression::binary_op(lhs_operand, lo_op.op, rhs_operand, expr_context))
-            }
-        }
-    }
-
-    fn parse_operand(tokens: &mut TokenStream) -> ExpressionResult {
-        /* if there's brackets around it, we know exactly where it begins and ends */
-        let outer_brackets = tokens.look_ahead().match_block(tokens::BracketLeft, tokens::BracketRight);
-
-        match outer_brackets {
-            Some(brackets_block) => {
-                let brackets_block_len = brackets_block.len();
-                let mut inner_expr_tokens = TokenStream::new(brackets_block.inner,
-                                                             &brackets_block.open);
-                let inner_expr: Expression = inner_expr_tokens.parse_to_end()?;
-
-                // seek to after brackets
-                assert_eq!(brackets_block.open, tokens.look_ahead().next().unwrap());
-                tokens.advance(brackets_block_len);
-
-                assert_eq!(brackets_block.close,
-                           tokens.context().clone(),
-                           "length of bracket block containing `{}` is {}, should advance to {}",
-                           brackets_block_len,
-                           inner_expr.to_source(),
-                           brackets_block.close);
-
-                /* expression of the form (a).b should include the .b after the brackets too */
-                Expression::parse_member_access_after(inner_expr, tokens)
-            }
-
-            None => {
-                tokens.parse::<Expression>()
-            }
-        }
-    }
-
     fn parse_member_access_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
-        match tokens_after.look_ahead().next() {
-            Some(ref period) if *period.as_token() == tokens::Period => {
-                // skip period
-                tokens_after.next();
+        tokens_after.match_one(tokens::Period)?;
 
-                let member_name = node::Identifier::parse(tokens_after)?;
+        let member_name = node::Identifier::parse(tokens_after)?;
 
-//                println!("found member name {} for base expr {:?}", member_name, base);
-
-                let member = Expression::member_deep(base, member_name);
-                Ok(member)
-            }
-
-            //nope, this expr ends at the close bracket
-            _ => Ok(base)
-        }
+//      println!("found member name {} for base expr {:?}", member_name, base);
+        let member = Expression::member_deep(base, member_name);
+        Ok(member)
     }
 
-    fn parse_compound(tokens: &mut TokenStream) -> ExpressionResult {
-        /* we do most of the parsing using look_ahead, then advance the stream up to this
-        context when we're done */
-        let mut expr_context = tokens.context().clone();
+    fn parse_fn_call_after(base: Expression, tokens: &mut TokenStream) -> ExpressionResult {
+        tokens.match_one(tokens::BracketLeft)?;
 
-        let mut parsed_parts: Vec<CompoundExpressionPart> = Vec::new();
+        /* no args e.g. `a()` */
+        if tokens.look_ahead().match_one(tokens::BracketRight).is_some() {
+            tokens.advance(1);
+            return Ok(Expression::function_call(base, vec![]))
+        }
 
-        {
-            let mut tokens_ahead = tokens.look_ahead();
-
-            /* this is a hack because we shouldn't rule out the possibility of semicolons appearing
-            in legit expressions, and this only improves performance in the case that decls are
-            terminated with semicolons */
-            if let Some(next_semicolon_pos) = tokens_ahead.find(tokens::Semicolon) {
-                tokens_ahead = tokens_ahead.limit(next_semicolon_pos);
-            }
-
-            let parts = tokens_ahead.match_groups_inner(tokens::BracketLeft,
-                                                        tokens::BracketRight,
-                                                        Matcher::AnyOperator);
-
-            let mut operators = parts.separators.into_iter().peekable();
-            let mut operands = parts.groups.into_iter().peekable();
-
-            loop {
-                let next_operator = operators.peek().cloned();
-                let next_operand = operands.peek().map(|operand| &operand.tokens[0]).cloned();
-
-                match (next_operator, next_operand) {
-                    (Some(ref operator), Some(ref operand))
-                    if operator.location.lt(&operand.location) => {
-                        /* the next token is an operator and there's an operand following it */
-
-                        let position = match parsed_parts.last() {
-                            Some(CompoundExpressionPart::Operand { .. }) => {
-                                /* we just had an operand, and there's another operand after this,
-                            so it's a binary operator*/
-                                operators::Position::Binary
-                            }
-
-                            None |
-                            Some(CompoundExpressionPart::Operator(_)) => {
-                                /* if the last part was also an operator, or we're
-                            at the beginning of the expr, it must be a prefix operator */
-                                operators::Position::Prefix
-                            }
-                        };
-
-                        let op = operator.unwrap_operator();
-                        if op.is_valid_in_pos(position) {
-                            let operator = operators.next().unwrap();
-                            parsed_parts.push({
-                                CompoundExpressionPart::Operator(OperatorToken {
-                                    op: operator.unwrap_operator(),
-                                    pos: position,
-                                    token: operator,
-                                })
-                            });
-                        } else {
-                            /* this operation isn't valid, so we assume the expression must
-                        terminate before this operator */
-                            let last_part = parsed_parts.last();
-                            if let Some(CompoundExpressionPart::Operand(operand)) = last_part {
-                                /* if there's no last part we're at the beginning of the stream and
-                            the expr context is already in the right place before the expr */
-                                expr_context = operand.last_token.clone();
-                            }
-
-//                        println!("finished 1");
-                            break;
-                        }
-                    }
-
-                    (_, Some(_)) => {
-                        /* found an operand which either occurs before the next operator, or occurs
-                    after the last operator */
-                        if let Some(CompoundExpressionPart::Operand { .. }) = parsed_parts.last() {
-                            unreachable!("match_groups_inner should ensure all groups have at least one separator between them");
-                        }
-
-                        let operand = operands.next().unwrap();
-
-                        let mut operand_tokens = TokenStream::new(operand.tokens, &operand.context);
-                        let operand_expr = Expression::parse_operand(&mut operand_tokens)?;
-
-                        parsed_parts.push(CompoundExpressionPart::Operand(CompoundOperand {
-                            expr: operand_expr,
-                            last_token: operand_tokens.context().clone(),
-                        }));
-
-                        /* if there were parts left over they must belong to the next expression,
-                    stop parsing this one and set the context to the last token of this expression */
-                        if let Some(_) = operand_tokens.look_ahead().next() {
-                            expr_context = operand_tokens.context().clone();
-
-//                        println!("finished 2 with `{}`, context: `{}`",
-//                            parsed_parts.last().cloned().unwrap().unwrap_operand().expr.to_source(),
-//                            expr_context);
-                            break;
-                        }
-                    }
-
-                    /* found an operator without a following operand... there's no postfix
-                operators yet so this must be part of the next expression */
-                    (Some(_), None) |
-
-                    /* reached the end of this expression */
-                    (None, None) => {
-                        /* set the expr_context to the last token of the last part parsed */
-                        match parsed_parts.last() {
-                            Some(CompoundExpressionPart::Operand(operand)) => {
-                                expr_context = operand.last_token.clone();
-                            }
-                            Some(CompoundExpressionPart::Operator(op)) => {
-                                expr_context = op.token.clone();
-                            }
-                            None => {
-                                //just an operator on its own!? leave the expr_context at the beginning
-                            }
-                        }
-//                    println!("finished 3 with context: {}, last part {:?}", expr_context, parsed_parts.last().unwrap());
-
-                        break;
-                    }
+        /* parse args */
+        let mut arg_exprs = Vec::new();
+        loop {
+            if arg_exprs.len() > 0 {
+                match tokens.look_ahead().match_one(tokens::Comma) {
+                    /* finished parsing one arg and there's no comma indicating another one
+                    is coming, this must be the end of the args list */
+                    None => break,
+                    Some(_comma) => tokens.advance(1),
                 }
             }
+
+            let arg_expr = Expression::parse(tokens)?;
+            arg_exprs.push(arg_expr);
         }
+        tokens.match_one(tokens::BracketRight)?;
 
-        tokens.advance_to(&expr_context.location);
-
-        assert!(parsed_parts.len() > 0, "expression must not be empty after {}", tokens.context());
-
-        Self::resolve_ops_by_precedence(parsed_parts)
-    }
-
-    fn parse_fn_call_after(base: Expression, tokens_after: &mut TokenStream) -> ExpressionResult {
-        match tokens_after.look_ahead().next() {
-            Some(ref open_bracket) if *open_bracket.as_token() == tokens::BracketLeft => {
-                let args = tokens_after.match_groups(tokens::BracketLeft,
-                                                     tokens::BracketRight,
-                                                     tokens::Comma)?;
-
-                let all_args: Vec<_> = args.groups.into_iter()
-                    .map(|arg_group| {
-                        let mut arg_group_stream = TokenStream::from(arg_group);
-                        let arg_expr = Expression::parse_compound(&mut arg_group_stream)?;
-                        arg_group_stream.finish()?;
-
-                        Ok(arg_expr)
-                    })
-                    .collect::<Result<_, _>>()?;
-
-                Ok(Expression::function_call(base, all_args))
-            }
-
-            // not a function call
-            _ => Ok(base)
-        }
+        Ok(Expression::function_call(base, arg_exprs))
     }
 
     fn parse_identifier(tokens: &mut TokenStream) -> ExpressionResult {
@@ -438,98 +274,209 @@ impl Expression {
 
         Ok(Expression::for_loop(from_expr, to_expr, body_expr, ParsedContext::from(for_kw)))
     }
-
-    fn parse_base(tokens: &mut TokenStream) -> ExpressionResult {
-        /* this matcher should cover anything which can appear at the start of an expr */
-        let match_expr_start = Matcher::AnyKeyword
-            .or(Matcher::AnyIdentifier)
-            .or(Matcher::AnyLiteralInteger)
-            .or(Matcher::AnyLiteralString)
-            .or(Matcher::AnyLiteralFloat)
-            .or(keywords::True)
-            .or(keywords::False)
-            .or(tokens::BracketLeft)
-            .or(keywords::Nil)
-            .or(Matcher::any_operator_in_position(operators::Position::Prefix));
-
-        let expr_first = tokens.look_ahead().match_one(match_expr_start.clone());
-
-        let contains_operator = any_operators_at_base_level(tokens)?;
-
-        match expr_first {
-            Some(ref if_kw) if if_kw.as_token().is_keyword(keywords::If) => {
-                Expression::parse_if(tokens)
-            }
-
-            Some(ref for_kw) if for_kw.is_keyword(keywords::For) => {
-                Expression::parse_for_loop(tokens)
-            }
-
-            Some(ref begin_kw) if begin_kw.is_keyword(keywords::Begin) => {
-                let parsed_block = Block::parse(tokens)?;
-                Ok(Expression::block(parsed_block))
-            }
-
-            Some(ref let_kw) if let_kw.is_keyword(keywords::Let) => {
-                Expression::parse_let_binding(tokens)
-            }
-
-            Some(ref compound) if contains_operator ||
-                *compound.as_token() == tokens::BracketLeft => {
-                Expression::parse_compound(tokens)
-            }
-
-            Some(ref identifier) if identifier.is_any_identifier() => {
-                Expression::parse_identifier(tokens)
-            }
-
-            Some(ref s) if s.is_any_literal_string() => {
-                Expression::parse_literal_string(tokens)
-            }
-
-            Some(ref i) if i.is_any_literal_int() => {
-                Expression::parse_literal_integer(tokens)
-            }
-
-            Some(ref f) if f.is_any_literal_float() => {
-                Expression::parse_literal_float(tokens)
-            }
-
-            Some(ref nil) if nil.is_literal_nil() => {
-                Expression::parse_literal_nil(tokens)
-            }
-
-            Some(ref bool_kw) if bool_kw.is_keyword(keywords::True) ||
-                bool_kw.is_keyword(keywords::False) => {
-                Expression::parse_literal_bool(tokens)
-            }
-
-            _ => match tokens.look_ahead().next() {
-                Some(unexpected) =>
-                    Err(ParseError::UnexpectedToken(unexpected, Some(match_expr_start))),
-                None =>
-                    Err(ParseError::UnexpectedEOF(match_expr_start, tokens.context().clone()))
-            },
-        }
-    }
 }
 
 impl Parse for Expression {
     fn parse(tokens: &mut TokenStream) -> ExpressionResult {
-        let base = Expression::parse_base(tokens)?;
-
-        match base.value {
-            node::ExpressionValue::Identifier(_) |
-            node::ExpressionValue::BinaryOperator { .. } |
-            node::ExpressionValue::PrefixOperator { .. } |
-            node::ExpressionValue::Member { .. } |
-            node::ExpressionValue::FunctionCall { .. } => {
-                let with_member_access = Expression::parse_member_access_after(base, tokens)?;
-                Expression::parse_fn_call_after(with_member_access, tokens)
+        match tokens.look_ahead().match_one(match_statement()) {
+            Some(ref kw) if kw.is_keyword(keywords::Let) => {
+                return Self::parse_let_binding(tokens);
             }
 
-            _ => Ok(base)
+            Some(ref kw) if kw.is_keyword(keywords::For) => {
+                return Self::parse_for_loop(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::If) => {
+                return Self::parse_if(tokens);
+            }
+
+            Some(ref kw) if kw.is_keyword(keywords::Begin) => {
+                let parsed_block = Block::parse(tokens)?;
+                return Ok(Expression::block(parsed_block));
+            }
+
+            _ => { /* it's a value expression, keep going */ },
         }
+
+        let mut compound_parts = Vec::new();
+
+        /* an operand can't be followed by another operand, so each time we finish
+        an operand, the next thing must be a member access, a list of arguments to
+        the function the operand referred to, an array element access, or a binary
+        operator connecting this operand to the next one */
+        let mut last_was_operand = false;
+
+        loop {
+            let part = if !last_was_operand {
+                last_was_operand = true;
+
+                match tokens.look_ahead().match_one(match_operand_start()) {
+                    /* this operand is enclosed in brackets, we expect to find an
+                    entire valid subexpression then a close bracket */
+                    Some(ref t) if t.is_token(&tokens::BracketLeft) => {
+                        tokens.match_one(tokens::BracketLeft)?;
+                        let subexpr = Expression::parse(tokens)?;
+                        tokens.match_one(tokens::BracketRight)?;
+
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr: subexpr,
+                            last_token: tokens.context().clone(),
+                        })
+                    }
+
+                    /* it's an operator, but thanks to the match we know this operator
+                    is valid in prefix position, so it's part of this expression */
+                    Some(ref t) if t.is_any_operator() => {
+                        // we need to parse another operand after this!
+                        last_was_operand = false;
+
+                        let op = tokens.match_one(Matcher::AnyOperator)?;
+
+                        CompoundExpressionPart::Operator(OperatorToken {
+                            op: op.unwrap_operator(),
+                            token: op,
+                            pos: operators::Position::Prefix,
+                        })
+                    }
+
+                    /* the simple values */
+
+                    Some(ref identifier) if identifier.is_any_identifier() => {
+                        let expr = Expression::parse_identifier(tokens)?;
+
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone(),
+                        })
+                    }
+
+                    Some(ref s) if s.is_any_literal_string() => {
+                        let expr = Expression::parse_literal_string(tokens)?;
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone()
+                        })
+                    }
+
+                    Some(ref i) if i.is_any_literal_int() => {
+                        let expr = Expression::parse_literal_integer(tokens)?;
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone()
+                        })
+                    }
+
+                    Some(ref f) if f.is_any_literal_float() => {
+                        let expr = Expression::parse_literal_float(tokens)?;
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone()
+                        })
+                    }
+
+                    Some(ref nil) if nil.is_literal_nil() => {
+                        let expr = Expression::parse_literal_nil(tokens)?;
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone()
+                        })
+                    }
+
+                    Some(ref bool_kw) if bool_kw.is_keyword(keywords::True) ||
+                        bool_kw.is_keyword(keywords::False) => {
+                        let expr = Expression::parse_literal_bool(tokens)?;
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr,
+                            last_token: tokens.context().clone()
+                        })
+                    }
+
+                    Some(_) => unreachable!("pattern excludes anything else"),
+
+                    /* next token is not valid as part of an operand, so this expression
+                    must end here */
+                    None => break,
+                }
+            } else {
+                let any_binary_op = Matcher::any_operator_in_position(operators::Position::Binary);
+                let match_after_operand = any_binary_op
+                    .or(tokens::SquareBracketLeft) // array element access
+                    .or(tokens::BracketLeft) // function call argument list
+                    .or(tokens::Period); // member access
+
+                fn pop_operand(parts: &mut Vec<CompoundExpressionPart>) -> Expression {
+                    match parts.pop() {
+                        Some(CompoundExpressionPart::Operand(operand)) => {
+                            operand.expr
+                        }
+                        _ => unreachable!("last should always exist and be an operand here"),
+                    }
+                };
+
+                match tokens.look_ahead().match_one(match_after_operand) {
+                    /* replace the last operand with a member access */
+                    Some(ref t) if t.is_token(&tokens::Period) => {
+                        let last_operand = pop_operand(&mut compound_parts);
+                        let member_access = Self::parse_member_access_after(last_operand, tokens)?;
+
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr: member_access,
+                            last_token: tokens.context().clone(),
+                        })
+                    }
+
+                    /* replace the last operand with a function call */
+                    Some(ref t) if t.is_token(&tokens::BracketLeft) => {
+                        let last_operand = pop_operand(&mut compound_parts);
+                        let fn_call = Self::parse_fn_call_after(last_operand, tokens)?;
+
+                        CompoundExpressionPart::Operand(CompoundOperand {
+                            expr: fn_call,
+                            last_token: tokens.context().clone(),
+                        })
+                    }
+
+                    /* replace the last operand with a function call */
+                    Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
+                        unimplemented!("array element access")
+                    }
+
+                    // binary operator
+                    Some(ref t) if t.is_any_operator() => {
+                        // expect another operand afterwards
+                        last_was_operand = false;
+                        let op = tokens.match_one(Matcher::AnyOperator)?;
+
+                        CompoundExpressionPart::Operator(OperatorToken {
+                            op: op.unwrap_operator(),
+                            token: op,
+                            pos: operators::Position::Binary,
+                        })
+                    }
+
+                    Some(_) => unreachable!("pattern excludes anything else"),
+
+                    /* nothing following the last operand, which is fine, just end here */
+                    None => break,
+                }
+            };
+
+            compound_parts.push(part);
+        }
+
+        if compound_parts.len() == 0 {
+            return Err(match tokens.look_ahead().next() {
+                Some(unexpected) => {
+                    ParseError::UnexpectedToken(unexpected, Some(match_expr_start()))
+                },
+                None => {
+                    ParseError::UnexpectedEOF(match_expr_start(), tokens.context().clone())
+                }
+            })
+
+        }
+
+        resolve_ops_by_precedence(compound_parts)
     }
 }
-

@@ -894,7 +894,6 @@ pub(crate) mod test {
                         default_value: None,
                     }
                 ],
-                body: None,
                 kind: FunctionKind::Function,
                 context: empty_context(&default_scope),
             })
