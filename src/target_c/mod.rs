@@ -1,3 +1,6 @@
+mod writer;
+mod ast;
+
 use std::{
     path::Path,
     fs,
@@ -9,8 +12,6 @@ use pretty_path;
 use CompileError;
 use semantic::ProgramModule;
 use opts::CompileOptions;
-
-mod writer;
 
 const HEADER: &str = include_str!("header.h");
 const RT: &str = include_str!("rt.h");

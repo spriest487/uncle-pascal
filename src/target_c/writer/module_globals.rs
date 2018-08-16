@@ -1,7 +1,11 @@
 use std::fmt;
 use linked_hash_set::LinkedHashSet;
+use target_c::ast::{
+    FunctionDecl,
+};
 
 pub struct ModuleGlobals {
+    function_decls: Vec<FunctionDecl>,
     string_literals: LinkedHashSet<String>,
 }
 
@@ -9,7 +13,28 @@ impl ModuleGlobals {
     pub fn new() -> Self {
         ModuleGlobals {
             string_literals: LinkedHashSet::new(),
+            function_decls: Vec::new(),
         }
+    }
+
+    pub fn declare_function(&mut self, func: FunctionDecl) {
+        self.function_decls.push(func);
+    }
+
+    pub fn write_forward_funcs(&self, mut out: impl fmt::Write) -> fmt::Result {
+        for func in self.function_decls.iter() {
+            func.write_forward(&mut out)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn write_func_impls(&self, mut out: impl fmt::Write) -> fmt::Result {
+        for func in self.function_decls.iter() {
+            func.write_impl(&mut out)?;
+        }
+
+        Ok(())
     }
 
     fn string_literal_index_to_name(index: usize) -> String {
