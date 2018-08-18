@@ -90,4 +90,3 @@ static System_Internal_Object* System_Internal_Rc_GetMem(
 static void System_Internal_Raise(const char* file, int line, int col, const char* msg);
 
 static void System_Internal_ZeroMemory(void* mem, PascalType_System_NativeUInt len);
-

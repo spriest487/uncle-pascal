@@ -193,8 +193,8 @@ impl<TContext> RecordDecl<TContext>
     }
 
     /**
-    iterate over all members, including possible variant tag and variant case members
-*/
+        iterate over all members, including possible variant tag and variant case members
+    */
     pub fn all_members(&self) -> impl Iterator<Item=&RecordMember<TContext>> {
         self.members.iter()
             .chain(self.variant_part.iter()

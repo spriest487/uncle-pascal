@@ -48,4 +48,8 @@ impl IndexRange {
 
         self.to.wrapping_sub(self.from) as u32 + 1
     }
+
+    pub fn iter(&self) -> impl Iterator<Item=i64> {
+        (self.from..self.to)
+    }
 }

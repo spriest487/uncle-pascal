@@ -366,6 +366,18 @@ pub enum ConstExpression {
     Nil,
 }
 
+impl From<IntConstant> for ConstExpression {
+    fn from(i: IntConstant) -> Self {
+        ConstExpression::Integer(i)
+    }
+}
+
+impl From<FloatConstant> for ConstExpression {
+    fn from(f: FloatConstant) -> Self {
+        ConstExpression::Float(f)
+    }
+}
+
 impl ConstExpression {
     pub fn value_type(&self, hint: Option<&Type>) -> Type {
         match self {

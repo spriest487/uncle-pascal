@@ -1,6 +1,12 @@
 use std::fmt;
 
-use semantic;
+use semantic::{
+    self,
+    arc_transform::{
+        RcStatement,
+        extract_block_rc_statements,
+    }
+};
 use target_c::ast::{
     rc_release,
     TranslationUnit,
@@ -8,7 +14,6 @@ use target_c::ast::{
     Expression,
     Variable,
     Name,
-    RcStatement,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,15 +30,9 @@ impl Block {
                      locals: Option<&[semantic::VarDecl]>,
                      unit: &mut TranslationUnit)
                      -> TranslationResult<Self> {
-        let rc_block = Self::extract_block_rc_statements(block.clone());
+        let rc_block = extract_block_rc_statements(block.clone());
 
         Self::translate_rc_block(rc_block, locals, unit)
-    }
-
-    pub(super) fn extract_block_rc_statements(block: semantic::Block) -> Vec<RcStatement> {
-        block.statements.into_iter()
-            .map(|block_stmt| Expression::extract_stmt_rc_bindings(block_stmt, 0))
-            .collect()
     }
 
     pub(super) fn translate_rc_block(rc_block: Vec<RcStatement>,
@@ -42,29 +41,38 @@ impl Block {
                                      -> TranslationResult<Self> {
         /* any names bound inside this block will have +1 refcount if they're rc
         types, so we need to release them at the close of the block */
-        let release_names: Vec<_> = rc_block.iter()
-            .filter_map(|stmt| match stmt {
-                | RcStatement::Statement { bound_name: Some(bound_name), .. } => {
-                    if bound_name.bound_type.is_ref_counted() {
-                        Some(bound_name.name.clone())
-                    } else {
-                        None
-                    }
-                }
+        let release_vals = {
+            let mut release_vals = Vec::new();
 
-                | RcStatement::Statement { .. }
-                | RcStatement::Block(_) => None
-            })
-            .collect();
+            let bound_rc_vals: Vec<_> = rc_block.iter()
+                .filter_map(|stmt| match stmt {
+                    | RcStatement::Statement { bound_name: Some(name), rc_bindings, .. } =>
+                        Some((name.name.as_str(), rc_bindings)),
+
+                    | RcStatement::Statement { bound_name: None, .. }
+                    | RcStatement::Block(_) => None
+                })
+                .collect();
+
+            for (bound_name, rc_bindings) in bound_rc_vals {
+                for rc_binding in rc_bindings {
+                    let base = Expression::from(Name::local(bound_name));
+
+                    release_vals.extend(rc_binding.rc_subvalues.iter()
+                        .map(|subval| {
+                            Expression::translate_rc_value_expr(subval, base.clone())
+                        }));
+                }
+            }
+            release_vals
+        };
 
         let mut statements = Vec::new();
         for stmt in rc_block {
             statements.extend(Expression::translate_rc_statement(stmt, unit)?);
         }
 
-        for release_name in release_names {
-            statements.push(rc_release(Name::local(release_name)));
-        }
+        statements.extend(release_vals.iter().cloned().map(rc_release));
 
         if let Some(locals) = locals {
             // declare local vars

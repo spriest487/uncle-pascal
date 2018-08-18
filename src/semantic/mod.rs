@@ -9,6 +9,7 @@ pub mod program;
 pub mod unit;
 pub mod module;
 pub mod array;
+pub mod arc_transform;
 
 pub use self::{
     block::*,

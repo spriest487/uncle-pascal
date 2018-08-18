@@ -14,10 +14,14 @@ use target_c::ast::{
 use semantic::{
     self,
     BindingKind,
-    SemanticContext,
+    arc_transform::{
+        RcSubValuePath,
+        RcStatement,
+        BoundName,
+        extract_stmt_rc_bindings,
+    },
 };
 use node::{
-    self,
     Context,
     Identifier,
     ExpressionValue,
@@ -33,57 +37,6 @@ use consts::{
     FloatConstant,
 };
 use operators;
-
-pub(super) struct BoundName {
-    pub name: String,
-    pub bound_type: Type,
-}
-
-pub(super) enum RcStatement {
-    Block(Vec<RcStatement>),
-
-    Statement {
-        bound_name: Option<BoundName>,
-        body: Box<semantic::Expression>,
-        rc_bindings: Vec<semantic::Expression>,
-    },
-}
-
-impl fmt::Debug for RcStatement {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            RcStatement::Block(stmts) => {
-                writeln!(f, "RcStatement [")?;
-                for stmt in stmts {
-                    writeln!(f, "\t{:?}", stmt)?;
-                }
-                write!(f, "]")
-            }
-
-            RcStatement::Statement { body, rc_bindings, bound_name } => {
-                writeln!(f, "RcStatement {{")?;
-                writeln!(f, "\tbody: `{}`", body)?;
-
-                if let Some(bound_name) = bound_name {
-                    writeln!(f, "\tbound name: `{}`", bound_name.name)?;
-                }
-
-                write!(f, "\tbindings: [")?;
-                if !rc_bindings.is_empty() {
-                    writeln!(f)?;
-                    for (i, binding) in rc_bindings.iter().enumerate() {
-                        writeln!(f, "\t\t{} = `{}`", i, binding)?;
-                    }
-                    writeln!(f, "\t]")?;
-                } else {
-                    write!(f, "]")?;
-                }
-
-                write!(f, "}}")
-            }
-        }
-    }
-}
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CastKind {
@@ -258,115 +211,30 @@ impl Expression {
         Expression::Return(Box::new(value.into()))
     }
 
-    pub(super) fn extract_stmt_rc_bindings(stmt: semantic::Expression, id_offset: usize) -> RcStatement {
-        /* for blocks, do this recursively for all statements in the block and return
-        that instead */
-        if stmt.is_block() {
-            let block = stmt.unwrap_block();
-            return RcStatement::Block(Block::extract_block_rc_statements(block));
-        }
+    pub fn translate_rc_value_expr(path: &RcSubValuePath,
+                                   base: impl Into<Expression>)
+        -> Expression {
+        match path {
+            RcSubValuePath::This { parent: None } =>
+                base.into(),
+            RcSubValuePath::This { parent: Some(parent) } =>
+                Self::translate_rc_value_expr(parent, base),
 
-        /* it's a single statement not a block, let's figure out if it has any rc bindings */
-        let mut rc_bindings = Vec::new();
+            RcSubValuePath::Member { parent: None, name } =>
+                Expression::member(base, name.clone()),
+            RcSubValuePath::Member { parent: Some(parent), name } =>
+                Expression::member(Self::translate_rc_value_expr(parent, base), name.clone()),
 
-        let context = stmt.context.clone();
-
-        /* expr -> id expr, adding the real value to the rc binding list */
-        let new_rc_binding = |bindings: &mut Vec<_>, bound_value: semantic::Expression| {
-            let name = format!("rc_{}", bindings.len() + id_offset);
-
-            /* the temp binding needs to be added to scope in case anything typechecks again after
-                this point*/
-            let binding_scope = {
-                let decl_type = bound_value.expr_type().unwrap().unwrap();
-
-                context.scope().clone()
-                    .with_binding(&name, decl_type, BindingKind::Internal)
-            };
-
-            let binding_context = SemanticContext::new(
-                context.token().clone(),
-                binding_scope,
-                None,
-            );
-
-            /* construct a new expression referring to the temp binding instead of the original
-                   expression by its name */
-            let binding_expr = semantic::Expression::identifier(
-                Identifier::from(&name),
-                binding_context,
-            );
-
-            /* store the original expression value for later when we write out the temp bindings */
-            bindings.push(bound_value);
-
-            binding_expr
-        };
-
-        use node::ExpressionValue::{
-            FunctionCall,
-            ObjectConstructor,
-            LetBinding,
-        };
-
-        /* bind the results of any function calls which return RC objects to temporary bindings so we
-         can release them later. nothing but function calls returning RC objects can leak an RC,
-         because local vars and func args are already managed elsewhere */
-        let (bound_name, body) = match stmt {
-            call_expr @ node::Expression { value: FunctionCall(_), .. } => {
-                let call_sig = call_expr.as_function_call().unwrap().signature();
-
-                // returning an instance of an rc class..
-                (None, match call_sig.return_type.as_ref().map(|t| t.is_ref_counted()) {
-                    Some(true) => new_rc_binding(&mut rc_bindings, call_expr),
-                    _ => call_expr,
-                })
-            }
-
-            ctor_expr @ node::Expression { value: ObjectConstructor(_), .. } => {
-                let ctor = ctor_expr.as_object_constructor().cloned().unwrap();
-
-                (None, match ctor.object_type.as_ref().map(|ty| ty.is_ref_counted()) {
-                    Some(true) => new_rc_binding(&mut rc_bindings, ctor_expr),
-                    _ => ctor_expr,
-                })
-            }
-
-            node::Expression { value: LetBinding(binding), .. } => {
-                let bound_name = BoundName {
-                    bound_type: binding.value_type().unwrap(),
-                    name: binding.name,
-                };
-
-                match Self::extract_stmt_rc_bindings(*binding.value, rc_bindings.len()) {
-                    RcStatement::Statement {
-                        body,
-                        rc_bindings: val_rc_bindings,
-                        bound_name: None
-                    } => {
-                        rc_bindings.extend(val_rc_bindings);
-
-                        (Some(bound_name), *body)
-                    }
-
-                    unexpected => panic!("expected let value to be a value expression, got {:?}",
-                                         unexpected),
-                }
-            }
-
-            expr => (None, expr),
-        };
-
-        RcStatement::Statement {
-            body: Box::new(body),
-            bound_name,
-            rc_bindings,
+            RcSubValuePath::ArrayElement { parent: None, index } =>
+                unimplemented!("rc subvalue path <this>[{}]", index),
+            RcSubValuePath::ArrayElement { parent: Some(parent), index } =>
+                unimplemented!("rc subvalue path {}[{}]", parent, index),
         }
     }
 
-    pub(super) fn translate_rc_statement(stmt: RcStatement,
-                              unit: &mut TranslationUnit)
-                              -> TranslationResult<Vec<Expression>> {
+    pub fn translate_rc_statement(stmt: RcStatement,
+                                         unit: &mut TranslationUnit)
+                                         -> TranslationResult<Vec<Expression>> {
         match stmt {
             RcStatement::Block(statements) => {
                 let block = Block::translate_rc_block(statements, None, unit)?;
@@ -374,7 +242,7 @@ impl Expression {
                 Ok(vec![Expression::Block(block)])
             }
 
-            RcStatement::Statement { body, rc_bindings, bound_name } => {
+            RcStatement::Statement { body, rc_bindings, bound_name, rc_assignments } => {
                 /*
                     translate the main statement into one or more c statements - a simple expression with no
                     rc to handle will translate to one c statement, otherwise this may include rc statements
@@ -382,21 +250,6 @@ impl Expression {
                 */
                 let mut lines = Vec::new();
 
-                /*
-                    expressions referring to rc-typed lvalues that are assigned to during this
-                    statement, which will need to be released before assignment and retained
-                    afterwards
-                */
-                let mut rc_assignments = Vec::new();
-
-                if let ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, .. } = &body.value {
-                    /* if assigning a new value to an rc variable, release the old value first */
-                    let lhs_type = lhs.expr_type().unwrap().unwrap();
-
-                    if lhs_type.is_ref_counted() {
-                        rc_assignments.push(*lhs.clone());
-                    }
-                }
 
                 /* if we're going to bind this to a name, declare that before the temporaries
                 block so the name is visible outside */
@@ -445,29 +298,45 @@ impl Expression {
                 if !rc_bindings.is_empty() {
                     let mut temp_block = Vec::new();
 
+                    // ...then release temp bindings and close the block
+                    let rc_subvals: Vec<Expression> = rc_bindings.iter()
+                        .enumerate()
+                        .flat_map(|(tmp_id, rc_binding)| {
+                            rc_binding.rc_subvalues.iter()
+                                .map(move |val_path| {
+                                    let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
+                                    Self::translate_rc_value_expr(val_path, tmp_name)
+                                })
+                        })
+                        .collect();
+
                     // bind RC temporaries to local names...
                     for (tmp_id, tmp_val) in rc_bindings.iter().enumerate() {
-                        let tmp_type = tmp_val.expr_type()
+                        let tmp_type = tmp_val.base_value.expr_type()
                             .expect("temporary rc values should always be valid types")
                             .expect("temporary rc values should never have no type");
 
-                        let val_c_type = CType::translate(&tmp_type, tmp_val.scope(), unit)?;
+                        let val_c_type = CType::translate(&tmp_type, tmp_val.base_value.scope(), unit)?;
                         let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-                        let tmp_val_expr = Expression::translate_expression(tmp_val, unit)?;
+                        let tmp_val_expr = Expression::translate_expression(
+                            &tmp_val.base_value,
+                            unit,
+                        )?;
 
                         temp_block.push(Expression::local_decl(
                             val_c_type,
                             tmp_name,
-                            Some(tmp_val_expr)
+                            Some(tmp_val_expr),
                         ));
                     }
 
                     // ...the original exprs in the middle...
                     temp_block.push(body_expr);
 
-                    // ...retain the value if we're binding to a name...
-                    if let Some(bound_name) = &bound_name {
-                        temp_block.push(rc_retain(Name::local(bound_name.name.as_str())));
+                    /* if this statement binds an expression to a name, the rc values
+                    in this statement need to outlive it so add a reference */
+                    if let Some(_bound_name) = &bound_name {
+                        temp_block.extend(rc_subvals.iter().cloned().map(rc_retain));
                     }
 
                     // ...retain newly-assigned values...
@@ -475,11 +344,8 @@ impl Expression {
                         temp_block.push(rc_retain(rc_val));
                     }
 
-                    // ...then release temp bindings and close the block
-                    for (tmp_id, _tmp_val) in rc_bindings.iter().enumerate() {
-                        let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
-                        temp_block.push(rc_release(tmp_name));
-                    }
+                    // release statement temporaries
+                    temp_block.extend(rc_subvals.iter().cloned().map(rc_release));
 
                     lines.push(Expression::Block(Block::new(temp_block)));
                 } else {
@@ -498,7 +364,7 @@ impl Expression {
     pub fn translate_statement(stmt: &semantic::Expression,
                                unit: &mut TranslationUnit)
                                -> TranslationResult<Vec<Self>> {
-        let rc_block = Self::extract_stmt_rc_bindings(stmt.clone(), 0);
+        let rc_block = extract_stmt_rc_bindings(stmt.clone(), 0);
 
         Self::translate_rc_statement(rc_block, unit)
     }
