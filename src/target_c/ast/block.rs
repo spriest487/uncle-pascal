@@ -5,6 +5,7 @@ use semantic::{
     arc_transform::{
         RcStatement,
         extract_block_rc_statements,
+        rc_subvalues,
     }
 };
 use target_c::ast::{
@@ -39,8 +40,8 @@ impl Block {
                                      locals: Option<&[semantic::VarDecl]>,
                                      unit: &mut TranslationUnit)
                                      -> TranslationResult<Self> {
-        /* any names bound inside this block will have +1 refcount if they're rc
-        types, so we need to release them at the close of the block */
+        /* values that are bound to a name have +1 rc after the statement they're created
+        in, and at the end of the block we release them all in reverse order */
         let release_vals = {
             let mut release_vals = Vec::new();
 
@@ -68,25 +69,37 @@ impl Block {
         };
 
         let mut statements = Vec::new();
+
+        // declare local vars
+        if let Some(locals) = locals {
+            for decl in locals {
+                statements.push(Variable::translate(decl, true, unit)?
+                    .decl_statement())
+            }
+        }
+
+        // main block body
         for stmt in rc_block {
             statements.extend(Expression::translate_rc_statement(stmt, unit)?);
         }
 
-        statements.extend(release_vals.iter().cloned().map(rc_release));
+        // release rc values of names bound in the body in reverse order
+        statements.extend(release_vals.into_iter().rev().map(rc_release));
 
+        // release block locals in reverse decl order
         if let Some(locals) = locals {
-            // declare local vars
-            let mut init = Vec::new();
-            for decl in locals {
-                init.push(Variable::translate(decl, true, unit)?
-                    .decl_statement())
-            }
-            init.extend(statements.into_iter());
-            statements = init;
+            // todo: bug, don't release uninitialized values!
 
-            // release all rc local vars for this block
-            for decl in locals.iter().rev().filter(|decl| decl.decl_type.is_ref_counted()) {
-                statements.push(rc_release(Name::local(decl.name.clone())));
+            for decl in locals.iter().rev() {
+                let rc_subvals = rc_subvalues(&decl.decl_type, decl.scope(), None);
+                let var_base_expr = Expression::from(Name::local(decl.name.clone()));
+
+                for rc_val in rc_subvals.into_iter().rev() {
+                    statements.push(rc_release(Expression::translate_rc_value_expr(
+                        &rc_val,
+                        var_base_expr.clone()
+                    )));
+                }
             }
         }
 

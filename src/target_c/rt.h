@@ -9,6 +9,8 @@ struct System_Internal_Class {
 
     System_Internal_InterfaceImpl* Interfaces;
     PascalType_System_NativeUInt InterfaceCount;
+
+    System_Internal_Destructor Destructor;
 };
 
 static const void* System_Internal_TryFindVTable(
@@ -73,7 +75,8 @@ static std::unordered_map<std::string, std::unique_ptr<System_Internal_Class>> S
 
 static void System_Internal_InitClass(const char* name,
         System_Internal_InterfaceImpl* interfaces,
-        PascalType_System_NativeUInt interfaceCount) {
+        PascalType_System_NativeUInt interfaceCount,
+        System_Internal_Destructor destructor) {
     auto nameStr = std::string(name);
     if (System_Internal_Classes.find(nameStr) != System_Internal_Classes.end()) {
         std::fprintf(stderr, "attempting to initialize class with duplicate name");
@@ -85,6 +88,7 @@ static void System_Internal_InitClass(const char* name,
 
     classObj->Interfaces = interfaces,
     classObj->InterfaceCount = interfaceCount;
+    classObj->Destructor = destructor;
 
     System_Internal_Classes.insert(make_pair(nameStr, move(classObj)));
 
@@ -171,6 +175,7 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
             }
         }
 
+        obj->Class->Destructor(obj);
         std::free(obj);
 
 #ifdef UNCLEPASCAL_RC_DEBUG
@@ -182,10 +187,12 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
 
 /* procedure System.WriteLn(line: System.String) */
 void Pascal_System_WriteLn(PascalType_System_String* lineRc) {
-    auto line = static_cast<struct PascalType_System_String*>(lineRc);
+    struct PascalType_System_String* line = static_cast<struct PascalType_System_String*>(lineRc);
 
     if (line) {
-        for (int c = 0; c < line->member_Length; ++c) {
+        for (PascalType_System_NativeUInt c = 0;
+                c < line->member_Length;
+                ++c) {
             fputc(line->member_Chars[c], stdout);
         }
         fputc('\n', stdout);

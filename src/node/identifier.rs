@@ -1,5 +1,5 @@
 use std::{
-    fmt,
+    fmt::{self, Write},
     iter::{self, FromIterator},
     vec,
 };
@@ -7,17 +7,36 @@ use std::{
 use tokens::{self, AsToken};
 use syntax::*;
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub struct Identifier {
     pub namespace: Vec<String>,
     pub name: String,
+}
+
+impl fmt::Debug for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "`{}`", self.name)?;
+
+        if !self.namespace.is_empty() {
+            write!(f, " in `")?;
+            for (i, part) in self.namespace.iter().enumerate() {
+                if i > 0 {
+                    f.write_char('.')?;
+                }
+                f.write_str(part)?;
+            }
+            f.write_char('`')?;
+        }
+
+        Ok(())
+    }
 }
 
 impl<'a> From<&'a str> for Identifier {
     fn from(from: &'a str) -> Self {
         let mut parts: Vec<String> = from
             .split('.')
-            .map(|part: &str| part.to_owned())
+            .map(str::to_string)
             .collect();
 
         let name = parts.pop().unwrap_or_else(String::new);

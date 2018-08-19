@@ -7,6 +7,7 @@ use std::{
 use semantic::{
     self,
     Scope,
+    arc_transform::rc_subvalues,
 };
 use types::{
     Type,
@@ -15,24 +16,47 @@ use types::{
 use target_c::ast::{
     TranslationResult,
     FunctionDecl,
+    FunctionArg,
+    FunctionDefinition,
     Variable,
     CType,
     Interface,
+    CallingConvention,
+    Block,
     Name,
+    Expression,
+    CastKind,
+    rc_release,
 };
 
+#[derive(Debug)]
 struct ClassVTable {
     variable: Variable,
     method_impls: HashMap<String, Name>,
 }
 
 pub struct Class {
-//    name: Name,
     pascal_name: ParameterizedName,
     unit_scope: Rc<Scope>,
 
     vtables: HashMap<usize, ClassVTable>,
     interfaces_array: Variable,
+
+    destructor: FunctionDecl,
+}
+
+impl fmt::Debug for Class {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "Pascal class `{}` {{", self.pascal_name)?;
+        if !self.vtables.is_empty() {
+            writeln!(f, "\timplements: [")?;
+            for (iface_id, vtable) in &self.vtables {
+                writeln!(f, "\t\t{}: {}", iface_id, vtable.variable.name)?;
+            }
+            writeln!(f, "\t]")?;
+        }
+        write!(f, "}}")
+    }
 }
 
 impl Class {
@@ -41,15 +65,13 @@ impl Class {
                      unit_scope: &Rc<Scope>) -> TranslationResult<Self> {
         let name_parameterized = ParameterizedName::new_with_args(
             class.qualified_name(),
-            type_args.iter().cloned()
+            type_args.iter().cloned(),
         );
 
         let (full_name, class_decl) = unit_scope.get_class_specialized(&name_parameterized).unwrap();
         if !class_decl.type_params.is_empty() {
             unimplemented!("parameterized classes (c++ backend)");
         }
-
-//        let name = Name::user_type(&full_name);
 
         /* we also need a variable to store the list of all vtables this class implements */
         let interfaces_array = Variable {
@@ -59,6 +81,8 @@ impl Class {
             array_size: Some(0),
         };
 
+        let destructor = Self::generate_destructor(&name_parameterized, class);
+
         Ok(Class {
 //            name,
             pascal_name: full_name.clone(),
@@ -67,7 +91,54 @@ impl Class {
             /* we'll populate these later */
             vtables: HashMap::new(),
             interfaces_array,
+
+            destructor,
         })
+    }
+
+    fn generate_destructor(pascal_name: &ParameterizedName,
+                           decl: &semantic::RecordDecl)
+                           -> FunctionDecl {
+        let name = Name::destructor(&pascal_name);
+
+        let instance_arg_name = Name::local("instance");
+        let args = vec![
+            FunctionArg {
+                name: instance_arg_name.clone(),
+                ctype: CType::Void.into_const().into_pointer(),
+            }
+        ];
+
+        let struct_type = CType::Struct(Name::user_type(pascal_name));
+        let instance_ref = Expression::cast(
+            struct_type.into_const().into_pointer(),
+            instance_arg_name,
+            CastKind::Reinterpret
+        ).deref();
+
+        let body = decl.members.iter()
+            .rev()
+            .flat_map(|member| {
+                let member_rc_vals = rc_subvalues(&member.decl_type, decl.scope(), None);
+                let member_base = Expression::member(instance_ref.clone(), member.name.clone());
+
+                member_rc_vals.into_iter().rev()
+                    .map(move |member_val| {
+                        Expression::translate_rc_value_expr(&member_val, member_base.clone())
+                    })
+            })
+            .map(|member_expr| {
+                rc_release(member_expr)
+            })
+            .collect();
+
+        FunctionDecl {
+            name,
+            args,
+            return_type: CType::Void,
+            calling_convention: CallingConvention::Cdecl,
+            definition: FunctionDefinition::Defined(Block::new(body)),
+        }
     }
 
     pub fn update_vtables(&mut self, interfaces: &[Interface]) {
@@ -118,31 +189,43 @@ impl Class {
             vtable_var.variable.write_impl(out)?;
         }
 
+        self.destructor.write_forward(out)?;
+
+        Ok(())
+    }
+
+    pub fn write_impl(&self, out: &mut fmt::Write) -> fmt::Result {
+        self.destructor.write_impl(out)?;
         Ok(())
     }
 
     pub fn write_init(&self, out: &mut fmt::Write) -> fmt::Result {
         for (i, (iface_id, iface_vtable)) in self.vtables.iter().enumerate() {
             for (method_name, impl_func) in &iface_vtable.method_impls {
-                writeln!(out, "{}.{} = &{};",
-                         iface_vtable.variable.name,
-                         Name::member(method_name.clone()),
-                         impl_func
+                writeln!(
+                    out, "{}.{} = &{};",
+                    iface_vtable.variable.name,
+                    Name::member(method_name.clone()),
+                    impl_func
                 )?;
             }
 
-            writeln!(out, "{}[{}] = {} {{ {}, &{} }};",
-                     self.interfaces_array.name,
-                     i,
-                     Name::internal_symbol("InterfaceImpl"),
-                     iface_id,
-                     iface_vtable.variable.name
+            writeln!(
+                out, "{}[{}] = {} {{ {}, &{} }};",
+                self.interfaces_array.name,
+                i,
+                Name::internal_symbol("InterfaceImpl"),
+                iface_id,
+                iface_vtable.variable.name
             )?;
         }
 
-        writeln!(out, "System_Internal_InitClass(\"{}\", {}, {});",
-                 self.pascal_name,
-                 self.interfaces_array.name,
-                 self.vtables.len())
+        writeln!(
+            out, "System_Internal_InitClass(\"{}\", {}, {}, {});",
+            self.pascal_name,
+            self.interfaces_array.name,
+            self.vtables.len(),
+            self.destructor.name,
+        )
     }
 }

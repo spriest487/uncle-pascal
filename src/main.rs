@@ -167,8 +167,6 @@ fn default_refs(default_context: source::Token) -> Vec<syntax::UnitReference> {
 fn compile_program(program_path: &Path,
                    opts: opts::CompileOptions)
                    -> Result<semantic::ProgramModule, CompileError> {
-    let mut module_source = load_source(program_path, opts)?;
-
     let source_dir = program_path.canonicalize()?
         .parent()
         .ok_or_else(|| {
@@ -177,12 +175,19 @@ fn compile_program(program_path: &Path,
         })?
         .canonicalize()?;
 
-    let search_dirs = if let Ok(current_dir) = current_dir() {
-        let units_dir = current_dir.join("units");
-        vec![source_dir, units_dir]
-    } else {
-        vec![source_dir]
+    let search_dirs = {
+        let mut default_dirs = if let Ok(current_dir) = current_dir() {
+            let units_dir = current_dir.join("units");
+            vec![source_dir, units_dir]
+        } else {
+            vec![source_dir]
+        };
+
+        default_dirs.extend(opts.unit_paths().map(PathBuf::from));
+        default_dirs
     };
+
+    let mut module_source = load_source(program_path, opts)?;
 
     let default_units = default_refs(module_source.tokens[0].clone());
 
@@ -264,6 +269,7 @@ fn main() {
     opts.optmulti("D", "", "Define preprocessor symbol", "");
     opts.optmulti("l", "", "Link libraries", "");
     opts.optmulti("L", "", "Library search paths", "");
+    opts.optmulti("I", "", "Unit search paths", "");
 
     match opts.parse(&args[1..]) {
         Ok(matched) => {

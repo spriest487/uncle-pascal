@@ -19,6 +19,7 @@ enum NameKind {
     InternalType,
     InternalSymbol,
     Constructor,
+    Destructor,
     Local,
     LocalInternal,
     Member,
@@ -138,6 +139,13 @@ impl Name {
         }
     }
 
+    pub fn destructor(type_id: &ParameterizedName) -> Self {
+        Name {
+            kind: NameKind::Destructor,
+            name: parameterized_id_to_c(type_id),
+        }
+    }
+
     pub fn member(name: impl Into<String>) -> Self {
         Name {
             kind: NameKind::Member,
@@ -185,6 +193,9 @@ impl fmt::Display for Name {
 
             | NameKind::Constructor
             => write!(f, "Constructor_{}", self.name),
+
+            | NameKind::Destructor
+            => write!(f, "Destructor_{}", self.name),
 
             | NameKind::Member
             => write!(f, "member_{}", self.name),

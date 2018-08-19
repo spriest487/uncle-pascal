@@ -6,7 +6,7 @@ uses System.*
 
 type
   Element = Byte
-  Index = NativeInt
+  Index = NativeUInt
 
   Vector = class
     Elements: ^Element
@@ -32,24 +32,24 @@ function Disposable.Dispose(self: Vector) =
 
 function Add(self: Vector; p: Element)
 begin
-  let var newElements := GetMem(self.Length + 1)
+  let var newElements := GetMem(self.Length + NativeUInt(1))
 
   if self.Elements <> nil then
   begin
-    for let i = 0 to self.Length do
+    for let i = NativeUInt(0) to self.Length do
       newElements[i] := self.Elements[i]
 
     FreeMem(self.Elements)
   end
 
-  self.Length := self.Length + 1
+  self.Length := self.Length + NativeUInt(1)
   self.Elements := newElements
 
-  self.Elements[self.Length - 1] := p
+  self.Elements[self.Length - NativeUInt(1)] := p
 end
 
 function AddAll(self: Vector; other: Vector) =
-  for let i = 0 to other.Length do
+  for let i = NativeUInt(0) to other.Length do
     self.Add(other.Elements[i])
 
 end.

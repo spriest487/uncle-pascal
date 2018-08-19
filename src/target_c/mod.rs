@@ -108,6 +108,10 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
         decl_impl.write_impl(unit, &mut out)?;
     }
 
+    for class in unit.classes() {
+        class.write_impl(&mut out)?;
+    }
+
     /* write main function */
     writeln!(out, "int main(int argc, char* argv[]) {{")?;
 

@@ -304,7 +304,7 @@ impl Expression {
                         .flat_map(|(tmp_id, rc_binding)| {
                             rc_binding.rc_subvalues.iter()
                                 .map(move |val_path| {
-                                    let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
+                                    let tmp_name = Name::local_internal(tmp_id.to_string());
                                     Self::translate_rc_value_expr(val_path, tmp_name)
                                 })
                         })
@@ -317,7 +317,7 @@ impl Expression {
                             .expect("temporary rc values should never have no type");
 
                         let val_c_type = CType::translate(&tmp_type, tmp_val.base_value.scope(), unit)?;
-                        let tmp_name = Name::local_internal(format!("rc_{}", tmp_id));
+                        let tmp_name = Name::local_internal(tmp_id.to_string());
                         let tmp_val_expr = Expression::translate_expression(
                             &tmp_val.base_value,
                             unit,
@@ -335,7 +335,7 @@ impl Expression {
 
                     /* if this statement binds an expression to a name, the rc values
                     in this statement need to outlive it so add a reference */
-                    if let Some(_bound_name) = &bound_name {
+                    if bound_name.is_some() {
                         temp_block.extend(rc_subvals.iter().cloned().map(rc_retain));
                     }
 
@@ -693,6 +693,10 @@ impl Expression {
                     }
                     | _ => panic!("invalid type for object constructor: {:?}", obj.object_type),
                 };
+
+                /* reference the class name to make sure generics are instantiated, even though
+                we don't store it */
+                CType::translate(obj.object_type.as_ref().unwrap(), expr.scope(), unit)?;
 
                 /* todo: support the variant part */
                 let ctor_args: Vec<Expression> = obj_decl.all_members()

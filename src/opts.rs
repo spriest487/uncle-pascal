@@ -111,6 +111,8 @@ pub struct CompileOptions {
 
     link_libs: LinkedHashSet<String>,
     lib_paths: LinkedHashSet<String>,
+
+    unit_paths: LinkedHashSet<String>,
 }
 
 impl CompileOptions {
@@ -123,6 +125,8 @@ impl CompileOptions {
 
             link_libs: LinkedHashSet::new(),
             lib_paths: LinkedHashSet::new(),
+
+            unit_paths: LinkedHashSet::new(),
         }
     }
 
@@ -213,6 +217,14 @@ impl CompileOptions {
         self.lib_paths.iter()
     }
 
+    pub fn unit_path(&mut self, unit_path: String) {
+        self.unit_paths.insert(unit_path);
+    }
+
+    pub fn unit_paths(&self) -> impl Iterator<Item=&String> {
+        self.unit_paths.iter()
+    }
+
     pub fn from_getopts(matches: &getopts::Matches) -> Self {
         let mode = match matches.opt_str("mode") {
             Some(mode_opt) => match mode_opt.as_str() {
@@ -241,6 +253,10 @@ impl CompileOptions {
 
         for lib_path in matches.opt_strs("L") {
             opts.lib_path(lib_path);
+        }
+
+        for unit_path in matches.opt_strs("I") {
+            opts.unit_path(unit_path);
         }
 
         opts

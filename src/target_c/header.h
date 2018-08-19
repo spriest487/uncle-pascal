@@ -63,6 +63,8 @@ using System_Internal_Func_Cdecl = R (__cdecl *)(Args...);
 
 struct System_Internal_Class;
 
+typedef void(*System_Internal_Destructor)(const void* instance);
+
 struct System_Internal_Object {
     System_Internal_Class* Class;
     PascalType_System_NativeUInt StrongCount;
@@ -75,7 +77,8 @@ struct System_Internal_InterfaceImpl {
 
 static void System_Internal_InitClass(const char* name,
     System_Internal_InterfaceImpl* interfaces,
-    PascalType_System_NativeUInt interfaceCount);
+    PascalType_System_NativeUInt interfaceCount,
+    System_Internal_Destructor destructor);
 
 static System_Internal_Class* System_Internal_FindClass(const char* name);
 static const void* System_Internal_FindVTable(System_Internal_Object* obj,

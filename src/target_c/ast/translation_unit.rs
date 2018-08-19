@@ -279,13 +279,6 @@ impl TranslationUnit {
             result.add_implementation_decl(impl_decl)?;
         }
 
-        /*
-            have to do this in a second pass, because we don't know all the interface IDs
-            before all decls are finished processing, and classes can be declared before
-            the interfaces they implement
-        */
-        result.discover_classes(&module.global_scope)?;
-
         let global_vars: Vec<_> = module.units.values()
             .flat_map(|module_unit| module_unit.unit.vars())
             .chain(module.program.vars())
@@ -337,10 +330,20 @@ impl TranslationUnit {
             Block::new(release_global_vars)
         });
 
+        /*
+            have to do this in a second pass, because we don't know all the interface IDs
+            before all decls are finished processing, and classes can be declared before
+            the interfaces they implement
+
+            this has to come after the body, in case there are types or specializations only
+            referenced in the program body
+        */
+        result.discover_classes(&module.global_scope)?;
+
         Ok(result)
     }
 
-    fn classes(&self) -> impl Iterator<Item=&Class> {
+    pub fn classes(&self) -> impl Iterator<Item=&Class> {
         self.structs.values()
             .flat_map(|struct_type| struct_type.instantiations.values())
             .filter_map(|struct_type| struct_type.class.as_ref())

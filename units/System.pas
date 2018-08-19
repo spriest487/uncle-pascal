@@ -82,8 +82,8 @@ end
 function Disposable.Dispose(string: String)
 begin
     if string.Length > NativeUInt(0) then begin
-        if string.Chars <> nil then 
-            raise 'Empty string should not be initialized'
+        if string.Chars = nil then
+            raise 'string with length > 0 must be initialized'
 
         FreeMem(string.Chars)
 
