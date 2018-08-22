@@ -1,9 +1,21 @@
-use std::fmt::{
-    self,
-    Write,
+use std::{
+    collections::HashSet,
+    fmt::{
+        self,
+        Write,
+    }
 };
 
-use node::Identifier;
+use node::{
+    Identifier,
+    ConstExpression,
+};
+use consts::{
+    IntConstant,
+    FloatConstant,
+    SetConstant,
+    EnumConstant,
+};
 use semantic::{
     IndexRange,
     FunctionSignature,
@@ -309,6 +321,41 @@ impl Type {
     // can we use the >, >=, <, and <= operations between these two types?
     pub fn has_ord_comparisons(&self, other: &Type) -> bool {
         self.is_numeric() && other.promotes_to(self)
+    }
+
+    pub fn default_value(&self) -> Option<ConstExpression> {
+        match self {
+            | Type::Byte => Some(ConstExpression::Integer(IntConstant::from(0u8))),
+            | Type::Int32 => Some(ConstExpression::Integer(IntConstant::from(0i32))),
+            | Type::UInt32 => Some(ConstExpression::Integer(IntConstant::from(0u32))),
+            | Type::Int64 => Some(ConstExpression::Integer(IntConstant::from(0u64))),
+            | Type::UInt64 => Some(ConstExpression::Integer(IntConstant::from(0u64))),
+            | Type::NativeInt => Some(ConstExpression::Integer(IntConstant::from(0isize))),
+            | Type::NativeUInt => Some(ConstExpression::Integer(IntConstant::from(0usize))),
+            | Type::Float64 => Some(ConstExpression::Float(FloatConstant::from(0f64))),
+            | Type::Boolean => Some(ConstExpression::Boolean(false)),
+            | Type::Set(set_id) => Some(ConstExpression::Set(SetConstant {
+                included_values: HashSet::new(),
+                set: set_id.clone(),
+            })),
+            | Type::Nil => Some(ConstExpression::Nil),
+            | Type::Enumeration(enum_id) => Some(ConstExpression::Enum(EnumConstant {
+                enumeration: enum_id.clone(),
+                ordinal: 0,
+            })),
+            | Type::RawPointer
+            | Type::WeakReference(_)
+            | Type::Pointer(_)
+            => Some(ConstExpression::Nil),
+
+            | Type::Record(_) /* todo: can default if all members are defaultable */
+            | Type::Array(_) /* todo: can default if element is defaultable */
+            | Type::Reference(_)
+            | Type::UntypedRef
+            | Type::Function(_)
+            | Type::Generic(_)
+            => None,
+        }
     }
 
     pub fn promotes_to(&self, other: &Type) -> bool {

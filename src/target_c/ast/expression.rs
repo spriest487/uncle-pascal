@@ -844,13 +844,20 @@ impl Expression {
 
                 /* todo: support the variant part */
                 let ctor_args: Vec<Expression> = obj_decl.all_members()
-                    .map(|member| {
-                        match obj.get_member(&member.name) {
-                            /* the typechecker should have already thrown an error if the type
-                             isn't default-able */
-                            None => Ok(Expression::Name(Name::internal_symbol("None"))),
-                            Some(ctor_val) => Self::translate_expression(&ctor_val.value, unit),
+                    .map(|member| match obj.get_member(&member.name) {
+                        None => {
+                            let default_val = member.decl_type.default_value().expect(
+                                "the typechecker should have already thrown an error if the \
+                                type isn't default-able ",
+                            );
+                            let default_val_expr = semantic::Expression::const_value(
+                                default_val,
+                                member.context.clone(),
+                            );
+
+                            Expression::translate_expression(&default_val_expr, unit)
                         }
+                        Some(ctor_val) => Self::translate_expression(&ctor_val.value, unit),
                     })
                     .collect::<TranslationResult<_>>()?;
 

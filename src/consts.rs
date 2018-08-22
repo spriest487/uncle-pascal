@@ -192,6 +192,24 @@ impl From<i32> for IntConstant {
     }
 }
 
+impl From<u32> for IntConstant {
+    fn from(val: u32) -> Self {
+        IntConstant::from(val as u64)
+    }
+}
+
+impl From<usize> for IntConstant {
+    fn from(val: usize) -> Self {
+        IntConstant::from(val as u64)
+    }
+}
+
+impl From<isize> for IntConstant {
+    fn from(val: isize) -> Self {
+        IntConstant::from(val as i64)
+    }
+}
+
 impl From<i64> for IntConstant {
     fn from(val: i64) -> Self {
         let i32_min = i64::from(i32::min_value());
@@ -294,15 +312,13 @@ impl fmt::Display for FloatConstant {
 #[derive(Clone, Debug, PartialEq)]
 pub struct EnumConstant {
     pub ordinal: u64,
-    pub name: String,
     pub enumeration: Identifier,
 }
 
 impl EnumConstant {
-    pub fn new(ordinal: u64, name: impl Into<String>, enumeration: impl Into<Identifier>) -> Self {
+    pub fn new(ordinal: u64, enumeration: impl Into<Identifier>) -> Self {
         EnumConstant {
             ordinal,
-            name: name.into(),
             enumeration: enumeration.into(),
         }
     }
@@ -310,7 +326,7 @@ impl EnumConstant {
 
 impl fmt::Display for EnumConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.name)
+        write!(f, "{}({})", self.enumeration, self.ordinal)
     }
 }
 

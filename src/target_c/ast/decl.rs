@@ -334,10 +334,7 @@ impl Struct {
         /* the args of a constructor are Options of each individual member */
         let args: Vec<_> = all_fields.iter().enumerate()
             .map(|(mem_num, member)| {
-                let member_arg_type = {
-                    let member_type = CType::translate(&member.decl_type, record.scope(), unit)?;
-                    CType::Named(Name::internal_type(format!("Option<{}>", member_type)))
-                };
+                let member_arg_type = CType::translate(&member.decl_type, record.scope(), unit)?;
 
                 Ok(FunctionArg {
                     name: Name::local(format!("arg{}", mem_num)),
@@ -392,10 +389,7 @@ impl Struct {
             let result_member = Expression::member(result_val.clone(), member.name.clone());
             let arg_name = Name::local(format!("arg{}", mem_num));
 
-            let deref_arg = Expression::unary_op("*", arg_name.clone(), true);
-            let mut assign_member = vec![
-                Expression::binary_op(result_member.clone(), "=", deref_arg)
-            ];
+            statements.push(Expression::binary_op(result_member.clone(), "=", arg_name));
 
             /* for classes, we need to increment refcounts for members, because the object becomes
             an owner of those references. for records that's not necessary because records don't
@@ -411,19 +405,15 @@ impl Struct {
 
                     if member_rc_val.strength() == RcStrength::Weak {
                         /* weak refs can be explicitly null on construction */
-                        assign_member.push(Expression::if_then(
+                        statements.push(Expression::if_then(
                             member_val_expr.clone(),
                             rc_retain_weak(member_val_expr),
                         ));
                     } else {
-                        assign_member.push(rc_retain(member_val_expr));
+                        statements.push(rc_retain(member_val_expr));
                     }
                 }
             }
-
-            let assign_if_present = Expression::if_then(arg_name, assign_member);
-
-            statements.push(assign_if_present);
         }
 
         statements.push(Expression::return_value(result_name));

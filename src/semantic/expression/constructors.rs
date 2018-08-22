@@ -43,26 +43,26 @@ impl ConstructedObject {
     }
 }
 
-fn find_object_decl(ty: &Type, scope: &Scope) -> Option<ConstructedObject> {
+fn find_object_decl(ty: &Type, scope: &Scope) -> Option<(ParameterizedName, ConstructedObject)> {
     match ty {
         Type::Record(record_id) => {
-            let (_, record) = scope.get_record_specialized(record_id)?;
+            let (name, record) = scope.get_record_specialized(record_id)?;
 
-            Some(ConstructedObject {
+            Some((name, ConstructedObject {
                 record,
                 type_args: record_id.type_args.clone(),
-            })
+            }))
         }
 
         | Type::Reference(ReferenceType::Class(class_id))
         | Type::WeakReference(ReferenceType::Class(class_id))
         => {
-            let (_, class) = scope.get_class_specialized(class_id)?;
+            let (name, class) = scope.get_class_specialized(class_id)?;
 
-            Some(ConstructedObject {
+            Some((name, ConstructedObject {
                 record: class,
                 type_args: class_id.type_args.clone(),
-            })
+            }))
         }
         _ => None
     }
@@ -85,7 +85,7 @@ pub fn annotate_object(obj: &syntax::ObjectConstructor,
         })?;
 
     /* must be constructing a class or record type */
-    let constructed = find_object_decl(&object_type, context.scope.as_ref())
+    let (constructed_id, constructed) = find_object_decl(&object_type, context.scope.as_ref())
         .ok_or_else(|| {
             SemanticError::not_constructable(object_type.clone(), context.clone())
         })?;
@@ -135,6 +135,28 @@ pub fn annotate_object(obj: &syntax::ObjectConstructor,
             name: member.name.clone(),
             value,
         });
+    }
+
+    /* check values are present for all members which are of types that don't have
+    default values and cannot be default-initialized */
+    let missing_defaults: Vec<_> = constructed.record.all_members()
+        .filter_map(|member| if member.decl_type.default_value().is_none() {
+            if !members.iter().any(|member_val| member_val.name == member.name) {
+                Some(&member.name)
+            } else {
+                None
+            }
+        } else {
+            None
+        })
+        .collect();
+
+    if !missing_defaults.is_empty() {
+        return Err(SemanticError::uninitialized_members(
+            constructed_id,
+            missing_defaults.into_iter().cloned(),
+            context.clone(),
+        ))
     }
 
     let obj = ObjectConstructor {

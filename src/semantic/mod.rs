@@ -86,6 +86,10 @@ enum SemanticErrorKind {
         from_type: Option<Type>,
     },
     UninitializedSymbol(Identifier),
+    UninitializedMembers {
+        base_type: ParameterizedName,
+        member_names: Vec<String>,
+    },
     TypeNotAssignable(Option<Type>),
     ValueNotAssignable(Box<Expression>),
     TypesNotComparable(Option<Type>, Option<Type>),
@@ -145,6 +149,15 @@ impl fmt::Display for SemanticErrorKind {
                        from_ns.as_ref()
                            .map(|ns| ns.to_string())
                            .unwrap_or_else(|| "(root)".to_string()),
+                )
+            }
+
+            SemanticErrorKind::UninitializedMembers { base_type, member_names } => {
+                write!(f, "missing initialization of members without default values: {}",
+                       member_names.iter()
+                           .map(|name| format!("`{}.{}`", base_type, name))
+                           .collect::<Vec<_>>()
+                           .join(", "),
                 )
             }
 
@@ -434,6 +447,19 @@ impl SemanticError {
                 base_type: base_type.into(),
                 from_ns: from_ns.into(),
                 member_name: member_name.into(),
+            },
+            context: Box::new(context.into()),
+        }
+    }
+
+    pub fn uninitialized_members(base_type: impl Into<ParameterizedName>,
+                                 member_name: impl IntoIterator<Item=String>,
+                                 context: impl Into<SemanticContext>)
+                                 -> Self {
+        SemanticError {
+            kind: SemanticErrorKind::UninitializedMembers {
+                base_type: base_type.into(),
+                member_names: member_name.into_iter().collect(),
             },
             context: Box::new(context.into()),
         }

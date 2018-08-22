@@ -11,20 +11,6 @@
 #include <utility>
 #include <memory>
 
-#ifdef __APPLE__
-#include <experimental/optional>
-
-template<typename T>
-using System_Internal_Option = std::experimental::optional<T>;
-#define System_Internal_None std::experimental::nullopt
-#else
-#include <optional>
-
-template<typename T>
-using System_Internal_Option = std::optional<T>;
-#define System_Internal_None std::nullopt
-#endif
-
 #define System_Internal_SizeOf(x) (sizeof(x))
 
 typedef std::uint8_t PascalType_System_Byte;

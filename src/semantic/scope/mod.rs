@@ -305,7 +305,7 @@ impl Scope {
 
         for (ord, name) in decl.names.iter().enumerate() {
             let const_name = self.namespace_qualify(&decl.name);
-            let enum_const = EnumConstant::new(ord as u64, name.clone(), const_name);
+            let enum_const = EnumConstant::new(ord as u64, const_name);
             let val = node::ConstExpression::Enum(enum_const);
             self.names.insert(Identifier::from(name), Named::Const(val, enum_type.clone()));
         }

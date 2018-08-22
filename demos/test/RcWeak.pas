@@ -23,16 +23,13 @@ end
 function Person.Name(self: Child): String
 begin
     if self.Parent <> nil then
-    begin
-        let parentName =  self.Parent.Name()
-        result := 'child of ' + parentName
-    end
+        result := 'child of ' + self.Parent.Name()
     else
         result := 'no parent'
 end
 
 begin
-    let var child: Child := (Parent: nil)
+    let var child: Child := ()
     WriteLn('child: ' + child.Name())
 
     begin

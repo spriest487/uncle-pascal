@@ -589,7 +589,7 @@ impl<C> fmt::Display for ExpressionValue<C>
                 f.write_str("nil"),
 
             ExpressionValue::Constant(ConstExpression::Enum(e)) =>
-                write!(f, "{}", e.name),
+                write!(f, "{}({})", e.enumeration, e.ordinal),
 
             ExpressionValue::Constant(ConstExpression::Set(set)) =>
                 write!(f, "{}", set.set),
