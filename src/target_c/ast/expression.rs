@@ -1,6 +1,4 @@
-use std::{
-    fmt::{self, Write},
-};
+use std::fmt;
 
 use target_c::ast::{
     rc_release,
@@ -48,6 +46,7 @@ pub enum CastKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Raw(String),
+    Group(Box<Expression>),
     Name(Name),
     Block(Block),
     LocalDecl {
@@ -113,7 +112,17 @@ impl From<Vec<Expression>> for Expression {
     }
 }
 
+impl From<usize> for Expression {
+    fn from(i: usize) -> Expression {
+        Expression::SizeLiteral(i)
+    }
+}
+
 impl Expression {
+    pub fn group(inner: impl Into<Self>) -> Self {
+        Expression::Group(Box::new(inner.into()))
+    }
+
     pub fn if_then(condition: impl Into<Self>, then_branch: impl Into<Self>) -> Self {
         Expression::If {
             condition: Box::new(condition.into()),
@@ -207,6 +216,10 @@ impl Expression {
         }
     }
 
+    pub fn array_element(of: impl Into<Self>, index: impl Into<Self>) -> Self {
+        Expression::binary_op(of, "+", Expression::group(index.into())).deref()
+    }
+
     pub fn return_value(value: impl Into<Self>) -> Self {
         Expression::Return(Box::new(value.into()))
     }
@@ -225,10 +238,16 @@ impl Expression {
             RcSubValuePath::Member { parent: Some(parent), name } =>
                 Expression::member(Self::translate_rc_value_expr(parent, base), name.clone()),
 
-            RcSubValuePath::ArrayElement { parent: None, index } =>
-                unimplemented!("rc subvalue path <this>[{}]", index),
-            RcSubValuePath::ArrayElement { parent: Some(parent), index } =>
-                unimplemented!("rc subvalue path {}[{}]", parent, index),
+            RcSubValuePath::ArrayElement { parent: None, index } => {
+                let elements = Expression::member(base, "Elements");
+                Expression::array_element(elements, *index)
+            }
+
+            RcSubValuePath::ArrayElement { parent: Some(parent), index } => {
+                let array = Self::translate_rc_value_expr(parent, base);
+                let elements = Expression::member(array, "Elements");
+                Expression::array_element(elements, *index)
+            }
         }
     }
 
@@ -668,19 +687,46 @@ impl Expression {
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
-                let mut out = String::new();
-                write!(out, "(")?;
-                Expression::translate_expression(of, unit)?.write(&mut out)?;
-                write!(out, "[")?;
-                Expression::translate_expression(index_expr, unit)?.write(&mut out)?;
-                write!(out, "])")?;
+                /* the internal implementation of arrays is a struct with a single
+                member, `member_Elements` */
+                let of = match of.expr_type().unwrap().unwrap() {
+                    Type::Array(_) => {
+                        let array = Expression::translate_expression(of, unit)?;
+                        Expression::member(array, "Elements")
+                    }
 
-                Ok(Expression::Raw(out))
+                    _ => Expression::translate_expression(of, unit)?,
+                };
+
+                let index = Expression::translate_expression(index_expr, unit)?;
+
+                Ok(Expression::array_element(of, index))
             }
 
             ExpressionValue::Block(block) => {
                 let block = Block::translate(block, None, unit)?;
                 Ok(Expression::Block(block))
+            }
+
+            ExpressionValue::CollectionConstructor(ctor) => {
+                match expr.expr_type().unwrap().unwrap() {
+                    Type::Set(_) => {
+                        unimplemented!("set constructors (c++ backend)");
+                    }
+                    Type::Array(_) => {
+                        assert!(!ctor.contains_ranges(), "array constructor may not contain ranges");
+
+                        let elements = ctor.as_array()
+                            .map(|val| Expression::translate_expression(val, unit))
+                            .collect::<TranslationResult<_>>()?;
+
+                        let element_type = ctor.element_type.as_ref().unwrap();
+
+                        unit.array_ctor(element_type, elements, expr.scope())
+                    }
+
+                    invalid => panic!("invalid collection type: {}", invalid)
+                }
             }
 
             ExpressionValue::ObjectConstructor(obj) => {
@@ -715,10 +761,6 @@ impl Expression {
                 Ok(Expression::function_call(ctor_name, ctor_args))
             }
 
-            ExpressionValue::SetConstructor(_member_groups) => {
-                unimplemented!("set constructor (c++ backend)");
-            }
-
             ExpressionValue::With { .. } => {
                 unreachable!("with statements should be removed during semantic analysis");
             }
@@ -743,6 +785,8 @@ impl Expression {
 
     pub fn write(&self, out: &mut fmt::Write) -> fmt::Result {
         match self {
+            Expression::Group(inner) => write!(out, "({})", inner),
+
             Expression::True => out.write_str("true"),
             Expression::False => out.write_str("false"),
             Expression::Null => out.write_str("nullptr"),

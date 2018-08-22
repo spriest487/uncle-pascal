@@ -47,7 +47,7 @@ using System_Internal_Set = std::unordered_set<T>;
 
 template<typename E>
 struct System_Internal_Array {
-    E Elements;
+    E member_Elements;
 };
 
 #ifdef _WIN32

@@ -28,6 +28,7 @@ pub use self::{
 };
 
 use std::fmt;
+use semantic;
 
 use source;
 use node::{
@@ -53,6 +54,14 @@ impl From<source::Token> for ParsedContext {
     fn from(token: source::Token) -> Self {
         Self {
             token
+        }
+    }
+}
+
+impl From<semantic::SemanticContext> for ParsedContext {
+    fn from(ctx: semantic::SemanticContext) -> Self {
+        ParsedContext {
+            token: ctx.token().clone()
         }
     }
 }

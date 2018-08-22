@@ -4,8 +4,9 @@ units = ../units
 
 tests = test/RcRecord \
 	test/RcSimple \
-	test/RcNested
-
+	test/RcNested \
+	test/RcArray
+	
 define \n
 
 
@@ -17,7 +18,7 @@ build: $(tests:=.exe)
 cpp: $(tests:=.cpp)
 
 check: build
-	$(foreach testname, $(tests), $(out_path)/$(testname)${\n})
+	$(foreach testname, $(tests), $(out_path)/$(testname).exe${\n})
 
 %.exe: %.pas
 	$(pascal) $< -I $(units) -o $(out_path)/$@

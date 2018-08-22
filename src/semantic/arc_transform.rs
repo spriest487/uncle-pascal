@@ -6,9 +6,11 @@ use semantic::{
     Expression,
     BindingKind,
     SemanticContext,
+    CollectionConstructor,
     Block,
 };
 use node::{
+    self,
     Context,
     ExpressionValue,
     FunctionCall,
@@ -21,6 +23,7 @@ pub struct BoundName {
     pub bound_type: Type,
 }
 
+#[derive(Debug)]
 pub struct RcTemporary {
     /* the main value that holds the rc subvalues, not necessarily an rc value itself.
     e.g. a record, an array */
@@ -57,7 +60,7 @@ pub enum RcSubValuePath {
 
     ArrayElement {
         parent: Option<Box<RcSubValuePath>>,
-        index: i64,
+        index: usize,
     },
 }
 
@@ -228,7 +231,9 @@ pub fn extract_block_rc_statements(block: Block) -> Vec<RcStatement> {
         .collect()
 }
 
-pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> RcStatement {
+pub fn extract_stmt_rc_bindings(stmt: Expression,
+                                id_offset: usize)
+                                -> RcStatement {
     /* for blocks, do this recursively for all statements in the block and return
     that instead */
     if stmt.is_block() {
@@ -250,10 +255,11 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> RcStateme
             // extract rc bindings from arg expressions
             let mut args: Vec<_> = func_call.args().iter()
                 .cloned()
-                .map(|arg| extract_rc_subexpr(arg.clone(),
-                                              &mut rc_bindings,
-                                              &mut rc_assignments,
-                                              id_offset,
+                .map(|arg| extract_rc_subexpr(
+                    arg.clone(),
+                    &mut rc_bindings,
+                    &mut rc_assignments,
+                    id_offset,
                 ))
                 .collect();
 
@@ -308,7 +314,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> RcStateme
                 None,
             );
 
-            let ctor_expr = Expression::object_constructor(ctor.clone(), context.clone());
+            let ctor_expr = Expression::object_ctor(ctor.clone(), context.clone());
 
             let rc_expr = if rc_subvals.is_empty() {
                 ctor_expr
@@ -322,6 +328,45 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> RcStateme
             };
 
             (None, rc_expr)
+        }
+
+        ExpressionValue::CollectionConstructor(ctor) => {
+            let members = ctor.members.iter()
+                .map(|member| match member {
+                    node::CollectionMember::Single(val) => {
+                        node::CollectionMember::Single(extract_rc_subexpr(
+                            val.clone(),
+                            &mut rc_bindings,
+                            &mut rc_assignments,
+                            id_offset,
+                        ))
+                    }
+
+                    node::CollectionMember::Range { from, to } => {
+                        node::CollectionMember::Range {
+                            from: extract_rc_subexpr(
+                                from.clone(),
+                                &mut rc_bindings,
+                                &mut rc_assignments,
+                                id_offset,
+                            ),
+                            to: extract_rc_subexpr(
+                                to.clone(),
+                                &mut rc_bindings,
+                                &mut rc_assignments,
+                                id_offset,
+                            ),
+                        }
+                    }
+                })
+                .collect();
+
+            let ctor = CollectionConstructor {
+                members,
+                element_type: ctor.element_type.clone(),
+            };
+
+            (None, Expression::collection_ctor(ctor, context))
         }
 
         ExpressionValue::LetBinding(binding) => {
@@ -341,20 +386,22 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> RcStateme
                 *lhs.clone(),
                 &mut rc_bindings,
                 &mut rc_assignments,
-                id_offset
+                id_offset,
             );
 
             let rhs = extract_rc_subexpr(
                 *rhs.clone(),
                 &mut rc_bindings,
                 &mut rc_assignments,
-                id_offset
+                id_offset,
             );
 
             (None, Expression::binary_op(lhs, *op, rhs, context))
         }
 
-        _ => (None, stmt.clone()),
+        _ => {
+            (None, stmt.clone())
+        }
     };
 
     if let ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, .. } = &body.value {
@@ -385,17 +432,18 @@ counting:
     * an array of rc values has one rc subvalue for each element
 */
 pub fn rc_subvalues(expr_type: &Type,
-                scope: &Scope,
-                parent: Option<RcSubValuePath>)
-                -> Vec<RcSubValuePath> {
+                    scope: &Scope,
+                    parent: Option<RcSubValuePath>)
+                    -> Vec<RcSubValuePath> {
     match expr_type {
         Type::Array(array_type) if array_type.element.is_ref_counted() => {
-            array_type.first_dim.iter()
+            array_type.first_dim.offsets()
                 .flat_map(|index| {
                     let element_path = RcSubValuePath::ArrayElement {
                         parent: parent.clone().map(Box::new),
                         index,
                     };
+
                     rc_subvalues(array_type.element.as_ref(), scope, Some(element_path))
                 })
                 .collect()
@@ -413,10 +461,9 @@ pub fn rc_subvalues(expr_type: &Type,
                     };
 
                     rc_subvalues(&member.decl_type, scope, Some(member_path))
-                })
-                .collect();
+                });
 
-            member_exprs
+            member_exprs.collect()
         }
 
         scalar if scalar.is_ref_counted()

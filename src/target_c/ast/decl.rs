@@ -155,19 +155,19 @@ impl Declaration {
         }
     }
 
-    pub fn write_forward(&self, unit: &TranslationUnit, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_forward(&self, unit: &TranslationUnit, out: &mut fmt::Write) -> fmt::Result {
         match self {
             Declaration::Variable(variable) => {
-                variable.write_forward(&mut out)
+                variable.write_forward(out)
             }
 
             Declaration::Function(function) =>
-                function.write_forward(&mut out),
+                function.write_forward(out),
 
             Declaration::Struct(record) => {
                 for instantiation in unit.struct_instantiations(record) {
-                    instantiation.struct_decl.decl.write_forward(&mut out)?;
-                    instantiation.struct_decl.ctor.write_forward(&mut out)?;
+                    instantiation.struct_decl.decl.write_forward(out)?;
+                    instantiation.struct_decl.ctor.write_forward(out)?;
                 }
                 Ok(())
             }
@@ -177,19 +177,19 @@ impl Declaration {
         }
     }
 
-    pub fn write_impl(&self, unit: &TranslationUnit, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_impl(&self, unit: &TranslationUnit, out: &mut fmt::Write) -> fmt::Result {
         match self {
             Declaration::Variable(variable) => {
-                variable.write_impl(&mut out)
+                variable.write_impl(out)
             }
 
             Declaration::Function(function) =>
-                function.write_impl(&mut out),
+                function.write_impl(out),
 
             Declaration::Struct(record) => {
                 for instantiation in unit.struct_instantiations(record) {
-                    instantiation.struct_decl.decl.write_def(&mut out)?;
-                    instantiation.struct_decl.ctor.write_impl(&mut out)?;
+                    instantiation.struct_decl.decl.write_def(out)?;
+                    instantiation.struct_decl.ctor.write_impl(out)?;
                 }
                 Ok(())
             }
@@ -288,7 +288,7 @@ impl Struct {
         })
     }
 
-    pub fn write_forward(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_forward(&self, out: &mut fmt::Write) -> fmt::Result {
         if let Some(name) = &self.name {
             writeln!(out, "struct {};", name)?;
         }

@@ -268,7 +268,7 @@ impl FunctionDecl {
             .join(", ")
     }
 
-    pub fn write_forward(&self, mut out: impl fmt::Write) -> fmt::Result {
+    pub fn write_forward(&self, out: &mut fmt::Write) -> fmt::Result {
         writeln!(
             out,
             "static {} {} {}({});",

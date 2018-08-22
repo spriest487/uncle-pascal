@@ -10,6 +10,12 @@ mod constructors;
 pub(crate) mod test;
 
 pub use self::ops::expect_valid as expect_valid_op;
+pub use self::constructors::{
+    ObjectConstructor,
+    ObjectConstructorMember,
+    CollectionConstructor,
+    CollectionMember,
+};
 
 use std::{
     rc::Rc,
@@ -25,7 +31,9 @@ use node::{
     FunctionCall,
 };
 use operators;
-use types::Type;
+use types::{
+    Type,
+};
 use consts::IntConstant;
 
 pub type Expression = node::Expression<SemanticContext>;
@@ -131,13 +139,15 @@ impl Expression {
                 arrays::annotate_element(of, index_expr, &expr_context)
             }
 
-            ExpressionValue::SetConstructor(_members) => {
-                unimplemented!("set constructor typechecking");
+            ExpressionValue::CollectionConstructor(members) => {
+                let (vals, scope) = constructors::CollectionConstructor::annotate(members, &expr_context)?;
+
+                Ok((Expression::collection_ctor(vals, expr_context), scope))
             }
 
             ExpressionValue::ObjectConstructor(obj) => {
                 let (obj, scope) = constructors::annotate_object(obj, expected_type, &expr_context)?;
-                Ok((Expression::object_constructor(obj, expr_context), scope))
+                Ok((Expression::object_ctor(obj, expr_context), scope))
             }
 
             ExpressionValue::With { value, body } => {
@@ -215,11 +225,11 @@ impl Expression {
                 for member in &obj.members {
                     member.value.expr_type()?;
                 }
-                Ok(obj.object_type.clone())
+                Ok(Some(obj.object_type.clone().unwrap()))
             }
 
-            ExpressionValue::SetConstructor(_members) => {
-                unimplemented!("set constructor typechecking")
+            ExpressionValue::CollectionConstructor(ctor) => {
+                Ok(Some(ctor.collection_type(&self.context)?))
             }
 
             ExpressionValue::Raise(error) => {

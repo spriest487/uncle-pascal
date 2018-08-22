@@ -658,6 +658,11 @@ impl SemanticContext {
         self.type_hint.as_ref()
     }
 
+    pub fn with_type_hint(mut self, type_hint: Option<Type>) -> Self {
+        self.type_hint = type_hint;
+        self
+    }
+
     pub fn scope(&self) -> &Scope {
         self.scope.as_ref()
     }

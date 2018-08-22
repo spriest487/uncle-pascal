@@ -6,7 +6,7 @@ use semantic::{
         RcStatement,
         extract_block_rc_statements,
         rc_subvalues,
-    }
+    },
 };
 use target_c::ast::{
     rc_release,
@@ -42,31 +42,29 @@ impl Block {
                                      -> TranslationResult<Self> {
         /* values that are bound to a name have +1 rc after the statement they're created
         in, and at the end of the block we release them all in reverse order */
-        let release_vals = {
-            let mut release_vals = Vec::new();
+        let release_vals: Vec<_> = rc_block.iter()
+            .flat_map(|stmt| match stmt {
+                | RcStatement::Statement { bound_name: Some(name), body, .. }
+                => {
+                    let subvals = rc_subvalues(
+                        &name.bound_type,
+                        body.scope(),
+                        None,
+                    );
 
-            let bound_rc_vals: Vec<_> = rc_block.iter()
-                .filter_map(|stmt| match stmt {
-                    | RcStatement::Statement { bound_name: Some(name), rc_bindings, .. } =>
-                        Some((name.name.as_str(), rc_bindings)),
-
-                    | RcStatement::Statement { bound_name: None, .. }
-                    | RcStatement::Block(_) => None
-                })
-                .collect();
-
-            for (bound_name, rc_bindings) in bound_rc_vals {
-                for rc_binding in rc_bindings {
-                    let base = Expression::from(Name::local(bound_name));
-
-                    release_vals.extend(rc_binding.rc_subvalues.iter()
+                    subvals.iter()
                         .map(|subval| {
-                            Expression::translate_rc_value_expr(subval, base.clone())
-                        }));
+                            let base = Expression::from(Name::local(name.name.as_str()));
+                            Expression::translate_rc_value_expr(subval, base)
+                        })
+                        .collect()
                 }
-            }
-            release_vals
-        };
+
+                | RcStatement::Statement { bound_name: None, .. }
+                | RcStatement::Block(_)
+                => vec![]
+            })
+            .collect();
 
         let mut statements = Vec::new();
 
@@ -97,7 +95,7 @@ impl Block {
                 for rc_val in rc_subvals.into_iter().rev() {
                     statements.push(rc_release(Expression::translate_rc_value_expr(
                         &rc_val,
-                        var_base_expr.clone()
+                        var_base_expr.clone(),
                     )));
                 }
             }

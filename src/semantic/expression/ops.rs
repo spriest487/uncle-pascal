@@ -190,7 +190,7 @@ pub fn is_assignable(expr: &Expression) -> bool {
         | ExpressionValue::TypeCast { .. }
         | ExpressionValue::Raise(_)
         | ExpressionValue::With { .. }
-        | ExpressionValue::SetConstructor(_)
+        | ExpressionValue::CollectionConstructor(_)
         | ExpressionValue::FunctionCall { .. }
         | ExpressionValue::Constant(_)
         | ExpressionValue::BinaryOperator { .. }

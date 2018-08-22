@@ -8,12 +8,13 @@ use tokens::AsToken;
 use node::{
     self,
     ExpressionValue,
-    SetMemberGroup,
     TypeName,
 };
 use source;
 use operators;
 
+pub type CollectionConstructor = node::CollectionConstructor<ParsedContext>;
+pub type CollectionMember = node::CollectionMember<ParsedContext>;
 pub type Expression = node::Expression<ParsedContext>;
 pub type LetBinding = node::LetBinding<ParsedContext>;
 pub type ObjectConstructorMember = node::ObjectConstructorMember<ParsedContext>;
@@ -403,41 +404,52 @@ fn parse_try_except(tokens: &mut TokenStream) -> ExpressionResult {
     }))
 }
 
-fn parse_set_constructor(tokens: &mut TokenStream) -> ExpressionResult {
+fn parse_collection_ctor(tokens: &mut TokenStream) -> ExpressionResult {
     let context = tokens.match_one(tokens::SquareBracketLeft)?;
 
-    let groups = tokens.match_repeating(|i, tokens: &mut TokenStream| {
+    let members = tokens.match_repeating(|i, tokens: &mut TokenStream| {
+        if tokens.look_ahead().match_one(tokens::SquareBracketRight).is_some() {
+            return Ok(None);
+        }
+
         if i > 0 {
-            match tokens.look_ahead().match_one(tokens::Comma) {
-                Some(_) => tokens.advance(1),
-                None => return Ok(None),
-            }
+            tokens.match_or_endl(tokens::Comma)?;
         }
 
         let group_expr = Expression::parse(tokens)?;
-        let (from, to) = match group_expr.value {
+        match group_expr.value {
             ExpressionValue::BinaryOperator { lhs, op: operators::RangeInclusive, rhs } => {
-                (*lhs, Some(*rhs))
+                let from = *lhs;
+                let to = *rhs;
+
+                Ok(Some(node::CollectionMember::Range {
+                    from,
+                    to
+                }))
             }
 
             from_value => {
-                let from_expr = Expression {
+                let member_expr = Expression {
                     context: group_expr.context,
                     value: from_value,
                 };
-                (from_expr, None)
-            }
-        };
 
-        Ok(Some(SetMemberGroup {
-            from,
-            to,
-        }))
+                Ok(Some(node::CollectionMember::Single(member_expr)))
+            }
+        }
     })?;
 
     tokens.match_one(tokens::SquareBracketRight)?;
 
-    Ok(Expression::set_constructor(groups, context))
+    let ctor = CollectionConstructor {
+        members,
+
+        /* there's no way of specifying this explicitly in the ctor expression so this will
+        be unknown until typechecking */
+        element_type: None,
+    };
+
+    Ok(Expression::collection_ctor(ctor, context))
 }
 
 fn parse_with_statement(tokens: &mut TokenStream) -> ExpressionResult {
@@ -492,7 +504,7 @@ fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
     };
 
     tokens.match_one(tokens::BracketRight)?;
-    Ok(Expression::object_constructor(object_constructor, context))
+    Ok(Expression::object_ctor(object_constructor, context))
 }
 
 struct CompoundExpressionParser<'tokens> {
@@ -570,7 +582,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             }
 
             Some(ref t) if t.is_token(&tokens::SquareBracketLeft) => {
-                let constructor = parse_set_constructor(self.tokens)?;
+                let constructor = parse_collection_ctor(self.tokens)?;
                 self.add_operand(constructor);
             }
 

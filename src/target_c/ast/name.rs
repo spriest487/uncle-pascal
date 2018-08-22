@@ -6,7 +6,7 @@ use types::{
     Type,
 };
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 enum NameKind {
     UserType,
     UserSymbol,
@@ -25,7 +25,7 @@ enum NameKind {
     Member,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Name {
     name: String,
     kind: NameKind,
@@ -129,6 +129,13 @@ impl Name {
         Name {
             kind: NameKind::LocalInternal,
             name: name.into(),
+        }
+    }
+
+    pub fn array_constructor(element: &Type, size: usize) -> Self {
+        Name {
+            kind: NameKind::Constructor,
+            name: format!("Array_{}_of_{}", size, name_for_type_param(element)),
         }
     }
 

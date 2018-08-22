@@ -94,23 +94,7 @@ pub fn write_cpp(unit: &TranslationUnit) -> Result<String, fmt::Error> {
 
     out.write_str(HEADER)?;
 
-    // declare initialize string literal global vars
-    unit.declare_string_literals(&mut out)?;
-
-    for decl in unit.decls() {
-        decl.write_forward(unit, &mut out)?;
-    }
-
-    unit.declare_vtables(&mut out)?;
-
-    /* write impls */
-    for decl_impl in unit.decls().iter() {
-        decl_impl.write_impl(unit, &mut out)?;
-    }
-
-    for class in unit.classes() {
-        class.write_impl(&mut out)?;
-    }
+    unit.write_decls(&mut out)?;
 
     /* write main function */
     writeln!(out, "int main(int argc, char* argv[]) {{")?;

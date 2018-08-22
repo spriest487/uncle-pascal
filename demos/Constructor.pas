@@ -1,4 +1,4 @@
-program ConstructorDemo
+    program ConstructorDemo
 
 uses
     System.*

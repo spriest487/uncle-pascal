@@ -2,7 +2,10 @@ use std::{
     fmt,
     rc::Rc,
 };
-use linked_hash_map::LinkedHashMap;
+use linked_hash_map::{
+    LinkedHashMap,
+    Entry,
+};
 use linked_hash_set::LinkedHashSet;
 use node::{
     Identifier,
@@ -17,10 +20,15 @@ use target_c::ast::{
     Declaration,
     Block,
     Class,
+    FunctionDecl,
+    FunctionArg,
+    FunctionDefinition,
+    CallingConvention,
     Interface,
     Expression,
     Name,
     Variable,
+    CArray,
     CType,
     CastKind,
     Struct,
@@ -47,6 +55,12 @@ struct StructType {
     instantiations: LinkedHashMap<Vec<Type>, StructInstantiation>,
 }
 
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct ArrayCtorKey {
+    element: Type,
+    size: usize,
+}
+
 pub struct TranslationUnit {
     decls: Vec<Declaration>,
 
@@ -55,15 +69,13 @@ pub struct TranslationUnit {
 
     structs: LinkedHashMap<Identifier, StructType>,
 
+    array_ctors: LinkedHashMap<ArrayCtorKey, FunctionDecl>,
+
     initialization: Vec<Block>,
     finalization: Vec<Block>,
 }
 
 impl TranslationUnit {
-    pub fn decls(&self) -> &[Declaration] {
-        &self.decls
-    }
-
     pub fn initialization(&self) -> &[Block] {
         &self.initialization
     }
@@ -86,6 +98,64 @@ impl TranslationUnit {
         Ok(())
     }
 
+    pub fn array_ctor(&mut self, element: &Type, elements: Vec<Expression>, scope: &Scope) -> TranslationResult<Expression> {
+        let key = ArrayCtorKey {
+            element: element.clone(),
+            size: elements.len(),
+        };
+
+        let element_ctype = CType::translate(&element, scope, self)?;
+
+        let ctor_name = match self.array_ctors.entry(key) {
+            Entry::Occupied(entry) => {
+                entry.get().name.clone()
+            },
+
+            Entry::Vacant(entry) => {
+                let array_ctype = CType::Array(CArray {
+                    element: Box::new(element_ctype.clone()),
+                    count: elements.len(),
+                });
+
+                let arg_names: Vec<_> = (0..elements.len()).map(|i| Name::local(format!("e{}", i)))
+                    .collect();
+
+                let result_name = Name::local("result");
+
+                let body = {
+                    let mut statements = Vec::new();
+                    statements.push(Expression::local_decl(array_ctype.clone(), result_name.clone(), None));
+
+                    let elements = Expression::member(result_name.clone(), "Elements");
+
+                    statements.extend(arg_names.iter().enumerate().map(|(i, arg)| {
+                        let index = Expression::SizeLiteral(i);
+                        Expression::binary_op(
+                            Expression::array_element(elements.clone(), index), "=", arg.clone(),
+                        )
+                    }));
+                    statements.push(Expression::return_value(result_name));
+                    Block::new(statements)
+                };
+
+                let ctor_func = FunctionDecl {
+                    name: Name::array_constructor(&element, elements.len()),
+                    args: arg_names.into_iter().map(|name| FunctionArg {
+                        name,
+                        ctype: element_ctype.clone(),
+                    }).collect(),
+                    calling_convention: CallingConvention::Cdecl,
+                    return_type: array_ctype,
+                    definition: FunctionDefinition::Defined(body),
+                };
+
+                entry.insert(ctor_func).name.clone()
+            }
+        };
+
+        Ok(Expression::function_call(ctor_name, elements))
+    }
+
     fn string_literal_index_to_name(index: usize) -> Name {
         Name::internal_symbol(format!("StringLiteral_{}", index))
     }
@@ -106,7 +176,7 @@ impl TranslationUnit {
         Self::string_literal_index_to_name(index)
     }
 
-    pub fn declare_string_literals(&self, out: &mut impl fmt::Write) -> fmt::Result {
+    fn declare_string_literals(&self, out: &mut fmt::Write) -> fmt::Result {
         for (index, _) in self.string_literals.iter().enumerate() {
             let name = Self::string_literal_index_to_name(index);
 
@@ -261,6 +331,8 @@ impl TranslationUnit {
 
             string_literals: LinkedHashSet::new(),
 
+            array_ctors: LinkedHashMap::new(),
+
             initialization: Vec::new(),
             finalization: Vec::new(),
 
@@ -343,7 +415,7 @@ impl TranslationUnit {
         Ok(result)
     }
 
-    pub fn classes(&self) -> impl Iterator<Item=&Class> {
+    fn classes(&self) -> impl Iterator<Item=&Class> {
         self.structs.values()
             .flat_map(|struct_type| struct_type.instantiations.values())
             .filter_map(|struct_type| struct_type.class.as_ref())
@@ -372,24 +444,6 @@ impl TranslationUnit {
         Ok(())
     }
 
-    pub fn declare_vtables(&self, out: &mut fmt::Write) -> fmt::Result {
-        for iface in &self.interfaces {
-            iface.vtable.write_def(out)?;
-        }
-
-        for iface in &self.interfaces {
-            for method in iface.methods.values() {
-                method.write_impl(out)?;
-            }
-        }
-
-        for class in self.classes() {
-            class.write_decl(out)?;
-        }
-
-        Ok(())
-    }
-
     pub fn method_call_name(&self, interface: &Identifier, method: &str) -> Option<&Name> {
         self.interfaces.iter()
             .find(|iface| iface.pascal_name == *interface)
@@ -408,6 +462,53 @@ impl TranslationUnit {
     pub fn write_class_init(&self, out: &mut fmt::Write) -> fmt::Result {
         for class in self.classes().filter(|c| !c.is_internal()) {
             class.write_init(out)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn write_decls(&self, out: &mut fmt::Write) -> fmt::Result {
+        self.declare_string_literals(out)?;
+
+        // declare generated array constructors
+        for ctor in self.array_ctors.values() {
+            ctor.write_forward(out)?;
+        }
+
+        // declare interface vtables and vtable impl funcs
+        for iface in &self.interfaces {
+            iface.vtable.write_def(out)?;
+        }
+
+        for iface in &self.interfaces {
+            for method in iface.methods.values() {
+                method.write_impl(out)?;
+            }
+        }
+
+        // forward-declare user functions
+        for decl in &self.decls {
+            decl.write_forward(self, out)?;
+        }
+
+        // write class func decls
+        for class in self.classes() {
+            class.write_decl(out)?;
+        }
+
+        // write generated array constructors
+        for ctor in self.array_ctors.values() {
+            ctor.write_impl(out)?;
+        }
+
+        // write user function impls
+        for decl_impl in &self.decls {
+            decl_impl.write_impl(self, out)?;
+        }
+
+        // write class func impls
+        for class in self.classes() {
+            class.write_impl(out)?;
         }
 
         Ok(())

@@ -14,14 +14,6 @@ use types::{
     ParameterizedName,
 };
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct SetMemberGroup<TContext>
-    where TContext: Context
-{
-    pub from: Expression<TContext>,
-    pub to: Option<Expression<TContext>>,
-}
-
 #[derive(Clone, Debug)]
 pub struct ObjectConstructorMember<TContext>
     where TContext: Context
@@ -35,7 +27,7 @@ pub struct ObjectConstructor<TContext>
     where TContext: Context
 {
     pub members: Vec<ObjectConstructorMember<TContext>>,
-    pub object_type: Option<Type>,
+    pub object_type: Option<TContext::Type>,
 }
 
 impl<TContext> ObjectConstructor<TContext>
@@ -68,6 +60,72 @@ impl<C> fmt::Display for ObjectConstructor<C>
             }
         }
         write!(f, ")")
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CollectionMember<TContext>
+    where TContext: Context
+{
+    Single(Expression<TContext>),
+    Range {
+        from: Expression<TContext>,
+        to: Expression<TContext>,
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct CollectionConstructor<TContext>
+    where TContext: Context
+{
+    pub element_type: Option<TContext::Type>,
+    pub members: Vec<CollectionMember<TContext>>,
+}
+
+impl<TContext> fmt::Display for CollectionConstructor<TContext>
+    where TContext: Context
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "[")?;
+        for (i, member) in self.members.iter().enumerate() {
+            if i > 0 {
+                f.write_str(", ")?;
+            }
+
+            match member {
+                CollectionMember::Range { from, to } => {
+                    write!(f, "{}..{}", from, to)?;
+                }
+
+                CollectionMember::Single(val) => {
+                    write!(f, "{}", val)?;
+                },
+            }
+        }
+        write!(f, "]")
+    }
+}
+
+impl<TContext> CollectionConstructor<TContext>
+    where TContext: Context
+{
+    pub fn contains_ranges(&self) -> bool {
+        self.members.iter().any(|element| match element {
+            CollectionMember::Range { .. } => true,
+            _ => false,
+        })
+    }
+
+    /* iterate over the members as a flat array. panics if any of the member expressions
+    is a range */
+    pub fn as_array(&self) -> impl Iterator<Item=&Expression<TContext>> {
+        self.members.iter()
+            .map(move |member| match member {
+                CollectionMember::Single(expr) => expr,
+                CollectionMember::Range { .. } => {
+                    panic!("called array_values on `{}`, which contained ranges", self);
+                },
+            })
     }
 }
 
@@ -280,17 +338,34 @@ pub enum ExpressionValue<TContext>
     },
 
     /**
+
+        expression constructing a new set or array. the element type is inferred from the context
+        it appears in or the type of the first element (following elements, if any,
+        must be of a type automatically convertible to the type of the first element).
+        ```
+        // array[0..2] of Int32
+        let vals = [1, 2, 3]
+
+        // array[1..3] of byte
+        let vals: array[1..3] of Int32 = [1, 2, 3]
+        ```
+
+        // set of Color
+        let vals: set of Color = [Color.Red, Color.Blue]
+
         a value of a set type which can include multiple member
         groups. a member group can be a single value or an inclusive range.
         the type of this expression is dependent on the type expressed in
         its member groups (which must be uniform).
 
-        an empty set constructor is the empty set type, which can be
-        assigned to all set values.
+        ```
+        // set of Int32
+        let vals = [0..1024]
+        ```
 
-        e.g. `[0, 1, 2]`, `[0..10]`
+        an empty collection (`[]`) can be assigned to any set.
     */
-    SetConstructor(Vec<SetMemberGroup<TContext>>),
+    CollectionConstructor(CollectionConstructor<TContext>),
 
     /**
         an object constructor, the type of which must be inferred from the
@@ -543,16 +618,8 @@ impl<C> fmt::Display for ExpressionValue<C>
                 writeln!(f, "for {} to {} do {}", from, to, body)
             }
 
-            ExpressionValue::SetConstructor(members) => {
-                write!(f, "[{}]", members.iter()
-                    .map(|member| {
-                        match member.to.as_ref() {
-                            Some(to) => format!("{}..{}", member.from, to),
-                            None => member.from.to_string(),
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "))
+            ExpressionValue::CollectionConstructor(ctor) => {
+                write!(f, "{}", ctor)
             }
 
             ExpressionValue::ObjectConstructor(members) => {
@@ -723,18 +790,18 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn set_constructor(members: Vec<SetMemberGroup<TContext>>,
+    pub fn collection_ctor(ctor: impl Into<CollectionConstructor<TContext>>,
                            context: impl Into<TContext>)
                            -> Self {
         Expression {
-            value: ExpressionValue::SetConstructor(members),
+            value: ExpressionValue::CollectionConstructor(ctor.into()),
             context: context.into(),
         }
     }
 
-    pub fn object_constructor(members: impl Into<ObjectConstructor<TContext>>,
-                              context: impl Into<TContext>)
-                              -> Self {
+    pub fn object_ctor(members: impl Into<ObjectConstructor<TContext>>,
+                       context: impl Into<TContext>)
+                       -> Self {
         Expression {
             value: ExpressionValue::ObjectConstructor(members.into()),
             context: context.into(),

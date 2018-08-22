@@ -15,13 +15,13 @@ use target_c::ast::{
     TranslationResult,
 };
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct CArray {
     pub element: Box<CType>,
-    pub count: u32,
+    pub count: usize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum CType {
     Void,
     Named(Name),
@@ -137,7 +137,7 @@ impl CType {
 
                 let mut base_array = CArray {
                     element: Box::new(element_type),
-                    count: array.first_dim.elements(),
+                    count: array.total_elements(),
                 };
 
                 let multidim_array = array.rest_dims.iter().rev()

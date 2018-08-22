@@ -22,7 +22,7 @@ pub struct ArrayType {
 }
 
 impl ArrayType {
-    pub fn total_elements(&self) -> u32 {
+    pub fn total_elements(&self) -> usize {
         self.rest_dims.iter().fold(self.first_dim.elements(), |total, dim| {
             total * dim.elements()
         })
@@ -230,9 +230,9 @@ impl Type {
             | Type::DynamicArray(_)
             | Type::AnyImplementation(_)
             | Type::Generic(_)
+            | Type::Array { .. }
             => true,
 
-            | Type::Array { .. }
             | Type::Nil
             => false
         }
@@ -261,27 +261,42 @@ impl Type {
     pub fn promotes_to(&self, other: &Type) -> bool {
         match (self, other) {
             // types always "promote" to themselves
-            (a, b) if a == b => true,
+            | (a, b) if a == b => true,
 
             // any number promotes to a float64
-            (a, Type::Float64) if a.is_numeric() => true,
+            | (a, Type::Float64) if a.is_numeric() => true,
 
             // byte promotes to any larger type
-            (Type::Byte, Type::Int32) |
-            (Type::Byte, Type::UInt32) |
-            (Type::Byte, Type::Int64) |
-            (Type::Byte, Type::UInt64) |
-            (Type::Byte, Type::NativeInt) |
-            (Type::Byte, Type::NativeUInt) |
+            | (Type::Byte, Type::Int32)
+            | (Type::Byte, Type::UInt32)
+            | (Type::Byte, Type::Int64)
+            | (Type::Byte, Type::UInt64)
+            | (Type::Byte, Type::NativeInt)
+            | (Type::Byte, Type::NativeUInt)
 
             // 32-bit integers promote to any 64-bit integer
-            (Type::UInt32, Type::Int64) |
-            (Type::UInt32, Type::UInt64) |
+            | (Type::UInt32, Type::Int64)
+            | (Type::UInt32, Type::UInt64)
 
             // 32-bit integers promote to native ints with the same signedness
-            (Type::UInt32, Type::NativeUInt) |
-            (Type::Int32, Type::NativeInt)
+            | (Type::UInt32, Type::NativeUInt)
+            | (Type::Int32, Type::NativeInt)
             => true,
+
+            /* arrays promote to arrays with the same element and number of elements per rank
+                (the indexing scheme can vary) */
+            | (Type::Array(array_a), Type::Array(array_b)) => {
+                array_a.element == array_b.element
+                    && array_a.first_dim.elements() == array_b.first_dim.elements()
+                    && array_a.rest_dims.iter().enumerate()
+                        .map(|(rank_index, rank_a)| {
+                            (rank_a, &array_b.rest_dims[rank_index])
+                        })
+                        .all(|(rank_a, rank_b)| {
+                            rank_a.elements() == rank_b.elements()
+                        })
+            }
+
             _ => false,
         }
     }

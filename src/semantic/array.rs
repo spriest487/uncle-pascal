@@ -43,13 +43,20 @@ impl IndexRange {
         })
     }
 
-    pub fn elements(&self) -> u32 {
+    pub fn elements(&self) -> usize {
         assert!(self.to >= self.from, "array upper bound must be >= lower bound");
 
-        self.to.wrapping_sub(self.from) as u32 + 1
+        self.to.wrapping_sub(self.from) as usize + 1
     }
 
+    /* iterate over pascal array indices e.g. for dimension [-10..10],
+    yields the numbers -10 to 10 */
     pub fn iter(&self) -> impl Iterator<Item=i64> {
         (self.from..self.to)
+    }
+
+    /* iterate over offsets from the first element, starting from 0 */
+    pub fn offsets(&self) -> impl Iterator<Item=usize> {
+        (0..self.elements())
     }
 }
