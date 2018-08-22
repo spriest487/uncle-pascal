@@ -17,9 +17,9 @@ use semantic::{
     BindingKind,
     ScopedSymbol,
     arc_transform::{
-        RcStrength,
-        RcSubValuePath,
-        RcStatement,
+        RefStrength,
+        ArcSubValuePath,
+        ArcStatement,
         BoundName,
         rc_subvalues,
         extract_stmt_rc_bindings,
@@ -237,35 +237,35 @@ impl Expression {
         Expression::Return(Box::new(value.into()))
     }
 
-    pub fn translate_rc_value_expr(rc_val: &RcSubValuePath,
+    pub fn translate_rc_value_expr(rc_val: &ArcSubValuePath,
                                    base: impl Into<Expression>)
                                    -> Expression {
         match rc_val {
-            RcSubValuePath::This { parent: None, strength } => {
+            ArcSubValuePath::This { parent: None, strength } => {
                 match *strength {
-                    RcStrength::Weak => rc_weak_value(base.into()),
-                    RcStrength::Strong => base.into(),
+                    RefStrength::Weak => rc_weak_value(base.into()),
+                    RefStrength::Strong => base.into(),
                 }
             }
-            RcSubValuePath::This { parent: Some(parent), strength } => {
+            ArcSubValuePath::This { parent: Some(parent), strength } => {
                 let parent = Self::translate_rc_value_expr(parent, base);
                 match *strength {
-                    RcStrength::Weak => rc_weak_value(parent),
-                    RcStrength::Strong => parent,
+                    RefStrength::Weak => rc_weak_value(parent),
+                    RefStrength::Strong => parent,
                 }
             }
 
-            RcSubValuePath::Member { parent: None, name } =>
+            ArcSubValuePath::Member { parent: None, name } =>
                 Expression::member(base, name.clone()),
-            RcSubValuePath::Member { parent: Some(parent), name } =>
+            ArcSubValuePath::Member { parent: Some(parent), name } =>
                 Expression::member(Self::translate_rc_value_expr(parent, base), name.clone()),
 
-            RcSubValuePath::ArrayElement { parent: None, index } => {
+            ArcSubValuePath::ArrayElement { parent: None, index } => {
                 let elements = Expression::member(base, "Elements");
                 Expression::array_element(elements, *index)
             }
 
-            RcSubValuePath::ArrayElement { parent: Some(parent), index } => {
+            ArcSubValuePath::ArrayElement { parent: Some(parent), index } => {
                 let array = Self::translate_rc_value_expr(parent, base);
                 let elements = Expression::member(array, "Elements");
                 Expression::array_element(elements, *index)
@@ -273,9 +273,9 @@ impl Expression {
         }
     }
 
-    pub fn bound_value_exprs(statement: &RcStatement) -> Vec<(Expression, RcStrength)> {
+    pub fn bound_value_exprs(statement: &ArcStatement) -> Vec<(Expression, RefStrength)> {
         match statement {
-            RcStatement::Statement { bound_name: Some(bound_name), body, .. } => {
+            ArcStatement::Statement { bound_name: Some(bound_name), body, .. } => {
                 let subvals = rc_subvalues(
                     &bound_name.bound_type,
                     body.scope(),
@@ -296,31 +296,31 @@ impl Expression {
         }
     }
 
-    pub fn rc_retain(val: Expression, strength: RcStrength) -> Expression {
+    pub fn rc_retain(val: Expression, strength: RefStrength) -> Expression {
         match strength {
-            RcStrength::Strong => rc_retain(val),
-            RcStrength::Weak => rc_retain_weak(val),
+            RefStrength::Strong => rc_retain(val),
+            RefStrength::Weak => rc_retain_weak(val),
         }
     }
 
-    pub fn rc_release(val: Expression, strength: RcStrength) -> Expression {
+    pub fn rc_release(val: Expression, strength: RefStrength) -> Expression {
         match strength {
-            RcStrength::Strong => rc_release(val),
-            RcStrength::Weak => rc_release_weak(val),
+            RefStrength::Strong => rc_release(val),
+            RefStrength::Weak => rc_release_weak(val),
         }
     }
 
-    pub fn translate_rc_statement(stmt: &RcStatement,
+    pub fn translate_rc_statement(stmt: &ArcStatement,
                                   unit: &mut TranslationUnit)
                                   -> TranslationResult<Vec<Expression>> {
         match stmt {
-            RcStatement::Block(statements) => {
+            ArcStatement::Block(statements) => {
                 let block = Block::translate_rc_block(statements, None, unit)?;
 
                 Ok(vec![Expression::Block(block)])
             }
 
-            RcStatement::Statement { body, rc_bindings, bound_name, rc_assignments } => {
+            ArcStatement::Statement { body, rc_bindings, bound_name, rc_assignments } => {
                 /*
                     translate the main statement into one or more c statements - a simple expression with no
                     rc to handle will translate to one c statement, otherwise this may include rc statements
@@ -354,17 +354,17 @@ impl Expression {
 
                     None => Self::translate_expression(&body, unit)?,
                 };
-                let rc_assigned_vals: Vec<(Expression, RcStrength)> = rc_assignments.iter()
-                    .map(|(expr, strength)| {
-                        let translated = Self::translate_expression(expr, unit)?;
-                        Ok((translated, *strength))
+                let rc_assigned_vals: Vec<(Expression, RefStrength)> = rc_assignments.iter()
+                    .map(|arc_val| {
+                        let translated = Self::translate_expression(&arc_val.expr, unit)?;
+                        Ok((translated, arc_val.ref_strength))
                     })
                     .collect::<TranslationResult<_>>()?;
 
                 let mut temp_block = Vec::new();
 
                 // ...then release temp bindings and close the block
-                let rc_binding_vals: Vec<(Expression, RcStrength)> = rc_bindings.iter()
+                let rc_binding_vals: Vec<(Expression, RefStrength)> = rc_bindings.iter()
                     .enumerate()
                     .flat_map(|(tmp_id, rc_binding)| {
                         rc_binding.rc_subvalues.iter()
@@ -401,15 +401,15 @@ impl Expression {
                 }
 
                 /* if it's an assignment to a variable which is already initialized */
-                for (i, (rc_val, rc_strength)) in rc_assignments.iter().enumerate() {
-                    if let ExpressionValue::Identifier(name) = &rc_val.value {
-                        if rc_val.scope().get_symbol(name).unwrap().initialized() {
+                for (i, arc_val) in rc_assignments.iter().enumerate() {
+                    if let ExpressionValue::Identifier(name) = &arc_val.expr.value {
+                        if arc_val.expr.scope().get_symbol(name).unwrap().initialized() {
                             // if (lhs) release(lhs)
                             let (val_expr, _) = &rc_assigned_vals[i];
 
                             let release_if_set = Expression::if_then(
                                 val_expr.clone(),
-                                Self::rc_release(val_expr.clone(), *rc_strength),
+                                Self::rc_release(val_expr.clone(), arc_val.ref_strength),
                             );
                             temp_block.push(release_if_set);
                         }

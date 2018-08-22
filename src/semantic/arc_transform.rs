@@ -21,7 +21,7 @@ use node::{
 use operators;
 
 #[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
-pub enum RcStrength {
+pub enum RefStrength {
     Strong,
     Weak,
 }
@@ -32,17 +32,17 @@ pub struct BoundName {
 }
 
 #[derive(Debug)]
-pub struct RcTemporary {
+pub struct ArcTemporary {
     /* the main value that holds the rc subvalues, not necessarily an rc value itself.
     e.g. a record, an array */
     pub base_value: Expression,
 
     /* all subvalues of the base_value which need reference counting. if the base value is
      itself an rc value, this may be a single item with the same expression as base_value */
-    pub rc_subvalues: Vec<RcSubValuePath>,
+    pub rc_subvalues: Vec<ArcSubValuePath>,
 }
 
-impl fmt::Display for RcTemporary {
+impl fmt::Display for ArcTemporary {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "`{}` (rc subvalues: ", self.base_value)?;
         for (i, subval) in self.rc_subvalues.iter().enumerate() {
@@ -56,62 +56,62 @@ impl fmt::Display for RcTemporary {
 }
 
 #[derive(Debug, Clone)]
-pub enum RcSubValuePath {
+pub enum ArcSubValuePath {
     This {
-        parent: Option<Box<RcSubValuePath>>,
-        strength: RcStrength,
+        parent: Option<Box<ArcSubValuePath>>,
+        strength: RefStrength,
     },
 
     Member {
-        parent: Option<Box<RcSubValuePath>>,
+        parent: Option<Box<ArcSubValuePath>>,
         name: String,
     },
 
     ArrayElement {
-        parent: Option<Box<RcSubValuePath>>,
+        parent: Option<Box<ArcSubValuePath>>,
         index: usize,
     },
 }
 
-impl fmt::Display for RcSubValuePath {
+impl fmt::Display for ArcSubValuePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RcSubValuePath::This { parent, strength } => {
+            ArcSubValuePath::This { parent, strength } => {
                 match parent {
                     Some(parent) => write!(f, "{}", parent)?,
                     None => write!(f, "<this>")?,
                 }
 
                 match *strength {
-                    RcStrength::Weak => write!(f, " (weak)"),
-                    RcStrength::Strong => Ok(())
+                    RefStrength::Weak => write!(f, " (weak)"),
+                    RefStrength::Strong => Ok(())
                 }
             }
 
-            RcSubValuePath::Member { parent: None, name } =>
+            ArcSubValuePath::Member { parent: None, name } =>
                 write!(f, "<this>.{}", name),
-            RcSubValuePath::Member { parent: Some(parent), name } =>
+            ArcSubValuePath::Member { parent: Some(parent), name } =>
                 write!(f, "{}.{}", parent, name),
 
-            RcSubValuePath::ArrayElement { parent: None, index } =>
+            ArcSubValuePath::ArrayElement { parent: None, index } =>
                 write!(f, "<this>[{}]", index),
-            RcSubValuePath::ArrayElement { parent: Some(parent), index } =>
+            ArcSubValuePath::ArrayElement { parent: Some(parent), index } =>
                 write!(f, "{}[{}]", parent, index),
         }
     }
 }
 
-impl RcSubValuePath {
-    pub fn strength(&self) -> RcStrength {
+impl ArcSubValuePath {
+    pub fn strength(&self) -> RefStrength {
         match self {
-            RcSubValuePath::This { strength, .. } => *strength,
-            _ => RcStrength::Strong,
+            ArcSubValuePath::This { strength, .. } => *strength,
+            _ => RefStrength::Strong,
         }
     }
 }
 
-pub enum RcStatement {
-    Block(Vec<RcStatement>),
+pub enum ArcStatement {
+    Block(Vec<ArcStatement>),
 
     Statement {
         bound_name: Option<BoundName>,
@@ -121,21 +121,21 @@ pub enum RcStatement {
             expressions which create new reference-counted values that need to be hoisted
             into temporary vars so they can be released after the statement
         */
-        rc_bindings: Vec<RcTemporary>,
+        rc_bindings: Vec<ArcTemporary>,
 
         /*
             expressions referring to rc-typed lvalues that are assigned to during this
             statement, which will need to be released before assignment and retained
             afterwards
         */
-        rc_assignments: Vec<(Expression, RcStrength)>,
+        rc_assignments: Vec<ArcValue>,
     },
 }
 
-impl fmt::Debug for RcStatement {
+impl fmt::Debug for ArcStatement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RcStatement::Block(stmts) => {
+            ArcStatement::Block(stmts) => {
                 writeln!(f, "RcStatement [")?;
                 for stmt in stmts {
                     writeln!(f, "\t{:?}", stmt)?;
@@ -143,7 +143,7 @@ impl fmt::Debug for RcStatement {
                 write!(f, "]")
             }
 
-            RcStatement::Statement { body, rc_bindings, rc_assignments, bound_name } => {
+            ArcStatement::Statement { body, rc_bindings, rc_assignments, bound_name } => {
                 writeln!(f, "RcStatement {{")?;
                 writeln!(f, "\tbody: `{}`", body)?;
 
@@ -165,8 +165,8 @@ impl fmt::Debug for RcStatement {
                 write!(f, "\treassigned rc values: [")?;
                 if !rc_assignments.is_empty() {
                     writeln!(f)?;
-                    for (val_name, _) in rc_assignments {
-                        writeln!(f, "\t\t`{}`", val_name)?;
+                    for arc_val in rc_assignments {
+                        writeln!(f, "\t\t`{}`", arc_val.expr)?;
                     }
                     writeln!(f, "\t]")?;
                 } else {
@@ -179,20 +179,76 @@ impl fmt::Debug for RcStatement {
     }
 }
 
-impl RcStatement {
-    fn unwrap_value(self,
-                    rc_bindings: &mut Vec<RcTemporary>,
-                    rc_assignments: &mut Vec<(Expression, RcStrength)>)
-                    -> Expression {
-        match self {
-            RcStatement::Statement {
+pub struct ArcValue {
+    pub expr: Expression,
+    pub ref_strength: RefStrength,
+}
+
+struct ArcContext {
+    /* if this context is a child of another context, we need to offset the IDs we
+    give to temporaries so they match the placeholder names at extraction sites when
+    this context's bindings are merged into the parent's */
+    id_offset: usize,
+
+    temp_bindings: Vec<ArcTemporary>,
+    assignments: Vec<ArcValue>,
+}
+
+impl ArcContext {
+    fn new(id_offset: usize) -> Self {
+        ArcContext {
+            id_offset,
+
+            temp_bindings: Vec::new(),
+            assignments: Vec::new(),
+        }
+    }
+
+    fn next_id(&self) -> usize {
+        self.temp_bindings.len() + self.id_offset
+    }
+
+    fn hoist_rc_value(&mut self, temporary: ArcTemporary, context: &SemanticContext) -> Expression {
+        let name = self.next_id().to_string();
+
+        /* the temp binding needs to be added to scope in case anything typechecks again after
+            this point*/
+        let binding_scope = {
+            let decl_type = temporary.base_value.expr_type().unwrap().unwrap();
+
+            context.scope().clone()
+                .with_binding(&name, decl_type, BindingKind::Internal)
+        };
+
+        let binding_context = SemanticContext::new(
+            context.token().clone(),
+            binding_scope,
+            None,
+        );
+
+        /* construct a new expression referring to the temp binding instead of the original
+               expression by its name */
+        let binding_expr = Expression::identifier(
+            Identifier::from(&name),
+            binding_context,
+        );
+
+        /* store the original expression value for later when we write out the temp bindings */
+        self.temp_bindings.push(temporary);
+
+        binding_expr
+    }
+
+    fn extract_rc_subexpr(&mut self, expr: Expression) -> Expression {
+        match extract_stmt_rc_bindings(expr, self.next_id()) {
+            ArcStatement::Statement {
                 body,
                 rc_bindings: val_rc_bindings,
                 rc_assignments: val_rc_assignments,
                 bound_name: None
             } => {
-                rc_bindings.extend(val_rc_bindings);
-                rc_assignments.extend(val_rc_assignments);
+                self.temp_bindings.extend(val_rc_bindings);
+                self.assignments.extend(val_rc_assignments);
 
                 *body
             }
@@ -203,72 +259,31 @@ impl RcStatement {
             ),
         }
     }
+
+    fn assigned_val(&mut self, expr: Expression, ref_strength: RefStrength) {
+        self.assignments.push(ArcValue {
+            expr,
+            ref_strength,
+        })
+    }
 }
 
-fn hoist_rc_value(bindings: &mut Vec<RcTemporary>,
-                  temporary: RcTemporary,
-                  context: &SemanticContext,
-                  id_offset: usize)
-                  -> Expression {
-    let name = (bindings.len() + id_offset).to_string();
-
-    /* the temp binding needs to be added to scope in case anything typechecks again after
-        this point*/
-    let binding_scope = {
-        let decl_type = temporary.base_value.expr_type().unwrap().unwrap();
-
-        context.scope().clone()
-            .with_binding(&name, decl_type, BindingKind::Internal)
-    };
-
-    let binding_context = SemanticContext::new(
-        context.token().clone(),
-        binding_scope,
-        None,
-    );
-
-    /* construct a new expression referring to the temp binding instead of the original
-           expression by its name */
-    let binding_expr = Expression::identifier(
-        Identifier::from(&name),
-        binding_context,
-    );
-
-    /* store the original expression value for later when we write out the temp bindings */
-    bindings.push(temporary);
-
-    binding_expr
-}
-
-fn extract_rc_subexpr(expr: Expression,
-                      rc_bindings: &mut Vec<RcTemporary>,
-                      rc_assignments: &mut Vec<(Expression, RcStrength)>,
-                      id_offset: usize)
-                      -> Expression {
-    let rc_expr = extract_stmt_rc_bindings(expr, id_offset + rc_bindings.len());
-
-    rc_expr.unwrap_value(rc_bindings, rc_assignments)
-}
-
-pub fn extract_block_rc_statements(block: Block) -> Vec<RcStatement> {
+pub fn extract_block_rc_statements(block: Block) -> Vec<ArcStatement> {
     block.statements.into_iter()
         .map(|block_stmt| extract_stmt_rc_bindings(block_stmt, 0))
         .collect()
 }
 
-pub fn extract_stmt_rc_bindings(stmt: Expression,
-                                id_offset: usize)
-                                -> RcStatement {
+pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatement {
     /* for blocks, do this recursively for all statements in the block and return
     that instead */
     if stmt.is_block() {
         let block = stmt.unwrap_block();
-        return RcStatement::Block(extract_block_rc_statements(block));
+        return ArcStatement::Block(extract_block_rc_statements(block));
     }
 
     /* it's a single statement not a block, let's figure out if it has any rc bindings */
-    let mut rc_bindings = Vec::new();
-    let mut rc_assignments = Vec::new();
+    let mut arc_ctx = ArcContext::new(id_offset);
 
     let context = stmt.context.clone();
 
@@ -280,12 +295,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
             // extract rc bindings from arg expressions
             let mut args: Vec<_> = func_call.args().iter()
                 .cloned()
-                .map(|arg| extract_rc_subexpr(
-                    arg.clone(),
-                    &mut rc_bindings,
-                    &mut rc_assignments,
-                    id_offset,
-                ))
+                .map(|arg| arc_ctx.extract_rc_subexpr(arg))
                 .collect();
 
             /* if the returned type contains rc values, we need to add them to the
@@ -297,12 +307,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
 
             let call_expr = match func_call {
                 FunctionCall::Function { target, .. } => {
-                    let target = extract_rc_subexpr(
-                        *target.clone(),
-                        &mut rc_bindings, &mut rc_assignments,
-                        id_offset,
-                    );
-
+                    let target = arc_ctx.extract_rc_subexpr(*target.clone());
                     Expression::function_call(target, args)
                 }
 
@@ -322,11 +327,11 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
                 // don't modify the expression
                 call_expr
             } else {
-                let temporary = RcTemporary {
+                let temporary = ArcTemporary {
                     base_value: call_expr,
                     rc_subvalues: return_type_rcvals,
                 };
-                hoist_rc_value(&mut rc_bindings, temporary, &context, id_offset)
+                arc_ctx.hoist_rc_value(temporary, &context)
             };
 
             (None, rc_expr)
@@ -337,13 +342,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
             let members = ctor.members.iter()
                 .cloned()
                 .map(|member| {
-                    let value = extract_rc_subexpr(
-                        member.value,
-                        &mut rc_bindings,
-                        &mut rc_assignments,
-                        id_offset
-                    );
-
+                    let value = arc_ctx.extract_rc_subexpr(member.value);
                     ObjectConstructorMember {
                         name: member.name,
                         value,
@@ -361,15 +360,15 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
 
             /* then hoist the whole expression if it's constructing an rc type */
             let result = if object_type.as_ref().unwrap().is_ref_counted() {
-                let temporary = RcTemporary {
+                let temporary = ArcTemporary {
                     base_value: ctor_expr,
-                    rc_subvalues: vec![RcSubValuePath::This {
+                    rc_subvalues: vec![ArcSubValuePath::This {
                         parent: None,
-                        strength: RcStrength::Strong,
+                        strength: RefStrength::Strong,
                     }],
                 };
 
-                hoist_rc_value(&mut rc_bindings, temporary, &context, id_offset)
+                arc_ctx.hoist_rc_value(temporary, &context)
             } else {
                 ctor_expr
             };
@@ -381,28 +380,13 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
             let members = ctor.members.iter()
                 .map(|member| match member {
                     node::CollectionMember::Single(val) => {
-                        node::CollectionMember::Single(extract_rc_subexpr(
-                            val.clone(),
-                            &mut rc_bindings,
-                            &mut rc_assignments,
-                            id_offset,
-                        ))
+                        node::CollectionMember::Single(arc_ctx.extract_rc_subexpr(val.clone()))
                     }
 
                     node::CollectionMember::Range { from, to } => {
                         node::CollectionMember::Range {
-                            from: extract_rc_subexpr(
-                                from.clone(),
-                                &mut rc_bindings,
-                                &mut rc_assignments,
-                                id_offset,
-                            ),
-                            to: extract_rc_subexpr(
-                                to.clone(),
-                                &mut rc_bindings,
-                                &mut rc_assignments,
-                                id_offset,
-                            ),
+                            from: arc_ctx.extract_rc_subexpr(from.clone()),
+                            to: arc_ctx.extract_rc_subexpr(to.clone()),
                         }
                     }
                 })
@@ -422,28 +406,24 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
                 name: binding.name.clone(),
             };
 
-            let value_expr = extract_stmt_rc_bindings(*binding.value.clone(), rc_bindings.len())
-                .unwrap_value(&mut rc_bindings, &mut rc_assignments);
+            let value_expr = arc_ctx.extract_rc_subexpr(*binding.value.clone());
 
             (Some(bound_name), value_expr)
         }
 
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-            let lhs = extract_rc_subexpr(
-                *lhs.clone(),
-                &mut rc_bindings,
-                &mut rc_assignments,
-                id_offset,
-            );
+            let lhs = arc_ctx.extract_rc_subexpr(*lhs.clone());
+            let rhs = arc_ctx.extract_rc_subexpr(*rhs.clone());
 
-            let rhs = extract_rc_subexpr(
-                *rhs.clone(),
-                &mut rc_bindings,
-                &mut rc_assignments,
-                id_offset,
-            );
-
+            /* there are no binary operators that result in a RC type, so we don't
+             have to check if the value needs hoisting (string concatenation is sugar
+             for a function call so we can ignore it) */
             (None, Expression::binary_op(lhs, op, rhs, context))
+        }
+
+        ExpressionValue::PrefixOperator { op, rhs } => {
+            let rhs = arc_ctx.extract_rc_subexpr(*rhs.clone());
+            (None, Expression::prefix_op(op, rhs, context))
         }
 
         _ => {
@@ -456,16 +436,16 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
         let lhs_type = lhs.expr_type().unwrap().unwrap();
 
         if lhs_type.is_ref_counted() {
-            let strength = if lhs_type.is_weak() { RcStrength::Weak } else { RcStrength::Strong };
-            rc_assignments.push((*lhs.clone(), strength));
+            let strength = if lhs_type.is_weak() { RefStrength::Weak } else { RefStrength::Strong };
+            arc_ctx.assigned_val(*lhs.clone(), strength);
         }
     }
 
-    RcStatement::Statement {
+    ArcStatement::Statement {
         body: Box::new(body),
         bound_name,
-        rc_bindings,
-        rc_assignments,
+        rc_bindings: arc_ctx.temp_bindings,
+        rc_assignments: arc_ctx.assignments,
     }
 }
 
@@ -481,13 +461,13 @@ counting:
 */
 pub fn rc_subvalues(expr_type: &Type,
                     scope: &Scope,
-                    parent: Option<RcSubValuePath>)
-                    -> Vec<RcSubValuePath> {
+                    parent: Option<ArcSubValuePath>)
+                    -> Vec<ArcSubValuePath> {
     match expr_type {
         Type::Array(array_type) if array_type.element.is_ref_counted() => {
             array_type.first_dim.offsets()
                 .flat_map(|index| {
-                    let element_path = RcSubValuePath::ArrayElement {
+                    let element_path = ArcSubValuePath::ArrayElement {
                         parent: parent.clone().map(Box::new),
                         index,
                     };
@@ -503,7 +483,7 @@ pub fn rc_subvalues(expr_type: &Type,
 
             let member_exprs = record_decl.all_members()
                 .flat_map(|member| {
-                    let member_path = RcSubValuePath::Member {
+                    let member_path = ArcSubValuePath::Member {
                         parent: parent.clone().map(Box::new),
                         name: member.name.clone(),
                     };
@@ -513,8 +493,8 @@ pub fn rc_subvalues(expr_type: &Type,
                     if member.decl_type.is_weak() {
                         assert_eq!(1, vals.len(), "weak members cannot have multiple rc subvalues (should be a single RC pointer, got: {:#?})", vals);
                         match &mut vals[0] {
-                            RcSubValuePath::This { strength, .. } => {
-                                *strength = RcStrength::Weak;
+                            ArcSubValuePath::This { strength, .. } => {
+                                *strength = RefStrength::Weak;
                             }
                             _ => unreachable!(),
                         }
@@ -527,9 +507,9 @@ pub fn rc_subvalues(expr_type: &Type,
 
         scalar if scalar.is_ref_counted()
         => vec![
-            RcSubValuePath::This {
+            ArcSubValuePath::This {
                 parent: parent.map(Box::new),
-                strength: RcStrength::Strong,
+                strength: RefStrength::Strong,
             }
         ],
 

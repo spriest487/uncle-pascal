@@ -160,7 +160,7 @@ pub enum RecordKind {
 }
 
 impl RecordKind {
-    pub fn is_ref_counted(&self) -> bool {
+    pub fn is_ref_counted(self) -> bool {
         match self {
             RecordKind::Class => true,
             RecordKind::Record => false,

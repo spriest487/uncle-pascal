@@ -194,7 +194,7 @@ impl From<i32> for IntConstant {
 
 impl From<u32> for IntConstant {
     fn from(val: u32) -> Self {
-        IntConstant::from(val as u64)
+        IntConstant::from(u64::from(val))
     }
 }
 

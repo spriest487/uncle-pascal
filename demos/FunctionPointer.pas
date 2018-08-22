@@ -7,10 +7,14 @@ type
     Adder = function(x: Int32): Int32; cdecl
 
 procedure HelloWorld(name: String)
+begin
     WriteLn('hello ' + name)
+end
 
-function AddOne(x: Int32): Int32; cdecl;
+function AddOne(x: Int32): Int32; cdecl
+begin
     result := x + 1
+end
 
 var
     greeter: Greeter

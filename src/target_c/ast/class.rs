@@ -9,7 +9,7 @@ use semantic::{
     Scope,
     arc_transform::{
         rc_subvalues,
-        RcStrength,
+        RefStrength,
     },
 };
 use types::{
@@ -132,9 +132,9 @@ impl Class {
                         );
 
                         let rc_strength = if member.decl_type.is_weak() {
-                            RcStrength::Weak
+                            RefStrength::Weak
                         } else {
-                            RcStrength::Strong
+                            RefStrength::Strong
                         };
 
                         (member_expr, rc_strength)

@@ -3,7 +3,7 @@ use std::fmt;
 use semantic::{
     self,
     arc_transform::{
-        RcStatement,
+        ArcStatement,
         extract_block_rc_statements,
         rc_subvalues,
     },
@@ -35,7 +35,7 @@ impl Block {
         Self::translate_rc_block(&rc_block, locals, unit)
     }
 
-    pub(super) fn translate_rc_block(rc_block: &[RcStatement],
+    pub(super) fn translate_rc_block(rc_block: &[ArcStatement],
                                      locals: Option<&[semantic::VarDecl]>,
                                      unit: &mut TranslationUnit)
                                      -> TranslationResult<Self> {

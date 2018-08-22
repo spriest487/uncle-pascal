@@ -19,7 +19,7 @@ use semantic::{
     self,
     arc_transform::{
         rc_subvalues,
-        RcStrength,
+        RefStrength,
     },
 };
 use node::{
@@ -404,11 +404,11 @@ impl Struct {
                     );
 
                     match member_rc_val.strength() {
-                        RcStrength::Strong => {
+                        RefStrength::Strong => {
                             statements.push(rc_retain(member_val_expr));
                         }
 
-                        RcStrength::Weak => {
+                        RefStrength::Weak => {
                             /* weak refs can be explicitly null on construction */
                             statements.push(Expression::if_then(
                                 member_val_expr.clone(),
