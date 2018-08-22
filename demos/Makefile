@@ -5,7 +5,21 @@ units = ../units
 tests = test/RcRecord \
 	test/RcSimple \
 	test/RcNested \
-	test/RcArray
+	test/RcArray \
+	test/RcWeak \
+	HelloWorld \
+	Constructor \
+	Consts \
+#	Enumeration \
+	FunctionArgModifier \
+	FunctionPointer \
+	Generics \
+	Interfaces \
+	Preprocessor \
+	Raise \
+	ReadFile \
+	VariantParts \
+	WithStatement
 	
 define \n
 
