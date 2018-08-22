@@ -1,19 +1,6 @@
-use std::rc::Rc;
 use super::*;
-use source;
-use tokens;
-use keywords;
+use semantic::test::fake_context;
 use consts::IntConstant;
-
-fn fake_context() -> SemanticContext {
-    let location = source::Location::new("test", 0, 0);
-    let token = tokens::Keyword(keywords::Program);
-    SemanticContext {
-        token: source::Token::new(token, location),
-        scope: Rc::new(Scope::new_root()),
-        type_hint: None,
-    }
-}
 
 #[test]
 fn resolves_consts_in_referenced_units() {

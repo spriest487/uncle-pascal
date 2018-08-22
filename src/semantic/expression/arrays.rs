@@ -7,7 +7,10 @@ use semantic::{
     SemanticError,
     Expression,
 };
-use types::Type;
+use types::{
+    Type,
+    ReferenceType,
+};
 use operators;
 use super::{
     ops,
@@ -49,23 +52,27 @@ pub fn element_type(of: &Expression,
     }
 
     match of.expr_type()? {
-        Some(Type::Pointer(ptr_to)) => {
+        | Some(Type::Pointer(ptr_to))
+        => {
+            //pointers can also be dereferenced via indexing
             Ok(Some(*ptr_to))
         }
 
-        Some(Type::DynamicArray(dyn_array_type)) => {
+        | Some(Type::Reference(ReferenceType::DynamicArray(dyn_array_type)))
+        | Some(Type::WeakReference(ReferenceType::DynamicArray(dyn_array_type)))
+        => {
             Ok(Some(*dyn_array_type.element))
         }
 
-        Some(Type::Array(array_type)) => {
+        | Some(Type::Array(array_type))
+        => {
             match array_type.next_rank() {
                 Some(next_array) => Ok(Some(Type::Array(next_array))),
                 None => Ok(Some(*array_type.element))
             }
         }
 
-        //pointers can also be dereferenced via indexing
-        invalid => Err(SemanticError::invalid_array_type(
+        | invalid => Err(SemanticError::invalid_array_type(
             invalid,
             context.clone(),
         ))

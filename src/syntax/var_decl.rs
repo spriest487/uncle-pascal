@@ -1,9 +1,21 @@
 use tokens;
 use tokens::AsToken;
 use keywords;
-use node::{self, TypeName};
+use node::{
+    self,
+    TypeName,
+};
+
 use operators;
-use syntax::*;
+use syntax::{
+    ParseResult,
+    ParsedContext,
+    Expression,
+    TokenStream,
+    Parse,
+    Matcher,
+    MatchOneOf,
+};
 
 pub type VarDecl = node::VarDecl<ParsedContext>;
 
@@ -106,7 +118,9 @@ mod test {
     use std::rc::Rc;
 
     use super::*;
+    use source;
     use opts::CompileOptions;
+    use node::ScalarTypeName;
 
     fn parse_vars(src: &str) -> Vec<VarDecl> {
         let mut tokens = TokenStream::tokenize("test", src, &CompileOptions::default())
@@ -116,11 +130,15 @@ mod test {
     }
 
     fn make_type_name(name: &str) -> TypeName {
-        TypeName::with_name(name, source::Token::new(keywords::Program, source::Location {
-            line: 0,
-            col: 0,
-            file: Rc::new("test".to_string()),
-        }))
+        TypeName::Scalar(ScalarTypeName::with_name(
+            name,
+            source::Token::new(
+                keywords::Program, source::Location {
+                    line: 0,
+                    col: 0,
+                    file: Rc::new("test".to_string()),
+                })
+        ))
     }
 
     #[test]

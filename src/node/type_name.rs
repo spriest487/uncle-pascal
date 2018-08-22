@@ -33,7 +33,7 @@ use types::{
     Type,
     ParameterizedName,
     ArrayType,
-    DynamicArrayType,
+    ReferenceType,
 };
 use semantic::{
     self,
@@ -47,8 +47,28 @@ use semantic::{
 pub struct ScalarTypeName {
     pub name: Identifier,
     pub context: ParsedContext,
+    pub weak: bool,
     pub indirection: usize,
     pub type_args: Vec<TypeName>,
+}
+
+impl ScalarTypeName {
+    pub fn with_name(name: impl Into<Identifier>, context: impl Into<ParsedContext>) -> Self {
+        ScalarTypeName {
+            context: context.into(),
+            name: name.into(),
+            indirection: 0,
+            type_args: Vec::new(),
+            weak: false,
+        }
+    }
+
+    pub fn into_weak(self) -> Self {
+        Self {
+            weak: true,
+            ..self
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -259,6 +279,13 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
 
     let context = tokens.look_ahead().next();
 
+    let weak = if tokens.look_ahead().match_one("weak").is_some() {
+        tokens.advance(1);
+        true
+    } else {
+        false
+    };
+
     loop {
         let pointer_sigil = tokens.look_ahead().match_one(operators::Deref);
         if pointer_sigil.is_some() {
@@ -271,6 +298,7 @@ fn parse_as_data_type(tokens: &mut TokenStream) -> ParseResult<TypeName> {
 
             break Ok(TypeName::Scalar(ScalarTypeName {
                 context: ParsedContext::from(context.unwrap()),
+                weak,
                 name,
                 indirection,
                 type_args,
@@ -367,15 +395,6 @@ impl Parse for TypeName {
 }
 
 impl TypeName {
-    pub fn with_name(name: impl Into<Identifier>, context: impl Into<ParsedContext>) -> Self {
-        TypeName::Scalar(ScalarTypeName {
-            context: context.into(),
-            name: name.into(),
-            indirection: 0,
-            type_args: Vec::new(),
-        })
-    }
-
     pub fn as_scalar(&self) -> Option<&ScalarTypeName> {
         match self {
             | TypeName::Scalar(scalar) => Some(scalar),
@@ -395,12 +414,13 @@ impl TypeName {
 
     pub fn pointer(self) -> Self {
         match self {
-            TypeName::Scalar(ScalarTypeName { name, indirection, context, type_args }) =>
+            TypeName::Scalar(ScalarTypeName { name, indirection, context, type_args, weak }) =>
                 TypeName::Scalar(ScalarTypeName {
                     context,
                     name,
                     indirection: indirection + 1,
                     type_args,
+                    weak,
                 }),
             TypeName::DynamicArray { .. } |
             TypeName::Array { .. } =>
@@ -416,7 +436,7 @@ impl TypeName {
 
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
-            TypeName::Scalar(ScalarTypeName { context, name, indirection, type_args }) => {
+            TypeName::Scalar(ScalarTypeName { context, name, indirection, type_args, weak }) => {
                 let result = scope.get_type_alias(name)
                     .ok_or_else(|| {
                         let err_context = SemanticContext::new(
@@ -431,22 +451,43 @@ impl TypeName {
                     .map(|type_arg| type_arg.resolve(scope.clone()))
                     .collect::<SemanticResult<_>>()?;
 
-                let specialized = match result {
+                // specialize from type args
+                let result = match result {
                     Type::Record(record_id) => {
                         assert_eq!(0, record_id.type_args.len(), "respecializing aliases not supported yet");
-                        Type::Record(ParameterizedName::new_with_args(record_id.name.clone(), resolved_type_args))
+                        Type::Record(ParameterizedName::new_with_args(
+                            record_id.name.clone(),
+                            resolved_type_args,
+                        ))
                     }
 
-                    Type::Class(class_id) => {
+                    Type::Reference(ReferenceType::Class(class_id)) => {
                         assert_eq!(0, class_id.type_args.len(), "respecializing aliases not supported yet");
-                        Type::Class(ParameterizedName::new_with_args(class_id.name.clone(), resolved_type_args))
-                    },
+
+                        let make_ref = if *weak {
+                            Type::class_ref_weak
+                        } else {
+                            Type::class_ref
+                        };
+
+                        make_ref(ParameterizedName::new_with_args(
+                            class_id.name.clone(),
+                            resolved_type_args,
+                        ))
+                    }
+
+                    Type::WeakReference(ReferenceType::Class(class_id)) => {
+                        assert_eq!(0, class_id.type_args.len(), "respecializing aliases not supported yet");
+                        // an alias to a weak ref type is always weak (extra `weak` modified is ignored)
+                        Type::class_ref_weak(class_id)
+                    }
 
                     other => other,
                 };
 
+                // levels of pointer indirection
                 let indirected = (0..*indirection).into_iter()
-                    .fold(specialized, |result, _| {
+                    .fold(result, |result, _| {
                         result.pointer()
                     });
 
@@ -473,11 +514,9 @@ impl TypeName {
             }
 
             TypeName::DynamicArray { element, .. } => {
-                let element = Box::new(element.resolve(scope.clone())?);
+                let element = element.resolve(scope.clone())?;
 
-                Ok(Type::DynamicArray(DynamicArrayType {
-                    element,
-                }))
+                Ok(Type::dynamic_array_ref(element))
             }
 
             TypeName::Function { return_type, args, modifiers, .. } => {

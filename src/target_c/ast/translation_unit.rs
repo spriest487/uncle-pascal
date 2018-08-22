@@ -393,7 +393,7 @@ impl TranslationUnit {
         result.initialization.push({
             let mut release_global_vars = Vec::new();
             // release all rc local vars for this block
-            for decl in global_vars.iter().rev().filter(|decl| decl.decl_type.is_class()) {
+            for decl in global_vars.iter().rev().filter(|decl| decl.decl_type.is_class_ref()) {
                 let name = Name::user_symbol(&decl.qualified_name());
 
                 release_global_vars.push(rc_release(name));

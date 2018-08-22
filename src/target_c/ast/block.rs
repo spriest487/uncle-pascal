@@ -92,11 +92,13 @@ impl Block {
                 let rc_subvals = rc_subvalues(&decl.decl_type, decl.scope(), None);
                 let var_base_expr = Expression::from(Name::local(decl.name.clone()));
 
-                for rc_val in rc_subvals.into_iter().rev() {
-                    statements.push(rc_release(Expression::translate_rc_value_expr(
-                        &rc_val,
+                for rc_val in rc_subvals.iter().rev() {
+                    let val_expr = Expression::translate_rc_value_expr(
+                        rc_val,
                         var_base_expr.clone(),
-                    )));
+                    );
+
+                    statements.push(Expression::rc_release(val_expr, rc_val.strength()));
                 }
             }
         }

@@ -238,7 +238,7 @@ pub fn expect_valid(operator: operators::Operator,
         _ => false
     };
 
-    let string_class = Type::Class(ParameterizedName::new_simple("System.String"));
+    let string_class = Type::class_ref(ParameterizedName::new_simple("System.String"));
 
     match (target, actual) {
         | (_, None)
@@ -262,18 +262,29 @@ pub fn expect_valid(operator: operators::Operator,
                         return Err(SemanticError::type_not_assignable(Some(a.clone()), context.clone()))
                     }
 
-                    // nil can be assigned to any pointer, and nothing else
+                    // nil can be assigned to any pointer or weak ref, and nothing else
                     | (Type::RawPointer, Type::Nil)
                     | (Type::Pointer(_), Type::Nil)
+                    | (Type::WeakReference(_), Type::Nil)
                     => true,
 
-                    // class instances can be assigned to interface vars they implement
-                    | (Type::AnyImplementation(interface_id), Type::Class(ref class_id)) => {
-                        let scope = actual_expr.scope();
-                        scope.type_implements(&Type::Class(class_id.clone()), interface_id)
+                    | (Type::WeakReference(a), Type::Reference(b))
+                    | (Type::Reference(a), Type::WeakReference(b))
+                    => *a == *b,
+
+                    // class refs can be assigned to interface vars they implement
+                    | (a, b) if a.is_interface_ref() && b.is_class_ref()
+                    => {
+                        let interface_a = a.as_interface_ref().unwrap();
+                        let class_b = b.as_class_ref().unwrap();
+
+                        actual_expr.scope().type_implements(
+                            &Type::class_ref(class_b.clone()),
+                            interface_a,
+                        )
                     }
 
-                    | (ref a, ref b) if b.promotes_to(a) => true,
+                    | (a, b) if b.promotes_to(a) => true,
 
                     | _ => false,
                 }

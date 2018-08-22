@@ -131,6 +131,7 @@ pub struct RecordMember<TContext>
     where TContext: Context
 {
     pub name: String,
+
     pub decl_type: TContext::Type,
     pub context: TContext,
 }

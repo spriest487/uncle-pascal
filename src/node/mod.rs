@@ -7,7 +7,10 @@ mod function;
 mod block;
 mod type_decl;
 
-pub use self::type_name::TypeName;
+pub use self::type_name::{
+    TypeName,
+    ScalarTypeName,
+};
 pub use self::identifier::*;
 pub use self::expression::*;
 pub use self::function_signature::*;

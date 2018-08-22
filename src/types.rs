@@ -47,6 +47,23 @@ impl ArrayType {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
+pub enum ReferenceType {
+    Class(ParameterizedName),
+    DynamicArray(DynamicArrayType),
+    AnyImplementation(Identifier),
+}
+
+impl fmt::Display for ReferenceType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ReferenceType::Class(name) => write!(f, "{}", name),
+            ReferenceType::DynamicArray(arr) => write!(f, "array of {}", arr.element),
+            ReferenceType::AnyImplementation(interface) => write!(f, "{}", interface),
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, Hash)]
 pub enum Type {
     Nil,
     Byte,
@@ -63,12 +80,11 @@ pub enum Type {
     UntypedRef,
     Function(Box<FunctionSignature>),
     Record(ParameterizedName),
-    Class(ParameterizedName),
+    Reference(ReferenceType),
+    WeakReference(ReferenceType),
     Array(ArrayType),
-    DynamicArray(DynamicArrayType),
     Enumeration(Identifier),
     Set(Identifier),
-    AnyImplementation(Identifier),
     Generic(String),
 }
 
@@ -93,9 +109,8 @@ impl fmt::Display for Type {
             Type::Enumeration(enum_id) => write!(f, "{}", enum_id),
             Type::Set(set_id) => write!(f, "{}", set_id),
             Type::Record(name) => write!(f, "{}", name),
-            Type::Class(name) => write!(f, "{}", name),
-            Type::AnyImplementation(interface) => write!(f, "{}", interface),
-            Type::DynamicArray(array) => write!(f, "array of {}", array.element),
+            Type::Reference(ref_type) => write!(f, "{}", ref_type),
+            Type::WeakReference(ref_type) => write!(f, "weak {}", ref_type),
             Type::Array(array) => {
                 write!(f, "array ")?;
                 write!(f, "[{}..{}", array.first_dim.from, array.first_dim.to)?;
@@ -123,18 +138,35 @@ impl Type {
         }
     }
 
-    pub fn is_class(&self) -> bool {
+    pub fn dynamic_array_ref(element: impl Into<Type>) -> Self {
+        Type::Reference(ReferenceType::DynamicArray(DynamicArrayType {
+            element: Box::new(element.into())
+        }))
+    }
+
+    pub fn class_ref(name: impl Into<ParameterizedName>) -> Self {
+        Type::Reference(ReferenceType::Class(name.into()))
+    }
+
+    pub fn class_ref_weak(name: impl Into<ParameterizedName>) -> Self {
+        Type::WeakReference(ReferenceType::Class(name.into()))
+    }
+
+    pub fn interface_ref(name: impl Into<Identifier>) -> Self {
+        Type::Reference(ReferenceType::AnyImplementation(name.into()))
+    }
+
+    pub fn is_class_ref(&self) -> bool {
         match self {
-            Type::Class { .. } => true,
+            Type::Reference(ReferenceType::Class(_)) => true,
+            Type::WeakReference(ReferenceType::Class(_)) => true,
             _ => false,
         }
     }
 
     pub fn is_ref_counted(&self) -> bool {
         match self {
-            Type::Class { .. } |
-            Type::DynamicArray(_) => true,
-            Type::AnyImplementation(_) => true,
+            | Type::Reference(_) | Type::WeakReference(_) => true,
             _ => false,
         }
     }
@@ -185,17 +217,39 @@ impl Type {
         }
     }
 
-    pub fn unwrap_class(&self) -> Option<&ParameterizedName> {
+    pub fn is_interface_ref(&self) -> bool {
         match self {
-            Type::Class(name) => Some(name),
+            | Type::Reference(ReferenceType::AnyImplementation(_))
+            | Type::WeakReference(ReferenceType::AnyImplementation(_))
+            => true,
+
+            _ => false
+        }
+    }
+
+    pub fn as_class_ref(&self) -> Option<&ParameterizedName> {
+        match self {
+            | Type::Reference(ReferenceType::Class(name))
+            | Type::WeakReference(ReferenceType::Class(name))
+            => Some(name),
+
             _ => None,
         }
     }
 
-    pub fn unwrap_record(&self) -> Option<&ParameterizedName> {
+    pub fn as_record(&self) -> Option<&ParameterizedName> {
         match self {
-            Type::Record(name) => Some(name),
-            _ => None,
+            | Type::Record(name) => Some(name),
+            | _ => None,
+        }
+    }
+
+    pub fn as_interface_ref(&self) -> Option<&Identifier> {
+        match self {
+            | Type::Reference(ReferenceType::AnyImplementation(iface))
+            | Type::WeakReference(ReferenceType::AnyImplementation(iface))
+            => Some(iface),
+            | _ => None,
         }
     }
 
@@ -213,7 +267,6 @@ impl Type {
             | Type::Pointer(_)
             | Type::Byte
             | Type::Record { .. }
-            | Type::Class { .. }
             | Type::RawPointer
             | Type::UntypedRef
             | Type::Boolean
@@ -227,8 +280,8 @@ impl Type {
             | Type::Function(_)
             | Type::Enumeration(_)
             | Type::Set(_)
-            | Type::DynamicArray(_)
-            | Type::AnyImplementation(_)
+            | Type::Reference(_)
+            | Type::WeakReference(_)
             | Type::Generic(_)
             | Type::Array { .. }
             => true,
@@ -283,18 +336,22 @@ impl Type {
             | (Type::Int32, Type::NativeInt)
             => true,
 
+            /* weak refs promote to strong refs of the same type (todo: they shouldn't) */
+            | (Type::WeakReference(a), Type::Reference(b))
+            => *a == *b,
+
             /* arrays promote to arrays with the same element and number of elements per rank
                 (the indexing scheme can vary) */
             | (Type::Array(array_a), Type::Array(array_b)) => {
                 array_a.element == array_b.element
                     && array_a.first_dim.elements() == array_b.first_dim.elements()
                     && array_a.rest_dims.iter().enumerate()
-                        .map(|(rank_index, rank_a)| {
-                            (rank_a, &array_b.rest_dims[rank_index])
-                        })
-                        .all(|(rank_a, rank_b)| {
-                            rank_a.elements() == rank_b.elements()
-                        })
+                    .map(|(rank_index, rank_a)| {
+                        (rank_a, &array_b.rest_dims[rank_index])
+                    })
+                    .all(|(rank_a, rank_b)| {
+                        rank_a.elements() == rank_b.elements()
+                    })
             }
 
             _ => false,
@@ -332,10 +389,19 @@ impl Type {
                 a_target == b_target
             }
 
+            (Type::WeakReference(_), Type::Nil) => true,
+
             (a, b) => a.promotes_to(b),
         };
 
         can_compare(self, other) || can_compare(other, self)
+    }
+
+    pub fn is_weak(&self) -> bool {
+        match self {
+            Type::WeakReference(_) => true,
+            _ => false,
+        }
     }
 }
 

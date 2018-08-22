@@ -1,6 +1,8 @@
 use std::fmt;
 use target_c::ast::{
     rc_getmem,
+    rc_retain,
+    rc_retain_weak,
     Name,
     CType,
     FunctionDecl,
@@ -385,7 +387,22 @@ impl Struct {
             let arg_name = Name::local(format!("arg{}", mem_num));
 
             let deref_arg = Expression::unary_op("*", arg_name.clone(), true);
-            let assign_member = Expression::binary_op(result_member, "=", deref_arg);
+            let mut assign_member = vec![
+                Expression::binary_op(result_member.clone(), "=", deref_arg)
+            ];
+
+            // if the member is refcounted, increment it appropriately after assignment
+            if member.decl_type.is_ref_counted() {
+                if member.decl_type.is_weak() {
+                    /* weak refs can be explicitly null on construction */
+                    assign_member.push(Expression::if_then(
+                        result_member.clone(),
+                        rc_retain_weak(result_member),
+                    ));
+                } else {
+                    assign_member.push(rc_retain(result_member));
+                }
+            }
 
             let assign_if_present = Expression::if_then(arg_name, assign_member);
 

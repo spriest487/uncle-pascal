@@ -64,7 +64,7 @@ impl TypeDecl {
             node::TypeDecl::Interface(interface_decl) => {
                 let (interface_decl, scope) = InterfaceDecl::annotate(
                     interface_decl,
-                    scope
+                    scope,
                 )?;
 
                 Ok((Some(node::TypeDecl::Interface(interface_decl)), scope))
@@ -82,6 +82,10 @@ impl RecordMember {
         };
 
         let decl_type = member.decl_type.resolve(scope)?;
+
+        if decl_type.is_weak() && !decl_type.is_ref_counted() {
+            return Err(SemanticError::weak_ref_to_value_type(decl_type, context));
+        }
 
         Ok(RecordMember {
             name: member.name.clone(),
@@ -107,7 +111,7 @@ impl RecordVariantPart {
                 let (tag_value, _) = Expression::annotate(
                     &case.tag_value,
                     tag_type,
-                    context.scope.clone()
+                    context.scope.clone(),
                 )?;
 
                 let members = case.members.iter()
@@ -191,8 +195,8 @@ impl RecordDecl {
     pub fn specialize(self, type_args: &[Type]) -> RecordDecl {
         assert_eq!(type_args.len(), self.type_params.len(),
                    "invalid type args list {:?} passed to specialize() for {}",
-                    type_args,
-                    self.qualified_name());
+                   type_args,
+                   self.qualified_name());
 
         let type_params = self.type_params;
 
@@ -349,7 +353,7 @@ impl InterfaceDecl {
 
             /* add the proper type for `Self` */
             func_sig.args[0] = FunctionArgSignature {
-                decl_type: Type::AnyImplementation(full_name.clone()),
+                decl_type: Type::interface_ref(full_name.clone()),
                 modifier: None,
             };
 
@@ -371,5 +375,65 @@ impl InterfaceDecl {
 
     pub fn scope(&self) -> &Scope {
         self.context.scope.as_ref()
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use semantic::test::fake_context;
+    use node::{
+        RecordKind,
+        TypeName,
+        type_name::ScalarTypeName,
+    };
+
+    #[test]
+    fn value_member_with_weak_is_err() {
+        let scope = Scope::new_root();
+
+        let member = syntax::RecordMember {
+            context: fake_context().into(),
+            name: "Value".to_string(),
+            decl_type: TypeName::Scalar(ScalarTypeName {
+                name: "System.Int32".into(),
+                context: fake_context().into(),
+                type_args: vec![],
+                weak: true,
+                indirection: 0,
+            }),
+        };
+
+        assert_eq!(
+            Err(SemanticErrorKind::WeakRefToValueType(Type::Int32)),
+            RecordMember::annotate(&member, Rc::new(scope)).map_err(|err| err.kind),
+        )
+    }
+
+    #[test]
+    fn rc_member_with_weak_is_ok() {
+        let member = syntax::RecordMember {
+            context: fake_context().into(),
+            name: "Value".to_string(),
+            decl_type: TypeName::Scalar(ScalarTypeName {
+                name: "Box".into(),
+                context: fake_context().into(),
+                type_args: vec![],
+                weak: false,
+                indirection: 0,
+            }),
+        };
+
+        let scope = Scope::new_root()
+            .with_class(RecordDecl {
+                name: "Box".to_string(),
+                kind: RecordKind::Class,
+                context: fake_context(),
+                variant_part: None,
+                type_params: vec![],
+                members: vec![],
+            });
+
+        assert!(RecordMember::annotate(&member, Rc::new(scope)).is_ok());
     }
 }

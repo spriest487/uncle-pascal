@@ -6,9 +6,7 @@ use node::{
     RecordKind,
     ConstExpression,
 };
-use consts::{
-    IntConstant,
-};
+use consts::IntConstant;
 use syntax;
 use semantic::{
     Scope,
@@ -22,6 +20,7 @@ use semantic::{
 };
 use types::{
     Type,
+    ReferenceType,
     ArrayType,
     ParameterizedName,
 };
@@ -54,7 +53,10 @@ fn find_object_decl(ty: &Type, scope: &Scope) -> Option<ConstructedObject> {
                 type_args: record_id.type_args.clone(),
             })
         }
-        Type::Class(class_id) => {
+
+        | Type::Reference(ReferenceType::Class(class_id))
+        | Type::WeakReference(ReferenceType::Class(class_id))
+        => {
             let (_, class) = scope.get_class_specialized(class_id)?;
 
             Some(ConstructedObject {
@@ -250,13 +252,13 @@ impl CollectionConstructor {
                     let (member_val, new_scope) = Self::annotate_member(
                         member,
                         Some(&array_type),
-                        scope
+                        scope,
                     )?;
                     expect_valid(
                         operators::Assignment,
                         Some(&array_type),
                         &member_val.first_val(),
-                        &expr_context
+                        &expr_context,
                     )?;
 
                     scope = new_scope;

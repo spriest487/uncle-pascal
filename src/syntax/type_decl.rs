@@ -278,7 +278,9 @@ impl RecordDecl {
 
         tokens.match_repeating(|decl_num, tokens: &mut TokenStream| {
             let name = match decl_num {
-                0 => tokens.match_one(Matcher::AnyIdentifier)?,
+                0 => {
+                    tokens.match_one(Matcher::AnyIdentifier)?
+                },
                 _ => {
                     //found terminator instead of separator, finish here
                     if tokens.look_ahead().match_one(terminator.clone()).is_some() {

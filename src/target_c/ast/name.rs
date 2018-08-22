@@ -4,6 +4,7 @@ use node::Identifier;
 use types::{
     ParameterizedName,
     Type,
+    ReferenceType,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -224,18 +225,42 @@ fn name_for_type_param(ty: &Type) -> String {
         | Type::Generic(_)
         => unreachable!("illegal generic type arg"),
 
-        | Type::Function(_)
-        | Type::Array(_)
-        | Type::DynamicArray(_)
-        => unimplemented!("type param name for {} (c++ backend)", ty),
+        | Type::Function(func)
+        => {
+            let mut name = match &func.return_type {
+                Some(returns) => format!("Func_{}", name_for_type_param(returns)),
+                None => "Proc".to_string(),
+            };
+
+            if func.args.iter().any(|arg| arg.modifier.is_some()) {
+                unimplemented!("todo: arg modifiers, calling conventions");
+            }
+            for (i, arg) in func.args.iter().enumerate() {
+                name = format!("{}_Arg{}_{}", name, i, name_for_type_param(&arg.decl_type));
+            }
+            name
+        }
+        | Type::Array(arr)
+        => {
+            if arr.first_dim.from != 0 || !arr.rest_dims.is_empty() {
+                unimplemented!("todo: different index bases, multiple dimensions");
+            }
+            format!("Array_{}_{}", arr.total_elements(), name_for_type_param(&arr.element))
+        },
 
         | Type::Record(type_id)
         => format!("Record_{}", parameterized_id_to_c(type_id)),
-        | Type::Class(type_id)
-        => format!("Class_{}", parameterized_id_to_c(type_id)),
 
-        | Type::AnyImplementation(iface) => format!("AnyImpl_{}", identifier_to_c(iface)),
-
+        | Type::Reference(ref_type)
+        | Type::WeakReference(ref_type)
+        => match ref_type {
+            | ReferenceType::Class(type_id)
+            => format!("Class_{}", parameterized_id_to_c(type_id)),
+            | ReferenceType::DynamicArray(arr)
+            => format!("DynArray_{}", name_for_type_param(&arr.element)),
+            | ReferenceType::AnyImplementation(iface_id)
+            => format!("AnyImpl_{}", identifier_to_c(iface_id)),
+        }
 
         | Type::Pointer(pointed_to)
         => format!("PointerTo_{}", name_for_type_param(pointed_to.as_ref())),

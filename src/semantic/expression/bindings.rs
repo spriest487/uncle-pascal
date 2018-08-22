@@ -93,11 +93,11 @@ pub fn annotate_with(parsed_value: &syntax::Expression,
     /* find the class or record decl of the type referred to by `value` */
     let (_record_id, record) = value_type.as_ref()
         .and_then(|ty| {
-            let class_id = ty.unwrap_class()?;
+            let class_id = ty.as_class_ref()?;
             scope.get_class_specialized(class_id)
         })
         .or_else(|| {
-            let record_id = value_type.as_ref()?.unwrap_record()?;
+            let record_id = value_type.as_ref()?.as_record()?;
             scope.get_record_specialized(record_id)
         })
         .ok_or_else(|| {
@@ -141,8 +141,8 @@ pub fn with_type(value: &Expression, body: &Expression) -> SemanticResult<Option
     let val_type = value.expr_type()?;
     val_type.as_ref()
         .and_then(|ty| {
-            ty.unwrap_class()
-                .or_else(|| ty.unwrap_record())
+            ty.as_class_ref()
+                .or_else(|| ty.as_record())
         })
         .ok_or_else(|| {
             SemanticError::invalid_with_type(val_type.clone(), value.context.clone())

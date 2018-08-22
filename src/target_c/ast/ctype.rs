@@ -2,12 +2,11 @@ use std::fmt;
 
 use types::{
     Type,
+    ReferenceType,
     ParameterizedName,
 };
 use semantic::Scope;
-use node::{
-    FunctionArgModifier,
-};
+use node::FunctionArgModifier;
 use target_c::ast::{
     CallingConvention,
     TranslationUnit,
@@ -89,16 +88,7 @@ impl CType {
                     calling_convention: CallingConvention::from_modifiers(&sig.modifiers),
                 })
             }
-            Type::Class(name) => {
-                let (name, _) = scope.get_class_specialized(name)
-                    .expect("referenced class must exist");
 
-                let decl = unit.struct_decl(&name)?;
-
-                Ok(CType::Struct(decl.decl.name.clone()
-                    .expect("class structs are always named"))
-                    .into_pointer())
-            }
             Type::Record(name) => {
                 let (name, _) = scope.get_record_specialized(name)
                     .expect("referenced record must exist");
@@ -116,20 +106,11 @@ impl CType {
                 Ok(CType::Named(Name::user_type(&ParameterizedName::new_simple(enum_id.clone()))))
             }
 
-            Type::AnyImplementation(_interface_id) => {
-                Ok(CType::Struct(Name::internal_type("Object"))
-                    .into_pointer())
-            }
-
             Type::Set(set_id) => {
                 let (set_id, _) = scope.get_set(set_id)
                     .expect("referenced set must exist");
 
                 Ok(CType::Named(Name::user_type(&ParameterizedName::new_simple(set_id.clone()))))
-            }
-
-            Type::DynamicArray(_dynamic_array_type) => {
-                unimplemented!("dynamic arrays (c++ backend)")
             }
 
             Type::Array(array) => {
@@ -152,6 +133,37 @@ impl CType {
                     });
 
                 Ok(CType::Array(multidim_array))
+            }
+
+            | Type::Reference(ref_type)
+            | Type::WeakReference(ref_type)
+            => Self::translate_reference(ref_type, scope, unit)
+        }
+    }
+
+    fn translate_reference(ref_type: &ReferenceType,
+                           scope: &Scope,
+                           unit: &mut TranslationUnit)
+                           -> TranslationResult<Self> {
+        match ref_type {
+            ReferenceType::Class(name) => {
+                let (name, _) = scope.get_class_specialized(name)
+                    .expect("referenced class must exist");
+
+                let decl = unit.struct_decl(&name)?;
+
+                Ok(CType::Struct(decl.decl.name.clone()
+                    .expect("class structs are always named"))
+                    .into_pointer())
+            }
+
+            ReferenceType::AnyImplementation(_interface_id) => {
+                Ok(CType::Struct(Name::internal_type("Object"))
+                    .into_pointer())
+            }
+
+            ReferenceType::DynamicArray(_dynamic_array_type) => {
+                unimplemented!("dynamic arrays (c++ backend)")
             }
         }
     }

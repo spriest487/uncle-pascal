@@ -1,5 +1,18 @@
-use syntax::*;
-use syntax::var_decl::*;
+use syntax::{
+    ParsedContext,
+    ParseResult,
+    TokenStream,
+    Parse,
+    ParseError,
+    Block,
+    Expression,
+    VarDecl,
+    ConstDecl,
+    MatchOneOf,
+    MatchSequenceOf,
+    Matcher,
+};
+
 use keywords;
 use tokens;
 use tokens::AsToken;
@@ -195,7 +208,7 @@ impl Parse for node::ExternalName {
 }
 
 impl FunctionDecl {
-    pub fn match_any_function_keyword() -> matcher::Matcher {
+    pub fn match_any_function_keyword() -> Matcher {
         keywords::Function.or(keywords::Procedure)
     }
 
@@ -349,9 +362,11 @@ impl FunctionDecl {
 #[cfg(test)]
 mod test {
     use std::rc::Rc;
-    use tokenizer;
-    use opts::CompileOptions;
     use super::*;
+    use tokenizer;
+    use source;
+    use opts::CompileOptions;
+    use node::ScalarTypeName;
 
     fn parse_func(src: &str) -> FunctionDecl {
         let tokens = tokenizer::tokenize("test", src, &CompileOptions::default())
@@ -362,11 +377,11 @@ mod test {
     }
 
     fn make_type_name(name: &str) -> TypeName {
-        TypeName::with_name(name, source::Token::new(keywords::Program, source::Location {
+        TypeName::Scalar(ScalarTypeName::with_name(name, source::Token::new(keywords::Program, source::Location {
             line: 0,
             col: 0,
             file: Rc::new("test".to_string()),
-        }))
+        })))
     }
 
     #[test]

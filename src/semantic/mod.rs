@@ -40,7 +40,7 @@ use source;
 use std::fmt;
 use types::*;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 enum SemanticErrorKind {
     UnresolvedUnit(String),
     UnknownType(Identifier),
@@ -108,6 +108,7 @@ enum SemanticErrorKind {
 
         for_interface: Option<Identifier>,
     },
+    WeakRefToValueType(Type),
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -161,9 +162,17 @@ impl fmt::Display for SemanticErrorKind {
             SemanticErrorKind::InvalidFunctionType(actual) => {
                 let actual_name = actual.as_ref()
                     .map(|t| match t {
-                        Type::Record(name) => format!("record `{}`", name),
-                        Type::Class(name) => format!("class`{}`", name),
-                        Type::Function(name) => format!("function `{}`", name),
+                        | Type::Record(name) => format!("record `{}`", name),
+                        | Type::Function(name) => format!("function `{}`", name),
+
+                        | Type::Reference(ReferenceType::Class(class_id))
+                        | Type::WeakReference(ReferenceType::Class(class_id))
+                        => format!("class `{}`", class_id),
+
+                        | Type::Reference(ReferenceType::AnyImplementation(iface_id))
+                        | Type::WeakReference(ReferenceType::AnyImplementation(iface_id))
+                        => format!("interface `{}`", iface_id),
+
                         _ => format!("type `{}`", t)
                     })
                     .unwrap_or_else(|| "(none)".to_owned());
@@ -249,7 +258,7 @@ impl fmt::Display for SemanticErrorKind {
                         write!(f, "`{}` cannot be assigned to `{}`",
                                Type::name(args[1].as_ref()),
                                Type::name(args[0].as_ref()))
-                    },
+                    }
                     _ => {
                         let args_list = args.iter()
                             .map(|arg| format!("`{}`", Type::name(arg.as_ref())))
@@ -324,6 +333,10 @@ impl fmt::Display for SemanticErrorKind {
                                previous_decl.context.token())
                     }
                 }
+            }
+
+            SemanticErrorKind::WeakRefToValueType(ty) => {
+                write!(f, "can't hold a weak reference to `{}` which is not a reference-counted type", ty)
             }
         }
     }
@@ -626,6 +639,15 @@ impl SemanticError {
             kind: SemanticErrorKind::OutputUninitialized(output_name.into()),
         }
     }
+
+    pub fn weak_ref_to_value_type(bad_type: impl Into<Type>,
+                                  context: impl Into<SemanticContext>)
+                                  -> Self {
+        SemanticError {
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::WeakRefToValueType(bad_type.into()),
+        }
+    }
 }
 
 impl fmt::Display for SemanticError {
@@ -685,5 +707,22 @@ impl Context for SemanticContext {
 impl PartialEq for SemanticContext {
     fn eq(&self, other: &Self) -> bool {
         self.token == other.token
+    }
+}
+
+#[cfg(test)]
+pub mod test {
+    use super::*;
+    use tokens;
+    use keywords;
+
+    pub fn fake_context() -> SemanticContext {
+        let location = source::Location::new("test", 0, 0);
+        let token = tokens::Keyword(keywords::Program);
+        SemanticContext {
+            token: source::Token::new(token, location),
+            scope: Rc::new(Scope::new_root()),
+            type_hint: None,
+        }
     }
 }

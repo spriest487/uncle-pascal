@@ -19,7 +19,11 @@ use std::{
     fmt,
 };
 
-use types::*;
+use types::{
+    Type,
+    ReferenceType,
+    ParameterizedName,
+};
 use node::{
     self,
     Identifier,
@@ -550,7 +554,7 @@ impl Scope {
     pub fn get_type_alias(&self, alias: &Identifier) -> Option<Type> {
         let result = match self.find_named(alias) {
             | Some((class_name, Named::Class(_)))
-            => Type::Class(ParameterizedName {
+            => Type::class_ref(ParameterizedName {
                 name: class_name.clone(),
                 type_args: Vec::new(),
             }),
@@ -562,7 +566,7 @@ impl Scope {
             }),
 
             | Some((interface_name, Named::Interface(_)))
-            => Type::AnyImplementation(interface_name.clone()),
+            => Type::interface_ref(interface_name.clone()),
 
             | Some((enumeration_name, Named::Enumeration(_)))
             => Type::Enumeration(enumeration_name.clone()),
@@ -669,16 +673,23 @@ impl Scope {
         let parent_sym = self.get_symbol(&parent_id)?;
 
         let (record_id, record_decl) = match parent_sym.decl_type() {
-            Type::Record(name) => self.get_record_specialized(name),
-            Type::Class(name) => self.get_class_specialized(name),
+            | Type::Record(name)
+            => self.get_record_specialized(name),
+
+            | Type::Reference(ReferenceType::Class(name))
+            | Type::WeakReference(ReferenceType::Class(name))
+            => self.get_class_specialized(name),
 
             /* records and classes are auto-derefed, so consider pointers to records of any
             indirection level */
-            Type::Pointer(ptr) => {
+            | Type::Pointer(ptr) => {
                 /* remove remaining levels of indirection */
                 match ptr.remove_indirection() {
-                    Type::Record(name) => self.get_record_specialized(name),
-                    Type::Class(name) => self.get_class_specialized(name),
+                    | Type::Reference(ReferenceType::Class(name))
+                    | Type::WeakReference(ReferenceType::Class(name))
+                    => self.get_class_specialized(name),
+                    | Type::Record(name)
+                    => self.get_record_specialized(name),
                     _ => None,
                 }
             }
@@ -761,7 +772,8 @@ impl Scope {
         };
 
         match ty {
-            | Type::AnyImplementation(_)
+            | Type::Reference(_)
+            | Type::WeakReference(_)
             | Type::Nil
             | Type::RawPointer
             | Type::Pointer(_)
@@ -802,18 +814,6 @@ impl Scope {
                 self.size_of_record(&specialized)
             }
 
-            | Type::Class(ParameterizedName { name, type_args }) => {
-                let (_, class_decl) = self.get_class(name).expect("class type passed to size_of must exist");
-                let specialized = class_decl.clone().specialize(type_args);
-                self.size_of_record(&specialized)
-            }
-
-            | Type::DynamicArray(_array) => {
-                /* dynamic arrays are heap-allocated and so they *should* just
-                be a single pointer... currently this is probably not true */
-                size_of::<usize>()
-            }
-
             | Type::Array(array) =>
                 array.total_elements() as usize * self.size_of(&array.element),
 
@@ -848,7 +848,7 @@ impl Scope {
     }
 
     pub fn type_implements(&self, ty: &Type, interface_id: &Identifier) -> bool {
-        if let Type::AnyImplementation(ty_interface) = ty {
+        if let Type::Reference(ReferenceType::AnyImplementation(ty_interface)) = ty {
             return interface_id == ty_interface;
         }
 
@@ -868,10 +868,12 @@ impl Scope {
 
     pub fn full_type_name(&self, ty: &Type) -> Option<ParameterizedName> {
         match ty {
-            | Type::Class(type_id) => {
+            | Type::WeakReference(ReferenceType::Class(type_id))
+            | Type::Reference(ReferenceType::Class(type_id)) => {
                 let (class_id, _) = self.get_class_specialized(type_id)?;
                 Some(class_id)
             }
+
             | Type::Record(type_id) => {
                 let (record_id, _) = self.get_record_specialized(&type_id)?;
                 Some(record_id)

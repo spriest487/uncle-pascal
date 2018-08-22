@@ -3,6 +3,9 @@ use std::fmt;
 use target_c::ast::{
     rc_release,
     rc_retain,
+    rc_retain_weak,
+    rc_release_weak,
+    rc_weak_value,
     TranslationResult,
     Name,
     TranslationUnit,
@@ -12,7 +15,9 @@ use target_c::ast::{
 use semantic::{
     self,
     BindingKind,
+    ScopedSymbol,
     arc_transform::{
+        RcStrength,
         RcSubValuePath,
         RcStatement,
         BoundName,
@@ -28,6 +33,7 @@ use node::{
 };
 use types::{
     Type,
+    ReferenceType,
     ParameterizedName,
 };
 use consts::{
@@ -115,6 +121,12 @@ impl From<Vec<Expression>> for Expression {
 impl From<usize> for Expression {
     fn from(i: usize) -> Expression {
         Expression::SizeLiteral(i)
+    }
+}
+
+impl From<Block> for Expression {
+    fn from(block: Block) -> Self {
+        Expression::Block(block)
     }
 }
 
@@ -224,14 +236,25 @@ impl Expression {
         Expression::Return(Box::new(value.into()))
     }
 
-    pub fn translate_rc_value_expr(path: &RcSubValuePath,
+    pub fn translate_rc_value_expr(rc_val: &RcSubValuePath,
                                    base: impl Into<Expression>)
-        -> Expression {
-        match path {
-            RcSubValuePath::This { parent: None } =>
-                base.into(),
-            RcSubValuePath::This { parent: Some(parent) } =>
-                Self::translate_rc_value_expr(parent, base),
+                                   -> Expression {
+        match rc_val {
+            RcSubValuePath::This { parent: None, strength } => {
+                if *strength == RcStrength::Weak {
+                    rc_weak_value(base.into())
+                } else {
+                    base.into()
+                }
+            }
+            RcSubValuePath::This { parent: Some(parent), strength } => {
+                let parent = Self::translate_rc_value_expr(parent, base);
+                if *strength == RcStrength::Weak {
+                    rc_weak_value(parent)
+                } else {
+                    parent
+                }
+            }
 
             RcSubValuePath::Member { parent: None, name } =>
                 Expression::member(base, name.clone()),
@@ -251,9 +274,23 @@ impl Expression {
         }
     }
 
+    pub fn rc_retain(val: Expression, strength: RcStrength) -> Expression {
+        match strength {
+            RcStrength::Strong => rc_retain(val),
+            RcStrength::Weak => rc_retain_weak(val),
+        }
+    }
+
+    pub fn rc_release(val: Expression, strength: RcStrength) -> Expression {
+        match strength {
+            RcStrength::Strong => rc_release(val),
+            RcStrength::Weak => rc_release_weak(val),
+        }
+    }
+
     pub fn translate_rc_statement(stmt: RcStatement,
-                                         unit: &mut TranslationUnit)
-                                         -> TranslationResult<Vec<Expression>> {
+                                  unit: &mut TranslationUnit)
+                                  -> TranslationResult<Vec<Expression>> {
         match stmt {
             RcStatement::Block(statements) => {
                 let block = Block::translate_rc_block(statements, None, unit)?;
@@ -295,85 +332,96 @@ impl Expression {
 
                     None => Self::translate_expression(&body, unit)?,
                 };
-                let rc_val_exprs: Vec<Expression> = rc_assignments.iter()
-                    .map(|expr| Self::translate_expression(expr, unit))
+                let rc_val_exprs: Vec<(Expression, RcStrength)> = rc_assignments.iter()
+                    .map(|(expr, strength)| {
+                        let translated = Self::translate_expression(expr, unit)?;
+                        Ok((translated, *strength))
+                    })
                     .collect::<TranslationResult<_>>()?;
 
-                for (i, rc_val) in rc_assignments.iter().enumerate() {
-                    /* if it's an assignment to a variable which is already initialized */
+                let mut temp_block = Vec::new();
+
+                // ...then release temp bindings and close the block
+                let rc_subvals: Vec<(Expression, RcStrength)> = rc_bindings.iter()
+                    .enumerate()
+                    .flat_map(|(tmp_id, rc_binding)| {
+                        rc_binding.rc_subvalues.iter()
+                            .map(move |rc_subval| {
+                                let tmp_name = Name::local_internal(tmp_id.to_string());
+                                let val_expr = Self::translate_rc_value_expr(
+                                    &rc_subval,
+                                    tmp_name,
+                                );
+
+                                (val_expr, rc_subval.strength())
+                            })
+                    })
+                    .collect();
+
+                // bind RC temporaries to local names...
+                for (tmp_id, tmp_val) in rc_bindings.iter().enumerate() {
+                    let tmp_type = tmp_val.base_value.expr_type()
+                        .expect("temporary rc values should always be valid types")
+                        .expect("temporary rc values should never have no type");
+
+                    let val_c_type = CType::translate(&tmp_type, tmp_val.base_value.scope(), unit)?;
+                    let tmp_name = Name::local_internal(tmp_id.to_string());
+                    let tmp_val_expr = Expression::translate_expression(
+                        &tmp_val.base_value,
+                        unit,
+                    )?;
+
+                    temp_block.push(Expression::local_decl(
+                        val_c_type,
+                        tmp_name,
+                        Some(tmp_val_expr),
+                    ));
+                }
+
+                /* if it's an assignment to a variable which is already initialized */
+                for (i, (rc_val, rc_strength)) in rc_assignments.iter().enumerate() {
                     if let ExpressionValue::Identifier(name) = &rc_val.value {
                         if rc_val.scope().get_symbol(name).unwrap().initialized() {
                             // if (lhs) release(lhs)
-                            let val_expr = &rc_val_exprs[i];
+                            let (val_expr, _) = &rc_val_exprs[i];
 
-                            lines.push(Expression::if_then(
+                            let release_if_set = Expression::if_then(
                                 val_expr.clone(),
-                                rc_release(val_expr.clone()),
-                            ));
+                                Self::rc_release(val_expr.clone(), *rc_strength),
+                            );
+                            temp_block.push(release_if_set);
                         }
                     }
                 }
 
-                if !rc_bindings.is_empty() {
-                    let mut temp_block = Vec::new();
+                /* write the original statement body (or its transformed form).
+                in some cases the transformation will reduce it to nothing but a name
+                (e.g. a function call returning an RC value which isn't used) - in
+                that case we can just omit the original expression, the side effect must
+                be included in the rc bindings somewhere*/
+                match body_expr {
+                    Expression::Name(_) => { /* nothing */ }
 
-                    // ...then release temp bindings and close the block
-                    let rc_subvals: Vec<Expression> = rc_bindings.iter()
-                        .enumerate()
-                        .flat_map(|(tmp_id, rc_binding)| {
-                            rc_binding.rc_subvalues.iter()
-                                .map(move |val_path| {
-                                    let tmp_name = Name::local_internal(tmp_id.to_string());
-                                    Self::translate_rc_value_expr(val_path, tmp_name)
-                                })
-                        })
-                        .collect();
-
-                    // bind RC temporaries to local names...
-                    for (tmp_id, tmp_val) in rc_bindings.iter().enumerate() {
-                        let tmp_type = tmp_val.base_value.expr_type()
-                            .expect("temporary rc values should always be valid types")
-                            .expect("temporary rc values should never have no type");
-
-                        let val_c_type = CType::translate(&tmp_type, tmp_val.base_value.scope(), unit)?;
-                        let tmp_name = Name::local_internal(tmp_id.to_string());
-                        let tmp_val_expr = Expression::translate_expression(
-                            &tmp_val.base_value,
-                            unit,
-                        )?;
-
-                        temp_block.push(Expression::local_decl(
-                            val_c_type,
-                            tmp_name,
-                            Some(tmp_val_expr),
-                        ));
-                    }
-
-                    // ...the original exprs in the middle...
-                    temp_block.push(body_expr);
-
-                    /* if this statement binds an expression to a name, the rc values
-                    in this statement need to outlive it so add a reference */
-                    if bound_name.is_some() {
-                        temp_block.extend(rc_subvals.iter().cloned().map(rc_retain));
-                    }
-
-                    // ...retain newly-assigned values...
-                    for rc_val in rc_val_exprs {
-                        temp_block.push(rc_retain(rc_val));
-                    }
-
-                    // release statement temporaries
-                    temp_block.extend(rc_subvals.iter().cloned().map(rc_release));
-
-                    lines.push(Expression::Block(Block::new(temp_block)));
-                } else {
-                    lines.push(body_expr);
-
-                    for rc_val in rc_val_exprs {
-                        lines.push(rc_retain(rc_val));
-                    }
+                    body => temp_block.push(body)
                 }
+
+                /* if this statement binds an expression to a name, the rc values
+                in this statement need to outlive it so add a reference */
+                if bound_name.is_some() {
+                    temp_block.extend(rc_subvals.iter().cloned()
+                        .map(|(val, strength)| Self::rc_retain(val, strength)));
+                }
+
+                // ...retain newly-assigned values...
+                for (rc_val, rc_strength) in rc_val_exprs {
+                    temp_block.push(Self::rc_retain(rc_val, rc_strength));
+                }
+
+                // release statement temporaries
+                temp_block.extend(rc_subvals.iter().cloned()
+                    .map(|(val, strength)| Self::rc_release(val, strength)));
+
+                lines.push(Expression::Block(Block::new(temp_block)));
 
                 Ok(lines)
             }
@@ -393,7 +441,7 @@ impl Expression {
                                 -> TranslationResult<Self> {
         match &expr.value {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                let string_type = Some(Type::Class(ParameterizedName {
+                let string_type = Some(Type::class_ref(ParameterizedName {
                     name: Identifier::from("System.String"),
                     type_args: Vec::new(),
                 }));
@@ -408,6 +456,29 @@ impl Expression {
                             Expression::translate_expression(rhs, unit)?,
                         ],
                     ));
+                }
+
+                let lhs_type = lhs.expr_type().unwrap().unwrap();
+                let rhs_type = rhs.expr_type().unwrap().unwrap();
+                if lhs_type.is_weak() && rhs_type == Type::Nil {
+                    let weak_ref = Expression::translate_expression(lhs, unit)?;
+                    let strong_count = Expression::Raw(format!("{}->StrongCount", weak_ref.clone()));
+
+                    if *op == operators::Equals {
+                        // is null or dead?
+                        return Ok(Expression::binary_op(
+                            Expression::unary_op("!", weak_ref, true),
+                            "||",
+                            Expression::binary_op(strong_count, "==", 0),
+                        ));
+                    } else if *op == operators::NotEquals {
+                        // is not null or dead?
+                        return Ok(Expression::binary_op(
+                            weak_ref,
+                            "&&",
+                            Expression::binary_op(strong_count, "!=", 0),
+                        ));
+                    }
                 }
 
                 if *op == operators::In {
@@ -483,24 +554,20 @@ impl Expression {
                     }
 
                     FunctionCall::Method { interface_id, func_name, for_type, .. } => {
-                        match for_type {
-                            Type::AnyImplementation(_) => {
-                                let call_name = unit.method_call_name(interface_id, func_name)
-                                    .unwrap();
+                        if for_type.is_interface_ref() {
+                            let call_name = unit.method_call_name(interface_id, func_name)
+                                .unwrap();
 
-                                Expression::Name(call_name.clone())
-                            }
+                            Expression::Name(call_name.clone())
+                        } else {
+                            let type_name = expr.scope().full_type_name(for_type).unwrap();
+                            let call_name = Name::interface_call(
+                                interface_id,
+                                &type_name,
+                                func_name.clone(),
+                            );
 
-                            _ => {
-                                let type_name = expr.scope().full_type_name(for_type).unwrap();
-                                let call_name = Name::interface_call(
-                                    interface_id,
-                                    &type_name,
-                                    func_name.clone(),
-                                );
-
-                                Expression::Name(call_name)
-                            }
+                            Expression::Name(call_name)
                         }
                     }
                 };
@@ -649,19 +716,25 @@ impl Expression {
             }
 
             ExpressionValue::Identifier(sym) => {
-                let scoped_sym = expr.scope().get_symbol(sym).unwrap();
-                match scoped_sym.binding_kind() {
-                    | BindingKind::Uninitialized
-                    | BindingKind::Immutable
-                    | BindingKind::Mutable
-                    => Ok(Expression::Name(Name::local(scoped_sym.name().name.clone()))),
+                match expr.scope().get_symbol(sym).unwrap() {
+                    ScopedSymbol::Local { binding_kind, name, .. } => {
+                        Ok(Expression::Name(Self::name_for_binding_kind(&name, binding_kind)))
+                    }
 
-                    | BindingKind::Global
-                    | BindingKind::Function
-                    => Ok(Expression::Name(Name::user_symbol(&scoped_sym.name()))),
+                    ScopedSymbol::RecordMember { record_id, record_type, name, binding_kind, .. } => {
+                        let record_name = Self::name_for_binding_kind(&record_id, binding_kind);
+                        let class_member = expr.scope()
+                            .get_class_specialized(&record_type)
+                            .is_some();
 
-                    | BindingKind::Internal
-                    => Ok(Expression::Name(Name::local_internal(scoped_sym.name().name.clone())))
+                        let record_expr = if class_member {
+                            Expression::Name(record_name).deref()
+                        } else {
+                            Expression::Name(record_name)
+                        };
+
+                        Ok(Expression::member(record_expr, name))
+                    }
                 }
             }
 
@@ -679,7 +752,7 @@ impl Expression {
                 }
 
                 /* ...but pascal classes in the C++ backend have one extra level of indirection */
-                if of_type.is_class() {
+                if of_type.is_class_ref() {
                     of_expr = of_expr.deref();
                 };
 
@@ -731,7 +804,9 @@ impl Expression {
 
             ExpressionValue::ObjectConstructor(obj) => {
                 let (obj_id, obj_decl) = match obj.object_type.as_ref() {
-                    | Some(Type::Class(name)) => {
+                    /* note that we specifically can't construct an object into a
+                    weak reference (it would immediately be destroyed!) */
+                    | Some(Type::Reference(ReferenceType::Class(name))) => {
                         expr.scope().get_class_specialized(name).unwrap()
                     }
                     | Some(Type::Record(name)) => {
@@ -779,6 +854,28 @@ impl Expression {
                 ];
 
                 Ok(Expression::function_call(Name::internal_symbol("Raise"), raise_args))
+            }
+        }
+    }
+
+    fn name_for_binding_kind(bound_name: &Identifier, kind: BindingKind) -> Name {
+        match kind {
+            | BindingKind::Uninitialized
+            | BindingKind::Immutable
+            | BindingKind::Mutable
+            => {
+                assert_eq!(0, bound_name.namespace.len(), "local names must not be qualified");
+                Name::local(bound_name.name.clone())
+            }
+
+            | BindingKind::Global
+            | BindingKind::Function
+            => Name::user_symbol(bound_name),
+
+            | BindingKind::Internal
+            => {
+                assert_eq!(0, bound_name.namespace.len(), "local names must not be qualified");
+                Name::local_internal(bound_name.name.clone())
             }
         }
     }

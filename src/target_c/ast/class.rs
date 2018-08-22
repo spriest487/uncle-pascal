@@ -7,7 +7,10 @@ use std::{
 use semantic::{
     self,
     Scope,
-    arc_transform::rc_subvalues,
+    arc_transform::{
+        rc_subvalues,
+        RcStrength,
+    },
 };
 use types::{
     Type,
@@ -26,7 +29,6 @@ use target_c::ast::{
     Name,
     Expression,
     CastKind,
-    rc_release,
 };
 
 #[derive(Debug)]
@@ -124,11 +126,22 @@ impl Class {
 
                 member_rc_vals.into_iter().rev()
                     .map(move |member_val| {
-                        Expression::translate_rc_value_expr(&member_val, member_base.clone())
+                        let member_expr = Expression::translate_rc_value_expr(
+                            &member_val,
+                            member_base.clone()
+                        );
+
+                        let rc_strength = if member.decl_type.is_weak() {
+                            RcStrength::Weak
+                        } else {
+                            RcStrength::Strong
+                        };
+
+                        (member_expr, rc_strength)
                     })
             })
-            .map(|member_expr| {
-                rc_release(member_expr)
+            .map(|(member_expr, rc_strength)| {
+                Expression::rc_release(member_expr, rc_strength)
             })
             .collect();
 
@@ -142,7 +155,7 @@ impl Class {
     }
 
     pub fn update_vtables(&mut self, interfaces: &[Interface]) {
-        let this_type = Type::Class(self.pascal_name.clone());
+        let this_type = Type::class_ref(self.pascal_name.clone());
 
         /* create a vtable variable for each interface this class implements  */
         for (iface_name, method) in self.unit_scope.get_interface_impls(&this_type) {

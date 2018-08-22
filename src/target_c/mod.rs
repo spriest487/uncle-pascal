@@ -77,13 +77,12 @@ fn invoke_clang(c_src: &str,
     clang.stdout(process::Stdio::inherit());
     clang.stdin(process::Stdio::piped());
 
-    println!("invoking clang: {:#?}", clang);
-
     let mut clang_proc = clang.spawn()?;
-    {
-        let clang_in = clang_proc.stdin.as_mut().unwrap();
-        clang_in.write_all(c_src.to_owned().as_bytes())?;
-    }
+
+    clang_proc.stdin.as_mut()
+        .map(|clang_in| clang_in.write_all(c_src.to_owned().as_bytes()))
+        .unwrap()?;
+
     clang_proc.wait()?;
 
     Ok(())

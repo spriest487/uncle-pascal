@@ -120,6 +120,7 @@ static System_Internal_Object* System_Internal_Rc_GetMem(
     }
 
     obj->StrongCount = 1;
+    obj->WeakCount = 0;
 
 #ifdef UNCLEPASCAL_RC_DEBUG
     std::fprintf(stderr, "rc allocated %td bytes for %s @ %p\n", size, constructorName, obj);
@@ -137,6 +138,28 @@ static void System_Internal_Rc_Retain(System_Internal_Object* obj) {
 #endif
 
     obj->StrongCount += 1;
+}
+
+static void System_Internal_Rc_RetainWeak(System_Internal_Object* obj) {
+    obj->WeakCount += 1;
+}
+
+static void System_Internal_Rc_ReleaseWeak(System_Internal_Object* obj) {
+    if (obj-> WeakCount == 1 && obj->StrongCount == 0) {
+        /* this is the last weak ref to a dead object, release the instance memory */
+        std::free(obj);
+    } else {
+        obj->WeakCount -= 1;
+    }
+}
+
+static struct System_Internal_Object* System_Internal_Rc_WeakValue(System_Internal_Object* obj) {
+    if (obj->StrongCount == 0) {
+        std::fprintf(stderr, "accessed weak reference that was already disposed @ %p\n", obj);
+        std::abort();
+    }
+
+    return obj;
 }
 
 static void System_Internal_Rc_Release(System_Internal_Object* obj) {
@@ -175,8 +198,16 @@ static void System_Internal_Rc_Release(System_Internal_Object* obj) {
             }
         }
 
+        /* actually destroy the object. from this point onwards the instance is
+        logically dead, even if the memory isn't freed yet */
         obj->Class->Destructor(obj);
-        std::free(obj);
+
+        /* if there's still weak refs active, don't free the memory yet */
+        if (obj->WeakCount == 0) {
+            std::free(obj);
+        } else {
+            obj->StrongCount = 0;
+        }
 
 #ifdef UNCLEPASCAL_RC_DEBUG
         auto& className = obj->Class->Name;

@@ -11,7 +11,10 @@ use semantic::{
     FunctionDecl,
     FunctionSignature,
 };
-use types::Type;
+use types::{
+    Type,
+    ReferenceType,
+};
 use node::{
     self,
     Context,
@@ -287,7 +290,7 @@ fn find_explicit_interface_call(candidate: &UfcsCandidate,
         time to figure out what type the interface is being invoked on */
         args.get(0)
             .and_then(|first_arg| {
-                let expected_type = Type::AnyImplementation(iface_id.clone());
+                let expected_type = Type::interface_ref(iface_id.clone());
                 Expression::annotate(first_arg, Some(&expected_type), scope.clone()).ok()
             })
             .and_then(|(self_arg, _)| {
@@ -316,11 +319,11 @@ fn find_explicit_interface_call(candidate: &UfcsCandidate,
 
 /* find an interface call of the form `target.MethodName(self, args..)` */
 fn find_interface_call(candidate: &UfcsCandidate) -> Option<MethodCallSite> {
-    let target_type = candidate.target.expr_type().ok()??;
+    let target_type: Type = candidate.target.expr_type().ok()??;
     let scope = &candidate.scope_after_target;
 
     /* interface types are easy, just look up the interface  */
-    if let Type::AnyImplementation(interface_id) = &target_type {
+    if let Some(interface_id) = target_type.as_interface_ref() {
         let (interface_id, interface) = match scope.get_interface(interface_id) {
             Some((interface_id, interface)) => (interface_id, interface),
             None => {
@@ -440,54 +443,50 @@ pub fn call_type(call: &FunctionCall,
                     SemanticError::unknown_type(interface_id.clone(), context.clone())
                 })?;
 
-            match for_type {
+            if for_type.is_interface_ref() {
                 /* this must be the right type of pointer, or annotate() would have failed */
-                Type::AnyImplementation(_) => {
-                    interface.decl.methods.get(func_name).cloned().unwrap()
-                }
+                interface.decl.methods.get(func_name).cloned().unwrap()
+            } else {
+                /* already checked this is valid */
+                let self_type_name = context.scope.full_type_name(for_type).unwrap();
 
-                _ => {
-                    /* already checked this is valid */
-                    let self_type_name = context.scope.full_type_name(for_type).unwrap();
+                let impl_func = match interface.get_impl(&self_type_name, func_name) {
+                    Some(impl_func) => impl_func,
+                    None => {
+                        match interface.get_method_sig(func_name) {
+                            None => {
+                                /*
+                                it doesn't exist at all
+                                todo: more specific error for missing function names
+                            */
+                                let missing_func = Identifier::from(func_name);
+                                return Err(SemanticError::unknown_symbol(
+                                    missing_func,
+                                    context.clone()
+                                ));
+                            }
 
-                    let impl_func = match interface.get_impl(&self_type_name, func_name) {
-                        Some(impl_func) => impl_func,
-                        None => {
-                            match interface.get_method_sig(func_name) {
-                                None => {
-                                    /*
-                                        it doesn't exist at all
-                                        todo: more specific error for missing function names
-                                    */
-                                    let missing_func = Identifier::from(func_name);
-                                    return Err(SemanticError::unknown_symbol(
-                                        missing_func,
-                                        context.clone()
-                                    ));
-                                }
+                            Some(abstract_sig) => {
+                                /*
+                                it exists, but an implementation doesn't exist for the
+                                provided self-type. raise an error with the abstract sig
+                                as a suggestion
+                            */
+                                let arg_types: Vec<_> = call.args().iter()
+                                    .map(|arg| arg.expr_type())
+                                    .collect::<SemanticResult<_>>()?;
 
-                                Some(abstract_sig) => {
-                                    /*
-                                        it exists, but an implementation doesn't exist for the
-                                        provided self-type. raise an error with the abstract sig
-                                        as a suggestion
-                                    */
-                                    let arg_types: Vec<_> = call.args().iter()
-                                        .map(|arg| arg.expr_type())
-                                        .collect::<SemanticResult<_>>()?;
-
-                                    return Err(SemanticError::wrong_arg_types(
-                                        abstract_sig.clone(),
-                                        arg_types,
-                                        context.clone(),
-                                    ));
-                                }
+                                return Err(SemanticError::wrong_arg_types(
+                                    abstract_sig.clone(),
+                                    arg_types,
+                                    context.clone(),
+                                ));
                             }
                         }
-                    };
+                    }
+                };
 
-                    impl_func.signature()
-                }
+                impl_func.signature()
             }
         }
     };
@@ -563,7 +562,9 @@ fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
     let type_id = match ty.remove_indirection() {
         | Type::Array(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
-        | Type::DynamicArray(array_type) =>
+
+        | Type::Reference(ReferenceType::DynamicArray(array_type))
+        | Type::WeakReference(ReferenceType::DynamicArray(array_type)) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
 
         ty => scope.full_type_name(ty),

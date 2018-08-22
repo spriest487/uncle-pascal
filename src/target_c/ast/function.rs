@@ -242,7 +242,7 @@ impl FunctionDecl {
         let rc_args: Vec<_> = function.decl.args.iter()
             .filter(|arg| {
                 arg.modifier != Some(FunctionArgModifier::Out)
-                    && arg.decl_type.is_class()
+                    && arg.decl_type.is_class_ref()
             })
             .collect();
 

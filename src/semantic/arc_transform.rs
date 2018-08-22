@@ -18,6 +18,12 @@ use node::{
 };
 use operators;
 
+#[derive(Debug, Copy, Clone, Hash, Eq, PartialEq)]
+pub enum RcStrength {
+    Strong,
+    Weak,
+}
+
 pub struct BoundName {
     pub name: String,
     pub bound_type: Type,
@@ -50,7 +56,8 @@ impl fmt::Display for RcTemporary {
 #[derive(Debug, Clone)]
 pub enum RcSubValuePath {
     This {
-        parent: Option<Box<RcSubValuePath>>
+        parent: Option<Box<RcSubValuePath>>,
+        strength: RcStrength,
     },
 
     Member {
@@ -67,10 +74,16 @@ pub enum RcSubValuePath {
 impl fmt::Display for RcSubValuePath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RcSubValuePath::This { parent: None } =>
-                write!(f, "<this>"),
-            RcSubValuePath::This { parent: Some(parent) } =>
-                write!(f, "{}", parent),
+            RcSubValuePath::This { parent, strength } => {
+                match parent {
+                    Some(parent) => write!(f, "{}", parent)?,
+                    None => write!(f, "<this>")?,
+                }
+                if *strength == RcStrength::Weak {
+                    write!(f, "(weak)")?;
+                }
+                Ok(())
+            }
 
             RcSubValuePath::Member { parent: None, name } =>
                 write!(f, "<this>.{}", name),
@@ -81,6 +94,15 @@ impl fmt::Display for RcSubValuePath {
                 write!(f, "<this>[{}]", index),
             RcSubValuePath::ArrayElement { parent: Some(parent), index } =>
                 write!(f, "{}[{}]", parent, index),
+        }
+    }
+}
+
+impl RcSubValuePath {
+    pub fn strength(&self) -> RcStrength {
+        match self {
+            RcSubValuePath::This { strength, .. } => *strength,
+            _ => RcStrength::Strong,
         }
     }
 }
@@ -103,7 +125,7 @@ pub enum RcStatement {
             statement, which will need to be released before assignment and retained
             afterwards
         */
-        rc_assignments: Vec<Expression>,
+        rc_assignments: Vec<(Expression, RcStrength)>,
     },
 }
 
@@ -140,7 +162,7 @@ impl fmt::Debug for RcStatement {
                 write!(f, "\treassigned rc values: [")?;
                 if !rc_assignments.is_empty() {
                     writeln!(f)?;
-                    for val_name in rc_assignments {
+                    for (val_name, _) in rc_assignments {
                         writeln!(f, "\t\t`{}`", val_name)?;
                     }
                     writeln!(f, "\t]")?;
@@ -157,7 +179,7 @@ impl fmt::Debug for RcStatement {
 impl RcStatement {
     fn unwrap_value(self,
                     rc_bindings: &mut Vec<RcTemporary>,
-                    rc_assignments: &mut Vec<Expression>)
+                    rc_assignments: &mut Vec<(Expression, RcStrength)>)
                     -> Expression {
         match self {
             RcStatement::Statement {
@@ -217,7 +239,7 @@ fn hoist_rc_value(bindings: &mut Vec<RcTemporary>,
 
 fn extract_rc_subexpr(expr: Expression,
                       rc_bindings: &mut Vec<RcTemporary>,
-                      rc_assignments: &mut Vec<Expression>,
+                      rc_assignments: &mut Vec<(Expression, RcStrength)>,
                       id_offset: usize)
                       -> Expression {
     let rc_expr = extract_stmt_rc_bindings(expr, id_offset + rc_bindings.len());
@@ -409,7 +431,8 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
         let lhs_type = lhs.expr_type().unwrap().unwrap();
 
         if lhs_type.is_ref_counted() {
-            rc_assignments.push(*lhs.clone());
+            let strength = if lhs_type.is_weak() { RcStrength::Weak } else { RcStrength::Strong };
+            rc_assignments.push((*lhs.clone(), strength));
         }
     }
 
@@ -460,14 +483,30 @@ pub fn rc_subvalues(expr_type: &Type,
                         name: member.name.clone(),
                     };
 
-                    rc_subvalues(&member.decl_type, scope, Some(member_path))
+                    let mut vals = rc_subvalues(&member.decl_type, scope, Some(member_path));
+
+                    if member.decl_type.is_weak() {
+                        assert_eq!(1, vals.len(), "weak members cannot have multiple rc subvalues (should be a single RC pointer, got: {:#?})", vals);
+                        match &mut vals[0] {
+                            RcSubValuePath::This { strength, .. } => {
+                                *strength = RcStrength::Weak;
+                            }
+                            _ => unreachable!(),
+                        }
+                    }
+                    vals
                 });
 
             member_exprs.collect()
         }
 
         scalar if scalar.is_ref_counted()
-        => vec![RcSubValuePath::This { parent: parent.map(Box::new) }],
+        => vec![
+            RcSubValuePath::This {
+                parent: parent.map(Box::new),
+                strength: RcStrength::Strong,
+            }
+        ],
 
         _ => vec![]
     }

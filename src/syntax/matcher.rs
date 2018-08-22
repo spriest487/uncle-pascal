@@ -8,6 +8,7 @@ use tokens;
 pub enum Matcher {
     Keyword(keywords::Keyword),
     Operator(operators::Operator),
+    Identifier(String),
     AnyKeyword,
     AnyIdentifier,
     AnyOperator,
@@ -37,6 +38,12 @@ impl From<keywords::Keyword> for Matcher {
     }
 }
 
+impl<'a> From<&'a str> for Matcher {
+    fn from(name: &str) -> Self {
+        Matcher::Identifier(name.to_string())
+    }
+}
+
 pub trait MatchOneOf {
     fn or<T>(self, next: T) -> Matcher where T: Into<Matcher>;
 }
@@ -62,6 +69,7 @@ impl fmt::Display for Matcher {
         match self {
             Matcher::Keyword(kw) => write!(f, "{}", tokens::Keyword(*kw)),
             Matcher::Operator(op) => write!(f, "{}", op),
+            Matcher::Identifier(name) => f.write_str(name),
             Matcher::AnyKeyword => write!(f, "keyword"),
             Matcher::AnyIdentifier => write!(f, "identifier"),
             Matcher::AnyOperator => write!(f, "binary operator"),
@@ -92,6 +100,7 @@ impl Matcher {
             Matcher::Keyword(kw) => token.is_keyword(*kw),
             Matcher::AnyKeyword => token.is_any_keyword(),
             Matcher::Operator(op) => token.is_operator(*op),
+            Matcher::Identifier(name) => token.is_identifier(name),
             Matcher::AnyIdentifier => token.is_any_identifier(),
             Matcher::AnyOperator => token.is_any_operator(),
             Matcher::AnyLiteralInteger => token.is_any_literal_int(),

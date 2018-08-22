@@ -457,7 +457,7 @@ impl ConstExpression {
     pub fn value_type(&self, hint: Option<&Type>) -> Type {
         match self {
             ConstExpression::String(_) => {
-                Type::Class(ParameterizedName::new_simple("System.String"))
+                Type::class_ref(ParameterizedName::new_simple("System.String"))
             }
 
             ConstExpression::Integer(int_const) => {

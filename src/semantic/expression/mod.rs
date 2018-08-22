@@ -33,6 +33,7 @@ use node::{
 use operators;
 use types::{
     Type,
+    ReferenceType,
 };
 use consts::IntConstant;
 
@@ -246,7 +247,8 @@ impl Expression {
 
     pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
-            Some(Type::Class(type_name)) => {
+            | Some(Type::WeakReference(ReferenceType::Class(type_name)))
+            | Some(Type::Reference(ReferenceType::Class(type_name))) => {
                 let (_class_id, class_decl) = self.context.scope.get_class(&type_name.name)
                     .expect("record must exist in scope of expression it's used in");
 
@@ -478,8 +480,12 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
      class members are always private i.e. inaccessible outside the unit that
      the class is declared in */
     let (base_decl, private_members) = match &base_type {
-        Some(Type::Record(name)) => (of.scope().get_record_specialized(name), false),
-        Some(Type::Class(name)) => (of.scope().get_class_specialized(name), true),
+        | Some(Type::Record(name)) => (of.scope().get_record_specialized(name), false),
+
+        | Some(Type::Reference(ReferenceType::Class(name)))
+        | Some(Type::WeakReference(ReferenceType::Class(name)))
+        => (of.scope().get_class_specialized(name), true),
+
         _ => (None, false),
     };
 
@@ -553,18 +559,14 @@ impl FunctionCall<SemanticContext> {
                 let scope = args[0].context.scope();
 
                 // todo: getting the sig for an interface call is duplicated in call_type
-                match for_type {
-                    Type::AnyImplementation(_) => {
-                        let (_, interface) = scope.get_interface(&interface_id).unwrap();
-                        interface.decl.methods.get(func_name).cloned().unwrap()
-                    }
+                if for_type.is_interface_ref() {
+                    let (_, interface) = scope.get_interface(&interface_id).unwrap();
+                    interface.decl.methods.get(func_name).cloned().unwrap()
+                } else {
+                    let (_, func) = scope.get_interface_impl(&for_type, &interface_id, &func_name)
+                        .expect("interface call target must exist");
 
-                    _ => {
-                        let (_, func) = scope.get_interface_impl(&for_type, &interface_id, &func_name)
-                            .expect("interface call target must exist");
-
-                        func.signature()
-                    }
+                    func.signature()
                 }
             }
         }

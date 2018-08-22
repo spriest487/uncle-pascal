@@ -68,6 +68,7 @@ typedef void(*System_Internal_Destructor)(const void* instance);
 struct System_Internal_Object {
     System_Internal_Class* Class;
     PascalType_System_NativeUInt StrongCount;
+    PascalType_System_NativeUInt WeakCount;
 };
 
 struct System_Internal_InterfaceImpl {
@@ -86,6 +87,10 @@ static const void* System_Internal_FindVTable(System_Internal_Object* obj,
 
 static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);
+static void System_Internal_Rc_RetainWeak(System_Internal_Object* obj);
+static void System_Internal_Rc_ReleaseWeak(System_Internal_Object* obj);
+static struct System_Internal_Object* System_Internal_Rc_WeakValue(System_Internal_Object* obj);
+
 static System_Internal_Object* System_Internal_Rc_GetMem(
     PascalType_System_NativeUInt size,
     const char* constructorName);

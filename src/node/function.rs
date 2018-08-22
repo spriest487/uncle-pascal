@@ -18,7 +18,7 @@ impl fmt::Display for FunctionArgModifier {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionArg<TContext>
     where TContext: Context
 {
@@ -29,7 +29,7 @@ pub struct FunctionArg<TContext>
     pub default_value: Option<Expression<TContext>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct InterfaceImplementation<TContext>
     where TContext: Context
 {
@@ -37,7 +37,7 @@ pub struct InterfaceImplementation<TContext>
     pub for_type: TContext::Type,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct FunctionDecl<TContext>
     where TContext: Context
 {
