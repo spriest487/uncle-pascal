@@ -159,6 +159,15 @@ pub enum RecordKind {
     Class,
 }
 
+impl RecordKind {
+    pub fn is_ref_counted(&self) -> bool {
+        match self {
+            RecordKind::Class => true,
+            RecordKind::Record => false,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct RecordDecl<TContext>
     where TContext: Context

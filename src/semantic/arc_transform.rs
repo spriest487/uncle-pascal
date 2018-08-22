@@ -8,6 +8,8 @@ use semantic::{
     SemanticContext,
     CollectionConstructor,
     Block,
+    ObjectConstructor,
+    ObjectConstructorMember,
 };
 use node::{
     self,
@@ -272,7 +274,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
     /* bind the results of any function calls which return RC objects to temporary bindings so we
      can release them later. nothing but function calls returning RC objects can leak an RC,
      because local vars and func args are already managed elsewhere */
-    let (bound_name, body) = match &stmt.value {
+    let (bound_name, body) = match stmt.value {
         ExpressionValue::FunctionCall(func_call) => {
             // extract rc bindings from arg expressions
             let mut args: Vec<_> = func_call.args().iter()
@@ -330,26 +332,48 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
         }
 
         ExpressionValue::ObjectConstructor(ctor) => {
-            let rc_subvals = rc_subvalues(
-                ctor.object_type.as_ref().unwrap(),
-                stmt.scope(),
-                None,
-            );
+            /* hoist rc members constructed inline in the ctor expression */
+            let members = ctor.members.iter()
+                .cloned()
+                .map(|member| {
+                    let value = extract_rc_subexpr(
+                        member.value,
+                        &mut rc_bindings,
+                        &mut rc_assignments,
+                        id_offset
+                    );
 
-            let ctor_expr = Expression::object_ctor(ctor.clone(), context.clone());
+                    ObjectConstructorMember {
+                        name: member.name,
+                        value,
+                    }
+                })
+                .collect();
 
-            let rc_expr = if rc_subvals.is_empty() {
-                ctor_expr
-            } else {
+            let object_type = ctor.object_type;
+            let ctor = ObjectConstructor {
+                members,
+                object_type: object_type.clone(),
+            };
+
+            let ctor_expr = Expression::object_ctor(ctor, context.clone());
+
+            /* then hoist the whole expression if it's constructing an rc type */
+            let result = if object_type.as_ref().unwrap().is_ref_counted() {
                 let temporary = RcTemporary {
                     base_value: ctor_expr,
-                    rc_subvalues: rc_subvals,
+                    rc_subvalues: vec![RcSubValuePath::This {
+                        parent: None,
+                        strength: RcStrength::Strong,
+                    }],
                 };
 
                 hoist_rc_value(&mut rc_bindings, temporary, &context, id_offset)
+            } else {
+                ctor_expr
             };
 
-            (None, rc_expr)
+            (None, result)
         }
 
         ExpressionValue::CollectionConstructor(ctor) => {
@@ -418,7 +442,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression,
                 id_offset,
             );
 
-            (None, Expression::binary_op(lhs, *op, rhs, context))
+            (None, Expression::binary_op(lhs, op, rhs, context))
         }
 
         _ => {
