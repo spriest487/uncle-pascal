@@ -9,7 +9,6 @@ use semantic::{
     },
 };
 use target_c::ast::{
-    rc_release,
     TranslationUnit,
     TranslationResult,
     Expression,
@@ -33,37 +32,17 @@ impl Block {
                      -> TranslationResult<Self> {
         let rc_block = extract_block_rc_statements(block.clone());
 
-        Self::translate_rc_block(rc_block, locals, unit)
+        Self::translate_rc_block(&rc_block, locals, unit)
     }
 
-    pub(super) fn translate_rc_block(rc_block: Vec<RcStatement>,
+    pub(super) fn translate_rc_block(rc_block: &[RcStatement],
                                      locals: Option<&[semantic::VarDecl]>,
                                      unit: &mut TranslationUnit)
                                      -> TranslationResult<Self> {
         /* values that are bound to a name have +1 rc after the statement they're created
         in, and at the end of the block we release them all in reverse order */
         let release_vals: Vec<_> = rc_block.iter()
-            .flat_map(|stmt| match stmt {
-                | RcStatement::Statement { bound_name: Some(name), body, .. }
-                => {
-                    let subvals = rc_subvalues(
-                        &name.bound_type,
-                        body.scope(),
-                        None,
-                    );
-
-                    subvals.iter()
-                        .map(|subval| {
-                            let base = Expression::from(Name::local(name.name.as_str()));
-                            Expression::translate_rc_value_expr(subval, base)
-                        })
-                        .collect()
-                }
-
-                | RcStatement::Statement { bound_name: None, .. }
-                | RcStatement::Block(_)
-                => vec![]
-            })
+            .flat_map(Expression::bound_value_exprs)
             .collect();
 
         let mut statements = Vec::new();
@@ -82,7 +61,8 @@ impl Block {
         }
 
         // release rc values of names bound in the body in reverse order
-        statements.extend(release_vals.into_iter().rev().map(rc_release));
+        statements.extend(release_vals.into_iter().rev()
+            .map(|(rc_val, rc_strength)| Expression::rc_release(rc_val, rc_strength)));
 
         // release block locals in reverse decl order
         if let Some(locals) = locals {

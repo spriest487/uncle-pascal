@@ -15,7 +15,13 @@ use target_c::ast::{
     Block,
     CastKind,
 };
-use semantic;
+use semantic::{
+    self,
+    arc_transform::{
+        rc_subvalues,
+        RcStrength,
+    },
+};
 use node::{
     self,
     Identifier,
@@ -382,7 +388,7 @@ impl Struct {
             }
         }
 
-        for (mem_num, member) in all_fields.iter().enumerate() {
+        for (mem_num, member) in all_fields.into_iter().enumerate() {
             let result_member = Expression::member(result_val.clone(), member.name.clone());
             let arg_name = Name::local(format!("arg{}", mem_num));
 
@@ -391,16 +397,27 @@ impl Struct {
                 Expression::binary_op(result_member.clone(), "=", deref_arg)
             ];
 
-            // if the member is refcounted, increment it appropriately after assignment
-            if member.decl_type.is_ref_counted() {
-                if member.decl_type.is_weak() {
-                    /* weak refs can be explicitly null on construction */
-                    assign_member.push(Expression::if_then(
+            /* for classes, we need to increment refcounts for members, because the object becomes
+            an owner of those references. for records that's not necessary because records don't
+            own anything and their references are managed by whatever owns them (the stack, a class
+            object, etc) */
+            if member.decl_type.is_ref_counted() && record.kind.is_ref_counted() {
+                let member_rc_vals = rc_subvalues(&member.decl_type, record.scope(), None);
+                for member_rc_val in member_rc_vals {
+                    let member_val_expr = Expression::translate_rc_value_expr(
+                        &member_rc_val,
                         result_member.clone(),
-                        rc_retain_weak(result_member),
-                    ));
-                } else {
-                    assign_member.push(rc_retain(result_member));
+                    );
+
+                    if member_rc_val.strength() == RcStrength::Weak {
+                        /* weak refs can be explicitly null on construction */
+                        assign_member.push(Expression::if_then(
+                            member_val_expr.clone(),
+                            rc_retain_weak(member_val_expr),
+                        ));
+                    } else {
+                        assign_member.push(rc_retain(member_val_expr));
+                    }
                 }
             }
 

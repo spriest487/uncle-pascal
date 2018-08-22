@@ -21,6 +21,7 @@ use semantic::{
         RcSubValuePath,
         RcStatement,
         BoundName,
+        rc_subvalues,
         extract_stmt_rc_bindings,
     },
 };
@@ -274,6 +275,29 @@ impl Expression {
         }
     }
 
+    pub fn bound_value_exprs(statement: &RcStatement) -> Vec<(Expression, RcStrength)> {
+        match statement {
+            RcStatement::Statement { bound_name: Some(bound_name), body, .. } => {
+                let subvals = rc_subvalues(
+                    &bound_name.bound_type,
+                    body.scope(),
+                    None,
+                );
+
+                subvals.iter()
+                    .map(|subval| {
+                        let base = Expression::from(Name::local(bound_name.name.as_str()));
+                        let val_expr = Expression::translate_rc_value_expr(subval, base);
+
+                        (val_expr, subval.strength())
+                    })
+                    .collect()
+            }
+
+            _ => vec![]
+        }
+    }
+
     pub fn rc_retain(val: Expression, strength: RcStrength) -> Expression {
         match strength {
             RcStrength::Strong => rc_retain(val),
@@ -288,7 +312,7 @@ impl Expression {
         }
     }
 
-    pub fn translate_rc_statement(stmt: RcStatement,
+    pub fn translate_rc_statement(stmt: &RcStatement,
                                   unit: &mut TranslationUnit)
                                   -> TranslationResult<Vec<Expression>> {
         match stmt {
@@ -332,7 +356,7 @@ impl Expression {
 
                     None => Self::translate_expression(&body, unit)?,
                 };
-                let rc_val_exprs: Vec<(Expression, RcStrength)> = rc_assignments.iter()
+                let rc_assigned_vals: Vec<(Expression, RcStrength)> = rc_assignments.iter()
                     .map(|(expr, strength)| {
                         let translated = Self::translate_expression(expr, unit)?;
                         Ok((translated, *strength))
@@ -342,7 +366,7 @@ impl Expression {
                 let mut temp_block = Vec::new();
 
                 // ...then release temp bindings and close the block
-                let rc_subvals: Vec<(Expression, RcStrength)> = rc_bindings.iter()
+                let rc_binding_vals: Vec<(Expression, RcStrength)> = rc_bindings.iter()
                     .enumerate()
                     .flat_map(|(tmp_id, rc_binding)| {
                         rc_binding.rc_subvalues.iter()
@@ -383,7 +407,7 @@ impl Expression {
                     if let ExpressionValue::Identifier(name) = &rc_val.value {
                         if rc_val.scope().get_symbol(name).unwrap().initialized() {
                             // if (lhs) release(lhs)
-                            let (val_expr, _) = &rc_val_exprs[i];
+                            let (val_expr, _) = &rc_assigned_vals[i];
 
                             let release_if_set = Expression::if_then(
                                 val_expr.clone(),
@@ -407,18 +431,17 @@ impl Expression {
 
                 /* if this statement binds an expression to a name, the rc values
                 in this statement need to outlive it so add a reference */
-                if bound_name.is_some() {
-                    temp_block.extend(rc_subvals.iter().cloned()
-                        .map(|(val, strength)| Self::rc_retain(val, strength)));
+                for (bound_rc_val, bound_strength) in Self::bound_value_exprs(&stmt) {
+                    temp_block.push(Self::rc_retain(bound_rc_val, bound_strength));
                 }
 
                 // ...retain newly-assigned values...
-                for (rc_val, rc_strength) in rc_val_exprs {
+                for (rc_val, rc_strength) in rc_assigned_vals {
                     temp_block.push(Self::rc_retain(rc_val, rc_strength));
                 }
 
                 // release statement temporaries
-                temp_block.extend(rc_subvals.iter().cloned()
+                temp_block.extend(rc_binding_vals.iter().cloned()
                     .map(|(val, strength)| Self::rc_release(val, strength)));
 
                 lines.push(Expression::Block(Block::new(temp_block)));
@@ -433,7 +456,7 @@ impl Expression {
                                -> TranslationResult<Vec<Self>> {
         let rc_block = extract_stmt_rc_bindings(stmt.clone(), 0);
 
-        Self::translate_rc_statement(rc_block, unit)
+        Self::translate_rc_statement(&rc_block, unit)
     }
 
     pub fn translate_expression(expr: &semantic::Expression,
