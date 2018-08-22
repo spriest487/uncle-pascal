@@ -242,18 +242,16 @@ impl Expression {
                                    -> Expression {
         match rc_val {
             RcSubValuePath::This { parent: None, strength } => {
-                if *strength == RcStrength::Weak {
-                    rc_weak_value(base.into())
-                } else {
-                    base.into()
+                match *strength {
+                    RcStrength::Weak => rc_weak_value(base.into()),
+                    RcStrength::Strong => base.into(),
                 }
             }
             RcSubValuePath::This { parent: Some(parent), strength } => {
                 let parent = Self::translate_rc_value_expr(parent, base);
-                if *strength == RcStrength::Weak {
-                    rc_weak_value(parent)
-                } else {
-                    parent
+                match *strength {
+                    RcStrength::Weak => rc_weak_value(parent),
+                    RcStrength::Strong => parent,
                 }
             }
 

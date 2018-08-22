@@ -81,10 +81,11 @@ impl fmt::Display for RcSubValuePath {
                     Some(parent) => write!(f, "{}", parent)?,
                     None => write!(f, "<this>")?,
                 }
-                if *strength == RcStrength::Weak {
-                    write!(f, "(weak)")?;
+
+                match *strength {
+                    RcStrength::Weak => write!(f, " (weak)"),
+                    RcStrength::Strong => Ok(())
                 }
-                Ok(())
             }
 
             RcSubValuePath::Member { parent: None, name } =>

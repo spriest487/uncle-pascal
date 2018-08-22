@@ -403,14 +403,18 @@ impl Struct {
                         result_member.clone(),
                     );
 
-                    if member_rc_val.strength() == RcStrength::Weak {
-                        /* weak refs can be explicitly null on construction */
-                        statements.push(Expression::if_then(
-                            member_val_expr.clone(),
-                            rc_retain_weak(member_val_expr),
-                        ));
-                    } else {
-                        statements.push(rc_retain(member_val_expr));
+                    match member_rc_val.strength() {
+                        RcStrength::Strong => {
+                            statements.push(rc_retain(member_val_expr));
+                        }
+
+                        RcStrength::Weak => {
+                            /* weak refs can be explicitly null on construction */
+                            statements.push(Expression::if_then(
+                                member_val_expr.clone(),
+                                rc_retain_weak(member_val_expr),
+                            ));
+                        }
                     }
                 }
             }
