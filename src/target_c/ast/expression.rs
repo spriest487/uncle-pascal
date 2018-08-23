@@ -349,7 +349,8 @@ impl Expression {
                 let rc_assigned_vals: Vec<(Expression, RefStrength)> = rc_assignments.iter()
                     .map(|arc_val| {
                         let translated = Self::translate_expression(&arc_val.expr, unit)?;
-                        Ok((translated, arc_val.ref_strength))
+                        let rc_val = Self::translate_rc_value_expr(&arc_val.path, translated);
+                        Ok((rc_val, arc_val.path.strength()))
                     })
                     .collect::<TranslationResult<_>>()?;
 
@@ -397,11 +398,11 @@ impl Expression {
                     if let ExpressionValue::Identifier(name) = &arc_val.expr.value {
                         if arc_val.expr.scope().get_symbol(name).unwrap().initialized() {
                             // if (lhs) release(lhs)
-                            let (val_expr, _) = &rc_assigned_vals[i];
+                            let (val_expr, ref_strength) = &rc_assigned_vals[i];
 
                             let release_if_set = Expression::if_then(
                                 val_expr.clone(),
-                                Self::rc_release(val_expr.clone(), arc_val.ref_strength),
+                                Self::rc_release(val_expr.clone(), *ref_strength),
                             );
                             temp_block.push(release_if_set);
                         }

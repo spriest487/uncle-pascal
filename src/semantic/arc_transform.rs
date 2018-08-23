@@ -181,7 +181,7 @@ impl fmt::Debug for ArcStatement {
 
 pub struct ArcValue {
     pub expr: Expression,
-    pub ref_strength: RefStrength,
+    pub path: ArcSubValuePath,
 }
 
 struct ArcContext {
@@ -260,10 +260,10 @@ impl ArcContext {
         }
     }
 
-    fn assigned_val(&mut self, expr: Expression, ref_strength: RefStrength) {
+    fn assigned_val(&mut self, expr: Expression, path: ArcSubValuePath) {
         self.assignments.push(ArcValue {
             expr,
-            ref_strength,
+            path,
         })
     }
 }
@@ -432,12 +432,13 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
     };
 
     if let ExpressionValue::BinaryOperator { lhs, op: operators::Assignment, .. } = &body.value {
-        /* if assigning a new value to an rc variable, release the old value first */
+        /* if assigning a new value to something containing rc values,
+        track which values got reassigned so we can release them (before assigning)
+        and retain them (after assigning) */
         let lhs_type = lhs.expr_type().unwrap().unwrap();
 
-        if lhs_type.is_ref_counted() {
-            let strength = if lhs_type.is_weak() { RefStrength::Weak } else { RefStrength::Strong };
-            arc_ctx.assigned_val(*lhs.clone(), strength);
+        for reassigned_val in rc_subvalues(&lhs_type, body.scope(), None) {
+            arc_ctx.assigned_val(*lhs.clone(), reassigned_val);
         }
     }
 
