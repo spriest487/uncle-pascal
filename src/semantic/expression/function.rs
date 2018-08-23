@@ -33,6 +33,101 @@ use super::{
 
 pub type FunctionCall = node::FunctionCall<SemanticContext>;
 
+impl FunctionCall {
+    pub fn scope(&self) -> &Scope {
+        match self {
+            node::FunctionCall::Function { target, .. } => target.scope(),
+            node::FunctionCall::Method { args, .. } => args[0].scope(),
+        }
+    }
+
+    pub fn annotate(call: &syntax::FunctionCall,
+                    context: &SemanticContext)
+                    -> SemanticResult<(Expression, Rc<Scope>)> {
+        let scope = context.scope.clone();
+        let (target, args) = match call {
+            node::FunctionCall::Function { target, args } =>
+                (target, args),
+            node::FunctionCall::Method { .. } =>
+                unreachable!("interface calls can't be parsed"),
+        };
+
+        /*
+            UFCS resolution:
+            expressions of the form x.a() should first check if a is function in the same namespace as
+            type A, taking x as the first param, or an interface method implemented for x named a()
+        */
+        let ufcs_candidate = find_ufcs_candidate(target, &context);
+        if let Some(ufcs_call) = ufcs_candidate.as_ref().and_then(find_ufcs_call) {
+            let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
+            return Ok((ufcs_call, scope));
+        }
+
+        let find_method = ufcs_candidate.as_ref()
+            .and_then(|candidate| {
+                find_interface_call(candidate)
+                    .or_else(|| find_explicit_interface_call(candidate, args))
+            });
+
+        if let Some(interface_call) = find_method {
+            return annotate_method(interface_call, args);
+        }
+
+        /*
+            handle typecasting - if the func name is just an identifier,
+            it might be a typecast instead if there's no function by that
+            name and the arg list is exactly 1 long
+       */
+        if let ExpressionValue::Identifier(name) = &target.value {
+            if scope.get_function(name).is_none() && args.len() == 1 {
+                if let Some(target_type) = scope.get_type_alias(name) {
+                    // we already checked there's exactly 1 arg
+                    let from_arg = args.into_iter()
+                        .next()
+                        .unwrap();
+                    let (from_value, scope) = Expression::annotate(
+                        from_arg,
+                        Some(&target_type),
+                        scope,
+                    )?;
+
+                    let context = SemanticContext {
+                        token: target.context.token().clone(),
+                        scope: scope.clone(),
+
+                        // function calls currently have no use for contextual type hints
+                        type_hint: None,
+                    };
+
+                    let type_cast = Expression::type_cast(target_type, from_value, context);
+                    return Ok((type_cast, scope));
+                }
+            }
+        }
+
+        let (target, scope) = Expression::annotate(target, None, scope)?;
+        expect_initialized(&target)?;
+
+        /* ordinary function call */
+        let sig = match target.expr_type()? {
+            Some(Type::Function(sig)) => {
+                *sig.clone()
+            }
+
+            invalid => {
+                return Err(SemanticError::invalid_function_type(invalid, target.context));
+            }
+        };
+
+        let (typed_args, scope) = annotate_args(args, &sig, &context, scope)?;
+
+        let scope = scope_after_fn_call(&sig, &typed_args, scope);
+        let func_call = Expression::function_call(target, typed_args);
+
+        Ok((func_call, scope))
+    }
+}
+
 pub fn annotate_args(args: &[syntax::Expression],
                      sig: &FunctionSignature,
                      context: &SemanticContext,
@@ -52,92 +147,6 @@ pub fn annotate_args(args: &[syntax::Expression],
     }
 
     Ok((typed_args, scope))
-}
-
-pub fn annotate_call(call: &syntax::FunctionCall,
-                     context: &SemanticContext)
-                     -> SemanticResult<(Expression, Rc<Scope>)> {
-    let scope = context.scope.clone();
-    let (target, args) = match call {
-        node::FunctionCall::Function { target, args } =>
-            (target, args),
-        node::FunctionCall::Method { .. } =>
-            unreachable!("interface calls can't be parsed"),
-    };
-
-    /*
-        UFCS resolution:
-        expressions of the form x.a() should first check if a is function in the same namespace as
-        type A, taking x as the first param, or an interface method implemented for x named a()
-    */
-    let ufcs_candidate = find_ufcs_candidate(target, &context);
-    if let Some(ufcs_call) = ufcs_candidate.as_ref().and_then(find_ufcs_call) {
-        let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
-        return Ok((ufcs_call, scope));
-    }
-
-    let find_method = ufcs_candidate.as_ref()
-        .and_then(|candidate| {
-            find_interface_call(candidate)
-                .or_else(|| find_explicit_interface_call(candidate, args))
-        });
-
-    if let Some(interface_call) = find_method {
-        return annotate_method(interface_call, args);
-    }
-
-    /*
-        handle typecasting - if the func name is just an identifier,
-        it might be a typecast instead if there's no function by that
-        name and the arg list is exactly 1 long
-   */
-    if let ExpressionValue::Identifier(name) = &target.value {
-        if scope.get_function(name).is_none() && args.len() == 1 {
-            if let Some(target_type) = scope.get_type_alias(name) {
-                // we already checked there's exactly 1 arg
-                let from_arg = args.into_iter()
-                    .next()
-                    .unwrap();
-                let (from_value, scope) = Expression::annotate(
-                    from_arg,
-                    Some(&target_type),
-                    scope,
-                )?;
-
-                let context = SemanticContext {
-                    token: target.context.token().clone(),
-                    scope: scope.clone(),
-
-                    // function calls currently have no use for contextual type hints
-                    type_hint: None,
-                };
-
-                let type_cast = Expression::type_cast(target_type, from_value, context);
-                return Ok((type_cast, scope));
-            }
-        }
-    }
-
-    let (target, scope) = Expression::annotate(target, None, scope)?;
-    expect_initialized(&target)?;
-
-    /* ordinary function call */
-    let sig = match target.expr_type()? {
-        Some(Type::Function(sig)) => {
-            *sig.clone()
-        }
-
-        invalid => {
-            return Err(SemanticError::invalid_function_type(invalid, target.context));
-        }
-    };
-
-    let (typed_args, scope) = annotate_args(args, &sig, &context, scope)?;
-
-    let scope = scope_after_fn_call(&sig, &typed_args, scope);
-    let func_call = Expression::function_call(target, typed_args);
-
-    Ok((func_call, scope))
 }
 
 fn annotate_method(call_site: MethodCallSite,
@@ -462,7 +471,7 @@ pub fn call_type(call: &FunctionCall,
                                 let missing_func = Identifier::from(func_name);
                                 return Err(SemanticError::unknown_symbol(
                                     missing_func,
-                                    context.clone()
+                                    context.clone(),
                                 ));
                             }
 

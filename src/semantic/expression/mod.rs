@@ -123,7 +123,7 @@ impl Expression {
             }
 
             ExpressionValue::FunctionCall(call) => {
-                function::annotate_call(call, &expr_context)
+                FunctionCall::annotate(call, &expr_context)
             }
 
             ExpressionValue::TypeCast { target_type, from_value } =>

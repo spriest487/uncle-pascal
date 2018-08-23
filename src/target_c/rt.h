@@ -153,15 +153,6 @@ static void System_Internal_Rc_ReleaseWeak(System_Internal_Object* obj) {
     }
 }
 
-static struct System_Internal_Object* System_Internal_Rc_WeakValue(System_Internal_Object* obj) {
-    if (obj->StrongCount == 0) {
-        std::fprintf(stderr, "accessed weak reference that was already disposed @ %p\n", obj);
-        std::abort();
-    }
-
-    return obj;
-}
-
 static void System_Internal_Rc_Release(System_Internal_Object* obj) {
 #ifdef UNCLEPASCAL_RC_DEBUG
     if (!obj) {

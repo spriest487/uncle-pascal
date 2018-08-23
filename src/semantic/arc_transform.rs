@@ -509,7 +509,11 @@ pub fn rc_subvalues(expr_type: &Type,
         => vec![
             ArcSubValuePath::This {
                 parent: parent.map(Box::new),
-                strength: RefStrength::Strong,
+                strength: if scalar.is_weak() {
+                    RefStrength::Weak
+                } else {
+                    RefStrength::Strong
+                }
             }
         ],
 

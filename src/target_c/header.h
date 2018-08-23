@@ -75,7 +75,6 @@ static void System_Internal_Rc_Retain(System_Internal_Object* obj);
 static void System_Internal_Rc_Release(System_Internal_Object* obj);
 static void System_Internal_Rc_RetainWeak(System_Internal_Object* obj);
 static void System_Internal_Rc_ReleaseWeak(System_Internal_Object* obj);
-static struct System_Internal_Object* System_Internal_Rc_WeakValue(System_Internal_Object* obj);
 
 static System_Internal_Object* System_Internal_Rc_GetMem(
     PascalType_System_NativeUInt size,

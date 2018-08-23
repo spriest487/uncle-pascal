@@ -109,7 +109,7 @@ impl TranslationUnit {
         let ctor_name = match self.array_ctors.entry(key) {
             Entry::Occupied(entry) => {
                 entry.get().name.clone()
-            },
+            }
 
             Entry::Vacant(entry) => {
                 let array_ctype = CType::Array(CArray {
@@ -128,12 +128,14 @@ impl TranslationUnit {
 
                     let elements = Expression::member(result_name.clone(), "Elements");
 
-                    statements.extend(arg_names.iter().enumerate().map(|(i, arg)| {
+                    for (i, arg_name) in arg_names.iter().enumerate() {
                         let index = Expression::SizeLiteral(i);
-                        Expression::binary_op(
-                            Expression::array_element(elements.clone(), index), "=", arg.clone(),
-                        )
-                    }));
+                        statements.push(Expression::binary_op(
+                            Expression::array_element(elements.clone(), index),
+                            "=",
+                            arg_name.clone(),
+                        ));
+                    }
                     statements.push(Expression::return_value(result_name));
                     Block::new(statements)
                 };

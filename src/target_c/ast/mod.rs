@@ -80,10 +80,3 @@ pub fn rc_release_weak(expr: impl Into<Expression>) -> Expression {
         vec![expr.into()],
     )
 }
-
-pub fn rc_weak_value(expr: impl Into<Expression>) -> Expression {
-    Expression::function_call(
-        Name::internal_symbol("Rc_WeakValue"),
-        vec![expr.into()],
-    )
-}
