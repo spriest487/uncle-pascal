@@ -7,6 +7,7 @@ use semantic::{
         extract_block_rc_statements,
         rc_subvalues,
     },
+    Declaration as PascalDeclaration,
 };
 use target_c::ast::{
     TranslationUnit,

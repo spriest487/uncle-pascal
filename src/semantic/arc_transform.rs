@@ -307,18 +307,17 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
 
             let call_expr = match func_call {
                 FunctionCall::Function { target, .. } => {
-                    let target = arc_ctx.extract_rc_subexpr(*target.clone());
+                    let target = arc_ctx.extract_rc_subexpr(*target);
                     Expression::function_call(target, args)
                 }
 
+                FunctionCall::Extension { self_expr, func_name, for_type, .. } => {
+                    let self_expr = arc_ctx.extract_rc_subexpr(*self_expr);
+                    Expression::extension_call(self_expr, func_name, for_type, args)
+                }
+
                 FunctionCall::Method { interface_id, func_name, for_type, .. } => {
-                    Expression::method_call(
-                        interface_id.clone(),
-                        func_name.clone(),
-                        for_type.clone(),
-                        args,
-                        context.clone(),
-                    )
+                    Expression::method_call(interface_id, func_name, for_type, args, context.clone())
                 }
             };
 

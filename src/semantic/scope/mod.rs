@@ -1,6 +1,7 @@
 mod bindings;
 mod scoped_symbol;
 mod interface;
+mod extension_map;
 
 #[cfg(test)]
 mod test;
@@ -11,6 +12,7 @@ pub use self::bindings::{
 };
 pub use self::scoped_symbol::ScopedSymbol;
 use self::interface::Interface;
+use self::extension_map::ExtensionMap;
 
 use std::{
     collections::hash_map::*,
@@ -21,7 +23,9 @@ use std::{
 
 use types::{
     Type,
-    ReferenceType,
+    ArrayType,
+    DynamicArrayType,
+    Reference,
     ParameterizedName,
 };
 use node::{
@@ -113,12 +117,15 @@ pub struct Scope {
      e.g. uses System.* adds String => System.String
      */
     imported_names: HashMap<Identifier, Identifier>,
+
+    method_map: ExtensionMap,
 }
 
 impl Scope {
     pub fn new_root() -> Self {
         let root = Scope {
             names: HashMap::new(),
+            method_map: ExtensionMap::new(),
             imported_names: HashMap::new(),
             namespace: ScopeNamespace::Root,
         };
@@ -129,6 +136,7 @@ impl Scope {
     pub fn system() -> Self {
         let system = Scope {
             names: HashMap::new(),
+            method_map: ExtensionMap::new(),
             imported_names: HashMap::new(),
             namespace: ScopeNamespace::Unit(Identifier::from("System")),
         };
@@ -154,6 +162,7 @@ impl Scope {
             namespace: ScopeNamespace::Unit(namespace.into()),
             names: HashMap::new(),
             imported_names: HashMap::new(),
+            method_map: ExtensionMap::new(),
         };
 
         scope.reference(&Scope::system(), &UnitReferenceKind::Namespaced)
@@ -174,6 +183,7 @@ impl Scope {
             namespace: parent_ns,
             names: HashMap::new(),
             imported_names: HashMap::new(),
+            method_map: ExtensionMap::new(),
         };
 
         child.reference(parent, &UnitReferenceKind::All)
@@ -220,7 +230,7 @@ impl Scope {
 
         match new_func.decl.implements.clone() {
             Some(implements) => {
-                let implemented_for = match self.full_type_name(&implements.for_type) {
+                let implemented_for = match self.canon_name(&implements.for_type) {
                     Some(name) => name,
                     None => panic!(
                         "{}: typechecker should reject invalid impl types ({}.{} implemented for {}) in {:?}",
@@ -252,27 +262,66 @@ impl Scope {
 
             /* normal function decl or definition */
             None => {
-                let name = self.namespace_qualify(&new_func.decl.name);
+                let extends_type = match new_func.decl.extension_type() {
+                    Some(extends_type) => Some(
+                        self.canonicalize(extends_type)
+                            .map_err(|missing| SemanticError::unknown_type(
+                                missing.name,
+                                new_func.decl.context.clone(),
+                            ))?
+                    ),
 
-                /* it's fine to declare a function with the same signature many times, but we can't
-                define it more than once, and we can't declare it with a different signature */
-                match self.names.entry(name.clone()) {
-                    /* this is the first decl */
-                    Entry::Vacant(slot) => {
-                        slot.insert(Named::Function(Box::new(new_func)));
+                    None => None
+                };
+
+                /* is it an extension method? if so look up the extended type */
+                match extends_type {
+                    Some(extends_type) => {
+                        /* extensions can only extend types canonically declared in the current NS */
+                        let extends_type_ns = self.canon_name(&extends_type).unwrap()
+                            .name.parent();
+
+                        if extends_type_ns.as_ref() != self.unit_namespace() {
+                            return Err(SemanticError::extension_not_allowed(
+                                extends_type,
+                                self.unit_namespace().cloned(),
+                                new_func.decl.context,
+                            ))
+                        }
+
+                        self.method_map.add_extension(extends_type, new_func)?;
+
+                        Ok(self)
                     }
 
-                    Entry::Occupied(mut slot) => {
-                        let previous_decl = match slot.get_mut() {
-                            Named::Function(previous) => previous,
-                            _ => return Err(SemanticError::name_in_use(name, new_func.decl.context)),
-                        };
-                        expect_overload_ok(&new_func, previous_decl, None)?;
+                    None => {
+                        let name = self.namespace_qualify(&new_func.decl.name);
 
-                        previous_decl.defined = previous_decl.defined || defined;
+                        /* it's fine to declare a function with the same signature many times, but we can't
+                            define it more than once, and we can't declare it with a different signature */
+                        match self.names.entry(name.clone()) {
+                            /* this is the first decl */
+                            Entry::Vacant(slot) => {
+                                slot.insert(Named::Function(Box::new(new_func)));
+                            }
+
+                            Entry::Occupied(mut slot) => {
+                                let previous_decl = match slot.get_mut() {
+                                    Named::Function(previous) => previous,
+
+                                    _ => return Err(SemanticError::name_in_use(
+                                        name,
+                                        new_func.decl.context,
+                                    )),
+                                };
+                                expect_overload_ok(&new_func, previous_decl, None)?;
+
+                                previous_decl.defined = previous_decl.defined || defined;
+                            }
+                        }
+                        Ok(self)
                     }
                 }
-                Ok(self)
             }
         }
     }
@@ -386,14 +435,6 @@ impl Scope {
         self
     }
 
-    pub fn with_const(mut self, name: &str, val: ConstExpression, as_type: Option<&Type>) -> Self {
-        let name = self.namespace_qualify(name);
-        let val_type = val.value_type(as_type);
-
-        self.names.insert(name, Named::Const(val, val_type));
-        self
-    }
-
     pub fn reference(mut self,
                      other: &Scope,
                      ref_kind: &UnitReferenceKind) -> Self {
@@ -418,6 +459,17 @@ impl Scope {
 
             self.names.insert(name.clone(), named.clone());
         }
+
+        self.method_map.reference_all(&other.method_map);
+
+        self
+    }
+
+    pub fn with_const(mut self, name: &str, val: ConstExpression, as_type: Option<&Type>) -> Self {
+        let name = self.namespace_qualify(name);
+        let val_type = val.value_type(as_type);
+
+        self.names.insert(name, Named::Const(val, val_type));
         self
     }
 
@@ -550,8 +602,103 @@ impl Scope {
             })
     }
 
+    pub fn canonicalize(&self, ty: &Type) -> Result<Type, ParameterizedName> {
+        match ty {
+            | Type::Record(name) => {
+                let (name, _) = self.get_record_specialized(name)
+                    .ok_or_else(|| name.clone())?;
+                Ok(Type::Record(name))
+            }
+
+            | Type::WeakRef(Reference::Class(name))
+            | Type::Ref(Reference::Class(name)) => {
+                let (name, _) = self.get_class_specialized(name)
+                    .ok_or_else(|| name.clone())?;
+
+                Ok(if ty.is_weak() {
+                    Type::class_ref_weak(name)
+                } else {
+                    Type::class_ref(name)
+                })
+            }
+
+            | Type::WeakRef(Reference::Interface(name))
+            | Type::Ref(Reference::Interface(name)) => {
+                let (name, _) = self.get_interface(name)
+                    .ok_or_else(|| ParameterizedName::new_simple(name.clone()))?;
+
+                Ok(if ty.is_weak() {
+                    Type::interface_ref_weak(name.clone())
+                } else {
+                    Type::interface_ref(name.clone())
+                })
+            }
+
+            | Type::WeakRef(Reference::DynamicArray(array_type))
+            | Type::Ref(Reference::DynamicArray(array_type)) => {
+                let element = self.canonicalize(array_type.element.as_ref())?;
+                let make_ref = if ty.is_weak() { Type::WeakRef } else { Type::Ref };
+
+                Ok(make_ref(Reference::DynamicArray(DynamicArrayType {
+                    element: Box::new(element),
+                })))
+            }
+
+            Type::Array(array_type) => {
+                let element = self.canonicalize(array_type.element.as_ref())?;
+                Ok(Type::Array(ArrayType {
+                    element: Box::new(element),
+                    first_dim: array_type.first_dim.clone(),
+                    rest_dims: array_type.rest_dims.clone(),
+                }))
+            }
+
+            Type::Set(name) => {
+                let (name, _) = self.get_set(name)
+                    .ok_or_else(|| ParameterizedName::new_simple(name.clone()))?;
+                Ok(Type::Set(name.clone()))
+            }
+
+            Type::Enumeration(name) => {
+                let (name, _) = self.get_enumeration(name)
+                    .ok_or_else(|| ParameterizedName::new_simple(name.clone()))?;
+                Ok(Type::Enumeration(name.clone()))
+            }
+
+            Type::Pointer(target) => {
+                let target = self.canonicalize(target)?;
+                Ok(target.pointer())
+            }
+
+            Type::Function(sig) => {
+                let return_type = match &sig.return_type {
+                    Some(return_type) => Some(self.canonicalize(return_type)?),
+                    None => None
+                };
+
+                let args = sig.args.iter()
+                    .map(|arg| {
+                        let arg_ty = self.canonicalize(&arg.decl_type)?;
+                        Ok(FunctionArgSignature {
+                            decl_type: arg_ty,
+                            modifier: arg.modifier,
+                        })
+                    })
+                    .collect::<Result<_, _>>()?;
+
+                Ok(Type::Function(Box::new(FunctionSignature {
+                    return_type,
+                    args,
+                    modifiers: sig.modifiers.clone(),
+                })))
+            }
+
+            simple => Ok(simple.clone()),
+        }
+    }
+
     // todo: type args for aliases of types that support them
-    pub fn get_type_alias(&self, alias: &Identifier) -> Option<Type> {
+    pub fn resolve_alias(&self, alias: &Identifier) -> Option<Type> {
         let result = match self.find_named(alias) {
             | Some((class_name, Named::Class(_)))
             => Type::class_ref(ParameterizedName {
@@ -585,6 +732,44 @@ impl Scope {
         };
 
         Some(result)
+    }
+
+    /* find a type declared in this scope */
+    pub fn get_local_type(&self, type_name: &str) -> Option<Type> {
+        self.names.values()
+            .filter_map(|named_decl| {
+                let unit_ns = self.unit_namespace();
+                let local_name = self.namespace_qualify(type_name);
+
+                match named_decl {
+                    Named::Set(set_decl) if set_decl.declared_in(unit_ns) => {
+                        Some(Type::Set(local_name))
+                    }
+                    Named::Enumeration(enum_decl) if enum_decl.declared_in(unit_ns) => {
+                        Some(Type::Enumeration(local_name))
+                    }
+                    Named::Record(record_decl) if record_decl.declared_in(unit_ns) => {
+                        Some(Type::Record(ParameterizedName::new_simple(local_name)))
+                    }
+                    Named::Class(class_decl) if class_decl.declared_in(unit_ns) => {
+                        Some(Type::class_ref(ParameterizedName::new_simple(local_name)))
+                    }
+                    Named::Interface(iface_decl) if iface_decl.decl.declared_in(unit_ns) => {
+                        Some(Type::interface_ref(local_name))
+                    }
+                    Named::TypeAlias(aliased) => {
+                        let aliased_name = self.canon_name(aliased)?;
+                        if aliased_name.name.parent().as_ref() == unit_ns {
+                            Some(aliased.clone())
+                        } else {
+                            None
+                        }
+                    }
+
+                    _ => None,
+                }
+            })
+            .next()
     }
 
     pub fn get_enumeration(&self, name: &Identifier) -> Option<(&Identifier, &EnumerationDecl)> {
@@ -628,6 +813,10 @@ impl Scope {
             Some((id, Named::Function(named_func))) => Some((id, &named_func.decl)),
             _ => None,
         }
+    }
+
+    pub fn get_extension_func(&self, for_type: &Type, name: &str) -> Option<&FunctionDecl> {
+        self.method_map.find(for_type, name)
     }
 
     pub fn get_record(&self, name: &Identifier) -> Option<(&Identifier, &RecordDecl)> {
@@ -676,8 +865,8 @@ impl Scope {
             | Type::Record(name)
             => self.get_record_specialized(name),
 
-            | Type::Reference(ReferenceType::Class(name))
-            | Type::WeakReference(ReferenceType::Class(name))
+            | Type::Ref(Reference::Class(name))
+            | Type::WeakRef(Reference::Class(name))
             => self.get_class_specialized(name),
 
             /* records and classes are auto-derefed, so consider pointers to records of any
@@ -685,8 +874,8 @@ impl Scope {
             | Type::Pointer(ptr) => {
                 /* remove remaining levels of indirection */
                 match ptr.remove_indirection() {
-                    | Type::Reference(ReferenceType::Class(name))
-                    | Type::WeakReference(ReferenceType::Class(name))
+                    | Type::Ref(Reference::Class(name))
+                    | Type::WeakRef(Reference::Class(name))
                     => self.get_class_specialized(name),
                     | Type::Record(name)
                     => self.get_record_specialized(name),
@@ -728,7 +917,7 @@ impl Scope {
                               function: &str)
                               -> Option<(&Identifier, &FunctionDecl)> {
         let (interface_id, interface) = self.get_interface(interface)?;
-        let of_type = self.full_type_name(of_type)?;
+        let of_type = self.canon_name(of_type)?;
 
         let method_decl = interface.get_impl(&of_type, function)?;
 
@@ -772,8 +961,8 @@ impl Scope {
         };
 
         match ty {
-            | Type::Reference(_)
-            | Type::WeakReference(_)
+            | Type::Ref(_)
+            | Type::WeakRef(_)
             | Type::Nil
             | Type::RawPointer
             | Type::Pointer(_)
@@ -827,7 +1016,7 @@ impl Scope {
         implementations that exist for the type
     */
     pub fn get_interface_impls(&self, ty: &Type) -> Vec<(&Identifier, &FunctionDecl)> {
-        let type_name = match self.full_type_name(ty) {
+        let type_name = match self.canon_name(ty) {
             Some(name) => name,
             None => return vec![],
         };
@@ -848,11 +1037,11 @@ impl Scope {
     }
 
     pub fn type_implements(&self, ty: &Type, interface_id: &Identifier) -> bool {
-        if let Type::Reference(ReferenceType::AnyImplementation(ty_interface)) = ty {
+        if let Type::Ref(Reference::Interface(ty_interface)) = ty {
             return interface_id == ty_interface;
         }
 
-        self.full_type_name(ty)
+        self.canon_name(ty)
             .and_then(|type_name| {
                 let (_, iface) = self.get_interface(interface_id)?;
 
@@ -866,10 +1055,10 @@ impl Scope {
             .unwrap_or(false)
     }
 
-    pub fn full_type_name(&self, ty: &Type) -> Option<ParameterizedName> {
+    pub fn canon_name(&self, ty: &Type) -> Option<ParameterizedName> {
         match ty {
-            | Type::WeakReference(ReferenceType::Class(type_id))
-            | Type::Reference(ReferenceType::Class(type_id)) => {
+            | Type::WeakRef(Reference::Class(type_id))
+            | Type::Ref(Reference::Class(type_id)) => {
                 let (class_id, _) = self.get_class_specialized(type_id)?;
                 Some(class_id)
             }

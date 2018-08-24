@@ -33,7 +33,7 @@ use types::{
     Type,
     ParameterizedName,
     ArrayType,
-    ReferenceType,
+    Reference,
 };
 use semantic::{
     self,
@@ -437,7 +437,7 @@ impl TypeName {
     pub fn resolve(&self, scope: Rc<Scope>) -> SemanticResult<Type> {
         match self {
             TypeName::Scalar(ScalarTypeName { context, name, indirection, type_args, weak }) => {
-                let result = scope.get_type_alias(name)
+                let result = scope.resolve_alias(name)
                     .ok_or_else(|| {
                         let err_context = SemanticContext::new(
                             context.token.clone(),
@@ -461,7 +461,7 @@ impl TypeName {
                         ))
                     }
 
-                    Type::Reference(ReferenceType::Class(class_id)) => {
+                    Type::Ref(Reference::Class(class_id)) => {
                         assert_eq!(0, class_id.type_args.len(), "respecializing aliases not supported yet");
 
                         let make_ref = if *weak {
@@ -476,7 +476,7 @@ impl TypeName {
                         ))
                     }
 
-                    Type::WeakReference(ReferenceType::Class(class_id)) => {
+                    Type::WeakRef(Reference::Class(class_id)) => {
                         assert_eq!(0, class_id.type_args.len(), "respecializing aliases not supported yet");
                         // an alias to a weak ref type is always weak (extra `weak` modified is ignored)
                         Type::class_ref_weak(class_id)

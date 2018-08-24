@@ -145,6 +145,13 @@ pub enum FunctionCall<TContext>
 
         args: Vec<Expression<TContext>>,
     },
+    Extension {
+        self_expr: Box<Expression<TContext>>,
+        func_name: String,
+        for_type: TContext::Type,
+
+        args: Vec<Expression<TContext>>,
+    }
 }
 
 impl<TContext> FunctionCall<TContext>
@@ -154,12 +161,14 @@ impl<TContext> FunctionCall<TContext>
         match self {
             FunctionCall::Function { args, .. } => args,
             FunctionCall::Method { args, .. } => args,
+            FunctionCall::Extension { args, .. } => args,
         }
     }
 
     pub fn unwrap_function(self) -> (Expression<TContext>, Vec<Expression<TContext>>) {
         match self {
             FunctionCall::Function { target, args } => (*target, args),
+            FunctionCall::Extension { .. } => panic!("called unwrap_function on extension call"),
             FunctionCall::Method { interface_id, func_name, .. } =>
                 panic!("called unwrap_function on method call {}.{}", interface_id, func_name)
         }
@@ -549,6 +558,10 @@ impl<C> fmt::Display for ExpressionValue<C>
                     FunctionCall::Method { interface_id, func_name, .. } => {
                         write!(f, "{}.{}({})", interface_id, func_name, args_str)
                     }
+
+                    FunctionCall::Extension { self_expr, func_name, .. } => {
+                        write!(f, "{}.{}({})", self_expr, func_name, args_str)
+                    }
                 }
             }
 
@@ -690,6 +703,24 @@ impl<TContext> Expression<TContext>
                 args: args.into_iter().collect(),
             }),
             context: context.into(),
+        }
+    }
+
+    pub fn extension_call(self_expr: impl Into<Self>,
+                          func_name: impl Into<String>,
+                          for_type: impl Into<TContext::Type>,
+                          args: impl IntoIterator<Item=Self>) -> Self {
+        let self_expr = self_expr.into();
+        let context = self_expr.context.clone();
+
+        Expression {
+            value: ExpressionValue::FunctionCall(FunctionCall::Extension {
+                self_expr: Box::new(self_expr),
+                args: args.into_iter().collect(),
+                for_type: for_type.into(),
+                func_name: func_name.into(),
+            }),
+            context,
         }
     }
 

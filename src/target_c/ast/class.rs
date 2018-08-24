@@ -6,11 +6,12 @@ use std::{
 
 use semantic::{
     self,
-    Scope,
     arc_transform::{
         rc_subvalues,
         RefStrength,
     },
+    Scope,
+    Declaration as PascalDeclaration,
 };
 use types::{
     Type,

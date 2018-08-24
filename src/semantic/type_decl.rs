@@ -3,10 +3,19 @@ use linked_hash_map::LinkedHashMap;
 
 use node::{
     self,
-    Identifier,
     TypeName,
+    Context,
 };
-use semantic::*;
+use semantic::{
+    Declaration,
+    SemanticContext,
+    SemanticResult,
+    SemanticError,
+    Expression,
+    FunctionSignature,
+    FunctionArgSignature,
+    Scope,
+};
 use syntax;
 use types::Type;
 
@@ -184,14 +193,6 @@ impl RecordDecl {
         Ok((record_decl, Rc::new(scope)))
     }
 
-    pub fn scope(&self) -> &Scope {
-        self.context.scope.as_ref()
-    }
-
-    pub fn qualified_name(&self) -> Identifier {
-        self.scope().namespace_qualify(&self.name)
-    }
-
     pub fn specialize(self, type_args: &[Type]) -> RecordDecl {
         assert_eq!(type_args.len(), self.type_params.len(),
                    "invalid type args list {:?} passed to specialize() for {}",
@@ -228,6 +229,17 @@ impl RecordDecl {
     }
 }
 
+impl Declaration for RecordDecl {
+    fn local_name(&self) -> &str {
+        &self.name
+    }
+
+    fn context(&self) -> &SemanticContext {
+        &self.context
+    }
+}
+
+
 impl EnumerationDecl {
     pub fn annotate(enumeration: &syntax::EnumerationDecl, scope: Rc<Scope>) -> SemanticResult<Self> {
         let context = SemanticContext {
@@ -242,9 +254,15 @@ impl EnumerationDecl {
             context,
         })
     }
+}
 
-    pub fn qualified_name(&self) -> Identifier {
-        self.context.scope.namespace_qualify(&self.name)
+impl Declaration for EnumerationDecl {
+    fn local_name(&self) -> &str {
+        &self.name
+    }
+
+    fn context(&self) -> &SemanticContext {
+        &self.context
     }
 }
 
@@ -276,9 +294,15 @@ impl SetDecl {
             context,
         })
     }
+}
 
-    pub fn qualified_name(&self) -> Identifier {
-        self.context.scope.namespace_qualify(&self.name)
+impl Declaration for SetDecl {
+    fn local_name(&self) -> &str {
+        &self.name
+    }
+
+    fn context(&self) -> &SemanticContext {
+        &self.context
     }
 }
 
@@ -309,10 +333,6 @@ impl InterfaceDecl {
         };
 
         Some(sig)
-    }
-
-    pub fn qualified_name(&self) -> Identifier {
-        self.scope().namespace_qualify(&self.name)
     }
 
     pub fn annotate(interface_decl: &syntax::InterfaceDecl,
@@ -372,16 +392,25 @@ impl InterfaceDecl {
 
         Ok((interface, new_scope))
     }
+}
 
-    pub fn scope(&self) -> &Scope {
-        self.context.scope.as_ref()
+impl Declaration for InterfaceDecl {
+    fn local_name(&self) -> &str {
+        &self.name
+    }
+
+    fn context(&self) -> &SemanticContext {
+        &self.context
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use semantic::test::fake_context;
+    use semantic::{
+        test::fake_context,
+        SemanticErrorKind,
+    };
     use node::{
         RecordKind,
         TypeName,

@@ -19,8 +19,8 @@ begin
   let vec = Vector.New()
   vec.Add(1)
   vec.Add(2)
-  Vector.Add(vec, 3)
-  Vector.Add(vec, 4)
+  vec.Add(3)
+  vec.Add(4)
 
   let name = 'world'
 

@@ -33,7 +33,7 @@ use node::{
 use operators;
 use types::{
     Type,
-    ReferenceType,
+    Reference,
 };
 use consts::IntConstant;
 
@@ -247,8 +247,8 @@ impl Expression {
 
     pub fn class_type(&self) -> SemanticResult<Option<&RecordDecl>> {
         match self.expr_type()? {
-            | Some(Type::WeakReference(ReferenceType::Class(type_name)))
-            | Some(Type::Reference(ReferenceType::Class(type_name))) => {
+            | Some(Type::WeakRef(Reference::Class(type_name)))
+            | Some(Type::Ref(Reference::Class(type_name))) => {
                 let (_class_id, class_decl) = self.context.scope.get_class(&type_name.name)
                     .expect("record must exist in scope of expression it's used in");
 
@@ -482,8 +482,8 @@ fn member_type(of: &Expression, name: &str) -> SemanticResult<Option<Type>> {
     let (base_decl, private_members) = match &base_type {
         | Some(Type::Record(name)) => (of.scope().get_record_specialized(name), false),
 
-        | Some(Type::Reference(ReferenceType::Class(name)))
-        | Some(Type::WeakReference(ReferenceType::Class(name)))
+        | Some(Type::Ref(Reference::Class(name)))
+        | Some(Type::WeakRef(Reference::Class(name)))
         => (of.scope().get_class_specialized(name), true),
 
         _ => (None, false),
@@ -554,6 +554,12 @@ impl FunctionCall<SemanticContext> {
                     .expect("called function must have a valid type")
                     .expect("target must be a function")
             }
+
+            FunctionCall::Extension { for_type, func_name, .. } => {
+                self.scope().get_extension_func(for_type, func_name).unwrap()
+                    .signature()
+            }
+
             FunctionCall::Method { interface_id, func_name, for_type, args } => {
                 /* method calls always have a self-arg in position 0 */
                 let scope = args[0].context.scope();

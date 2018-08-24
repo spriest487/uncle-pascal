@@ -13,6 +13,7 @@ use target_c::ast::{
 };
 use semantic::{
     self,
+    Declaration as PascalDeclaration,
     BindingKind,
     ScopedSymbol,
     arc_transform::{
@@ -33,7 +34,7 @@ use node::{
 };
 use types::{
     Type,
-    ReferenceType,
+    Reference,
     ParameterizedName,
 };
 use consts::{
@@ -705,7 +706,7 @@ impl Expression {
         let (obj_id, obj_decl) = match ctor.object_type.as_ref() {
             /* note that we specifically can't construct an object into a
             weak reference (it would immediately be destroyed!) */
-            | Some(Type::Reference(ReferenceType::Class(name))) => {
+            | Some(Type::Ref(Reference::Class(name))) => {
                 scope.get_class_specialized(name).unwrap()
             }
             | Some(Type::Record(name)) => {
@@ -803,7 +804,7 @@ impl Expression {
     fn translate_func_call(call: &FunctionCall<semantic::SemanticContext>,
                            unit: &mut TranslationUnit)
                            -> TranslationResult<Self> {
-        let args: Vec<_> = call.args().iter()
+        let mut args: Vec<_> = call.args().iter()
             .map(|arg_expr| {
                 Expression::translate_expression(arg_expr, unit)
             })
@@ -814,6 +815,15 @@ impl Expression {
                 Expression::translate_expression(target, unit)?
             }
 
+            FunctionCall::Extension { self_expr, for_type, func_name, .. } => {
+                let func_decl = call.scope().get_extension_func(for_type, func_name).unwrap();
+                let for_type_name = call.scope().canon_name(for_type).unwrap();
+                let full_func_name = func_decl.qualified_name();
+
+                args.insert(0, Expression::translate_expression(self_expr, unit)?);
+                Expression::from(Name::extension_method(&full_func_name, &for_type_name))
+            }
+
             FunctionCall::Method { interface_id, func_name, for_type, .. } => {
                 if for_type.is_interface_ref() {
                     let call_name = unit.method_call_name(interface_id, func_name)
@@ -821,7 +831,7 @@ impl Expression {
 
                     Expression::Name(call_name.clone())
                 } else {
-                    let type_name = call.scope().full_type_name(for_type).unwrap();
+                    let type_name = call.scope().canon_name(for_type).unwrap();
                     let call_name = Name::interface_call(
                         interface_id,
                         &type_name,
@@ -867,7 +877,10 @@ impl Expression {
             && lhs.expr_type().unwrap() == string_type
             && rhs.expr_type().unwrap() == string_type {
             return Ok(Expression::function_call(
-                Name::user_symbol(&Identifier::from("System.StringConcat")),
+                Name::extension_method(
+                    &Identifier::from("System.Concat"),
+                    &ParameterizedName::new_simple("System.String"),
+                ),
                 vec![
                     Expression::translate_expression(lhs, unit)?,
                     Expression::translate_expression(rhs, unit)?,

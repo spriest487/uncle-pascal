@@ -1,7 +1,10 @@
 use std::fmt::{
     self,
 };
-use semantic;
+use semantic::{
+    self,
+    Declaration as PascalDeclaration,
+};
 use node::{
     FunctionArgModifier,
     FunctionModifier,
@@ -78,7 +81,7 @@ impl FunctionDecl {
         assert!(decl.implements.is_some(), "virtual_call_name should only be called on interface methods");
 
         let implements = decl.implements.as_ref().unwrap();
-        let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
+        let for_type_name = decl.scope().canon_name(&implements.for_type).unwrap();
 
         Name::interface_call(&implements.interface, &for_type_name, decl.name.clone())
     }
@@ -121,21 +124,26 @@ impl FunctionDecl {
     }
 
     pub fn translate_name(decl: &semantic::FunctionDecl) -> Name {
-        match decl.implements.as_ref() {
-            Some(implements) => {
-                let for_type_name = decl.scope().full_type_name(&implements.for_type).unwrap();
-                let for_type_name = for_type_name;
+        if let Some(extends_type) = decl.extension_type() {
+            let for_type_name = decl.scope().canon_name(extends_type).unwrap();
+            Name::extension_method(&decl.qualified_name(), &for_type_name)
+        } else {
+            match decl.implements.as_ref() {
+                Some(implements) => {
+                    let for_type_name = decl.scope().canon_name(&implements.for_type).unwrap();
+                    let for_type_name = for_type_name;
 
-                Name::method(
-                    &implements.interface,
-                    &for_type_name,
-                    decl.name.clone(),
-                )
-            }
+                    Name::method(
+                        &implements.interface,
+                        &for_type_name,
+                        decl.name.clone(),
+                    )
+                }
 
-            None => {
-                let qualified = decl.scope().namespace_qualify(&decl.name);
-                Name::user_symbol(&qualified)
+                None => {
+                    let qualified = decl.scope().namespace_qualify(&decl.name);
+                    Name::user_symbol(&qualified)
+                }
             }
         }
     }

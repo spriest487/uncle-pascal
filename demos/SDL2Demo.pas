@@ -24,9 +24,9 @@ end
 
 begin
     let title = 'Test Window'
-    let titleCStr = GetMem(title.StringLength() + 1)
+    let titleCStr = GetMem(title.Length() + 1)
     
-    if not StringToCString(title, titleCStr, title.StringLength() + 1) then
+    if not title.ToCString(titleCStr, title.Length() + 1) then
         raise 'copying title failed'
 
     if SDL.Init(SDL.INIT_VIDEO) <> 0 then

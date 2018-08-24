@@ -112,6 +112,10 @@ enum SemanticErrorKind {
 
         for_interface: Option<Identifier>,
     },
+    ExtensionNotAllowed {
+        for_type: Type,
+        namespace: Option<Identifier>,
+    },
     WeakRefToValueType(Type),
 }
 
@@ -178,12 +182,12 @@ impl fmt::Display for SemanticErrorKind {
                         | Type::Record(name) => format!("record `{}`", name),
                         | Type::Function(name) => format!("function `{}`", name),
 
-                        | Type::Reference(ReferenceType::Class(class_id))
-                        | Type::WeakReference(ReferenceType::Class(class_id))
+                        | Type::Ref(Reference::Class(class_id))
+                        | Type::WeakRef(Reference::Class(class_id))
                         => format!("class `{}`", class_id),
 
-                        | Type::Reference(ReferenceType::AnyImplementation(iface_id))
-                        | Type::WeakReference(ReferenceType::AnyImplementation(iface_id))
+                        | Type::Ref(Reference::Interface(iface_id))
+                        | Type::WeakRef(Reference::Interface(iface_id))
                         => format!("interface `{}`", iface_id),
 
                         _ => format!("type `{}`", t)
@@ -348,6 +352,14 @@ impl fmt::Display for SemanticErrorKind {
                 }
             }
 
+            SemanticErrorKind::ExtensionNotAllowed { for_type, namespace } => {
+                write!(f, "cannot declare extension methods for type `{}` in ", for_type)?;
+                match namespace {
+                    Some(ns) => write!(f, "namespace `{}`", ns),
+                    None => write!(f, "the root namespace"),
+                }
+            }
+
             SemanticErrorKind::WeakRefToValueType(ty) => {
                 write!(f, "can't hold a weak reference to `{}` which is not a reference-counted type", ty)
             }
@@ -395,6 +407,19 @@ impl SemanticError {
                 previous_decl: Box::new(previous_decl.into()),
                 for_interface: interface.map(|i| i.into()),
             },
+        }
+    }
+
+    pub fn extension_not_allowed(for_type: impl Into<Type>,
+                                 namespace: Option<impl Into<Identifier>>,
+                                 context: impl Into<SemanticContext>)
+                                 -> Self {
+        SemanticError {
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::ExtensionNotAllowed {
+                namespace: namespace.map(|ns| ns.into()),
+                for_type: for_type.into(),
+            }
         }
     }
 
@@ -733,6 +758,23 @@ impl Context for SemanticContext {
 impl PartialEq for SemanticContext {
     fn eq(&self, other: &Self) -> bool {
         self.token == other.token
+    }
+}
+
+pub trait Declaration {
+    fn local_name(&self) -> &str;
+    fn context(&self) -> &SemanticContext;
+
+    fn scope(&self) -> &Scope {
+        &self.context().scope
+    }
+
+    fn qualified_name(&self) -> Identifier {
+        self.scope().namespace_qualify(self.local_name())
+    }
+
+    fn declared_in(&self, namespace: Option<&Identifier>) -> bool {
+        self.scope().unit_namespace() == namespace
     }
 }
 

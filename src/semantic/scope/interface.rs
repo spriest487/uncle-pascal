@@ -18,6 +18,7 @@ use semantic::{
     SemanticResult,
     SemanticError,
     FunctionSignature,
+    Declaration,
 };
 
 #[derive(Clone, Debug, Default)]

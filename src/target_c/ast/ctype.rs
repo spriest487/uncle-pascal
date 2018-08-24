@@ -2,7 +2,7 @@ use std::fmt;
 
 use types::{
     Type,
-    ReferenceType,
+    Reference,
     ParameterizedName,
 };
 use semantic::Scope;
@@ -135,18 +135,18 @@ impl CType {
                 Ok(CType::Array(multidim_array))
             }
 
-            | Type::Reference(ref_type)
-            | Type::WeakReference(ref_type)
+            | Type::Ref(ref_type)
+            | Type::WeakRef(ref_type)
             => Self::translate_reference(ref_type, scope, unit)
         }
     }
 
-    fn translate_reference(ref_type: &ReferenceType,
+    fn translate_reference(ref_type: &Reference,
                            scope: &Scope,
                            unit: &mut TranslationUnit)
                            -> TranslationResult<Self> {
         match ref_type {
-            ReferenceType::Class(name) => {
+            Reference::Class(name) => {
                 let (name, _) = scope.get_class_specialized(name)
                     .expect("referenced class must exist");
 
@@ -157,12 +157,12 @@ impl CType {
                     .into_pointer())
             }
 
-            ReferenceType::AnyImplementation(_interface_id) => {
+            Reference::Interface(_interface_id) => {
                 Ok(CType::Struct(Name::internal_type("Object"))
                     .into_pointer())
             }
 
-            ReferenceType::DynamicArray(_dynamic_array_type) => {
+            Reference::DynamicArray(_dynamic_array_type) => {
                 unimplemented!("dynamic arrays (c++ backend)")
             }
         }

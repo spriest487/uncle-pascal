@@ -4,10 +4,17 @@ use std::{
 use types::Type;
 use node::{
     self,
-    Identifier,
+    Context,
 };
 use syntax;
-use semantic::*;
+use semantic::{
+    Declaration,
+    Scope,
+    SemanticContext,
+    SemanticResult,
+    Expression,
+    BindingKind,
+};
 
 pub type VarDecl = node::VarDecl<SemanticContext>;
 
@@ -59,12 +66,14 @@ impl VarDecl {
 
         Ok((vars, scope))
     }
+}
 
-    pub fn scope(&self) -> &Scope {
-        self.context.scope.as_ref()
+impl Declaration for VarDecl {
+    fn local_name(&self) -> &str {
+        &self.name
     }
 
-    pub fn qualified_name(&self) -> Identifier {
-        self.scope().namespace_qualify(&self.name)
+    fn context(&self) -> &SemanticContext {
+        &self.context
     }
 }

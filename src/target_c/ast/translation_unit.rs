@@ -42,6 +42,7 @@ use semantic::{
     self,
     Scope,
     RecordDecl,
+    Declaration as PascalDeclaration,
 };
 
 pub struct StructInstantiation {

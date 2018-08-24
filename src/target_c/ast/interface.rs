@@ -22,6 +22,7 @@ use target_c::ast::{
 use semantic::{
     self,
     Scope,
+    Declaration as PascalDeclaration,
 };
 use types::Type;
 

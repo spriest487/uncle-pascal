@@ -9,18 +9,19 @@ use node::{
 use consts::IntConstant;
 use syntax;
 use semantic::{
+    expression::ops::expect_valid,
     Scope,
     SemanticResult,
     SemanticContext,
     SemanticError,
     RecordDecl,
     Expression,
-    expression::ops::expect_valid,
     IndexRange,
+    Declaration,
 };
 use types::{
     Type,
-    ReferenceType,
+    Reference,
     ArrayType,
     ParameterizedName,
 };
@@ -54,8 +55,8 @@ fn find_object_decl(ty: &Type, scope: &Scope) -> Option<(ParameterizedName, Cons
             }))
         }
 
-        | Type::Reference(ReferenceType::Class(class_id))
-        | Type::WeakReference(ReferenceType::Class(class_id))
+        | Type::Ref(Reference::Class(class_id))
+        | Type::WeakRef(Reference::Class(class_id))
         => {
             let (name, class) = scope.get_class_specialized(class_id)?;
 

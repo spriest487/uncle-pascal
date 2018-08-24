@@ -59,18 +59,18 @@ impl ArrayType {
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash)]
-pub enum ReferenceType {
+pub enum Reference {
     Class(ParameterizedName),
     DynamicArray(DynamicArrayType),
-    AnyImplementation(Identifier),
+    Interface(Identifier),
 }
 
-impl fmt::Display for ReferenceType {
+impl fmt::Display for Reference {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ReferenceType::Class(name) => write!(f, "{}", name),
-            ReferenceType::DynamicArray(arr) => write!(f, "array of {}", arr.element),
-            ReferenceType::AnyImplementation(interface) => write!(f, "{}", interface),
+            Reference::Class(name) => write!(f, "{}", name),
+            Reference::DynamicArray(arr) => write!(f, "array of {}", arr.element),
+            Reference::Interface(interface) => write!(f, "{}", interface),
         }
     }
 }
@@ -92,8 +92,8 @@ pub enum Type {
     UntypedRef,
     Function(Box<FunctionSignature>),
     Record(ParameterizedName),
-    Reference(ReferenceType),
-    WeakReference(ReferenceType),
+    Ref(Reference),
+    WeakRef(Reference),
     Array(ArrayType),
     Enumeration(Identifier),
     Set(Identifier),
@@ -121,8 +121,8 @@ impl fmt::Display for Type {
             Type::Enumeration(enum_id) => write!(f, "{}", enum_id),
             Type::Set(set_id) => write!(f, "{}", set_id),
             Type::Record(name) => write!(f, "{}", name),
-            Type::Reference(ref_type) => write!(f, "{}", ref_type),
-            Type::WeakReference(ref_type) => write!(f, "weak {}", ref_type),
+            Type::Ref(ref_type) => write!(f, "{}", ref_type),
+            Type::WeakRef(ref_type) => write!(f, "weak {}", ref_type),
             Type::Array(array) => {
                 write!(f, "array ")?;
                 write!(f, "[{}..{}", array.first_dim.from, array.first_dim.to)?;
@@ -151,34 +151,38 @@ impl Type {
     }
 
     pub fn dynamic_array_ref(element: impl Into<Type>) -> Self {
-        Type::Reference(ReferenceType::DynamicArray(DynamicArrayType {
+        Type::Ref(Reference::DynamicArray(DynamicArrayType {
             element: Box::new(element.into())
         }))
     }
 
     pub fn class_ref(name: impl Into<ParameterizedName>) -> Self {
-        Type::Reference(ReferenceType::Class(name.into()))
+        Type::Ref(Reference::Class(name.into()))
     }
 
     pub fn class_ref_weak(name: impl Into<ParameterizedName>) -> Self {
-        Type::WeakReference(ReferenceType::Class(name.into()))
+        Type::WeakRef(Reference::Class(name.into()))
     }
 
     pub fn interface_ref(name: impl Into<Identifier>) -> Self {
-        Type::Reference(ReferenceType::AnyImplementation(name.into()))
+        Type::Ref(Reference::Interface(name.into()))
+    }
+
+    pub fn interface_ref_weak(name: impl Into<Identifier>) -> Self {
+        Type::WeakRef(Reference::Interface(name.into()))
     }
 
     pub fn is_class_ref(&self) -> bool {
         match self {
-            Type::Reference(ReferenceType::Class(_)) => true,
-            Type::WeakReference(ReferenceType::Class(_)) => true,
+            Type::Ref(Reference::Class(_)) => true,
+            Type::WeakRef(Reference::Class(_)) => true,
             _ => false,
         }
     }
 
     pub fn is_ref_counted(&self) -> bool {
         match self {
-            | Type::Reference(_) | Type::WeakReference(_) => true,
+            | Type::Ref(_) | Type::WeakRef(_) => true,
             _ => false,
         }
     }
@@ -231,8 +235,8 @@ impl Type {
 
     pub fn is_interface_ref(&self) -> bool {
         match self {
-            | Type::Reference(ReferenceType::AnyImplementation(_))
-            | Type::WeakReference(ReferenceType::AnyImplementation(_))
+            | Type::Ref(Reference::Interface(_))
+            | Type::WeakRef(Reference::Interface(_))
             => true,
 
             _ => false
@@ -241,8 +245,8 @@ impl Type {
 
     pub fn as_class_ref(&self) -> Option<&ParameterizedName> {
         match self {
-            | Type::Reference(ReferenceType::Class(name))
-            | Type::WeakReference(ReferenceType::Class(name))
+            | Type::Ref(Reference::Class(name))
+            | Type::WeakRef(Reference::Class(name))
             => Some(name),
 
             _ => None,
@@ -258,8 +262,8 @@ impl Type {
 
     pub fn as_interface_ref(&self) -> Option<&Identifier> {
         match self {
-            | Type::Reference(ReferenceType::AnyImplementation(iface))
-            | Type::WeakReference(ReferenceType::AnyImplementation(iface))
+            | Type::Ref(Reference::Interface(iface))
+            | Type::WeakRef(Reference::Interface(iface))
             => Some(iface),
             | _ => None,
         }
@@ -292,8 +296,8 @@ impl Type {
             | Type::Function(_)
             | Type::Enumeration(_)
             | Type::Set(_)
-            | Type::Reference(_)
-            | Type::WeakReference(_)
+            | Type::Ref(_)
+            | Type::WeakRef(_)
             | Type::Generic(_)
             | Type::Array { .. }
             => true,
@@ -344,13 +348,13 @@ impl Type {
                 ordinal: 0,
             })),
             | Type::RawPointer
-            | Type::WeakReference(_)
+            | Type::WeakRef(_)
             | Type::Pointer(_)
             => Some(ConstExpression::Nil),
 
             | Type::Record(_) /* todo: can default if all members are defaultable */
             | Type::Array(_) /* todo: can default if element is defaultable */
-            | Type::Reference(_)
+            | Type::Ref(_)
             | Type::UntypedRef
             | Type::Function(_)
             | Type::Generic(_)
@@ -384,7 +388,7 @@ impl Type {
             => true,
 
             /* weak refs promote to strong refs of the same type (todo: they shouldn't) */
-            | (Type::WeakReference(a), Type::Reference(b))
+            | (Type::WeakRef(a), Type::Ref(b))
             => *a == *b,
 
             /* arrays promote to arrays with the same element and number of elements per rank
@@ -436,7 +440,7 @@ impl Type {
                 a_target == b_target
             }
 
-            (Type::WeakReference(_), Type::Nil) => true,
+            (Type::WeakRef(_), Type::Nil) => true,
 
             (a, b) => a.promotes_to(b),
         };
@@ -446,7 +450,7 @@ impl Type {
 
     pub fn is_weak(&self) -> bool {
         match self {
-            Type::WeakReference(_) => true,
+            Type::WeakRef(_) => true,
             _ => false,
         }
     }

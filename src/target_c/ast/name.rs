@@ -4,7 +4,7 @@ use node::Identifier;
 use types::{
     ParameterizedName,
     Type,
-    ReferenceType,
+    Reference,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -14,6 +14,7 @@ enum NameKind {
     ClassInterfaces,
     ClassVTable { interface: Box<Name> },
     Method { interface: Box<Name>, for_type: Box<Name> },
+    ExtensionMethod { for_type: Box<Name> },
     InterfaceCall { interface: Box<Name>, for_type: Box<Name> },
     AbstractCall { interface: Box<Name> },
     InterfaceVTable,
@@ -50,6 +51,15 @@ impl Name {
                 for_type: Box::new(Name::user_type(for_type)),
             },
             name: name.into(),
+        }
+    }
+
+    pub fn extension_method(func_name: &Identifier, for_type: &ParameterizedName) -> Self {
+        Name {
+            kind: NameKind::ExtensionMethod {
+                for_type: Box::new(Name::user_type(for_type)),
+            },
+            name: identifier_to_c(func_name),
         }
     }
 
@@ -174,6 +184,9 @@ impl fmt::Display for Name {
             | NameKind::Method { interface, for_type }
             => write!(f, "{}_Method_{}_{}", interface, for_type, self.name),
 
+            | NameKind::ExtensionMethod { for_type }
+            => write!(f, "{}_Ext_{}", self.name, for_type),
+
             | NameKind::AbstractCall { interface }
             => write!(f, "{}_VirtualCall_{}", interface, self.name),
 
@@ -251,14 +264,14 @@ fn name_for_type_param(ty: &Type) -> String {
         | Type::Record(type_id)
         => format!("Record_{}", parameterized_id_to_c(type_id)),
 
-        | Type::Reference(ref_type)
-        | Type::WeakReference(ref_type)
+        | Type::Ref(ref_type)
+        | Type::WeakRef(ref_type)
         => match ref_type {
-            | ReferenceType::Class(type_id)
+            | Reference::Class(type_id)
             => format!("Class_{}", parameterized_id_to_c(type_id)),
-            | ReferenceType::DynamicArray(arr)
+            | Reference::DynamicArray(arr)
             => format!("DynArray_{}", name_for_type_param(&arr.element)),
-            | ReferenceType::AnyImplementation(iface_id)
+            | Reference::Interface(iface_id)
             => format!("AnyImpl_{}", identifier_to_c(iface_id)),
         }
 

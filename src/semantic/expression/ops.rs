@@ -265,11 +265,11 @@ pub fn expect_valid(operator: operators::Operator,
                     // nil can be assigned to any pointer or weak ref, and nothing else
                     | (Type::RawPointer, Type::Nil)
                     | (Type::Pointer(_), Type::Nil)
-                    | (Type::WeakReference(_), Type::Nil)
+                    | (Type::WeakRef(_), Type::Nil)
                     => true,
 
-                    | (Type::WeakReference(a), Type::Reference(b))
-                    | (Type::Reference(a), Type::WeakReference(b))
+                    | (Type::WeakRef(a), Type::Ref(b))
+                    | (Type::Ref(a), Type::WeakRef(b))
                     => *a == *b,
 
                     // class refs can be assigned to interface vars they implement

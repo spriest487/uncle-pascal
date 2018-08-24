@@ -40,9 +40,9 @@ implementation
 
 function OpenFile(filename: String;  mode: NativeInt): FileStream
 begin
-    let fileNameBufLen = filename.StringLength() + NativeUInt(1)
+    let fileNameBufLen = filename.Length() + NativeUInt(1)
     let fileNameCStr = GetMem(fileNameBufLen)
-    filename.StringToCString(fileNameCStr, fileNameBufLen)
+    filename.ToCString(fileNameCStr, fileNameBufLen)
 
     let handle = FOpen(fileNameCStr, mode)
     if handle = nil then

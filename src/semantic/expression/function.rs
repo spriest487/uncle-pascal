@@ -13,7 +13,7 @@ use semantic::{
 };
 use types::{
     Type,
-    ReferenceType,
+    Reference,
 };
 use node::{
     self,
@@ -38,6 +38,7 @@ impl FunctionCall {
         match self {
             node::FunctionCall::Function { target, .. } => target.scope(),
             node::FunctionCall::Method { args, .. } => args[0].scope(),
+            node::FunctionCall::Extension { self_expr, .. } => self_expr.scope(),
         }
     }
 
@@ -50,6 +51,8 @@ impl FunctionCall {
                 (target, args),
             node::FunctionCall::Method { .. } =>
                 unreachable!("interface calls can't be parsed"),
+            node::FunctionCall::Extension { .. } =>
+                unreachable!("extension calls can't be parsed"),
         };
 
         /*
@@ -58,19 +61,27 @@ impl FunctionCall {
             type A, taking x as the first param, or an interface method implemented for x named a()
         */
         let ufcs_candidate = find_ufcs_candidate(target, &context);
-        if let Some(ufcs_call) = ufcs_candidate.as_ref().and_then(find_ufcs_call) {
-            let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
-            return Ok((ufcs_call, scope));
+
+        /* try to resolve this as an extension method call */
+        let find_extension = ufcs_candidate.as_ref().and_then(find_extension_call);
+        if let Some(extension_call) = find_extension {
+            return annotate_extension_call(extension_call, args);
         }
 
+        /* try to resolve this as an explicit interface call */
         let find_method = ufcs_candidate.as_ref()
             .and_then(|candidate| {
                 find_interface_call(candidate)
                     .or_else(|| find_explicit_interface_call(candidate, args))
             });
-
         if let Some(interface_call) = find_method {
             return annotate_method(interface_call, args);
+        }
+
+        /* try to resolve this using UFCS */
+        if let Some(ufcs_call) = ufcs_candidate.as_ref().and_then(find_ufcs_call) {
+            let (ufcs_call, scope) = annotate_ufcs(ufcs_call, args)?;
+            return Ok((ufcs_call, scope));
         }
 
         /*
@@ -80,7 +91,7 @@ impl FunctionCall {
        */
         if let ExpressionValue::Identifier(name) = &target.value {
             if scope.get_function(name).is_none() && args.len() == 1 {
-                if let Some(target_type) = scope.get_type_alias(name) {
+                if let Some(target_type) = scope.resolve_alias(name) {
                     // we already checked there's exactly 1 arg
                     let from_arg = args.into_iter()
                         .next()
@@ -204,6 +215,12 @@ struct UfcsCallSite {
     scope_after_target: Rc<Scope>,
 }
 
+struct ExtensionCallSite {
+    target: Expression,
+    function: FunctionDecl,
+    scope_after_target: Rc<Scope>,
+}
+
 struct MethodCallSite {
     /// not present if the interface was invoked directly and the first arg was passed normally
     self_arg: Option<Expression>,
@@ -280,6 +297,39 @@ fn find_ufcs_call(candidate: &UfcsCandidate) -> Option<UfcsCallSite> {
     }
 }
 
+fn find_extension_call(candidate: &UfcsCandidate) -> Option<ExtensionCallSite> {
+    let target_type = candidate.target.expr_type().ok()??;
+    let extension = candidate.scope_after_target.get_extension_func(
+        &target_type,
+        &candidate.func_name,
+    )?;
+
+    Some(ExtensionCallSite {
+        scope_after_target: candidate.scope_after_target.clone(),
+        target: candidate.target.clone(),
+        function: extension.clone(),
+    })
+}
+
+fn annotate_extension_call(call_site: ExtensionCallSite,
+                           args: &[syntax::Expression])
+                           -> SemanticResult<(Expression, Rc<Scope>)> {
+    let scope = call_site.scope_after_target;
+
+    /* the sig of the actual function, minus the first arg (self) */
+    let mut extension_call_sig = call_site.function.signature();
+    let self_arg = extension_call_sig.args.remove(0);
+
+    let (args, scope) = annotate_args(args, &extension_call_sig, &call_site.target.context, scope)?;
+
+    Ok((Expression::extension_call(
+        call_site.target,
+        call_site.function.name.clone(),
+        self_arg.decl_type.clone(),
+        args,
+    ), scope))
+}
+
 /* find an interface call of the form `InterfaceName.MethodName(self, args..)`.
  interpreting the target of the ufcs call as an interface typename  */
 fn find_explicit_interface_call(candidate: &UfcsCandidate,
@@ -304,7 +354,7 @@ fn find_explicit_interface_call(candidate: &UfcsCandidate,
             })
             .and_then(|(self_arg, _)| {
                 let self_type = self_arg.expr_type().ok()??;
-                let self_type_name = scope.full_type_name(&self_type)?;
+                let self_type_name = scope.canon_name(&self_type)?;
 
                 let method_func = iface.get_impl(&self_type_name, &candidate.func_name)?;
                 Some(method_func.signature())
@@ -446,6 +496,15 @@ pub fn call_type(call: &FunctionCall,
             }
         }
 
+        node::FunctionCall::Extension { func_name, for_type, .. } => {
+            let ext_func = context.scope().get_extension_func(for_type, func_name).unwrap();
+
+            /* sig minus the first arg */
+            let mut sig = ext_func.signature();
+            sig.args.remove(0);
+            sig
+        }
+
         node::FunctionCall::Method { interface_id, func_name, for_type, .. } => {
             let (_interface_id, interface) = context.scope.get_interface(interface_id)
                 .ok_or_else(|| {
@@ -457,7 +516,7 @@ pub fn call_type(call: &FunctionCall,
                 interface.decl.methods.get(func_name).cloned().unwrap()
             } else {
                 /* already checked this is valid */
-                let self_type_name = context.scope.full_type_name(for_type).unwrap();
+                let self_type_name = context.scope.canon_name(for_type).unwrap();
 
                 let impl_func = match interface.get_impl(&self_type_name, func_name) {
                     Some(impl_func) => impl_func,
@@ -572,11 +631,11 @@ fn ufcs_ns_of_type(ty: &Type, scope: &Scope) -> Option<Identifier> {
         | Type::Array(array_type) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
 
-        | Type::Reference(ReferenceType::DynamicArray(array_type))
-        | Type::WeakReference(ReferenceType::DynamicArray(array_type)) =>
+        | Type::Ref(Reference::DynamicArray(array_type))
+        | Type::WeakRef(Reference::DynamicArray(array_type)) =>
             return ufcs_ns_of_type(array_type.element.as_ref(), scope),
 
-        ty => scope.full_type_name(ty),
+        ty => scope.canon_name(ty),
     }?;
 
     type_id.name.parent()

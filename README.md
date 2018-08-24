@@ -1,6 +1,7 @@
 # TODO
 
 ## urgent/in progress
+* error on undefined functions
 * => function syntax
 * shadowing breaks initialization checks which are done by name
 * RC struct members on the stack

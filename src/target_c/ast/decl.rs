@@ -21,6 +21,7 @@ use semantic::{
         rc_subvalues,
         RefStrength,
     },
+    Declaration as PascalDeclaration,
 };
 use node::{
     self,

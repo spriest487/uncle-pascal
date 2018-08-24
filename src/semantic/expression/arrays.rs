@@ -9,7 +9,7 @@ use semantic::{
 };
 use types::{
     Type,
-    ReferenceType,
+    Reference,
 };
 use operators;
 use super::{
@@ -58,8 +58,8 @@ pub fn element_type(of: &Expression,
             Ok(Some(*ptr_to))
         }
 
-        | Some(Type::Reference(ReferenceType::DynamicArray(dyn_array_type)))
-        | Some(Type::WeakReference(ReferenceType::DynamicArray(dyn_array_type)))
+        | Some(Type::Ref(Reference::DynamicArray(dyn_array_type)))
+        | Some(Type::WeakRef(Reference::DynamicArray(dyn_array_type)))
         => {
             Ok(Some(*dyn_array_type.element))
         }

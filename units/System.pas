@@ -34,9 +34,9 @@ function Disposable.Dispose(string: String)
 
 function StringFromInt(i: Int32): String
 function StringToInt(s: String; out val: Int32): Boolean
-function StringConcat(a: String; b: String): String
-function StringToCString(s: String; bytes: ^Byte; len: NativeUInt): Boolean
-function StringLength(s: String): NativeUInt
+function Concat(self: String; b: String): String
+function ToCString(self: String; bytes: ^Byte; len: NativeUInt): Boolean
+function Length(self: String): NativeUInt
 
 { native memory allocation }
 
@@ -92,42 +92,42 @@ begin
     end
 end
 
-function StringConcat(a: String; b: String): String
+function Concat(self: String; b: String): String
 begin
-    if a.Length = 0 and b.Length = 0 then
+    if self.Length = 0 and b.Length = 0 then
         result := StringCreate()
-    else if a.Length = 0 then
+    else if self.Length = 0 then
         result := StringFromBytes(b.Chars, b.Length)
     else if b.Length = 0 then
-        result := StringFromBytes(a.Chars, a.Length)
+        result := StringFromBytes(self.Chars, self.Length)
     else begin
         result := StringCreate();
 
-        result.Length := a.Length + b.Length;
+        result.Length := self.Length + b.Length;
         result.Chars := GetMem(result.Length);
 
-        for let c = NativeUInt(0) to a.Length do
-            result.Chars[c] := a.Chars[c];
+        for let c = NativeUInt(0) to self.Length do
+            result.Chars[c] := self.Chars[c];
 
         for let c = NativeUInt(0) to b.Length do
-            result.Chars[a.Length + c] := b.Chars[c];
+            result.Chars[self.Length + c] := b.Chars[c];
     end
 end
 
-function StringToCString(s: String; bytes: ^Byte; len: NativeUInt): Boolean
+function ToCString(self: String; bytes: ^Byte; len: NativeUInt): Boolean
 begin
-    if len < s.Length + NativeUInt(1) then
+    if len < self.Length + NativeUInt(1) then
         result := false
     else begin
-        for let i = NativeUInt(0) to s.Length do
-            bytes[i] := s.Chars[i]
+        for let i = NativeUInt(0) to self.Length do
+            bytes[i] := self.Chars[i]
 
-        bytes[s.Length] := 0
+        bytes[self.Length] := 0
         result := true
     end
 end
 
-function StringLength(s: String): NativeUInt =
-    result := s.Length
+function Length(self: String): NativeUInt =
+    result := self.Length
 
 end.

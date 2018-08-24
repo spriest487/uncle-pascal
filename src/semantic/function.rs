@@ -9,7 +9,8 @@ use syntax;
 use semantic::*;
 use types::Type;
 
-const RESULT_VAR_NAME: &str = "result";
+pub const RESULT_VAR_NAME: &str = "result";
+pub const SELF_ARG_NAME: &str = "self";
 
 pub type FunctionDecl = node::FunctionDecl<SemanticContext>;
 pub type Function = node::Function<SemanticContext>;
@@ -129,8 +130,20 @@ impl FunctionDecl {
         Ok((func_decl, new_scope))
     }
 
-    pub fn scope(&self) -> &Scope {
-        self.context.scope.as_ref()
+    pub fn extension_type(&self) -> Option<&Type> {
+        self.args.iter().next()
+            .filter(|arg| arg.name == SELF_ARG_NAME)
+            .map(|arg| &arg.decl_type)
+    }
+}
+
+impl Declaration for FunctionDecl {
+    fn local_name(&self) -> &str {
+        &self.name
+    }
+
+    fn context(&self) -> &SemanticContext {
+        &self.context
     }
 }
 
