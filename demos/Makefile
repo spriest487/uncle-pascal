@@ -39,6 +39,6 @@ check: build
 
 %.cpp: %.pas
 	$(pascal) $< -I $(units) -o $(out_path)/$@
-	clang-format -i $(out_path)/$@ --style=Mozilla
+	clang-format -i $(out_path)/$@ -style="{ColumnLimit: 0}"
 
 .PHONY: check
