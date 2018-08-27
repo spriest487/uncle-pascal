@@ -9,6 +9,7 @@ use target_c::ast::{
     TranslationResult,
     TranslationUnit,
     Expression,
+    ExpressionContext,
     CallingConvention,
     FunctionDefinition,
     FunctionArg,
@@ -474,7 +475,10 @@ impl Variable {
         let ctype = CType::translate(&var_decl.decl_type, var_decl.scope(), unit)?;
 
         let default_value = match var_decl.default_value.as_ref() {
-            Some(val_expr) => Some(Expression::translate_expression(val_expr, unit)?),
+            Some(val_expr) => {
+                let mut expr_ctx = ExpressionContext::root(unit);
+                Some(Expression::translate_expression(val_expr, &mut expr_ctx)?)
+            },
             None => None,
         };
 

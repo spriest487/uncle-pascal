@@ -3,29 +3,34 @@
 Records are value objects. They are stored locally and require no memory management.
 A record type is defined in a type declaration. The record declaration contains one or more field declarations.
 
-    type Cat = record
-        Color: Color
-        NumLegs: Int32
-    end
+```pascal
+type Cat = record
+    Color: Color
+    NumLegs: Int32
+end
+```
 
 A variant part can be declared in addition to or in place of the normal field list.
 If present, the variant part must be the last item in the record declaration.
 The variant part consists of a variant tag which identifies the variant an object
 holds, which otherwise acts like a normal field.
 
-    type Animal = record
-        case Kind: AnimalKind of
-            AnimalKind.Cat: (
-                Whiskers: Int64
-            )
-            AnimalKind.Bird: (
-                Speaks: Boolean
-                Color: Color
-            )
-    end
+```pascal
+type Animal = record
+    case Kind: AnimalKind of
+        AnimalKind.Cat: (
+            Whiskers: Int64
+        )
+        AnimalKind.Bird: (
+            Speaks: Boolean
+            Color: Color
+        )
+end
+```
 
 A record object is instantiated using the object constructor syntax.
 
+```pascal
     let cat = Cat (
         Color: Color.Red
         NumLegs: 4
@@ -45,6 +50,7 @@ A record object is instantiated using the object constructor syntax.
         // error
         //Speaks: true
     )
+```
 
 * The value of a record object is public. They can be referenced, instantiated and their
 members can be accessed and mutated from any unit.

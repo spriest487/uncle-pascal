@@ -199,6 +199,7 @@ pub fn is_assignable(expr: &Expression) -> bool {
         | ExpressionValue::If { .. }
         | ExpressionValue::While { .. }
         | ExpressionValue::LetBinding { .. }
+        | ExpressionValue::Exit(_)
         => false
     }
 }

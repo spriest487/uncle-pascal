@@ -26,6 +26,7 @@ use target_c::ast::{
     CallingConvention,
     Interface,
     Expression,
+    ExpressionContext,
     Name,
     Variable,
     CArray,
@@ -314,12 +315,12 @@ impl TranslationUnit {
         }
 
         if let Some(init_block) = unit.initialization.as_ref() {
-            let init_block = Block::translate(init_block, None, self)?;
+            let init_block = Block::translate(init_block, None, &mut ExpressionContext::root(self))?;
             self.initialization.push(init_block);
         }
 
         if let Some(final_block) = unit.finalization.as_ref() {
-            let final_block = Block::translate(final_block, None, self)?;
+            let final_block = Block::translate(final_block, None, &mut ExpressionContext::root(self))?;
             self.finalization.push(final_block);
         }
 
@@ -391,7 +392,11 @@ impl TranslationUnit {
             })
             .collect()));
 
-        let main = Block::translate(&module.program.program_block, None, &mut result)?;
+        let main = Block::translate(
+            &module.program.program_block,
+            None,
+            &mut ExpressionContext::root(&mut result),
+        )?;
         result.initialization.push(main);
         result.initialization.push({
             let mut release_global_vars = Vec::new();

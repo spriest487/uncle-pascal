@@ -17,6 +17,8 @@
 * trying to call a function which doesn't exist via ufcs on a class
     shows the wrong error message (member cannot be accessed)
 * external functions in the Implementation sections don't work
+* `exit` doesn't check that `out` params and `result` are initialized
+* `exit` value should have a type hint of the current function result type
 
 ## missing features
 * set literals

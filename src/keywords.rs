@@ -42,6 +42,7 @@ pub enum Keyword {
     Finally,
     Raise,
     With,
+    Exit,
 }
 
 impl Keyword {
@@ -84,6 +85,7 @@ impl Keyword {
             "finally" => Some(Finally),
             "raise" => Some(Raise),
             "with" => Some(With),
+            "exit" => Some(Exit),
             _ => None,
         }
     }
@@ -137,6 +139,7 @@ impl fmt::Display for Keyword {
             Finally => "finally",
             Raise => "raise",
             With => "with",
+            Exit => "exit",
         })
     }
 }

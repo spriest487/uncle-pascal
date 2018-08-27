@@ -160,6 +160,32 @@ impl Expression {
                 let (error, _) = Expression::annotate(error.as_ref(), None, scope.clone())?;
                 Ok((Expression::raise(error, expr_context), scope))
             }
+
+            ExpressionValue::Exit(exit_val) => {
+                let mut scope = scope;
+                let exit_val = match exit_val {
+                    Some(exit_val) => {
+                        /* todo: hint with result type of function, if any */
+                        let (exit_val, new_scope) = Expression::annotate(exit_val, None, scope)?;
+                        scope = new_scope;
+                        Some(exit_val)
+                    },
+                    None => None,
+                };
+
+                /* todo: check exit val is compatible with function */
+                /* todo: check returns and out params here */
+
+                let scope = if exit_val.is_some() {
+                    let initialized_result = scope.as_ref().clone()
+                        .initialize_symbol(&Identifier::from("result"));
+                    Rc::new(initialized_result)
+                } else {
+                    scope
+                };
+
+                Ok((Expression::exit(exit_val, expr_context), scope))
+            }
         }
     }
 
@@ -233,10 +259,8 @@ impl Expression {
                 Ok(Some(ctor.collection_type(&self.context)?))
             }
 
-            ExpressionValue::Raise(error) => {
-                error.expr_type()?;
-                Ok(None)
-            }
+            ExpressionValue::Raise(_) => Ok(None),
+            ExpressionValue::Exit(_) => Ok(None),
         }
     }
 

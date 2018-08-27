@@ -60,6 +60,7 @@ fn match_statement_keyword() -> Matcher {
         .or(keywords::For)
         .or(keywords::Try)
         .or(keywords::Raise)
+        .or(keywords::Exit)
 }
 
 /* this matcher should cover anything which can appear at the start of an expr */
@@ -468,6 +469,20 @@ fn parse_raise(tokens: &mut TokenStream) -> ExpressionResult {
     Ok(Expression::raise(error, context))
 }
 
+fn parse_exit(tokens: &mut TokenStream) -> ExpressionResult {
+    let context = tokens.match_one(keywords::Exit)?;
+
+    let return_val = if tokens.look_ahead().match_one(match_operand_start()).is_some() {
+        let parser = CompoundExpressionParser::new(tokens);
+        Some(parser.parse()?)
+    } else {
+        None
+    };
+
+    Ok(Expression::exit(return_val, context))
+}
+
+
 fn parse_object_constructor(tokens: &mut TokenStream) -> ExpressionResult {
     let context = tokens.match_one(tokens::BracketLeft)?;
 
@@ -728,6 +743,7 @@ impl Parse for Expression {
             Some(keywords::Try) => parse_try_except(tokens),
             Some(keywords::With) => parse_with_statement(tokens),
             Some(keywords::Raise) => parse_raise(tokens),
+            Some(keywords::Exit) => parse_exit(tokens),
             Some(keywords::Begin) => {
                 let parsed_block = Block::parse(tokens)?;
                 Ok(Expression::block(parsed_block))

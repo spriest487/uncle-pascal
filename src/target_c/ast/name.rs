@@ -185,7 +185,7 @@ impl fmt::Display for Name {
             => write!(f, "{}_Method_{}_{}", interface, for_type, self.name),
 
             | NameKind::ExtensionMethod { for_type }
-            => write!(f, "{}_Ext_{}", self.name, for_type),
+            => write!(f, "Ext_{}_Method_{}", for_type, self.name),
 
             | NameKind::AbstractCall { interface }
             => write!(f, "{}_VirtualCall_{}", interface, self.name),

@@ -1,3 +1,6 @@
+pub mod constructor;
+pub mod call;
+
 use std::fmt;
 
 use operators;
@@ -14,166 +17,16 @@ use types::{
     ParameterizedName,
 };
 
-#[derive(Clone, Debug)]
-pub struct ObjectConstructorMember<TContext>
-    where TContext: Context
-{
-    pub name: String,
-    pub value: Expression<TContext>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct ObjectConstructor<TContext>
-    where TContext: Context
-{
-    pub members: Vec<ObjectConstructorMember<TContext>>,
-    pub object_type: Option<TContext::Type>,
-}
-
-impl<TContext> ObjectConstructor<TContext>
-    where TContext: Context
-{
-    pub fn get_member(&self, name: &str) -> Option<&ObjectConstructorMember<TContext>> {
-        self.members.iter()
-            .find(|mem| mem.name == name)
-    }
-}
-
-impl<TContext> PartialEq for ObjectConstructorMember<TContext>
-    where TContext: Context
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.name.eq(&other.name) && self.value.eq(&other.value)
-    }
-}
-
-impl<C> fmt::Display for ObjectConstructor<C>
-    where C: Context
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "(")?;
-        for (member_num, member) in self.members.iter().enumerate() {
-            write!(f, "{}: {}", member.name, member.value)?;
-
-            if member_num < self.members.len() - 1 {
-                write!(f, ";")?;
-            }
-        }
-        write!(f, ")")
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum CollectionMember<TContext>
-    where TContext: Context
-{
-    Single(Expression<TContext>),
-    Range {
-        from: Expression<TContext>,
-        to: Expression<TContext>,
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct CollectionConstructor<TContext>
-    where TContext: Context
-{
-    pub element_type: Option<TContext::Type>,
-    pub members: Vec<CollectionMember<TContext>>,
-}
-
-impl<TContext> fmt::Display for CollectionConstructor<TContext>
-    where TContext: Context
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "[")?;
-        for (i, member) in self.members.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-
-            match member {
-                CollectionMember::Range { from, to } => {
-                    write!(f, "{}..{}", from, to)?;
-                }
-
-                CollectionMember::Single(val) => {
-                    write!(f, "{}", val)?;
-                },
-            }
-        }
-        write!(f, "]")
-    }
-}
-
-impl<TContext> CollectionConstructor<TContext>
-    where TContext: Context
-{
-    pub fn contains_ranges(&self) -> bool {
-        self.members.iter().any(|element| match element {
-            CollectionMember::Range { .. } => true,
-            _ => false,
-        })
-    }
-
-    /* iterate over the members as a flat array. panics if any of the member expressions
-    is a range */
-    pub fn as_array(&self) -> impl Iterator<Item=&Expression<TContext>> {
-        self.members.iter()
-            .map(move |member| match member {
-                CollectionMember::Single(expr) => expr,
-                CollectionMember::Range { .. } => {
-                    panic!("called array_values on `{}`, which contained ranges", self);
-                },
-            })
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum FunctionCall<TContext>
-    where TContext: Context,
-{
-    Function {
-        target: Box<Expression<TContext>>,
-
-        args: Vec<Expression<TContext>>,
+pub use self::{
+    constructor::{
+        ObjectConstructor,
+        ObjectConstructorMember,
+        CollectionConstructor,
+        CollectionMember,
     },
-    Method {
-        interface_id: Identifier,
-        func_name: String,
-        for_type: TContext::Type,
 
-        args: Vec<Expression<TContext>>,
-    },
-    Extension {
-        self_expr: Box<Expression<TContext>>,
-        func_name: String,
-        for_type: TContext::Type,
-
-        args: Vec<Expression<TContext>>,
-    }
-}
-
-impl<TContext> FunctionCall<TContext>
-    where TContext: Context
-{
-    pub fn args(&self) -> &[Expression<TContext>] {
-        match self {
-            FunctionCall::Function { args, .. } => args,
-            FunctionCall::Method { args, .. } => args,
-            FunctionCall::Extension { args, .. } => args,
-        }
-    }
-
-    pub fn unwrap_function(self) -> (Expression<TContext>, Vec<Expression<TContext>>) {
-        match self {
-            FunctionCall::Function { target, args } => (*target, args),
-            FunctionCall::Extension { .. } => panic!("called unwrap_function on extension call"),
-            FunctionCall::Method { interface_id, func_name, .. } =>
-                panic!("called unwrap_function on method call {}.{}", interface_id, func_name)
-        }
-    }
-}
+    call::FunctionCall,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ExpressionValue<TContext>
@@ -411,6 +264,8 @@ pub enum ExpressionValue<TContext>
         this statement terminates the program
     */
     Raise(Box<Expression<TContext>>),
+
+    Exit(Option<Box<Expression<TContext>>>),
 }
 
 #[derive(Clone, Debug)]
@@ -646,6 +501,13 @@ impl<C> fmt::Display for ExpressionValue<C>
             ExpressionValue::Raise(error) => {
                 write!(f, "raise {}", error)
             }
+
+            ExpressionValue::Exit(exit_val) => {
+                match exit_val {
+                    Some(val) => write!(f, "exit {}", val),
+                    None => write!(f, "exit")
+                }
+            }
         }
     }
 }
@@ -861,6 +723,13 @@ impl<TContext> Expression<TContext>
     pub fn raise(error: Self, context: impl Into<TContext>) -> Self {
         Expression {
             value: ExpressionValue::Raise(Box::new(error)),
+            context: context.into(),
+        }
+    }
+
+    pub fn exit(with_val: Option<Self>, context: impl Into<TContext>) -> Self {
+        Expression {
+            value: ExpressionValue::Exit(with_val.map(Box::new)),
             context: context.into(),
         }
     }

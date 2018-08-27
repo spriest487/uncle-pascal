@@ -70,64 +70,57 @@ function StringCreate: String =
 
 function StringFromBytes(bytes: ^Byte; len: NativeUInt): String
 begin
-    result := (
-        Chars: GetMem(len)
-        Length: len
-    )
+    let var chars := GetMem(len)
 
-    for let c = NativeUInt(0) to result.Length do
-        result.Chars[c] := bytes[c]
+    for let c = NativeUInt(0) to len do
+        chars[c] := bytes[c]
+
+    result := ( Chars: chars; Length: len )
 end
 
 function Disposable.Dispose(string: String)
 begin
-    if string.Length > NativeUInt(0) then begin
-        if string.Chars = nil then
-            raise 'string with length > 0 must be initialized'
+    if string.Length = NativeUInt(0) then exit
 
-        FreeMem(string.Chars)
+    if string.Chars = nil then
+        raise 'string with length > 0 must be initialized'
 
-        string.Chars := nil
-        string.Length := 0
-    end
+    FreeMem(string.Chars)
+
+    string.Chars := nil
+    string.Length := 0
 end
 
 function Concat(self: String; b: String): String
 begin
-    if self.Length = 0 and b.Length = 0 then
-        result := StringCreate()
-    else if self.Length = 0 then
-        result := StringFromBytes(b.Chars, b.Length)
-    else if b.Length = 0 then
-        result := StringFromBytes(self.Chars, self.Length)
-    else begin
-        result := StringCreate();
+    if self.Length = 0 and b.Length = 0 then exit StringCreate()
+    if self.Length = 0 then exit StringFromBytes(b.Chars, b.Length)
+    if b.Length = 0 then exit StringFromBytes(self.Chars, self.Length)
 
-        result.Length := self.Length + b.Length;
-        result.Chars := GetMem(result.Length);
+    let length = self.Length + b.Length;
+    let var chars := GetMem(length);
 
-        for let c = NativeUInt(0) to self.Length do
-            result.Chars[c] := self.Chars[c];
+    for let c = NativeUInt(0) to self.Length do
+        chars[c] := self.Chars[c];
 
-        for let c = NativeUInt(0) to b.Length do
-            result.Chars[self.Length + c] := b.Chars[c];
-    end
+    for let c = NativeUInt(0) to b.Length do
+        chars[self.Length + c] := b.Chars[c];
+
+    result := ( Chars: chars; Length: length )
 end
 
 function ToCString(self: String; bytes: ^Byte; len: NativeUInt): Boolean
 begin
     if len < self.Length + NativeUInt(1) then
-        result := false
-    else begin
-        for let i = NativeUInt(0) to self.Length do
-            bytes[i] := self.Chars[i]
+        exit false
 
-        bytes[self.Length] := 0
-        result := true
-    end
+    for let i = NativeUInt(0) to self.Length do
+        bytes[i] := self.Chars[i]
+
+    bytes[self.Length] := 0
+    result := true
 end
 
-function Length(self: String): NativeUInt =
-    result := self.Length
+function Length(self: String): NativeUInt = exit self.Length
 
 end.

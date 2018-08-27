@@ -18,6 +18,7 @@ use target_c::ast::{
     Block,
     TranslationUnit,
     Expression,
+    ExpressionContext,
     Variable,
     Name,
     CastKind,
@@ -222,7 +223,8 @@ impl FunctionDecl {
 
         let decl = FunctionDecl::translate_decl(&function.decl, unit)?;
 
-        let mut body = Block::translate(&function.block, Some(&local_vars), unit)?;
+        let mut expr_ctx = ExpressionContext::root(unit);
+        let mut body = Block::translate(&function.block, Some(&local_vars), &mut expr_ctx)?;
 
         if !decl.return_type.is_void() {
             let result_decl = Variable {

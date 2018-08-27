@@ -43,6 +43,45 @@ use consts::{
 };
 use operators;
 
+pub struct ExpressionContext<'a> {
+    pub unit: &'a mut TranslationUnit,
+    block_id_stack: Vec<usize>,
+    next_block_id: usize,
+}
+
+impl<'a> ExpressionContext<'a> {
+    pub fn root(unit: &'a mut TranslationUnit) -> Self {
+        Self {
+            unit,
+            block_id_stack: Vec::new(),
+            next_block_id: 1,
+        }
+    }
+
+    pub fn nest<TResult>(&mut self,
+                         mut f: impl FnMut(&mut Self) -> TranslationResult<TResult>)
+                         -> TranslationResult<TResult>
+    {
+        self.block_id_stack.push(self.next_block_id);
+        self.next_block_id += 1;
+        let result = f(self)?;
+        self.block_id_stack.pop();
+        Ok(result)
+    }
+
+    pub fn block_id(&self) -> usize {
+        self.block_id_stack.last().cloned().unwrap_or(0)
+    }
+
+    pub fn parent_block_id(&self) -> Option<usize> {
+        match self.block_id_stack.len() {
+            0 => None,
+            1 => Some(0),
+            len => Some(self.block_id_stack[len - 2])
+        }
+    }
+}
+
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum CastKind {
     Static,
@@ -53,6 +92,9 @@ pub enum CastKind {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expression {
     Raw(String),
+    Label(String),
+    #[allow(dead_code)]
+    Goto(String),
     Group(Box<Expression>),
     Name(Name),
     Block(Block),
@@ -304,11 +346,13 @@ impl Expression {
     }
 
     pub fn translate_rc_statement(stmt: &ArcStatement,
-                                  unit: &mut TranslationUnit)
+                                  expr_ctx: &mut ExpressionContext)
                                   -> TranslationResult<Vec<Expression>> {
         match stmt {
             ArcStatement::Block(statements) => {
-                let block = Block::translate_rc_block(statements, None, unit)?;
+                let block = expr_ctx.nest(|expr_ctx| {
+                    Block::translate_rc_block(statements, None, expr_ctx)
+                })?;
 
                 Ok(vec![Expression::Block(block)])
             }
@@ -328,7 +372,7 @@ impl Expression {
                     let local_type = CType::translate(
                         &bound_name.bound_type,
                         body.scope(),
-                        unit,
+                        expr_ctx.unit,
                     )?;
 
                     lines.push(Expression::local_decl(
@@ -342,14 +386,14 @@ impl Expression {
                     Some(BoundName { name, .. }) => Expression::binary_op(
                         Name::local(name.as_str()),
                         "=",
-                        Self::translate_expression(&body, unit)?,
+                        Self::translate_expression(&body, expr_ctx)?,
                     ),
 
-                    None => Self::translate_expression(&body, unit)?,
+                    None => Self::translate_expression(&body, expr_ctx)?,
                 };
                 let rc_assigned_vals: Vec<(Expression, RefStrength)> = rc_assignments.iter()
                     .map(|arc_val| {
-                        let translated = Self::translate_expression(&arc_val.expr, unit)?;
+                        let translated = Self::translate_expression(&arc_val.expr, expr_ctx)?;
                         let rc_val = Self::translate_rc_value_expr(&arc_val.path, translated);
                         Ok((rc_val, arc_val.path.strength()))
                     })
@@ -380,11 +424,15 @@ impl Expression {
                         .expect("temporary rc values should always be valid types")
                         .expect("temporary rc values should never have no type");
 
-                    let val_c_type = CType::translate(&tmp_type, tmp_val.base_value.scope(), unit)?;
+                    let val_c_type = CType::translate(
+                        &tmp_type,
+                        tmp_val.base_value.scope(),
+                        expr_ctx.unit,
+                    )?;
                     let tmp_name = Name::local_internal(tmp_id.to_string());
                     let tmp_val_expr = Expression::translate_expression(
                         &tmp_val.base_value,
-                        unit,
+                        expr_ctx,
                     )?;
 
                     temp_block.push(Expression::local_decl(
@@ -444,65 +492,68 @@ impl Expression {
     }
 
     pub fn translate_statement(stmt: &semantic::Expression,
-                               unit: &mut TranslationUnit)
+                               expr_ctx: &mut ExpressionContext)
                                -> TranslationResult<Vec<Self>> {
         let rc_block = extract_stmt_rc_bindings(stmt.clone(), 0);
 
-        Self::translate_rc_statement(&rc_block, unit)
+        Self::translate_rc_statement(&rc_block, expr_ctx)
     }
 
     pub fn translate_expression(expr: &semantic::Expression,
-                                unit: &mut TranslationUnit)
+                                expr_ctx: &mut ExpressionContext)
                                 -> TranslationResult<Self> {
         match &expr.value {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                Self::translate_binary_op(lhs, *op, rhs, unit)
+                Self::translate_binary_op(lhs, *op, rhs, expr_ctx)
             }
 
             ExpressionValue::PrefixOperator { op, rhs } => {
-                Self::translate_unary_op(*op, rhs, unit)
+                Self::translate_unary_op(*op, rhs, expr_ctx)
             }
 
             ExpressionValue::FunctionCall(call) => {
-                Self::translate_func_call(call, unit)
+                Self::translate_func_call(call, expr_ctx)
             }
 
             ExpressionValue::TypeCast { target_type, from_value } => {
-                let target_ctype = CType::translate(target_type, expr.scope(), unit)?;
-                let from_value = Expression::translate_expression(from_value, unit)?;
+                let target_ctype = CType::translate(target_type, expr.scope(), expr_ctx.unit)?;
+                let from_value = Expression::translate_expression(from_value, expr_ctx)?;
 
                 Ok(Expression::cast(target_ctype, from_value, CastKind::Static))
             }
 
             ExpressionValue::LetBinding(binding) => {
                 let value_type = binding.value.expr_type().unwrap().unwrap();
-                let value = Expression::translate_expression(binding.value.as_ref(), unit)?;
+                let value = Expression::translate_expression(
+                    binding.value.as_ref(),
+                    expr_ctx,
+                )?;
 
                 Ok(Expression::local_decl(
-                    CType::translate(&value_type, expr.scope(), unit)?,
+                    CType::translate(&value_type, expr.scope(), expr_ctx.unit)?,
                     Name::local(binding.name.as_str()),
                     Some(value),
                 ))
             }
 
             ExpressionValue::Constant(const_expr) => {
-                Self::translate_const_expr(const_expr, &expr.context, unit)
+                Self::translate_const_expr(const_expr, &expr.context, expr_ctx.unit)
             }
 
             ExpressionValue::If { condition, then_branch, else_branch } => {
                 let else_branch = else_branch.as_ref().map(Box::as_ref);
-                Self::translate_if(condition, then_branch, else_branch, unit)
+                Self::translate_if(condition, then_branch, else_branch, expr_ctx)
             }
 
             ExpressionValue::While { condition, body } => {
-                let condition = Expression::translate_expression(condition, unit)?;
-                let body = Expression::translate_statement(body, unit)?;
+                let condition = Expression::translate_expression(condition, expr_ctx)?;
+                let body = Expression::translate_statement(body, expr_ctx)?;
 
                 Ok(Expression::while_loop(condition, body))
             }
 
             ExpressionValue::ForLoop { from, to, body } => {
-                Self::translate_for_loop(from, to, body, unit)
+                Self::translate_for_loop(from, to, body, expr_ctx)
             }
 
             ExpressionValue::Identifier(sym) => {
@@ -510,25 +561,27 @@ impl Expression {
             }
 
             ExpressionValue::Member { of, name } => {
-                Self::translate_member(of, name, unit)
+                Self::translate_member(of, name, expr_ctx)
             }
 
             ExpressionValue::ArrayElement { of, index_expr } => {
-                Self::translate_array_element(of, index_expr, unit)
+                Self::translate_array_element(of, index_expr, expr_ctx)
             }
 
             ExpressionValue::Block(block) => {
-                let block = Block::translate(block, None, unit)?;
+                let block = expr_ctx.nest(|expr_ctx| {
+                    Block::translate(block, None, expr_ctx)
+                })?;
                 Ok(Expression::Block(block))
             }
 
             ExpressionValue::CollectionConstructor(ctor) => {
                 let expr_type = expr.expr_type().unwrap().unwrap();
-                Self::translate_collection_ctor(ctor, &expr_type, expr.scope(), unit)
+                Self::translate_collection_ctor(ctor, &expr_type, expr.scope(), expr_ctx)
             }
 
             ExpressionValue::ObjectConstructor(ctor) => {
-                Self::translate_object_ctor(ctor, expr.scope(), unit)
+                Self::translate_object_ctor(ctor, expr.scope(), expr_ctx)
             }
 
             ExpressionValue::With { .. } => {
@@ -538,6 +591,30 @@ impl Expression {
             ExpressionValue::Raise(error) => {
                 Self::translate_raise(error, &expr.context)
             }
+
+            ExpressionValue::Exit(with_val) => {
+                let with_val = with_val.as_ref().map(Box::as_ref);
+                Self::translate_exit(with_val, expr_ctx)
+            }
+        }
+    }
+
+    fn translate_exit(with_val: Option<&semantic::Expression>,
+                      expr_ctx: &mut ExpressionContext)
+                      -> TranslationResult<Self> {
+        let exit = Expression::Goto(format!("BlockExit_{}", expr_ctx.block_id()));
+
+        match with_val {
+            Some(exit_val) => {
+                let exit_val_expr = Self::translate_expression(exit_val, expr_ctx)?;
+
+                Ok(Expression::Block(Block::new(vec![
+                    Expression::binary_op(Name::local("result"), "=", exit_val_expr),
+                    exit,
+                ])))
+            }
+
+            None => Ok(exit)
         }
     }
 
@@ -632,7 +709,7 @@ impl Expression {
 
     fn translate_member(of: &semantic::Expression,
                         name: &str,
-                        unit: &mut TranslationUnit)
+                        expr_ctx: &mut ExpressionContext)
                         -> TranslationResult<Self> {
         //panic!("of: {:?}, name: {}", of, name);
         let mut of_type: Type = of.expr_type()
@@ -640,7 +717,7 @@ impl Expression {
             .expect("target of member expression must exist");
 
         /* accessing a member through a pointer automatically dereferences the pointer */
-        let mut of_expr = Expression::translate_expression(of, unit)?;
+        let mut of_expr = Expression::translate_expression(of, expr_ctx)?;
         while let Type::Pointer(of_target) = of_type {
             of_expr = of_expr.deref();
             of_type = *of_target;
@@ -656,20 +733,20 @@ impl Expression {
 
     fn translate_array_element(of: &semantic::Expression,
                                index_expr: &semantic::Expression,
-                               unit: &mut TranslationUnit)
+                               expr_ctx: &mut ExpressionContext)
                                -> TranslationResult<Self> {
         /* the internal implementation of arrays is a struct with a single
                 member, `member_Elements` */
         let of = match of.expr_type().unwrap().unwrap() {
             Type::Array(_) => {
-                let array = Expression::translate_expression(of, unit)?;
+                let array = Expression::translate_expression(of, expr_ctx)?;
                 Expression::member(array, "Elements")
             }
 
-            _ => Expression::translate_expression(of, unit)?,
+            _ => Expression::translate_expression(of, expr_ctx)?,
         };
 
-        let index = Expression::translate_expression(index_expr, unit)?;
+        let index = Expression::translate_expression(index_expr, expr_ctx)?;
 
         Ok(Expression::array_element(of, index))
     }
@@ -677,7 +754,7 @@ impl Expression {
     fn translate_collection_ctor(ctor: &semantic::CollectionConstructor,
                                  expr_type: &Type,
                                  scope: &semantic::Scope,
-                                 unit: &mut TranslationUnit)
+                                 expr_ctx: &mut ExpressionContext)
                                  -> TranslationResult<Self> {
         match expr_type {
             Type::Set(_) => {
@@ -687,12 +764,12 @@ impl Expression {
                 assert!(!ctor.contains_ranges(), "array constructor may not contain ranges");
 
                 let elements = ctor.as_array()
-                    .map(|val| Expression::translate_expression(val, unit))
+                    .map(|val| Expression::translate_expression(val, expr_ctx))
                     .collect::<TranslationResult<_>>()?;
 
                 let element_type = ctor.element_type.as_ref().unwrap();
 
-                unit.array_ctor(element_type, elements, scope)
+                expr_ctx.unit.array_ctor(element_type, elements, scope)
             }
 
             invalid => panic!("invalid collection type: {}", invalid)
@@ -701,7 +778,7 @@ impl Expression {
 
     fn translate_object_ctor(ctor: &semantic::ObjectConstructor,
                              scope: &semantic::Scope,
-                             unit: &mut TranslationUnit)
+                             expr_ctx: &mut ExpressionContext)
                              -> TranslationResult<Self> {
         let (obj_id, obj_decl) = match ctor.object_type.as_ref() {
             /* note that we specifically can't construct an object into a
@@ -717,7 +794,7 @@ impl Expression {
 
         /* reference the class name to make sure generics are instantiated, even though
         we don't store it */
-        CType::translate(ctor.object_type.as_ref().unwrap(), scope, unit)?;
+        CType::translate(ctor.object_type.as_ref().unwrap(), scope, expr_ctx.unit)?;
 
         /* todo: support the variant part */
         let ctor_args: Vec<Expression> = obj_decl.all_members()
@@ -732,9 +809,9 @@ impl Expression {
                         member.context.clone(),
                     );
 
-                    Expression::translate_expression(&default_val_expr, unit)
+                    Expression::translate_expression(&default_val_expr, expr_ctx)
                 }
-                Some(ctor_val) => Self::translate_expression(&ctor_val.value, unit),
+                Some(ctor_val) => Self::translate_expression(&ctor_val.value, expr_ctx),
             })
             .collect::<TranslationResult<_>>()?;
 
@@ -746,12 +823,12 @@ impl Expression {
     fn translate_for_loop(from: &semantic::Expression,
                           to: &semantic::Expression,
                           body: &semantic::Expression,
-                          unit: &mut TranslationUnit)
+                          expr_ctx: &mut ExpressionContext)
                           -> TranslationResult<Self> {
         let iter_expr = match &from.value {
             ExpressionValue::BinaryOperator { lhs, op, .. }
             if *op == operators::Assignment => {
-                Expression::translate_expression(lhs, unit)?
+                Expression::translate_expression(lhs, expr_ctx)?
             }
             ExpressionValue::LetBinding(binding) => {
                 Expression::Name(Name::local(binding.name.clone()))
@@ -759,9 +836,9 @@ impl Expression {
             _ => panic!("for loop 'from' clause must be an assignment or a let binding")
         };
 
-        let init = Expression::translate_expression(from, unit)?;
+        let init = Expression::translate_expression(from, expr_ctx)?;
 
-        let to = Expression::translate_expression(to, unit)?;
+        let to = Expression::translate_expression(to, expr_ctx)?;
         let continue_while = Expression::binary_op(iter_expr.clone(), "<", to);
 
         let after_each = Expression::binary_op(
@@ -770,7 +847,7 @@ impl Expression {
             Expression::SizeLiteral(1),
         );
 
-        let body = Expression::translate_statement(body, unit)?;
+        let body = Expression::translate_statement(body, expr_ctx)?;
 
         Ok(Expression::for_loop(init, continue_while, after_each, body))
     }
@@ -778,14 +855,14 @@ impl Expression {
     fn translate_if(condition: &semantic::Expression,
                     then_branch: &semantic::Expression,
                     else_branch: Option<&semantic::Expression>,
-                    unit: &mut TranslationUnit)
+                    expr_ctx: &mut ExpressionContext)
                     -> TranslationResult<Self> {
-        let condition = Expression::translate_expression(condition, unit)?;
-        let then_branch = Expression::translate_statement(then_branch, unit)?;
+        let condition = Expression::translate_expression(condition, expr_ctx)?;
+        let then_branch = Expression::translate_statement(then_branch, expr_ctx)?;
 
         let if_expr = match else_branch {
             Some(stmt) => {
-                let else_stmts = Expression::translate_statement(stmt, unit)?;
+                let else_stmts = Expression::translate_statement(stmt, expr_ctx)?;
 
                 Expression::if_then_else(
                     condition,
@@ -802,17 +879,17 @@ impl Expression {
     }
 
     fn translate_func_call(call: &FunctionCall<semantic::SemanticContext>,
-                           unit: &mut TranslationUnit)
+                           expr_ctx: &mut ExpressionContext)
                            -> TranslationResult<Self> {
         let mut args: Vec<_> = call.args().iter()
             .map(|arg_expr| {
-                Expression::translate_expression(arg_expr, unit)
+                Expression::translate_expression(arg_expr, expr_ctx)
             })
             .collect::<TranslationResult<_>>()?;
 
         let target = match call {
             FunctionCall::Function { target, .. } => {
-                Expression::translate_expression(target, unit)?
+                Expression::translate_expression(target, expr_ctx)?
             }
 
             FunctionCall::Extension { self_expr, for_type, func_name, .. } => {
@@ -820,13 +897,13 @@ impl Expression {
                 let for_type_name = call.scope().canon_name(for_type).unwrap();
                 let full_func_name = func_decl.qualified_name();
 
-                args.insert(0, Expression::translate_expression(self_expr, unit)?);
+                args.insert(0, Expression::translate_expression(self_expr, expr_ctx)?);
                 Expression::from(Name::extension_method(&full_func_name, &for_type_name))
             }
 
             FunctionCall::Method { interface_id, func_name, for_type, .. } => {
                 if for_type.is_interface_ref() {
-                    let call_name = unit.method_call_name(interface_id, func_name)
+                    let call_name = expr_ctx.unit.method_call_name(interface_id, func_name)
                         .unwrap();
 
                     Expression::Name(call_name.clone())
@@ -867,7 +944,7 @@ impl Expression {
     fn translate_binary_op(lhs: &semantic::Expression,
                            op: operators::Operator,
                            rhs: &semantic::Expression,
-                           unit: &mut TranslationUnit) -> TranslationResult<Self> {
+                           expr_ctx: &mut ExpressionContext) -> TranslationResult<Self> {
         let string_type = Some(Type::class_ref(ParameterizedName {
             name: Identifier::from("System.String"),
             type_args: Vec::new(),
@@ -882,8 +959,8 @@ impl Expression {
                     &ParameterizedName::new_simple("System.String"),
                 ),
                 vec![
-                    Expression::translate_expression(lhs, unit)?,
-                    Expression::translate_expression(rhs, unit)?,
+                    Expression::translate_expression(lhs, expr_ctx)?,
+                    Expression::translate_expression(rhs, expr_ctx)?,
                 ],
             ));
         }
@@ -891,7 +968,7 @@ impl Expression {
         let lhs_type = lhs.expr_type().unwrap().unwrap();
         let rhs_type = rhs.expr_type().unwrap().unwrap();
         if lhs_type.is_weak() && rhs_type == Type::Nil {
-            let weak_ref = Expression::translate_expression(lhs, unit)?;
+            let weak_ref = Expression::translate_expression(lhs, expr_ctx)?;
             let strong_count = Expression::Raw(format!("{}->StrongCount", weak_ref.clone()));
 
             if op == operators::Equals {
@@ -939,15 +1016,15 @@ impl Expression {
         };
 
         Ok(Expression::binary_op(
-            Expression::translate_expression(lhs, unit)?,
+            Expression::translate_expression(lhs, expr_ctx)?,
             c_op,
-            Expression::translate_expression(rhs, unit)?,
+            Expression::translate_expression(rhs, expr_ctx)?,
         ))
     }
 
     fn translate_unary_op(op: operators::Operator,
                           operand: &semantic::Expression,
-                          unit: &mut TranslationUnit)
+                          expr_ctx: &mut ExpressionContext)
                           -> TranslationResult<Self> {
         let c_op = match op {
             operators::Plus => "+",
@@ -971,7 +1048,7 @@ impl Expression {
             operators::Assignment => panic!("bad prefix operator type: {}", op),
         };
 
-        let operand = Expression::translate_expression(operand, unit)?;
+        let operand = Expression::translate_expression(operand, expr_ctx)?;
 
         Ok(Expression::unary_op(c_op, operand, true))
     }
@@ -1000,6 +1077,9 @@ impl Expression {
 
     pub fn write(&self, out: &mut fmt::Write) -> fmt::Result {
         match self {
+            Expression::Label(name) => write!(out, "{}: {{}}", name),
+            Expression::Goto(name) => write!(out, "goto {}", name),
+
             Expression::Group(inner) => write!(out, "({})", inner),
 
             Expression::True => out.write_str("true"),
