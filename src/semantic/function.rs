@@ -135,6 +135,39 @@ impl FunctionDecl {
             .filter(|arg| arg.name == SELF_ARG_NAME)
             .map(|arg| &arg.decl_type)
     }
+
+    pub fn check_outputs_initialized(&self, context: &SemanticContext) -> SemanticResult<()> {
+        let outputs = self.args.iter()
+            // all `out` parameters
+            .filter_map(|arg| match arg.modifier {
+                | Some(FunctionArgModifier::Out)
+                => Some(arg.name.clone()),
+
+                | Some(_)
+                | None
+                => None,
+            });
+
+        // the `result` var, if present
+        let return_type = self.return_type.as_ref()
+            .map(|_| RESULT_VAR_NAME.to_string());
+
+        for output_name in outputs.chain(return_type) {
+            /* todo: it's currently permitted to write a let binding with the same name
+            this would shadow the out var and break this check!! */
+            let out_var = context.scope().get_symbol(&Identifier::from(&output_name))
+                .unwrap();
+
+            if !out_var.initialized() {
+                return Err(SemanticError::output_uninitialized(
+                    output_name,
+                    context.clone(),
+                ));
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Declaration for FunctionDecl {
@@ -150,6 +183,9 @@ impl Declaration for FunctionDecl {
 impl Function {
     pub fn annotate(function: &syntax::Function, scope: Rc<Scope>) -> SemanticResult<(Function, Rc<Scope>)> {
         let (decl, scope) = FunctionDecl::annotate(&function.decl, scope)?;
+
+        let scope = Rc::new(scope.as_ref().clone()
+            .for_function_body(decl.clone()));
 
         /* there can't already be a local symbol called "result" */
         function.local_vars().find(|decl| decl.name == RESULT_VAR_NAME)
@@ -228,51 +264,21 @@ impl Function {
         /* we don't keep anything from the local scope after the function */
         let (block, after_block_scope) = Block::annotate(&function.block, &local_scope)?;
 
+        let mut after_block_context = block.context.clone();
+        after_block_context.scope = after_block_scope;
+
+        decl.check_outputs_initialized(&after_block_context)?;
+
         let function = Function {
             decl,
             block,
             local_decls,
         };
 
-        function.check_outputs_initialized(after_block_scope.as_ref())?;
-
         let scope = Rc::new(scope.as_ref().clone()
             .with_function_def(function.clone())?);
 
         Ok((function, scope))
-    }
-
-    fn check_outputs_initialized(&self, scope: &Scope) -> SemanticResult<()> {
-        let outputs = self.decl.args.iter()
-            // all `out` parameters
-            .filter_map(|arg| match arg.modifier {
-                | Some(FunctionArgModifier::Out)
-                => Some(arg.name.clone()),
-
-                | Some(_)
-                | None
-                => None,
-            });
-
-        // the `result` var, if present
-        let return_type = self.decl.return_type.as_ref()
-            .map(|_| RESULT_VAR_NAME.to_string());
-
-        for output_name in outputs.chain(return_type) {
-            /* todo: it's currently permitted to write a let binding with the same name
-            this would shadow the out var and break this check!! */
-            let out_var = scope.get_symbol(&Identifier::from(&output_name))
-                .unwrap();
-
-            if !out_var.initialized() {
-                return Err(SemanticError::output_uninitialized(
-                    output_name,
-                    self.block.context.clone(),
-                ));
-            }
-        }
-
-        Ok(())
     }
 
     pub fn type_check(&self) -> Result<(), SemanticError> {

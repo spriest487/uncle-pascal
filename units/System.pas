@@ -66,7 +66,7 @@ function Trunc(f: Float64): Int32
 implementation
 
 function StringCreate: String =
-    result := (Chars: nil; Length: 0)
+    exit (Chars: nil; Length: 0)
 
 function StringFromBytes(bytes: ^Byte; len: NativeUInt): String
 begin
@@ -75,7 +75,7 @@ begin
     for let c = NativeUInt(0) to len do
         chars[c] := bytes[c]
 
-    result := ( Chars: chars; Length: len )
+    exit ( Chars: chars; Length: len )
 end
 
 function Disposable.Dispose(string: String)
@@ -106,7 +106,7 @@ begin
     for let c = NativeUInt(0) to b.Length do
         chars[self.Length + c] := b.Chars[c];
 
-    result := ( Chars: chars; Length: length )
+    exit ( Chars: chars; Length: length )
 end
 
 function ToCString(self: String; bytes: ^Byte; len: NativeUInt): Boolean
@@ -118,7 +118,7 @@ begin
         bytes[i] := self.Chars[i]
 
     bytes[self.Length] := 0
-    result := true
+    exit true
 end
 
 function Length(self: String): NativeUInt = exit self.Length

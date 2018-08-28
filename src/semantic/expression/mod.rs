@@ -163,26 +163,41 @@ impl Expression {
 
             ExpressionValue::Exit(exit_val) => {
                 let mut scope = scope;
+
+                let scope_func = scope.in_function_body()
+                    .cloned()
+                    .ok_or_else(|| {
+                        SemanticError::exit_outside_func(expr_context.clone())
+                    })?;
+
                 let exit_val = match exit_val {
                     Some(exit_val) => {
-                        /* todo: hint with result type of function, if any */
-                        let (exit_val, new_scope) = Expression::annotate(exit_val, None, scope)?;
-                        scope = new_scope;
+                        let (exit_val, new_scope) = Expression::annotate(
+                            exit_val,
+                            scope_func.return_type.as_ref(),
+                            scope.clone(),
+                        )?;
+
+                        // check exit val is compatible with return type
+                        expect_valid_op(
+                            operators::Assignment,
+                            scope_func.return_type.as_ref(),
+                            &exit_val,
+                            &expr_context,
+                        )?;
+
+                        scope = Rc::new(new_scope.as_ref().clone().initialize_symbol(
+                            &Identifier::from(RESULT_VAR_NAME)
+                        ));
                         Some(exit_val)
-                    },
+                    }
                     None => None,
                 };
 
-                /* todo: check exit val is compatible with function */
-                /* todo: check returns and out params here */
+                let mut exit_ctx = expr_context.clone();
+                exit_ctx.scope = scope.clone();
 
-                let scope = if exit_val.is_some() {
-                    let initialized_result = scope.as_ref().clone()
-                        .initialize_symbol(&Identifier::from("result"));
-                    Rc::new(initialized_result)
-                } else {
-                    scope
-                };
+                scope_func.check_outputs_initialized(&exit_ctx)?;
 
                 Ok((Expression::exit(exit_val, expr_context), scope))
             }

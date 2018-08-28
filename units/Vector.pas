@@ -22,7 +22,7 @@ function AddAll(self: Vector; other: Vector)
 implementation
 
 function New: Vector =
-    result := (
+    exit (
         Elements: nil
         Length: 0
     )

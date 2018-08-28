@@ -119,6 +119,9 @@ pub struct Scope {
     imported_names: HashMap<Identifier, Identifier>,
 
     method_map: ExtensionMap,
+
+    /* if this scope exists inside a function, the decl for that function */
+    function: Option<FunctionDecl>,
 }
 
 impl Scope {
@@ -128,6 +131,8 @@ impl Scope {
             method_map: ExtensionMap::new(),
             imported_names: HashMap::new(),
             namespace: ScopeNamespace::Root,
+
+            function: None,
         };
 
         root.reference(&Scope::system(), &UnitReferenceKind::Namespaced)
@@ -139,6 +144,8 @@ impl Scope {
             method_map: ExtensionMap::new(),
             imported_names: HashMap::new(),
             namespace: ScopeNamespace::Unit(Identifier::from("System")),
+
+            function: None,
         };
 
         system
@@ -163,6 +170,8 @@ impl Scope {
             names: HashMap::new(),
             imported_names: HashMap::new(),
             method_map: ExtensionMap::new(),
+
+            function: None,
         };
 
         scope.reference(&Scope::system(), &UnitReferenceKind::Namespaced)
@@ -184,6 +193,8 @@ impl Scope {
             names: HashMap::new(),
             imported_names: HashMap::new(),
             method_map: ExtensionMap::new(),
+
+            function: parent.function.clone(),
         };
 
         child.reference(parent, &UnitReferenceKind::All)
@@ -206,6 +217,15 @@ impl Scope {
             | ScopeNamespace::Unit(ns)
             => ns.child(name),
         }
+    }
+
+    pub fn in_function_body(&self) -> Option<&FunctionDecl> {
+        self.function.as_ref()
+    }
+
+    pub fn for_function_body(mut self, function: FunctionDecl) -> Self {
+        self.function = Some(function);
+        self
     }
 
     pub fn with_type_alias(mut self, name: &str, named_type: Type) -> Self {

@@ -117,6 +117,7 @@ enum SemanticErrorKind {
         namespace: Option<Identifier>,
     },
     WeakRefToValueType(Type),
+    ExitOutsideFunction,
 }
 
 impl fmt::Display for SemanticErrorKind {
@@ -362,6 +363,10 @@ impl fmt::Display for SemanticErrorKind {
 
             SemanticErrorKind::WeakRefToValueType(ty) => {
                 write!(f, "can't hold a weak reference to `{}` which is not a reference-counted type", ty)
+            }
+
+            SemanticErrorKind::ExitOutsideFunction => {
+                write!(f, "the `exit` statement can only be used as part of a function body")
             }
         }
     }
@@ -697,6 +702,13 @@ impl SemanticError {
         SemanticError {
             context: Box::new(context.into()),
             kind: SemanticErrorKind::WeakRefToValueType(bad_type.into()),
+        }
+    }
+
+    pub fn exit_outside_func(context: impl Into<SemanticContext>) -> Self {
+        SemanticError {
+            context: Box::new(context.into()),
+            kind: SemanticErrorKind::ExitOutsideFunction,
         }
     }
 }
