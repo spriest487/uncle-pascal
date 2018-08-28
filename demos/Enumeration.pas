@@ -1,5 +1,3 @@
-program Enumeration
-
 uses System.*
 
 type
@@ -18,4 +16,4 @@ begin
         WriteLn('i like apples')
 
     //clothes := [Socks, Hat]
-end.
+end

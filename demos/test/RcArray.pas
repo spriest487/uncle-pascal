@@ -1,5 +1,3 @@
-program RcArrayTest
-
 uses RcTypes.*
 
 var
@@ -34,4 +32,4 @@ begin
     ReturningArray()
     if counter = 0 then WriteLn('Ok!')
     else raise 'All 3 instances should be disposed'
-end.
+end

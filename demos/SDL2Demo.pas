@@ -1,5 +1,4 @@
-program SDL2Demo 
-uses 
+uses
     SDL
     System.*
 
@@ -51,4 +50,4 @@ begin
     SDL.Quit()
 
     FreeMem(titleCStr)
-end.
+end

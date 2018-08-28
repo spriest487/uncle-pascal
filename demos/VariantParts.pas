@@ -1,5 +1,3 @@
-program VariantParts
-
 uses System.*
 
 type
@@ -57,4 +55,4 @@ begin
 
   DisplayVehicle(car)
   DisplayVehicle(plane)
-end.
+end

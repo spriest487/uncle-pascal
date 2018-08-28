@@ -1,5 +1,3 @@
-program WithStatementDemo
-
 uses System.*
 
 type
@@ -24,4 +22,4 @@ begin
   begin
     WriteLn('Name: ' + Name + ', Age: ' + StringFromInt(Age))
   end
-end.
+end

@@ -32,9 +32,29 @@ impl Unit {
         }
     }
 
-    pub fn parse(mut tokens: TokenStream) -> ParseResult<Self> {
-        let match_name = tokens.match_sequence(keywords::Unit.and_then(Matcher::AnyIdentifier))?;
-        tokens.match_or_endl(tokens::Semicolon)?;
+    pub fn parse(mut tokens: TokenStream, expected_name: &str) -> ParseResult<Self> {
+        /* if the unit starts with `unit X`, use `X` as the name. if the inferred name (e.g. from
+        the filename) doesn't match, print a warning */
+        let name = match tokens.look_ahead().match_one(keywords::Unit) {
+            Some(_) => {
+                tokens.advance(1);
+                let name_token = tokens.match_one(Matcher::AnyIdentifier)?;
+                tokens.match_or_endl(tokens::Semicolon)?;
+                let parsed_name = name_token.unwrap_identifier();
+
+                if parsed_name != expected_name {
+                    eprintln!(
+                        "unit name `{}` @ `{}` does not match expected name `{}`",
+                        parsed_name,
+                        name_token,
+                        expected_name
+                    )
+                }
+
+                parsed_name.to_string()
+            }
+            None => expected_name.to_string(),
+        };
 
         tokens.match_one(keywords::Interface)?;
 
@@ -50,11 +70,12 @@ impl Unit {
         let finalization = Self::parse_optional_block(
             &mut tokens, keywords::Finalization, keywords::End)?;
 
-        tokens.match_sequence(keywords::End.and_then(tokens::Period))?;
+        tokens.match_one(keywords::End)?;
+        tokens.match_or_endl(tokens::Period)?;
         tokens.finish()?;
 
         Ok(Unit {
-            name: match_name[1].unwrap_identifier().to_owned(),
+            name,
             uses,
 
             interface: interface_decls,

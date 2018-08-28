@@ -1,5 +1,3 @@
-program RcRecordTest
-
 uses System.*
     RcTypes.*
 
@@ -15,4 +13,4 @@ begin
     end
 
     if counter = 0 then WriteLn('Ok!') else raise 'should be disposed'
-end.
+end

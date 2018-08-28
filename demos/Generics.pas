@@ -1,5 +1,3 @@
-program GenericsDemo
-
 uses System.*
 
 type
@@ -13,4 +11,4 @@ begin
 
     WriteLn('wrapped int: ' + StringFromInt(wrappedInt.Value))
     WriteLn('wrapped string: ' + wrappedStr.Value)
-end.
+end

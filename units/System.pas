@@ -1,5 +1,3 @@
-unit System
-
 interface
 
 {$ifdef fpc}
@@ -122,4 +120,4 @@ end
 
 function Length(self: String): NativeUInt = self.Length
 
-end.
+end

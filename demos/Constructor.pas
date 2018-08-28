@@ -1,5 +1,3 @@
-    program ConstructorDemo
-
 uses
     System.*
 
@@ -53,4 +51,4 @@ begin
     )
 
     PrintIceCream('dessert', dessert)
-end.
+end

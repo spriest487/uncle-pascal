@@ -192,7 +192,11 @@ fn compile_program(program_path: &Path,
     let default_units = default_refs(module_source.tokens[0].clone());
 
     let token_stream = syntax::TokenStream::new(module_source.tokens, &empty_context());
-    let parsed_program = syntax::Program::parse(token_stream)?;
+
+    let program_name = program_path.file_stem()
+        .expect("input path must contain a filename")
+        .to_string_lossy();
+    let parsed_program = syntax::Program::parse(token_stream, &program_name)?;
 
     let mut loaded_units: LinkedHashMap<String, semantic::ModuleUnit> = LinkedHashMap::new();
 
@@ -225,7 +229,7 @@ fn compile_program(program_path: &Path,
             let unit_source = load_source(unit_path, module_source.opts.clone())?;
 
             let mut unit_tokens = syntax::TokenStream::new(unit_source.tokens, &empty_context());
-            let parsed_unit = syntax::Unit::parse(unit_tokens)?;
+            let parsed_unit = syntax::Unit::parse(unit_tokens, &referenced_unit_id)?;
 
             /* each unit imports all the units before it in the programs' units
             clause (used units can't import any new units not referenced in the main

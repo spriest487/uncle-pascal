@@ -1,5 +1,3 @@
-program InterfacesDemo
-
 uses System.*
 
 type Animal = interface
@@ -43,4 +41,4 @@ begin
     let totalLegs = animal1.CountLegs() + animal2.CountLegs()
     WriteLn('total legs: ' + StringFromInt(totalLegs))
 
-end.
+end

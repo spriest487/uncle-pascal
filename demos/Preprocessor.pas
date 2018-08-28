@@ -32,4 +32,4 @@ end
 
 begin
     WriteLn(Greet('jane'))
-end.
+end

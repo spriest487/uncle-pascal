@@ -1,5 +1,3 @@
-program Consts
-
 uses
     System.*
 
@@ -26,4 +24,4 @@ end
 begin
     if YES then
         Test()
-end.
+end

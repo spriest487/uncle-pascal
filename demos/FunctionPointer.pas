@@ -1,5 +1,3 @@
-program FunctionPointer
-
 uses System.*
 
 type
@@ -26,4 +24,4 @@ begin
     greeter('jane')
     let added = adder(3)
     WriteLn('added: ' + StringFromInt(added))
-end.
+end

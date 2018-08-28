@@ -1,6 +1,4 @@
-program ReadFile
-
-uses 
+uses
     System.*
     ByteBuffer
     IO
@@ -28,4 +26,4 @@ begin
 
     let text = ReadToEnd(file)
     WriteLn(text)
-end.
+end

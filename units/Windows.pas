@@ -1,4 +1,3 @@
-unit Windows
 interface
 implementation
-end.
+end

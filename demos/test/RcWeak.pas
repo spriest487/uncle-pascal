@@ -1,5 +1,3 @@
-program RcWeakTest
-
 uses System.*
 
 type
@@ -44,4 +42,4 @@ begin
     WriteLn('child: ' + child.Name())
 
     if child.Parent = nil then WriteLn('Ok!') else raise 'parent should be disposed'
-end.
+end

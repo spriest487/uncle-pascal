@@ -1,5 +1,3 @@
-program FunctionArgModifiers
-
 uses System.*
 
 function OutParam(out s: String)
@@ -23,4 +21,4 @@ begin
     i := 1
     RefParam(i)
     WriteLn('val is now ' + StringFromInt(i))
-end.
+end

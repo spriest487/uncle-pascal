@@ -1,5 +1,3 @@
-unit Vector
-
 interface
 
 uses System.*
@@ -53,4 +51,4 @@ function AddAll(self: Vector; other: Vector) =
 
 function Length(self: Vector): NativeUInt = self.Length
 
-end.
+end

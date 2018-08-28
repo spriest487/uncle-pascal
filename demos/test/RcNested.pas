@@ -1,5 +1,3 @@
-program RcNestedTest
-
 uses RcTypes.*
 
 type
@@ -19,4 +17,4 @@ begin
     end
 
     if counter = 0 then WriteLn('Ok!') else raise 'Inner should be disposed'
-end.
+end

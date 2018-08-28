@@ -1,5 +1,3 @@
-unit RcTypes
-
 interface
 
 uses System.*
@@ -30,4 +28,4 @@ begin
     ^self.Counter := ^self.Counter - 1
 end
 
-end.
+end

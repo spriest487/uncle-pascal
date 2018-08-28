@@ -1,6 +1,6 @@
-program HelloWorld
-
-uses System.*, Vector.Vector
+uses
+    System.*
+    Vector.Vector
 
 function Greet(name: String): String =
     result := 'hello, ' + name + '!'
@@ -32,4 +32,4 @@ begin
   else begin
     WriteLn('not one: ' + StringFromInt(x))
   end
-end.
+end
