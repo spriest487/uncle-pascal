@@ -7,6 +7,7 @@ tests = test/RcRecord \
 	test/RcNested \
 	test/RcArray \
 	test/RcWeak \
+	test/RcExit \
 	HelloWorld \
 	Constructor \
 	Consts \
