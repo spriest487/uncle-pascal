@@ -110,11 +110,17 @@ impl ArcSubValuePath {
     }
 }
 
+pub enum ArcStatementKind {
+    Simple,
+    Binding(BoundName),
+    Exit,
+}
+
 pub enum ArcStatement {
     Block(Vec<ArcStatement>),
 
     Statement {
-        bound_name: Option<BoundName>,
+        kind: ArcStatementKind,
         body: Box<Expression>,
 
         /*
@@ -143,12 +149,20 @@ impl fmt::Debug for ArcStatement {
                 write!(f, "]")
             }
 
-            ArcStatement::Statement { body, rc_bindings, rc_assignments, bound_name } => {
+            ArcStatement::Statement { body, rc_bindings, rc_assignments, kind } => {
                 writeln!(f, "RcStatement {{")?;
                 writeln!(f, "\tbody: `{}`", body)?;
 
-                if let Some(bound_name) = bound_name {
-                    writeln!(f, "\tbound name: `{}`", bound_name.name)?;
+                match kind {
+                    ArcStatementKind::Binding(bound_name) => {
+                        writeln!(f, "\tbound name: `{}`", bound_name.name)?;
+                    }
+
+                    ArcStatementKind::Exit => {
+                        writeln!(f, "\t(exit)")?;
+                    }
+
+                    _ => {}
                 }
 
                 write!(f, "\trc bindings: [")?;
@@ -182,6 +196,12 @@ impl fmt::Debug for ArcStatement {
 pub struct ArcValue {
     pub expr: Expression,
     pub path: ArcSubValuePath,
+}
+
+impl fmt::Debug for ArcValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} in `{}`", self.path, self.expr)
+    }
 }
 
 struct ArcContext {
@@ -245,7 +265,7 @@ impl ArcContext {
                 body,
                 rc_bindings: val_rc_bindings,
                 rc_assignments: val_rc_assignments,
-                bound_name: None
+                kind: ArcStatementKind::Simple,
             } => {
                 self.temp_bindings.extend(val_rc_bindings);
                 self.assignments.extend(val_rc_assignments);
@@ -290,7 +310,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
     /* bind the results of any function calls which return RC objects to temporary bindings so we
      can release them later. nothing but function calls returning RC objects can leak an RC,
      because local vars and func args are already managed elsewhere */
-    let (bound_name, body) = match stmt.value {
+    let (kind, body) = match stmt.value {
         ExpressionValue::FunctionCall(func_call) => {
             // extract rc bindings from arg expressions
             let mut args: Vec<_> = func_call.args().iter()
@@ -333,7 +353,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
                 arc_ctx.hoist_rc_value(temporary, &context)
             };
 
-            (None, rc_expr)
+            (ArcStatementKind::Simple, rc_expr)
         }
 
         ExpressionValue::ObjectConstructor(ctor) => {
@@ -372,7 +392,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
                 ctor_expr
             };
 
-            (None, result)
+            (ArcStatementKind::Simple, result)
         }
 
         ExpressionValue::CollectionConstructor(ctor) => {
@@ -396,7 +416,7 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
                 element_type: ctor.element_type.clone(),
             };
 
-            (None, Expression::collection_ctor(ctor, context))
+            (ArcStatementKind::Simple, Expression::collection_ctor(ctor, context))
         }
 
         ExpressionValue::LetBinding(binding) => {
@@ -405,28 +425,50 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
                 name: binding.name.clone(),
             };
 
-            let value_expr = arc_ctx.extract_rc_subexpr(*binding.value.clone());
+            let value_expr = arc_ctx.extract_rc_subexpr(*binding.value);
 
-            (Some(bound_name), value_expr)
+            (ArcStatementKind::Binding(bound_name), value_expr)
         }
 
         ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-            let lhs = arc_ctx.extract_rc_subexpr(*lhs.clone());
-            let rhs = arc_ctx.extract_rc_subexpr(*rhs.clone());
+            let lhs = arc_ctx.extract_rc_subexpr(*lhs);
+            let rhs = arc_ctx.extract_rc_subexpr(*rhs);
 
             /* there are no binary operators that result in a RC type, so we don't
              have to check if the value needs hoisting (string concatenation is sugar
              for a function call so we can ignore it) */
-            (None, Expression::binary_op(lhs, op, rhs, context))
+            (ArcStatementKind::Simple, Expression::binary_op(lhs, op, rhs, context))
         }
 
         ExpressionValue::PrefixOperator { op, rhs } => {
-            let rhs = arc_ctx.extract_rc_subexpr(*rhs.clone());
-            (None, Expression::prefix_op(op, rhs, context))
+            let rhs = arc_ctx.extract_rc_subexpr(*rhs);
+            (ArcStatementKind::Simple, Expression::prefix_op(op, rhs, context))
+        }
+
+        ExpressionValue::Raise(val) => {
+            let val = arc_ctx.extract_rc_subexpr(*val);
+            (ArcStatementKind::Exit, Expression::raise(val, context))
+        }
+
+        ExpressionValue::Exit(result_val) => {
+            /* reinterpret the statement into an assignment to `result`, and use the `kind` member
+            to signal to the backend that it needs to exit after this statement) */
+            let assign_result = match result_val {
+                Some(val_expr) => Expression::binary_op(
+                    Expression::identifier("result", context.clone()),
+                    operators::Assignment,
+                    arc_ctx.extract_rc_subexpr(*val_expr),
+                    context.clone(),
+                ),
+
+                None => Expression::empty_block(context),
+            };
+
+            (ArcStatementKind::Exit, assign_result)
         }
 
         _ => {
-            (None, stmt.clone())
+            (ArcStatementKind::Simple, stmt.clone())
         }
     };
 
@@ -436,14 +478,15 @@ pub fn extract_stmt_rc_bindings(stmt: Expression, id_offset: usize) -> ArcStatem
         and retain them (after assigning) */
         let lhs_type = lhs.expr_type().unwrap().unwrap();
 
-        for reassigned_val in rc_subvalues(&lhs_type, body.scope(), None) {
+        let reassigned_vals = rc_subvalues(&lhs_type, body.scope(), None);
+        for reassigned_val in reassigned_vals {
             arc_ctx.assigned_val(*lhs.clone(), reassigned_val);
         }
     }
 
     ArcStatement::Statement {
         body: Box::new(body),
-        bound_name,
+        kind,
         rc_bindings: arc_ctx.temp_bindings,
         rc_assignments: arc_ctx.assignments,
     }
@@ -513,7 +556,7 @@ pub fn rc_subvalues(expr_type: &Type,
                     RefStrength::Weak
                 } else {
                     RefStrength::Strong
-                }
+                },
             }
         ],
 

@@ -24,7 +24,6 @@ pub use self::{
         CollectionConstructor,
         CollectionMember,
     },
-
     call::FunctionCall,
 };
 
@@ -794,6 +793,17 @@ impl<TContext> Expression<TContext>
         Expression {
             context: block.context.clone(),
             value: ExpressionValue::Block(block),
+        }
+    }
+
+    pub fn empty_block(context: impl Into<TContext>) -> Self {
+        let context = context.into();
+        Expression {
+            context: context.clone(),
+            value: ExpressionValue::Block(Block {
+                statements: Vec::new(),
+                context,
+            }),
         }
     }
 

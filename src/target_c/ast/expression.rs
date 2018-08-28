@@ -20,6 +20,7 @@ use semantic::{
         RefStrength,
         ArcSubValuePath,
         ArcStatement,
+        ArcStatementKind,
         BoundName,
         rc_subvalues,
         extract_stmt_rc_bindings,
@@ -310,7 +311,7 @@ impl Expression {
 
     pub fn bound_value_exprs(statement: &ArcStatement) -> Vec<(Expression, RefStrength)> {
         match statement {
-            ArcStatement::Statement { bound_name: Some(bound_name), body, .. } => {
+            ArcStatement::Statement { kind: ArcStatementKind::Binding(bound_name), body, .. } => {
                 let subvals = rc_subvalues(
                     &bound_name.bound_type,
                     body.scope(),
@@ -357,7 +358,7 @@ impl Expression {
                 Ok(vec![Expression::Block(block)])
             }
 
-            ArcStatement::Statement { body, rc_bindings, bound_name, rc_assignments } => {
+            ArcStatement::Statement { body, rc_bindings, kind, rc_assignments } => {
                 /*
                     translate the main statement into one or more c statements - a simple expression with no
                     rc to handle will translate to one c statement, otherwise this may include rc statements
@@ -365,10 +366,9 @@ impl Expression {
                 */
                 let mut lines = Vec::new();
 
-
                 /* if we're going to bind this to a name, declare that before the temporaries
                 block so the name is visible outside */
-                if let Some(bound_name) = &bound_name {
+                if let ArcStatementKind::Binding(bound_name) = &kind {
                     let local_type = CType::translate(
                         &bound_name.bound_type,
                         body.scope(),
@@ -382,14 +382,19 @@ impl Expression {
                     );
                 }
 
-                let body_expr = match &bound_name {
-                    Some(BoundName { name, .. }) => Expression::binary_op(
+                let body_expr = match &kind {
+                    /* the result of executing the statement should be bound to a name which
+                    persists into the block beyond this statement */
+                    | ArcStatementKind::Binding(BoundName { name, .. })
+                    => Some(Expression::binary_op(
                         Name::local(name.as_str()),
                         "=",
                         Self::translate_expression(&body, expr_ctx)?,
-                    ),
+                    )),
 
-                    None => Self::translate_expression(&body, expr_ctx)?,
+                    | ArcStatementKind::Exit
+                    | ArcStatementKind::Simple
+                    => Some(Self::translate_expression(&body, expr_ctx)?),
                 };
                 let rc_assigned_vals: Vec<(Expression, RefStrength)> = rc_assignments.iter()
                     .map(|arc_val| {
@@ -464,9 +469,10 @@ impl Expression {
                 that case we can just omit the original expression, the side effect must
                 be included in the rc bindings somewhere*/
                 match body_expr {
-                    Expression::Name(_) => { /* nothing */ }
+                    | None
+                    | Some(Expression::Name(_)) => { /* nothing */ }
 
-                    body => temp_block.push(body)
+                    | Some(body) => temp_block.push(body)
                 }
 
                 /* if this statement binds an expression to a name, the rc values
@@ -485,6 +491,10 @@ impl Expression {
                     .map(|(val, strength)| Self::rc_release(val, strength)));
 
                 lines.push(Expression::Block(Block::new(temp_block)));
+
+                if let ArcStatementKind::Exit = kind {
+                    lines.push(Expression::Goto(format!("BlockExit_{}", expr_ctx.block_id())));
+                }
 
                 Ok(lines)
             }
@@ -592,29 +602,10 @@ impl Expression {
                 Self::translate_raise(error, &expr.context)
             }
 
-            ExpressionValue::Exit(with_val) => {
-                let with_val = with_val.as_ref().map(Box::as_ref);
-                Self::translate_exit(with_val, expr_ctx)
+            ExpressionValue::Exit(_with_val) => {
+                // should be processed away by the ARC transform
+                unreachable!("exit statements are never valid except as block-level statements")
             }
-        }
-    }
-
-    fn translate_exit(with_val: Option<&semantic::Expression>,
-                      expr_ctx: &mut ExpressionContext)
-                      -> TranslationResult<Self> {
-        let exit = Expression::Goto(format!("BlockExit_{}", expr_ctx.block_id()));
-
-        match with_val {
-            Some(exit_val) => {
-                let exit_val_expr = Self::translate_expression(exit_val, expr_ctx)?;
-
-                Ok(Expression::Block(Block::new(vec![
-                    Expression::binary_op(Name::local("result"), "=", exit_val_expr),
-                    exit,
-                ])))
-            }
-
-            None => Ok(exit)
         }
     }
 
