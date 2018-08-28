@@ -20,6 +20,7 @@ use operators;
 
 use node::{
     self,
+    RESULT_VAR_NAME,
     Identifier,
     TypeName,
     FunctionModifier,
@@ -94,6 +95,15 @@ impl Parse for FunctionDecl {
     }
 }
 
+fn expr_assigns_result(expr: &Expression) -> bool {
+    if let Some((lhs, op, _)) = expr.as_binary_op() {
+        op == operators::Assignment
+            && lhs.is_identifier(&Identifier::from(RESULT_VAR_NAME))
+    } else {
+        false
+    }
+}
+
 impl Parse for Function {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let decl: FunctionDecl = tokens.parse()?;
@@ -101,17 +111,44 @@ impl Parse for Function {
         let nested_func_keyword = keywords::Function
             .or(keywords::Procedure);
 
-        /* if the first token of the body is `=`, we expect a body of one expression
-        to follow that and nothing else */
+        /*
+        if the first token of the body is `=`, we expect a body of one expression
+        to follow that and nothing else. the expression becomes the exit value of the
+        function if we are expecting one, so the following are equivalent:
+
+            function F: Int32 = 1
+
+            function F: Int32 begin
+                exit 1
+            end
+
+        and also:
+
+            function P begin WriteLn('ok') end
+            function P = WriteLn('ok')
+         */
         if let Some(equals) = tokens.look_ahead().match_one(operators::Equals) {
             tokens.advance(1);
             let body = Expression::parse(tokens)?;
             tokens.match_or_endl(tokens::Semicolon)?;
 
+            let body_statement = match &decl.return_type {
+                // don't add an "exit" statement if the body already contains one
+                // or (ugh) if the body is an assignment to `result`
+                Some(_) if body.is_exit() || expr_assigns_result(&body) => body,
+
+                Some(_) => {
+                    let body_context = body.context.clone();
+                    Expression::exit(Some(body), body_context)
+                }
+
+                None => body,
+            };
+
             return Ok(Function {
                 decl,
                 block: Block {
-                    statements: vec![body],
+                    statements: vec![body_statement],
                     context: ParsedContext::from(equals),
                 },
                 local_decls: Vec::new(),

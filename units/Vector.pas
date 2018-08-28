@@ -21,11 +21,10 @@ function AddAll(self: Vector; other: Vector)
 
 implementation
 
-function New: Vector =
-    exit (
-        Elements: nil
-        Length: 0
-    )
+function New: Vector = (
+    Elements: nil
+    Length: 0
+)
 
 function Disposable.Dispose(self: Vector) =
     FreeMem(self.Elements)
@@ -51,5 +50,7 @@ end
 function AddAll(self: Vector; other: Vector) =
   for let i = NativeUInt(0) to other.Length do
     self.Add(other.Elements[i])
+
+function Length(self: Vector): NativeUInt = self.Length
 
 end.

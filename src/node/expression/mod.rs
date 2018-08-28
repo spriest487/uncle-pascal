@@ -734,6 +734,13 @@ impl<TContext> Expression<TContext>
         }
     }
 
+    pub fn is_exit(&self) -> bool {
+        match &self.value {
+            ExpressionValue::Exit(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_any_member(&self) -> bool {
         match &self.value {
             ExpressionValue::Member { .. } => true,
@@ -741,10 +748,10 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn unwrap_member(self) -> (Self, String) {
-        match self.value {
-            ExpressionValue::Member { of, name } => (*of, name),
-            _ => panic!("called unwrap_member on {}", self),
+    pub fn as_member(&self) -> Option<(&Self, &str)> {
+        match &self.value {
+            ExpressionValue::Member { of, name } => Some((of.as_ref(), name.as_str())),
+            _ => None,
         }
     }
 
@@ -899,12 +906,13 @@ impl<TContext> Expression<TContext>
         }
     }
 
-    pub fn unwrap_binary_op(self) -> (Self, operators::Operator, Self) {
-        match self.value {
+    pub fn as_binary_op(&self) -> Option<(&Self, operators::Operator, &Self)> {
+        match &self.value {
             ExpressionValue::BinaryOperator { lhs, op, rhs } => {
-                (*lhs, op, *rhs)
+                Some((lhs.as_ref(), *op, rhs.as_ref()))
             }
-            _ => panic!("called unwrap_binary_op on {}", self)
+
+            _ => None,
         }
     }
 

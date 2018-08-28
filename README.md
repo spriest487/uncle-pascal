@@ -2,11 +2,8 @@
 
 ## urgent/in progress
 * error on undefined functions
-* => function syntax
 * shadowing breaks initialization checks which are done by name
 * RC struct members on the stack
-* Type hints for expr_type to help infer types for constant expressions and make
-    dealing with uints less painful
 * namespace methods under the type name e.g. Vector.Add(vec1), vec.Add() instead of global
 
 ## fixes
@@ -17,8 +14,6 @@
 * trying to call a function which doesn't exist via ufcs on a class
     shows the wrong error message (member cannot be accessed)
 * external functions in the Implementation sections don't work
-* `exit` doesn't check that `out` params and `result` are initialized
-* `exit` value should have a type hint of the current function result type
 
 ## missing features
 * set literals
@@ -29,6 +24,7 @@
 * forward functions in implementation section
 
 ## nice
+* Get rid of reliance on C++ collections so the backend emits plain C again
 * Reflection
 * string formatting
 * Library compilation

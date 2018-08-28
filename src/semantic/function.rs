@@ -4,13 +4,12 @@ use std::{
 use node::{
     self,
     FunctionArgModifier,
+    SELF_ARG_NAME,
+    RESULT_VAR_NAME,
 };
 use syntax;
 use semantic::*;
 use types::Type;
-
-pub const RESULT_VAR_NAME: &str = "result";
-pub const SELF_ARG_NAME: &str = "self";
 
 pub type FunctionDecl = node::FunctionDecl<SemanticContext>;
 pub type Function = node::Function<SemanticContext>;

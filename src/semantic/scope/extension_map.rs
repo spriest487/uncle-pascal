@@ -4,14 +4,16 @@ use std::{
         HashMap,
     },
 };
-use node::Identifier;
+use node::{
+    Identifier,
+    SELF_ARG_NAME,
+};
 use types::Type;
 use semantic::{
     scope::NamedFunction,
     SemanticResult,
     SemanticError,
     FunctionDecl,
-    SELF_ARG_NAME,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

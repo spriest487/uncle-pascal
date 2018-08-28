@@ -24,6 +24,7 @@ use syntax;
 use semantic::*;
 use node::{
     self,
+    RESULT_VAR_NAME,
     Context,
     Identifier,
     ExpressionValue,

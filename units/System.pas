@@ -65,8 +65,7 @@ function Trunc(f: Float64): Int32
 
 implementation
 
-function StringCreate: String =
-    exit (Chars: nil; Length: 0)
+function StringCreate: String = (Chars: nil; Length: 0)
 
 function StringFromBytes(bytes: ^Byte; len: NativeUInt): String
 begin
@@ -121,6 +120,6 @@ begin
     exit true
 end
 
-function Length(self: String): NativeUInt = exit self.Length
+function Length(self: String): NativeUInt = self.Length
 
 end.

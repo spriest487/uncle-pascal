@@ -1,6 +1,9 @@
 use std::fmt;
 use node::*;
 
+pub const RESULT_VAR_NAME: &str = "result";
+pub const SELF_ARG_NAME: &str = "self";
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionArgModifier {
     Const,

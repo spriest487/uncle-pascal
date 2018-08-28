@@ -36,12 +36,12 @@ fn brackets_groups_exprs() {
     let expr = parse_expr("(1 + 2) - 3");
 
     assert!(expr.is_binary_op(operators::Minus));
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
 
     assert!(rhs.is_literal_integer(3));
     assert!(lhs.is_binary_op(operators::Plus));
 
-    let (nested_lhs, _, nested_rhs) = lhs.unwrap_binary_op();
+    let (nested_lhs, _, nested_rhs) = lhs.as_binary_op().unwrap();
     assert!(nested_lhs.is_literal_integer(1));
     assert!(nested_rhs.is_literal_integer(2));
 }
@@ -52,7 +52,7 @@ fn simple_binary_op() {
 
     assert!(expr.is_binary_op(operators::Plus));
 
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
     assert!(lhs.is_literal_integer(1));
     assert!(rhs.is_literal_integer(2));
 }
@@ -63,7 +63,7 @@ fn simple_binary_op_in_brackets() {
 
     assert!(expr.is_binary_op(operators::Plus));
 
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
     assert!(lhs.is_literal_integer(1));
     assert!(rhs.is_literal_integer(2));
 }
@@ -135,7 +135,7 @@ fn binary_op_precedence() {
             let hi_first = parse_expr(&format!("1 {} 2 {} 3", hi_op, lo_op));
             assert!(hi_first.is_binary_op(lo_op), "{} should have precedence over {} (understood this as {:?})", hi_op, lo_op, hi_first);
 
-            let (hi_first_1_then_2, _, hi_first_3) = hi_first.unwrap_binary_op();
+            let (hi_first_1_then_2, _, hi_first_3) = hi_first.as_binary_op().unwrap();
             assert!(hi_first_1_then_2.is_binary_op(hi_op));
             assert!(hi_first_3.is_literal_integer(3), "rhs should be 3, but was `{:?}`", hi_first_3);
 
@@ -143,7 +143,7 @@ fn binary_op_precedence() {
             let lo_first = parse_expr(&format!("1 {} 2 {} 3", lo_op, hi_op));
             assert!(lo_first.is_binary_op(lo_op), "{} should have precedence over {} (understood as {:?})", hi_op, lo_op, lo_first);
 
-            let (lo_first_1, _, lo_first_2_then_3) = lo_first.unwrap_binary_op();
+            let (lo_first_1, _, lo_first_2_then_3) = lo_first.as_binary_op().unwrap();
             assert!(lo_first_1.is_literal_integer(1), "lhs should be 1, but was `{:?}`", lo_first_1);
             assert!(lo_first_2_then_3.is_binary_op(hi_op));
         }
@@ -155,7 +155,7 @@ fn parses_deref_on_lhs() {
     let expr = parse_expr("^a + 1");
 
     assert!(expr.is_binary_op(operators::Plus), "result should be plus, was: {}", expr);
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
 
     assert!(lhs.is_prefix_op(operators::Deref));
     assert!(rhs.is_literal_integer(1));
@@ -166,7 +166,7 @@ fn parses_assign_deref_to_deref() {
     let expr = parse_expr("^(a.b + c) := ^(d.e + f)");
 
     assert!(expr.is_binary_op(operators::Assignment), "result should be an assignment, was: {}", expr);
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
 
     assert!(lhs.is_prefix_op(operators::Deref));
     assert!(rhs.is_prefix_op(operators::Deref));
@@ -243,7 +243,7 @@ fn parses_deref_struct_field() {
     let expr = parse_expr("(^a).b");
 
     assert!(expr.is_any_member());
-    let (base, name) = expr.unwrap_member();
+    let (base, name) = expr.as_member().unwrap();
     assert!(base.is_prefix_op(operators::Deref));
     assert_eq!("b", name);
 }
@@ -298,7 +298,7 @@ fn parses_binary_plus_followed_by_unary_plus_in_brackets() {
 
     assert!(expr.is_binary_op(operators::Plus));
 
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
     assert!(lhs.is_literal_integer(1));
     assert!(rhs.is_function_call());
 }
@@ -344,11 +344,11 @@ fn parses_assignment_to_member_of_deref() {
     let expr = parse_expr("(^self).Elements := newElements");
     assert!(expr.is_binary_op(operators::Assignment));
 
-    let (lhs, _, rhs) = expr.unwrap_binary_op();
+    let (lhs, _, rhs) = expr.as_binary_op().unwrap();
     assert!(rhs.is_identifier(&node::Identifier::from("newElements")));
 
     assert!(lhs.is_any_member());
-    let (deref, member_name) = lhs.unwrap_member();
+    let (deref, member_name) = lhs.as_member().unwrap();
     assert!(deref.is_prefix_op(operators::Deref));
     assert_eq!("Elements", member_name);
 }
