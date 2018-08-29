@@ -1,7 +1,7 @@
 # Memory management
 
 Memory is managed automatically for class types. Memory management uses
-reference counting which means allocations happen in a determined and
+reference counting which means allocations happen automatically and
 object destruction happens predictably, but it is possible to leak memory by creating cycles.
 
 ## Retaining references
