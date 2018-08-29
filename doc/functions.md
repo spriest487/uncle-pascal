@@ -125,3 +125,8 @@ used in string concatenation expressions:
 
     // prints "good boy, Spot"
     WriteLn('good boy, ' + Dog(Name: 'Spot'))
+
+# Compatibility
+
+The keyword `procedure` is a valid synonym for `function` where the function has
+no result type. Using the `procedure` keyword and declaring a result type is an error.
