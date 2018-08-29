@@ -35,6 +35,7 @@ pub fn pas_to_c(module: &ProgramModule,
         .unwrap_or(true);
 
     if compile_with_clang {
+        println!("Building `{}`...", pretty_path(&out_path));
         invoke_clang(&c_unit, &out_path, opts)?;
     } else {
         println!("Writing output to `{}`...", pretty_path(&out_path));

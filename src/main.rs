@@ -263,6 +263,14 @@ fn print_usage(program: &str, opts: &getopts::Options) {
     print!("{}", opts.usage(&brief));
 }
 
+fn default_ext() -> &'static str {
+    if cfg!(target_os = "windows") {
+        "exe"
+    } else {
+        ""
+    }
+}
+
 fn main() {
     let args = std::env::args().collect::<Vec<String>>();
     let program = args[0].clone();
@@ -281,15 +289,19 @@ fn main() {
                 print_usage(&program, &opts);
                 std::process::exit(1);
             } else {
+                let src_path = PathBuf::from(&matched.free[0]);
+
                 let out_file = matched.opt_str("o")
                     .map(PathBuf::from)
-                    .unwrap_or_else(|| current_dir().unwrap());
-
-                let src_path = &matched.free[0];
+                    .unwrap_or_else(|| {
+                        let current_dir = current_dir().unwrap();
+                        current_dir.join(src_path.file_stem().unwrap())
+                            .with_extension(default_ext())
+                    });
 
                 let opts = opts::CompileOptions::from_getopts(&matched);
 
-                let build_result = compile_program(&PathBuf::from(src_path), opts)
+                let build_result = compile_program(&src_path, opts)
                     .and_then(|module| {
                         target_c::pas_to_c(&module, &out_file, &module.opts)
                     });
