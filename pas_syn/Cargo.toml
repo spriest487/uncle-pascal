@@ -1,0 +1,10 @@
+[package]
+name = "pas_syn"
+version = "0.1.0"
+authors = ["spriest487 <spriest487@googlemail.com>"]
+edition = "2018"
+
+[dependencies]
+bigdecimal = "0.0.14"
+cast = "0.2.2"
+backtrace = "0.3.13"
