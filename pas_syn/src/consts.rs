@@ -265,49 +265,49 @@ impl Sub for IntConstant {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum FloatConstant {
+pub enum RealConstant {
     F64(BigDecimal),
 }
 
-impl FloatConstant {
+impl RealConstant {
     pub fn parse_str(s: &str) -> Option<Self> {
         let val: f64 = s.parse().ok()?;
-        Some(FloatConstant::from(val))
+        Some(RealConstant::from(val))
     }
 
     pub fn to_decimal(&self) -> &BigDecimal {
         match self {
-            FloatConstant::F64(f) => f
+            RealConstant::F64(f) => f
         }
     }
 }
 
-impl From<f64> for FloatConstant {
+impl From<f64> for RealConstant {
     fn from(val: f64) -> Self {
-        FloatConstant::F64(val.into())
+        RealConstant::F64(val.into())
     }
 }
 
-impl Sub for FloatConstant {
-    type Output = FloatConstant;
+impl Sub for RealConstant {
+    type Output = RealConstant;
 
-    fn sub(self, rhs: FloatConstant) -> FloatConstant {
-        FloatConstant::F64(self.to_decimal() - rhs.to_decimal())
+    fn sub(self, rhs: RealConstant) -> RealConstant {
+        RealConstant::F64(self.to_decimal() - rhs.to_decimal())
     }
 }
 
-impl Add for FloatConstant {
-    type Output = FloatConstant;
+impl Add for RealConstant {
+    type Output = RealConstant;
 
-    fn add(self, rhs: FloatConstant) -> FloatConstant {
-        FloatConstant::F64(self.to_decimal() + rhs.to_decimal())
+    fn add(self, rhs: RealConstant) -> RealConstant {
+        RealConstant::F64(self.to_decimal() + rhs.to_decimal())
     }
 }
 
-impl fmt::Display for FloatConstant {
+impl fmt::Display for RealConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FloatConstant::F64(val) => write!(f, "{}", val)
+            RealConstant::F64(val) => write!(f, "{}", val)
         }
     }
 }

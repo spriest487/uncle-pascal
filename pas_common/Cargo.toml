@@ -1,7 +1,8 @@
 [package]
-name = "pas_ast"
+name = "pas_common"
 version = "0.1.0"
 authors = ["spriest487 <spriest487@googlemail.com>"]
 edition = "2018"
 
 [dependencies]
+backtrace = "0.3.13"

@@ -1,14 +1,17 @@
 use {
     crate::{
         consts::{
-            FloatConstant,
+            RealConstant,
             IntConstant,
         },
         ident::Ident,
         keyword::Keyword,
         operators::Operator,
         span::{Span, SpanDisplay},
+    },
+    pas_common::{
         TracedError,
+        BuildOptions,
     },
     std::{
         path::PathBuf,
@@ -25,11 +28,39 @@ pub enum DelimiterPair {
     SquareBracket,
 }
 
+impl DelimiterPair {
+    pub fn tokens(&self) -> (&str, &str) {
+        match self {
+            DelimiterPair::BeginEnd => ("begin", "end"),
+            DelimiterPair::Bracket => ("(", ")"),
+            DelimiterPair::SquareBracket => ("[", "]"),
+        }
+    }
+}
+
+impl fmt::Display for DelimiterPair {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let (open, close) = self.tokens();
+
+        write!(f, "{}, {}", open, close)
+    }
+}
+
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum Separator {
     Semicolon,
     Comma,
     Colon,
+}
+
+impl fmt::Display for Separator {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            Separator::Colon => ':',
+            Separator::Comma => ',',
+            Separator::Semicolon => ';',
+        })
+    }
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
@@ -40,7 +71,7 @@ pub enum TokenTree {
         span: Span,
     },
     RealNumber {
-        value: FloatConstant,
+        value: RealConstant,
         span: Span,
     },
     String {
@@ -64,6 +95,122 @@ pub enum TokenTree {
         inner: Vec<TokenTree>,
         span: Span,
     },
+}
+
+impl TokenTree {
+    pub fn span(&self) -> &Span {
+        match self {
+            TokenTree::Ident(ident) => &ident.span,
+            TokenTree::IntNumber { span, .. } => span,
+            TokenTree::RealNumber { span, .. } => span,
+            TokenTree::String { span, .. } => span,
+            TokenTree::Keyword { span, .. } => span,
+            TokenTree::Operator { span, .. } => span,
+            TokenTree::Separator { span, .. } => span,
+            TokenTree::Delimited { span, .. } => span,
+        }
+    }
+
+    pub fn is_ident(&self, word: &str) -> bool {
+        match self {
+            TokenTree::Ident(ident) => ident.name == word,
+            _ => false,
+        }
+    }
+
+    pub fn as_ident(&self) -> Option<&Ident> {
+        match self {
+            TokenTree::Ident(ident) => Some(ident),
+            _ => None,
+        }
+    }
+
+    pub fn is_keyword(&self, kw: Keyword) -> bool {
+        match self {
+            TokenTree::Keyword { kw: token_kw, .. } => *token_kw == kw,
+            _ => false,
+        }
+    }
+
+    pub fn as_keyword(&self) -> Option<Keyword> {
+        match self {
+            TokenTree::Keyword { kw, .. } => Some(*kw),
+            _ => None,
+        }
+    }
+
+    pub fn is_delimited(&self, delim: DelimiterPair) -> bool {
+        match self {
+            TokenTree::Delimited { delim: token_delim, .. } => *token_delim == delim,
+            _ => false
+        }
+    }
+
+    pub fn is_separator(&self, sep: Separator) -> bool {
+        match self {
+            TokenTree::Separator { sep: token_sep, .. } => *token_sep == sep,
+            _ => false
+        }
+    }
+
+    pub fn is_operator(&self, op: Operator) -> bool {
+        match self {
+            TokenTree::Operator { op: token_op, .. } => *token_op == op,
+            _ => false
+        }
+    }
+
+    pub fn is_any_operator(&self) -> bool {
+        match self {
+            TokenTree::Operator { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_any_literal_string(&self) -> bool {
+        match self {
+            TokenTree::String { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_any_literal_int(&self) -> bool {
+        match self {
+            TokenTree::IntNumber { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_any_literal_real(&self) -> bool {
+        match self {
+            TokenTree::RealNumber { .. } => true,
+            _ => false,
+        }
+    }
+}
+
+impl fmt::Display for TokenTree {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TokenTree::Keyword { kw, .. } => write!(f, "{}", kw),
+            TokenTree::Ident(ident) => write!(f, "{}", ident),
+            TokenTree::Operator { op, .. } => write!(f, "{}", op),
+            TokenTree::Separator { sep, .. } => write!(f, "{}", sep),
+
+            TokenTree::RealNumber { value, .. } => write!(f, "{}", value),
+            TokenTree::IntNumber { value, .. } => write!(f, "{}", value),
+            TokenTree::String { value, .. } => write!(f, "{}", value),
+
+            TokenTree::Delimited { delim, inner, .. } => {
+                let (open, close) = delim.tokens();
+                write!(f, "{}", open)?;
+                for inner_token in inner {
+                    write!(f, "{}", inner_token)?;
+                }
+                write!(f, "{}", close)
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -110,9 +257,9 @@ pub type TokenizeResult<T> = Result<T, TracedError<TokenizeError>>;
 
 impl TokenTree {
     pub fn tokenize(filename: impl Into<PathBuf>,
-        source: &str,
-        case_sensitive: bool) -> TokenizeResult<Vec<Self>> {
-        lex::lex(filename, source, case_sensitive)
+                    source: &str,
+                    opts: &BuildOptions) -> TokenizeResult<Vec<Self>> {
+        lex::lex(filename, source, opts)
     }
 }
 
@@ -123,7 +270,9 @@ mod test {
     };
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {
-        match TokenTree::tokenize("test", s, case_sensitive) {
+        let opts = BuildOptions { case_sensitive };
+
+        match TokenTree::tokenize("test", s, &opts) {
             Ok(result) => result,
             Err(err) => {
                 err.print_context(s);
@@ -204,12 +353,12 @@ mod test {
             TokenTree::Delimited { delim: DelimiterPair::Bracket, inner, .. } => {
                 assert_eq!(1, inner.len());
                 match &inner[0] {
-                    TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, .. }  => {
+                    TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, .. } => {
                         match &inner[0] {
                             TokenTree::Ident(ident) => assert_eq!("a", ident.name),
                             _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                         }
-                    },
+                    }
                     _ => panic!("expected begin/end delimited tree, found {:#?}", inner[0]),
                 }
             }

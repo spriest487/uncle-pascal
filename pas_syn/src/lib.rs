@@ -1,42 +1,20 @@
-pub mod keyword;
-pub mod operators;
-pub mod token_tree;
-pub mod ident;
-pub mod span;
-pub mod consts;
+mod keyword;
+mod operators;
+mod token_tree;
+mod token_stream;
+mod ident;
+mod span;
+mod consts;
+mod matcher;
+pub mod ast;
 
-use {
-    std::{
-        ops::Deref,
-    },
-    backtrace::Backtrace
+pub use self::{
+    keyword::Keyword,
+    operators::{Operator, Position},
+    token_tree::{TokenTree, Separator, DelimiterPair, TokenizeResult, TokenizeError},
+    ident::Ident,
+    span::{Span, SpanDisplay},
+    consts::{EnumConstant, SetConstant, IntConstant, RealConstant},
+    token_stream::*,
+    matcher::*,
 };
-
-#[derive(Clone, Debug)]
-pub struct TracedError<T> {
-    err: T,
-    bt: Backtrace,
-}
-
-impl<T> From<T> for TracedError<T> {
-    fn from(err: T) -> Self {
-        const SKIP_FRAMES: usize = 5;
-
-        let mut frames: Vec<_> = Backtrace::new().into();
-        frames.rotate_left(SKIP_FRAMES);
-        frames.truncate(frames.len() - SKIP_FRAMES);
-
-        Self {
-            err,
-            bt: frames.into(),
-        }
-    }
-}
-
-impl<T> Deref for TracedError<T> {
-    type Target = T;
-
-    fn deref(&self) -> &T {
-        &self.err
-    }
-}
