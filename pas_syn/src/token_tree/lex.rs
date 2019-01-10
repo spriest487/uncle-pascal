@@ -16,7 +16,10 @@ use {
             TokenTree,
         },
     },
-    pas_common::BuildOptions,
+    pas_common::{
+        BuildOptions,
+        TracedError,
+    },
     std::{
         rc::Rc,
         path::PathBuf,
@@ -43,11 +46,11 @@ pub fn lex(file_name: impl Into<PathBuf>, source: &str, opts: &BuildOptions) -> 
     }
 
     if let Some((unmatched_at, unmatched)) = lexer.delim_stack.pop() {
-        return Err(TokenizeError::UnmatchedDelimiter {
+        return Err(TracedError::trace(TokenizeError::UnmatchedDelimiter {
             span: lexer.span_to_current(unmatched_at.start),
             to_match: unmatched_at,
             delim: unmatched,
-        }.into());
+        }));
     }
 
     Ok(tokens)
@@ -95,7 +98,7 @@ impl Lexer {
 
         RealConstant::parse_str(&chars.iter().collect::<String>())
             .map(|value| TokenTree::RealNumber { value, span: span.clone() })
-            .ok_or_else(|| TokenizeError::IllegalToken(span).into())
+            .ok_or_else(|| TracedError::trace(TokenizeError::IllegalToken(span)))
     }
 
     fn literal_float(&mut self) -> TokenizeResult<TokenTree> {
@@ -159,7 +162,7 @@ impl Lexer {
 
         match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
             Some(value) => Ok(TokenTree::IntNumber { value, span }),
-            None => Err(TokenizeError::IllegalToken(span).into()),
+            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
 
@@ -204,7 +207,7 @@ impl Lexer {
 
         match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
             Some(value) => Ok(TokenTree::IntNumber { value, span }),
-            None => Err(TokenizeError::IllegalToken(span).into()),
+            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
 
@@ -217,11 +220,11 @@ impl Lexer {
         loop {
             match self.line.get(next_col) {
                 /* todo: better error for unterminated string literal */
-                None => return Err(TokenizeError::IllegalToken(Span {
+                None => return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
                     file: self.file.clone(),
                     start: start_loc,
                     end: self.location,
-                }).into()),
+                }))),
 
                 /* depends on the token after this one */
                 Some('\'') => match self.line.get(next_col + 1) {
@@ -262,11 +265,11 @@ impl Lexer {
                     token_str.push(*c);
                 } else {
                     //can't start with a number
-                    return Err(TokenizeError::IllegalToken(Span {
+                    return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
                         file: self.file.clone(),
                         start: start_loc,
                         end: self.location,
-                    }).into());
+                    })));
                 }
 
                 'a'...'z' |
@@ -342,10 +345,10 @@ impl Lexer {
             // no group was started, or a delimited group was started, but it wasn't the
             // same type as the one we're closing
             None => {
-                Err(TokenizeError::UnexpectedCloseDelimited { delim, span }.into())
+                Err(TracedError::trace(TokenizeError::UnexpectedCloseDelimited { delim, span }))
             }
             Some((_, unexpected_delim)) if unexpected_delim != delim => {
-                Err(TokenizeError::UnexpectedCloseDelimited { delim, span }.into())
+                Err(TracedError::trace(TokenizeError::UnexpectedCloseDelimited { delim, span }))
             }
 
             Some(_) => Ok(())
@@ -416,7 +419,7 @@ impl Lexer {
                 let err_start = self.location;
                 self.location.col += 1;
                 let err_span = self.span_to_current(err_start);
-                return Err(TokenizeError::IllegalToken(err_span).into());
+                return Err(TracedError::trace(TokenizeError::IllegalToken(err_span)));
             }
         };
 

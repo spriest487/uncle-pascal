@@ -1,22 +1,36 @@
 pub mod statement;
 pub mod unit;
+pub mod expression;
 
 pub use self::{
     statement::*,
+    expression::*,
     unit::*,
 };
 
 use {
+    std::{
+        fmt,
+        hash::Hash,
+    },
     crate::{
         Ident,
-        IntConstant,
         Span,
+        Spanned,
         Matcher,
         TokenTree,
         TokenStream,
     },
     pas_common::TracedError,
 };
+
+pub trait Annotation : Spanned + Clone + PartialEq + Eq + Hash {
+    type Type: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+}
+
+impl Annotation for Span {
+    type Type = TypeName;
+}
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -26,43 +40,51 @@ pub enum ParseError {
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
 
+impl Spanned for ParseError {
+    fn span(&self) -> &Span {
+        match self {
+            ParseError::UnexpectedToken(tt, _) => tt.span(),
+            ParseError::UnexpectedEOF(_, tt) => tt.span(),
+        }
+    }
+}
+
+impl fmt::Display for ParseError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ParseError::UnexpectedToken(tt, Some(expected)) =>
+                write!(f, "expected {}, found {}", expected, tt),
+
+            ParseError::UnexpectedToken(tt, None) =>
+                write!(f, "unexpected {}", tt),
+
+            ParseError::UnexpectedEOF(expected, tt) =>
+                write!(f, "expected {} after {} but reached end of sequence", expected, tt),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Type {
+pub enum TypeName {
     Ident(Ident),
 }
 
-impl Type {
+impl TypeName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         match tokens.match_one(Matcher::AnyIdent)? {
-            TokenTree::Ident(ident) => Ok(Type::Ident(ident)),
+            TokenTree::Ident(ident) => Ok(TypeName::Ident(ident)),
             unexpected => {
                 let expected = Matcher::AnyIdent;
-                Err(ParseError::UnexpectedToken(unexpected, Some(expected)).into())
+                Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, Some(expected))))
             },
         }
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Expression {
-    LiteralInt { value: IntConstant, span: Span },
-}
-
-impl Expression {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        match tokens.next() {
-            Some(TokenTree::IntNumber { value, span }) => {
-                let expr = Expression::LiteralInt { value, span };
-                Ok(expr)
-            }
-
-            _ => unimplemented!()
-        }
-    }
-
-    pub fn span(&self) -> &Span {
+impl fmt::Display for TypeName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expression::LiteralInt { span, .. } => span,
+            TypeName::Ident(ident) => write!(f, "{}", ident)
         }
     }
 }

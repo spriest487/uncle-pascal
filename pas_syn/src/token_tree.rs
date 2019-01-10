@@ -7,7 +7,7 @@ use {
         ident::Ident,
         keyword::Keyword,
         operators::Operator,
-        span::{Span, SpanDisplay},
+        span::{Span, Spanned},
     },
     pas_common::{
         TracedError,
@@ -203,9 +203,9 @@ impl fmt::Display for TokenTree {
 
             TokenTree::Delimited { delim, inner, .. } => {
                 let (open, close) = delim.tokens();
-                write!(f, "{}", open)?;
+                write!(f, "{} ", open)?;
                 for inner_token in inner {
-                    write!(f, "{}", inner_token)?;
+                    write!(f, "{} ", inner_token)?;
                 }
                 write!(f, "{}", close)
             },
@@ -243,7 +243,7 @@ impl fmt::Display for TokenizeError {
     }
 }
 
-impl SpanDisplay for TokenizeError {
+impl Spanned for TokenizeError {
     fn span(&self) -> &Span {
         match self {
             TokenizeError::IllegalToken(span) => span,

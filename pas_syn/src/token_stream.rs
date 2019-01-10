@@ -2,6 +2,7 @@ use {
     std::{
         collections::VecDeque,
     },
+    pas_common::TracedError,
     crate::{
         TokenTree,
         Separator,
@@ -76,7 +77,7 @@ impl TokenStream {
     pub fn finish(mut self) -> ParseResult<()> {
         match self.next() {
             Some(unexpected) => {
-                Err(ParseError::UnexpectedToken(unexpected, None).into())
+                Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, None)))
             }
             None => Ok(())
         }
@@ -89,11 +90,11 @@ impl TokenStream {
             Some(token) => if matcher.is_match(&token) {
                 Ok(token)
             } else {
-                Err(ParseError::UnexpectedToken(token, Some(matcher)).into())
+                Err(TracedError::trace(ParseError::UnexpectedToken(token, Some(matcher))))
             }
 
             None => {
-                Err(ParseError::UnexpectedEOF(matcher, self.context.clone()).into())
+                Err(TracedError::trace(ParseError::UnexpectedEOF(matcher, self.context.clone())))
             }
         }
     }
@@ -118,7 +119,7 @@ impl TokenStream {
             }
 
             Some(unexpected) => {
-                Err(ParseError::UnexpectedToken(unexpected, Some(matcher)).into())
+                Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, Some(matcher))))
             }
         }
     }

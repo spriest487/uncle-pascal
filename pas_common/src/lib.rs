@@ -11,8 +11,8 @@ pub struct TracedError<T> {
     pub bt: Backtrace,
 }
 
-impl<T> From<T> for TracedError<T> {
-    fn from(err: T) -> Self {
+impl<T> TracedError<T> {
+    pub fn trace(err: T) -> Self {
         const SKIP_FRAMES: usize = 5;
 
         let mut frames: Vec<_> = Backtrace::new().into();
@@ -22,6 +22,13 @@ impl<T> From<T> for TracedError<T> {
         Self {
             err,
             bt: frames.into(),
+        }
+    }
+
+    pub fn chain<TNext: From<T>>(self) -> TracedError<TNext> {
+        TracedError {
+            err: self.err.into(),
+            bt: self.bt
         }
     }
 }

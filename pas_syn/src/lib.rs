@@ -13,7 +13,7 @@ pub use self::{
     operators::{Operator, Position},
     token_tree::{TokenTree, Separator, DelimiterPair, TokenizeResult, TokenizeError},
     ident::Ident,
-    span::{Span, SpanDisplay},
+    span::{Span, Spanned, Location},
     consts::{EnumConstant, SetConstant, IntConstant, RealConstant},
     token_stream::*,
     matcher::*,

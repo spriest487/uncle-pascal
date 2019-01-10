@@ -1,4 +1,7 @@
 use {
+    std::{
+        fmt,
+    },
     crate::{
         Span,
         Ident,
@@ -13,51 +16,84 @@ use {
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LetBinding {
-    pub span: Span,
+pub struct LetBinding<A: Annotation> {
     pub name: Ident,
-    pub ty: Type,
-    pub val: Expression,
+    pub val_ty: A::Type,
+    pub val: ExpressionNode<A>,
+    pub annotation: A,
 }
 
-impl LetBinding {
+impl LetBinding<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let let_kw = tokens.match_one(Keyword::Let)?;
-        let name = tokens.match_one(Matcher::AnyIdent)?;
+        let name_token = tokens.match_one(Matcher::AnyIdent)?;
 
         tokens.match_one(Separator::Colon)?;
-        let ty = Type::parse(tokens)?;
+        let ty = TypeName::parse(tokens)?;
 
         tokens.match_one(Operator::Assignment)?;
-        let val = Expression::parse(tokens)?;
+        let val = ExpressionNode::parse(tokens)?;
+        let span = let_kw.span().to(&val.annotation);
 
         Ok(LetBinding {
-            name: name.as_ident().cloned().unwrap(),
-            span: let_kw.span().to(val.span()),
-            ty,
-            val,
+            name: name_token.as_ident().cloned().unwrap(),
+            val_ty: ty,
+            val: val,
+            annotation: span,
         })
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Statement {
-    LetBinding(LetBinding),
+impl<A: Annotation> fmt::Display for LetBinding<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "let {}: {} = {}", self.name, self.val_ty, self.val)
+    }
 }
 
-impl Statement {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let stmt_start = Matcher::AnyKeyword;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Statement<A: Annotation> {
+    LetBinding(LetBinding<A>),
+}
 
-        match tokens.look_ahead().match_one(stmt_start.clone()) {
-            Some(TokenTree::Keyword { kw: Keyword::Let, .. }) => {
-                let let_binding = LetBinding::parse(tokens)?;
-                Ok(Statement::LetBinding(let_binding))
-            }
-
-            Some(unexpected) => Err(ParseError::UnexpectedToken(unexpected, None).into()),
-
-            None => Err(ParseError::UnexpectedEOF(stmt_start, tokens.context().clone()).into()),
+impl<A: Annotation> Statement<A> {
+    pub fn annotation(&self) -> &A {
+        match self {
+            Statement::LetBinding(binding) => &binding.annotation,
         }
     }
 }
+
+pub fn statement_start_matcher() -> Matcher {
+    Matcher::Keyword(Keyword::Let)
+}
+
+impl Statement<Span> {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Statement<Span>> {
+        let stmt_start = statement_start_matcher();
+
+        match tokens.look_ahead().match_one(stmt_start.clone()) {
+            Some(TokenTree::Keyword { kw: Keyword::Let, .. }) => {
+                let binding = LetBinding::parse(tokens)?;
+
+                Ok(Statement::LetBinding(binding))
+            }
+
+            Some(unexpected) => {
+                Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, None)))
+            },
+
+            None => {
+                Err(TracedError::trace(ParseError::UnexpectedEOF(stmt_start, tokens.context().clone())))
+            },
+        }
+    }
+}
+
+impl<A: Annotation> fmt::Display for Statement<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Statement::LetBinding(binding) => write!(f, "{}", binding),
+        }
+    }
+}
+

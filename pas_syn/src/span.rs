@@ -82,7 +82,7 @@ impl fmt::Display for Span {
     }
 }
 
-pub trait SpanDisplay : fmt::Display {
+pub trait Spanned: fmt::Display {
     fn span(&self) -> &Span;
 
     fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
@@ -93,5 +93,11 @@ pub trait SpanDisplay : fmt::Display {
     fn print_context(&self, source: &str) {
         println!("{}", self);
         self.span().print_context(source)
+    }
+}
+
+impl Spanned for Span {
+    fn span(&self) -> &Span {
+        self
     }
 }
