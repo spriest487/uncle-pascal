@@ -90,6 +90,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pas_ir"
+version = "0.1.0"
+dependencies = [
+ "pas_syn 0.1.0",
+ "pas_typecheck 0.1.0",
+]
+
+[[package]]
 name = "pas_syn"
 version = "0.1.0"
 dependencies = [
@@ -112,6 +120,7 @@ name = "pascal2"
 version = "0.1.0"
 dependencies = [
  "pas_common 0.1.0",
+ "pas_ir 0.1.0",
  "pas_syn 0.1.0",
  "pas_typecheck 0.1.0",
 ]

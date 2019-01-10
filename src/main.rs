@@ -20,6 +20,7 @@ use {
         TypecheckError,
         ast as typ,
     },
+    pas_ir,
 };
 
 #[derive(Debug)]
@@ -75,11 +76,15 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Resu
 
     let unit = syn::Unit::parse(&mut token_stream)?;
 
-    println!("{:#?}", unit);
+    println!("Parsed: {:#?}", unit);
 
     let unit = typ::typecheck_unit(&unit)?;
 
-    println!("{:#?}", unit);
+    println!("Typechecked: {:#?}", unit);
+
+    let ir = pas_ir::translate(&unit);
+    println!("IR: {:#?}", ir);
+
     Ok(())
 }
 
