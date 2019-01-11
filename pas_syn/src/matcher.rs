@@ -46,6 +46,12 @@ impl From<Separator> for Matcher {
     }
 }
 
+impl From<DelimiterPair> for Matcher {
+    fn from(delim: DelimiterPair) -> Self {
+        Matcher::Delimited(delim)
+    }
+}
+
 impl From<Keyword> for Matcher {
     fn from(keyword: Keyword) -> Self {
         Matcher::Keyword(keyword)
@@ -118,10 +124,10 @@ impl Matcher {
             Matcher::Operator(op) => token.is_operator(*op),
             Matcher::Ident(name) => token.is_ident(name),
             Matcher::AnyIdent => token.as_ident().is_some(),
-            Matcher::AnyOperator => token.is_any_operator(),
-            Matcher::AnyLiteralInteger => token.is_any_literal_int(),
-            Matcher::AnyLiteralReal => token.is_any_literal_real(),
-            Matcher::AnyLiteralString => token.is_any_literal_string(),
+            Matcher::AnyOperator => token.as_operator().is_some(),
+            Matcher::AnyLiteralInteger => token.as_literal_int().is_some(),
+            Matcher::AnyLiteralReal => token.as_literal_real().is_some(),
+            Matcher::AnyLiteralString => token.as_literal_string().is_some(),
             Matcher::AnyLiteralBoolean => token.is_keyword(Keyword::True) ||
                 token.is_keyword(Keyword::False),
             Matcher::Exact(exact_token) => *token == *exact_token,

@@ -12,7 +12,7 @@ pub struct Location {
     pub col: usize,
 }
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct Span {
     pub file: Rc<PathBuf>,
     pub start: Location,
@@ -20,6 +20,14 @@ pub struct Span {
 }
 
 impl Span {
+    pub fn zero(file: impl Into<PathBuf>) -> Self {
+        Self {
+            file: Rc::new(file.into()),
+            start: Location { line: 0, col: 0 },
+            end: Location { line: 0, col: 0 },
+        }
+    }
+
     pub fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
         writeln!(f, "{}:", self)?;
 
@@ -39,11 +47,13 @@ impl Span {
             }
 
             for x in 0..line.len() {
-                if x >= self.start.col && x <= self.end.col
-                        && y >= self.start.line && x <= self.end.line {
+                let highlight = x >= self.start.col && x <= self.end.col
+                    && y >= self.start.line && y <= self.end.line;
+
+                if highlight {
                     write!(f, "^")?;
                 } else {
-                    write!(f, "")?;
+                    write!(f, " ")?;
                 }
             }
         }
@@ -67,6 +77,18 @@ impl Span {
             start: self.start,
             end: other.end,
         }
+    }
+}
+
+impl fmt::Display for Location {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}:{}", self.line + 1, self.col + 1)
+    }
+}
+
+impl fmt::Debug for Span {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Span({})", self)
     }
 }
 

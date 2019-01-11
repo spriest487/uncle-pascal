@@ -40,5 +40,10 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
                 annotation,
             }))
         }
+
+        ast::Statement::Call(call) => {
+            let call = typecheck_call(call, ctx)?;
+            Ok(ast::Statement::Call(call))
+        }
     }
 }

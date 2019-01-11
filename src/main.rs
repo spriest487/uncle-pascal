@@ -69,27 +69,39 @@ impl fmt::Display for CompileError {
 }
 
 fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Result<(), CompileError> {
-    let tokens = TokenTree::tokenize(filename, src, &opts)?;
+    let filename = filename.into();
+    let tokens = TokenTree::tokenize(filename.clone(), src, &opts)?;
 
-    let context = tokens[0].clone();
+    let context = Span::zero(filename);
+
     let mut token_stream = TokenStream::new(tokens, context);
 
     let unit = syn::Unit::parse(&mut token_stream)?;
 
-    println!("Parsed: {:#?}", unit);
+    println!("Parsed:");
+    println!("{}", unit);
 
     let unit = typ::typecheck_unit(&unit)?;
 
-    println!("Typechecked: {:#?}", unit);
+    println!("Typechecked:");
+    println!("{}", unit);
 
     let ir = pas_ir::translate(&unit);
-    println!("IR: {:#?}", ir);
+    println!("IR:");
+    for instruction in &ir {
+        println!("{}", instruction);
+    }
+
+    let mut interpreter = pas_ir::Interpreter::new();
+    interpreter.execute(&ir);
+    println!("Interpreter state:");
+    println!("{:#?}", interpreter);
 
     Ok(())
 }
 
 fn main() -> Result<(), CompileError> {
-    let src = include_str!("../demos/HelloWorld.pas");
+    let src = include_str!("../demos/Functions.pas");
     let opts = BuildOptions { case_sensitive: true };
 
     if let Err(err) = compile("HelloWorld.pas", src, &opts) {

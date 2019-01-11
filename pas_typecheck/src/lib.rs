@@ -17,7 +17,7 @@ pub mod ast {
 pub use self::{
     result::*,
     context::*,
-    ty::Type,
+    ty::*,
     annotation::*,
 };
 
@@ -27,9 +27,35 @@ pub mod ty {
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
+    pub struct FunctionSig {
+        pub return_ty: Option<Type>,
+        pub params: Vec<Type>,
+    }
+
+    impl fmt::Display for FunctionSig {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            write!(f, "function(")?;
+
+            for (i, param) in self.params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", param)?;
+            }
+            write!(f, ")")?;
+
+            match &self.return_ty {
+                Some(ty) => write!(f, ": {}", ty),
+                None => Ok(()),
+            }
+        }
+    }
+
+    #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub enum Type {
         None,
         Integer,
+        Function(Box<FunctionSig>),
     }
 
     impl Type {

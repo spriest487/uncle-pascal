@@ -1,19 +1,20 @@
 use {
-    std::{
-        collections::VecDeque,
+    crate::{
+        ast::*,
+        matcher::*,
+        Separator,
+        Span,
+        TokenTree,
     },
     pas_common::TracedError,
-    crate::{
-        TokenTree,
-        Separator,
-        matcher::*,
-        ast::*,
+    std::{
+        collections::VecDeque,
     },
 };
 
 pub struct TokenStream {
     tokens: Box<Iterator<Item=TokenTree>>,
-    context: TokenTree,
+    context: Span,
 
     lookahead_buffer: VecDeque<TokenTree>,
 }
@@ -25,34 +26,15 @@ impl Iterator for TokenStream {
         self.lookahead_buffer.pop_front()
             .or_else(|| self.tokens.next())
             .map(|next_token| {
-                self.context = next_token.clone();
+                self.context = next_token.span().clone();
                 next_token
             })
     }
 }
 
-impl From<Vec<TokenTree>> for TokenStream {
-    fn from(tokens: Vec<TokenTree>) -> Self {
-        if tokens.is_empty() {
-            panic!("length of tokenstream must be at least 1");
-        }
-
-        let context = tokens[0].clone();
-
-        let boxed: Box<Iterator<Item=TokenTree>> = Box::new(tokens.into_iter());
-
-        TokenStream {
-            tokens: boxed,
-            context,
-
-            lookahead_buffer: VecDeque::new(),
-        }
-    }
-}
-
 impl TokenStream {
     pub fn new(tokens: impl IntoIterator<Item=TokenTree> + 'static,
-               context: TokenTree) -> Self {
+        context: Span) -> Self {
         let token_iter: Box<Iterator<Item=TokenTree>> = Box::new(tokens.into_iter());
 
         TokenStream {
@@ -63,7 +45,7 @@ impl TokenStream {
         }
     }
 
-    pub fn context(&self) -> &TokenTree {
+    pub fn context(&self) -> &Span {
         &self.context
     }
 
@@ -110,7 +92,7 @@ impl TokenStream {
             None => Ok(()),
 
             // endl - next token is on a new line
-            Some(ref token) if token.span().start.line != self.context.span().end.line => Ok(()),
+            Some(ref token) if token.span().start.line != self.context.end.line => Ok(()),
 
             // found separator token - next token is the one beyond that
             Some(ref token) if matcher.is_match(token) => {
@@ -125,8 +107,8 @@ impl TokenStream {
     }
 
     pub fn match_sequence(&mut self,
-                          sequence: impl IntoIterator<Item=Matcher>)
-                          -> ParseResult<Vec<TokenTree>> {
+        sequence: impl IntoIterator<Item=Matcher>)
+        -> ParseResult<Vec<TokenTree>> {
         sequence.into_iter()
             .map(|matcher| self.match_one(matcher))
             .collect::<Result<Vec<_>, _>>()
@@ -141,13 +123,13 @@ impl TokenStream {
     }
 
     pub fn parse<TParsed>(&mut self) -> ParseResult<TParsed>
-        where TParsed: Parse
+                                     where TParsed: Parse
     {
         TParsed::parse(self)
     }
 
     pub fn parse_to_end<TParsed>(mut self) -> ParseResult<TParsed>
-        where TParsed: Parse
+                                           where TParsed: Parse
     {
         let result = TParsed::parse(&mut self)?;
         self.finish()?;
@@ -155,8 +137,8 @@ impl TokenStream {
     }
 
     pub fn match_repeating<T>(&mut self,
-                              mut f: impl FnMut(usize, &mut Self) -> ParseResult<Generate<T>>)
-                              -> ParseResult<Vec<T>> {
+        mut f: impl FnMut(usize, &mut Self) -> ParseResult<Generate<T>>)
+        -> ParseResult<Vec<T>> {
         let mut results = Vec::new();
         loop {
             match f(results.len(), self)? {
@@ -166,10 +148,12 @@ impl TokenStream {
         }
     }
 
-    pub fn match_separated<T>(&mut self,
-                              sep: Separator,
-                              mut f: impl FnMut(usize, &mut Self) -> ParseResult<Generate<T>>)
-                              -> ParseResult<Vec<T>> {
+    pub fn match_separated<T, F>(&mut self,
+        sep: Separator,
+        mut f: F)
+        -> ParseResult<Vec<T>>
+        where F: FnMut(usize, &mut TokenStream) -> ParseResult<Generate<T>>
+    {
         let mut results = Vec::new();
 
         loop {
@@ -183,7 +167,7 @@ impl TokenStream {
                         // no separator means sequence must end here
                         break Ok(results);
                     }
-                },
+                }
 
                 Generate::Break => {
                     // separated sequence can be always optionally be terminated by the separator
@@ -191,8 +175,8 @@ impl TokenStream {
                         self.advance(1);
                     }
 
-                    break Ok(results)
-                },
+                    break Ok(results);
+                }
             }
         }
     }
@@ -214,11 +198,11 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
         self
     }
 
-    pub fn context(&self) -> &TokenTree {
+    pub fn context(&self) -> &Span {
         if self.pos == 0 {
             self.tokens.context()
         } else {
-            &self.tokens.lookahead_buffer[self.pos - 1]
+            &self.tokens.lookahead_buffer[self.pos - 1].span()
         }
     }
 
@@ -235,8 +219,8 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
     }
 
     pub fn match_sequence(&mut self,
-                          sequence: impl Into<SequenceMatcher>)
-                          -> Option<Vec<TokenTree>> {
+        sequence: impl Into<SequenceMatcher>)
+        -> Option<Vec<TokenTree>> {
         let mut sequence = sequence.into().into_iter();
         let mut matches = Vec::new();
 

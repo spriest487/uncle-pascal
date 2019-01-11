@@ -93,6 +93,8 @@ pub enum TokenTree {
     Delimited {
         delim: DelimiterPair,
         inner: Vec<TokenTree>,
+        open: Span,
+        close: Span,
         span: Span,
     },
 }
@@ -160,31 +162,31 @@ impl TokenTree {
         }
     }
 
-    pub fn is_any_operator(&self) -> bool {
+    pub fn as_operator(&self) -> Option<Operator> {
         match self {
-            TokenTree::Operator { .. } => true,
-            _ => false,
+            TokenTree::Operator { op, .. } => Some(*op),
+            _ => None,
         }
     }
 
-    pub fn is_any_literal_string(&self) -> bool {
+    pub fn as_literal_string(&self) -> Option<&str> {
         match self {
-            TokenTree::String { .. } => true,
-            _ => false,
+            TokenTree::String { value, .. } => Some(value),
+            _ => None,
         }
     }
 
-    pub fn is_any_literal_int(&self) -> bool {
+    pub fn as_literal_int(&self) -> Option<&IntConstant> {
         match self {
-            TokenTree::IntNumber { .. } => true,
-            _ => false,
+            TokenTree::IntNumber { value, .. } => Some(value),
+            _ => None,
         }
     }
 
-    pub fn is_any_literal_real(&self) -> bool {
+    pub fn as_literal_real(&self) -> Option<&RealConstant> {
         match self {
-            TokenTree::RealNumber { .. } => true,
-            _ => false,
+            TokenTree::RealNumber { value, .. } => Some(value),
+            _ => None,
         }
     }
 }

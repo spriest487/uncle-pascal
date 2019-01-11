@@ -319,20 +319,35 @@ impl Lexer {
     }
 
     fn begin_delim_group(&mut self, delim: DelimiterPair, consume: usize) -> TokenizeResult<TokenTree> {
-        let start_loc = self.location;
         self.location.col += consume;
 
-        self.delim_stack.push((self.span_to_current(start_loc), delim));
+        let (open_token, close_token) = delim.tokens();
+
+        // after passing `consume` chars we should be at the end of the open delim
+        let open_span = self.span_to_current(Location {
+            col: self.location.col - open_token.len(),
+            line: self.location.line
+        });
+
+        self.delim_stack.push((open_span.clone(), delim));
 
         let mut inner = Vec::new();
         while let Some(inner_token) = self.next_token()? {
             inner.push(inner_token);
         }
 
+        // the group just ended so we *must* be right after the close token!
+        let close_span = self.span_to_current(Location {
+            col: self.location.col - close_token.len(),
+            line: self.location.line,
+        });
+
         Ok(TokenTree::Delimited {
             delim,
-            span: self.span_to_current(start_loc),
             inner,
+            span: open_span.to(&close_span),
+            open: open_span,
+            close: close_span,
         })
     }
 
