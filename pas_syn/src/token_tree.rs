@@ -127,6 +127,13 @@ impl TokenTree {
         }
     }
 
+    pub fn into_ident(self) -> Option<Ident> {
+        match self {
+            TokenTree::Ident(ident) => Some(ident),
+            _ => None,
+        }
+    }
+
     pub fn is_keyword(&self, kw: Keyword) -> bool {
         match self {
             TokenTree::Keyword { kw: token_kw, .. } => *token_kw == kw,
@@ -194,14 +201,14 @@ impl TokenTree {
 impl fmt::Display for TokenTree {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TokenTree::Keyword { kw, .. } => write!(f, "{}", kw),
-            TokenTree::Ident(ident) => write!(f, "{}", ident),
-            TokenTree::Operator { op, .. } => write!(f, "{}", op),
-            TokenTree::Separator { sep, .. } => write!(f, "{}", sep),
+            TokenTree::Keyword { kw, .. } => write!(f, "keyword `{}`", kw),
+            TokenTree::Ident(ident) => write!(f, "identifier `{}`", ident),
+            TokenTree::Operator { op, .. } => write!(f, "operator `{}`", op),
+            TokenTree::Separator { sep, .. } => write!(f, "separator `{}`", sep),
 
-            TokenTree::RealNumber { value, .. } => write!(f, "{}", value),
-            TokenTree::IntNumber { value, .. } => write!(f, "{}", value),
-            TokenTree::String { value, .. } => write!(f, "{}", value),
+            TokenTree::RealNumber { value, .. } => write!(f, "real number `{}`", value),
+            TokenTree::IntNumber { value, .. } => write!(f, "integer number `{}`", value),
+            TokenTree::String { value, .. } => write!(f, "string '{}'", value),
 
             TokenTree::Delimited { delim, inner, .. } => {
                 let (open, close) = delim.tokens();

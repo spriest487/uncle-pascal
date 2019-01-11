@@ -49,6 +49,8 @@ impl Call<Span> {
                     Ok(Generate::Yield(arg_expr))
                 })?;
 
+                args_tokens.finish()?;
+
                 Ok(args)
             }
 

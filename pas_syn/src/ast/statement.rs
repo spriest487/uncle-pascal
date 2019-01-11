@@ -51,9 +51,25 @@ impl<A: Annotation> fmt::Display for LetBinding<A> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum Exit<A: Annotation> {
+    WithValue(ExpressionNode<A>),
+    WithoutValue(A),
+}
+
+impl<A: Annotation> fmt::Display for Exit<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Exit::WithoutValue(_) => write!(f, "exit"),
+            Exit::WithValue(expr) => write!(f, "exit {}", expr),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
     LetBinding(LetBinding<A>),
     Call(Call<A>),
+    Exit(Exit<A>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -61,12 +77,17 @@ impl<A: Annotation> Statement<A> {
         match self {
             Statement::LetBinding(binding) => &binding.annotation,
             Statement::Call(call) => &call.annotation,
+            Statement::Exit(exit) => match exit {
+                Exit::WithValue(expr) => &expr.annotation,
+                Exit::WithoutValue(a) => a,
+            }
         }
     }
 }
 
 pub fn statement_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
+        .or(Keyword::Exit)
         .or(expression::match_operand_start())
 }
 
@@ -105,6 +126,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
         match self {
             Statement::LetBinding(binding) => write!(f, "{}", binding),
             Statement::Call(call) => write!(f, "{}", call),
+            Statement::Exit(exit) => write!(f, "{}", exit),
         }
     }
 }

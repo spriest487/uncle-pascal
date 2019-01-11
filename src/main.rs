@@ -75,8 +75,8 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Resu
     let context = Span::zero(filename);
 
     let mut token_stream = TokenStream::new(tokens, context);
-
     let unit = syn::Unit::parse(&mut token_stream)?;
+    token_stream.finish()?;
 
     println!("Parsed:");
     println!("{}", unit);

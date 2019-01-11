@@ -2,12 +2,16 @@ pub mod statement;
 pub mod unit;
 pub mod expression;
 pub mod call;
+pub mod function;
+pub mod block;
 
 pub use self::{
     statement::*,
     expression::*,
     unit::*,
     call::*,
+    block::*,
+    function::*,
 };
 
 use {
@@ -82,6 +86,14 @@ impl fmt::Display for ParseError {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeName {
     Ident(Ident),
+}
+
+impl Spanned for TypeName {
+    fn span(&self) -> &Span {
+        match self {
+            TypeName::Ident(ident) => ident.span(),
+        }
+    }
 }
 
 impl TypeName {

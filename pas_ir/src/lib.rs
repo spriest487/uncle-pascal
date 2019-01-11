@@ -278,6 +278,11 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         ast::Statement::Call(call) => {
             translate_call(call, builder);
         }
+
+
+        ast::Statement::Exit(_) => {
+            unimplemented!()
+        }
     }
 }
 

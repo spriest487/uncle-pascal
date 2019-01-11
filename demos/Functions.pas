@@ -1,4 +1,9 @@
-let x: Integer := 1 + 1 + 20;
+function Add(a, b: Integer): Integer
+begin
+    exit a + b;
+end
+
+let x: Integer := Add(2, 3) + 20;
 
 WriteLn(x);
 WriteLn(12);
