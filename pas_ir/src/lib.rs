@@ -1,7 +1,10 @@
 pub mod interpret;
 
 use {
-    std::fmt,
+    std::{
+        fmt,
+        collections::HashMap,
+    },
     pas_syn::{
         self as syn,
         ast,
@@ -68,13 +71,13 @@ impl fmt::Display for Instruction {
         match self {
             Instruction::LocalAlloc(id, ty) => write!(f, "{:>width$} {} of {}", "local", id, ty, width = IX_WIDTH),
             Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", id, width = IX_WIDTH),
-            Instruction::Set { out, new_val } => write!(f, "{:>width$} {} = {}", "set", out, new_val, width = IX_WIDTH),
-            Instruction::Add { out, a, b } => write!(f, "{:>width$} {} = {} + {}", "add", out, a, b, width = IX_WIDTH),
+            Instruction::Set { out, new_val } => write!(f, "{:>width$} {} := {}", "set", out, new_val, width = IX_WIDTH),
+            Instruction::Add { out, a, b } => write!(f, "{:>width$} {} := {} + {}", "add", out, a, b, width = IX_WIDTH),
 
             Instruction::Call { out, function, args } => {
                 write!(f, "{:>width$} ", "call", width = IX_WIDTH)?;
                 if let Some(out_val) = out {
-                    write!(f, "{} = ", out_val)?;
+                    write!(f, "{} := ", out_val)?;
                 }
                 write!(f, "{}(", function)?;
                 for (i, arg) in args.iter().enumerate() {
@@ -89,9 +92,35 @@ impl fmt::Display for Instruction {
     }
 }
 
-struct Local {
-    id: usize,
-    name: Option<String>,
+enum Local {
+    // the builder created this local allocation and must track its lifetime to drop it
+    Allocated {
+        id: usize,
+        name: Option<String>,
+    },
+    // the builder didn't create this local allocation but we know it exists e.g. we know where
+    // function params are found due to the calling convention. we need to know its name but we
+    // don't need to drop it
+    Bound {
+        id: usize,
+        name: String,
+    },
+}
+
+impl Local {
+    fn id(&self) -> usize {
+        match self {
+            Local::Allocated { id, .. } => *id,
+            Local::Bound { id, .. } => *id,
+        }
+    }
+
+    fn name(&self) -> Option<&String> {
+        match self {
+            Local::Allocated { name, .. } => name.as_ref(),
+            Local::Bound { name, .. } => Some(&name),
+        }
+    }
 }
 
 struct Scope {
@@ -99,9 +128,9 @@ struct Scope {
 }
 
 pub struct Builder {
-    next_id: usize,
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
+    next_id: usize,
 }
 
 impl Builder {
@@ -121,28 +150,36 @@ impl Builder {
         self.instructions
     }
 
-    pub fn get_id(&mut self) -> usize {
-        let id = self.next_id;
-        self.next_id += 1;
-        id
-    }
-
     pub fn append(&mut self, instruction: Instruction) {
         self.instructions.push(instruction);
     }
 
-    pub fn new_local(&mut self, ty: Type, name: Option<&str>) -> Value {
-        let id = self.get_id();
-        self.instructions.push(Instruction::LocalAlloc(id, ty));
+    pub fn bind_local(&mut self, id: usize, name: String) {
+        assert!(id >= self.next_id);
+        assert!(!self.current_scope_mut().locals.iter()
+            .any(|l| l.name() == Some(&name) || l.id() == id));
 
-        let current_scope = self.scopes.iter_mut().rev().next()
-            .expect("scope must be active");
+        self.current_scope_mut().locals.push(Local::Bound { id, name: name.to_string(), });
 
-        current_scope.locals.push(Local {
+        self.next_id = usize::max(id + 1, self.next_id + 1);
+    }
+
+    fn current_scope_mut(&mut self) -> &mut Scope {
+        self.scopes.iter_mut().rev().next()
+            .expect("scope must be active")
+    }
+
+    pub fn new_local(&mut self, ty: Type, name: Option<String>) -> Value {
+        let id = self.next_id;
+
+        self.current_scope_mut().locals.push(Local::Allocated {
             id,
-            name: name.map(str::to_string),
+            name,
         });
 
+        self.next_id += 1;
+
+        self.instructions.push(Instruction::LocalAlloc(id, ty));
         Value::Local(id)
     }
 
@@ -151,7 +188,7 @@ impl Builder {
             .filter_map(|scope| {
                 scope.locals.iter()
                     .find(|local| {
-                        local.name.as_ref()
+                        local.name()
                             .map(|local_name| local_name == name)
                             .unwrap_or(false)
                     })
@@ -168,7 +205,9 @@ impl Builder {
     pub fn end_scope(&mut self) {
         let top_scope = self.scopes.pop().unwrap();
         for local in top_scope.locals.iter().rev() {
-            self.instructions.push(Instruction::LocalDelete(local.id));
+            if let Local::Allocated { id, .. } = local {
+                self.instructions.push(Instruction::LocalDelete(*id));
+            }
         }
     }
 }
@@ -249,7 +288,7 @@ pub fn translate_expr(
 
                 Some(pas_ty::ValueKind::Immutable) => {
                     builder.find_local(&ident.name)
-                        .map(|local| Value::Local(local.id))
+                        .map(|local| Value::Local(local.id()))
                         .unwrap()
                 }
             }
@@ -266,7 +305,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LetBinding(binding) => {
             let val_ty = translate_type(&binding.val_ty);
-            let binding_id = builder.new_local(val_ty, Some(&binding.name.name));
+            let binding_id = builder.new_local(val_ty, Some(binding.name.to_string()));
 
             builder.begin_scope();
             let val_id = translate_expr(&binding.val, builder);
@@ -286,12 +325,86 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     }
 }
 
-pub fn translate(unit: &pas_ty::ast::Unit) -> Vec<Instruction> {
-    let mut builder = Builder::new();
+#[derive(Clone, Debug)]
+pub struct Function {
+    body: Vec<Instruction>,
+    return_ty: Option<Type>,
+}
 
-    for stmt in &unit.init {
-        translate_stmt(stmt, &mut builder);
+pub fn translate_func(func: &pas_ty::ast::FunctionDecl) -> Function {
+    let mut body_builder = Builder::new();
+
+    let return_ty = func.return_ty.as_ref().map(translate_type);
+
+    for (i, param) in func.params.iter().enumerate() {
+        // if the function returns a value, $0 is the return pointer, and args start at $1
+        let id = if return_ty.is_some() {
+            i + 1
+        } else {
+            i
+        };
+
+        body_builder.bind_local(id, param.ident.to_string());
     }
 
-    builder.finish()
+    for stmt in &func.body.statements {
+        translate_stmt(stmt, &mut body_builder);
+    }
+
+    if let Some(return_out) = &func.body.output {
+        let out_val = Value::Local(0);
+        let return_val = translate_expr(return_out, &mut body_builder);
+        body_builder.append(Instruction::Set { out: out_val, new_val: return_val });
+    }
+
+    Function {
+        body: body_builder.finish(),
+        return_ty,
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Unit {
+    functions: HashMap<String, Function>,
+    init: Vec<Instruction>,
+}
+
+impl fmt::Display for Unit {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (name, func) in &self.functions {
+            writeln!(f, "{}:", name)?;
+            for instruction in &func.body {
+                writeln!(f, "{}", instruction)?;
+            }
+        }
+
+        writeln!(f, "init:")?;
+        for instruction in &self.init {
+            writeln!(f, "{}", instruction)?;
+        }
+        Ok(())
+    }
+}
+
+pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
+    let mut functions = HashMap::new();
+    for decl in &unit.decls {
+        match decl {
+            ast::UnitDecl::Function(func_decl) => {
+                let func = translate_func(func_decl);
+                functions.insert(func_decl.ident.to_string(), func);
+            }
+        }
+    }
+
+    let mut init_builder = Builder::new();
+
+    for stmt in &unit.init {
+        translate_stmt(stmt, &mut init_builder);
+    }
+
+    Unit {
+        init: init_builder.finish(),
+        functions,
+    }
 }

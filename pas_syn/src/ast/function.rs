@@ -31,7 +31,7 @@ pub struct FunctionParam<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for FunctionParam<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.ident, self.annotation)
+        write!(f, "{}: {}", self.ident, self.ty)
     }
 }
 
@@ -126,7 +126,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
         write!(f, "function {}(", self.ident)?;
         for (i, param) in self.params.iter().enumerate() {
             if i > 0 {
-                write!(f, ";")?;
+                write!(f, "; ")?;
             }
             write!(f, "{}", param)?;
         }

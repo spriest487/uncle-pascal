@@ -4,9 +4,11 @@ use {
         collections::HashMap,
     },
     crate::{
+        Function as FunctionIR,
         Instruction,
         Type,
         Value,
+        Unit,
     },
 };
 
@@ -19,7 +21,7 @@ mod builtin {
             MemCell::I32(int) => {
                 println!("{}", int);
                 None
-            },
+            }
             _ => panic!("write_ln expected i32 argument")
         }
     }
@@ -27,21 +29,15 @@ mod builtin {
 
 #[derive(Clone)]
 enum Function {
-    Builtin(fn(args: &[MemCell]) -> Option<MemCell>)
-}
-
-impl Function {
-    fn invoke(&self, args: &[MemCell]) -> Option<MemCell> {
-        match self {
-            Function::Builtin(builtin_fn) => builtin_fn(args),
-        }
-    }
+    Builtin(fn(args: &[MemCell]) -> Option<MemCell>),
+    IR(FunctionIR),
 }
 
 impl fmt::Debug for Function {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Function::Builtin(_) => write!(f, "<native code>"),
+            Function::IR(func) => write!(f, "<function with {} instructions>", func.body.len())
         }
     }
 }
@@ -52,11 +48,23 @@ enum MemCell {
     Function(Function),
 }
 
-//const NONE_CELL: Option<MemCell> = None;
+impl MemCell {
+    fn default_of(ty: &Type) -> MemCell {
+        match ty {
+            Type::I32 => MemCell::I32(-1),
+            _ => panic!("can't initialize default cell of type `{:?}`", ty),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct StackFrame {
+    locals: Vec<Option<MemCell>>,
+}
 
 #[derive(Debug)]
 pub struct Interpreter {
-    locals: Vec<Option<MemCell>>,
+    stack: Vec<StackFrame>,
     globals: HashMap<String, MemCell>,
 }
 
@@ -68,7 +76,7 @@ impl Interpreter {
 
         Self {
             globals,
-            locals: Vec::new(),
+            stack: Vec::new(),
         }
     }
 
@@ -76,18 +84,18 @@ impl Interpreter {
         match at {
             Value::LiteralI32(_) => {
                 panic!("literal is not a valid storage location")
-            },
+            }
 
             Value::Local(id) => {
-                match self.locals.get_mut(*id) {
-                    Some(Some(cell)) => { *cell = val; },
+                match self.current_frame_mut().locals.get_mut(*id) {
+                    Some(Some(cell)) => { *cell = val; }
                     None | Some(None) => panic!("local cell {} is not allocated", id),
                 }
             }
 
             Value::Global(name) => {
                 if self.globals.contains_key(name) {
-                    panic!("global call {} is already allocated");
+                    panic!("global cell {} is already allocated");
                 }
                 self.globals.insert(name.clone(), val);
             }
@@ -96,7 +104,7 @@ impl Interpreter {
 
     fn load(&self, at: &Value) -> MemCell {
         match at {
-            Value::Local(id) => match self.locals.get(*id) {
+            Value::Local(id) => match self.current_frame().locals.get(*id) {
                 Some(Some(cell)) => cell.clone(),
                 None | Some(None) => panic!("local cell {} is not allocated", id),
             }
@@ -110,32 +118,85 @@ impl Interpreter {
         }
     }
 
+    fn push_stack(&mut self) {
+        self.stack.push(StackFrame {
+            locals: Vec::new()
+        });
+    }
+
+    fn pop_stack(&mut self) {
+        self.stack.pop().expect("popped stack with no stackframes");
+    }
+
+    fn current_frame(&self) -> &StackFrame {
+        self.stack.last().expect("called current_frame without no stackframes")
+    }
+
+    fn current_frame_mut(&mut self) -> &mut StackFrame {
+        self.stack.last_mut().expect("called current_frame without no stackframes")
+    }
+
+    fn invoke(&mut self, func: &Function, args: &[MemCell], out: Option<&Value>) {
+        let result_cell = match func {
+            Function::Builtin(builtin_fn) => builtin_fn(args),
+
+            Function::IR(ir_func) => {
+                self.push_stack();
+
+                // store empty result at $0 if needed
+                if let Some(return_ty) = &ir_func.return_ty {
+                    self.current_frame_mut().locals.push(Some(MemCell::default_of(return_ty)));
+                }
+
+                // store params in either $0.. or $1..
+                self.current_frame_mut().locals.extend(args.iter()
+                    .cloned()
+                    .map(Some));
+
+                self.execute(&ir_func.body);
+
+                let result = match &ir_func.return_ty {
+                    Some(_) => Some(self.load(&Value::Local(0))),
+                    None => None,
+                };
+
+                self.pop_stack();
+                result
+            }
+        };
+
+        match (result_cell, out) {
+            (Some(result_cell), Some(out_val)) => {
+                self.store(&out_val, result_cell);
+            }
+
+            (None, Some(_)) => {
+                panic!("called function which has no return type in a context where a return value was expected");
+            }
+
+            // ok, no output expected, ignore result if there is one
+            (_, None) => {}
+        }
+    }
+
     pub fn execute(&mut self, instructions: &[Instruction]) {
         for instruction in instructions.iter() {
             match instruction {
                 Instruction::LocalAlloc(id, ty) => {
-                    while self.locals.len() <= *id {
-                        self.locals.push(None);
+                    while self.current_frame().locals.len() <= *id {
+                        self.current_frame_mut().locals.push(None);
                     }
 
-                    match self.locals[*id]  {
-                        None => {
-                            let default_val = match ty {
-                                Type::I32 => MemCell::I32(0),
-                                _ => panic!("can't allocate local cell of type `{:?}`", ty),
-                            };
-
-                            self.locals[*id] = Some(default_val);
-                        }
-
+                    match self.current_frame().locals[*id] {
+                        None => self.current_frame_mut().locals[*id] = Some(MemCell::default_of(ty)),
                         _ => panic!("local cell {} is already allocated"),
                     }
                 }
 
                 Instruction::LocalDelete(id) => {
-                    match self.locals[*id] {
+                    match self.current_frame().locals[*id] {
                         None => panic!("local cell {} is not allocated", id),
-                        Some(_) => self.locals[*id] = None,
+                        Some(_) => self.current_frame_mut().locals[*id] = None,
                     }
                 }
 
@@ -157,20 +218,27 @@ impl Interpreter {
                         .map(|arg_val| self.load(arg_val))
                         .collect();
 
-                    let result = match self.load(function) {
+                    match self.load(function) {
                         MemCell::Function(function) => {
-                            function.invoke(&arg_cells)
+                            self.invoke(&function, &arg_cells, out.as_ref())
                         }
 
                         _ => panic!("{} does not reference a function"),
                     };
-
-                    if let Some(out_val) = out {
-                        let result_cell = result.expect("called function must return something if Call instruction references an out value");
-                        self.store(out_val, result_cell);
-                    }
                 }
             }
         }
+    }
+
+    pub fn load_unit(&mut self, unit: &Unit) {
+        for (func_name, func) in &unit.functions {
+            let func_loc = Value::Global(func_name.clone());
+            let func_cell = MemCell::Function(Function::IR(func.clone()));
+            self.store(&func_loc, func_cell);
+        }
+
+        self.push_stack();
+        self.execute(&unit.init);
+        self.pop_stack();
     }
 }

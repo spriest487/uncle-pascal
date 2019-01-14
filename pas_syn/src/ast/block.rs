@@ -84,12 +84,13 @@ impl<A: Annotation> fmt::Display for Block<A> {
 
             // only add a ; on the last statement if there's also an output expr
             if i != self.statements.len() - 1 || self.output.is_some() {
-                write!(f, ";")?;
+                writeln!(f, ";")?;
             }
         }
         if let Some(output) = &self.output {
             write!(f, "{}", output)?;
         }
+        writeln!(f)?;
         write!(f, "end")
     }
 }

@@ -86,14 +86,12 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Resu
     println!("Typechecked:");
     println!("{}", unit);
 
-    let ir = pas_ir::translate(&unit);
+    let unit = pas_ir::translate_unit(&unit);
     println!("IR:");
-    for instruction in &ir {
-        println!("{}", instruction);
-    }
+    println!("{}", unit);
 
     let mut interpreter = pas_ir::Interpreter::new();
-    interpreter.execute(&ir);
+    interpreter.load_unit(&unit);
     println!("Interpreter state:");
     println!("{:#?}", interpreter);
 

@@ -7,7 +7,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         ctx: &mut Context) -> TypecheckResult<Block> {
     let mut statements = Vec::new();
     for stmt in &block.statements {
-        typecheck_stmt(stmt, ctx)?;
+        statements.push(typecheck_stmt(stmt, ctx)?);
     }
 
     let output = match &block.output {
