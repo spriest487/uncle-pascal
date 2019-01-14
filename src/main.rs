@@ -2,7 +2,12 @@ use {
     std::{
         path::PathBuf,
         fmt,
-        io::{self},
+        fs::{File},
+        io::{Read},
+        str::FromStr,
+    },
+    structopt::{
+        StructOpt,
     },
     pas_common::{
         TracedError,
@@ -80,11 +85,49 @@ impl fmt::Display for CompileError {
     }
 }
 
-fn compile(filename: impl Into<PathBuf>, src: impl io::Read, opts: BuildOptions) -> Result<(), CompileError> {
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+enum OutputKind {
+    Interpret,
+    Intermediate,
+    SyntaxAst,
+    TypecheckAst,
+    Preprocessed,
+}
+
+impl FromStr for OutputKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, String> {
+        match s {
+            "interpret" => Ok(OutputKind::Interpret),
+            "ir" => Ok(OutputKind::Intermediate),
+            "syn" => Ok(OutputKind::SyntaxAst),
+            "tyck" => Ok(OutputKind::TypecheckAst),
+            "pp" => Ok(OutputKind::Preprocessed),
+            _ => Err(format!("invalid output kind: {}", s)),
+        }
+    }
+}
+
+#[derive(StructOpt, Debug)]
+struct Args {
+    #[structopt(name = "FILE", parse(from_os_str))]
+    file: PathBuf,
+
+    #[structopt(short = "k", long="output-kind", default_value = "interpret")]
+    output: OutputKind,
+}
+
+fn compile(filename: impl Into<PathBuf>, src: &str, opts: BuildOptions, out_kind: OutputKind) -> Result<(), CompileError> {
     let filename = filename.into();
 
     let pp = pp::Preprocessor::new(filename.clone(), opts);
     let preprocessed = pp.preprocess(src)?;
+
+    if out_kind == OutputKind::Preprocessed {
+        println!("{}", preprocessed.source);
+        return Ok(());
+    }
 
     let tokens = TokenTree::tokenize(filename.clone(), &preprocessed.source, &preprocessed.opts)?;
 
@@ -94,33 +137,48 @@ fn compile(filename: impl Into<PathBuf>, src: impl io::Read, opts: BuildOptions)
     let unit = syn::Unit::parse(&mut token_stream)?;
     token_stream.finish()?;
 
-    println!("Parsed:");
-    println!("{}", unit);
+    if out_kind == OutputKind::SyntaxAst {
+        println!("{}", unit);
+        return Ok(());
+    }
 
     let unit = typ::typecheck_unit(&unit)?;
-
-    println!("Typechecked:");
-    println!("{}", unit);
+    if out_kind == OutputKind::TypecheckAst {
+        println!("{}", unit);
+        return Ok(())
+    }
 
     let unit = pas_ir::translate_unit(&unit);
-    println!("IR:");
-    println!("{}", unit);
+    if out_kind == OutputKind::Intermediate {
+        println!("{}", unit);
+        return Ok(())
+    }
 
     let mut interpreter = pas_ir::Interpreter::new();
     interpreter.load_unit(&unit);
-    println!("Interpreter state:");
-    println!("{:#?}", interpreter);
 
     Ok(())
 }
 
 fn main() -> Result<(), CompileError> {
-    let src = include_str!("../demos/Functions.pas");
+    let args: Args = Args::from_args();
     let opts = BuildOptions::default();
 
-    let src_buf = io::Cursor::new(src.as_bytes());
+    let open_file = File::open(&args.file).and_then(|mut f| {
+        let mut src = String::new();
+        f.read_to_string(&mut src)?;
+        Ok(src)
+    });
 
-    compile("HelloWorld.pas", src_buf, opts).map_err(|err| {
+    let src = match open_file {
+        Err(err) => {
+            eprintln!("failed to open {}: {}", args.file.display(), err);
+            std::process::exit(1);
+        },
+        Ok(file) => file,
+    };
+
+    compile("HelloWorld.pas", &src, opts, args.output).map_err(|err| {
         err.print_context(&src);
 
         match &err {

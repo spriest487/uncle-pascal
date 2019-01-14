@@ -1,7 +1,6 @@
 use {
     std::{
-        io::{self, Read, BufRead},
-        fmt::{self, Write},
+        fmt,
         path::PathBuf,
     },
     regex::*,
@@ -24,7 +23,6 @@ pub enum PreprocessorError {
     },
     UnexpectedEndIf(Span),
     UnterminatedCondition(Span),
-    IOError(io::Error, Span),
 }
 
 impl fmt::Display for PreprocessorError {
@@ -41,9 +39,6 @@ impl fmt::Display for PreprocessorError {
 
             PreprocessorError::UnterminatedCondition(_) =>
                 write!(f, "unterminated conditional block"),
-
-            PreprocessorError::IOError(err, _) =>
-                write!(f, "{}", err),
         }
     }
 }
@@ -55,22 +50,8 @@ impl Spanned for PreprocessorError {
             PreprocessorError::IllegalDirective { at, .. } => at,
             PreprocessorError::UnexpectedEndIf(at) => at,
             PreprocessorError::UnterminatedCondition(at) => at,
-            PreprocessorError::IOError(_, at) => at,
         }
     }
-}
-
-fn try_io<T>(at: Span, f: impl FnOnce() -> Result<T, io::Error>) -> Result<T, PreprocessorError> {
-    f().map_err(|err| {
-        PreprocessorError::IOError(err, at)
-    })
-}
-
-fn try_fmt<T>(at: Span, f: impl FnOnce() -> Result<T, fmt::Error>) -> Result<T, PreprocessorError> {
-    f().map_err(|err| {
-        let io_err = io::Error::new(io::ErrorKind::Other, err.to_string());
-        PreprocessorError::IOError(io_err, at)
-    })
 }
 
 enum Directive {
@@ -243,13 +224,11 @@ impl Preprocessor {
         Span::new(self.filename.clone(), loc, loc)
     }
 
-    pub fn preprocess(mut self, source: impl Read) -> Result<PreprocessedUnit, PreprocessorError> {
-        let read_buf = io::BufReader::new(source);
-        for (line_num, line) in read_buf.lines().enumerate() {
+    pub fn preprocess(mut self, source: &str) -> Result<PreprocessedUnit, PreprocessorError> {
+        for (line_num, line) in source.lines().enumerate() {
             self.current_line = line_num + 1;
 
-            let line = try_io(self.current_span(), || line)?;
-            self.process_line(line)?;
+            self.process_line(line.to_string())?;
         }
 
         if let Some(condition) = self.condition_stack.last() {
@@ -302,7 +281,7 @@ impl Preprocessor {
             self.last_char = line_char;
         }
 
-        try_fmt(self.current_span(), || self.output.write_char('\n'))?;
+        self.output.push('\n');
         Ok(())
     }
 
