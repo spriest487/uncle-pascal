@@ -157,6 +157,10 @@ impl TokenStream {
         let mut results = Vec::new();
 
         loop {
+            if self.look_ahead().next().is_none() {
+                return Ok(results);
+            }
+
             match f(results.len(), self)? {
                 Generate::Yield(result) => {
                     results.push(result);
