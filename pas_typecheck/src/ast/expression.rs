@@ -6,10 +6,11 @@ use {
         Type,
         TypeAnnotation,
     },
+    pas_common::{
+        span::*,
+    },
     pas_syn::{
         ast,
-        Span,
-        Spanned,
     },
 };
 

@@ -1,9 +1,6 @@
 use {
     std::fmt,
-    pas_syn::{
-        Span,
-        Spanned,
-    },
+    pas_common::span::*,
     crate::{
         Type,
         context::NameError,

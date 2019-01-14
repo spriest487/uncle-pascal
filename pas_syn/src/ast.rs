@@ -21,11 +21,13 @@ use {
     },
     crate::{
         ident::Ident,
-        span::*,
         token_tree::*,
         parse::*,
     },
-    pas_common::TracedError,
+    pas_common::{
+        TracedError,
+        span::*,
+    },
 };
 
 pub trait Annotation : Spanned + Clone + PartialEq + Eq + Hash {

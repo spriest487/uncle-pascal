@@ -1,9 +1,11 @@
 use {
     std::fmt,
-    pas_common::TracedError,
+    pas_common::{
+        TracedError,
+        span::*,
+    },
     crate::{
         ident::*,
-        span::*,
         parse::*,
         ast::{
             Annotation,

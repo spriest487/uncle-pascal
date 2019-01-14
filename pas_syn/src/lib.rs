@@ -2,7 +2,6 @@ pub mod keyword;
 pub mod operators;
 pub mod token_tree;
 pub mod ident;
-pub mod span;
 pub mod consts;
 pub mod parse;
 pub mod ast;
@@ -12,6 +11,5 @@ pub use self::{
     operators::{Operator, Position},
     token_tree::{TokenTree, Separator, DelimiterPair, TokenizeResult, TokenizeError},
     ident::Ident,
-    span::{Span, Spanned, Location},
     consts::{EnumConstant, SetConstant, IntConstant, RealConstant},
 };

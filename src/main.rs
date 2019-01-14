@@ -2,13 +2,14 @@ use {
     std::{
         path::PathBuf,
         fmt,
+        io::{self},
     },
     pas_common::{
         TracedError,
-        BuildOptions
+        BuildOptions,
+        span::*,
     },
     pas_syn::{
-        span::*,
         parse::*,
         TokenizeError,
         TokenTree,
@@ -18,6 +19,10 @@ use {
         TypecheckError,
         ast as typ,
     },
+    pas_pp::{
+        self as pp,
+        PreprocessorError,
+    },
     pas_ir,
 };
 
@@ -26,6 +31,7 @@ pub enum CompileError {
     TokenizeError(TracedError<TokenizeError>),
     ParseError(TracedError<ParseError>),
     TypecheckError(TypecheckError),
+    PreprocessorError(PreprocessorError),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -46,12 +52,19 @@ impl From<TypecheckError> for CompileError {
     }
 }
 
+impl From<PreprocessorError> for CompileError {
+    fn from(err: PreprocessorError) -> Self {
+        CompileError::PreprocessorError(err)
+    }
+}
+
 impl Spanned for CompileError {
     fn span(&self) -> &Span {
         match self {
             CompileError::TokenizeError(err) => err.span(),
             CompileError::ParseError(err) => err.span(),
             CompileError::TypecheckError(err) => err.span(),
+            CompileError::PreprocessorError(err) => err.span(),
         }
     }
 }
@@ -62,13 +75,18 @@ impl fmt::Display for CompileError {
             CompileError::TokenizeError(err) => write!(f, "{}", err.err),
             CompileError::ParseError(err) => write!(f, "{}", err.err),
             CompileError::TypecheckError(err) => write!(f, "{}", err),
+            CompileError::PreprocessorError(err) => write!(f, "{}", err),
         }
     }
 }
 
-fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Result<(), CompileError> {
+fn compile(filename: impl Into<PathBuf>, src: impl io::Read, opts: BuildOptions) -> Result<(), CompileError> {
     let filename = filename.into();
-    let tokens = TokenTree::tokenize(filename.clone(), src, &opts)?;
+
+    let pp = pp::Preprocessor::new(filename.clone(), opts);
+    let preprocessed = pp.preprocess(src)?;
+
+    let tokens = TokenTree::tokenize(filename.clone(), &preprocessed.source, &preprocessed.opts)?;
 
     let context = Span::zero(filename);
 
@@ -98,10 +116,12 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: &BuildOptions) -> Resu
 
 fn main() -> Result<(), CompileError> {
     let src = include_str!("../demos/Functions.pas");
-    let opts = BuildOptions { case_sensitive: true };
+    let opts = BuildOptions::default();
 
-    compile("HelloWorld.pas", src, &opts).map_err(|err| {
-        err.print_context(src);
+    let src_buf = io::Cursor::new(src.as_bytes());
+
+    compile("HelloWorld.pas", src_buf, opts).map_err(|err| {
+        err.print_context(&src);
 
         match &err {
             CompileError::TokenizeError(err) => {

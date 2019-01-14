@@ -1,5 +1,8 @@
 use {
     std::fmt,
+    pas_common::{
+        span::*,
+    },
     crate::{
         ast::{
             Annotation,
@@ -7,7 +10,6 @@ use {
         },
         parse::*,
         token_tree::*,
-        span::*,
     },
 };
 

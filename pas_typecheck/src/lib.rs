@@ -11,10 +11,11 @@ pub mod ast {
 
     mod prelude {
         pub use {
-            pas_syn::ast,
+            pas_common::{
+                span::*,
+            },
             pas_syn::{
-                Span,
-                Spanned,
+                ast,
             },
             crate::{
                 context::*,

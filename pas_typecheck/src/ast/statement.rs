@@ -7,8 +7,10 @@ use {
         ValueKind,
         TypeAnnotation,
     },
+    pas_common::{
+        span::*,
+    },
     pas_syn::{
-        Span,
         ast,
     },
 };

@@ -7,7 +7,6 @@ use {
         ident::Ident,
         keyword::Keyword,
         operators::Operator,
-        span::{Location, Span},
         token_tree::{
             DelimiterPair,
             Separator,
@@ -19,6 +18,7 @@ use {
     pas_common::{
         BuildOptions,
         TracedError,
+        span::*,
     },
     std::{
         path::PathBuf,

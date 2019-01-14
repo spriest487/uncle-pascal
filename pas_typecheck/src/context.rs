@@ -3,12 +3,12 @@ use {
         FunctionSig,
         Type,
     },
+    pas_common::{
+        span::*,
+    },
     pas_syn::{
         ast,
         Ident,
-        Location,
-        Span,
-        Spanned,
     },
     std::{
         collections::HashMap,

@@ -7,11 +7,11 @@ use {
         ident::Ident,
         keyword::Keyword,
         operators::Operator,
-        span::{Span, Spanned},
     },
     pas_common::{
         TracedError,
         BuildOptions,
+        span::*,
     },
     std::{
         path::PathBuf,
@@ -278,8 +278,8 @@ impl TokenTree {
 mod test {
     use {
         std::rc::Rc,
+        pas_common::span::*,
         super::*,
-        crate::span::*,
     };
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {

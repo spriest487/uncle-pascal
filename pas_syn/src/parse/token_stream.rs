@@ -1,10 +1,12 @@
 use {
     crate::{
         token_tree::*,
-        span::*,
         parse::*,
     },
-    pas_common::TracedError,
+    pas_common::{
+        TracedError,
+        span::*,
+    },
     std::{
         collections::VecDeque,
     },

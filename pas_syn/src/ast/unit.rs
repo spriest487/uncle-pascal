@@ -2,10 +2,12 @@ use {
     std::{
         fmt,
     },
+    pas_common::{
+        span::*,
+    },
     crate::{
         parse::*,
         token_tree::*,
-        span::*,
         keyword::*,
         ast::*,
     }

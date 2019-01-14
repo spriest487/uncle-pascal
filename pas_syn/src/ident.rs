@@ -1,7 +1,5 @@
 use {
-    crate::{
-        span::*,
-    },
+    pas_common::span::*,
     std::{
         fmt,
         hash::{Hash, Hasher},

@@ -2,9 +2,10 @@ use {
     std::{
         fmt,
     },
+    pas_common::{
+        span::*
+    },
     pas_syn::{
-        Span,
-        Spanned,
         ast::Annotation,
     },
     crate::{

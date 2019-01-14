@@ -2,8 +2,10 @@ use {
     std::{
         fmt,
     },
-    crate::{
+    pas_common::{
         span::*,
+    },
+    crate::{
         ident::*,
         keyword::*,
         operators::*,

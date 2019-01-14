@@ -5,11 +5,13 @@ use {
     std::{
         fmt,
     },
-    pas_common::TracedError,
+    pas_common::{
+        TracedError,
+        span::*,
+    },
     crate::{
         token_tree::*,
         ast::*,
-        span::*,
     },
 };
 
