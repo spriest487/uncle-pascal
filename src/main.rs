@@ -104,9 +104,21 @@ fn main() -> Result<(), CompileError> {
     let src = include_str!("../demos/Functions.pas");
     let opts = BuildOptions { case_sensitive: true };
 
-    if let Err(err) = compile("HelloWorld.pas", src, &opts) {
+    compile("HelloWorld.pas", src, &opts).map_err(|err| {
         err.print_context(src);
-    }
 
-    Ok(())
+        match &err {
+            CompileError::TokenizeError(err) => {
+                println!("{:?}", err.bt);
+            }
+
+            CompileError::ParseError(err) => {
+                println!("{:?}", err.bt);
+            }
+
+            _ => {}
+        }
+
+        err
+    })
 }

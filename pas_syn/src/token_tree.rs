@@ -40,9 +40,11 @@ impl DelimiterPair {
 
 impl fmt::Display for DelimiterPair {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let (open, close) = self.tokens();
-
-        write!(f, "{}, {}", open, close)
+        write!(f, "{}", match self {
+            DelimiterPair::BeginEnd => "begin/end",
+            DelimiterPair::SquareBracket => "[]",
+            DelimiterPair::Bracket => "()",
+        })
     }
 }
 
@@ -275,7 +277,9 @@ impl TokenTree {
 #[cfg(test)]
 mod test {
     use {
+        std::rc::Rc,
         super::*,
+        crate::span::*,
     };
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {
@@ -360,7 +364,7 @@ mod test {
 
         match &result[0] {
             TokenTree::Delimited { delim: DelimiterPair::Bracket, inner, .. } => {
-                assert_eq!(1, inner.len());
+                assert_eq!(1, inner.len(), "expected one inner token, got {:#?}", inner);
                 match &inner[0] {
                     TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, .. } => {
                         match &inner[0] {
@@ -373,6 +377,31 @@ mod test {
             }
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
+        }
+    }
+
+    fn test_span(from: (usize, usize), to: (usize, usize)) -> Span {
+        Span {
+            file: Rc::new(PathBuf::from("test")),
+            start: Location { line: from.0, col: from.1, },
+            end: Location { line: to.0, col: to.1, },
+        }
+    }
+
+    #[test]
+    fn begin_end_delim_has_correct_spans() {
+        let result = tokenize(r"begin
+1 2 3
+end", false);
+        match &result[0] {
+            TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, open, close, span } => {
+                assert_eq!(&test_span((0, 0), (0, 4)), open, "span of open token");
+                assert_eq!(&test_span((2, 0), (2, 2)), close, "span of close token");
+                assert_eq!(&test_span((0, 0), (2, 2)), span, "total span");
+                assert_eq!(3, inner.len());
+            }
+
+            _ => panic!("expectefd begin/end delim group, got {:?}", result[0]),
         }
     }
 }

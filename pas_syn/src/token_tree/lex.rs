@@ -1,16 +1,16 @@
 use {
     crate::{
         consts::{
-            RealConstant,
             IntConstant,
+            RealConstant,
         },
         ident::Ident,
         keyword::Keyword,
         operators::Operator,
-        span::{Span, Location},
+        span::{Location, Span},
         token_tree::{
-            Separator,
             DelimiterPair,
+            Separator,
             TokenizeError,
             TokenizeResult,
             TokenTree,
@@ -21,8 +21,8 @@ use {
         TracedError,
     },
     std::{
-        rc::Rc,
         path::PathBuf,
+        rc::Rc,
     },
 };
 
@@ -32,6 +32,8 @@ pub fn lex(file_name: impl Into<PathBuf>, source: &str, opts: &BuildOptions) -> 
         line: Vec::new(),
         location: Location { line: 0, col: 0 },
         case_sensitive: opts.case_sensitive,
+
+        line_buf: Vec::new(),
         delim_stack: Vec::new(),
     };
 
@@ -40,20 +42,29 @@ pub fn lex(file_name: impl Into<PathBuf>, source: &str, opts: &BuildOptions) -> 
         lexer.line = line.chars().collect();
         lexer.location = Location { line: line_num, col: 0 };
 
-        while let Some(token) = lexer.next_token()? {
-            tokens.push(token);
+        loop {
+            if !lexer.next_token()? {
+                tokens.extend(lexer.line_buf.drain(0..));
+                break;
+            }
         }
     }
 
-    if let Some((unmatched_at, unmatched)) = lexer.delim_stack.pop() {
+    if let Some(unmatched) = lexer.delim_stack.pop() {
         return Err(TracedError::trace(TokenizeError::UnmatchedDelimiter {
-            span: lexer.span_to_current(unmatched_at.start),
-            to_match: unmatched_at,
-            delim: unmatched,
+            span: lexer.span_to_current(unmatched.open.start.clone()),
+            to_match: unmatched.open,
+            delim: unmatched.delim,
         }));
     }
 
     Ok(tokens)
+}
+
+struct DelimGroupBuilder {
+    delim: DelimiterPair,
+    open: Span,
+    inner: Vec<TokenTree>,
 }
 
 struct Lexer {
@@ -62,7 +73,8 @@ struct Lexer {
     file: Rc<PathBuf>,
     case_sensitive: bool,
 
-    delim_stack: Vec<(Span, DelimiterPair)>,
+    line_buf: Vec<TokenTree>,
+    delim_stack: Vec<DelimGroupBuilder>,
 }
 
 fn find_ahead(s: &[char], predicate: impl Fn(char) -> bool) -> Option<usize> {
@@ -80,7 +92,14 @@ impl Lexer {
         Span {
             file: self.file.clone(),
             start,
-            end: self.location.clone(),
+            end: Location {
+                line: self.location.line,
+                col: if self.location.col == 0 {
+                    0
+                } else {
+                    self.location.col - 1
+                },
+            },
         }
     }
 
@@ -97,7 +116,9 @@ impl Lexer {
         let span = self.span_to_current(start_loc);
 
         RealConstant::parse_str(&chars.iter().collect::<String>())
-            .map(|value| TokenTree::RealNumber { value, span: span.clone() })
+            .map(|value| {
+                TokenTree::RealNumber { value, span: span.clone() }
+            })
             .ok_or_else(|| TracedError::trace(TokenizeError::IllegalToken(span)))
     }
 
@@ -161,7 +182,10 @@ impl Lexer {
         let span = self.span_to_current(start_loc);
 
         match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
-            Some(value) => Ok(TokenTree::IntNumber { value, span }),
+            Some(value) => {
+                let int_token = TokenTree::IntNumber { value, span };
+                Ok(int_token)
+            },
             None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
@@ -206,8 +230,13 @@ impl Lexer {
         let span = self.span_to_current(start_loc);
 
         match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
-            Some(value) => Ok(TokenTree::IntNumber { value, span }),
-            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
+            Some(value) => {
+                let int_token = TokenTree::IntNumber { value, span };
+                Ok(int_token)
+            },
+            None => {
+                Err(TracedError::trace(TokenizeError::IllegalToken(span)))
+            },
         }
     }
 
@@ -247,10 +276,12 @@ impl Lexer {
         self.location.col = next_col + 1;
         let span = self.span_to_current(start_loc);
 
-        Ok(TokenTree::String {
+        let str_token = TokenTree::String {
             value: contents,
             span,
-        })
+        };
+
+        Ok(str_token)
     }
 
     fn word(&mut self) -> TokenizeResult<TokenTree> {
@@ -302,6 +333,7 @@ impl Lexer {
         let start_loc = self.location;
         self.location.col += len;
         let span = self.span_to_current(start_loc);
+
         TokenTree::Operator {
             op,
             span,
@@ -312,70 +344,79 @@ impl Lexer {
         let start_loc = self.location;
         self.location.col += len;
         let span = self.span_to_current(start_loc);
+
         TokenTree::Separator {
             sep,
             span,
         }
     }
 
-    fn begin_delim_group(&mut self, delim: DelimiterPair, consume: usize) -> TokenizeResult<TokenTree> {
+    fn begin_delim_group(&mut self, delim: DelimiterPair, consume: usize) {
         self.location.col += consume;
 
-        let (open_token, close_token) = delim.tokens();
+        let (open_token, _close_token) = delim.tokens();
 
         // after passing `consume` chars we should be at the end of the open delim
         let open_span = self.span_to_current(Location {
             col: self.location.col - open_token.len(),
-            line: self.location.line
-        });
-
-        self.delim_stack.push((open_span.clone(), delim));
-
-        let mut inner = Vec::new();
-        while let Some(inner_token) = self.next_token()? {
-            inner.push(inner_token);
-        }
-
-        // the group just ended so we *must* be right after the close token!
-        let close_span = self.span_to_current(Location {
-            col: self.location.col - close_token.len(),
             line: self.location.line,
         });
 
-        Ok(TokenTree::Delimited {
+        println!("beginning inner tokens @ {:?}", self.location);
+        self.delim_stack.push(DelimGroupBuilder {
+            open: open_span.clone(),
             delim,
-            inner,
-            span: open_span.to(&close_span),
-            open: open_span,
-            close: close_span,
-        })
+            inner: Vec::new(),
+        });
     }
 
-    fn end_delim_group(&mut self, delim: DelimiterPair, consume: usize) -> TokenizeResult<()> {
+    fn end_delim_group(&mut self, delim: DelimiterPair, consume: usize) -> TokenizeResult<TokenTree> {
         let start_loc = self.location;
         self.location.col += consume;
-        let span = self.span_to_current(start_loc);
+
+        let (_, close_token) = delim.tokens();
+        let close_span = self.span_to_current(Location{
+            line: start_loc.line,
+            col: start_loc.col - close_token.len(),
+        });
 
         match self.delim_stack.pop() {
             // no group was started, or a delimited group was started, but it wasn't the
             // same type as the one we're closing
             None => {
-                Err(TracedError::trace(TokenizeError::UnexpectedCloseDelimited { delim, span }))
-            }
-            Some((_, unexpected_delim)) if unexpected_delim != delim => {
-                Err(TracedError::trace(TokenizeError::UnexpectedCloseDelimited { delim, span }))
+                Err(TracedError::trace(
+                    TokenizeError::UnexpectedCloseDelimited { delim, span: close_span }
+                ))
             }
 
-            Some(_) => Ok(())
+            Some(ref group) if group.delim != delim => {
+                Err(TracedError::trace(
+                    TokenizeError::UnexpectedCloseDelimited { delim, span: close_span }
+                ))
+            }
+
+            Some(group) => {
+                let inner = group.inner.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" ");
+                println!("finished group of {} from {:?}, inner tokens [{}], now at {:?}", delim, group.open, inner, self.location);
+
+                Ok(TokenTree::Delimited {
+                    delim,
+                    inner: group.inner,
+                    span: group.open.to(&close_span),
+                    open: group.open,
+                    close: close_span,
+                })
+            }
         }
     }
 
-    fn next_token(&mut self) -> TokenizeResult<Option<TokenTree>> {
+    fn next_token(&mut self) -> TokenizeResult<bool> {
         let next = loop {
             let next = match self.line.get(self.location.col) {
                 Some(c) => *c,
-                //end if stream
-                None => return Ok(None),
+
+                //end of stream
+                None => return Ok(false),
             };
 
             // skip chars until we find something other than whitespace
@@ -387,48 +428,70 @@ impl Lexer {
         };
 
         let token = match next {
-            '(' => self.begin_delim_group(DelimiterPair::Bracket, 1)?,
+            '(' => {
+                self.begin_delim_group(DelimiterPair::Bracket, 1);
+                None
+            },
             ')' => {
-                self.end_delim_group(DelimiterPair::Bracket, 1)?;
-                return Ok(None);
-            }
-            '[' => self.begin_delim_group(DelimiterPair::SquareBracket, 1)?,
+                Some(self.end_delim_group(DelimiterPair::Bracket, 1)?)
+            },
+            '[' => {
+                self.begin_delim_group(DelimiterPair::SquareBracket, 1);
+                None
+            },
             ']' => {
-                self.end_delim_group(DelimiterPair::SquareBracket, 1)?;
-                return Ok(None);
-            }
+                Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?)
+            },
 
-            '+' => self.operator_token(Operator::Plus, 1),
-            '-' => self.operator_token(Operator::Minus, 1),
-            '*' => self.operator_token(Operator::Multiply, 1),
-            '/' => self.operator_token(Operator::Divide, 1),
-            '@' => self.operator_token(Operator::AddressOf, 1),
-            ',' => self.separator_token(Separator::Comma, 1),
-            '.' => match self.line.get(self.location.col + 1) {
+            '+' => Some(self.operator_token(Operator::Plus, 1)),
+            '-' => Some(self.operator_token(Operator::Minus, 1)),
+            '*' => Some(self.operator_token(Operator::Multiply, 1)),
+            '/' => Some(self.operator_token(Operator::Divide, 1)),
+            '@' => Some(self.operator_token(Operator::AddressOf, 1)),
+            ',' => Some(self.separator_token(Separator::Comma, 1)),
+            '.' => Some(match self.line.get(self.location.col + 1) {
                 Some('.') => self.operator_token(Operator::RangeInclusive, 2),
                 _ => self.operator_token(Operator::Member, 1),
-            },
-            ';' => self.separator_token(Separator::Semicolon, 1),
-            '^' => self.operator_token(Operator::Deref, 1),
-            '>' => match self.line.get(self.location.col + 1) {
+            }),
+            ';' => Some(self.separator_token(Separator::Semicolon, 1)),
+            '^' => Some(self.operator_token(Operator::Deref, 1)),
+            '>' => Some(match self.line.get(self.location.col + 1) {
                 Some('=') => self.operator_token(Operator::Gte, 2),
                 _ => self.operator_token(Operator::Gt, 1),
-            }
-            '<' => match self.line.get(self.location.col + 1) {
+            }),
+
+            '<' => Some(match self.line.get(self.location.col + 1) {
                 Some('=') => self.operator_token(Operator::Lte, 2),
                 Some('>') => self.operator_token(Operator::NotEquals, 2),
                 _ => self.operator_token(Operator::Lt, 1),
-            }
-            ':' => match self.line.get(self.location.col + 1) {
+            }),
+
+            ':' => Some(match self.line.get(self.location.col + 1) {
                 Some('=') => self.operator_token(Operator::Assignment, 2),
                 _ => self.separator_token(Separator::Colon, 1),
+            }),
+
+            '=' => Some(self.operator_token(Operator::Equals, 1)),
+            '$' => Some(self.literal_hex()?),
+            '#' => Some(self.literal_int(true)?),
+            '0'...'9' => Some(self.literal_int(false)?),
+            '\'' => Some(self.literal_string()?),
+            'a'...'z' | '_' | 'A'...'Z' => {
+                match self.word()? {
+                    // keyword "begin" always signals the start of a begin..end delimited group
+                    TokenTree::Keyword { kw: Keyword::Begin, .. } => {
+                        self.begin_delim_group(DelimiterPair::BeginEnd, 0);
+                        None
+                    }
+
+                    // keyword "end" can appear on its own in other contexts
+                    TokenTree::Keyword { kw: Keyword::End, .. } if self.in_begin_end() => {
+                        Some(self.end_delim_group(DelimiterPair::BeginEnd, 0)?)
+                    }
+
+                    tt => Some(tt),
+                }
             },
-            '=' => self.operator_token(Operator::Equals, 1),
-            '$' => self.literal_hex()?,
-            '#' => self.literal_int(true)?,
-            '0'...'9' => self.literal_int(false)?,
-            '\'' => self.literal_string()?,
-            'a'...'z' | '_' | 'A'...'Z' => self.word()?,
 
             _ => {
                 let err_start = self.location;
@@ -438,24 +501,22 @@ impl Lexer {
             }
         };
 
-        match &token {
-            // keyword "begin" always signals the start of a begin..end delimited group
-            TokenTree::Keyword { kw: Keyword::Begin, .. } => {
-                return self.begin_delim_group(DelimiterPair::BeginEnd, 0).map(Some);
+        if let Some(tt) = token {
+            if self.delim_stack.is_empty() {
+                self.line_buf.push(tt);
+            } else {
+                let last_index = self.delim_stack.len() - 1;
+                let current_delim = &mut self.delim_stack[last_index];
+                current_delim.inner.push(tt);
             }
-
-            // keyword "end" can appear on its own in other contexts
-            TokenTree::Keyword { kw: Keyword::End, .. } => {
-                if let Some((_, DelimiterPair::BeginEnd)) = self.delim_stack.last() {
-                    self.end_delim_group(DelimiterPair::BeginEnd, 0)?;
-                    return Ok(None);
-                }
-            }
-
-            _ => {}
         }
 
-        Ok(Some(token))
+        Ok(true)
+    }
+
+    fn in_begin_end(&self) -> bool {
+        let current_delim = self.delim_stack.last().map(|group| group.delim);
+        current_delim== Some(DelimiterPair::BeginEnd)
     }
 }
 
