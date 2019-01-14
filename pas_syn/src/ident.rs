@@ -1,7 +1,6 @@
 use {
     crate::{
-        Span,
-        Spanned,
+        span::*,
     },
     std::{
         fmt,

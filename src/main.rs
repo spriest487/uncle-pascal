@@ -8,12 +8,10 @@ use {
         BuildOptions
     },
     pas_syn::{
+        span::*,
+        parse::*,
         TokenizeError,
         TokenTree,
-        TokenStream,
-        ast::ParseError,
-        Span,
-        Spanned,
         ast as syn,
     },
     pas_typecheck::{

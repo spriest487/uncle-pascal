@@ -1,11 +1,10 @@
-mod keyword;
-mod operators;
-mod token_tree;
-mod token_stream;
-mod ident;
-mod span;
-mod consts;
-mod matcher;
+pub mod keyword;
+pub mod operators;
+pub mod token_tree;
+pub mod ident;
+pub mod span;
+pub mod consts;
+pub mod parse;
 pub mod ast;
 
 pub use self::{
@@ -15,6 +14,4 @@ pub use self::{
     ident::Ident,
     span::{Span, Spanned, Location},
     consts::{EnumConstant, SetConstant, IntConstant, RealConstant},
-    token_stream::*,
-    matcher::*,
 };
