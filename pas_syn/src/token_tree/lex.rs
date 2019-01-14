@@ -362,7 +362,6 @@ impl Lexer {
             line: self.location.line,
         });
 
-        println!("beginning inner tokens @ {:?}", self.location);
         self.delim_stack.push(DelimGroupBuilder {
             open: open_span.clone(),
             delim,
@@ -396,9 +395,6 @@ impl Lexer {
             }
 
             Some(group) => {
-                let inner = group.inner.iter().map(|t| t.to_string()).collect::<Vec<_>>().join(" ");
-                println!("finished group of {} from {:?}, inner tokens [{}], now at {:?}", delim, group.open, inner, self.location);
-
                 Ok(TokenTree::Delimited {
                     delim,
                     inner: group.inner,

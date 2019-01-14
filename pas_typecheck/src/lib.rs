@@ -6,11 +6,33 @@ pub mod ast {
     mod expression;
     mod statement;
     mod unit;
+    mod function;
+    mod block;
+
+    mod prelude {
+        pub use {
+            pas_syn::ast,
+            pas_syn::{
+                Span,
+                Spanned,
+            },
+            crate::{
+                context::*,
+                ast::*,
+                result::*,
+                Type,
+                TypeAnnotation,
+                FunctionSig,
+            },
+        };
+    }
 
     pub use self::{
         expression::*,
         statement::*,
         unit::*,
+        function::*,
+        block::*,
     };
 }
 
@@ -24,12 +46,22 @@ pub use self::{
 pub mod ty {
     use {
         std::fmt,
+        crate::ast,
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub struct FunctionSig {
         pub return_ty: Option<Type>,
         pub params: Vec<Type>,
+    }
+
+    impl FunctionSig {
+        pub fn of_decl(decl: &ast::FunctionDecl) -> &FunctionSig {
+            match &decl.annotation.ty {
+                Type::Function(sig) => sig.as_ref(),
+                _ => unreachable!("functions always have function type"),
+            }
+        }
     }
 
     impl fmt::Display for FunctionSig {

@@ -6,7 +6,7 @@ use {
             Statement,
             ExpressionNode,
             ParseResult,
-            statement_start_matcher,
+            ParseError,
         },
         Generate,
         Separator,
@@ -20,38 +20,48 @@ use {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block<A: Annotation> {
-    statements: Vec<Statement<A>>,
-    annotation: A,
-    output: Option<ExpressionNode<A>>,
+    pub statements: Vec<Statement<A>>,
+    pub annotation: A,
+    pub output: Option<ExpressionNode<A>>,
+
+    pub begin: Span,
+    pub end: Span,
 }
 
 impl Block<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let body_tt = tokens.match_one(DelimiterPair::BeginEnd)?;
+
         let span = body_tt.span().clone();
 
-        let mut body_tokens = match body_tt {
-            TokenTree::Delimited { inner, open, .. } => {
-                TokenStream::new(inner, open)
+        let (mut body_tokens, begin, end) = match body_tt {
+            TokenTree::Delimited { inner, open, close, .. } => {
+                (TokenStream::new(inner, open.clone()), open, close)
             }
             _ => unreachable!(),
         };
 
+        let mut output_expr = None;
+
         let statements = body_tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if tokens.look_ahead().match_one(statement_start_matcher()).is_none() {
-                Ok(Generate::Break)
-            } else {
-                let stmt = Statement::parse(tokens)?;
-                Ok(Generate::Yield(stmt))
+            match Statement::parse(tokens) {
+                Ok(stmt) => Ok(Generate::Yield(stmt)),
+
+                Err(traced_err) => match &traced_err.err {
+                    // if the final statement is invalid as a statement but still a valid
+                    // expression, assume it's the block output. some expressions (eg calls) are
+                    // always valid as statements regardless of type, so in some cases the block
+                    // output can't be determined until typechecking
+                    ParseError::InvalidStatement(expr) => {
+                        output_expr = Some(expr.clone());
+                        Ok(Generate::Break)
+                    }
+
+                    _ => Err(traced_err),
+                }
             }
         })?;
 
-        let output = match body_tokens.look_ahead().next() {
-            // there is something that doesn't look like a statement following
-            // the body statements, it must be the terminal expression
-            Some(_) => Some(ExpressionNode::parse(&mut body_tokens)?),
-            None => None,
-        };
         body_tokens.finish()?;
 
         Ok(Self {
@@ -59,7 +69,9 @@ impl Block<Span> {
             annotation: span,
 
             // we don't know until typechecking
-            output,
+            output: output_expr,
+            begin,
+            end,
         })
     }
 }

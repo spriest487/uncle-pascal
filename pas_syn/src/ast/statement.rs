@@ -83,6 +83,18 @@ impl<A: Annotation> Statement<A> {
             }
         }
     }
+
+    pub fn try_into_expr(self) -> Option<ExpressionNode<A>> {
+        match self {
+            Statement::Call(call) => {
+                let annotation = call.annotation.clone();
+                let call_expr = Expression::Call(call);
+                Some(ExpressionNode::new(call_expr, annotation))
+            }
+
+            _ => None,
+        }
+    }
 }
 
 pub fn statement_start_matcher() -> Matcher {

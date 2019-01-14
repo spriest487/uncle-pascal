@@ -1,7 +1,8 @@
 function Add(a, b: Integer): Integer
 begin
-    exit a + b;
-end
+    let result: Integer := a + b;
+    result
+end;
 
 let x: Integer := Add(2, 3) + 20;
 

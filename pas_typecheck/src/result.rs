@@ -24,6 +24,11 @@ pub enum TypecheckError {
         span: Span
     },
     InvalidCallInExpression(Call),
+    TypeMismatch {
+        expected: Option<Type>,
+        actual: Option<Type>,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -41,6 +46,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotCallable(expr) => expr.annotation.span(),
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation.span(),
+            TypecheckError::TypeMismatch { span, .. } => span,
         }
     }
 }
@@ -77,6 +83,21 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidCallInExpression(call) => {
                 write!(f, "function call `{}` returns no value and cannot be used as part of an expression", call)
+            }
+
+            TypecheckError::TypeMismatch { expected, actual, .. } => {
+                fn write_ty(f: &mut fmt::Formatter, ty: &Option<Type>) -> fmt::Result {
+                    match ty {
+                        Some(ty) => write!(f, "{}", ty),
+                        None => write!(f, "(none)"),
+                    }
+                }
+
+                write!(f, "type mismatch: expected ")?;
+                write_ty(f, expected)?;
+                write!(f, ", found ")?;
+                write_ty(f, actual)
+
             }
         }
     }

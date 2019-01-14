@@ -24,9 +24,9 @@ use {
 
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct FunctionParam<A: Annotation> {
-    ident: Ident,
-    ty: A::Type,
-    annotation: A,
+    pub ident: Ident,
+    pub ty: A::Type,
+    pub annotation: A,
 }
 
 impl<A: Annotation> fmt::Display for FunctionParam<A> {
@@ -43,14 +43,14 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 
 #[derive(Clone, Debug, PartialEq, Hash)]
 pub struct FunctionDecl<A: Annotation> {
-    ident: Ident,
-    annotation: A,
+    pub ident: Ident,
+    pub annotation: A,
 
-    params: Vec<FunctionParam<A>>,
+    pub params: Vec<FunctionParam<A>>,
 
-    return_ty: Option<A::Type>,
+    pub return_ty: Option<A::Type>,
 
-    body: Block<A>,
+    pub body: Block<A>,
 }
 
 impl FunctionDecl<Span> {
@@ -112,6 +112,12 @@ impl FunctionDecl<Span> {
             params: params.into_iter().flat_map(|params| params).collect(),
             body,
         })
+    }
+}
+
+impl<A: Annotation> Spanned for FunctionDecl<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
     }
 }
 

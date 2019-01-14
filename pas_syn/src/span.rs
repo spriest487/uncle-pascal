@@ -30,31 +30,32 @@ impl Span {
 
     pub fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
         writeln!(f, "{}:", self)?;
+        writeln!(f)?;
 
         let line_count = if self.end.line > self.start.line {
-            self.end.line - self.start.line
+            (self.end.line - self.start.line) + 1
         } else {
             1
         };
 
         let mut any_lines = false;
-        for (y, line) in source.lines().skip(self.start.line).take(line_count).enumerate() {
+        for (y, line) in source.lines().enumerate().skip(self.start.line).take(line_count) {
             any_lines = true;
 
-            if y == 0 || y == line_count - 1 {
+            if y == self.start.line || y == self.end.line {
                 writeln!(f, "    {}", line)?;
                 write!(f, "    ")?;
-            }
 
-            for x in 0..line.len() {
-                let highlight = x >= self.start.col && x <= self.end.col
-                    && y >= self.start.line && y <= self.end.line;
+                for x in 0..line.len() {
+                    let highlight = x >= self.start.col && x <= self.end.col;
 
-                if highlight {
-                    write!(f, "^")?;
-                } else {
-                    write!(f, " ")?;
+                    if highlight {
+                        write!(f, "^")?;
+                    } else {
+                        write!(f, " ")?;
+                    }
                 }
+                writeln!(f)?;
             }
         }
 
@@ -88,19 +89,15 @@ impl fmt::Display for Location {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Span({})", self)
+        write!(f, "Span({}:{}:{}..{}:{})", self.file.display(),
+            self.start.line, self.start.col,
+            self.end.line, self.end.col)
     }
 }
 
 impl fmt::Display for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}:{}", self.file.to_string_lossy(), self.start.line, self.start.col)?;
-
-        if self.start != self.end {
-            write!(f, " - {}:{}", self.end.line, self.end.col)
-        } else {
-            Ok(())
-        }
+        write!(f, "{}:{}:{}", self.file.to_string_lossy(), self.start.line, self.start.col)
     }
 }
 
