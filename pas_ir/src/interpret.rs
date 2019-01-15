@@ -226,6 +226,10 @@ impl Interpreter {
                         _ => panic!("{} does not reference a function"),
                     };
                 }
+
+                Instruction::Member { out, of, struct_name, member, } => {
+                    unimplemented!()
+                }
             }
         }
     }

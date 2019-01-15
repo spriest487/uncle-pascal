@@ -228,7 +228,7 @@ impl Context {
     pub fn declare_function(&mut self, name: Ident, sig: FunctionSig) -> NamingResult<()> {
         self.declare(name, Decl::BoundValue(Binding {
             kind: ValueKind::Function,
-            ty: Type::Function(Box::new(sig)),
+            ty: Type::Function(Rc::new(sig)),
         }))
     }
 

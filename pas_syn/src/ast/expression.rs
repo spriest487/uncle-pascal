@@ -54,6 +54,15 @@ pub enum Expression<A: Annotation> {
     Call(Call<A>),
 }
 
+impl<A: Annotation> Expression<A> {
+    pub fn as_ident(&self) -> Option<&Ident> {
+        match self {
+            Expression::Ident(ident) => Some(ident),
+            _ => None,
+        }
+    }
+}
+
 impl ExpressionNode<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let parser = CompoundExpressionParser::new(tokens);

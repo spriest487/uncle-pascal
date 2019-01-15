@@ -1,4 +1,6 @@
-use crate::ast::prelude::*;
+use {
+    crate::ast::prelude::*
+};
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
@@ -10,6 +12,13 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             let sig = FunctionSig::of_decl(&func_decl).clone();
             ctx.declare_function(func_decl.ident.clone(), sig)?;
             Ok(ast::UnitDecl::Function(func_decl))
+        }
+
+        ast::UnitDecl::Type(type_decl) => {
+            let type_decl = typecheck_type_decl(type_decl, ctx)?;
+            let class_ty = Type::of_decl(&type_decl);
+            ctx.declare_type(type_decl.ident().clone(), class_ty)?;
+            Ok(ast::UnitDecl::Type(type_decl))
         }
     }
 }

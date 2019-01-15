@@ -1,16 +1,13 @@
 use {
     crate::{
-        context::*,
-        FunctionSig,
-        result::*,
-        Type,
-        TypeAnnotation,
+        ast::prelude::*,
     },
     pas_common::{
         span::*,
     },
     pas_syn::{
         ast,
+        Operator,
     },
 };
 
@@ -104,19 +101,57 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
 
         ast::Expression::BinOp(bin_op) => {
             let lhs = typecheck_expr(&bin_op.lhs, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, ctx)?;
+            let (bin_op, annotation) = match &bin_op.op {
+                Operator::Member => {
+                    // rhs of an ident op must be an identifier (parser checks this)
+                    let member_ident = bin_op.rhs.expr.as_ident()
+                        .cloned()
+                        .expect("bin-op with member operator should always have an ident on the rhs");
 
-            // check valid ops etc, result type etc
-            let result_type = lhs.annotation.ty.clone();
+                    let base_ty = &lhs.annotation.ty;
+                    let member_ty = base_ty.find_member(&member_ident)
+                        .cloned()
+                        .ok_or_else(|| TypecheckError::MemberNotFound {
+                            base: base_ty.clone(),
+                            member: member_ident.clone(),
+                            span: expr_node.annotation.span().clone(),
+                        })?;
 
-            let annotation = TypeAnnotation::typed_value(result_type, ValueKind::Temporary, span);
-            let expr = ast::Expression::BinOp(ast::BinOp {
-                lhs,
-                op: bin_op.op,
-                rhs,
-            });
+                    let annotation = TypeAnnotation {
+                        span: expr_node.annotation.span().clone(),
+                        value_kind: lhs.annotation.value_kind.clone(),
+                        ty: member_ty,
+                    };
 
-            Ok(ast::ExpressionNode::new(expr, annotation))
+                    let rhs = ast::Expression::Ident(member_ident);
+                    let bin_op = BinOp {
+                        lhs,
+                        op: Operator::Member,
+                        rhs: ExpressionNode::new(rhs, annotation.clone())
+                    };
+
+                    (bin_op, annotation)
+                },
+
+                _ => {
+
+                    let rhs = typecheck_expr(&bin_op.rhs, ctx)?;
+
+                    // check valid ops etc, result type etc
+                    let result_type = lhs.annotation.ty.clone();
+
+                    let annotation = TypeAnnotation::typed_value(result_type, ValueKind::Temporary, span);
+                    let bin_op = ast::BinOp {
+                        lhs,
+                        op: bin_op.op,
+                        rhs,
+                    };
+
+                    (bin_op, annotation)
+                },
+            };
+
+            Ok(ast::ExpressionNode::new(ast::Expression::BinOp(bin_op), annotation))
         }
 
         ast::Expression::Call(call) => {

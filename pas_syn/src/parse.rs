@@ -15,6 +15,24 @@ use {
     },
 };
 
+pub mod prelude {
+    pub use {
+        std::fmt,
+        pas_common::{
+            span::*,
+            TracedError,
+        },
+        crate::{
+            ast::{TypeName, Annotation},
+            ident::Ident,
+            parse::*,
+            token_tree::{ Separator, TokenTree },
+            operators::*,
+            keyword::*,
+        }
+    };
+}
+
 pub use self::{
     matcher::*,
     token_stream::*,
@@ -26,6 +44,7 @@ pub enum ParseError {
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: TokenTree, before: bool },
     InvalidStatement(ExpressionNode<Span>),
+    InvalidMember(BinOp<Span>, Span),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -37,6 +56,7 @@ impl Spanned for ParseError {
             ParseError::UnexpectedEOF(_, tt) => tt.span(),
             ParseError::EmptyOperand { operator, .. } => operator.span(),
             ParseError::InvalidStatement(expr) => &expr.annotation,
+            ParseError::InvalidMember(_, span) => span,
         }
     }
 }
@@ -59,7 +79,11 @@ impl fmt::Display for ParseError {
             }
 
             ParseError::InvalidStatement(expr) => {
-                write!(f, "the expression {} is not valid as a statement", expr)
+                write!(f, "the expression `{}` is not valid as a statement", expr)
+            }
+
+            ParseError::InvalidMember(bin_op, _) => {
+                write!(f, "the expression `{}` does not denote a member of `{}`", bin_op.rhs, bin_op.lhs)
             }
         }
     }

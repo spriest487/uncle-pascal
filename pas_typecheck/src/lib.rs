@@ -7,6 +7,7 @@ pub mod ast {
     mod statement;
     mod unit;
     mod function;
+    mod typedecl;
     mod block;
 
     mod prelude {
@@ -33,6 +34,7 @@ pub mod ast {
         statement::*,
         unit::*,
         function::*,
+        typedecl::*,
         block::*,
     };
 }
@@ -46,8 +48,20 @@ pub use self::{
 
 pub mod ty {
     use {
-        std::fmt,
-        crate::ast,
+        std::{
+            rc::Rc,
+            fmt
+        },
+        pas_syn::{
+            ast,
+            Ident,
+        },
+        crate::{
+            TypeAnnotation,
+            ast::{
+                Class,
+            }
+        },
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -57,7 +71,7 @@ pub mod ty {
     }
 
     impl FunctionSig {
-        pub fn of_decl(decl: &ast::FunctionDecl) -> &FunctionSig {
+        pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> &FunctionSig {
             match &decl.annotation.ty {
                 Type::Function(sig) => sig.as_ref(),
                 _ => unreachable!("functions always have function type"),
@@ -88,13 +102,32 @@ pub mod ty {
     pub enum Type {
         None,
         Integer,
-        Function(Box<FunctionSig>),
+        Function(Rc<FunctionSig>),
+        Class(Rc<Class>),
     }
 
     impl Type {
-        fn full_name(&self) -> Option<String> {
+        pub fn full_name(&self) -> Option<String> {
             match self {
                 Type::Integer => Some("Integer".to_string()),
+                Type::Class(class) => Some(class.ident.to_string()),
+                _ => None,
+            }
+        }
+
+        pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
+            match type_decl {
+                ast::TypeDecl::Class(class) => {
+                    Type::Class(Rc::new(class.clone()))
+                }
+            }
+        }
+
+        pub fn find_member(&self, ident: &Ident) -> Option<&Type> {
+            match self {
+                Type::Class(class) => class.find_member(ident)
+                    .map(|m| &m.ty),
+
                 _ => None,
             }
         }
@@ -106,6 +139,7 @@ pub mod ty {
                 Some(name) => write!(f, "{}", name),
                 None => match self {
                     Type::None => write!(f, "(no type)"),
+                    Type::Class(class) => write!(f, "{}", class.ident),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 }
             }

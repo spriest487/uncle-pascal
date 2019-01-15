@@ -178,7 +178,7 @@ fn main() -> Result<(), CompileError> {
         Ok(file) => file,
     };
 
-    compile("HelloWorld.pas", &src, opts, args.output).map_err(|err| {
+    compile(args.file, &src, opts, args.output).map_err(|err| {
         err.print_context(&src);
 
         match &err {

@@ -1,4 +1,7 @@
-use crate::ast::prelude::*;
+use {
+    std::rc::Rc,
+    crate::ast::prelude::*
+};
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
@@ -52,7 +55,7 @@ pub fn typecheck_func_decl(
     };
 
     let annotation = TypeAnnotation::typed_value(
-        Type::Function(Box::new(sig)),
+        Type::Function(Rc::new(sig)),
         ValueKind::Function,
         decl.annotation.clone(),
     );

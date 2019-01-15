@@ -3,6 +3,7 @@ pub mod interpret;
 use {
     std::{
         fmt,
+        rc::Rc,
         collections::HashMap,
     },
     pas_syn::{
@@ -36,6 +37,7 @@ fn translate_type(ty: &pas_ty::Type) -> Type {
         pas_typecheck::Type::None => Type::None,
         pas_typecheck::Type::Integer => Type::I32,
         pas_typecheck::Type::Function(_) => unimplemented!(),
+        pas_typecheck::Type::Class(_) => unimplemented!(),
     }
 }
 
@@ -62,7 +64,8 @@ pub enum Instruction {
     LocalDelete(usize),
     Set { out: Value, new_val: Value },
     Add { out: Value, a: Value, b: Value },
-    Call { out: Option<Value>, function: Value, args: Vec<Value>, }
+    Call { out: Option<Value>, function: Value, args: Vec<Value>, },
+    Member { out: Value, of: Value, struct_name: Rc<String>, member: Rc<String> },
 }
 
 impl fmt::Display for Instruction {
@@ -87,6 +90,11 @@ impl fmt::Display for Instruction {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ")")
+            }
+
+            Instruction::Member { out, of, struct_name, member } => {
+                write!(f, "{:>width$} ", "member", width = IX_WIDTH)?;
+                write!(f, "{} := ({} as {}).{}", out, of, struct_name, member)
             }
         }
     }
@@ -203,7 +211,9 @@ impl Builder {
     }
 
     pub fn end_scope(&mut self) {
-        let top_scope = self.scopes.pop().unwrap();
+        let top_scope = self.scopes.pop()
+            .expect("called end_scope with no active scope");
+
         for local in top_scope.locals.iter().rev() {
             if let Local::Allocated { id, .. } = local {
                 self.instructions.push(Instruction::LocalDelete(*id));
@@ -218,10 +228,27 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
 
     builder.begin_scope();
     let lhs_val = translate_expr(&bin_op.lhs, builder);
-    let rhs_val = translate_expr(&bin_op.rhs, builder);
 
-    let op_instruction = match bin_op.op {
-        syn::Operator::Plus => Instruction::Add { out: out_val.clone(), a: lhs_val, b: rhs_val },
+    let op_instruction = match &bin_op.op {
+        syn::Operator::Member => {
+            Instruction::Member {
+                out: out_val.clone(),
+                of: lhs_val,
+                struct_name: bin_op.lhs.annotation.ty.full_name()
+                    .map(|ident| Rc::new(ident.to_string()))
+                    .expect("member access must be of a named type"),
+                member: bin_op.rhs.expr.as_ident()
+                    .map(|ident| Rc::new(ident.to_string()))
+                    .expect("rhs of member binop must be an ident"),
+            }
+        },
+
+        syn::Operator::Plus => Instruction::Add {
+            out: out_val.clone(),
+            a: lhs_val,
+            b: translate_expr(&bin_op.rhs, builder),
+        },
+
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 
@@ -268,7 +295,8 @@ pub fn translate_expr(
 ) -> Value {
     match expr.expr.as_ref() {
         ast::Expression::LiteralInt(i) => {
-            Value::LiteralI32(i.as_i32().unwrap())
+            Value::LiteralI32(i.as_i32()
+                .expect("i32-typed int constant must be within range of i32"))
         },
         ast::Expression::BinOp(bin_op) => {
             translate_bin_op(bin_op, &expr.annotation.ty, builder)
@@ -289,7 +317,7 @@ pub fn translate_expr(
                 Some(pas_ty::ValueKind::Immutable) => {
                     builder.find_local(&ident.name)
                         .map(|local| Value::Local(local.id()))
-                        .unwrap()
+                        .unwrap_or_else(|| panic!("identifier not found in local scope: {}", ident))
                 }
             }
         },
@@ -317,7 +345,6 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         ast::Statement::Call(call) => {
             translate_call(call, builder);
         }
-
 
         ast::Statement::Exit(_) => {
             unimplemented!()
@@ -364,7 +391,24 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl) -> Function {
 }
 
 #[derive(Clone, Debug)]
+pub struct Struct {
+    fields: Vec<(Rc<String>, Type)>,
+}
+
+fn translate_struct(struct_def: &pas_ty::ast::Class) -> Struct {
+    let mut fields = Vec::new();
+    for member in &struct_def.members {
+        let name = Rc::new(member.ident.to_string());
+        let ty = translate_type(&member.ty);
+        fields.push((name, ty));
+    }
+
+    Struct { fields }
+}
+
+#[derive(Clone, Debug)]
 pub struct Unit {
+    structs: HashMap<Rc<String>, Struct>,
     functions: HashMap<String, Function>,
     init: Vec<Instruction>,
 }
@@ -388,11 +432,19 @@ impl fmt::Display for Unit {
 
 pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
     let mut functions = HashMap::new();
+    let mut structs = HashMap::new();
+
     for decl in &unit.decls {
         match decl {
             ast::UnitDecl::Function(func_decl) => {
                 let func = translate_func(func_decl);
                 functions.insert(func_decl.ident.to_string(), func);
+            }
+
+            ast::UnitDecl::Type(ast::TypeDecl::Class(class)) => {
+                let struct_def = translate_struct(class);
+                let name = Rc::new(class.ident.to_string());
+                structs.insert(name, struct_def);
             }
         }
     }
@@ -406,5 +458,6 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
     Unit {
         init: init_builder.finish(),
         functions,
+        structs,
     }
 }

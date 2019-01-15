@@ -1,6 +1,7 @@
 use {
     std::fmt,
     pas_common::span::*,
+    pas_syn::Ident,
     crate::{
         Type,
         context::NameError,
@@ -26,6 +27,11 @@ pub enum TypecheckError {
         actual: Option<Type>,
         span: Span,
     },
+    MemberNotFound {
+        base: Type,
+        member: Ident,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -44,6 +50,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation.span(),
             TypecheckError::TypeMismatch { span, .. } => span,
+            TypecheckError::MemberNotFound { span, .. } => span,
         }
     }
 }
@@ -95,6 +102,10 @@ impl fmt::Display for TypecheckError {
                 write!(f, ", found ")?;
                 write_ty(f, actual)
 
+            }
+
+            TypecheckError::MemberNotFound { base, member, .. } => {
+                write!(f, "type {} does not have a member named `{}`", base, member)
             }
         }
     }

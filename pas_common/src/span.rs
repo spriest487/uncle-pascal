@@ -105,7 +105,7 @@ impl fmt::Debug for Span {
 
 impl fmt::Display for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}:{}", self.file.to_string_lossy(), self.start.line, self.start.col)
+        write!(f, "{}:{}", self.file.to_string_lossy(), self.start)
     }
 }
 
