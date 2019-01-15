@@ -415,14 +415,25 @@ pub struct Unit {
 
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "* Structures")?;
+        for (name, struct_def) in &self.structs {
+            writeln!(f, "{}:", name)?;
+            for (name, ty) in &struct_def.fields {
+                writeln!(f, "  .{}: {}", name, ty)?;
+            }
+            writeln!(f)?;
+        }
+
+        writeln!(f, "* Functions")?;
         for (name, func) in &self.functions {
             writeln!(f, "{}:", name)?;
             for instruction in &func.body {
                 writeln!(f, "{}", instruction)?;
             }
+            writeln!(f)?;
         }
 
-        writeln!(f, "init:")?;
+        writeln!(f, "* Init:")?;
         for instruction in &self.init {
             writeln!(f, "{}", instruction)?;
         }
