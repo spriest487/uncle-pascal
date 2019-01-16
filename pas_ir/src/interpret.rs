@@ -8,6 +8,7 @@ use {
         Instruction,
         Type,
         Value,
+        Ref,
         Unit,
         metadata::*,
     },
@@ -99,22 +100,16 @@ impl Interpreter {
         }
     }
 
-    fn store(&mut self, at: &Value, val: MemCell) {
+    fn store(&mut self, at: &Ref, val: MemCell) {
         match at {
-            Value::LiteralI32(_) |
-            Value::LiteralF32(_) |
-            Value::LiteralBool(_) => {
-                panic!("literal is not a valid storage location")
-            }
-
-            Value::Local(id) => {
+            Ref::Local(id) => {
                 match self.current_frame_mut().locals.get_mut(*id) {
                     Some(Some(cell)) => { *cell = val; }
                     None | Some(None) => panic!("local cell {} is not allocated", id),
                 }
             }
 
-            Value::Global(name) => {
+            Ref::Global(name) => {
                 if self.globals.contains_key(name) {
                     panic!("global cell {} is already allocated");
                 }
@@ -123,21 +118,27 @@ impl Interpreter {
         }
     }
 
-    fn load(&self, at: &Value) -> MemCell {
+    fn load(&self, at: &Ref) -> &MemCell {
         match at {
-            Value::Local(id) => match self.current_frame().locals.get(*id) {
-                Some(Some(cell)) => cell.clone(),
+            Ref::Local(id) => match self.current_frame().locals.get(*id) {
+                Some(Some(cell)) => cell,
                 None | Some(None) => panic!("local cell {} is not allocated", id),
             }
+
+            Ref::Global(name) => match self.globals.get(name) {
+                Some(cell) => cell,
+                None => panic!("global cell {} is not allocated", name),
+            }
+        }
+    }
+
+    fn evaluate(&self, val: &Value) -> MemCell {
+        match val {
+            Value::Ref(r) => self.load(r).clone(),
 
             Value::LiteralI32(i) => MemCell::I32(*i),
             Value::LiteralF32(f) => MemCell::F32(*f),
             Value::LiteralBool(b) => MemCell::Bool(*b),
-
-            Value::Global(name) => match self.globals.get(name) {
-                Some(cell) => cell.clone(),
-                None => panic!("global cell {} is not allocated", name),
-            }
         }
     }
 
@@ -159,7 +160,7 @@ impl Interpreter {
         self.stack.last_mut().expect("called current_frame without no stackframes")
     }
 
-    fn invoke(&mut self, func: &Function, args: &[MemCell], out: Option<&Value>) {
+    fn invoke(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) {
         let result_cell = match func {
             Function::Builtin(builtin_fn) => builtin_fn(args),
 
@@ -180,7 +181,10 @@ impl Interpreter {
                 self.execute(&ir_func.body);
 
                 let result = match &ir_func.return_ty {
-                    Some(_) => Some(self.load(&Value::Local(0))),
+                    Some(_) => {
+                        let return_val = self.evaluate(&Value::Ref(Ref::Local(0)));
+                        Some(return_val)
+                    },
                     None => None,
                 };
 
@@ -190,8 +194,8 @@ impl Interpreter {
         };
 
         match (result_cell, out) {
-            (Some(result_cell), Some(out_val)) => {
-                self.store(&out_val, result_cell);
+            (Some(result_cell), Some(out_at)) => {
+                self.store(&out_at, result_cell);
             }
 
             (None, Some(_)) => {
@@ -233,7 +237,7 @@ impl Interpreter {
                 }
 
                 Instruction::Add { out, a, b } => {
-                    let out_val = match (self.load(a), self.load(b)) {
+                    let out_val = match (self.evaluate(a), self.evaluate(b)) {
                         (MemCell::I32(a), MemCell::I32(b)) => MemCell::I32(a + b),
                         _ => panic!("Add is not valid for {:?} + {:?}", a, b)
                     };
@@ -242,15 +246,15 @@ impl Interpreter {
                 }
 
                 Instruction::Set { out, new_val } => {
-                    self.store(out, self.load(new_val));
+                    self.store(out, self.evaluate(new_val));
                 }
 
                 Instruction::Call { out, function, args } => {
                     let arg_cells: Vec<_> = args.iter()
-                        .map(|arg_val| self.load(arg_val))
+                        .map(|arg_val| self.evaluate(arg_val))
                         .collect();
 
-                    match self.load(function) {
+                    match self.evaluate(function) {
                         MemCell::Function(function) => {
                             self.invoke(&function, &arg_cells, out.as_ref())
                         }
@@ -260,7 +264,7 @@ impl Interpreter {
                 }
 
                 Instruction::GetField { out, of, struct_id: _, field_id, } => {
-                    match self.load(of) {
+                    match self.evaluate(of) {
                         MemCell::Structure(cells) => {
                             let field_cell = cells.into_iter().skip(*field_id).next().unwrap();
                             self.store(out, field_cell);
@@ -270,9 +274,9 @@ impl Interpreter {
                 }
 
                 Instruction::SetField { of, new_val, struct_id: _, field_id, } => {
-                    match self.load(of) {
+                    match self.load(of).clone() {
                         MemCell::Structure(mut cells) => {
-                            cells[*field_id] = self.load(new_val);
+                            cells[*field_id] = self.evaluate(new_val);
                             self.store(of, MemCell::Structure(cells))
                         }
 
@@ -290,7 +294,7 @@ impl Interpreter {
                 }
 
                 Instruction::JumpIf { dest, test } => {
-                    match self.load(test) {
+                    match self.evaluate(test) {
                         MemCell::Bool(true) => { pc = labels[dest]; },
                         MemCell::Bool(false) => {},
                         _ => panic!("JumpIf instruction testing non-boolean cell"),
@@ -306,7 +310,7 @@ impl Interpreter {
         self.metadata.extend(&unit.metadata);
 
         for (func_name, func) in &unit.functions {
-            let func_loc = Value::Global(func_name.clone());
+            let func_loc = Ref::Global(func_name.clone());
             let func_cell = MemCell::Function(Function::IR(func.clone()));
             self.store(&func_loc, func_cell);
         }

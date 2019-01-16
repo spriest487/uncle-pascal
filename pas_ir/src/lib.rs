@@ -19,20 +19,33 @@ pub use {
 };
 
 #[derive(Debug, Clone)]
-pub enum Value {
+pub enum Ref {
     Local(usize),
+    Global(String),
+}
+
+impl fmt::Display for Ref {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Ref::Local(id) => write!(f, "${}", id),
+            Ref::Global(name) => write!(f, "`{}`", name),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum Value {
+    Ref(Ref),
     LiteralBool(bool),
     LiteralI32(i32),
     LiteralF32(f32),
-    Global(String),
 }
 
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Value::Local(id) => write!(f, "${}", id),
+            Value::Ref(r) => write!(f, "{}", r),
             Value::LiteralI32(i) => write!(f, "{}i32", i),
-            Value::Global(name) => write!(f, "`{}`", name),
             Value::LiteralBool(b) => write!(f, "{}", b),
             Value::LiteralF32(x) => write!(f, "{:.6}", x),
         }
@@ -53,20 +66,21 @@ pub enum Instruction {
     LocalAlloc(usize, Type),
     LocalDelete(usize),
 
-    Set { out: Value, new_val: Value },
-    Add { out: Value, a: Value, b: Value },
+    Set { out: Ref, new_val: Value },
+    Add { out: Ref, a: Value, b: Value },
 
-    Call { out: Option<Value>, function: Value, args: Vec<Value>, },
+    Call { out: Option<Ref>, function: Value, args: Vec<Value>, },
 
-    GetField { out: Value, of: Value, struct_id: StructId, field_id: usize },
-    SetField { of: Value, new_val: Value, struct_id: StructId, field_id: usize },
+    GetField { out: Ref, of: Value, struct_id: StructId, field_id: usize },
+    SetField { of: Ref, new_val: Value, struct_id: StructId, field_id: usize },
 
     Label(Label),
     Jump { dest: Label, },
     JumpIf { dest: Label, test: Value, },
 
-//    MemAlloc { out: Value, element: Type, count: usize, },
-//    MemFree { at: Value, },
+//    MemAlloc { out: Ref, ty: Type, count: usize, },
+//    Retain(Ref),
+//    Release(Ref),
 }
 
 impl fmt::Display for Instruction {
@@ -204,7 +218,7 @@ impl<'m> Builder<'m> {
             .expect("scope must be active")
     }
 
-    pub fn new_local(&mut self, ty: Type, name: Option<String>) -> Value {
+    pub fn new_local(&mut self, ty: Type, name: Option<String>) -> Ref {
         let id = self.next_id;
 
         self.current_scope_mut().locals.push(Local::Allocated {
@@ -215,7 +229,7 @@ impl<'m> Builder<'m> {
         self.next_id += 1;
 
         self.instructions.push(Instruction::LocalAlloc(id, ty));
-        Value::Local(id)
+        Ref::Local(id)
     }
 
     fn find_local(&self, name: &str) -> Option<&Local> {
@@ -284,7 +298,7 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
     builder.append(op_instruction);
     builder.end_scope();
 
-    out_val
+    Value::Ref(out_val)
 }
 
 fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Value> {
@@ -317,14 +331,14 @@ fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Val
 
     builder.end_scope();
 
-    out_val
+    out_val.map(Value::Ref)
 }
 
 fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Value {
     let (struct_id, struct_def) = builder.metadata.find_struct(&ctor.ident.to_string())
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
 
-    let out_val = builder.new_local(Type::Struct(struct_id), None);
+    let out = builder.new_local(Type::Struct(struct_id), None);
 
     builder.begin_scope();
 
@@ -335,7 +349,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
             .unwrap_or_else(|| panic!("field {} referenced in object ctor must exist", member.ident));
 
         builder.append(Instruction::SetField {
-            of: out_val.clone(),
+            of: out.clone(),
             new_val: member_val,
             struct_id,
             field_id
@@ -343,7 +357,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     }
 
     builder.end_scope();
-    out_val
+    Value::Ref(out)
 }
 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Builder) -> Value {
@@ -420,7 +434,7 @@ fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Op
     builder.append(Instruction::Label(end_label));
     builder.end_scope();
 
-    out_val
+    out_val.map(Value::Ref)
 }
 
 pub fn translate_expr(
@@ -446,12 +460,12 @@ pub fn translate_expr(
                 },
 
                 Some(pas_ty::ValueKind::Function) => {
-                    Value::Global(ident.name.clone())
+                    Value::Ref(Ref::Global(ident.name.clone()))
                 },
 
                 Some(pas_ty::ValueKind::Immutable) => {
                     builder.find_local(&ident.name)
-                        .map(|local| Value::Local(local.id()))
+                        .map(|local| Value::Ref(Ref::Local(local.id())))
                         .unwrap_or_else(|| panic!("identifier not found in local scope: {}", ident))
                 }
             }
@@ -529,7 +543,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> 
     let block_output = translate_block(&func.body, &mut body_builder);
 
     if let Some(return_val) = block_output {
-        let return_at = Value::Local(0);
+        let return_at = Ref::Local(0);
         body_builder.append(Instruction::Set { out: return_at, new_val: return_val });
     }
 
@@ -558,7 +572,7 @@ fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<
 
     builder.end_scope();
 
-    out_val
+    out_val.map(Value::Ref)
 }
 
 #[derive(Clone, Debug)]
