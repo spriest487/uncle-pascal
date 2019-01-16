@@ -204,8 +204,16 @@ impl Interpreter {
     }
 
     pub fn execute(&mut self, instructions: &[Instruction]) {
-        for instruction in instructions.iter() {
-            match instruction {
+        let labels: HashMap<_, _> = instructions.iter().enumerate()
+            .filter_map(|(off, instruction)| match instruction {
+                Instruction::Label(label) => Some((*label, off)),
+                _ => None,
+            })
+            .collect();
+
+        let mut pc = 0;
+        while pc < instructions.len() {
+            match &instructions[pc] {
                 Instruction::LocalAlloc(id, ty) => {
                     while self.current_frame().locals.len() <= *id {
                         self.current_frame_mut().locals.push(None);
@@ -277,13 +285,20 @@ impl Interpreter {
                 }
 
                 Instruction::Jump { dest, } => {
-                    unimplemented!("jmp {}", dest)
+                    pc = labels[dest];
+                    continue;
                 }
 
                 Instruction::JumpIf { dest, test } => {
-                    unimplemented!("jmpif {} if {}", dest, test)
+                    match self.load(test) {
+                        MemCell::Bool(true) => { pc = labels[dest]; },
+                        MemCell::Bool(false) => {},
+                        _ => panic!("JumpIf instruction testing non-boolean cell"),
+                    }
                 }
             }
+
+            pc += 1;
         }
     }
 
