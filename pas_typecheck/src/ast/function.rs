@@ -36,6 +36,8 @@ pub fn typecheck_func_decl(
         None => None,
     };
 
+    let body_scope = ctx.push_scope();
+
     let mut params = Vec::new();
     for param in &decl.params {
         let param = typecheck_param(param, ctx)?;
@@ -48,6 +50,8 @@ pub fn typecheck_func_decl(
     }
 
     let body = typecheck_block(&decl.body, return_ty.as_ref(), ctx)?;
+
+    ctx.pop_scope(body_scope);
 
     let sig = FunctionSig {
         params: params.iter().map(|p| p.ty.clone()).collect(),

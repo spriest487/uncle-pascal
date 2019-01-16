@@ -165,5 +165,12 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
 
             Ok(ast::ExpressionNode::new(expr, annotation))
         }
+
+        ast::Expression::ObjectCtor(ctor) => {
+            let ctor = typecheck_object_ctor(ctor, ctx)?;
+            let annotation = ctor.annotation.clone();
+            let expr = ast::Expression::ObjectCtor(ctor);
+            Ok(ast::ExpressionNode::new(expr, annotation))
+        }
     }
 }

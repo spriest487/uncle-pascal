@@ -9,6 +9,7 @@ pub mod ast {
     mod function;
     mod typedecl;
     mod block;
+    mod ctor;
 
     mod prelude {
         pub use {
@@ -36,6 +37,7 @@ pub mod ast {
         function::*,
         typedecl::*,
         block::*,
+        ctor::*,
     };
 }
 

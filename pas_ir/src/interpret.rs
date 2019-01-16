@@ -228,7 +228,7 @@ impl Interpreter {
                 }
 
                 Instruction::Member { out, of, struct_name, member, } => {
-                    unimplemented!()
+                    unimplemented!("member {} {} {}.{}", out, of, struct_name, member)
                 }
             }
         }

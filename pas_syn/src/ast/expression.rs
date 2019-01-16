@@ -13,6 +13,8 @@ use {
         ast::{
             Annotation,
             Call,
+            ObjectCtor,
+            ObjectCtorArgs,
         },
     },
 };
@@ -52,10 +54,18 @@ pub enum Expression<A: Annotation> {
     LiteralString(String),
     Ident(Ident),
     Call(Call<A>),
+    ObjectCtor(ObjectCtor<A>),
 }
 
 impl<A: Annotation> Expression<A> {
     pub fn as_ident(&self) -> Option<&Ident> {
+        match self {
+            Expression::Ident(ident) => Some(ident),
+            _ => None,
+        }
+    }
+
+    pub fn into_ident(self) -> Option<Ident> {
         match self {
             Expression::Ident(ident) => Some(ident),
             _ => None,
@@ -78,6 +88,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::BinOp(op) => write!(f, "{}", op),
             Expression::LiteralString(s) => write!(f, "'{}'", s),
             Expression::Call(call) => write!(f, "{}", call),
+            Expression::ObjectCtor(ctor) => write!(f, "{}", ctor),
         }
     }
 }
@@ -323,25 +334,10 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             Some(TokenTree::Delimited { delim, inner, open, .. }) => {
                 let mut group_tokens = TokenStream::new(inner.clone(), open);
 
-                let match_obj_ctor_field = Matcher::AnyIdent.and_then(Separator::Colon);
-
                 match delim {
                     DelimiterPair::Bracket => {
-                        /* if it closes immediately, or has at least one member in the
-                        name: value pattern, it's a object constructor */
-                        let is_ctor = inner.is_empty()
-                            || group_tokens.look_ahead()
-                            .match_sequence(match_obj_ctor_field)
-                            .is_some();
-
-                        if is_ctor {
-                            let _ctor = unimplemented!("object ctor");
-//                            self.add_operand(ctor);
-                        } else {
-                            /* bracket group containing subexpr */
-                            let _subexpr = ExpressionNode::parse(&mut group_tokens)?;
-//                            self.add_operand(subexpr);
-                        }
+                        let subexpr = ExpressionNode::parse(&mut group_tokens)?;
+                        self.add_operand(subexpr);
                     }
 
                     DelimiterPair::SquareBracket => {
@@ -429,19 +425,44 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .or(Operator::Member); // member access
 
         match self.tokens.look_ahead().match_one(match_after_operand) {
-            Some(TokenTree::Delimited { delim: DelimiterPair::Bracket, close, .. }) => {
+            Some(TokenTree::Delimited { delim: DelimiterPair::Bracket, open, close, inner, .. }) => {
                 /* replace the last operand with a function call targetting that expr */
                 let target = self.pop_operand();
 
-                let args = Call::parse_arg_list(&mut self.tokens)?;
-                let span = target.annotation.to(&close);
-                let call = Call {
-                    target,
-                    args,
-                    annotation: span.clone(),
+                /* if the next two tokens are in the form `a:` AND the last operand is
+                an ident then it has to be an object constructor list instead of a call */
+                let mut inner_tokens = TokenStream::new(inner, open);
+                let ctor_matcher = Matcher::AnyIdent.and_then(Separator::Colon);
+                let args_matches_ctor = inner_tokens.look_ahead()
+                    .match_sequence(ctor_matcher)
+                    .is_some();
+                let target_is_ident = target.expr.as_ident()
+                    .is_some();
+
+                let (operand, span) = if args_matches_ctor && target_is_ident {
+                    let args = ObjectCtorArgs::parse(&mut self.tokens)?;
+                    let ident = (*target.expr).into_ident().unwrap();
+                    let span = ident.span().to(&args.close);
+                    let ctor = ObjectCtor {
+                        ident,
+                        args,
+                        annotation: span.clone(),
+                    };
+
+                    (Expression::ObjectCtor(ctor), span)
+                } else {
+                    let args = Call::parse_arg_list(&mut self.tokens)?;
+                    let span = target.annotation.to(&close);
+                    let call = Call {
+                        target,
+                        args,
+                        annotation: span.clone(),
+                    };
+
+                    (Expression::Call(call), span)
                 };
 
-                self.add_operand(ExpressionNode::new(Expression::Call(call), span))
+                self.add_operand(ExpressionNode::new(operand, span))
             }
 
             Some(TokenTree::Delimited { delim: DelimiterPair::SquareBracket, .. }) => {

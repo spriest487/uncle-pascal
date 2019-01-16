@@ -46,7 +46,7 @@ impl LetBinding<Span> {
 
 impl<A: Annotation> fmt::Display for LetBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "let {}: {} = {}", self.name, self.val_ty, self.val)
+        write!(f, "let {}: {} := {}", self.name, self.val_ty, self.val)
     }
 }
 

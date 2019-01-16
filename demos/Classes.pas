@@ -7,5 +7,4 @@ begin
     box.value
 end;
 
-//let box: IntBox := IntBox(1);
-
+let box: IntBox := IntBox(value: 1);
