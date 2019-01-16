@@ -32,8 +32,8 @@ pub fn typecheck_func_decl(
     -> TypecheckResult<FunctionDecl>
 {
     let return_ty = match &decl.return_ty {
-        Some(ty_name) => Some(ctx.find_type(ty_name)?.clone()),
-        None => None,
+        Some(ty_name) => ctx.find_type(ty_name)?.clone(),
+        None => Type::None,
     };
 
     let body_scope = ctx.push_scope();
@@ -49,7 +49,7 @@ pub fn typecheck_func_decl(
         params.push(param);
     }
 
-    let body = typecheck_block(&decl.body, return_ty.as_ref(), ctx)?;
+    let body = typecheck_block(&decl.body, &return_ty, ctx)?;
 
     ctx.pop_scope(body_scope);
 
@@ -66,7 +66,7 @@ pub fn typecheck_func_decl(
 
     Ok(FunctionDecl {
         ident: decl.ident.clone(),
-        return_ty,
+        return_ty: Some(return_ty),
         annotation,
         params,
         body

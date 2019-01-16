@@ -3,7 +3,7 @@ use crate::ast::prelude::*;
 pub type Block = ast::Block<TypeAnnotation>;
 
 pub fn typecheck_block(block: &ast::Block<Span>,
-        expect_ty: Option<&Type>,
+        expect_ty: &Type,
         ctx: &mut Context) -> TypecheckResult<Block> {
     let mut statements = Vec::new();
     for stmt in &block.statements {
@@ -18,10 +18,11 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         // if the block finishes on a call. if we're expecing a return type and
         // parsing didn't find us the output expression, we can move the final
         // stmt into the output if the type matches
-        None if expect_ty.is_some() => {
+        None if *expect_ty != Type::None => {
             let last_stmt_type = statements.last()
                 .map(|s: &Statement| &s.annotation().ty);
-            if last_stmt_type == expect_ty {
+
+            if last_stmt_type == Some(expect_ty) {
                 Some(statements.pop()
                     .and_then(|s| s.try_into_expr())
                     .unwrap())
@@ -33,12 +34,14 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         None => None,
     };
 
-    if expect_ty.is_some() {
-        let output_ty = output.as_ref().map(|o| &o.annotation.ty);
-        if output_ty != expect_ty {
+    if *expect_ty != Type::None {
+        let output_ty = output.as_ref()
+            .map(|o| &o.annotation.ty);
+
+        if output_ty != Some(expect_ty) {
             return Err(TypecheckError::TypeMismatch {
-                expected: expect_ty.cloned(),
-                actual: output_ty.cloned(),
+                expected: expect_ty.clone(),
+                actual: output_ty.cloned().unwrap_or(Type::None),
                 span: match &output {
                     Some(expr) => expr.annotation.span.clone(),
                     None => block.end.clone(),
@@ -51,6 +54,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     let annotation = match &output {
         Some(out_expr) => {
             let out_ty = out_expr.annotation.ty.clone();
+            assert_ne!(Type::None, out_ty);
             TypeAnnotation::typed_value(out_ty, ValueKind::Temporary, span)
         },
         None => TypeAnnotation::untyped(span),

@@ -1,5 +1,6 @@
 use {
     crate::{
+        ast::Class,
         FunctionSig,
         Type,
     },
@@ -142,29 +143,48 @@ impl Scope {
 pub struct Context {
     next_id: ScopeId,
     scopes: Vec<Scope>,
+
+    string_class: Rc<Class>,
 }
 
 impl Context {
     pub fn root() -> Self {
-        let mut root_ctx = Self {
-            scopes: vec![Scope::new(ScopeId(0))],
-            next_id: ScopeId(1),
-        };
-
         let builtin_span = Span {
             file: Rc::new("<builtin>".into()),
             start: Location { line: 0, col: 0 },
             end: Location { line: 0, col: 0 },
         };
 
-        root_ctx.declare_type(Ident::new("Integer", builtin_span.clone()), Type::Integer)
-            .unwrap();
+        let string_class = Rc::new(Class {
+            ident: Ident::new("String", builtin_span.clone()),
+            span: builtin_span.clone(),
+            members: Vec::new(),
+        });
+
+        let mut root_ctx = Self {
+            scopes: vec![Scope::new(ScopeId(0))],
+            next_id: ScopeId(1),
+            string_class,
+        };
+
+        let int_ident = Ident::new("Integer", builtin_span.clone());
+        root_ctx.declare_type(int_ident, Type::Integer).unwrap();
+
+        let bool_ident = Ident::new("Boolean", builtin_span.clone());
+        root_ctx.declare_type(bool_ident, Type::Boolean).unwrap();
+
+        let single_ident = Ident::new("Single", builtin_span.clone());
+        root_ctx.declare_type(single_ident, Type::Real32).unwrap();
+
+        let string_ident = root_ctx.string_class.ident.clone();
+        root_ctx.declare_type(string_ident, Type::Class(root_ctx.string_class.clone())).unwrap();
 
         root_ctx.declare_function(Ident::new("WriteLn", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Integer],
-                return_ty: None,
-            }).unwrap();
+                return_ty: Type::None,
+            })
+            .unwrap();
 
         // builtins are in scope 0, unit is scope 1
         root_ctx.push_scope();
@@ -250,6 +270,10 @@ impl Context {
             Some((_, unexpected)) => Err(NameError::ExpectedBinding(ident.clone(), unexpected.clone())),
             None => Err(NameError::NotFound(ident.clone())),
         }
+    }
+
+    pub fn string_type(&self) -> Type {
+        Type::Class(self.string_class.clone())
     }
 
 //    pub fn find_function(&self, ident: &Ident) -> NamingResult<&FunctionSig> {

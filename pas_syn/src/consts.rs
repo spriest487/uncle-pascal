@@ -4,7 +4,10 @@ use {
         ops::{Add, Sub},
         i32,
     },
-    bigdecimal::BigDecimal,
+    bigdecimal::{
+        BigDecimal,
+        ToPrimitive,
+    },
     cast,
     crate::{
         ident::Ident
@@ -265,9 +268,7 @@ impl Sub for IntConstant {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum RealConstant {
-    F64(BigDecimal),
-}
+pub struct RealConstant(BigDecimal);
 
 impl RealConstant {
     pub fn parse_str(s: &str) -> Option<Self> {
@@ -275,16 +276,18 @@ impl RealConstant {
         Some(RealConstant::from(val))
     }
 
-    pub fn to_decimal(&self) -> &BigDecimal {
-        match self {
-            RealConstant::F64(f) => f
-        }
+    pub fn as_f32(&self) -> Option<f32> {
+        self.0.to_f32()
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        self.0.to_f64()
     }
 }
 
 impl From<f64> for RealConstant {
     fn from(val: f64) -> Self {
-        RealConstant::F64(val.into())
+        RealConstant(val.into())
     }
 }
 
@@ -292,7 +295,7 @@ impl Sub for RealConstant {
     type Output = RealConstant;
 
     fn sub(self, rhs: RealConstant) -> RealConstant {
-        RealConstant::F64(self.to_decimal() - rhs.to_decimal())
+        RealConstant(self.0 - rhs.0)
     }
 }
 
@@ -300,14 +303,14 @@ impl Add for RealConstant {
     type Output = RealConstant;
 
     fn add(self, rhs: RealConstant) -> RealConstant {
-        RealConstant::F64(self.to_decimal() + rhs.to_decimal())
+        RealConstant(self.0 + rhs.0)
     }
 }
 
 impl fmt::Display for RealConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RealConstant::F64(val) => write!(f, "{}", val)
+            RealConstant(val) => write!(f, "{}", val)
         }
     }
 }

@@ -43,6 +43,24 @@ pub struct Unit<A: Annotation> {
     pub init: Vec<Statement<A>>,
 }
 
+impl<A: Annotation> Unit<A> {
+    pub fn func_decls(&self) -> impl Iterator<Item=&FunctionDecl<A>> {
+        self.decls.iter()
+            .filter_map(|decl| match decl {
+                UnitDecl::Function(func) => Some(func),
+                _ => None,
+            })
+    }
+
+    pub fn type_decls(&self) -> impl Iterator<Item=&TypeDecl<A>> {
+        self.decls.iter()
+            .filter_map(|decl| match decl {
+                UnitDecl::Type(ty) => Some(ty),
+                _ => None,
+            })
+    }
+}
+
 impl Unit<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut decls = Vec::new();

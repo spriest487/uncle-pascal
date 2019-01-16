@@ -1,16 +1,17 @@
+pub mod metadata;
 pub mod interpret;
 
 use {
     std::{
         fmt,
-        rc::Rc,
         collections::HashMap,
     },
     pas_syn::{
         self as syn,
         ast,
     },
-    pas_typecheck as pas_ty
+    pas_typecheck as pas_ty,
+    crate::metadata::*,
 };
 
 pub use {
@@ -18,33 +19,11 @@ pub use {
 };
 
 #[derive(Debug, Clone)]
-pub enum Type {
-    None,
-    I32,
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Type::None => "none",
-            Type::I32 => "i32",
-        })
-    }
-}
-
-fn translate_type(ty: &pas_ty::Type) -> Type {
-    match ty {
-        pas_typecheck::Type::None => Type::None,
-        pas_typecheck::Type::Integer => Type::I32,
-        pas_typecheck::Type::Function(_) => unimplemented!(),
-        pas_typecheck::Type::Class(_) => unimplemented!(),
-    }
-}
-
-#[derive(Debug, Clone)]
 pub enum Value {
     Local(usize),
+    LiteralBool(bool),
     LiteralI32(i32),
+    LiteralF32(f32),
     Global(String),
 }
 
@@ -54,7 +33,18 @@ impl fmt::Display for Value {
             Value::Local(id) => write!(f, "${}", id),
             Value::LiteralI32(i) => write!(f, "{}i32", i),
             Value::Global(name) => write!(f, "`{}`", name),
+            Value::LiteralBool(b) => write!(f, "{}", b),
+            Value::LiteralF32(x) => write!(f, "{:.6}", x),
         }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct Label(usize);
+
+impl fmt::Display for Label {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, ":{}", self.0)
     }
 }
 
@@ -62,10 +52,21 @@ impl fmt::Display for Value {
 pub enum Instruction {
     LocalAlloc(usize, Type),
     LocalDelete(usize),
+
     Set { out: Value, new_val: Value },
     Add { out: Value, a: Value, b: Value },
+
     Call { out: Option<Value>, function: Value, args: Vec<Value>, },
-    Member { out: Value, of: Value, struct_name: Rc<String>, member: Rc<String> },
+
+    GetField { out: Value, of: Value, struct_id: StructId, field_id: usize },
+    SetField { of: Value, new_val: Value, struct_id: StructId, field_id: usize },
+
+    Label(Label),
+    Jump { dest: Label, },
+    JumpIf { dest: Label, test: Value, },
+
+//    MemAlloc { out: Value, element: Type, count: usize, },
+//    MemFree { at: Value, },
 }
 
 impl fmt::Display for Instruction {
@@ -92,9 +93,26 @@ impl fmt::Display for Instruction {
                 write!(f, ")")
             }
 
-            Instruction::Member { out, of, struct_name, member } => {
-                write!(f, "{:>width$} ", "member", width = IX_WIDTH)?;
-                write!(f, "{} := ({} as {}).{}", out, of, struct_name, member)
+            Instruction::GetField { out, of, struct_id, field_id } => {
+                write!(f, "{:>width$} ", "getfld", width = IX_WIDTH)?;
+                write!(f, "{} := ({} as {}).{}", out, of, Type::Struct(*struct_id), field_id)
+            }
+
+            Instruction::SetField { of, new_val, struct_id, field_id } => {
+                write!(f, "{:>width$} ", "setfld", width = IX_WIDTH)?;
+                write!(f, "({} as {}).{} := {}", of, Type::Struct(*struct_id), field_id, new_val)
+            }
+
+            Instruction::Label(label) => {
+                write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
+            }
+
+            Instruction::Jump { dest } => {
+                write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH)
+            }
+
+            Instruction::JumpIf { dest, test } => {
+                write!(f, "{:>width$} {} if {}", "jmpif", dest, test, width = IX_WIDTH)
             }
         }
     }
@@ -135,15 +153,18 @@ struct Scope {
     locals: Vec<Local>,
 }
 
-pub struct Builder {
+pub struct Builder<'m> {
+    metadata: &'m Metadata,
+
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
     next_id: usize,
 }
 
-impl Builder {
-    pub fn new() -> Self {
+impl<'m> Builder<'m> {
+    pub fn new(metadata: &'m Metadata) -> Self {
         Self {
+            metadata,
             instructions: Vec::new(),
             next_id: 0,
             scopes: vec![Scope { locals: Vec::new() }],
@@ -170,6 +191,12 @@ impl Builder {
         self.current_scope_mut().locals.push(Local::Bound { id, name: name.to_string(), });
 
         self.next_id = usize::max(id + 1, self.next_id + 1);
+    }
+
+    pub fn alloc_label(&mut self) -> Label {
+        let id = self.next_id;
+        self.next_id += 1;
+        Label(id)
     }
 
     fn current_scope_mut(&mut self) -> &mut Scope {
@@ -223,7 +250,7 @@ impl Builder {
 }
 
 fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder: &mut Builder) -> Value {
-    let out_ty = translate_type(out_ty);
+    let out_ty = builder.metadata.translate_type(out_ty);
     let out_val = builder.new_local(out_ty, None);
 
     builder.begin_scope();
@@ -231,16 +258,18 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
 
     let op_instruction = match &bin_op.op {
         syn::Operator::Member => {
-            Instruction::Member {
-                out: out_val.clone(),
-                of: lhs_val,
-                struct_name: bin_op.lhs.annotation.ty.full_name()
-                    .map(|ident| Rc::new(ident.to_string()))
-                    .expect("member access must be of a named type"),
-                member: bin_op.rhs.expr.as_ident()
-                    .map(|ident| Rc::new(ident.to_string()))
-                    .expect("rhs of member binop must be an ident"),
-            }
+            let struct_name = bin_op.lhs.annotation.ty
+                .full_name()
+                .expect("member access must be of a named type");
+            let member_name = bin_op.rhs.expr.as_ident().map(|i| i.to_string())
+                .expect("rhs of member binop must be an ident");
+
+            let (struct_id, struct_def) = builder.metadata.find_struct(&struct_name)
+                .expect("referenced struct must exist");
+            let field_id = struct_def.find_field(&member_name)
+                .expect("referenced field must exist");
+
+            Instruction::GetField { out: out_val.clone(), of: lhs_val, struct_id, field_id }
         },
 
         syn::Operator::Plus => Instruction::Add {
@@ -264,8 +293,10 @@ fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Val
         _ => panic!("type of function target expr must be a function"),
     };
 
-    let out_ty = sig.return_ty.as_ref()
-        .map(|return_ty| translate_type(return_ty));
+    let out_ty = match &sig.return_ty {
+        pas_ty::Type::None => None,
+        return_ty => Some(builder.metadata.translate_type(return_ty)),
+    };
 
     let out_val = out_ty.map(|ty| builder.new_local(ty, None));
 
@@ -289,18 +320,122 @@ fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Val
     out_val
 }
 
+fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Value {
+    let (struct_id, struct_def) = builder.metadata.find_struct(&ctor.ident.to_string())
+        .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
+
+    let out_val = builder.new_local(Type::Struct(struct_id), None);
+
+    builder.begin_scope();
+
+    // todo: lookup members by id, don't assume they're in order
+    for member in &ctor.args.members {
+        let member_val = translate_expr(&member.value, builder);
+        let field_id = struct_def.find_field(&member.ident.to_string())
+            .unwrap_or_else(|| panic!("field {} referenced in object ctor must exist", member.ident));
+
+        builder.append(Instruction::SetField {
+            of: out_val.clone(),
+            new_val: member_val,
+            struct_id,
+            field_id
+        });
+    }
+
+    builder.end_scope();
+    out_val
+}
+
+fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Builder) -> Value {
+    match lit {
+        ast::Literal::Boolean(b) => {
+            assert_eq!(pas_ty::Type::Boolean, *ty);
+            Value::LiteralBool(*b)
+        }
+
+        ast::Literal::Integer(i) => {
+            match ty {
+                pas_ty::Type::Integer => {
+                    Value::LiteralI32(i.as_i32()
+                        .expect("Int32-typed constant must be within range of i32"))
+                },
+                _ => panic!("bad type for integer literal: {}", ty),
+            }
+        }
+
+        ast::Literal::Real(r) => {
+            match ty {
+                pas_ty::Type::Real32 => {
+                    Value::LiteralF32(r.as_f32()
+                        .expect("Real32-typed constant must be within range of f32"))
+                },
+                _ => panic!("bad type for real literal: {}", ty),
+            }
+        }
+
+        ast::Literal::String(_s) => {
+            unimplemented!("IR string literal")
+        },
+    }
+}
+
+fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Option<Value> {
+    let out_val = match &if_cond.annotation.ty {
+        pas_ty::Type::None => None,
+        out_ty => {
+            let out_ty = builder.metadata.translate_type(out_ty);
+            Some(builder.new_local(out_ty, None))
+        }
+    };
+
+    builder.begin_scope();
+
+    let then_label = builder.alloc_label();
+    let end_label = builder.alloc_label();
+    let else_label = if_cond.else_branch.as_ref().map(|_| builder.alloc_label());
+
+    let test_val = translate_expr(&if_cond.cond, builder);
+    builder.append(Instruction::JumpIf { test: test_val, dest: then_label });
+
+    if let Some(else_label) = else_label {
+        builder.append(Instruction::Jump { dest: else_label });
+    }
+
+    builder.append(Instruction::Label(then_label));
+    let then_val = translate_expr(&if_cond.then_branch, builder);
+    if let Some(out_val) = out_val.clone() {
+        builder.append(Instruction::Set { out: out_val, new_val: then_val });
+    }
+    builder.append(Instruction::Jump { dest: end_label });
+
+    if let Some(else_branch) = &if_cond.else_branch {
+        builder.append(Instruction::Label(else_label.unwrap()));
+
+        let else_val = translate_expr(else_branch, builder);
+        if let Some(out_val) = out_val.clone() {
+            builder.append(Instruction::Set { out: out_val, new_val: else_val });
+        }
+    }
+
+    builder.append(Instruction::Label(end_label));
+    builder.end_scope();
+
+    out_val
+}
+
 pub fn translate_expr(
     expr: &pas_ty::ast::ExpressionNode,
     builder: &mut Builder,
 ) -> Value {
     match expr.expr.as_ref() {
-        ast::Expression::LiteralInt(i) => {
-            Value::LiteralI32(i.as_i32()
-                .expect("i32-typed int constant must be within range of i32"))
+        ast::Expression::Literal(lit) => {
+            translate_literal(lit, &expr.annotation.ty, builder)
         },
+
         ast::Expression::BinOp(bin_op) => {
             translate_bin_op(bin_op, &expr.annotation.ty, builder)
         },
+
         ast::Expression::Ident(ident) => {
             match expr.annotation.value_kind {
                 None => {
@@ -321,18 +456,29 @@ pub fn translate_expr(
                 }
             }
         },
+
         ast::Expression::Call(call) => {
             translate_call(call, builder)
                 .expect("call used in expression must have a return type")
         }
-        _ => unimplemented!("expression IR for {}", expr),
+
+        ast::Expression::ObjectCtor(ctor) => {
+            translate_object_ctor(ctor, builder)
+        }
+
+        ast::Expression::IfCond(if_cond) => {
+            translate_if_cond(if_cond, builder)
+                .expect("conditional used in expression must have a type")
+        }
+
+//        _ => unimplemented!("expression IR for {}", expr),
     }
 }
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LetBinding(binding) => {
-            let val_ty = translate_type(&binding.val_ty);
+            let val_ty = builder.metadata.translate_type(&binding.val_ty);
             let binding_id = builder.new_local(val_ty, Some(binding.name.to_string()));
 
             builder.begin_scope();
@@ -358,10 +504,10 @@ pub struct Function {
     return_ty: Option<Type>,
 }
 
-pub fn translate_func(func: &pas_ty::ast::FunctionDecl) -> Function {
-    let mut body_builder = Builder::new();
+pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> Function {
+    let mut body_builder = Builder::new(metadata);
 
-    let return_ty = func.return_ty.as_ref().map(translate_type);
+    let return_ty = func.return_ty.as_ref().map(|ty| body_builder.metadata.translate_type(ty));
 
     for (i, param) in func.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
@@ -390,25 +536,11 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl) -> Function {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct Struct {
-    fields: Vec<(Rc<String>, Type)>,
-}
 
-fn translate_struct(struct_def: &pas_ty::ast::Class) -> Struct {
-    let mut fields = Vec::new();
-    for member in &struct_def.members {
-        let name = Rc::new(member.ident.to_string());
-        let ty = translate_type(&member.ty);
-        fields.push((name, ty));
-    }
-
-    Struct { fields }
-}
 
 #[derive(Clone, Debug)]
 pub struct Unit {
-    structs: HashMap<Rc<String>, Struct>,
+    metadata: Metadata,
     functions: HashMap<String, Function>,
     init: Vec<Instruction>,
 }
@@ -416,10 +548,10 @@ pub struct Unit {
 impl fmt::Display for Unit {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Structures")?;
-        for (name, struct_def) in &self.structs {
-            writeln!(f, "{}:", name)?;
-            for (name, ty) in &struct_def.fields {
-                writeln!(f, "  .{}: {}", name, ty)?;
+        for (id, struct_def) in self.metadata.structs() {
+            writeln!(f, "{{{}}} ({}):", id, struct_def.name)?;
+            for (id, field) in &struct_def.fields {
+                writeln!(f, "  {:8>} ({}): {}", format!(".{}", id), field.name, field.ty)?;
             }
             writeln!(f)?;
         }
@@ -442,25 +574,23 @@ impl fmt::Display for Unit {
 }
 
 pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
+    let mut metadata = Metadata::new();
     let mut functions = HashMap::new();
-    let mut structs = HashMap::new();
 
-    for decl in &unit.decls {
-        match decl {
-            ast::UnitDecl::Function(func_decl) => {
-                let func = translate_func(func_decl);
-                functions.insert(func_decl.ident.to_string(), func);
-            }
-
-            ast::UnitDecl::Type(ast::TypeDecl::Class(class)) => {
-                let struct_def = translate_struct(class);
-                let name = Rc::new(class.ident.to_string());
-                structs.insert(name, struct_def);
+    for ty_decl in unit.type_decls() {
+        match ty_decl {
+            ast::TypeDecl::Class(class) => {
+                metadata.translate_struct(class);
             }
         }
     }
 
-    let mut init_builder = Builder::new();
+    for func_decl in unit.func_decls() {
+        let func = translate_func(func_decl, &metadata);
+        functions.insert(func_decl.ident.to_string(), func);
+    }
+
+    let mut init_builder = Builder::new(&metadata);
 
     for stmt in &unit.init {
         translate_stmt(stmt, &mut init_builder);
@@ -469,6 +599,6 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
     Unit {
         init: init_builder.finish(),
         functions,
-        structs,
+        metadata,
     }
 }

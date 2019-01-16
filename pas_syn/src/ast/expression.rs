@@ -15,20 +15,48 @@ use {
             Call,
             ObjectCtor,
             ObjectCtorArgs,
+            IfCond,
         },
+        Keyword,
     },
 };
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum Literal {
+    Integer(IntConstant),
+    Real(RealConstant),
+    String(String),
+    Boolean(bool),
+}
+
+impl fmt::Display for Literal {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Literal::Integer(x) => write!(f, "{}", x),
+            Literal::Real(x) => write!(f, "{}", x),
+            Literal::String(s) => write!(f, "'{}'", s),
+            Literal::Boolean(b) => write!(f, "{}", b),
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BinOp<A: Annotation> {
     pub lhs: ExpressionNode<A>,
     pub op: Operator,
     pub rhs: ExpressionNode<A>,
+    pub annotation: A,
 }
 
 impl<A: Annotation> fmt::Display for BinOp<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{} {} {}", self.lhs, self.op, self.rhs)
+    }
+}
+
+impl<A: Annotation> Spanned for BinOp<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
     }
 }
 
@@ -50,11 +78,11 @@ impl<A: Annotation> ExpressionNode<A> {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Expression<A: Annotation> {
     BinOp(BinOp<A>),
-    LiteralInt(IntConstant),
-    LiteralString(String),
+    Literal(Literal),
     Ident(Ident),
     Call(Call<A>),
     ObjectCtor(ObjectCtor<A>),
+    IfCond(IfCond<A>),
 }
 
 impl<A: Annotation> Expression<A> {
@@ -84,11 +112,11 @@ impl<A: Annotation> fmt::Display for Expression<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expression::Ident(ident) => write!(f, "{}", ident),
-            Expression::LiteralInt(i) => write!(f, "{}", i),
+            Expression::Literal(lit) => write!(f, "{}", lit),
             Expression::BinOp(op) => write!(f, "{}", op),
-            Expression::LiteralString(s) => write!(f, "'{}'", s),
             Expression::Call(call) => write!(f, "{}", call),
             Expression::ObjectCtor(ctor) => write!(f, "{}", ctor),
+            Expression::IfCond(if_cond) => write!(f, "{}", if_cond),
         }
     }
 }
@@ -112,7 +140,7 @@ pub fn match_operand_start() -> Matcher {
         .or(Matcher::AnyLiteralInteger)
         .or(Matcher::AnyLiteralString)
         .or(Matcher::AnyLiteralReal)
-//        .or(keywords::Nil)
+        .or(Keyword::If)
         // prefix operator applying to next operand
         .or(Matcher::any_operator_in_position(Position::Prefix))
 }
@@ -198,6 +226,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                 lhs: lhs_operand,
                 op: lo_op.op,
                 rhs: rhs_operand,
+                annotation: span.clone(),
             };
 
             Ok(ExpressionNode::new(Expression::BinOp(bin_op), span))
@@ -220,7 +249,8 @@ fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span
 fn parse_literal_string(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span>> {
     match tokens.match_one(Matcher::AnyLiteralString)? {
         TokenTree::String { value, span } => {
-            Ok(ExpressionNode::new(Expression::LiteralString(value), span))
+            let str_lit = Literal::String(value);
+            Ok(ExpressionNode::new(Expression::Literal(str_lit), span))
         }
         _ => unreachable!()
     }
@@ -229,29 +259,30 @@ fn parse_literal_string(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<
 fn parse_literal_integer(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span>> {
     match tokens.match_one(Matcher::AnyLiteralInteger)? {
         TokenTree::IntNumber { value, span } => {
-            Ok(ExpressionNode::new(Expression::LiteralInt(value), span))
+            let int_lit = Literal::Integer(value);
+            Ok(ExpressionNode::new(Expression::Literal(int_lit), span))
         }
         _ => unreachable!(),
     }
 }
 
-//fn parse_literal_float(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span> {
-//    let float_token = tokens.match_one(Matcher::AnyLiteralFloat)?;
-//
-//    let f = float_token.unwrap_literal_float();
-//    Ok(Expression::literal_float(f, float_token.clone()))
-//}
-//
-//fn parse_literal_nil(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span> {
-//    tokens.match_one(keywords::Nil)?;
-//    Ok(Expression::literal_nil(tokens.context().clone()))
-//}
-//
-//fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span> {
-//    let kw = tokens.match_one(keywords::True.or(keywords::False))?;
-//    let val = kw.is_keyword(keywords::True);
-//    Ok(Expression::literal_bool(val, kw))
-//}
+fn parse_literal_real(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span>> {
+    match tokens.match_one(Matcher::AnyLiteralReal)? {
+        TokenTree::RealNumber { value, span } => {
+            let real_lit = Literal::Real(value);
+            Ok(ExpressionNode::new(Expression::Literal(real_lit), span))
+        }
+
+        _ => unreachable!(),
+    }
+}
+
+fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<ExpressionNode<Span>> {
+    let kw = tokens.match_one(Keyword::True.or(Keyword::False))?;
+    let val = kw.is_keyword(Keyword::True);
+    let expr = Expression::Literal(Literal::Boolean(val));
+    Ok(ExpressionNode::new(expr, kw.span().clone()))
+}
 
 #[derive(Debug, Clone)]
 struct OperatorToken {
@@ -270,15 +301,6 @@ enum CompoundExpressionPart {
     Operand(CompoundOperand),
     Operator(OperatorToken),
 }
-
-//impl CompoundExpressionPart {
-//    fn unwrap_operand(self) -> CompoundOperand {
-//        match self {
-//            CompoundExpressionPart::Operand(operand) => operand,
-//            invalid => panic!("called unwrap_operand on {:?}", invalid)
-//        }
-//    }
-//}
 
 struct CompoundExpressionParser<'tokens> {
     tokens: &'tokens mut TokenStream,
@@ -351,7 +373,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             /* it's an operator, but thanks to the match we know this operator
             is valid in prefix position, so it's part of this expression */
-            Some(ref t) if Matcher::AnyOperator.is_match(t) => {
+            Some(TokenTree::Operator { .. }) => {
                 // we need to parse another operand after this!
                 self.last_was_operand = false;
                 let op = self.tokens.match_one(Matcher::AnyOperator)?;
@@ -360,37 +382,40 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             /* the simple values */
 
-            Some(ref ident) if ident.as_ident().is_some() => {
+            Some(TokenTree::Ident(_)) => {
                 let expr = parse_identifier(self.tokens)?;
                 self.add_operand(expr);
             }
 
-            Some(ref s) if s.as_literal_string().is_some() => {
+            Some(TokenTree::String { .. }) => {
                 let expr = parse_literal_string(self.tokens)?;
                 self.add_operand(expr);
             }
 
-            Some(ref i) if i.as_literal_int().is_some() => {
+            Some(TokenTree::IntNumber { .. }) => {
                 let expr = parse_literal_integer(self.tokens)?;
                 self.add_operand(expr);
             }
 
-//            Some(ref f) if f.is_any_literal_real() => {
-//                let expr = parse_literal_float(self.tokens)?;
-//                self.add_operand(expr);
-//            }
+            Some(TokenTree::Keyword { kw: Keyword::If, .. }) => {
+                let cond = IfCond::parse(self.tokens)?;
+                let span = cond.span().clone();
+                let expr = ExpressionNode::new(Expression::IfCond(cond), span);
+                self.add_operand(expr);
+            }
 
-//            Some(ref nil) if nil.is_literal_nil() => {
-//                let expr = parse_literal_nil(self.tokens)?;
-//                self.add_operand(expr);
-//            }
+            Some(TokenTree::Keyword { kw: Keyword::False, .. }) |
+            Some(TokenTree::Keyword { kw: Keyword::True, .. }) => {
+                let expr = parse_literal_bool(self.tokens)?;
+                self.add_operand(expr);
+            }
 
-//            Some(ref bool_kw) if Matcher::AnyLiteralBoolean.is_match(bool_kw) => {
-//                let expr = parse_literal_bool(self.tokens)?;
-//                self.add_operand(expr);
-//            }
+            Some(TokenTree::RealNumber { .. }) => {
+                let expr = parse_literal_real(self.tokens)?;
+                self.add_operand(expr);
+            }
 
-            Some(_) => unreachable!("pattern excludes anything else"),
+            Some(x) => unreachable!("got {:?} which is excluded by pattern", x),
 
             /* next token is not valid as part of an operand, so this expression
             must end here */

@@ -23,8 +23,8 @@ pub enum TypecheckError {
     },
     InvalidCallInExpression(Call),
     TypeMismatch {
-        expected: Option<Type>,
-        actual: Option<Type>,
+        expected: Type,
+        actual: Type,
         span: Span,
     },
     MemberNotFound {
@@ -55,6 +55,16 @@ impl Spanned for TypecheckError {
     }
 }
 
+fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item=&'a Type>) -> fmt::Result {
+    for (i, arg) in args.into_iter().enumerate() {
+        if i > 0 {
+            write!(f, ", ")?;
+        }
+        write!(f, "{}", arg)?;
+    }
+    Ok(())
+}
+
 impl fmt::Display for TypecheckError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -67,20 +77,10 @@ impl fmt::Display for TypecheckError {
                 if expected.len() != actual.len() {
                     write!(f, "expected {} args, got {}", expected.len(), actual.len())
                 } else {
-                    fn write_args(f: &mut fmt::Formatter, args: &[Type]) -> fmt::Result {
-                        for (i, arg) in args.iter().enumerate() {
-                            if i > 0 {
-                                write!(f, ", ")?;
-                            }
-                            write!(f, "{}", arg)?;
-                        }
-                        Ok(())
-                    };
-
                     write!(f, "expected arguments (")?;
-                    write_args(f, &expected)?;
+                    write_args(f, expected.iter())?;
                     write!(f, "), found (")?;
-                    write_args(f, &actual)?;
+                    write_args(f, actual.iter())?;
                     write!(f, ")")
                 }
             }
@@ -90,22 +90,16 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::TypeMismatch { expected, actual, .. } => {
-                fn write_ty(f: &mut fmt::Formatter, ty: &Option<Type>) -> fmt::Result {
-                    match ty {
-                        Some(ty) => write!(f, "{}", ty),
-                        None => write!(f, "(none)"),
-                    }
-                }
-
                 write!(f, "type mismatch: expected ")?;
-                write_ty(f, expected)?;
+                write!(f, "{}", expected)?;
                 write!(f, ", found ")?;
-                write_ty(f, actual)
-
+                write!(f, "{}", actual)
             }
 
             TypecheckError::MemberNotFound { base, member, .. } => {
-                write!(f, "type {} does not have a member named `{}`", base, member)
+                write!(f, "type ")?;
+                write!(f, "{}", base)?;
+                write!(f, " does not have a member named `{}`", member)
             }
         }
     }

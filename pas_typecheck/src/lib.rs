@@ -10,6 +10,8 @@ pub mod ast {
     mod typedecl;
     mod block;
     mod ctor;
+    mod bin_op;
+    mod cond;
 
     mod prelude {
         pub use {
@@ -31,6 +33,8 @@ pub mod ast {
     }
 
     pub use self::{
+        bin_op::*,
+        cond::*,
         expression::*,
         statement::*,
         unit::*,
@@ -68,7 +72,7 @@ pub mod ty {
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub struct FunctionSig {
-        pub return_ty: Option<Type>,
+        pub return_ty: Type,
         pub params: Vec<Type>,
     }
 
@@ -94,8 +98,8 @@ pub mod ty {
             write!(f, ")")?;
 
             match &self.return_ty {
-                Some(ty) => write!(f, ": {}", ty),
-                None => Ok(()),
+                Type::None => Ok(()),
+                ty => write!(f, ": {}", ty),
             }
         }
     }
@@ -104,6 +108,8 @@ pub mod ty {
     pub enum Type {
         None,
         Integer,
+        Real32,
+        Boolean,
         Function(Rc<FunctionSig>),
         Class(Rc<Class>),
     }
@@ -111,7 +117,9 @@ pub mod ty {
     impl Type {
         pub fn full_name(&self) -> Option<String> {
             match self {
+                Type::Boolean => Some("Boolean".to_string()),
                 Type::Integer => Some("Integer".to_string()),
+                Type::Real32 => Some("Single".to_string()),
                 Type::Class(class) => Some(class.ident.to_string()),
                 _ => None,
             }

@@ -7,13 +7,11 @@ use {
     },
     pas_syn::{
         ast,
-        Operator,
     },
 };
 
 pub type Call = ast::Call<TypeAnnotation>;
 pub type ExpressionNode = ast::ExpressionNode<TypeAnnotation>;
-pub type BinOp = ast::BinOp<TypeAnnotation>;
 
 fn invalid_args(actual_args: Vec<ExpressionNode>, sig: &FunctionSig, span: Span) -> TypecheckError {
     TypecheckError::InvalidArgs {
@@ -62,8 +60,8 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
     let span = call.annotation.span().clone();
 
     let annotation = match sig.return_ty.clone() {
-        Some(return_ty) => TypeAnnotation::typed_value(return_ty, ValueKind::Temporary, span),
-        None => TypeAnnotation::untyped(span)
+        Type::None => TypeAnnotation::untyped(span),
+        return_ty => TypeAnnotation::typed_value(return_ty, ValueKind::Temporary, span),
     };
 
     Ok(Call {
@@ -77,17 +75,49 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
     let span = expr_node.annotation.clone();
 
     match expr_node.expr.as_ref() {
-        ast::Expression::LiteralInt(i) => {
+        ast::Expression::Literal(ast::Literal::String(s)) => {
             let binding = ValueKind::Immutable;
-            let annotation = TypeAnnotation::typed_value(Type::Integer, binding, span.clone());
-
-            let expr = ast::Expression::LiteralInt(i.clone());
+            let annotation = TypeAnnotation::typed_value(ctx.string_type(), binding, span.clone());
+            let expr = ast::Expression::Literal(ast::Literal::String(s.clone()));
 
             Ok(ast::ExpressionNode::new(expr, annotation))
         }
 
-        ast::Expression::LiteralString(_s) => {
-            unimplemented!("string literal typechecking")
+        ast::Expression::Literal(ast::Literal::Boolean(b)) => {
+            let binding = ValueKind::Immutable;
+            let annotation = TypeAnnotation::typed_value(Type::Boolean, binding, span.clone());
+            let expr = ast::Expression::Literal(ast::Literal::Boolean(*b));
+
+            Ok(ast::ExpressionNode::new(expr, annotation))
+        }
+
+        ast::Expression::Literal(ast::Literal::Integer(i)) => {
+            let binding = ValueKind::Immutable;
+
+            let ty = if i.as_i32().is_some() {
+                Type::Integer
+            } else {
+                unimplemented!("integers outside range of i32")
+            };
+            let annotation = TypeAnnotation::typed_value(ty, binding, span.clone());
+            let expr = ast::Expression::Literal(ast::Literal::Integer(*i));
+
+            Ok(ast::ExpressionNode::new(expr, annotation))
+        }
+
+        ast::Expression::Literal(ast::Literal::Real(x)) => {
+            let binding = ValueKind::Immutable;
+
+            let ty = if x.as_f32().is_some() {
+                Type::Real32
+            } else {
+                unimplemented!("real literal outside range of f32")
+            };
+
+            let annotation = TypeAnnotation::typed_value(ty, binding, span.clone());
+            let expr = ast::Expression::Literal(ast::Literal::Real(x.clone()));
+
+            Ok(ast::ExpressionNode::new(expr, annotation))
         }
 
         ast::Expression::Ident(ident) => {
@@ -100,58 +130,10 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
         }
 
         ast::Expression::BinOp(bin_op) => {
-            let lhs = typecheck_expr(&bin_op.lhs, ctx)?;
-            let (bin_op, annotation) = match &bin_op.op {
-                Operator::Member => {
-                    // rhs of an ident op must be an identifier (parser checks this)
-                    let member_ident = bin_op.rhs.expr.as_ident()
-                        .cloned()
-                        .expect("bin-op with member operator should always have an ident on the rhs");
-
-                    let base_ty = &lhs.annotation.ty;
-                    let member_ty = base_ty.find_member(&member_ident)
-                        .cloned()
-                        .ok_or_else(|| TypecheckError::MemberNotFound {
-                            base: base_ty.clone(),
-                            member: member_ident.clone(),
-                            span: expr_node.annotation.span().clone(),
-                        })?;
-
-                    let annotation = TypeAnnotation {
-                        span: expr_node.annotation.span().clone(),
-                        value_kind: lhs.annotation.value_kind.clone(),
-                        ty: member_ty,
-                    };
-
-                    let rhs = ast::Expression::Ident(member_ident);
-                    let bin_op = BinOp {
-                        lhs,
-                        op: Operator::Member,
-                        rhs: ExpressionNode::new(rhs, annotation.clone())
-                    };
-
-                    (bin_op, annotation)
-                },
-
-                _ => {
-
-                    let rhs = typecheck_expr(&bin_op.rhs, ctx)?;
-
-                    // check valid ops etc, result type etc
-                    let result_type = lhs.annotation.ty.clone();
-
-                    let annotation = TypeAnnotation::typed_value(result_type, ValueKind::Temporary, span);
-                    let bin_op = ast::BinOp {
-                        lhs,
-                        op: bin_op.op,
-                        rhs,
-                    };
-
-                    (bin_op, annotation)
-                },
-            };
-
-            Ok(ast::ExpressionNode::new(ast::Expression::BinOp(bin_op), annotation))
+            let bin_op = typecheck_bin_op(bin_op, ctx)?;
+            let annotation = bin_op.annotation.clone();
+            let expr = ast::Expression::BinOp(bin_op);
+            Ok(ast::ExpressionNode::new(expr, annotation))
         }
 
         ast::Expression::Call(call) => {
@@ -170,6 +152,13 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
             let ctor = typecheck_object_ctor(ctor, ctx)?;
             let annotation = ctor.annotation.clone();
             let expr = ast::Expression::ObjectCtor(ctor);
+            Ok(ast::ExpressionNode::new(expr, annotation))
+        }
+
+        ast::Expression::IfCond(if_cond) => {
+            let if_cond = typecheck_if_cond(if_cond, ctx)?;
+            let annotation = if_cond.annotation.clone();
+            let expr = ast::Expression::IfCond(if_cond);
             Ok(ast::ExpressionNode::new(expr, annotation))
         }
     }

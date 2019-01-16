@@ -6,6 +6,7 @@ pub mod function;
 pub mod block;
 pub mod typedecl;
 pub mod ctor;
+pub mod cond;
 
 pub use self::{
     statement::*,
@@ -16,6 +17,7 @@ pub use self::{
     function::*,
     typedecl::*,
     ctor::*,
+    cond::*,
 };
 
 use {

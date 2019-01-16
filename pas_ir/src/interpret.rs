@@ -9,6 +9,7 @@ use {
         Type,
         Value,
         Unit,
+        metadata::*,
     },
 };
 
@@ -44,17 +45,11 @@ impl fmt::Debug for Function {
 
 #[derive(Debug, Clone)]
 enum MemCell {
+    Bool(bool),
     I32(i32),
+    F32(f32),
     Function(Function),
-}
-
-impl MemCell {
-    fn default_of(ty: &Type) -> MemCell {
-        match ty {
-            Type::I32 => MemCell::I32(-1),
-            _ => panic!("can't initialize default cell of type `{:?}`", ty),
-        }
-    }
+    Structure(Vec<MemCell>),
 }
 
 #[derive(Debug)]
@@ -64,6 +59,7 @@ struct StackFrame {
 
 #[derive(Debug)]
 pub struct Interpreter {
+    metadata: Metadata,
     stack: Vec<StackFrame>,
     globals: HashMap<String, MemCell>,
 }
@@ -75,14 +71,39 @@ impl Interpreter {
             Function::Builtin(builtin::write_ln)));
 
         Self {
+            metadata: Metadata::new(),
             globals,
             stack: Vec::new(),
         }
     }
 
+    fn init_cell(&self, ty: &Type) -> MemCell {
+        match ty {
+            Type::I32 => MemCell::I32(-1),
+            Type::Struct(id) => {
+                let struct_def = &self.metadata.structs()[id];
+
+                let mut field_cells = Vec::new();
+                for (&id, field) in &struct_def.fields {
+                    // include padding of -1s for non-contiguous IDs
+                    if id >= field_cells.len() {
+                        field_cells.resize(id + 1, MemCell::I32(-1));
+                    }
+                    field_cells[id] = self.init_cell(&field.ty);
+                }
+
+                MemCell::Structure(field_cells)
+            }
+
+            _ => panic!("can't initialize default cell of type `{:?}`", ty),
+        }
+    }
+
     fn store(&mut self, at: &Value, val: MemCell) {
         match at {
-            Value::LiteralI32(_) => {
+            Value::LiteralI32(_) |
+            Value::LiteralF32(_) |
+            Value::LiteralBool(_) => {
                 panic!("literal is not a valid storage location")
             }
 
@@ -110,6 +131,8 @@ impl Interpreter {
             }
 
             Value::LiteralI32(i) => MemCell::I32(*i),
+            Value::LiteralF32(f) => MemCell::F32(*f),
+            Value::LiteralBool(b) => MemCell::Bool(*b),
 
             Value::Global(name) => match self.globals.get(name) {
                 Some(cell) => cell.clone(),
@@ -145,7 +168,8 @@ impl Interpreter {
 
                 // store empty result at $0 if needed
                 if let Some(return_ty) = &ir_func.return_ty {
-                    self.current_frame_mut().locals.push(Some(MemCell::default_of(return_ty)));
+                    let result_cell = self.init_cell(return_ty);
+                    self.current_frame_mut().locals.push(Some(result_cell));
                 }
 
                 // store params in either $0.. or $1..
@@ -188,7 +212,7 @@ impl Interpreter {
                     }
 
                     match self.current_frame().locals[*id] {
-                        None => self.current_frame_mut().locals[*id] = Some(MemCell::default_of(ty)),
+                        None => self.current_frame_mut().locals[*id] = Some(self.init_cell(ty)),
                         _ => panic!("local cell {} is already allocated"),
                     }
                 }
@@ -227,14 +251,45 @@ impl Interpreter {
                     };
                 }
 
-                Instruction::Member { out, of, struct_name, member, } => {
-                    unimplemented!("member {} {} {}.{}", out, of, struct_name, member)
+                Instruction::GetField { out, of, struct_id: _, field_id, } => {
+                    match self.load(of) {
+                        MemCell::Structure(cells) => {
+                            let field_cell = cells.into_iter().skip(*field_id).next().unwrap();
+                            self.store(out, field_cell);
+                        }
+                        _ => panic!("GetField instruction targeting non-structure cell"),
+                    }
+                }
+
+                Instruction::SetField { of, new_val, struct_id: _, field_id, } => {
+                    match self.load(of) {
+                        MemCell::Structure(mut cells) => {
+                            cells[*field_id] = self.load(new_val);
+                            self.store(of, MemCell::Structure(cells))
+                        }
+
+                        _ => panic!("SetField instruction targeting non-structure cell"),
+                    }
+                }
+
+                Instruction::Label(_) => {
+                    // noop
+                }
+
+                Instruction::Jump { dest, } => {
+                    unimplemented!("jmp {}", dest)
+                }
+
+                Instruction::JumpIf { dest, test } => {
+                    unimplemented!("jmpif {} if {}", dest, test)
                 }
             }
         }
     }
 
     pub fn load_unit(&mut self, unit: &Unit) {
+        self.metadata.extend(&unit.metadata);
+
         for (func_name, func) in &unit.functions {
             let func_loc = Value::Global(func_name.clone());
             let func_cell = MemCell::Function(Function::IR(func.clone()));

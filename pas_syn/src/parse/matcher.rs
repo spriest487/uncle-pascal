@@ -61,25 +61,25 @@ impl<'a> From<&'a str> for Matcher {
     }
 }
 
-//pub trait MatchOneOf {
-//    fn or<T>(self, next: T) -> Matcher where T: Into<Matcher>;
-//}
-//
-//pub trait MatchSequenceOf {
-//    fn and_then<T>(self, next: T) -> SequenceMatcher where T: Into<Matcher>;
-//}
-//
-//impl<TMatchable> MatchOneOf for TMatchable where TMatchable: Into<Matcher> {
-//    fn or<T>(self, next: T) -> Matcher where T: Into<Matcher> {
-//        self.into().or(next.into())
-//    }
-//}
-//
-//impl<TMatchable> MatchSequenceOf for TMatchable where TMatchable: Into<Matcher> {
-//    fn and_then<T>(self, next: T) -> SequenceMatcher where T: Into<Matcher> {
-//        self.into().and_then(next.into())
-//    }
-//}
+pub trait MatchOneOf {
+    fn or(self, next: impl Into<Matcher>) -> Matcher;
+}
+
+impl<M: Into<Matcher>> MatchOneOf for M {
+    fn or(self, next: impl Into<Matcher>) -> Matcher{
+        self.into().or(next.into())
+    }
+}
+
+pub trait MatchSequenceOf {
+    fn and_then(self, next: impl Into<Matcher>) -> SequenceMatcher;
+}
+
+impl<M: Into<Matcher>> MatchSequenceOf for M {
+    fn and_then(self, next: impl Into<Matcher>) -> SequenceMatcher {
+        self.into().and_then(next.into())
+    }
+}
 
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
