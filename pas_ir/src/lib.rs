@@ -44,7 +44,7 @@ pub struct Label(usize);
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, ":{}", self.0)
+        write!(f, "{}:", self.0)
     }
 }
 
@@ -471,6 +471,11 @@ pub fn translate_expr(
                 .expect("conditional used in expression must have a type")
         }
 
+        ast::Expression::Block(block) => {
+            translate_block(block, builder)
+                .expect("block used in expression must have a type")
+        }
+
 //        _ => unimplemented!("expression IR for {}", expr),
     }
 }
@@ -507,7 +512,8 @@ pub struct Function {
 pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> Function {
     let mut body_builder = Builder::new(metadata);
 
-    let return_ty = func.return_ty.as_ref().map(|ty| body_builder.metadata.translate_type(ty));
+    let return_ty = func.return_ty.as_ref()
+        .map(|ty| body_builder.metadata.translate_type(ty));
 
     for (i, param) in func.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
@@ -520,14 +526,11 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> 
         body_builder.bind_local(id, param.ident.to_string());
     }
 
-    for stmt in &func.body.statements {
-        translate_stmt(stmt, &mut body_builder);
-    }
+    let block_output = translate_block(&func.body, &mut body_builder);
 
-    if let Some(return_out) = &func.body.output {
-        let out_val = Value::Local(0);
-        let return_val = translate_expr(return_out, &mut body_builder);
-        body_builder.append(Instruction::Set { out: out_val, new_val: return_val });
+    if let Some(return_val) = block_output {
+        let return_at = Value::Local(0);
+        body_builder.append(Instruction::Set { out: return_at, new_val: return_val });
     }
 
     Function {
@@ -536,7 +539,27 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> 
     }
 }
 
+fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Value> {
+    let out_val = block.output.as_ref().map(|out_expr| {
+        let out_ty = builder.metadata.translate_type(&out_expr.annotation.ty);
+        builder.new_local(out_ty, None)
+    });
 
+    builder.begin_scope();
+
+    for stmt in &block.statements {
+        translate_stmt(stmt, builder);
+    }
+
+    if let Some(out) = &block.output {
+        let result_val = translate_expr(out, builder);
+        builder.append(Instruction::Set { out: out_val.clone().unwrap(), new_val: result_val });
+    }
+
+    builder.end_scope();
+
+    out_val
+}
 
 #[derive(Clone, Debug)]
 pub struct Unit {

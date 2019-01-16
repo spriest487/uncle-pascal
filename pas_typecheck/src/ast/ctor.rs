@@ -10,16 +10,18 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
     let ty_ident = ast::TypeName::Ident(ctor.ident.clone());
     let ty = ctx.find_type(&ty_ident)?.clone();
 
+    let ty_members: Vec<_> = ty.members().cloned().collect();
     let mut members = Vec::new();
-    for member in &ctor.args.members {
-        let value = typecheck_expr(&member.value, ctx)?;
 
-        match ty.find_member(&member.ident) {
+    for (member_ty, ctor_member) in ty_members.iter().zip(ctor.args.members.iter()) {
+        let value = typecheck_expr(&ctor_member.value, member_ty, ctx)?;
+
+        match ty.find_member(&ctor_member.ident) {
             None => {
                 return Err(TypecheckError::MemberNotFound {
                     base: ty,
-                    member: member.ident.clone(),
-                    span: member.ident.span.clone(),
+                    member: ctor_member.ident.clone(),
+                    span: ctor_member.ident.span.clone(),
                 });
             },
 
@@ -27,17 +29,28 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
                 return Err(TypecheckError::TypeMismatch {
                     actual: value.annotation.ty,
                     expected: wrong_ty.clone(),
-                    span: member.value.annotation.span().clone(),
+                    span: ctor_member.value.annotation.span().clone(),
                 });
             }
 
             Some(_) => {
                 members.push(ObjectCtorMember {
-                    ident: member.ident.clone(),
+                    ident: ctor_member.ident.clone(),
                     value,
                 })
             }
         }
+    }
+
+    if members.len() != ty.members_len() {
+        let actual = members.into_iter()
+            .map(|m| m.value.annotation.ty)
+            .collect();
+        return Err(TypecheckError::InvalidArgs {
+            span: ctor.annotation.clone(),
+            expected: ty_members,
+            actual,
+        });
     }
 
     let args = ObjecCtorArgs {

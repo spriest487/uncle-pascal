@@ -11,7 +11,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     }
 
     let output = match &block.output {
-        Some(expr) => Some(typecheck_expr(expr, ctx)?),
+        Some(expr) => Some(typecheck_expr(expr, expect_ty, ctx)?),
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example

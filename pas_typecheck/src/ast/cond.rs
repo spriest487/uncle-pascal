@@ -6,10 +6,11 @@ pub type IfCond = ast::IfCond<TypeAnnotation>;
 
 pub fn typecheck_if_cond(
     if_cond: &ast::IfCond<Span>,
+    expect_ty: &Type,
     ctx: &mut Context)
     -> TypecheckResult<IfCond>
 {
-    let cond = typecheck_expr(&if_cond.cond, ctx)?;
+    let cond = typecheck_expr(&if_cond.cond, &Type::Boolean, ctx)?;
     if cond.annotation.ty != Type::Boolean {
         return Err(TypecheckError::TypeMismatch {
             expected: Type::Boolean,
@@ -18,9 +19,9 @@ pub fn typecheck_if_cond(
         });
     }
 
-    let then_branch = typecheck_expr(&if_cond.then_branch, ctx)?;
+    let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, ctx)?;
     let else_branch = match &if_cond.else_branch {
-        Some(else_expr) => Some(typecheck_expr(else_expr, ctx)?),
+        Some(else_expr) => Some(typecheck_expr(else_expr, expect_ty, ctx)?),
         None => None
     };
 

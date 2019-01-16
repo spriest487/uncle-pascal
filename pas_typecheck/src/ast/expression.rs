@@ -5,9 +5,7 @@ use {
     pas_common::{
         span::*,
     },
-    pas_syn::{
-        ast,
-    },
+    pas_syn::ast,
 };
 
 pub type Call = ast::Call<TypeAnnotation>;
@@ -30,11 +28,12 @@ fn typecheck_args(
     -> TypecheckResult<Vec<ExpressionNode>>
 {
     let mut actual_args = Vec::new();
-    for arg in &call.args {
-        actual_args.push(typecheck_expr(arg, ctx)?);
+
+    for (arg, param) in call.args.iter().zip(sig.params.iter()) {
+        actual_args.push(typecheck_expr(arg, param, ctx)?);
     }
 
-    if call.args.len() != sig.params.len() {
+    if actual_args.len() != sig.params.len() {
         // arg counts don't match
         return Err(invalid_args(actual_args, sig, call.annotation.clone()));
     }
@@ -49,7 +48,7 @@ fn typecheck_args(
 }
 
 pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckResult<Call> {
-    let target = typecheck_expr(&call.target, ctx)?;
+    let target = typecheck_expr(&call.target, &Type::None, ctx)?;
     let sig = match &target.annotation.ty {
         Type::Function(sig) => sig.as_ref(),
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
@@ -71,7 +70,12 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
     })
 }
 
-pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) -> TypecheckResult<ExpressionNode> {
+pub fn typecheck_expr(
+    expr_node: &ast::ExpressionNode<Span>,
+    expect_ty: &Type,
+    ctx: &mut Context)
+    -> TypecheckResult<ExpressionNode>
+{
     let span = expr_node.annotation.clone();
 
     match expr_node.expr.as_ref() {
@@ -156,9 +160,16 @@ pub fn typecheck_expr(expr_node: &ast::ExpressionNode<Span>, ctx: &mut Context) 
         }
 
         ast::Expression::IfCond(if_cond) => {
-            let if_cond = typecheck_if_cond(if_cond, ctx)?;
+            let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             let annotation = if_cond.annotation.clone();
             let expr = ast::Expression::IfCond(if_cond);
+            Ok(ast::ExpressionNode::new(expr, annotation))
+        }
+
+        ast::Expression::Block(block) => {
+            let block = typecheck_block(block, expect_ty, ctx)?;
+            let annotation = block.annotation.clone();
+            let expr = ast::Expression::Block(block);
             Ok(ast::ExpressionNode::new(expr, annotation))
         }
     }

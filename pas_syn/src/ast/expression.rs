@@ -16,6 +16,7 @@ use {
             ObjectCtor,
             ObjectCtorArgs,
             IfCond,
+            Block,
         },
         Keyword,
     },
@@ -83,6 +84,7 @@ pub enum Expression<A: Annotation> {
     Call(Call<A>),
     ObjectCtor(ObjectCtor<A>),
     IfCond(IfCond<A>),
+    Block(Block<A>),
 }
 
 impl<A: Annotation> Expression<A> {
@@ -117,6 +119,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Call(call) => write!(f, "{}", call),
             Expression::ObjectCtor(ctor) => write!(f, "{}", ctor),
             Expression::IfCond(if_cond) => write!(f, "{}", if_cond),
+            Expression::Block(block) => write!(f, "{}", block),
         }
     }
 }
@@ -135,6 +138,8 @@ pub fn match_operand_start() -> Matcher {
         .or(DelimiterPair::Bracket)
         // collection constructor
         .or(DelimiterPair::SquareBracket)
+        // block
+        .or(DelimiterPair::BeginEnd)
         // literals
         .or(Matcher::AnyLiteralBoolean)
         .or(Matcher::AnyLiteralInteger)
@@ -359,6 +364,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 match delim {
                     DelimiterPair::Bracket => {
                         let subexpr = ExpressionNode::parse(&mut group_tokens)?;
+                        group_tokens.finish()?;
                         self.add_operand(subexpr);
                     }
 
@@ -367,7 +373,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 //                        self.add_operand(ctor);
                     }
 
-                    DelimiterPair::BeginEnd => unreachable!("not in matcher"),
+                    DelimiterPair::BeginEnd => {
+                        let block = Block::parse(self.tokens)?;
+                        let span = block.annotation.clone();
+                        let expr = ExpressionNode::new(Expression::Block(block), span);
+                        self.add_operand(expr);
+                    }
                 }
             }
 

@@ -23,9 +23,9 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
 
     match stmt {
         ast::Statement::LetBinding(let_binding) => {
-            let val = typecheck_expr(&let_binding.val, ctx)?;
-
             let val_ty = ctx.find_type(&let_binding.val_ty)?.clone();
+            let val = typecheck_expr(&let_binding.val, &val_ty, ctx)?;
+
             let binding = Binding {
                 kind: ValueKind::Immutable,
                 ty: val_ty.clone(),

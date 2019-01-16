@@ -141,6 +141,25 @@ pub mod ty {
                 _ => None,
             }
         }
+
+        pub fn get_member(&self, index: usize) -> Option<&Type> {
+            match self {
+                Type::Class(class) => class.members.get(index).map(|m| &m.ty),
+                _ => None,
+            }
+        }
+
+        pub fn members_len(&self) -> usize {
+            match self {
+                Type::Class(class) => class.members.len(),
+                _ => 0,
+            }
+        }
+
+        pub fn members<'s>(&'s self) -> impl Iterator<Item=&'s Type> {
+            (0..self.members_len())
+                .map(move |m| self.get_member(m).unwrap())
+        }
     }
 
     impl fmt::Display for Type {

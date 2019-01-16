@@ -7,8 +7,12 @@ use {
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
-pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> TypecheckResult<BinOp> {
-    let lhs = typecheck_expr(&bin_op.lhs, ctx)?;
+pub fn typecheck_bin_op(
+    bin_op: &ast::BinOp<Span>,
+    ctx: &mut Context)
+    -> TypecheckResult<BinOp>
+{
+    let lhs = typecheck_expr(&bin_op.lhs, &Type::None, ctx)?;
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
@@ -44,7 +48,7 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
         },
 
         _ => {
-            let rhs = typecheck_expr(&bin_op.rhs, ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &Type::None, ctx)?;
 
             // check valid ops etc, result type etc
             let result_ty = lhs.annotation.ty.clone();
