@@ -51,6 +51,12 @@ pub enum Type {
     F32,
 }
 
+impl Type {
+    pub fn ptr(self) -> Self {
+        Type::Pointer(Box::new(self))
+    }
+}
+
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -58,7 +64,7 @@ impl fmt::Display for Type {
             Type::I32 => write!(f, "i32"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
-            Type::Pointer(target) => write!(f, "{}*", target),
+            Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
         }
     }

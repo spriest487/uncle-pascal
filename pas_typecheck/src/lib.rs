@@ -160,6 +160,13 @@ pub mod ty {
             (0..self.members_len())
                 .map(move |m| self.get_member(m).unwrap())
         }
+
+        pub fn is_rc(&self) -> bool {
+            match self {
+                Type::Class(_) => true,
+                _ => false,
+            }
+        }
     }
 
     impl fmt::Display for Type {

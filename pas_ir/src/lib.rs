@@ -1,27 +1,33 @@
-pub mod metadata;
-pub mod interpret;
-
 use {
-    std::{
-        fmt,
-        collections::HashMap,
-    },
+    crate ::metadata::*,
     pas_syn::{
         self as syn,
         ast,
     },
     pas_typecheck as pas_ty,
-    crate::metadata::*,
+    std::{
+        collections::HashMap,
+        fmt,
+    },
 };
-
 pub use {
     self::interpret::Interpreter,
 };
+
+pub mod metadata;
+pub mod interpret;
 
 #[derive(Debug, Clone)]
 pub enum Ref {
     Local(usize),
     Global(String),
+    Deref(Box<Ref>),
+}
+
+impl Ref {
+    pub fn deref(self) -> Self {
+        Ref::Deref(Box::new(self))
+    }
 }
 
 impl fmt::Display for Ref {
@@ -29,6 +35,7 @@ impl fmt::Display for Ref {
         match self {
             Ref::Local(id) => write!(f, "${}", id),
             Ref::Global(name) => write!(f, "`{}`", name),
+            Ref::Deref(at) => write!(f, "{}^", at),
         }
     }
 }
@@ -69,16 +76,16 @@ pub enum Instruction {
     Set { out: Ref, new_val: Value },
     Add { out: Ref, a: Value, b: Value },
 
-    Call { out: Option<Ref>, function: Value, args: Vec<Value>, },
+    Call { out: Option<Ref>, function: Value, args: Vec<Value> },
 
-    GetField { out: Ref, of: Value, struct_id: StructId, field_id: usize },
+    GetField { out: Ref, of: Ref, struct_id: StructId, field_id: usize },
     SetField { of: Ref, new_val: Value, struct_id: StructId, field_id: usize },
 
     Label(Label),
-    Jump { dest: Label, },
-    JumpIf { dest: Label, test: Value, },
+    Jump { dest: Label },
+    JumpIf { dest: Label, test: Value },
 
-//    MemAlloc { out: Ref, ty: Type, count: usize, },
+    MemAlloc { out: Ref, ty: Type },
 //    Retain(Ref),
 //    Release(Ref),
 }
@@ -127,6 +134,10 @@ impl fmt::Display for Instruction {
 
             Instruction::JumpIf { dest, test } => {
                 write!(f, "{:>width$} {} if {}", "jmpif", dest, test, width = IX_WIDTH)
+            }
+
+            Instruction::MemAlloc { out, ty, } => {
+                write!(f, "{:>width$} {}^ of {}", "malloc", out, ty, width = IX_WIDTH)
             }
         }
     }
@@ -202,7 +213,7 @@ impl<'m> Builder<'m> {
         assert!(!self.current_scope_mut().locals.iter()
             .any(|l| l.name() == Some(&name) || l.id() == id));
 
-        self.current_scope_mut().locals.push(Local::Bound { id, name: name.to_string(), });
+        self.current_scope_mut().locals.push(Local::Bound { id, name: name.to_string() });
 
         self.next_id = usize::max(id + 1, self.next_id + 1);
     }
@@ -272,6 +283,17 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
 
     let op_instruction = match &bin_op.op {
         syn::Operator::Member => {
+            // auto-deref for rc types
+            let struct_ref = match lhs_val {
+                Value::Ref(lhs_ref) => if bin_op.lhs.annotation.ty.is_rc() {
+                    lhs_ref.deref()
+                } else {
+                    lhs_ref
+                },
+
+                x => panic!("member expression {} references non-ref value {:?}", bin_op, x),
+            };
+
             let struct_name = bin_op.lhs.annotation.ty
                 .full_name()
                 .expect("member access must be of a named type");
@@ -283,8 +305,8 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
             let field_id = struct_def.find_field(&member_name)
                 .expect("referenced field must exist");
 
-            Instruction::GetField { out: out_val.clone(), of: lhs_val, struct_id, field_id }
-        },
+            Instruction::GetField { out: out_val.clone(), of: struct_ref, struct_id, field_id }
+        }
 
         syn::Operator::Plus => Instruction::Add {
             out: out_val.clone(),
@@ -338,7 +360,20 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let (struct_id, struct_def) = builder.metadata.find_struct(&ctor.ident.to_string())
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
 
-    let out = builder.new_local(Type::Struct(struct_id), None);
+//    let out = builder.new_local(Type::Struct(struct_id), None);
+    let struct_ty = Type::Struct(struct_id);
+
+    let (out_val, struct_ref) = if ctor.annotation.ty.is_rc() {
+        // allocate pointer to rc memory
+        let out_ptr = builder.new_local(struct_ty.clone().ptr(), None);
+        builder.append(Instruction::MemAlloc { out: out_ptr.clone(), ty: struct_ty });
+
+        (out_ptr.clone(), out_ptr.deref())
+    } else {
+        // allocate locally
+        let out_val = builder.new_local(struct_ty, None);
+        (out_val.clone(), out_val)
+    };
 
     builder.begin_scope();
 
@@ -349,15 +384,15 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
             .unwrap_or_else(|| panic!("field {} referenced in object ctor must exist", member.ident));
 
         builder.append(Instruction::SetField {
-            of: out.clone(),
+            of: struct_ref.clone(),
             new_val: member_val,
             struct_id,
-            field_id
+            field_id,
         });
     }
 
     builder.end_scope();
-    Value::Ref(out)
+    Value::Ref(out_val)
 }
 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Builder) -> Value {
@@ -372,7 +407,7 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Build
                 pas_ty::Type::Integer => {
                     Value::LiteralI32(i.as_i32()
                         .expect("Int32-typed constant must be within range of i32"))
-                },
+                }
                 _ => panic!("bad type for integer literal: {}", ty),
             }
         }
@@ -382,14 +417,14 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Build
                 pas_ty::Type::Real32 => {
                     Value::LiteralF32(r.as_f32()
                         .expect("Real32-typed constant must be within range of f32"))
-                },
+                }
                 _ => panic!("bad type for real literal: {}", ty),
             }
         }
 
         ast::Literal::String(_s) => {
             unimplemented!("IR string literal")
-        },
+        }
     }
 }
 
@@ -444,24 +479,24 @@ pub fn translate_expr(
     match expr.expr.as_ref() {
         ast::Expression::Literal(lit) => {
             translate_literal(lit, &expr.annotation.ty, builder)
-        },
+        }
 
         ast::Expression::BinOp(bin_op) => {
             translate_bin_op(bin_op, &expr.annotation.ty, builder)
-        },
+        }
 
         ast::Expression::Ident(ident) => {
             match expr.annotation.value_kind {
                 None => {
                     panic!("ident must have a type")
-                },
+                }
                 Some(pas_ty::ValueKind::Temporary) => {
                     panic!("temporaries cannot be referenced by ident")
-                },
+                }
 
                 Some(pas_ty::ValueKind::Function) => {
                     Value::Ref(Ref::Global(ident.name.clone()))
-                },
+                }
 
                 Some(pas_ty::ValueKind::Immutable) => {
                     builder.find_local(&ident.name)
@@ -469,7 +504,7 @@ pub fn translate_expr(
                         .unwrap_or_else(|| panic!("identifier not found in local scope: {}", ident))
                 }
             }
-        },
+        }
 
         ast::Expression::Call(call) => {
             translate_call(call, builder)
@@ -497,7 +532,13 @@ pub fn translate_expr(
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LetBinding(binding) => {
-            let val_ty = builder.metadata.translate_type(&binding.val_ty);
+            let bound_ty = builder.metadata.translate_type(&binding.val_ty);
+            let val_ty = if binding.val_ty.is_rc() {
+                bound_ty.ptr()
+            } else {
+                bound_ty
+            };
+
             let binding_id = builder.new_local(val_ty, Some(binding.name.to_string()));
 
             builder.begin_scope();
@@ -506,7 +547,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
             builder.end_scope();
         }
-        
+
         ast::Statement::Call(call) => {
             translate_call(call, builder);
         }

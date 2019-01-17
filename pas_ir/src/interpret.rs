@@ -1,16 +1,16 @@
 use {
-    std::{
-        fmt,
-        collections::HashMap,
-    },
     crate::{
         Function as FunctionIR,
         Instruction,
-        Type,
-        Value,
-        Ref,
-        Unit,
         metadata::*,
+        Ref,
+        Type,
+        Unit,
+        Value,
+    },
+    std::{
+        collections::HashMap,
+        fmt,
     },
 };
 
@@ -45,12 +45,26 @@ impl fmt::Debug for Function {
 }
 
 #[derive(Debug, Clone)]
+enum Pointer {
+    Uninit(Type),
+    Rc(Type, usize),
+//    Stack { frame: usize, local: usize, },
+}
+
+#[derive(Debug, Clone)]
 enum MemCell {
     Bool(bool),
     I32(i32),
     F32(f32),
     Function(Function),
     Structure(Vec<MemCell>),
+    Pointer(Pointer),
+}
+
+#[derive(Debug, Clone)]
+struct HeapCell {
+    ref_count: usize,
+    val: MemCell,
 }
 
 #[derive(Debug)]
@@ -63,6 +77,7 @@ pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
     globals: HashMap<String, MemCell>,
+    heap: Vec<Option<HeapCell>>,
 }
 
 impl Interpreter {
@@ -75,6 +90,7 @@ impl Interpreter {
             metadata: Metadata::new(),
             globals,
             stack: Vec::new(),
+            heap: Vec::new(),
         }
     }
 
@@ -96,6 +112,11 @@ impl Interpreter {
                 MemCell::Structure(field_cells)
             }
 
+            Type::Pointer(target_ty) => {
+                let ptr = Pointer::Uninit((**target_ty).clone());
+                MemCell::Pointer(ptr)
+            },
+
             _ => panic!("can't initialize default cell of type `{:?}`", ty),
         }
     }
@@ -115,6 +136,25 @@ impl Interpreter {
                 }
                 self.globals.insert(name.clone(), val);
             }
+
+            Ref::Deref(inner) => {
+                match self.load(inner) {
+                    MemCell::Pointer(ptr) => match ptr.clone() {
+                        Pointer::Rc(_ty, slot) => {
+                            let heap_cell = &mut self.heap.get_mut(slot)
+                                .and_then(|cell_slot| cell_slot.as_mut())
+                                .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot));
+                            heap_cell.val = val;
+                        }
+
+                        Pointer::Uninit(_) => {
+                            panic!("dereferencing {:?} which contains an uninitialized pointer", inner);
+                        }
+                    },
+
+                    x => panic!("can't deref non-pointer cell with value {:?}", x),
+                }
+            }
         }
     }
 
@@ -128,6 +168,26 @@ impl Interpreter {
             Ref::Global(name) => match self.globals.get(name) {
                 Some(cell) => cell,
                 None => panic!("global cell {} is not allocated", name),
+            }
+
+            Ref::Deref(inner) => {
+                match self.load(inner) {
+                    MemCell::Pointer(ptr) => match ptr {
+                        Pointer::Rc(_ty, slot) => {
+                            let rc_cell = self.heap.get(*slot)
+                                .and_then(|slot_val| slot_val.as_ref())
+                                .unwrap_or_else(|| panic!("heap cell {} is not allocated"));
+
+                            &rc_cell.val
+                        }
+
+                        Pointer::Uninit(_ty) => {
+                            panic!("dereferencing {:?} which contains an uninitialized pointer", inner)
+                        }
+                    },
+
+                    x => panic!("can't derefence cell {:?}", x),
+                }
             }
         }
     }
@@ -184,7 +244,7 @@ impl Interpreter {
                     Some(_) => {
                         let return_val = self.evaluate(&Value::Ref(Ref::Local(0)));
                         Some(return_val)
-                    },
+                    }
                     None => None,
                 };
 
@@ -264,7 +324,7 @@ impl Interpreter {
                 }
 
                 Instruction::GetField { out, of, struct_id: _, field_id, } => {
-                    match self.evaluate(of) {
+                    match self.load(of).clone() {
                         MemCell::Structure(cells) => {
                             let field_cell = cells.into_iter().skip(*field_id).next().unwrap();
                             self.store(out, field_cell);
@@ -295,10 +355,37 @@ impl Interpreter {
 
                 Instruction::JumpIf { dest, test } => {
                     match self.evaluate(test) {
-                        MemCell::Bool(true) => { pc = labels[dest]; },
-                        MemCell::Bool(false) => {},
+                        MemCell::Bool(true) => { pc = labels[dest]; }
+                        MemCell::Bool(false) => {}
                         _ => panic!("JumpIf instruction testing non-boolean cell"),
                     }
+                }
+
+                Instruction::MemAlloc { out, ty, } => {
+                    let heap_cell = HeapCell {
+                        ref_count: 1,
+                        val: self.init_cell(ty),
+                    };
+
+                    let empty_cell = self.heap.iter().enumerate()
+                        .find_map(|(i, slot)| match slot {
+                            None => Some(i),
+                            Some(_) => None,
+                        });
+
+                    let slot = match empty_cell {
+                        Some(empty) => {
+                            self.heap[empty] = Some(heap_cell);
+                            empty
+                        },
+                        None => {
+                            self.heap.push(Some(heap_cell));
+                            self.heap.len() - 1
+                        }
+                    };
+
+                    let ptr = Pointer::Rc(ty.clone(), slot);
+                    self.store(out, MemCell::Pointer(ptr));
                 }
             }
 
