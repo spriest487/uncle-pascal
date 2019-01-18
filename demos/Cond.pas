@@ -4,6 +4,7 @@ WriteLn(x);
 WriteLn(begin
     let a: Integer := 543;
     let b: Integer := 345;
+    let cond: Boolean := false;
 
-    if false then a else b;
+    if cond then a else b;
 end);

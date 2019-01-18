@@ -11,6 +11,7 @@ use {
     std::{
         collections::HashMap,
         fmt,
+        f32,
     },
 };
 
@@ -97,6 +98,8 @@ impl Interpreter {
     fn init_cell(&self, ty: &Type) -> MemCell {
         match ty {
             Type::I32 => MemCell::I32(-1),
+            Type::Bool => MemCell::Bool(false),
+            Type::F32 => MemCell::F32(f32::INFINITY),
             Type::Struct(id) => {
                 let struct_def = &self.metadata.structs()[id];
 
