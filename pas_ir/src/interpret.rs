@@ -231,8 +231,8 @@ impl Interpreter {
                 self.push_stack();
 
                 // store empty result at $0 if needed
-                if let Some(return_ty) = &ir_func.return_ty {
-                    let result_cell = self.init_cell(return_ty);
+                if ir_func.return_ty != Type::Nothing {
+                    let result_cell = self.init_cell(&ir_func.return_ty);
                     self.current_frame_mut().locals.push(Some(result_cell));
                 }
 
@@ -244,11 +244,11 @@ impl Interpreter {
                 self.execute(&ir_func.body);
 
                 let result = match &ir_func.return_ty {
-                    Some(_) => {
+                    _ => {
                         let return_val = self.evaluate(&Value::Ref(Ref::Local(0)));
                         Some(return_val)
                     }
-                    None => None,
+                    Type::Nothing => None,
                 };
 
                 self.pop_stack();

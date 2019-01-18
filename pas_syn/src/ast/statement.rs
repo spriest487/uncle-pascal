@@ -1,7 +1,5 @@
 use {
-    std::{
-        fmt,
-    },
+    std::fmt,
     pas_common::{
         span::*,
     },
@@ -12,7 +10,7 @@ use {
         token_tree::*,
         parse::*,
         ast::*,
-    }
+    },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -70,6 +68,7 @@ pub enum Statement<A: Annotation> {
     LetBinding(LetBinding<A>),
     Call(Call<A>),
     Exit(Exit<A>),
+    Block(Block<A>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -80,7 +79,8 @@ impl<A: Annotation> Statement<A> {
             Statement::Exit(exit) => match exit {
                 Exit::WithValue(expr) => &expr.annotation,
                 Exit::WithoutValue(a) => a,
-            }
+            },
+            Statement::Block(block) => &block.annotation,
         }
     }
 
@@ -90,6 +90,14 @@ impl<A: Annotation> Statement<A> {
                 let annotation = call.annotation.clone();
                 let call_expr = Expression::Call(call);
                 Some(ExpressionNode::new(call_expr, annotation))
+            }
+
+            Statement::Block(block) => if block.output.is_some() {
+                let annotation = block.annotation.clone();
+                let block_expr = Expression::Block(block);
+                Some(ExpressionNode::new(block_expr, annotation))
+            } else {
+                None
             }
 
             _ => None,
@@ -117,18 +125,35 @@ impl Statement<Span> {
             Some(_) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = ExpressionNode::parse(tokens)?;
-                match *expr.expr {
-                    Expression::Call(call) => Ok(Statement::Call(call)),
-                    invalid => {
-                        let invalid_node = ExpressionNode::new(invalid, expr.annotation);
-                        Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
-                    }
-                }
-            },
+                expr_to_stmt(expr)
+            }
 
             None => {
                 Err(TracedError::trace(ParseError::UnexpectedEOF(stmt_start, tokens.context().clone())))
-            },
+            }
+        }
+    }
+}
+
+fn expr_to_stmt(expr: ExpressionNode<Span>) -> ParseResult<Statement<Span>> {
+    match *expr.expr {
+        Expression::Call(call) => Ok(Statement::Call(call)),
+        Expression::Block(mut block) => {
+            block.output = match block.output {
+                Some(output_expr) => {
+                    let last_stmt = expr_to_stmt(output_expr)?;
+                    block.statements.push(last_stmt);
+                    None
+                },
+                None => None,
+            };
+
+            Ok(Statement::Block(block))
+        },
+
+        invalid => {
+            let invalid_node = ExpressionNode::new(invalid, expr.annotation);
+            Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
         }
     }
 }
@@ -139,6 +164,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::LetBinding(binding) => write!(f, "{}", binding),
             Statement::Call(call) => write!(f, "{}", call),
             Statement::Exit(exit) => write!(f, "{}", exit),
+            Statement::Block(block) => write!(f, "{}", block),
         }
     }
 }

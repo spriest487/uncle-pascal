@@ -43,7 +43,7 @@ impl Struct {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
-    None,
+    Nothing,
     Pointer(Box<Type>),
     Struct(StructId),
     Bool,
@@ -60,7 +60,7 @@ impl Type {
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Type::None => write!(f, "none"),
+            Type::Nothing => write!(f, "none"),
             Type::I32 => write!(f, "i32"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
@@ -111,7 +111,7 @@ impl Metadata {
 
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
-            pas_typecheck::Type::None => Type::None,
+            pas_typecheck::Type::Nothing => Type::Nothing,
             pas_typecheck::Type::Boolean => Type::Bool,
             pas_typecheck::Type::Integer => Type::I32,
             pas_typecheck::Type::Real32 => Type::F32,

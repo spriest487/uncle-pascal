@@ -28,7 +28,7 @@ pub fn typecheck_if_cond(
     let span = if_cond.span().clone();
 
     let annotation = match (&then_branch.annotation.ty, else_branch.as_ref()) {
-        (Type::None, _) | (_, None) => TypeAnnotation::untyped(span),
+        (Type::Nothing, _) | (_, None) => TypeAnnotation::untyped(span),
 
         (then_ty, Some(else_branch)) => {
             if else_branch.annotation.ty != *then_ty {

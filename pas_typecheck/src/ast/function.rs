@@ -33,7 +33,7 @@ pub fn typecheck_func_decl(
 {
     let return_ty = match &decl.return_ty {
         Some(ty_name) => ctx.find_type(ty_name)?.clone(),
-        None => Type::None,
+        None => Type::Nothing,
     };
 
     let body_scope = ctx.push_scope();

@@ -167,6 +167,9 @@ impl Context {
             string_class,
         };
 
+        let nothing_ident = Ident::new("Nothing", builtin_span.clone());
+        root_ctx.declare_type(nothing_ident, Type::Nothing).unwrap();
+
         let int_ident = Ident::new("Integer", builtin_span.clone());
         root_ctx.declare_type(int_ident, Type::Integer).unwrap();
 
@@ -182,7 +185,7 @@ impl Context {
         root_ctx.declare_function(Ident::new("WriteLn", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Integer],
-                return_ty: Type::None,
+                return_ty: Type::Nothing,
             })
             .unwrap();
 

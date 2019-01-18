@@ -32,7 +32,7 @@ impl TypeAnnotation {
 
     pub fn untyped(span: Span) -> TypeAnnotation {
         Self {
-            ty: Type::None,
+            ty: Type::Nothing,
             value_kind: None,
             span,
         }

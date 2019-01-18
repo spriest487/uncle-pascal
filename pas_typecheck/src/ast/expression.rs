@@ -48,7 +48,7 @@ fn typecheck_args(
 }
 
 pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckResult<Call> {
-    let target = typecheck_expr(&call.target, &Type::None, ctx)?;
+    let target = typecheck_expr(&call.target, &Type::Nothing, ctx)?;
     let sig = match &target.annotation.ty {
         Type::Function(sig) => sig.as_ref(),
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
@@ -59,7 +59,7 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
     let span = call.annotation.span().clone();
 
     let annotation = match sig.return_ty.clone() {
-        Type::None => TypeAnnotation::untyped(span),
+        Type::Nothing => TypeAnnotation::untyped(span),
         return_ty => TypeAnnotation::typed_value(return_ty, ValueKind::Temporary, span),
     };
 
@@ -142,7 +142,7 @@ pub fn typecheck_expr(
 
         ast::Expression::Call(call) => {
             let call = typecheck_call(call, ctx)?;
-            if call.annotation.ty == Type::None {
+            if call.annotation.ty == Type::Nothing {
                 return Err(TypecheckError::InvalidCallInExpression(call.clone()));
             }
 

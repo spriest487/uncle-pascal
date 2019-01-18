@@ -18,7 +18,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         // if the block finishes on a call. if we're expecing a return type and
         // parsing didn't find us the output expression, we can move the final
         // stmt into the output if the type matches
-        None if *expect_ty != Type::None => {
+        None if *expect_ty != Type::Nothing => {
             let last_stmt_type = statements.last()
                 .map(|s: &Statement| &s.annotation().ty);
 
@@ -34,14 +34,14 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         None => None,
     };
 
-    if *expect_ty != Type::None {
+    if *expect_ty != Type::Nothing {
         let output_ty = output.as_ref()
             .map(|o| &o.annotation.ty);
 
         if output_ty != Some(expect_ty) {
             return Err(TypecheckError::TypeMismatch {
                 expected: expect_ty.clone(),
-                actual: output_ty.cloned().unwrap_or(Type::None),
+                actual: output_ty.cloned().unwrap_or(Type::Nothing),
                 span: match &output {
                     Some(expr) => expr.annotation.span.clone(),
                     None => block.end.clone(),
@@ -54,18 +54,25 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     let annotation = match &output {
         Some(out_expr) => {
             let out_ty = out_expr.annotation.ty.clone();
-            assert_ne!(Type::None, out_ty);
+            assert_ne!(Type::Nothing, out_ty);
             TypeAnnotation::typed_value(out_ty, ValueKind::Temporary, span)
         },
         None => TypeAnnotation::untyped(span),
     };
 
-    Ok(Block {
+    let block = Block {
         annotation,
         output,
         statements,
 
         begin: block.begin.clone(),
         end: block.end.clone(),
-    })
+    };
+
+    assert_eq!(block.annotation.ty, {
+        let out_ty = block.output.as_ref().map(|o| o.annotation.ty.clone());
+        out_ty.unwrap_or(Type::Nothing)
+    });
+
+    Ok(block)
 }

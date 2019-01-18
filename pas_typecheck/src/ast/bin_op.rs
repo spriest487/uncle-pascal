@@ -12,7 +12,7 @@ pub fn typecheck_bin_op(
     ctx: &mut Context)
     -> TypecheckResult<BinOp>
 {
-    let lhs = typecheck_expr(&bin_op.lhs, &Type::None, ctx)?;
+    let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
@@ -48,13 +48,13 @@ pub fn typecheck_bin_op(
         },
 
         _ => {
-            let rhs = typecheck_expr(&bin_op.rhs, &Type::None, ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &Type::Nothing, ctx)?;
 
             // check valid ops etc, result type etc
             let result_ty = lhs.annotation.ty.clone();
 
             let annotation = match result_ty {
-                Type::None => TypeAnnotation::untyped(span),
+                Type::Nothing => TypeAnnotation::untyped(span),
                 ty => TypeAnnotation::typed_value(ty, ValueKind::Temporary, span),
             };
 

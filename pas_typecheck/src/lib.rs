@@ -98,7 +98,7 @@ pub mod ty {
             write!(f, ")")?;
 
             match &self.return_ty {
-                Type::None => Ok(()),
+                Type::Nothing => Ok(()),
                 ty => write!(f, ": {}", ty),
             }
         }
@@ -106,7 +106,7 @@ pub mod ty {
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub enum Type {
-        None,
+        Nothing,
         Integer,
         Real32,
         Boolean,
@@ -117,6 +117,7 @@ pub mod ty {
     impl Type {
         pub fn full_name(&self) -> Option<String> {
             match self {
+                Type::Nothing => Some("Nothing".to_string()),
                 Type::Boolean => Some("Boolean".to_string()),
                 Type::Integer => Some("Integer".to_string()),
                 Type::Real32 => Some("Single".to_string()),
@@ -174,7 +175,6 @@ pub mod ty {
             match self.full_name() {
                 Some(name) => write!(f, "{}", name),
                 None => match self {
-                    Type::None => write!(f, "(no type)"),
                     Type::Class(class) => write!(f, "{}", class.ident),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 }

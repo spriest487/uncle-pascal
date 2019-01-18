@@ -230,6 +230,8 @@ impl<'m> Builder<'m> {
     }
 
     pub fn new_local(&mut self, ty: Type, name: Option<String>) -> Ref {
+        assert_ne!(Type::Nothing, ty);
+
         let id = self.next_id;
 
         self.current_scope_mut().locals.push(Local::Allocated {
@@ -330,7 +332,7 @@ fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Val
     };
 
     let out_ty = match &sig.return_ty {
-        pas_ty::Type::None => None,
+        pas_ty::Type::Nothing => None,
         return_ty => Some(builder.metadata.translate_type(return_ty)),
     };
 
@@ -430,7 +432,7 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Build
 
 fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Option<Value> {
     let out_val = match &if_cond.annotation.ty {
-        pas_ty::Type::None => None,
+        pas_ty::Type::Nothing => None,
         out_ty => {
             let out_ty = builder.metadata.translate_type(out_ty);
             Some(builder.new_local(out_ty, None))
@@ -552,6 +554,11 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
             translate_call(call, builder);
         }
 
+        ast::Statement::Block(block) => {
+            let block_out = translate_block(block, builder);
+            assert!(block_out.is_none(), "block statement should not produce a value");
+        }
+
         ast::Statement::Exit(_) => {
             unimplemented!()
         }
@@ -561,18 +568,20 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 #[derive(Clone, Debug)]
 pub struct Function {
     body: Vec<Instruction>,
-    return_ty: Option<Type>,
+    return_ty: Type,
 }
 
 pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> Function {
     let mut body_builder = Builder::new(metadata);
 
-    let return_ty = func.return_ty.as_ref()
-        .map(|ty| body_builder.metadata.translate_type(ty));
+    let return_ty = match func.return_ty.as_ref() {
+        Some(ty) => body_builder.metadata.translate_type(ty),
+        None => Type::Nothing,
+    };
 
     for (i, param) in func.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
-        let id = if return_ty.is_some() {
+        let id = if return_ty != Type::Nothing {
             i + 1
         } else {
             i

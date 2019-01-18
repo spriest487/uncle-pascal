@@ -1,17 +1,6 @@
 use {
     crate::{
-        result::*,
-        ast::*,
-        Context,
-        Binding,
-        ValueKind,
-        TypeAnnotation,
-    },
-    pas_common::{
-        span::*,
-    },
-    pas_syn::{
-        ast,
+        ast::prelude::*,
     },
 };
 
@@ -46,6 +35,14 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
         ast::Statement::Call(call) => {
             let call = typecheck_call(call, ctx)?;
             Ok(ast::Statement::Call(call))
+        }
+
+        ast::Statement::Block(block) => {
+            let block = typecheck_block(block, &Type::Nothing, ctx)?;
+            assert_eq!(Type::Nothing, block.annotation.ty);
+            assert_eq!(None, block.annotation.value_kind);
+
+            Ok(ast::Statement::Block(block))
         }
 
         ast::Statement::Exit(_exit) => {
