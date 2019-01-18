@@ -85,16 +85,17 @@ pub enum TypeDecl<A: Annotation> {
 }
 
 impl TypeDecl<Span> {
-    /// a type decl block starts with the `type` keyword and continues until
-    /// we reach the next decl which isn't a type - e.g. a function
+    /// a type decl block starts with the `type` keyword. each decl in the
+    /// block starts with an identifier then "=" and then the type definition.
+    /// the block can contain 1+ types, each of which is terminated by a
+    /// semicolon
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
         let decl_start_matcher = Matcher::from(Keyword::Class);
-        let other_decl_matcher = Matcher::from(Keyword::Function);
 
         tokens.match_one(Keyword::Type)?;
 
         let decls = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if tokens.look_ahead().match_one(other_decl_matcher.clone()).is_some() {
+            if tokens.look_ahead().match_one(Matcher::AnyIdent).is_none() {
                 return Ok(Generate::Break);
             }
 

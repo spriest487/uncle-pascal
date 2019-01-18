@@ -11,7 +11,10 @@ use {
     },
 };
 pub use {
-    self::interpret::Interpreter,
+    self::interpret::{
+        Interpreter,
+        InterpreterOpts,
+    },
 };
 
 pub mod metadata;
@@ -86,8 +89,6 @@ pub enum Instruction {
     JumpIf { dest: Label, test: Value },
 
     MemAlloc { out: Ref, ty: Type },
-//    Retain(Ref),
-//    Release(Ref),
 }
 
 impl fmt::Display for Instruction {
@@ -362,19 +363,31 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let (struct_id, struct_def) = builder.metadata.find_struct(&ctor.ident.to_string())
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
 
-//    let out = builder.new_local(Type::Struct(struct_id), None);
-    let struct_ty = Type::Struct(struct_id);
+    let struct_ty = builder.metadata.translate_type(&ctor.annotation.ty);
 
-    let (out_val, struct_ref) = if ctor.annotation.ty.is_rc() {
-        // allocate pointer to rc memory
-        let out_ptr = builder.new_local(struct_ty.clone().ptr(), None);
-        builder.append(Instruction::MemAlloc { out: out_ptr.clone(), ty: struct_ty });
+    let (out_val, struct_ref) = match struct_ty {
+        Type::Pointer(struct_ty) => {
+            if !struct_ty.is_struct() {
+                panic!("bad object ctor: type {:?} is not a class", struct_ty);
+            }
 
-        (out_ptr.clone(), out_ptr.deref())
-    } else {
-        // allocate locally
-        let out_val = builder.new_local(struct_ty, None);
-        (out_val.clone(), out_val)
+            // local is pointer to rc memory
+            let class_ty = Type::Pointer(struct_ty.clone());
+            let out_ptr = builder.new_local(class_ty, None);
+
+            // allocate class struct at out pointer
+            builder.append(Instruction::MemAlloc { out: out_ptr.clone(), ty: *struct_ty });
+
+            (out_ptr.clone(), out_ptr.deref())
+        },
+
+        Type::Struct(_) => {
+            // allocate locally
+            let out_val = builder.new_local(struct_ty, None);
+            (out_val.clone(), out_val)
+        }
+
+        ty => panic!("bad object ctor: type {:?} is not a record or class", ty),
     };
 
     builder.begin_scope();
@@ -535,13 +548,8 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LetBinding(binding) => {
             let bound_ty = builder.metadata.translate_type(&binding.val_ty);
-            let val_ty = if binding.val_ty.is_rc() {
-                bound_ty.ptr()
-            } else {
-                bound_ty
-            };
 
-            let binding_id = builder.new_local(val_ty, Some(binding.name.to_string()));
+            let binding_id = builder.new_local(bound_ty, Some(binding.name.to_string()));
 
             builder.begin_scope();
             let val_id = translate_expr(&binding.val, builder);
@@ -564,6 +572,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
     }
 }
+
 
 #[derive(Clone, Debug)]
 pub struct Function {
@@ -626,13 +635,13 @@ fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<
 }
 
 #[derive(Clone, Debug)]
-pub struct Unit {
+pub struct Module {
     metadata: Metadata,
     functions: HashMap<String, Function>,
     init: Vec<Instruction>,
 }
 
-impl fmt::Display for Unit {
+impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Structures")?;
         for (id, struct_def) in self.metadata.structs() {
@@ -660,7 +669,7 @@ impl fmt::Display for Unit {
     }
 }
 
-pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
+pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
     let mut metadata = Metadata::new();
     let mut functions = HashMap::new();
 
@@ -683,7 +692,7 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Unit {
         translate_stmt(stmt, &mut init_builder);
     }
 
-    Unit {
+    Module {
         init: init_builder.finish(),
         functions,
         metadata,

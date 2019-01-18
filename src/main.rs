@@ -1,34 +1,36 @@
 use {
-    std::{
-        path::PathBuf,
-        fmt,
-        fs::{File},
-        io::{Read},
-        str::FromStr,
-    },
-    structopt::{
-        StructOpt,
-    },
     pas_common::{
-        TracedError,
         BuildOptions,
         span::*,
+        TracedError,
     },
-    pas_syn::{
-        parse::*,
-        TokenizeError,
-        TokenTree,
-        ast as syn,
-    },
-    pas_typecheck::{
-        TypecheckError,
-        ast as typ,
-    },
+    structopt::StructOpt,
     pas_pp::{
         self as pp,
         PreprocessorError,
     },
-    pas_ir,
+    pas_syn::{
+        ast as syn,
+        parse::*,
+        TokenizeError,
+        TokenTree,
+    },
+    pas_typecheck::{
+        ast as typ,
+        TypecheckError,
+    },
+    pas_ir::{
+        self as ir,
+        InterpreterOpts,
+        Interpreter,
+    },
+    std::{
+        fmt,
+        fs::File,
+        io::Read,
+        path::PathBuf,
+        str::FromStr,
+    },
 };
 
 #[derive(Debug)]
@@ -86,7 +88,7 @@ impl fmt::Display for CompileError {
 }
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
-enum OutputKind {
+enum Stage {
     Interpret,
     Intermediate,
     SyntaxAst,
@@ -94,16 +96,16 @@ enum OutputKind {
     Preprocessed,
 }
 
-impl FromStr for OutputKind {
+impl FromStr for Stage {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, String> {
         match s {
-            "interpret" => Ok(OutputKind::Interpret),
-            "ir" => Ok(OutputKind::Intermediate),
-            "syn" => Ok(OutputKind::SyntaxAst),
-            "tyck" => Ok(OutputKind::TypecheckAst),
-            "pp" => Ok(OutputKind::Preprocessed),
+            "interpret" => Ok(Stage::Interpret),
+            "ir" => Ok(Stage::Intermediate),
+            "syn" => Ok(Stage::SyntaxAst),
+            "tyck" => Ok(Stage::TypecheckAst),
+            "pp" => Ok(Stage::Preprocessed),
             _ => Err(format!("invalid output kind: {}", s)),
         }
     }
@@ -111,20 +113,41 @@ impl FromStr for OutputKind {
 
 #[derive(StructOpt, Debug)]
 struct Args {
+    /// source file of program/library main unit
     #[structopt(name = "FILE", parse(from_os_str))]
     file: PathBuf,
 
-    #[structopt(short = "k", long="output-kind", default_value = "interpret")]
-    output: OutputKind,
+    /// target stage. intermediate stages other than `interpret` will cause
+    /// compilation to stop at that stage and dump the output.
+    #[structopt(short = "s", long = "stage", default_value = "interpret")]
+    stage: Stage,
+
+    /// interpreter: log RC heap usage
+    #[structopt(long = "trace-heap")]
+    trace_heap: bool,
+
+    /// interpreter: log RC retain/release operations
+    #[structopt(long = "trace-rc")]
+    trace_rc: bool,
+
+    /// interpreter: log executed IR instructions
+    #[structopt(long = "trace-ir")]
+    trace_ir: bool,
 }
 
-fn compile(filename: impl Into<PathBuf>, src: &str, opts: BuildOptions, out_kind: OutputKind) -> Result<(), CompileError> {
+fn compile(filename: impl Into<PathBuf>,
+    src: &str,
+    opts: BuildOptions,
+    interpret_opts: InterpreterOpts,
+    out_kind: Stage)
+    -> Result<(), CompileError>
+{
     let filename = filename.into();
 
     let pp = pp::Preprocessor::new(filename.clone(), opts);
     let preprocessed = pp.preprocess(src)?;
 
-    if out_kind == OutputKind::Preprocessed {
+    if out_kind == Stage::Preprocessed {
         println!("{}", preprocessed.source);
         return Ok(());
     }
@@ -137,25 +160,25 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: BuildOptions, out_kind
     let unit = syn::Unit::parse(&mut token_stream)?;
     token_stream.finish()?;
 
-    if out_kind == OutputKind::SyntaxAst {
+    if out_kind == Stage::SyntaxAst {
         println!("{}", unit);
         return Ok(());
     }
 
     let unit = typ::typecheck_unit(&unit)?;
-    if out_kind == OutputKind::TypecheckAst {
+    if out_kind == Stage::TypecheckAst {
         println!("{}", unit);
-        return Ok(())
+        return Ok(());
     }
 
-    let unit = pas_ir::translate_unit(&unit);
-    if out_kind == OutputKind::Intermediate {
+    let unit = ir::translate_unit(&unit);
+    if out_kind == Stage::Intermediate {
         println!("{}", unit);
-        return Ok(())
+        return Ok(());
     }
 
-    let mut interpreter = pas_ir::Interpreter::new();
-    interpreter.load_unit(&unit);
+    let mut interpreter = Interpreter::new(&interpret_opts);
+    interpreter.load_module(&unit);
 
     Ok(())
 }
@@ -163,6 +186,11 @@ fn compile(filename: impl Into<PathBuf>, src: &str, opts: BuildOptions, out_kind
 fn main() -> Result<(), CompileError> {
     let args: Args = Args::from_args();
     let opts = BuildOptions::default();
+    let interpret_opts = InterpreterOpts {
+        trace_rc: args.trace_rc,
+        trace_heap: args.trace_heap,
+        trace_ir: args.trace_ir,
+    };
 
     let open_file = File::open(&args.file).and_then(|mut f| {
         let mut src = String::new();
@@ -174,25 +202,26 @@ fn main() -> Result<(), CompileError> {
         Err(err) => {
             eprintln!("failed to open {}: {}", args.file.display(), err);
             std::process::exit(1);
-        },
+        }
         Ok(file) => file,
     };
 
-    compile(args.file, &src, opts, args.output).map_err(|err| {
-        err.print_context(&src);
+    compile(args.file, &src, opts, interpret_opts, args.stage)
+        .map_err(|err| {
+            err.print_context(&src);
 
-        match &err {
-            CompileError::TokenizeError(err) => {
-                println!("{:?}", err.bt);
+            match &err {
+                CompileError::TokenizeError(err) => {
+                    println!("{:?}", err.bt);
+                }
+
+                CompileError::ParseError(err) => {
+                    println!("{:?}", err.bt);
+                }
+
+                _ => {}
             }
 
-            CompileError::ParseError(err) => {
-                println!("{:?}", err.bt);
-            }
-
-            _ => {}
-        }
-
-        err
-    })
+            err
+        })
 }

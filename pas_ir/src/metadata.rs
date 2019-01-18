@@ -55,6 +55,13 @@ impl Type {
     pub fn ptr(self) -> Self {
         Type::Pointer(Box::new(self))
     }
+
+    pub fn is_struct(&self) -> bool {
+        match self {
+            Type::Struct(_) =>  true,
+            _ => false,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -115,11 +122,19 @@ impl Metadata {
             pas_typecheck::Type::Boolean => Type::Bool,
             pas_typecheck::Type::Integer => Type::I32,
             pas_typecheck::Type::Real32 => Type::F32,
+
+            pas_typecheck::Type::Record(class) => {
+                let ty_name = class.ident.to_string();
+                let (id, _) = self.find_struct(&ty_name)
+                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));;
+                Type::Struct(id)
+            },
+
             pas_typecheck::Type::Class(class) => {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
-                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
-                Type::Struct(id)
+                    .unwrap_or_else(|| panic!("class {} must exist in metadata", ty));
+                Type::Struct(id).ptr()
             },
 
             pas_typecheck::Type::Function(_) => unimplemented!(),

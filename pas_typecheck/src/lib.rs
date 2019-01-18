@@ -111,6 +111,7 @@ pub mod ty {
         Real32,
         Boolean,
         Function(Rc<FunctionSig>),
+        Record(Rc<Class>),
         Class(Rc<Class>),
     }
 
