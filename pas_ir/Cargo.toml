@@ -7,4 +7,3 @@ edition = "2018"
 [dependencies]
 pas_syn = { path = "../pas_syn" }
 pas_typecheck = { path = "../pas_typecheck" }
-linked-hash-map = "0.5.1"

@@ -1,13 +1,19 @@
 use {
     std::{
-        collections::hash_map::{
-            HashMap,
-            Entry,
-        },
+        collections::hash_map::HashMap,
         fmt,
     },
     pas_typecheck as pas_ty,
 };
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+pub struct StringId(pub usize);
+
+impl fmt::Display for StringId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct StructId(pub usize);
@@ -17,6 +23,8 @@ impl fmt::Display for StructId {
         write!(f, "{}", self.0)
     }
 }
+
+pub const STRING_ID: StructId = StructId(573196);
 
 #[derive(Clone, Debug)]
 pub struct StructField {
@@ -39,6 +47,23 @@ impl Struct {
                 None
             })
     }
+
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            fields: HashMap::new(),
+        }
+    }
+
+    pub fn with_field(mut self, name: &str, ty: Type) -> Self {
+        let id = self.fields.keys().max().map(|id| *id + 1).unwrap_or(0);
+        self.fields.insert(id, StructField {
+            name: name.to_string(),
+            ty,
+        });
+
+        self
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -58,7 +83,7 @@ impl Type {
 
     pub fn is_struct(&self) -> bool {
         match self {
-            Type::Struct(_) =>  true,
+            Type::Struct(_) => true,
             _ => false,
         }
     }
@@ -80,21 +105,43 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone)]
 pub struct Metadata {
     structs: HashMap<StructId, Struct>,
+    string_literals: HashMap<StringId, String>,
 }
 
 impl Metadata {
+    pub fn system() -> Self {
+        let mut metadata = Metadata::new();
+
+        metadata.structs.insert(STRING_ID, Struct::new("String")
+            .with_field("chars", Type::I32.ptr())
+            .with_field("len", Type::I32));
+
+        metadata
+    }
+
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
+            string_literals: HashMap::new(),
         }
     }
 
     pub fn extend(&mut self, other: &Metadata) {
         for (id, struct_def) in &other.structs {
-            match self.structs.entry(*id) {
-                Entry::Occupied(_) => panic!("duplicate ID {} in metadata", id),
-                Entry::Vacant(entry) => { entry.insert(struct_def.clone()); },
+            if self.structs.contains_key(id) {
+                let existing = self.structs.get(id).unwrap();
+                panic!("duplicate struct ID {} in metadata (new: {}, existing: {})", id, struct_def.name, existing.name);
             }
+
+            self.structs.insert(*id, struct_def.clone());
+        }
+
+        for (id, string_lit) in &other.string_literals {
+            if self.string_literals.contains_key(id) {
+                panic!("duplicate string ID {} in metadata", id);
+            }
+
+            self.string_literals.insert(*id, string_lit.clone());
         }
     }
 
@@ -126,26 +173,66 @@ impl Metadata {
             pas_typecheck::Type::Record(class) => {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
-                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));;
+                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
+                ;
                 Type::Struct(id)
-            },
+            }
 
             pas_typecheck::Type::Class(class) => {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("class {} must exist in metadata", ty));
                 Type::Struct(id).ptr()
-            },
+            }
 
             pas_typecheck::Type::Function(_) => unimplemented!(),
         }
     }
 
     pub fn find_struct(&self, name: &str) -> Option<(StructId, &Struct)> {
-        self.structs.iter().find_map(|(id, struct_def)| if struct_def.name == name {
-            Some((*id, struct_def))
-        } else {
-            None
-        })
+        self.structs.iter()
+            .find_map(|(id, struct_def)| if struct_def.name == name {
+                Some((*id, struct_def))
+            } else {
+                None
+            })
+    }
+
+    pub fn find_or_insert_string(&mut self, s: &str) -> StringId {
+        let existing = self.string_literals.iter()
+            .find_map(|(id, literal)| if literal == s {
+                Some(*id)
+            } else {
+                None
+            });
+
+        match existing {
+            Some(id) => id,
+            None => {
+                let next_id = self.string_literals.keys()
+                    .max_by_key(|id| id.0)
+                    .map(|id| StringId(id.0 + 1))
+                    .unwrap_or(StringId(0));
+                self.string_literals.insert(next_id, s.to_string());
+                next_id
+            }
+        }
+    }
+
+    pub fn find_string_id(&self, string: &str) -> Option<StringId> {
+        self.string_literals.iter()
+            .find_map(|(id, string_lit)| if string_lit == string {
+                Some(*id)
+            } else {
+                None
+            })
+    }
+
+    pub fn get_string(&self, id: StringId) -> Option<&String> {
+        self.string_literals.get(&id)
+    }
+
+    pub fn strings(&self) -> impl Iterator<Item=(StringId, &str)> + '_ {
+        self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
     }
 }

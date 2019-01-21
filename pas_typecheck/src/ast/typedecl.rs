@@ -35,6 +35,7 @@ pub fn typecheck_class(
     }
 
     Ok(Class {
+        kind: class.kind,
         ident: class.ident.clone(),
         span: class.span.clone(),
         members,

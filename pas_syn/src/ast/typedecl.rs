@@ -9,8 +9,19 @@ pub struct Member<A: Annotation> {
     pub span: Span,
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum ClassKind {
+    /// heap-allocated, reference-counted type, passed by pointer. declared
+    /// with the `class` keyword.
+    Object,
+
+    /// locally-allocated value type. declared with the `record` keyword.
+    Record,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Class<A: Annotation> {
+    pub kind: ClassKind,
     pub ident: Ident,
     pub members: Vec<Member<A>>,
     pub span: Span,
@@ -24,8 +35,12 @@ impl<A: Annotation> Class<A> {
 }
 
 impl Class<Span> {
+    fn match_kw() -> Matcher {
+        Keyword::Class.or(Keyword::Record)
+    }
+
     fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
-        let kw_token = tokens.match_one(Keyword::Class)?;
+        let kw_token = tokens.match_one(Self::match_kw())?;
 
         let members = tokens.match_separated(Separator::Semicolon, |_, tokens| {
             if tokens.look_ahead().match_one(Keyword::End).is_some() {
@@ -47,7 +62,14 @@ impl Class<Span> {
 
         let end_token = tokens.match_one(Keyword::End)?;
 
+        let kind = match kw_token {
+            TokenTree::Keyword { kw: Keyword::Class, .. } => ClassKind::Object,
+            TokenTree::Keyword { kw: Keyword::Record, .. } => ClassKind::Record,
+            _ => unreachable!(),
+        };
+
         Ok(Class {
+            kind,
             ident,
             members,
             span: kw_token.span().to(end_token.span()),
@@ -103,7 +125,7 @@ impl TypeDecl<Span> {
             tokens.match_one(Operator::Equals)?;
 
             match tokens.look_ahead().next() {
-                Some(TokenTree::Keyword { kw: Keyword::Class, .. }) => {
+                Some(ref tt) if Class::match_kw().is_match(tt) => {
                     let class_decl = Class::parse(tokens, ident.clone())?;
                     Ok(Generate::Yield(TypeDecl::Class(class_decl)))
                 },

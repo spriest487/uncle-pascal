@@ -59,7 +59,10 @@ pub mod ty {
             fmt
         },
         pas_syn::{
-            ast,
+            ast::{
+                self,
+                ClassKind,
+            },
             Ident,
         },
         crate::{
@@ -165,7 +168,7 @@ pub mod ty {
 
         pub fn is_rc(&self) -> bool {
             match self {
-                Type::Class(_) => true,
+                Type::Class(class) => class.kind == ClassKind::Object,
                 _ => false,
             }
         }

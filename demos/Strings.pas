@@ -18,10 +18,11 @@ begin
     holder.box
 end;
 
-let box: IntBox := IntBox(value: 1; otherValue: 2);
-let holder: IntBoxHolder := IntBoxHolder(box: box);
+begin
+   let box: IntBox := IntBox(value: 1; otherValue: 2);
+   let holder: IntBoxHolder := IntBoxHolder(box: box);
 
-WriteLn(IntToStr(holder.box.value));
-WriteLn(IntToStr(Value(holder.box)));
+    //let greeting: String := 'Hello, world!';
 
-WriteLn(IntToStr(Value(GetBox(holder)) + 1));
+    //WriteLn(greeting);
+end

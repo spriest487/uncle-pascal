@@ -1,6 +1,8 @@
 use {
     crate::{
-        ast::Class,
+        ast::{
+            Class,
+        },
         FunctionSig,
         Type,
     },
@@ -8,7 +10,10 @@ use {
         span::*,
     },
     pas_syn::{
-        ast,
+        ast::{
+            self,
+            ClassKind,
+        },
         Ident,
     },
     std::{
@@ -156,6 +161,7 @@ impl Context {
         };
 
         let string_class = Rc::new(Class {
+            kind: ClassKind::Object,
             ident: Ident::new("String", builtin_span.clone()),
             span: builtin_span.clone(),
             members: Vec::new(),
@@ -182,9 +188,16 @@ impl Context {
         let string_ident = root_ctx.string_class.ident.clone();
         root_ctx.declare_type(string_ident, Type::Class(root_ctx.string_class.clone())).unwrap();
 
-        root_ctx.declare_function(Ident::new("WriteLn", builtin_span.clone()),
+        root_ctx.declare_function(Ident::new("IntToStr", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Integer],
+                return_ty: Type::Class(root_ctx.string_class.clone()),
+            })
+            .unwrap();
+
+        root_ctx.declare_function(Ident::new("WriteLn", builtin_span.clone()),
+            FunctionSig {
+                params: vec![Type::Class(root_ctx.string_class.clone())],
                 return_ty: Type::Nothing,
             })
             .unwrap();

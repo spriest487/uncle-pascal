@@ -20,10 +20,25 @@ pub use {
 pub mod metadata;
 pub mod interpret;
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum GlobalRef {
+    Function(String),
+    StringLiteral(StringId),
+}
+
+impl fmt::Display for GlobalRef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GlobalRef::Function(name) => write!(f, "function `{}`", name),
+            GlobalRef::StringLiteral(id) => write!(f, "string `{}`", id),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum Ref {
     Local(usize),
-    Global(String),
+    Global(GlobalRef),
     Deref(Box<Ref>),
 }
 
@@ -37,7 +52,7 @@ impl fmt::Display for Ref {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Ref::Local(id) => write!(f, "${}", id),
-            Ref::Global(name) => write!(f, "`{}`", name),
+            Ref::Global(name) => write!(f, "{}", name),
             Ref::Deref(at) => write!(f, "{}^", at),
         }
     }
@@ -88,7 +103,7 @@ pub enum Instruction {
     Jump { dest: Label },
     JumpIf { dest: Label, test: Value },
 
-    MemAlloc { out: Ref, ty: Type },
+    MemAlloc { out: Ref, ty: Type, count: usize, },
 }
 
 impl fmt::Display for Instruction {
@@ -137,8 +152,8 @@ impl fmt::Display for Instruction {
                 write!(f, "{:>width$} {} if {}", "jmpif", dest, test, width = IX_WIDTH)
             }
 
-            Instruction::MemAlloc { out, ty, } => {
-                write!(f, "{:>width$} {}^ of {}", "malloc", out, ty, width = IX_WIDTH)
+            Instruction::MemAlloc { out, ty, count } => {
+                write!(f, "{:>width$} {}^ of [{}; {}]", "malloc", out, ty, count, width = IX_WIDTH)
             }
         }
     }
@@ -179,30 +194,29 @@ struct Scope {
     locals: Vec<Local>,
 }
 
-pub struct Builder<'m> {
-    metadata: &'m Metadata,
+pub struct Builder<'metadata> {
+    metadata: &'metadata mut Metadata,
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
     next_id: usize,
 }
 
-impl<'m> Builder<'m> {
-    pub fn new(metadata: &'m Metadata) -> Self {
+impl<'metadata> Builder<'metadata> {
+    pub fn new(metadata: &'metadata mut Metadata) -> Self {
         Self {
             metadata,
             instructions: Vec::new(),
             next_id: 0,
+
             scopes: vec![Scope { locals: Vec::new() }],
         }
     }
 
-    pub fn finish(mut self) -> Vec<Instruction> {
+    pub fn finish(&mut self) {
         while !self.scopes.is_empty() {
             self.end_scope();
         }
-
-        self.instructions
     }
 
     pub fn append(&mut self, instruction: Instruction) {
@@ -361,6 +375,7 @@ fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Val
 
 fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Value {
     let (struct_id, struct_def) = builder.metadata.find_struct(&ctor.ident.to_string())
+        .map(|(id, def)| (id, def.clone()))
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
 
     let struct_ty = builder.metadata.translate_type(&ctor.annotation.ty);
@@ -376,7 +391,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
             let out_ptr = builder.new_local(class_ty, None);
 
             // allocate class struct at out pointer
-            builder.append(Instruction::MemAlloc { out: out_ptr.clone(), ty: *struct_ty });
+            builder.append(Instruction::MemAlloc { out: out_ptr.clone(), ty: *struct_ty, count: 1 });
 
             (out_ptr.clone(), out_ptr.deref())
         },
@@ -410,7 +425,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     Value::Ref(out_val)
 }
 
-fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Builder) -> Value {
+fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Value {
     match lit {
         ast::Literal::Boolean(b) => {
             assert_eq!(pas_ty::Type::Boolean, *ty);
@@ -437,8 +452,15 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, _builder: &mut Build
             }
         }
 
-        ast::Literal::String(_s) => {
-            unimplemented!("IR string literal")
+        ast::Literal::String(s) => {
+            match ty {
+                pas_ty::Type::Class(class) if class.ident.name == "String" => {
+                    let lit_id = builder.metadata.find_or_insert_string(s);
+                    let lit_ref = GlobalRef::StringLiteral(lit_id);
+                    Value::Ref(Ref::Global(lit_ref))
+                }
+                _ => panic!("bad type for string literal: {}", ty),
+            }
         }
     }
 }
@@ -510,7 +532,8 @@ pub fn translate_expr(
                 }
 
                 Some(pas_ty::ValueKind::Function) => {
-                    Value::Ref(Ref::Global(ident.name.clone()))
+                    let func_ref = GlobalRef::Function(ident.to_string());
+                    Value::Ref(Ref::Global(func_ref))
                 }
 
                 Some(pas_ty::ValueKind::Immutable) => {
@@ -580,7 +603,7 @@ pub struct Function {
     return_ty: Type,
 }
 
-pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> Function {
+pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &mut Metadata) -> Function {
     let mut body_builder = Builder::new(metadata);
 
     let return_ty = match func.return_ty.as_ref() {
@@ -606,8 +629,10 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &Metadata) -> 
         body_builder.append(Instruction::Set { out: return_at, new_val: return_val });
     }
 
+    body_builder.finish();
+
     Function {
-        body: body_builder.finish(),
+        body: body_builder.instructions,
         return_ty,
     }
 }
@@ -652,6 +677,12 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
+        writeln!(f, "* String literals:")?;
+        for (id, lit) in self.metadata.strings() {
+            writeln!(f, "`{}`: '{}'", id, lit)?;
+        }
+        writeln!(f)?;
+
         writeln!(f, "* Functions")?;
         for (name, func) in &self.functions {
             writeln!(f, "{}:", name)?;
@@ -671,6 +702,9 @@ impl fmt::Display for Module {
 
 pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
     let mut metadata = Metadata::new();
+    // add refs
+    metadata.extend(&Metadata::system());
+
     let mut functions = HashMap::new();
 
     for ty_decl in unit.type_decls() {
@@ -682,18 +716,20 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
     }
 
     for func_decl in unit.func_decls() {
-        let func = translate_func(func_decl, &metadata);
+        let func = translate_func(func_decl, &mut metadata);
         functions.insert(func_decl.ident.to_string(), func);
     }
 
-    let mut init_builder = Builder::new(&metadata);
+    let mut init_builder = Builder::new(&mut metadata);
 
     for stmt in &unit.init {
         translate_stmt(stmt, &mut init_builder);
     }
 
+    init_builder.finish();
+
     Module {
-        init: init_builder.finish(),
+        init: init_builder.instructions,
         functions,
         metadata,
     }
