@@ -22,7 +22,7 @@ pub struct TracedError<T> {
 
 impl<T> TracedError<T> {
     pub fn trace(err: T) -> Self {
-        const SKIP_FRAMES: usize = 5;
+        const SKIP_FRAMES: usize = 0;
 
         let mut frames: Vec<_> = Backtrace::new().into();
         frames.rotate_left(SKIP_FRAMES);

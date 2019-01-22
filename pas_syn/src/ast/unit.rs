@@ -72,19 +72,19 @@ impl Unit<Span> {
                 Some(TokenTree::Keyword { kw: Keyword::Function, .. }) => {
                     let func_decl = FunctionDecl::parse(tokens)?;
                     decls.push(UnitDecl::Function(func_decl));
-
-                    match tokens.look_ahead().match_one(Separator::Semicolon) {
-                        Some(_) => tokens.advance(1),
-                        None => break,
-                    }
                 }
 
                 Some(TokenTree::Keyword { kw: Keyword::Type, .. }) => {
-                    let ty_decls = TypeDecl::parse(tokens)?;
-                    decls.extend(ty_decls.into_iter().map(UnitDecl::Type));
+                    let ty_decl = TypeDecl::parse(tokens)?;
+                    decls.push(UnitDecl::Type(ty_decl));
                 }
 
                 _ => break,
+            }
+
+            match tokens.look_ahead().match_one(Separator::Semicolon) {
+                Some(_) => tokens.advance(1),
+                None => break,
             }
         }
 

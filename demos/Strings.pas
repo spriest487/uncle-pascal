@@ -1,12 +1,11 @@
-type
-    IntBox = class
-        value: Integer;
-        otherValue: Integer;
-    end;
+type IntBox = class
+    value: Integer;
+    otherValue: Integer;
+end;
 
-    IntBoxHolder = class
-        box: IntBox;
-    end
+type IntBoxHolder = class
+    box: IntBox;
+end;
 
 function Value(box: IntBox): Integer
 begin

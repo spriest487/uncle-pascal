@@ -111,9 +111,8 @@ impl TypeDecl<Span> {
     /// block starts with an identifier then "=" and then the type definition.
     /// the block can contain 1+ types, each of which is terminated by a
     /// semicolon
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
-        let decl_start_matcher = Matcher::from(Keyword::Class);
-
+    #[allow(unused)]
+    pub fn parse_block(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
         tokens.match_one(Keyword::Type)?;
 
         let decls = tokens.match_separated(Separator::Semicolon, |_, tokens| {
@@ -121,25 +120,38 @@ impl TypeDecl<Span> {
                 return Ok(Generate::Break);
             }
 
-            let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
-            tokens.match_one(Operator::Equals)?;
-
-            match tokens.look_ahead().next() {
-                Some(ref tt) if Class::match_kw().is_match(tt) => {
-                    let class_decl = Class::parse(tokens, ident.clone())?;
-                    Ok(Generate::Yield(TypeDecl::Class(class_decl)))
-                },
-
-                Some(unexpected) => Err(TracedError::trace(
-                    ParseError::UnexpectedToken(unexpected, Some(decl_start_matcher.clone()))
-                )),
-                None => Err(TracedError::trace(
-                    ParseError::UnexpectedEOF(decl_start_matcher.clone(), tokens.context().clone())
-                )),
-            }
+            Self::parse_decl(tokens)
+                .map(Generate::Yield)
         })?;
 
         Ok(decls)
+    }
+
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        tokens.match_one(Keyword::Type)?;
+
+        Self::parse_decl(tokens)
+    }
+
+    fn parse_decl(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
+        tokens.match_one(Operator::Equals)?;
+
+        let decl_start_matcher = Matcher::from(Keyword::Class);
+
+        match tokens.look_ahead().next() {
+            Some(ref tt) if Class::match_kw().is_match(tt) => {
+                let class_decl = Class::parse(tokens, ident.clone())?;
+                Ok(TypeDecl::Class(class_decl))
+            },
+
+            Some(unexpected) => Err(TracedError::trace(
+                ParseError::UnexpectedToken(unexpected, Some(decl_start_matcher.clone()))
+            )),
+            None => Err(TracedError::trace(
+                ParseError::UnexpectedEOF(decl_start_matcher.clone(), tokens.context().clone())
+            )),
+        }
     }
 }
 
