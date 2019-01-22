@@ -40,3 +40,13 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
     builder.end_scope();
 }
+
+pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut Builder) {
+    let lhs_ref = match translate_expr(&assignment.lhs, builder) {
+        Value::Ref(lhs_ref) => lhs_ref,
+        _ => panic!("lhs of assignment op must be a referenceable value"),
+    };
+    let rhs = translate_expr(&assignment.rhs, builder);
+
+    builder.append(Instruction::Set { out: lhs_ref, new_val: rhs });
+}

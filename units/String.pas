@@ -16,11 +16,11 @@ end;
 
 function StringConcat(a, b: String): String
 begin
-    if a.len == 0 and b.len == 0 then
+    if a.len = 0 and b.len = 0 then
         String(chars: nil; len: 0)
-    else if a.len == 0 then
+    else if a.len = 0 then
         b
-    else if b.len == 0 then
+    else if b.len = 0 then
         a
     else begin
         let bytes: ^Byte := GetMem(len);

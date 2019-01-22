@@ -11,7 +11,7 @@ pub fn typecheck_for_loop(
     let annotation = TypeAnnotation::untyped(for_loop.annotation.clone());
 
     let inner_scope = ctx.push_scope();
-    let init_binding = typecheck_let_binding(&for_loop.init_binding, ctx)?;
+    let init_binding = typecheck_local_binding(&for_loop.init_binding, ctx)?;
 
     if init_binding.val_ty != Type::Primitive(Primitive::Int32) {
         unimplemented!("non-int32 loops");

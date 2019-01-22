@@ -1,27 +1,40 @@
 use {
-    std::fmt,
-    pas_common::{
-        span::*,
-    },
     crate::{
-        ident::*,
-        token_tree::*,
-        parse::*,
-        ast::*,
+        parse::prelude::*,
+        ast::{
+            ExpressionNode,
+            Expression,
+            expression::match_operand_start,
+            ForLoop,
+            Call,
+            Block,
+        },
     },
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LetBinding<A: Annotation> {
+pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
     pub val_ty: A::Type,
     pub val: ExpressionNode<A>,
+    pub mutable: bool,
     pub annotation: A,
 }
 
-impl LetBinding<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let let_kw = tokens.match_one(Keyword::Let)?;
+impl LocalBinding<Span> {
+    pub fn parse(tokens: &mut TokenStream, allow_mutable: bool) -> ParseResult<Self> {
+        let kw_matcher = if allow_mutable {
+            Keyword::Let.or(Keyword::Var)
+        } else {
+            Keyword::Let.into()
+        };
+
+        let let_kw = tokens.match_one(kw_matcher)?;
+        let mutable = match let_kw {
+            TokenTree::Keyword { kw: Keyword::Var, .. } => true,
+            _ => false,
+        };
+
         let name_token = tokens.match_one(Matcher::AnyIdent)?;
 
         tokens.match_one(Separator::Colon)?;
@@ -31,16 +44,17 @@ impl LetBinding<Span> {
         let val = ExpressionNode::parse(tokens)?;
         let span = let_kw.span().to(&val.annotation);
 
-        Ok(LetBinding {
+        Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
             val_ty: ty,
+            mutable,
             val: val,
             annotation: span,
         })
     }
 }
 
-impl<A: Annotation> fmt::Display for LetBinding<A> {
+impl<A: Annotation> fmt::Display for LocalBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "let {}: {} := {}", self.name, self.val_ty, self.val)
     }
@@ -62,18 +76,32 @@ impl<A: Annotation> fmt::Display for Exit<A> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Assignment<A: Annotation> {
+    pub lhs: ExpressionNode<A>,
+    pub rhs: ExpressionNode<A>,
+    pub annotation: A,
+}
+
+impl<A: Annotation> fmt::Display for Assignment<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} := {}", self.lhs, self.rhs)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
-    LetBinding(LetBinding<A>),
+    LocalBinding(LocalBinding<A>),
     Call(Call<A>),
     Exit(Exit<A>),
     Block(Block<A>),
     ForLoop(ForLoop<A>),
+    Assignment(Assignment<A>),
 }
 
 impl<A: Annotation> Statement<A> {
     pub fn annotation(&self) -> &A {
         match self {
-            Statement::LetBinding(binding) => &binding.annotation,
+            Statement::LocalBinding(binding) => &binding.annotation,
             Statement::Call(call) => &call.annotation,
             Statement::Exit(exit) => match exit {
                 Exit::WithValue(expr) => &expr.annotation,
@@ -81,6 +109,7 @@ impl<A: Annotation> Statement<A> {
             },
             Statement::Block(block) => &block.annotation,
             Statement::ForLoop(for_loop) => &for_loop.annotation,
+            Statement::Assignment(assignment) => &assignment.annotation,
         }
     }
 
@@ -107,9 +136,10 @@ impl<A: Annotation> Statement<A> {
 
 pub fn statement_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
+        .or(Keyword::Var)
         .or(Keyword::For)
         .or(Keyword::Exit)
-        .or(expression::match_operand_start())
+        .or(match_operand_start())
 }
 
 impl Statement<Span> {
@@ -117,9 +147,10 @@ impl Statement<Span> {
         let stmt_start = statement_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
-            Some(TokenTree::Keyword { kw: Keyword::Let, .. }) => {
-                let binding = LetBinding::parse(tokens)?;
-                Ok(Statement::LetBinding(binding))
+            Some(TokenTree::Keyword { kw: Keyword::Let, .. }) |
+            Some(TokenTree::Keyword { kw: Keyword::Var, .. }) => {
+                let binding = LocalBinding::parse(tokens, true)?;
+                Ok(Statement::LocalBinding(binding))
             }
 
             Some(TokenTree::Keyword { kw: Keyword::For, .. }) => {
@@ -156,6 +187,20 @@ fn expr_to_stmt(expr: ExpressionNode<Span>) -> ParseResult<Statement<Span>> {
             Ok(Statement::Block(block))
         },
 
+        Expression::BinOp(bin_op) => {
+            if bin_op.op == Operator::Assignment {
+                let assignment = Assignment {
+                    lhs: bin_op.lhs,
+                    rhs: bin_op.rhs,
+                    annotation: bin_op.annotation,
+                };
+                Ok(Statement::Assignment(assignment))
+            } else {
+                let invalid_node = ExpressionNode::new(Expression::BinOp(bin_op), expr.annotation);
+                Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
+            }
+        }
+
         invalid => {
             let invalid_node = ExpressionNode::new(invalid, expr.annotation);
             Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
@@ -166,11 +211,12 @@ fn expr_to_stmt(expr: ExpressionNode<Span>) -> ParseResult<Statement<Span>> {
 impl<A: Annotation> fmt::Display for Statement<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Statement::LetBinding(binding) => write!(f, "{}", binding),
+            Statement::LocalBinding(binding) => write!(f, "{}", binding),
             Statement::Call(call) => write!(f, "{}", call),
             Statement::Exit(exit) => write!(f, "{}", exit),
             Statement::Block(block) => write!(f, "{}", block),
             Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
+            Statement::Assignment(assignment) => write!(f, "{}", assignment),
         }
     }
 }

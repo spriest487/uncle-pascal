@@ -86,6 +86,9 @@ pub enum ValueKind {
     /// local value in an immutable location
     Immutable,
 
+    /// local value in mutable location
+    Mutable,
+
     /// rvalue, e.g. value returned from function, result of operation,
     /// with no binding
     Temporary,
@@ -98,6 +101,7 @@ impl fmt::Display for ValueKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ValueKind::Immutable => write!(f, "Immutable binding"),
+            ValueKind::Mutable => write!(f, "Mutable binding"),
             ValueKind::Temporary => write!(f, "Temporary value"),
             ValueKind::Function => write!(f, "Function"),
         }

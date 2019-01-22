@@ -4,39 +4,70 @@ use {
     },
 };
 
-pub type LetBinding = ast::LetBinding<TypeAnnotation>;
+pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
 
-pub fn typecheck_let_binding(
-    let_binding: &ast::LetBinding<Span>,
+pub fn typecheck_local_binding(
+    binding: &ast::LocalBinding<Span>,
     ctx: &mut Context)
-    -> TypecheckResult<LetBinding>
+    -> TypecheckResult<LocalBinding>
 {
-    let val_ty = ctx.find_type(&let_binding.val_ty)?.clone();
-    let val = typecheck_expr(&let_binding.val, &val_ty, ctx)?;
+    let val_ty = ctx.find_type(&binding.val_ty)?.clone();
+    let val = typecheck_expr(&binding.val, &val_ty, ctx)?;
 
-    let binding = Binding {
-        kind: ValueKind::Immutable,
+    ctx.declare_binding(binding.name.clone(), Binding {
+        kind: if binding.mutable {
+            ValueKind::Mutable
+        } else {
+            ValueKind::Immutable
+        },
         ty: val_ty.clone(),
-    };
+    })?;
 
-    ctx.declare_binding(let_binding.name.clone(), binding)?;
+    let annotation = TypeAnnotation::untyped(binding.annotation.clone());
 
-    let annotation = TypeAnnotation::untyped(let_binding.annotation.clone());
-
-    Ok(LetBinding {
-        name: let_binding.name.clone(),
+    Ok(LocalBinding {
+        name: binding.name.clone(),
         val_ty,
         val,
         annotation,
+        mutable: binding.mutable,
+    })
+}
+
+pub type Assignment = ast::Assignment<TypeAnnotation>;
+
+pub fn typecheck_assignment(
+    assignment: &ast::Assignment<Span>,
+    ctx: &mut Context)
+    -> TypecheckResult<Assignment>
+{
+    let lhs = typecheck_expr(&assignment.lhs, &Type::Nothing, ctx)?;
+    if lhs.annotation.value_kind != Some(ValueKind::Mutable) {
+        return Err(TypecheckError::NotMutable(Box::new(lhs)));
+    }
+
+    let rhs = typecheck_expr(&assignment.rhs, &lhs.annotation.ty, ctx)?;
+    if rhs.annotation.ty != lhs.annotation.ty {
+        return Err(TypecheckError::TypeMismatch {
+            expected: lhs.annotation.ty,
+            actual: rhs.annotation.ty,
+            span: rhs.annotation.span,
+        });
+    }
+
+    Ok(Assignment {
+        lhs,
+        rhs,
+        annotation: TypeAnnotation::untyped(assignment.annotation.clone()),
     })
 }
 
 pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> TypecheckResult<Statement> {
     match stmt {
-        ast::Statement::LetBinding(let_binding) => {
-            typecheck_let_binding(let_binding, ctx)
-                .map(ast::Statement::LetBinding)
+        ast::Statement::LocalBinding(binding) => {
+            typecheck_local_binding(binding, ctx)
+                .map(ast::Statement::LocalBinding)
         }
 
         ast::Statement::Call(call) => {
@@ -55,6 +86,11 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
         ast::Statement::ForLoop(for_loop) => {
             typecheck_for_loop(for_loop, ctx)
                 .map(ast::Statement::ForLoop)
+        }
+
+        ast::Statement::Assignment(assignment) => {
+            typecheck_assignment(assignment, ctx)
+                .map(ast::Statement::Assignment)
         }
 
         ast::Statement::Exit(_exit) => {

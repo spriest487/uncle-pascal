@@ -564,7 +564,8 @@ pub fn translate_expr(
                     Value::Ref(Ref::Global(func_ref))
                 }
 
-                Some(pas_ty::ValueKind::Immutable) => {
+                Some(pas_ty::ValueKind::Immutable) |
+                Some(pas_ty::ValueKind::Mutable) => {
                     builder.find_local(&ident.name)
                         .map(|local| Value::Ref(Ref::Local(local.id())))
                         .unwrap_or_else(|| panic!("identifier not found in local scope: {}", ident))
@@ -597,7 +598,7 @@ pub fn translate_expr(
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
-        ast::Statement::LetBinding(binding) => {
+        ast::Statement::LocalBinding(binding) => {
             let bound_ty = builder.metadata.translate_type(&binding.val_ty);
 
             let binding_id = builder.new_local(bound_ty, Some(binding.name.to_string()));
@@ -624,6 +625,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
+        }
+
+        ast::Statement::Assignment(assignment) => {
+            translate_assignment(assignment, builder);
         }
     }
 }

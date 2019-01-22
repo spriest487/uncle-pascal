@@ -2,7 +2,7 @@ use {
     crate::{
         parse::prelude::*,
         ast::{
-            LetBinding,
+            LocalBinding,
             ExpressionNode,
             Statement,
         },
@@ -11,7 +11,7 @@ use {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ForLoop<A: Annotation> {
-    pub init_binding: LetBinding<A>,
+    pub init_binding: LocalBinding<A>,
     pub to_expr: ExpressionNode<A>,
     pub body: Box<Statement<A>>,
     pub annotation: A,
@@ -32,7 +32,7 @@ impl<A: Annotation> Spanned for ForLoop<A> {
 impl ForLoop<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let for_kw = tokens.match_one(Keyword::For)?;
-        let init_binding = LetBinding::parse(tokens)?;
+        let init_binding = LocalBinding::parse(tokens, false)?;
 
         tokens.match_one(Keyword::To)?;
         let to_expr  = ExpressionNode::parse(tokens)?;

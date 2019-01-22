@@ -134,16 +134,24 @@ impl Matcher {
     }
 
     pub fn or(self, or: impl Into<Matcher>) -> Matcher {
-        match self {
-            Matcher::OneOf(mut options) => {
-                options.push(or.into());
+        match (self, or.into()) {
+            (Matcher::OneOf(mut options), Matcher::OneOf(others)) => {
+                options.extend(others);
                 Matcher::OneOf(options)
             }
-            _ => {
-                Matcher::OneOf(vec![
-                    self,
-                    or.into(),
-                ])
+
+            (Matcher::OneOf(mut options), other @ _) => {
+                options.push(other);
+                Matcher::OneOf(options)
+            }
+
+            (this, Matcher::OneOf(mut others)) => {
+                others.insert(0, this);
+                Matcher::OneOf(others)
+            }
+
+            (this, other) => {
+                Matcher::OneOf(vec![this, other])
             }
         }
     }
