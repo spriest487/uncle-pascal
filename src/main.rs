@@ -26,6 +26,7 @@ use {
     },
     std::{
         fmt,
+        process,
         fs::File,
         io::Read,
         path::PathBuf,
@@ -87,7 +88,7 @@ impl fmt::Display for CompileError {
     }
 }
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
 enum Stage {
     Interpret,
     Intermediate,
@@ -133,6 +134,10 @@ struct Args {
     /// interpreter: log executed IR instructions
     #[structopt(long = "trace-ir")]
     trace_ir: bool,
+
+    /// print compiler backtrace on compilation failure
+    #[structopt(long = "backtrace", short = "bt")]
+    backtrace: bool,
 }
 
 fn compile(filename: impl Into<PathBuf>,
@@ -183,7 +188,7 @@ fn compile(filename: impl Into<PathBuf>,
     Ok(())
 }
 
-fn main() -> Result<(), CompileError> {
+fn main() {
     let args: Args = Args::from_args();
     let opts = BuildOptions::default();
     let interpret_opts = InterpreterOpts {
@@ -206,11 +211,13 @@ fn main() -> Result<(), CompileError> {
         Ok(file) => file,
     };
 
-    compile(args.file, &src, opts, interpret_opts, args.stage)
-        .map_err(|err| {
-            err.print_context(&src);
+    let print_bt = args.backtrace;
 
-            match &err {
+    if let Err(err) = compile(args.file, &src, opts, interpret_opts, args.stage) {
+        err.print_context(&src);
+
+        if print_bt {
+            match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
                 }
@@ -219,9 +226,10 @@ fn main() -> Result<(), CompileError> {
                     println!("{:?}", err.bt);
                 }
 
-                _ => {}
+                _ => {},
             }
+        }
 
-            err
-        })
+        process::exit(1)
+    }
 }
