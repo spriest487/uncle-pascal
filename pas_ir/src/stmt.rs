@@ -46,6 +46,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
         Value::Ref(lhs_ref) => lhs_ref,
         _ => panic!("lhs of assignment op must be a referenceable value"),
     };
+
     let rhs = translate_expr(&assignment.rhs, builder);
 
     builder.append(Instruction::Set { out: lhs_ref, new_val: rhs });

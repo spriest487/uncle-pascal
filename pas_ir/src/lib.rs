@@ -62,12 +62,12 @@ impl fmt::Display for GlobalRef {
 pub enum Ref {
     Local(usize),
     Global(GlobalRef),
-    Deref(Box<Ref>),
+    Deref(Box<Value>),
 }
 
 impl Ref {
     pub fn deref(self) -> Self {
-        Ref::Deref(Box::new(self))
+        Ref::Deref(Box::new(Value::Ref(self)))
     }
 }
 
@@ -100,6 +100,19 @@ impl fmt::Display for Value {
     }
 }
 
+impl Value {
+    fn into_ref(self) -> Option<Ref> {
+        match self {
+            Value::Ref(ref_val) => Some(ref_val),
+            _ => None,
+        }
+    }
+
+    fn deref(self) -> Value {
+        Value::Ref(Ref::Deref(Box::new(self)))
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Label(usize);
 
@@ -119,6 +132,8 @@ pub enum Instruction {
 
     Gt { out: Ref, a: Value, b: Value },
     Not { out: Ref, a: Value, },
+
+    AddrOf { out: Ref, a: Ref },
 
     Call { out: Option<Ref>, function: Value, args: Vec<Value> },
 
@@ -158,6 +173,10 @@ impl fmt::Display for Instruction {
                 write!(f, ")")
             }
 
+            Instruction::AddrOf { out, a } => {
+                write!(f, "{:>width$} {} := @{}", "addrof", out, a, width = IX_WIDTH)
+            }
+
             Instruction::GetField { out, of, struct_id, field_id } => {
                 write!(f, "{:>width$} ", "getfld", width = IX_WIDTH)?;
                 write!(f, "{} := ({} as {}).{}", out, of, Type::Struct(*struct_id), field_id)
@@ -187,6 +206,7 @@ impl fmt::Display for Instruction {
     }
 }
 
+#[derive(Debug)]
 enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
     Allocated {
@@ -218,10 +238,12 @@ impl Local {
     }
 }
 
+#[derive(Debug)]
 struct Scope {
     locals: Vec<Local>,
 }
 
+#[derive(Debug)]
 pub struct Builder<'metadata> {
     metadata: &'metadata mut Metadata,
 
@@ -366,6 +388,34 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
     builder.end_scope();
 
     Value::Ref(out_val)
+}
+
+fn translate_unary_op(
+    unary_op: &pas_ty::ast::UnaryOp,
+    out_ty: &pas_ty::Type,
+    builder: &mut Builder)
+    -> Value
+{
+    let operand_val = translate_expr(&unary_op.operand, builder);
+
+    match unary_op.op {
+        syn::Operator::AddressOf => {
+            let out_ty = builder.metadata.translate_type(out_ty);
+            let out_val = builder.new_local(out_ty, None);
+
+            let operand_ref = operand_val.into_ref()
+                .expect("operand of address-of operator must be a referencable value");
+            builder.append(Instruction::AddrOf { out: out_val.clone(), a: operand_ref });
+
+            Value::Ref(out_val)
+        }
+
+        syn::Operator::Deref => {
+            operand_val.deref()
+        }
+
+        op => unimplemented!("unary operator {}", op)
+    }
 }
 
 fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Value> {
@@ -550,6 +600,10 @@ pub fn translate_expr(
             translate_bin_op(bin_op, &expr.annotation.ty, builder)
         }
 
+        ast::Expression::UnaryOp(unary_op) => {
+            translate_unary_op(unary_op, &expr.annotation.ty, builder)
+        }
+
         ast::Expression::Ident(ident) => {
             match expr.annotation.value_kind {
                 None => {
@@ -568,7 +622,9 @@ pub fn translate_expr(
                 Some(pas_ty::ValueKind::Mutable) => {
                     builder.find_local(&ident.name)
                         .map(|local| Value::Ref(Ref::Local(local.id())))
-                        .unwrap_or_else(|| panic!("identifier not found in local scope: {}", ident))
+                        .unwrap_or_else(|| {
+                            panic!("identifier not found in local scope @ {}: {}", expr.annotation.span, ident)
+                        })
                 }
             }
         }

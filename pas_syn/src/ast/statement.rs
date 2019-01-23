@@ -117,14 +117,12 @@ impl<A: Annotation> Statement<A> {
         match self {
             Statement::Call(call) => {
                 let annotation = call.annotation.clone();
-                let call_expr = Expression::Call(call);
-                Some(ExpressionNode::new(call_expr, annotation))
+                Some(ExpressionNode::new(call, annotation))
             }
 
             Statement::Block(block) => if block.output.is_some() {
                 let annotation = block.annotation.clone();
-                let block_expr = Expression::Block(block);
-                Some(ExpressionNode::new(block_expr, annotation))
+                Some(ExpressionNode::new(block, annotation))
             } else {
                 None
             }
@@ -196,7 +194,7 @@ fn expr_to_stmt(expr: ExpressionNode<Span>) -> ParseResult<Statement<Span>> {
                 };
                 Ok(Statement::Assignment(assignment))
             } else {
-                let invalid_node = ExpressionNode::new(Expression::BinOp(bin_op), expr.annotation);
+                let invalid_node = ExpressionNode::new(bin_op, expr.annotation);
                 Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
             }
         }

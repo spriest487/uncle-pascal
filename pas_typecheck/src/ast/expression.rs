@@ -82,17 +82,15 @@ pub fn typecheck_expr(
         ast::Expression::Literal(ast::Literal::String(s)) => {
             let binding = ValueKind::Immutable;
             let annotation = TypeAnnotation::typed_value(ctx.string_type(), binding, span.clone());
-            let expr = ast::Expression::Literal(ast::Literal::String(s.clone()));
 
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ast::Literal::String(s.clone()), annotation))
         }
 
         ast::Expression::Literal(ast::Literal::Boolean(b)) => {
             let binding = ValueKind::Immutable;
             let annotation = TypeAnnotation::typed_value(Primitive::Boolean, binding, span.clone());
-            let expr = ast::Expression::Literal(ast::Literal::Boolean(*b));
 
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ast::Literal::Boolean(*b), annotation))
         }
 
         ast::Expression::Literal(ast::Literal::Integer(i)) => {
@@ -104,9 +102,8 @@ pub fn typecheck_expr(
                 unimplemented!("integers outside range of i32")
             };
             let annotation = TypeAnnotation::typed_value(ty, binding, span.clone());
-            let expr = ast::Expression::Literal(ast::Literal::Integer(*i));
 
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ast::Literal::Integer(*i), annotation))
         }
 
         ast::Expression::Literal(ast::Literal::Real(x)) => {
@@ -119,25 +116,27 @@ pub fn typecheck_expr(
             };
 
             let annotation = TypeAnnotation::typed_value(ty, binding, span.clone());
-            let expr = ast::Expression::Literal(ast::Literal::Real(x.clone()));
 
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ast::Literal::Real(x.clone()), annotation))
         }
 
         ast::Expression::Ident(ident) => {
             let binding = ctx.find_named(ident)?;
             let annotation = TypeAnnotation::typed_value(binding.ty.clone(), binding.kind, span);
 
-            let expr = ast::Expression::Ident(ident.clone());
-
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ident.clone(), annotation))
         }
 
         ast::Expression::BinOp(bin_op) => {
             let bin_op = typecheck_bin_op(bin_op, ctx)?;
             let annotation = bin_op.annotation.clone();
-            let expr = ast::Expression::BinOp(bin_op);
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(bin_op, annotation))
+        }
+
+        ast::Expression::UnaryOp(unary_op) => {
+            let unary_op = typecheck_unary_op(unary_op, ctx)?;
+            let annotation = unary_op.annotation.clone();
+            Ok(ast::ExpressionNode::new(unary_op, annotation))
         }
 
         ast::Expression::Call(call) => {
@@ -147,30 +146,25 @@ pub fn typecheck_expr(
             }
 
             let annotation = call.annotation.clone();
-            let expr = ast::Expression::Call(call);
-
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(call, annotation))
         }
 
         ast::Expression::ObjectCtor(ctor) => {
             let ctor = typecheck_object_ctor(ctor, ctx)?;
             let annotation = ctor.annotation.clone();
-            let expr = ast::Expression::ObjectCtor(ctor);
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(ctor, annotation))
         }
 
         ast::Expression::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             let annotation = if_cond.annotation.clone();
-            let expr = ast::Expression::IfCond(if_cond);
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(if_cond, annotation))
         }
 
         ast::Expression::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
             let annotation = block.annotation.clone();
-            let expr = ast::Expression::Block(block);
-            Ok(ast::ExpressionNode::new(expr, annotation))
+            Ok(ast::ExpressionNode::new(block, annotation))
         }
     }
 }

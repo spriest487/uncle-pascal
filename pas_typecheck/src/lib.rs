@@ -10,7 +10,7 @@ pub mod ast {
     mod typedecl;
     mod block;
     mod ctor;
-    mod bin_op;
+    mod op;
     mod cond;
     mod iter;
 
@@ -35,7 +35,7 @@ pub mod ast {
     }
 
     pub use self::{
-        bin_op::*,
+        op::*,
         cond::*,
         expression::*,
         statement::*,
@@ -198,6 +198,13 @@ pub mod ty {
             }
         }
 
+        pub fn deref_ty(&self) -> Option<&Type> {
+            match self {
+                Type::Pointer(ty) => Some(ty.as_ref()),
+                _ => None,
+            }
+        }
+
         pub fn ptr(self) -> Self {
             Type::Pointer(Box::new(self))
         }
@@ -212,7 +219,9 @@ pub mod ty {
             match self.full_name() {
                 Some(name) => write!(f, "{}", name),
                 None => match self {
+                    Type::Record(class) => write!(f, "{}", class.ident),
                     Type::Class(class) => write!(f, "{}", class.ident),
+                    Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 }
             }

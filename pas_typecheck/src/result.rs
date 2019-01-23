@@ -4,6 +4,7 @@ use {
     pas_syn::Ident,
     crate::{
         Type,
+        ValueKind,
         context::NameError,
         ast::{
             ExpressionNode,
@@ -33,6 +34,15 @@ pub enum TypecheckError {
         span: Span,
     },
     NotMutable(Box<ExpressionNode>),
+    NotAddressable {
+        ty: Type,
+        value_kind: Option<ValueKind>,
+        span: Span
+    },
+    NotDerefable {
+        ty: Type,
+        span: Span,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -53,6 +63,8 @@ impl Spanned for TypecheckError {
             TypecheckError::TypeMismatch { span, .. } => span,
             TypecheckError::MemberNotFound { span, .. } => span,
             TypecheckError::NotMutable(expr) => expr.annotation.span(),
+            TypecheckError::NotAddressable { span, .. } => span,
+            TypecheckError::NotDerefable { span, .. } => span,
         }
     }
 }
@@ -101,6 +113,17 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::NotMutable(expr) => {
                 write!(f, "`{}` does not refer to a mutable value", expr)
+            }
+
+            TypecheckError::NotAddressable { ty, value_kind, .. } => {
+                match value_kind {
+                    Some(value_kind) => write!(f, "{} of type {} cannot have its address taken",  value_kind, ty),
+                    None => write!(f, "expression without a value cannot have its address taken"),
+                }
+            }
+
+            TypecheckError::NotDerefable { ty, .. } => {
+                write!(f, "value of type {} cannot be dereferenced", ty,)
             }
         }
     }

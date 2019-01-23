@@ -8,6 +8,7 @@ pub mod typedecl;
 pub mod ctor;
 pub mod cond;
 pub mod iter;
+pub mod op;
 
 pub use self::{
     statement::*,
@@ -20,6 +21,7 @@ pub use self::{
     ctor::*,
     cond::*,
     iter::*,
+    op::*,
 };
 
 use {
@@ -63,6 +65,7 @@ impl TypeName {
         let mut indirection = 0;
         while tokens.look_ahead().match_one(Operator::Deref).is_some() {
             indirection += 1;
+            tokens.advance(1);
         }
 
         match tokens.match_one(Matcher::AnyIdent)? {

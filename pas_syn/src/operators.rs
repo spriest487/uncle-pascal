@@ -3,6 +3,7 @@ use std::fmt;
 #[derive(Eq, PartialEq, Clone, Debug, Copy)]
 pub enum Position {
     Prefix,
+    Postfix,
     Binary,
 }
 
@@ -10,7 +11,8 @@ impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
             Position::Prefix => "prefix",
-            Position::Binary => "binary"
+            Position::Binary => "binary",
+            Position::Postfix => "postfix",
         })
     }
 }
@@ -39,7 +41,8 @@ pub enum Operator {
 }
 
 pub static PRECEDENCE: [(Operator, Position); 21] = [
-    (Operator::Deref, Position::Prefix),
+    (Operator::Deref, Position::Postfix),
+
     (Operator::AddressOf, Position::Prefix),
     (Operator::Plus, Position::Prefix),
     (Operator::Minus, Position::Prefix),
