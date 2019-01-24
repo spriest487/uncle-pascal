@@ -160,7 +160,12 @@ impl Metadata {
             fields.insert(id, StructField { name, ty });
         }
 
-        let id = StructId(self.structs.len());
+        let id = (0..)
+            .map(StructId)
+            .filter(|id| !self.structs.contains_key(id))
+            .next()
+            .unwrap();
+
         self.structs.insert(id, Struct { name: struct_def.ident.to_string(), fields });
         id
     }
