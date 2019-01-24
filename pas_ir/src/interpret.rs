@@ -228,6 +228,12 @@ impl Interpreter {
         };
         globals.insert(GlobalRef::Function("GetMem".to_string()), MemCell::Function(get_mem));
 
+        let free_mem = Function::Builtin {
+            func: builtin::free_mem,
+            ret: Type::Nothing,
+        };
+        globals.insert(GlobalRef::Function("FreeMem".to_string()), MemCell::Function(free_mem));
+
         let mut heap = RcHeap::new();
         heap.trace = opts.trace_heap;
 

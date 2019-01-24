@@ -45,3 +45,14 @@ pub(super) fn get_mem(state: &mut Interpreter) {
 
     state.store(&ret, MemCell::Pointer(Pointer::Rc(Type::U8, mem)));
 }
+
+// $1: ^Byte -> Nothing
+pub(super) fn free_mem(state: &mut Interpreter) {
+    let arg_0 = Ref::Local(0);
+
+    let ptr = state.load(&arg_0).as_pointer()
+        .and_then(|ptr| ptr.as_rc_addr())
+        .unwrap_or_else(|| panic!("FreeMem expected heap pointer argument"));
+
+    state.heap.free(ptr);
+}

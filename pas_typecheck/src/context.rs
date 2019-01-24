@@ -214,6 +214,13 @@ impl Context {
             })
             .unwrap();
 
+        root_ctx.declare_function(Ident::new("FreeMem", builtin_span.clone()),
+            FunctionSig {
+                params: vec![Type::Primitive(Primitive::Byte).ptr()],
+                return_ty: Type::Nothing,
+            })
+            .unwrap();
+
         root_ctx.declare_function(Ident::new("IntToStr", builtin_span.clone()),
             FunctionSig {
                 params: vec![Primitive::Int32.into()],

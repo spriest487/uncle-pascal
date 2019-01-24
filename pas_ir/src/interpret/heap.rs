@@ -100,6 +100,19 @@ impl RcHeap {
         addr
     }
 
+    pub fn free(&mut self, addr: RcAddress) {
+        let free_len = self.alloc_lens.remove(&addr)
+            .expect("must have an alloc len for freed cell");
+
+        for addr in addr.range_to(addr + free_len) {
+            self.slots[addr.0] = None;
+        }
+
+        if self.trace {
+            eprintln!("heap: {} freed ({} cells)", addr, free_len);
+        }
+    }
+
     pub fn get(&self, addr: RcAddress) -> Option<&MemCell> {
         self.slots.get(addr.0)
             .and_then(|slot| slot.as_ref())
@@ -139,16 +152,7 @@ impl RcHeap {
             .unwrap_or_else(|| panic!("attempting to release unallocated slot {}", addr));
 
         if slot.ref_count == 1 {
-            let dealloc_len = self.alloc_lens.remove(&addr)
-                .expect("must have an alloc len for deleted cell");
-
-            for addr in addr.range_to(addr + dealloc_len) {
-                self.slots[addr.0] = None;
-            }
-
-            if self.trace {
-                eprintln!("heap: {} deallocated ({} cells)", addr, dealloc_len);
-            }
+            self.free(addr);
         } else if slot.ref_count > 0 {
             slot.ref_count -= 1;
             if self.trace {
