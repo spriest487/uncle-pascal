@@ -169,7 +169,18 @@ impl Context {
             kind: ClassKind::Object,
             ident: Ident::new("String", builtin_span.clone()),
             span: builtin_span.clone(),
-            members: Vec::new(),
+            members: vec![
+                ast::Member {
+                    ident: Ident::new("chars", builtin_span.clone()),
+                    ty: Type::Primitive(Primitive::Byte).ptr(),
+                    span: builtin_span.clone(),
+                },
+                ast::Member {
+                    ident: Ident::new("len", builtin_span.clone()),
+                    ty: Type::Primitive(Primitive::Int32),
+                    span: builtin_span.clone(),
+                },
+            ],
         });
 
         let mut root_ctx = Self {
@@ -195,6 +206,13 @@ impl Context {
 
         let string_ident = root_ctx.string_class.ident.clone();
         root_ctx.declare_type(string_ident, Type::Class(root_ctx.string_class.clone())).unwrap();
+
+        root_ctx.declare_function(Ident::new("GetMem", builtin_span.clone()),
+            FunctionSig {
+                params: vec![Type::Primitive(Primitive::Int32)],
+                return_ty: Type::Primitive(Primitive::Byte).ptr(),
+            })
+            .unwrap();
 
         root_ctx.declare_function(Ident::new("IntToStr", builtin_span.clone()),
             FunctionSig {

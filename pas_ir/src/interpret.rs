@@ -54,6 +54,7 @@ impl fmt::Debug for Function {
 //#[allow(unused)]
 #[derive(Debug, Clone)]
 pub enum Pointer {
+    Null,
     Uninit(Type),
     Rc(Type, RcAddress),
     Local { frame: usize, id: usize, ty: Type },
@@ -62,6 +63,7 @@ pub enum Pointer {
 impl Pointer {
     pub fn ty(&self) -> &Type {
         match self {
+            Pointer::Null => &Type::Nothing,
             Pointer::Uninit(ty) => ty,
             Pointer::Rc(ty, _) => ty,
             Pointer::Local { ty, .. } => ty,
@@ -81,6 +83,7 @@ impl Add<usize> for Pointer {
 
     fn add(self, rhs: usize) -> Self {
         match self {
+            Pointer::Null => Pointer::Null,
             Pointer::Uninit(ty) => Pointer::Uninit(ty),
             Pointer::Local { frame, id, ty } => Pointer::Local { frame, id: id + rhs, ty },
             Pointer::Rc(ty, RcAddress(addr)) => Pointer::Rc(ty, RcAddress(addr + rhs)),
@@ -103,6 +106,13 @@ impl MemCell {
     pub fn as_struct(&self) -> Option<(StructId, &Vec<MemCell>)> {
         match self {
             MemCell::Structure { id, fields } => Some((*id, fields)),
+            _ => None,
+        }
+    }
+
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            MemCell::Bool(b) => Some(*b),
             _ => None,
         }
     }
@@ -246,8 +256,12 @@ impl Interpreter {
                     .unwrap_or_else(|| panic!("local cell {}.{} is not allocated", frame, id))
             }
 
-            Pointer::Uninit(_) => {
-                panic!("dereferencing uninitialized pointer");
+            Pointer::Null => {
+                panic!("derefencing null pointer");
+            }
+
+            Pointer::Uninit(ty) => {
+                panic!("dereferencing uninitialized {} pointer", ty);
             }
         }
     }
@@ -265,8 +279,12 @@ impl Interpreter {
                     .unwrap_or_else(|| panic!("local cell {}.{} is not allocated", frame, id))
             }
 
-            Pointer::Uninit(_) => {
-                panic!("dereferencing uninitialized pointer");
+            Pointer::Uninit(ty) => {
+                panic!("dereferencing uninitialized {} pointer", ty);
+            }
+
+            Pointer::Null => {
+                panic!("dereferencing null pointer")
             }
         }
     }
@@ -331,6 +349,7 @@ impl Interpreter {
             Value::LiteralI32(i) => MemCell::I32(*i),
             Value::LiteralF32(f) => MemCell::F32(*f),
             Value::LiteralBool(b) => MemCell::Bool(*b),
+            Value::LiteralNull => MemCell::Pointer(Pointer::Null),
         }
     }
 
@@ -566,12 +585,30 @@ impl Interpreter {
                 }
 
                 Instruction::Not { out, a } => {
-                    let val = match self.evaluate(a) {
-                        MemCell::Bool(a) => MemCell::Bool(!a),
-                        _ => panic!("Not is not valid for {:?}", a),
-                    };
+                    let val = self.evaluate(a).as_bool()
+                        .unwrap_or_else(|| panic!("Not instruction is not valid for {:?}", a));
 
-                    self.assign(out, val);
+                    self.assign(out, MemCell::Bool(!val));
+                }
+
+                Instruction::And { out, a, b } => {
+                    let a_val = self.evaluate(a).as_bool()
+                        .unwrap_or_else(|| panic!("operand a of And instruction must be bool, got {:?}", a));
+
+                    let b_val = self.evaluate(b).as_bool()
+                        .unwrap_or_else(|| panic!("operand b of And instruction must be bool, got {:?}", b));
+
+                    self.store(out, MemCell::Bool(a_val && b_val));
+                }
+
+                Instruction::Or { out, a, b } => {
+                    let a_val = self.evaluate(a).as_bool()
+                        .unwrap_or_else(|| panic!("operand a of Or instruction must be bool, got {:?}", a));
+
+                    let b_val = self.evaluate(b).as_bool()
+                        .unwrap_or_else(|| panic!("operand b of Or instruction must be bool, got {:?}", b));
+
+                    self.store(out, MemCell::Bool(a_val || b_val));
                 }
 
                 Instruction::Set { out, new_val } => {

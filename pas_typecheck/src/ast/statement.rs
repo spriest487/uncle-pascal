@@ -1,4 +1,5 @@
 use {
+    pas_syn::Operator,
     crate::{
         ast::prelude::*,
     },
@@ -48,10 +49,12 @@ pub fn typecheck_assignment(
     }
 
     let rhs = typecheck_expr(&assignment.rhs, &lhs.annotation.ty, ctx)?;
-    if rhs.annotation.ty != lhs.annotation.ty {
-        return Err(TypecheckError::TypeMismatch {
-            expected: lhs.annotation.ty,
-            actual: rhs.annotation.ty,
+
+    if !lhs.annotation.ty.assignable_from(&rhs.annotation.ty) {
+        return Err(TypecheckError::InvalidBinOp {
+            lhs: lhs.annotation.ty,
+            rhs: rhs.annotation.ty,
+            op: Operator::Assignment,
             span: rhs.annotation.span,
         });
     }

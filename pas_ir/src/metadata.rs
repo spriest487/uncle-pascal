@@ -172,7 +172,8 @@ impl Metadata {
 
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
-            pas_typecheck::Type::Nothing => Type::Nothing,
+            pas_ty::Type::Nothing => Type::Nothing,
+            pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,

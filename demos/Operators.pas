@@ -1,3 +1,5 @@
+let nothingPtr: ^Real32 := nil;
+
 var x: Integer := 1;
 x := 2;
 x := x + 1;
@@ -19,3 +21,5 @@ WriteLn(IntToStr(yPtr^));
 
 yPtrPtr^^ := 56654;
 WriteLn(IntToStr(y));
+
+let bothTrue: Boolean := true and true;

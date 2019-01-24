@@ -11,6 +11,7 @@ use {
     crate::{
         Type,
         ValueKind,
+        result::*,
     },
 };
 
@@ -35,6 +36,18 @@ impl TypeAnnotation {
             ty: Type::Nothing,
             value_kind: None,
             span,
+        }
+    }
+
+    pub fn expect(&self, expect_ty: &Type) -> TypecheckResult<()> {
+        if self.ty != *expect_ty {
+            Err(TypecheckError::TypeMismatch {
+                span: self.span.clone(),
+                expected: expect_ty.clone(),
+                actual: self.ty.clone(),
+            })
+        } else {
+            Ok(())
         }
     }
 }

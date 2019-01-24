@@ -1,7 +1,10 @@
 use {
     std::fmt,
     pas_common::span::*,
-    pas_syn::Ident,
+    pas_syn::{
+        Ident,
+        Operator,
+    },
     crate::{
         Type,
         ValueKind,
@@ -42,6 +45,12 @@ pub enum TypecheckError {
     NotDerefable {
         ty: Type,
         span: Span,
+    },
+    InvalidBinOp {
+        lhs: Type,
+        rhs: Type,
+        op: Operator,
+        span: Span,
     }
 }
 
@@ -65,6 +74,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotMutable(expr) => expr.annotation.span(),
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
+            TypecheckError::InvalidBinOp { span, .. } => span,
         }
     }
 }
@@ -124,6 +134,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::NotDerefable { ty, .. } => {
                 write!(f, "value of type {} cannot be dereferenced", ty,)
+            }
+
+            TypecheckError::InvalidBinOp { lhs, rhs, op, .. } => {
+                write!(f, "{} cannot be applied to the operand types {} and {}", op, lhs, rhs)
             }
         }
     }

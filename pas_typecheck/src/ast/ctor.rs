@@ -1,4 +1,5 @@
 use {
+    pas_syn::Operator,
     crate::ast::prelude::*,
 };
 
@@ -29,10 +30,11 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
                 });
             },
 
-            Some(wrong_ty) if *wrong_ty != value.annotation.ty => {
-                return Err(TypecheckError::TypeMismatch {
-                    actual: value.annotation.ty,
-                    expected: wrong_ty.clone(),
+            Some(member_ty) if !member_ty.assignable_from(&value.annotation.ty)  => {
+                return Err(TypecheckError::InvalidBinOp {
+                    rhs: value.annotation.ty,
+                    lhs: member_ty.clone(),
+                    op: Operator::Assignment,
                     span: ctor_member.value.annotation.span().clone(),
                 });
             }

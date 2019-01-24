@@ -84,6 +84,7 @@ impl fmt::Display for Ref {
 #[derive(Debug, Clone)]
 pub enum Value {
     Ref(Ref),
+    LiteralNull,
     LiteralBool(bool),
     LiteralI32(i32),
     LiteralF32(f32),
@@ -96,6 +97,7 @@ impl fmt::Display for Value {
             Value::LiteralI32(i) => write!(f, "{}i32", i),
             Value::LiteralBool(b) => write!(f, "{}", b),
             Value::LiteralF32(x) => write!(f, "{:.6}", x),
+            Value::LiteralNull => write!(f, "NULL"),
         }
     }
 }
@@ -132,6 +134,8 @@ pub enum Instruction {
 
     Gt { out: Ref, a: Value, b: Value },
     Not { out: Ref, a: Value, },
+    And { out: Ref, a: Value, b: Value,},
+    Or { out: Ref, a: Value, b: Value, },
 
     AddrOf { out: Ref, a: Ref },
 
@@ -156,7 +160,10 @@ impl fmt::Display for Instruction {
             Instruction::Set { out, new_val } => write!(f, "{:>width$} {} := {}", "set", out, new_val, width = IX_WIDTH),
             Instruction::Add { out, a, b } => write!(f, "{:>width$} {} := {} + {}", "add", out, a, b, width = IX_WIDTH),
             Instruction::Gt { out, a, b } => write!(f, "{:>width$} {} := {} > {}", "gt", out, a, b, width = IX_WIDTH),
+
             Instruction::Not { out, a } => write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH),
+            Instruction::And { out, a, b } => write!(f, "{:>width$} {} := {} and {}", "and", out, a, b, width = IX_WIDTH),
+            Instruction::Or { out, a, b } => write!(f, "{:>width$} {} := {} or {}", "or", out, a, b, width = IX_WIDTH),
 
             Instruction::Call { out, function, args } => {
                 write!(f, "{:>width$} ", "call", width = IX_WIDTH)?;
@@ -381,6 +388,18 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
             b: translate_expr(&bin_op.rhs, builder),
         },
 
+        syn::Operator::And => Instruction::And {
+            out: out_val.clone(),
+            a: lhs_val,
+            b: translate_expr(&bin_op.rhs, builder),
+        },
+
+        syn::Operator::Or => Instruction::Or {
+            out: out_val.clone(),
+            a: lhs_val,
+            b: translate_expr(&bin_op.rhs, builder),
+        },
+
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 
@@ -505,6 +524,10 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Value {
     match lit {
+        ast::Literal::Nil => {
+            Value::LiteralNull
+        }
+
         ast::Literal::Boolean(b) => {
             assert_eq!(pas_ty::Type::Primitive(pas_ty::Primitive::Boolean), *ty);
             Value::LiteralBool(*b)

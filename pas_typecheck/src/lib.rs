@@ -132,6 +132,7 @@ pub mod ty {
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub enum Type {
         Nothing,
+        Nil,
         Primitive(Primitive),
         Pointer(Box<Type>),
         Function(Rc<FunctionSig>),
@@ -212,6 +213,21 @@ pub mod ty {
         pub fn indirect_by(self, indirection: usize) -> Self {
             (0..indirection).fold(self, |ty, _| ty.ptr())
         }
+
+        pub fn self_comparable(&self) -> bool {
+            match self {
+                Type::Class(_) | Type::Record(_) | Type::Nothing | Type::Function(_) => false,
+                _ => true,
+            }
+        }
+
+        pub fn assignable_from(&self, from: &Self) -> bool {
+            match self {
+                Type::Pointer(_) => *self == *from || *from == Type::Nil,
+                Type::Function(_) => false,
+                _ => *self == *from,
+            }
+        }
     }
 
     impl fmt::Display for Type {
@@ -219,6 +235,7 @@ pub mod ty {
             match self.full_name() {
                 Some(name) => write!(f, "{}", name),
                 None => match self {
+                    Type::Nil => write!(f, "nil"),
                     Type::Record(class) => write!(f, "{}", class.ident),
                     Type::Class(class) => write!(f, "{}", class.ident),
                     Type::Pointer(target_ty) => write!(f, "^{}", target_ty),

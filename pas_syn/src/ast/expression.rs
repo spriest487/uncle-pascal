@@ -26,6 +26,7 @@ use {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal {
+    Nil,
     Integer(IntConstant),
     Real(RealConstant),
     String(String),
@@ -35,6 +36,7 @@ pub enum Literal {
 impl fmt::Display for Literal {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Literal::Nil => write!(f, "nil"),
             Literal::Integer(x) => write!(f, "{}", x),
             Literal::Real(x) => write!(f, "{}", x),
             Literal::String(s) => write!(f, "'{}'", s),
@@ -170,14 +172,15 @@ pub fn match_operand_start() -> Matcher {
         .or(DelimiterPair::Bracket)
         // collection constructor
         .or(DelimiterPair::SquareBracket)
-        // block
+        // block/control flow
         .or(DelimiterPair::BeginEnd)
+        .or(Keyword::If)
         // literals
+        .or(Keyword::Nil)
         .or(Matcher::AnyLiteralBoolean)
         .or(Matcher::AnyLiteralInteger)
         .or(Matcher::AnyLiteralString)
         .or(Matcher::AnyLiteralReal)
-        .or(Keyword::If)
         // prefix operator applying to next operand
         .or(Matcher::any_operator_in_position(Position::Prefix))
 }
@@ -478,6 +481,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             Some(TokenTree::IntNumber { .. }) => {
                 let expr = parse_literal_integer(self.tokens)?;
                 self.add_operand(expr);
+            }
+
+            Some(TokenTree::Keyword { kw: Keyword::Nil, .. }) => {
+                let nil_token = self.tokens.next().unwrap();
+                self.add_operand(ExpressionNode::new(Literal::Nil, nil_token.span().clone()));
             }
 
             Some(TokenTree::Keyword { kw: Keyword::If, .. }) => {

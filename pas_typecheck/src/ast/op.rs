@@ -1,7 +1,5 @@
 use {
-    pas_syn::{
-        Operator,
-    },
+    pas_syn::Operator,
     crate::ast::prelude::*,
 };
 
@@ -12,11 +10,12 @@ pub fn typecheck_bin_op(
     ctx: &mut Context)
     -> TypecheckResult<BinOp>
 {
-    let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
         Operator::Member => {
+            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+
             // rhs of an ident op must be an identifier (parser checks this)
             let member_ident = bin_op.rhs.expr.as_ident()
                 .cloned()
@@ -45,10 +44,59 @@ pub fn typecheck_bin_op(
                 rhs: ExpressionNode::new(rhs, annotation.clone()),
                 annotation,
             })
-        },
+        }
 
-        _ => {
-            let rhs = typecheck_expr(&bin_op.rhs, &Type::Nothing, ctx)?;
+        Operator::And | Operator::Or => {
+            let bool_ty = Type::Primitive(Primitive::Boolean);
+
+            let lhs = typecheck_expr(&bin_op.lhs, &bool_ty, ctx)?;
+            lhs.annotation.expect(&bool_ty)?;
+
+            let rhs = typecheck_expr(&bin_op.rhs, &bool_ty, ctx)?;
+            rhs.annotation.expect(&bool_ty)?;
+
+            let annotation = TypeAnnotation::typed_value(bool_ty, ValueKind::Temporary, span);
+
+            Ok(BinOp {
+                lhs,
+                rhs,
+                op: bin_op.op,
+                annotation,
+            })
+        }
+
+        Operator::Equals | Operator::NotEquals => {
+            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation.ty, ctx)?;
+
+            rhs.annotation.expect(&lhs.annotation.ty)?;
+
+            if !lhs.annotation.ty.self_comparable() {
+                return Err(TypecheckError::InvalidBinOp {
+                    lhs: lhs.annotation.ty,
+                    rhs: rhs.annotation.ty,
+                    op: bin_op.op,
+                    span: bin_op.annotation.span().clone(),
+                });
+            }
+
+            let result_ty = Type::Primitive(Primitive::Boolean);
+            let annotation = TypeAnnotation::typed_value(result_ty, ValueKind::Temporary, span);
+
+            Ok(BinOp {
+                lhs,
+                rhs,
+                op: bin_op.op,
+                annotation,
+            })
+        }
+
+        Operator::Plus |
+        Operator::Minus |
+        Operator::Multiply |
+        Operator::Divide => {
+            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation.ty, ctx)?;
 
             // check valid ops etc, result type etc
             let result_ty = lhs.annotation.ty.clone();
@@ -62,9 +110,11 @@ pub fn typecheck_bin_op(
                 lhs,
                 op: bin_op.op,
                 rhs,
-                annotation
+                annotation,
             })
         },
+
+        _ => unimplemented!("typechecking for expression containing binary operator {}", bin_op.op)
     }
 }
 
@@ -88,12 +138,12 @@ pub fn typecheck_unary_op(
                 (ty, kind) => return Err(TypecheckError::NotAddressable {
                     ty: ty.clone(),
                     value_kind: kind,
-                    span
+                    span,
                 }),
             };
 
             TypeAnnotation::typed_value(addr_ty, ValueKind::Temporary, span)
-        },
+        }
 
         Operator::Deref => {
             let deref_ty = operand.annotation.ty.deref_ty()

@@ -120,6 +120,11 @@ pub fn typecheck_expr(
             Ok(ast::ExpressionNode::new(ast::Literal::Real(x.clone()), annotation))
         }
 
+        ast::Expression::Literal(ast::Literal::Nil) => {
+            let annotation = TypeAnnotation::typed_value(Type::Nil, ValueKind::Temporary, span);
+            Ok(ast::ExpressionNode::new(ast::Literal::Nil, annotation))
+        }
+
         ast::Expression::Ident(ident) => {
             let binding = ctx.find_named(ident)?;
             let annotation = TypeAnnotation::typed_value(binding.ty.clone(), binding.kind, span);
