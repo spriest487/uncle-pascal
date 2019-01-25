@@ -46,6 +46,11 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    InvalidUnaryOp {
+        op: Operator,
+        operand: Type,
+        span: Span,
+    },
     InvalidBinOp {
         lhs: Type,
         rhs: Type,
@@ -75,6 +80,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
+            TypecheckError::InvalidUnaryOp { span, .. } => span,
         }
     }
 }
@@ -137,7 +143,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidBinOp { lhs, rhs, op, .. } => {
-                write!(f, "{} cannot be applied to the operand types {} and {}", op, lhs, rhs)
+                write!(f, "operator {} cannot be applied to the operand types {} and {}", op, lhs, rhs)
+            }
+
+            TypecheckError::InvalidUnaryOp { operand, op, .. } => {
+                write!(f, "operator {} cannot be applied to an operand of type {}", op, operand)
             }
         }
     }

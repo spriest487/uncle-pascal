@@ -12,25 +12,7 @@ use {
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
-            let binding_val_ty = binding.val_ty.as_ref().unwrap();
-            let bound_ty = builder.metadata.translate_type(binding_val_ty);
-
-            let rc = binding_val_ty.is_rc();
-            let binding_id = builder.new_local(bound_ty, rc, Some(binding.name.to_string()));
-
-            builder.begin_scope();
-            let init_val = translate_expr(&binding.val, builder);
-
-            if binding.val.annotation.ty.is_rc() {
-                let init_val_ref = init_val.as_ref_val()
-                    .expect("rc pointer always exists at referenceable location");
-                builder.append(Instruction::Retain(init_val_ref.clone()));
-            }
-
-            builder.append(Instruction::Set { out: binding_id, new_val: init_val });
-
-
-            builder.end_scope();
+            translate_binding(binding, builder);
         }
 
         ast::Statement::Call(call) => {
@@ -38,8 +20,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::Block(block) => {
-            let block_out = translate_block(block, builder);
-            assert!(block_out.is_none(), "block statement should not produce a value");
+            translate_block(block, builder);
         }
 
         ast::Statement::Exit(_) => {
@@ -56,6 +37,21 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     }
 }
 
+fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
+    let binding_val_ty = binding.val_ty.as_ref().unwrap();
+    let bound_ty = builder.metadata.translate_type(binding_val_ty);
+
+    let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
+
+    builder.begin_scope();
+    let init_val = translate_expr(&binding.val, builder);
+
+    builder.mov(binding_ref.clone(), init_val);
+    builder.retain(binding_ref, &bound_ty);
+
+    builder.end_scope();
+}
+
 pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
     builder.begin_scope();
 
@@ -69,25 +65,27 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     assert!(!for_loop.init_binding.val.annotation.ty.is_rc(), "counter type must not be ref counted");
 
     let inc_val = Value::LiteralI32(1);
-    let loop_val = builder.new_local(Type::Bool, false, None);
+    let loop_val = builder.local_temp(Type::Bool);
 
-    let counter_val = builder.new_local(counter_ty, false, Some(for_loop.init_binding.name.to_string()));
+    let counter_val = builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
     let init_val = translate_expr(&for_loop.init_binding.val, builder);
 
     let to_val = translate_expr(&for_loop.to_expr, builder);
 
-    builder.append(Instruction::Set { out: counter_val.clone(), new_val: init_val });
+    builder.mov(counter_val.clone(), init_val);
 
     let loop_top = builder.alloc_label();
 
     builder.append(Instruction::Label(loop_top));
 
+    builder.begin_scope();
     translate_stmt(&for_loop.body, builder);
+    builder.end_scope();
 
     // if not ++loop_counter > loop_val then jmp to loop_top
     builder.append(Instruction::Add { out: counter_val.clone(), a: Value::Ref(counter_val.clone()), b: inc_val });
 
-    builder.append(Instruction::Gt { out: loop_val.clone(), a: Value::Ref(counter_val), b: to_val });
+    builder.append(Instruction::Gt { out: loop_val.clone(), a: Value::Ref(counter_val), b: to_val.into() });
     builder.append(Instruction::Not { out: loop_val.clone(), a: Value::Ref(loop_val.clone()) });
     builder.append(Instruction::JumpIf { test: Value::Ref(loop_val), dest: loop_top });
 
@@ -95,21 +93,16 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 }
 
 pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut Builder) {
-    let lhs_ref = match translate_expr(&assignment.lhs, builder) {
-        Value::Ref(lhs_ref) => lhs_ref,
-        _ => panic!("lhs of assignment op must be a referenceable value"),
-    };
-
+    let lhs = translate_expr(&assignment.lhs, builder);
     let rhs = translate_expr(&assignment.rhs, builder);
 
-    if assignment.lhs.annotation.ty.is_rc() {
-        let rhs_ref = rhs.as_ref_val()
-            .expect("rc pointer values always exist at referenceable locations");
-        builder.append(Instruction::Retain(rhs_ref.clone()));
+    // the new value is being stored in a new location, retain it
+    let rhs_ty = builder.metadata.translate_type(&assignment.rhs.annotation.ty);
+    builder.retain(rhs.clone(), &rhs_ty);
 
-        builder.append(Instruction::Release(lhs_ref.clone()));
-    }
+    // the old value is being replaced, release it
+    let lhs_ty = builder.metadata.translate_type(&assignment.lhs.annotation.ty);
+    builder.release(lhs.clone(), &lhs_ty);
 
-    builder.append(Instruction::Set { out: lhs_ref, new_val: rhs });
+    builder.append(Instruction::Move { out: lhs, new_val: rhs.into() });
 }
-

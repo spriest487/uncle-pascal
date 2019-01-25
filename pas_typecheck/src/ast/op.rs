@@ -168,7 +168,11 @@ pub fn typecheck_unary_op(
         }
 
         _ => {
-            panic!("invalid operation in AST {:#?}", unary_op)
+            return Err(TypecheckError::InvalidUnaryOp {
+                op: unary_op.op,
+                operand: operand.annotation.ty,
+                span: unary_op.annotation.clone(),
+            })
         }
     };
 

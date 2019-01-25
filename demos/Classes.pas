@@ -17,10 +17,14 @@ begin
     holder.box
 end;
 
-let box: IntBox := IntBox(value: 1; otherValue: 2);
+let box := IntBox(value: 1; otherValue: 2);
+IntToStr(box.otherValue);
+
 let holder: IntBoxHolder := IntBoxHolder(box: box);
 
-WriteLn(IntToStr(holder.box.value));
-WriteLn(IntToStr(Value(holder.box)));
+//WriteLn(IntToStr(holder.box.value));
+//WriteLn(IntToStr(Value(holder.box)));
 
-WriteLn(IntToStr(Value(GetBox(holder)) + 1));
+//WriteLn(IntToStr(Value(IntBox(value: 321; otherValue: 123))));
+
+//WriteLn(IntToStr(Value(GetBox(holder)) + 1));

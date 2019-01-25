@@ -134,6 +134,27 @@ impl<A: Annotation> Expression<A> {
             _ => None,
         }
     }
+
+    pub fn as_object_ctor(&self) -> Option<&ObjectCtor<A>> {
+        match self {
+            Expression::ObjectCtor(ctor) => Some(ctor),
+            _ => None,
+        }
+    }
+
+    pub fn as_call(&self) -> Option<&Call<A>> {
+        match self {
+            Expression::Call(call) => Some(call),
+            _ => None,
+        }
+    }
+
+    pub fn as_literal(&self) -> Option<&Literal> {
+        match self {
+            Expression::Literal(lit) => Some(lit),
+            _ => None,
+        }
+    }
 }
 
 impl ExpressionNode<Span> {

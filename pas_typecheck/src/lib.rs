@@ -59,7 +59,7 @@ pub mod ty {
     use {
         std::{
             rc::Rc,
-            fmt
+            fmt,
         },
         pas_syn::{
             ast::{
@@ -152,14 +152,18 @@ pub mod ty {
             match self {
                 Type::Nothing => Some("Nothing".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
-                Type::Class(class) => Some(class.ident.to_string()),
+                Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
                 _ => None,
             }
         }
 
         pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
             match type_decl {
-                ast::TypeDecl::Class(class) => {
+                ast::TypeDecl::Class(class @ ast::Class { kind: ClassKind::Record, .. }) => {
+                    Type::Record(Rc::new(class.clone()))
+                }
+
+                ast::TypeDecl::Class(class @ ast::Class { kind: ClassKind::Object, .. }) => {
                     Type::Class(Rc::new(class.clone()))
                 }
             }
@@ -167,35 +171,37 @@ pub mod ty {
 
         pub fn find_member(&self, ident: &Ident) -> Option<&Type> {
             match self {
-                Type::Class(class) => class.find_member(ident)
+                Type::Record(class) | Type::Class(class) => class.find_member(ident)
                     .map(|m| &m.ty),
 
                 _ => None,
             }
         }
 
-        pub fn get_member(&self, index: usize) -> Option<&Type> {
+        pub fn get_member(&self, index: usize) -> Option<MemberRef> {
             match self {
-                Type::Class(class) => class.members.get(index).map(|m| &m.ty),
+                Type::Record(class) | Type::Class(class) => class.members.get(index)
+                    .map(|m| MemberRef { ty: &m.ty, ident: &m.ident }),
                 _ => None,
             }
         }
 
         pub fn members_len(&self) -> usize {
             match self {
-                Type::Class(class) => class.members.len(),
+                Type::Record(class) | Type::Class(class) => class.members.len(),
                 _ => 0,
             }
         }
 
-        pub fn members<'s>(&'s self) -> impl Iterator<Item=&'s Type> {
+        pub fn members<'ty>(&'ty self) -> impl Iterator<Item=MemberRef<'ty>> {
             (0..self.members_len())
                 .map(move |m| self.get_member(m).unwrap())
         }
 
         pub fn is_rc(&self) -> bool {
             match self {
-                Type::Class(class) => class.kind == ClassKind::Object,
+                Type::Class(_) => true,
+                Type::Record(_) => false,
                 _ => false,
             }
         }
@@ -248,12 +254,18 @@ pub mod ty {
                 Some(name) => write!(f, "{}", name),
                 None => match self {
                     Type::Nil => write!(f, "nil"),
-                    Type::Record(class) => write!(f, "{}", class.ident),
                     Type::Class(class) => write!(f, "{}", class.ident),
+                    Type::Record(class) => write!(f, "{}", class.ident),
                     Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 }
             }
         }
+    }
+
+    #[derive(Debug, Copy, Clone)]
+    pub struct MemberRef<'ty> {
+        pub ident: &'ty Ident,
+        pub ty: &'ty Type,
     }
 }

@@ -25,11 +25,18 @@ impl fmt::Display for StructId {
 }
 
 pub const STRING_ID: StructId = StructId(573196);
+pub const STRING_CHARS_FIELD: usize = 0;
+pub const STRING_LEN_FIELD: usize = 1;
+
+pub const RC_ID: StructId = StructId(36);
+pub const RC_REF_COUNT_FIELD: usize = 0;
+pub const RC_VALUE_FIELD: usize = 1;
 
 #[derive(Clone, Debug)]
 pub struct StructField {
     pub name: String,
     pub ty: Type,
+    pub rc: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -55,11 +62,13 @@ impl Struct {
         }
     }
 
-    pub fn with_field(mut self, name: &str, ty: Type) -> Self {
+    pub fn with_field(mut self, name: &str, ty: Type, rc: bool) -> Self {
         let id = self.fields.keys().max().map(|id| *id + 1).unwrap_or(0);
+
         self.fields.insert(id, StructField {
             name: name.to_string(),
             ty,
+            rc,
         });
 
         self
@@ -71,6 +80,7 @@ pub enum Type {
     Nothing,
     Pointer(Box<Type>),
     Struct(StructId),
+    Rc(Box<Type>),
     Bool,
     U8,
     I32,
@@ -82,9 +92,20 @@ impl Type {
         Type::Pointer(Box::new(self))
     }
 
-    pub fn is_struct(&self) -> bool {
+    pub fn rc(self) -> Self {
+        Type::Rc(Box::new(self))
+    }
+
+    pub fn is_any_struct(&self) -> bool {
         match self {
             Type::Struct(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_struct(&self, id: StructId) -> bool {
+        match self {
+            Type::Struct(ty_id) => *ty_id == id,
             _ => false,
         }
     }
@@ -100,6 +121,7 @@ impl fmt::Display for Type {
             Type::U8 => write!(f, "u8"),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
+            Type::Rc(id) => write!(f, "{{{} rc}}", id),
         }
     }
 }
@@ -114,9 +136,13 @@ impl Metadata {
     pub fn system() -> Self {
         let mut metadata = Metadata::new();
 
+        metadata.structs.insert(RC_ID, Struct::new("Rc")
+            .with_field("rc", Type::I32, false)
+            .with_field("value", Type::Nothing.ptr(), false));
+
         metadata.structs.insert(STRING_ID, Struct::new("String")
-            .with_field("chars", Type::I32.ptr())
-            .with_field("len", Type::I32));
+            .with_field("chars", Type::I32.ptr(), false)
+            .with_field("len", Type::I32, false));
 
         metadata
     }
@@ -156,8 +182,9 @@ impl Metadata {
         for (id, member) in struct_def.members.iter().enumerate() {
             let name = member.ident.to_string();
             let ty = self.translate_type(&member.ty);
+            let rc = member.ty.is_rc();
 
-            fields.insert(id, StructField { name, ty });
+            fields.insert(id, StructField { name, ty, rc });
         }
 
         let id = (0..)
@@ -193,9 +220,9 @@ impl Metadata {
             pas_typecheck::Type::Class(class) => {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
-                    .unwrap_or_else(|| panic!("class {} must exist in metadata", ty));
+                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
 
-                Type::Struct(id).ptr()
+                Type::Struct(id).rc()
             }
 
             pas_typecheck::Type::Function(_) => unimplemented!(),

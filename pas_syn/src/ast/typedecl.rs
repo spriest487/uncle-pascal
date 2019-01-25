@@ -85,7 +85,10 @@ impl<A: Annotation> Spanned for Class<A> {
 
 impl<A: Annotation> fmt::Display for Class<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "class")?;
+        writeln!(f, "{}", match self.kind {
+            ClassKind::Record => "record",
+            ClassKind::Object => "class",
+        })?;
         for member in &self.members {
             writeln!(f, "{}: {};", member.ident, member.ty)?;
         }

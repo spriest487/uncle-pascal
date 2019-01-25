@@ -15,7 +15,7 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
 
     let ty = ctx.find_type(&ty_ident)?.clone();
 
-    let ty_members: Vec<_> = ty.members().cloned().collect();
+    let ty_members: Vec<_> = ty.members().map(|m| m.ty).cloned().collect();
     let mut members = Vec::new();
 
     for (member_ty, ctor_member) in ty_members.iter().zip(ctor.args.members.iter()) {

@@ -16,11 +16,14 @@ use {
         collections::HashMap,
         fmt,
         f32,
-        ops::Add,
+        ops::{
+            Add,
+            Sub,
+        },
     },
     self::heap::{
-        RcHeap,
-        RcAddress,
+        Heap,
+        HeapAddress,
     },
 };
 
@@ -56,7 +59,7 @@ impl fmt::Debug for Function {
 pub enum Pointer {
     Null,
     Uninit(Type),
-    Rc(Type, RcAddress),
+    Heap(Type, HeapAddress),
     Local { frame: usize, id: usize, ty: Type },
 }
 
@@ -65,14 +68,14 @@ impl Pointer {
         match self {
             Pointer::Null => &Type::Nothing,
             Pointer::Uninit(ty) => ty,
-            Pointer::Rc(ty, _) => ty,
+            Pointer::Heap(ty, _) => ty,
             Pointer::Local { ty, .. } => ty,
         }
     }
 
-    pub fn as_rc_addr(&self) -> Option<RcAddress> {
+    pub fn as_heap_addr(&self) -> Option<HeapAddress> {
         match self {
-            Pointer::Rc(_ty, addr) => Some(*addr),
+            Pointer::Heap(_ty, addr) => Some(*addr),
             _ => None,
         }
     }
@@ -86,7 +89,20 @@ impl Add<usize> for Pointer {
             Pointer::Null => Pointer::Null,
             Pointer::Uninit(ty) => Pointer::Uninit(ty),
             Pointer::Local { frame, id, ty } => Pointer::Local { frame, id: id + rhs, ty },
-            Pointer::Rc(ty, RcAddress(addr)) => Pointer::Rc(ty, RcAddress(addr + rhs)),
+            Pointer::Heap(ty, HeapAddress(addr)) => Pointer::Heap(ty, HeapAddress(addr + rhs)),
+        }
+    }
+}
+
+impl Sub<usize> for Pointer {
+    type Output = Self;
+
+    fn sub(self, rhs: usize) -> Self {
+        match self {
+            Pointer::Null => Pointer::Null,
+            Pointer::Uninit(ty) => Pointer::Uninit(ty),
+            Pointer::Local { frame, id, ty } => Pointer::Local { frame, id: id - rhs, ty },
+            Pointer::Heap(ty, HeapAddress(addr)) => Pointer::Heap(ty, HeapAddress(addr - rhs)),
         }
     }
 }
@@ -135,9 +151,64 @@ impl MemCell {
         }
     }
 
-    pub fn as_struct(&self) -> Option<&StructCell> {
+    pub fn try_add(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => {
+                Some(MemCell::I32(a + b))
+            }
+
+            (MemCell::F32(a), MemCell::F32(b)) => {
+                Some(MemCell::F32(a + b))
+            }
+
+            (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
+                Some(MemCell::Pointer(ptr.clone() + *offset as usize))
+            }
+
+            (MemCell::Pointer(Pointer::Heap(ref a_ty, ref a)),
+                MemCell::Pointer(Pointer::Heap(ref b_ty, ref b)))
+            if a_ty == b_ty => {
+                Some(MemCell::Pointer(Pointer::Heap(a_ty.clone(), HeapAddress(a.0 + b.0))))
+            }
+
+            _ => None,
+        }
+    }
+
+    pub fn try_sub(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => {
+                Some(MemCell::I32(a - b))
+            }
+
+            (MemCell::F32(a), MemCell::F32(b)) => {
+                Some(MemCell::F32(a - b))
+            }
+
+            (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
+                Some(MemCell::Pointer(ptr.clone() - *offset as usize))
+            }
+
+            (MemCell::Pointer(Pointer::Heap(ref a_ty, ref a)),
+                MemCell::Pointer(Pointer::Heap(ref b_ty, ref b)))
+            if a_ty == b_ty => {
+                Some(MemCell::Pointer(Pointer::Heap(a_ty.clone(), HeapAddress(a.0 - b.0))))
+            }
+
+            _ => None,
+        }
+    }
+
+    pub fn as_struct_mut(&mut self, struct_id: StructId) -> Option<&mut StructCell> {
         match self {
-            MemCell::Structure(struct_cell) => Some(&struct_cell),
+            MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
+            _ => None,
+        }
+    }
+
+    pub fn as_struct(&self, struct_id: StructId) -> Option<&StructCell> {
+        match self {
+            MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
         }
     }
@@ -178,6 +249,7 @@ impl MemCell {
             MemCell::I32(_) => Type::I32,
             MemCell::F32(_) => Type::F32,
             MemCell::Structure(StructCell { id, .. }) => Type::Struct(*id),
+
             MemCell::Function(_) => Type::Nothing,
         }
     }
@@ -200,7 +272,7 @@ pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
     globals: HashMap<GlobalRef, MemCell>,
-    heap: RcHeap,
+    heap: Heap,
 
     trace_rc: bool,
     trace_ir: bool,
@@ -234,7 +306,7 @@ impl Interpreter {
         };
         globals.insert(GlobalRef::Function("FreeMem".to_string()), MemCell::Function(free_mem));
 
-        let mut heap = RcHeap::new();
+        let mut heap = Heap::new();
         heap.trace = opts.trace_heap;
 
         Self {
@@ -272,6 +344,10 @@ impl Interpreter {
                 self.init_struct(*id)
             }
 
+            Type::Rc(_) => {
+                self.init_struct(RC_ID)
+            }
+
             Type::Pointer(target) => {
                 let ptr = Pointer::Uninit((**target).clone());
                 MemCell::Pointer(ptr)
@@ -283,7 +359,7 @@ impl Interpreter {
 
     fn deref_ptr(&self, ptr: &Pointer) -> &MemCell {
         match ptr {
-            Pointer::Rc(_ty, slot) => {
+            Pointer::Heap(_ty, slot) => {
                 self.heap.get(*slot)
                     .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot))
             }
@@ -306,7 +382,7 @@ impl Interpreter {
 
     fn deref_ptr_mut(&mut self, ptr: &Pointer) -> &mut MemCell {
         match ptr {
-            Pointer::Rc(_ty, slot) => {
+            Pointer::Heap(_ty, slot) => {
                 self.heap.get_mut(*slot)
                     .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot))
             }
@@ -347,7 +423,7 @@ impl Interpreter {
                 match self.evaluate(inner) {
                     MemCell::Pointer(ptr) => {
                         *self.deref_ptr_mut(&ptr) = val;
-                    },
+                    }
 
                     x => panic!("can't deref non-pointer cell with value {:?}", x),
                 }
@@ -453,6 +529,7 @@ impl Interpreter {
         }
     }
 
+    // todo: this should be handled in the IR so we don't need to know cell types
     fn release_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Structure(StructCell { fields, .. }) => {
@@ -461,18 +538,36 @@ impl Interpreter {
                 }
             }
 
-            MemCell::Pointer(Pointer::Rc(ty, addr)) => {
-                let dead = self.heap.get_rc(*addr) == 1;
+            MemCell::Pointer(Pointer::Heap(ty, addr)) => {
+                let rc_cell = self.heap.get_mut(*addr)
+                    .and_then(|cell| cell.as_struct_mut(RC_ID));
 
-                if dead {
-                    let heap_cell = self.heap.get(*addr).cloned().unwrap();
-                    self.release_cell(&heap_cell)
-                }
+                if let Some(rc_cell) = rc_cell {
+                    let rc = rc_cell.fields[RC_REF_COUNT_FIELD].as_i32().unwrap();
 
-                if self.trace_rc {
-                    eprintln!("rc: release {} @ {}", ty, addr)
+                    if rc == 1 {
+                        let val_addr = rc_cell.fields[RC_VALUE_FIELD].as_pointer()
+                            .and_then(|ptr| ptr.as_heap_addr())
+                            .unwrap();
+
+                        let heap_cell = self.heap.get(val_addr).cloned().unwrap();
+                        self.release_cell(&heap_cell);
+
+                        if self.trace_rc {
+                            eprintln!("rc: free {} @ {}", ty, addr)
+                        }
+
+                        self.heap.free(val_addr);
+                        self.heap.free(*addr);
+                    } else {
+                        assert!(rc > 1);
+                        if self.trace_rc {
+                            eprintln!("rc: release {} @ {} ({} more refs)", ty, addr, rc - 1)
+                        }
+
+                        rc_cell.fields[RC_REF_COUNT_FIELD] = MemCell::I32(rc - 1);
+                    }
                 }
-                self.heap.release(*addr);
             }
 
             // can't contain rc pointers
@@ -480,14 +575,21 @@ impl Interpreter {
         }
     }
 
+    // todo: this should be handled in the IR
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
-            MemCell::Pointer(Pointer::Rc(ty, addr)) => {
-                if self.trace_rc {
-                    eprintln!("rc: retain {} @ {}", ty, addr);
-                }
+            MemCell::Pointer(Pointer::Heap(ty, addr)) => {
+                let rc_cell = self.heap.get_mut(*addr)
+                    .and_then(|cell| cell.as_struct_mut(RC_ID));
 
-                self.heap.retain(*addr);
+                if let Some(rc_cell) = rc_cell {
+                    if self.trace_rc {
+                        eprintln!("rc: retain {} @ {}", ty, addr);
+                    }
+
+                    let rc = rc_cell.fields[RC_REF_COUNT_FIELD].as_i32().unwrap();
+                    rc_cell.fields[RC_REF_COUNT_FIELD] = MemCell::I32(rc + 1);
+                }
             }
 
             MemCell::Structure(StructCell { fields, .. }) => {
@@ -520,7 +622,7 @@ impl Interpreter {
                 Pointer::Local {
                     frame: self.stack.len() - 1,
                     id: *id,
-                    ty: type_at
+                    ty: type_at,
                 }
             }
 
@@ -552,7 +654,7 @@ impl Interpreter {
 
                     match self.current_frame().locals[*id] {
                         None => self.current_frame_mut().locals[*id] = Some(self.init_cell(ty)),
-                        _ => panic!("local cell {} is already allocated"),
+                        _ => panic!("local cell {} is already allocated", Ref::Local(*id)),
                     }
                 }
 
@@ -564,47 +666,33 @@ impl Interpreter {
                     self.current_frame_mut().locals[*id] = None;
                 }
 
-                Instruction::MemAlloc { out, ty, count, } => {
-                    let mut init_cells = Vec::with_capacity(*count);
-                    for _ in 0..*count {
-                        init_cells.push(self.init_cell(ty));
-                    }
+                Instruction::RcNew { out, struct_id, } => {
+                    let struct_ty = Type::Struct(*struct_id);
+                    let init_cells = vec![self.init_cell(&struct_ty)];
 
-                    let heap_addr = self.heap.alloc(init_cells);
+                    let rc_ptr = self.rc_alloc(init_cells, *struct_id);
 
-                    self.store(out, MemCell::Pointer(Pointer::Rc(ty.clone(), heap_addr)))
+                    self.store(out, MemCell::Pointer(rc_ptr));
                 }
 
                 Instruction::Add { out, a, b } => {
-                    let out_val = match (self.evaluate(a), self.evaluate(b)) {
-                        (MemCell::I32(a), MemCell::I32(b)) => {
-                            MemCell::I32(a + b)
-                        }
+                    match self.evaluate(a).try_add(&self.evaluate(b)) {
+                        Some(result) => self.store(out, result),
+                        None => panic!("Add is not valid for {:?} + {:?}", self.evaluate(a), self.evaluate(b)),
+                    }
+                }
 
-                        (MemCell::F32(a), MemCell::F32(b)) => {
-                            MemCell::F32(a + b)
-                        }
-
-                        (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
-                            MemCell::Pointer(ptr + offset as usize)
-                        }
-
-                        (MemCell::Pointer(Pointer::Rc(ref a_ty, ref a)),
-                            MemCell::Pointer(Pointer::Rc(ref b_ty, ref b)))
-                        if a_ty == b_ty => {
-                            MemCell::Pointer(Pointer::Rc(a_ty.clone(), RcAddress(a.0 + b.0)))
-                        }
-
-                        (a, b) => panic!("Add is not valid for {:?} + {:?}", a, b)
-                    };
-
-                    self.store(out, out_val);
+                Instruction::Sub { out, a, b } => {
+                    match self.evaluate(a).try_sub(&self.evaluate(b)) {
+                        Some(result) => self.store(out, result),
+                        None => panic!("Sub is not valid for {:?} - {:?}", self.evaluate(a), self.evaluate(b)),
+                    }
                 }
 
                 Instruction::Eq { out, a, b } => {
                     let eq = match self.evaluate(a).try_eq(&self.evaluate(b)) {
                         Some(eq) => eq,
-                        None => panic!("Eq is not valid for {:?} = {:?}", a, b),
+                        None => panic!("Eq is not valid for {:?} = {:?}", self.evaluate(a), self.evaluate(b)),
                     };
 
                     self.store(out, MemCell::Bool(eq))
@@ -648,7 +736,7 @@ impl Interpreter {
                     self.store(out, MemCell::Bool(a_val || b_val));
                 }
 
-                Instruction::Set { out, new_val } => {
+                Instruction::Move { out, new_val } => {
                     self.store(out, self.evaluate(new_val));
                 }
 
@@ -656,6 +744,8 @@ impl Interpreter {
                     let arg_cells: Vec<_> = args.iter()
                         .map(|arg_val| self.evaluate(arg_val))
                         .collect();
+
+                    println!("arg cells: {:?}", arg_cells);
 
                     match self.evaluate(function) {
                         MemCell::Function(function) => {
@@ -671,24 +761,54 @@ impl Interpreter {
                     self.store(out, MemCell::Pointer(a_ptr));
                 }
 
-                Instruction::GetField { out, of, struct_id: _, field_id, } => {
-                    match self.load(of).clone() {
-                        MemCell::Structure(StructCell { fields, .. }) => {
-                            let field_cell = fields.into_iter()
-                                .skip(*field_id).next()
-                                .unwrap();
+                Instruction::GetField { out, of, struct_id, field_id, } => {
+                    let field_val = match self.load(of) {
+                        MemCell::Structure(StructCell { fields, id: cell_struct_id }) => {
+                            if *cell_struct_id == RC_ID {
+                                let val_ptr = fields[RC_VALUE_FIELD].as_pointer()
+                                    .and_then(|ptr| ptr.as_heap_addr())
+                                    .unwrap();
+                                let val_cell = self.heap.get(val_ptr)
+                                    .and_then(|cell| cell.as_struct(*struct_id))
+                                    .unwrap();
 
-                            self.store(out, field_cell);
+                                &val_cell.fields[*field_id]
+                            } else {
+                                assert_eq!(struct_id, cell_struct_id);
+
+                                &fields[*field_id]
+                            }
                         }
                         _ => panic!("GetField instruction targeting non-structure cell"),
-                    }
+                    };
+
+                    self.store(out, field_val.clone());
                 }
 
-                Instruction::SetField { of, new_val, struct_id: _, field_id, } => {
+                Instruction::SetField { of, new_val, struct_id, field_id, } => {
+                    let new_val = self.evaluate(new_val);
+
                     match self.load(of).clone() {
                         MemCell::Structure(mut struct_cell) => {
-                            struct_cell.fields[*field_id] = self.evaluate(new_val);
-                            self.store(of, MemCell::Structure(struct_cell))
+                            if struct_cell.id == RC_ID {
+                                let val_addr = struct_cell.fields[RC_VALUE_FIELD].as_pointer()
+                                    .and_then(|ptr| ptr.as_heap_addr())
+                                    .unwrap();
+
+                                let rc_val = self.heap.get_mut(val_addr)
+                                    .and_then(|cell| cell.as_struct_mut(*struct_id))
+                                    .unwrap();
+                                rc_val.fields[*field_id] = new_val;
+                            } else {
+                                assert_eq!(
+                                    *struct_id, struct_cell.id,
+                                    "SetField instruction expected {} at {}, found {}",
+                                    struct_id, of, struct_cell.id
+                                );
+
+                                struct_cell.fields[*field_id] = new_val;
+                                self.store(of, MemCell::Structure(struct_cell))
+                            }
                         }
 
                         _ => panic!("SetField instruction targeting non-structure cell"),
@@ -727,6 +847,19 @@ impl Interpreter {
         }
     }
 
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: StructId) -> Pointer {
+        let addr = self.heap.alloc(vals);
+        let ptr = Pointer::Heap(Type::Struct(struct_id), addr);
+
+        let rc_cell = MemCell::Structure(StructCell {
+            id: RC_ID,
+            fields: vec![MemCell::I32(1), MemCell::Pointer(ptr)],
+        });
+
+        let addr = self.heap.alloc(vec![rc_cell]);
+        Pointer::Heap(Type::Struct(RC_ID), addr)
+    }
+
     pub fn load_module(&mut self, module: &Module) {
         self.metadata.extend(&module.metadata);
 
@@ -749,6 +882,18 @@ impl Interpreter {
         self.pop_stack();
     }
 
+    fn get_rc_val(&self, rc_cell: &MemCell) -> &MemCell {
+        let rc_struct = rc_cell.as_struct(RC_ID)
+            .unwrap();
+
+        let val_ptr = rc_struct.fields[RC_VALUE_FIELD]
+            .as_pointer()
+            .and_then(|ptr| ptr.as_heap_addr())
+            .unwrap();
+
+        self.heap.get(val_ptr).unwrap()
+    }
+
     fn create_string(&mut self, content: &str) -> MemCell {
         let chars: Vec<_> = content.chars()
             .map(|c| MemCell::U8(c as u8))
@@ -757,7 +902,7 @@ impl Interpreter {
 
         let str_fields = vec![
             //field 0: `chars: ^Byte`
-            MemCell::Pointer(Pointer::Rc(Type::U8, chars_ptr)),
+            MemCell::Pointer(Pointer::Heap(Type::U8, chars_ptr)),
 
             //field 1: `len: Integer`
             MemCell::I32(content.len() as i32),
@@ -765,34 +910,26 @@ impl Interpreter {
 
         let str_cell = MemCell::Structure(StructCell { id: STRING_ID, fields: str_fields });
 
-        let str_addr = self.heap.alloc(vec![str_cell]);
-        let str_ptr = Pointer::Rc(Type::Struct(STRING_ID), str_addr);
-
+        let str_ptr = self.rc_alloc(vec![str_cell], STRING_ID);
         MemCell::Pointer(str_ptr)
     }
 
     fn read_string(&self, str_ref: &Ref) -> String {
-        let (_, string_def) = self.metadata.find_struct("String")
-            .expect("String type must exist");
+        let str_cell = self.get_rc_val(self.load(str_ref))
+            .as_struct(STRING_ID)
+            .unwrap();
 
-        //todo: we should be reading args from local refs not args array
-
-        let str_cell = self.load(str_ref)
-            .as_struct()
-            .unwrap_or_else(|| panic!("called read_string on {:?} which didn't hold a struct", str_ref));
-        assert_eq!(STRING_ID, str_cell.id);
-
-        let len = &str_cell.fields[string_def.find_field("len").unwrap()]
+        let len = &str_cell.fields[STRING_LEN_FIELD]
             .as_i32().unwrap();
 
-        let chars_addr = &str_cell.fields[string_def.find_field("chars").unwrap()]
+        let chars_addr = &str_cell.fields[STRING_CHARS_FIELD]
             .as_pointer()
-            .and_then(|ptr| ptr.as_rc_addr())
+            .and_then(|ptr| ptr.as_heap_addr())
             .unwrap_or_else(|| panic!("string contained non-heap-alloced `chars` pointer"));
 
         let mut chars = Vec::new();
         for i in 0..*len as usize {
-            let char_addr = RcAddress(chars_addr.0 + i);
+            let char_addr = HeapAddress(chars_addr.0 + i);
             let char_val = self.heap.get(char_addr)
                 .unwrap()
                 .as_u8()

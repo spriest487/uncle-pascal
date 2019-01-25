@@ -1,15 +1,10 @@
-mod stmt;
-mod expr;
-
 use {
     crate::{
+        expr::*,
         metadata::*,
         stmt::*,
-        expr::*,
     },
-    pas_syn::{
-        ast,
-    },
+    pas_syn::ast,
     pas_typecheck as pas_ty,
     std::{
         collections::HashMap,
@@ -23,21 +18,24 @@ pub use {
     },
 };
 
+mod stmt;
+mod expr;
+
 pub mod prelude {
     pub use crate::{
-        GlobalRef,
-        Ref,
-        Value,
-        Interpreter,
-        Instruction,
-        Label,
         Builder,
+        GlobalRef,
+        Instruction,
+        Interpreter,
+        Label,
         metadata::{
-            Type,
+            Metadata,
             STRING_ID,
             StringId,
-            Metadata,
+            Type,
         },
+        Ref,
+        Value,
     };
 }
 
@@ -75,7 +73,7 @@ impl Ref {
 impl fmt::Display for Ref {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Ref::Local(id) => write!(f, "${}", id),
+            Ref::Local(id) => write!(f, "%{}", id),
             Ref::Global(name) => write!(f, "{}", name),
             Ref::Deref(at) => write!(f, "{}^", at),
         }
@@ -103,23 +101,9 @@ impl fmt::Display for Value {
     }
 }
 
-impl Value {
-    fn as_ref_val(&self) -> Option<&Ref> {
-        match self {
-            Value::Ref(ref_val) => Some(ref_val),
-            _ => None,
-        }
-    }
-
-    fn into_ref_val(self) -> Option<Ref> {
-        match self {
-            Value::Ref(ref_val) => Some(ref_val),
-            _ => None,
-        }
-    }
-
-    fn deref(self) -> Value {
-        Value::Ref(Ref::Deref(Box::new(self)))
+impl From<Ref> for Value {
+    fn from(r: Ref) -> Self {
+        Value::Ref(r)
     }
 }
 
@@ -137,14 +121,15 @@ pub enum Instruction {
     LocalAlloc(usize, Type),
     LocalDelete(usize),
 
-    Set { out: Ref, new_val: Value },
+    Move { out: Ref, new_val: Value },
     Add { out: Ref, a: Value, b: Value },
+    Sub { out: Ref, a: Value, b: Value },
 
     Eq { out: Ref, a: Value, b: Value },
     Gt { out: Ref, a: Value, b: Value },
-    Not { out: Ref, a: Value, },
-    And { out: Ref, a: Value, b: Value,},
-    Or { out: Ref, a: Value, b: Value, },
+    Not { out: Ref, a: Value },
+    And { out: Ref, a: Value, b: Value },
+    Or { out: Ref, a: Value, b: Value },
 
     AddrOf { out: Ref, a: Ref },
 
@@ -157,7 +142,7 @@ pub enum Instruction {
     Jump { dest: Label },
     JumpIf { dest: Label, test: Value },
 
-    MemAlloc { out: Ref, ty: Type, count: usize, },
+    RcNew { out: Ref, struct_id: StructId },
 
     Release(Ref),
     Retain(Ref),
@@ -167,10 +152,11 @@ impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         const IX_WIDTH: usize = 8;
         match self {
-            Instruction::LocalAlloc(id, ty) => write!(f, "{:>width$} {} of {}", "local", id, ty, width = IX_WIDTH),
-            Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", id, width = IX_WIDTH),
-            Instruction::Set { out, new_val } => write!(f, "{:>width$} {} := {}", "set", out, new_val, width = IX_WIDTH),
+            Instruction::LocalAlloc(id, ty) => write!(f, "{:>width$} {} of {}", "local", Ref::Local(*id), ty, width = IX_WIDTH),
+            Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", Ref::Local(*id), width = IX_WIDTH),
+            Instruction::Move { out, new_val } => write!(f, "{:>width$} {} := {}", "mov", out, new_val, width = IX_WIDTH),
             Instruction::Add { out, a, b } => write!(f, "{:>width$} {} := {} + {}", "add", out, a, b, width = IX_WIDTH),
+            Instruction::Sub { out, a, b } => write!(f, "{:>width$} {} := {} - {}", "sub", out, a, b, width = IX_WIDTH),
 
             Instruction::Eq { out, a, b } => write!(f, "{:>width$} {} := {} = {}", "eq", out, a, b, width = IX_WIDTH),
             Instruction::Gt { out, a, b } => write!(f, "{:>width$} {} := {} > {}", "gt", out, a, b, width = IX_WIDTH),
@@ -219,8 +205,8 @@ impl fmt::Display for Instruction {
                 write!(f, "{:>width$} {} if {}", "jmpif", dest, test, width = IX_WIDTH)
             }
 
-            Instruction::MemAlloc { out, ty, count } => {
-                write!(f, "{:>width$} {}^ of [{}; {}]", "malloc", out, ty, count, width = IX_WIDTH)
+            Instruction::RcNew { out, struct_id } => {
+                write!(f, "{:>width$} {} at {}^", "rcnew", struct_id, out, width = IX_WIDTH)
             }
 
             Instruction::Release(at) => {
@@ -237,33 +223,45 @@ impl fmt::Display for Instruction {
 #[derive(Debug)]
 enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
-    Allocated {
+    New {
         id: usize,
         name: Option<String>,
-        rc: bool,
+        ty: Type,
     },
+
+    // the builder created this local allocation but we don't want to track its lifetime
+    Temp {
+        id: usize,
+        ty: Type,
+    },
+
     // the builder didn't create this local allocation but we know it exists e.g. we know where
-    // function params are found due to the calling convention. we need to know its name but we
-    // don't need to drop it
+    // function params are found due to the calling convention. we never need to drop these
     Bound {
         id: usize,
-        name: String,
+        name: Option<String>,
     },
 }
 
 impl Local {
     fn id(&self) -> usize {
         match self {
-            Local::Allocated { id, .. } => *id,
+            Local::New { id, .. } => *id,
+            Local::Temp { id, .. } => *id,
             Local::Bound { id, .. } => *id,
         }
     }
 
     fn name(&self) -> Option<&String> {
         match self {
-            Local::Allocated { name, .. } => name.as_ref(),
-            Local::Bound { name, .. } => Some(&name),
+            Local::New { name, .. } => name.as_ref(),
+            Local::Temp { .. } => None,
+            Local::Bound { name, .. } => name.as_ref(),
         }
+    }
+
+    pub fn local_ref(&self) -> Ref {
+        Ref::Local(self.id())
     }
 }
 
@@ -302,12 +300,21 @@ impl<'metadata> Builder<'metadata> {
         self.instructions.push(instruction);
     }
 
-    pub fn bind_local(&mut self, id: usize, name: String) {
-        assert!(id >= self.next_id);
-        assert!(!self.current_scope_mut().locals.iter()
-            .any(|l| l.name() == Some(&name) || l.id() == id));
+    pub fn mov(&mut self, out: impl Into<Ref>, val: impl Into<Value>) {
+        self.append(Instruction::Move { out: out.into(), new_val: val.into() });
+    }
 
-        self.current_scope_mut().locals.push(Local::Bound { id, name: name.to_string() });
+    pub fn bind_local(&mut self, id: usize, name: Option<String>) {
+        assert!(!self.current_scope_mut().locals.iter()
+            .any(|local| local.id() == id),
+            "scope must not already have a binding for {}: {:?}", Ref::Local(id), self.current_scope_mut());
+
+        if let Some(name) = name.as_ref() {
+            assert!(!self.current_scope_mut().locals.iter()
+                .any(|l| l.name() == Some(&name) || l.id() == id));
+        }
+
+        self.current_scope_mut().locals.push(Local::Bound { id, name });
 
         self.next_id = usize::max(id + 1, self.next_id + 1);
     }
@@ -323,15 +330,31 @@ impl<'metadata> Builder<'metadata> {
             .expect("scope must be active")
     }
 
-    pub fn new_local(&mut self, ty: Type, rc: bool, name: Option<String>) -> Ref {
+    pub fn local_temp(&mut self, ty: Type) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.next_id;
 
-        self.current_scope_mut().locals.push(Local::Allocated {
+        self.current_scope_mut().locals.push(Local::Temp {
+            id,
+            ty: ty.clone(),
+        });
+
+        self.next_id += 1;
+
+        self.instructions.push(Instruction::LocalAlloc(id, ty));
+        Ref::Local(id)
+    }
+
+    pub fn local_new(&mut self, ty: Type, name: Option<String>) -> Ref {
+        assert_ne!(Type::Nothing, ty);
+
+        let id = self.next_id;
+
+        self.current_scope_mut().locals.push(Local::New {
             id,
             name,
-            rc,
+            ty: ty.clone(),
         });
 
         self.next_id += 1;
@@ -353,6 +376,78 @@ impl<'metadata> Builder<'metadata> {
             .next()
     }
 
+    fn visit_struct_deep(
+        &mut self,
+        at: Ref,
+        struct_id: StructId,
+        f: &impl Fn(&mut Builder, Ref))
+    {
+        let fields: Vec<_> = self.metadata.structs()[&struct_id].fields.iter()
+            .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
+            .collect();
+
+        for (field_id, field_ty, field_rc) in fields {
+            // todo: would be more efficient if we didn't have to copy each member
+            // of the struct every time and instead knew which members contained deep
+            // rc refs. also if we could address the fields by offsets instead of copying
+            if field_rc || field_ty.is_any_struct() {
+                let field_val = self.local_temp(field_ty.clone());
+                self.append(Instruction::GetField {
+                    out: field_val.clone(),
+                    of: at.clone(),
+                    struct_id,
+                    field_id,
+                });
+
+                if let Type::Struct(field_struct_id) = &field_ty {
+                    self.visit_struct_deep(field_val, *field_struct_id, f);
+                } else {
+                    f(self, field_val);
+                }
+            }
+        }
+    }
+
+    pub fn retain(&mut self, at: Ref, ty: &Type) {
+        match ty {
+            Type::Rc(_) => {
+                self.append(Instruction::Retain(at.clone()));
+            }
+
+            Type::Struct(id) => {
+                self.begin_scope();
+                self.visit_struct_deep(at, *id, &mut |builder, field_ref| {
+                    builder.append(Instruction::Retain(field_ref));
+                });
+                self.end_scope();
+            }
+
+            _ => {
+                // nothing to retain
+            },
+        }
+    }
+
+    pub fn release(&mut self, at: Ref, ty: &Type) {
+        match ty {
+            Type::Rc(_) => {
+                self.append(Instruction::Release(at.clone()));
+            }
+
+            Type::Struct(id) => {
+                self.begin_scope();
+                self.visit_struct_deep(at, *id, &mut |builder, field_ref| {
+                    builder.append(Instruction::Release(field_ref));
+                });
+                self.end_scope();
+            }
+
+            _ => {
+                // nothing to release
+            },
+        }
+    }
+
     pub fn begin_scope(&mut self) {
         self.scopes.push(Scope {
             locals: Vec::new(),
@@ -363,12 +458,18 @@ impl<'metadata> Builder<'metadata> {
         let top_scope = self.scopes.pop()
             .expect("called end_scope with no active scope");
 
-        for local in top_scope.locals.iter().rev() {
-            if let Local::Allocated { id, rc, .. } = local {
-                if *rc {
-                    self.instructions.push(Instruction::Release(Ref::Local(*id)));
+        for local in top_scope.locals.into_iter().rev() {
+            match local {
+                Local::New { id, ty, .. } => {
+                    self.release(Ref::Local(id), &ty);
+                    self.instructions.push(Instruction::LocalDelete(id));
                 }
-                self.instructions.push(Instruction::LocalDelete(*id));
+
+                Local::Temp { id, .. } => {
+                    self.instructions.push(Instruction::LocalDelete(id));
+                }
+
+                _ => {},
             }
         }
     }
@@ -384,26 +485,33 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &mut Metadata)
     let mut body_builder = Builder::new(metadata);
 
     let return_ty = match func.return_ty.as_ref() {
-        Some(ty) => body_builder.metadata.translate_type(ty),
-        None => Type::Nothing,
+        None | Some(pas_ty::Type::Nothing) => Type::Nothing,
+        Some(ty) => {
+            // anonymous return binding at %0
+            body_builder.bind_local(0, None);
+
+            body_builder.metadata.translate_type(ty)
+        }
     };
 
     for (i, param) in func.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
         let id = if return_ty != Type::Nothing {
+            assert!(func.return_ty.is_some());
             i + 1
         } else {
             i
         };
 
-        body_builder.bind_local(id, param.ident.to_string());
+        body_builder.bind_local(id, Some(param.ident.to_string()));
     }
 
     let block_output = translate_block(&func.body, &mut body_builder);
 
     if let Some(return_val) = block_output {
         let return_at = Ref::Local(0);
-        body_builder.append(Instruction::Set { out: return_at, new_val: return_val });
+        body_builder.append(Instruction::Move { out: return_at.clone(), new_val: Value::Ref(return_val) });
+        body_builder.retain(return_at, &return_ty);
     }
 
     body_builder.finish();
