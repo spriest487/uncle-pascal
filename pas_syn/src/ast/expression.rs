@@ -440,6 +440,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     DelimiterPair::Bracket => {
                         let subexpr = ExpressionNode::parse(&mut group_tokens)?;
                         group_tokens.finish()?;
+                        self.tokens.advance(1);
                         self.add_operand(subexpr);
                     }
 

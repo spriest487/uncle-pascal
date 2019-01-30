@@ -98,6 +98,15 @@ pub fn typecheck_bin_op(
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation.ty, ctx)?;
 
+            if !lhs.annotation.ty.valid_math_op(bin_op.op, &rhs.annotation.ty) {
+                return Err(TypecheckError::InvalidBinOp {
+                    lhs: lhs.annotation.ty,
+                    rhs: rhs.annotation.ty,
+                    op: bin_op.op,
+                    span: bin_op.annotation.span().clone(),
+                });
+            }
+
             // check valid ops etc, result type etc
             let result_ty = lhs.annotation.ty.clone();
 

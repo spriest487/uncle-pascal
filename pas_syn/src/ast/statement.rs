@@ -15,7 +15,7 @@ use {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
-    pub val_ty: A::Type,
+    pub val_ty: Option<A::Type>,
     pub val: ExpressionNode<A>,
     pub mutable: bool,
     pub annotation: A,
@@ -37,8 +37,14 @@ impl LocalBinding<Span> {
 
         let name_token = tokens.match_one(Matcher::AnyIdent)?;
 
-        tokens.match_one(Separator::Colon)?;
-        let ty = TypeName::parse(tokens)?;
+        let val_ty = match tokens.look_ahead().match_one(Separator::Colon) {
+            Some(_) => {
+                tokens.advance(1);
+                let ty = TypeName::parse(tokens)?;
+                Some(ty)
+            }
+            None => None,
+        };
 
         tokens.match_one(Operator::Assignment)?;
         let val = ExpressionNode::parse(tokens)?;
@@ -46,7 +52,7 @@ impl LocalBinding<Span> {
 
         Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
-            val_ty: ty,
+            val_ty,
             mutable,
             val: val,
             annotation: span,
@@ -56,7 +62,11 @@ impl LocalBinding<Span> {
 
 impl<A: Annotation> fmt::Display for LocalBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "let {}: {} := {}", self.name, self.val_ty, self.val)
+        write!(f, "let {}", self.name)?;
+        if let Some(val_ty) = &self.val_ty {
+            write!(f, ": {}", val_ty)?;
+        }
+        write!(f, " := {}", self.val)
     }
 }
 

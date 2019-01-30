@@ -7,21 +7,22 @@ begin
     else if b.len = 0 then
         a
     else begin
-        let len: Integer := a.len + b.len;
-        let bytes: ^Byte := GetMem(len);
+        let len := a.len + b.len;
+        let bytes := GetMem(len);
 
-        for let i: Integer := 0 to a.len do begin
+        for let i := 0 to a.len do begin
             (bytes + i)^ := (a.chars + i)^;
         end;
 
-        for let i: Integer := 0 to b.len do begin
+        for let i := 0 to b.len do begin
             (bytes + a.len + i)^ := (b.chars + i)^;
         end;
 
-        String(bytes: bytes; len: len)
+        String(chars: bytes; len: len)
     end
 end;
 
-let msg: String := 'Hello, world!';
+let msg := 'Hello, ';
+let who := 'world';
 
-WriteLn(msg);
+WriteLn(StringConcat(msg, who));

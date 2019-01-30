@@ -52,7 +52,7 @@ impl fmt::Debug for Function {
 }
 
 //#[allow(unused)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
     Null,
     Uninit(Type),
@@ -92,20 +92,52 @@ impl Add<usize> for Pointer {
 }
 
 #[derive(Debug, Clone)]
+pub struct StructCell {
+    pub id: StructId,
+    pub fields: Vec<MemCell>,
+}
+
+impl PartialEq<Self> for StructCell {
+    fn eq(&self, other: &Self) -> bool {
+        if self.id != other.id || self.fields.len() != other.fields.len() {
+            return false;
+        }
+
+        self.fields.iter().zip(other.fields.iter())
+            .all(|(a, b)| match a.try_eq(b) {
+                Some(eq) => eq,
+                None => panic!("structs can only contain comparable fields")
+            })
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum MemCell {
     Bool(bool),
     U8(u8),
     I32(i32),
     F32(f32),
     Function(Function),
-    Structure { id: StructId, fields: Vec<MemCell> },
+    Structure(StructCell),
     Pointer(Pointer),
 }
 
 impl MemCell {
-    pub fn as_struct(&self) -> Option<(StructId, &Vec<MemCell>)> {
+    pub fn try_eq(&self, other: &Self) -> Option<bool> {
+        match (self, other) {
+            (MemCell::Bool(a), MemCell::Bool(b)) => Some(a == b),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(a == b),
+            (MemCell::I32(a), MemCell::I32(b)) => Some(a == b),
+            (MemCell::F32(a), MemCell::F32(b)) => Some(a == b),
+            (MemCell::Pointer(a), MemCell::Pointer(b)) => Some(a == b),
+            (MemCell::Structure(a), MemCell::Structure(b)) => Some(a == b),
+            _ => None,
+        }
+    }
+
+    pub fn as_struct(&self) -> Option<&StructCell> {
         match self {
-            MemCell::Structure { id, fields } => Some((*id, fields)),
+            MemCell::Structure(struct_cell) => Some(&struct_cell),
             _ => None,
         }
     }
@@ -145,7 +177,7 @@ impl MemCell {
             MemCell::U8(_) => Type::U8,
             MemCell::I32(_) => Type::I32,
             MemCell::F32(_) => Type::F32,
-            MemCell::Structure { id, .. } => Type::Struct(*id),
+            MemCell::Structure(StructCell { id, .. }) => Type::Struct(*id),
             MemCell::Function(_) => Type::Nothing,
         }
     }
@@ -222,7 +254,7 @@ impl Interpreter {
             fields[id] = self.init_cell(&field.ty);
         }
 
-        MemCell::Structure { id, fields }
+        MemCell::Structure(StructCell { id, fields })
     }
 
     fn init_cell(&mut self, ty: &Type) -> MemCell {
@@ -234,8 +266,8 @@ impl Interpreter {
                 self.init_struct(*id)
             }
 
-            Type::Pointer(target_ty) => {
-                let ptr = Pointer::Uninit((**target_ty).clone());
+            Type::Pointer(target) => {
+                let ptr = Pointer::Uninit((**target).clone());
                 MemCell::Pointer(ptr)
             }
 
@@ -415,31 +447,26 @@ impl Interpreter {
         }
     }
 
-    fn drop_at(&mut self, at: &Ref) {
-        let dropped = self.load(at).clone();
-        self.drop_cell(dropped);
-    }
-
-    fn drop_cell(&mut self, cell: MemCell) {
+    fn release_cell(&mut self, cell: &MemCell) {
         match cell {
-            MemCell::Structure { fields, .. } => {
+            MemCell::Structure(StructCell { fields, .. }) => {
                 for cell in fields {
-                    self.drop_cell(cell);
+                    self.release_cell(cell);
                 }
             }
 
             MemCell::Pointer(Pointer::Rc(ty, addr)) => {
-                let dead = self.heap.get_rc(addr) == 1;
+                let dead = self.heap.get_rc(*addr) == 1;
 
                 if dead {
-                    let heap_cell = self.heap.get(addr).cloned().unwrap();
-                    self.drop_cell(heap_cell)
+                    let heap_cell = self.heap.get(*addr).cloned().unwrap();
+                    self.release_cell(&heap_cell)
                 }
 
                 if self.trace_rc {
                     eprintln!("rc: release {} @ {}", ty, addr)
                 }
-                self.heap.release(addr);
+                self.heap.release(*addr);
             }
 
             // can't contain rc pointers
@@ -457,7 +484,7 @@ impl Interpreter {
                 self.heap.retain(*addr);
             }
 
-            MemCell::Structure { fields, .. } => {
+            MemCell::Structure(StructCell { fields, .. }) => {
                 for field_cell in fields {
                     self.retain_cell(field_cell);
                 }
@@ -497,15 +524,6 @@ impl Interpreter {
         }
     }
 
-    fn assign(&mut self, at: &Ref, new_val: MemCell) {
-        // retain new value of cell
-        self.retain_cell(&new_val);
-
-        // release old value of cell
-        self.drop_at(at);
-        self.store(at, new_val);
-    }
-
     pub fn execute(&mut self, instructions: &[Instruction]) {
         let labels: HashMap<_, _> = instructions.iter().enumerate()
             .filter_map(|(off, instruction)| match instruction {
@@ -537,7 +555,6 @@ impl Interpreter {
                         panic!("local cell {} is not allocated");
                     }
 
-                    self.drop_at(&Ref::Local(*id));
                     self.current_frame_mut().locals[*id] = None;
                 }
 
@@ -562,15 +579,29 @@ impl Interpreter {
                             MemCell::F32(a + b)
                         }
 
+                        (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
+                            MemCell::Pointer(ptr + offset as usize)
+                        }
+
                         (MemCell::Pointer(Pointer::Rc(ref a_ty, ref a)),
                             MemCell::Pointer(Pointer::Rc(ref b_ty, ref b)))
                         if a_ty == b_ty => {
                             MemCell::Pointer(Pointer::Rc(a_ty.clone(), RcAddress(a.0 + b.0)))
                         }
-                        _ => panic!("Add is not valid for {:?} + {:?}", a, b)
+
+                        (a, b) => panic!("Add is not valid for {:?} + {:?}", a, b)
                     };
 
-                    self.assign(out, out_val);
+                    self.store(out, out_val);
+                }
+
+                Instruction::Eq { out, a, b } => {
+                    let eq = match self.evaluate(a).try_eq(&self.evaluate(b)) {
+                        Some(eq) => eq,
+                        None => panic!("Eq is not valid for {:?} = {:?}", a, b),
+                    };
+
+                    self.store(out, MemCell::Bool(eq))
                 }
 
                 Instruction::Gt { out, a, b } => {
@@ -581,14 +612,14 @@ impl Interpreter {
                         _ => panic!("Gt is not valid for {:?} > {:?}", a, b),
                     };
 
-                    self.assign(out, MemCell::Bool(gt));
+                    self.store(out, MemCell::Bool(gt));
                 }
 
                 Instruction::Not { out, a } => {
                     let val = self.evaluate(a).as_bool()
                         .unwrap_or_else(|| panic!("Not instruction is not valid for {:?}", a));
 
-                    self.assign(out, MemCell::Bool(!val));
+                    self.store(out, MemCell::Bool(!val));
                 }
 
                 Instruction::And { out, a, b } => {
@@ -612,7 +643,7 @@ impl Interpreter {
                 }
 
                 Instruction::Set { out, new_val } => {
-                    self.assign(out, self.evaluate(new_val));
+                    self.store(out, self.evaluate(new_val));
                 }
 
                 Instruction::Call { out, function, args } => {
@@ -636,12 +667,12 @@ impl Interpreter {
 
                 Instruction::GetField { out, of, struct_id: _, field_id, } => {
                     match self.load(of).clone() {
-                        MemCell::Structure { fields, .. } => {
+                        MemCell::Structure(StructCell { fields, .. }) => {
                             let field_cell = fields.into_iter()
                                 .skip(*field_id).next()
                                 .unwrap();
 
-                            self.assign(out, field_cell);
+                            self.store(out, field_cell);
                         }
                         _ => panic!("GetField instruction targeting non-structure cell"),
                     }
@@ -649,9 +680,9 @@ impl Interpreter {
 
                 Instruction::SetField { of, new_val, struct_id: _, field_id, } => {
                     match self.load(of).clone() {
-                        MemCell::Structure { mut fields, id } => {
-                            fields[*field_id] = self.evaluate(new_val);
-                            self.assign(of, MemCell::Structure { id, fields })
+                        MemCell::Structure(mut struct_cell) => {
+                            struct_cell.fields[*field_id] = self.evaluate(new_val);
+                            self.store(of, MemCell::Structure(struct_cell))
                         }
 
                         _ => panic!("SetField instruction targeting non-structure cell"),
@@ -673,6 +704,16 @@ impl Interpreter {
                         MemCell::Bool(false) => {}
                         _ => panic!("JumpIf instruction testing non-boolean cell"),
                     }
+                }
+
+                Instruction::Release(at) => {
+                    let cell = self.load(at).clone();
+                    self.release_cell(&cell);
+                }
+
+                Instruction::Retain(at) => {
+                    let cell = self.load(at).clone();
+                    self.retain_cell(&cell);
                 }
             }
 
@@ -716,7 +757,7 @@ impl Interpreter {
             MemCell::I32(content.len() as i32),
         ];
 
-        let str_cell = MemCell::Structure { id: STRING_ID, fields: str_fields };
+        let str_cell = MemCell::Structure(StructCell { id: STRING_ID, fields: str_fields });
 
         let str_addr = self.heap.alloc(vec![str_cell]);
         let str_ptr = Pointer::Rc(Type::Struct(STRING_ID), str_addr);
@@ -730,15 +771,15 @@ impl Interpreter {
 
         //todo: we should be reading args from local refs not args array
 
-        let (id, str_fields) = self.load(str_ref)
+        let str_cell = self.load(str_ref)
             .as_struct()
             .unwrap_or_else(|| panic!("called read_string on {:?} which didn't hold a struct", str_ref));
-        assert_eq!(STRING_ID, id);
+        assert_eq!(STRING_ID, str_cell.id);
 
-        let len = &str_fields[string_def.find_field("len").unwrap()]
+        let len = &str_cell.fields[string_def.find_field("len").unwrap()]
             .as_i32().unwrap();
 
-        let chars_addr = &str_fields[string_def.find_field("chars").unwrap()]
+        let chars_addr = &str_cell.fields[string_def.find_field("chars").unwrap()]
             .as_pointer()
             .and_then(|ptr| ptr.as_rc_addr())
             .unwrap_or_else(|| panic!("string contained non-heap-alloced `chars` pointer"));
@@ -760,9 +801,10 @@ impl Interpreter {
 
 impl Drop for Interpreter {
     fn drop(&mut self) {
-        let globals: Vec<_> = self.globals.keys().cloned().collect();
+        let globals: Vec<_> = self.globals.values().cloned().collect();
+
         for global in globals {
-            self.drop_at(&Ref::Global(global));
+            self.release_cell(&global);
         }
     }
 }

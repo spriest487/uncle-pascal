@@ -13,8 +13,25 @@ pub fn typecheck_local_binding(
     ctx: &mut Context)
     -> TypecheckResult<LocalBinding>
 {
-    let val_ty = ctx.find_type(&binding.val_ty)?.clone();
-    let val = typecheck_expr(&binding.val, &val_ty, ctx)?;
+    let val = match &binding.val_ty {
+        Some(val_ty) => {
+            let explicit_ty = ctx.find_type(val_ty)?;
+            let val = typecheck_expr(&binding.val, &explicit_ty, ctx)?;
+
+            if !explicit_ty.assignable_from(&val.annotation.ty) {
+                return Err(TypecheckError::InvalidBinOp {
+                    lhs: explicit_ty.clone(),
+                    rhs: val.annotation.ty,
+                    op: Operator::Assignment,
+                    span: val.annotation.span,
+                });
+            }
+            val
+        },
+        None => {
+            typecheck_expr(&binding.val, &Type::Nothing, ctx)?
+        },
+    };
 
     ctx.declare_binding(binding.name.clone(), Binding {
         kind: if binding.mutable {
@@ -22,14 +39,14 @@ pub fn typecheck_local_binding(
         } else {
             ValueKind::Immutable
         },
-        ty: val_ty.clone(),
+        ty: val.annotation.ty.clone(),
     })?;
 
     let annotation = TypeAnnotation::untyped(binding.annotation.clone());
 
     Ok(LocalBinding {
         name: binding.name.clone(),
-        val_ty,
+        val_ty: Some(val.annotation.ty.clone()),
         val,
         annotation,
         mutable: binding.mutable,

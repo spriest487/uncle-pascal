@@ -180,13 +180,13 @@ impl Metadata {
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
 
-            pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
+            pas_ty::Type::Pointer(target) => self.translate_type(target)
+                .ptr(),
 
             pas_typecheck::Type::Record(class) => {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
-                ;
                 Type::Struct(id)
             }
 
@@ -194,6 +194,7 @@ impl Metadata {
                 let ty_name = class.ident.to_string();
                 let (id, _) = self.find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("class {} must exist in metadata", ty));
+
                 Type::Struct(id).ptr()
             }
 

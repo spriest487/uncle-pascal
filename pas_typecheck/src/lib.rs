@@ -67,6 +67,7 @@ pub mod ty {
                 ClassKind,
             },
             Ident,
+            Operator,
         },
         crate::{
             TypeAnnotation,
@@ -226,6 +227,17 @@ pub mod ty {
                 Type::Pointer(_) => *self == *from || *from == Type::Nil,
                 Type::Function(_) => false,
                 _ => *self == *from,
+            }
+        }
+
+        pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
+            match (self, op, rhs) {
+                (Type::Pointer(_), Operator::Plus, Type::Pointer(_)) |
+                (Type::Pointer(_), Operator::Minus, Type::Pointer(_)) |
+                (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32)) |
+                (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
+
+                _ => *self == *rhs,
             }
         }
     }

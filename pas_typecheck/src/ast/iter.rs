@@ -13,14 +13,14 @@ pub fn typecheck_for_loop(
     let inner_scope = ctx.push_scope();
     let init_binding = typecheck_local_binding(&for_loop.init_binding, ctx)?;
 
-    if init_binding.val_ty != Type::Primitive(Primitive::Int32) {
+    if init_binding.val_ty != Some(Type::Primitive(Primitive::Int32)) {
         unimplemented!("non-int32 loops");
     }
 
     let to_expr = typecheck_expr(&for_loop.to_expr, &Type::Primitive(Primitive::Boolean), ctx)?;
-    if to_expr.annotation.ty != init_binding.val_ty {
+    if to_expr.annotation.ty != *init_binding.val_ty.as_ref().unwrap() {
         return Err(TypecheckError::TypeMismatch {
-            expected: init_binding.val_ty,
+            expected: init_binding.val_ty.unwrap(),
             actual: to_expr.annotation.ty,
             span: annotation.span,
         })
