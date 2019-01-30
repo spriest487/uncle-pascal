@@ -12,6 +12,7 @@ pub mod ast {
     mod ctor;
     mod bin_op;
     mod cond;
+    mod iter;
 
     mod prelude {
         pub use {
@@ -43,6 +44,7 @@ pub mod ast {
         typedecl::*,
         block::*,
         ctor::*,
+        iter::*,
     };
 }
 

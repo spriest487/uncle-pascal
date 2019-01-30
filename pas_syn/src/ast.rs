@@ -7,6 +7,7 @@ pub mod block;
 pub mod typedecl;
 pub mod ctor;
 pub mod cond;
+pub mod iter;
 
 pub use self::{
     statement::*,
@@ -18,6 +19,7 @@ pub use self::{
     typedecl::*,
     ctor::*,
     cond::*,
+    iter::*,
 };
 
 use {

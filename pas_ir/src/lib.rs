@@ -1,5 +1,10 @@
+mod stmt;
+
 use {
-    crate ::metadata::*,
+    crate::{
+        metadata::*,
+        stmt::*,
+    },
     pas_syn::{
         self as syn,
         ast,
@@ -16,6 +21,24 @@ pub use {
         InterpreterOpts,
     },
 };
+
+pub mod prelude {
+    pub use crate::{
+        GlobalRef,
+        Ref,
+        Value,
+        Interpreter,
+        Instruction,
+        Label,
+        Builder,
+        metadata::{
+            Type,
+            STRING_ID,
+            StringId,
+            Metadata,
+        },
+    };
+}
 
 pub mod metadata;
 pub mod interpret;
@@ -94,6 +117,9 @@ pub enum Instruction {
     Set { out: Ref, new_val: Value },
     Add { out: Ref, a: Value, b: Value },
 
+    Gt { out: Ref, a: Value, b: Value },
+    Not { out: Ref, a: Value, },
+
     Call { out: Option<Ref>, function: Value, args: Vec<Value> },
 
     GetField { out: Ref, of: Ref, struct_id: StructId, field_id: usize },
@@ -114,6 +140,8 @@ impl fmt::Display for Instruction {
             Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", id, width = IX_WIDTH),
             Instruction::Set { out, new_val } => write!(f, "{:>width$} {} := {}", "set", out, new_val, width = IX_WIDTH),
             Instruction::Add { out, a, b } => write!(f, "{:>width$} {} := {} + {}", "add", out, a, b, width = IX_WIDTH),
+            Instruction::Gt { out, a, b } => write!(f, "{:>width$} {} := {} > {}", "gt", out, a, b, width = IX_WIDTH),
+            Instruction::Not { out, a } => write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH),
 
             Instruction::Call { out, function, args } => {
                 write!(f, "{:>width$} ", "call", width = IX_WIDTH)?;
@@ -592,6 +620,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::Exit(_) => {
             unimplemented!()
+        }
+
+        ast::Statement::ForLoop(for_loop) => {
+            translate_for_loop(for_loop, builder);
         }
     }
 }

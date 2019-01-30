@@ -165,6 +165,12 @@ impl Interpreter {
         };
         globals.insert(GlobalRef::Function("WriteLn".to_string()), MemCell::Function(write_ln));
 
+        let get_mem = Function::Builtin {
+            func: builtin::get_mem,
+            ret: Type::U8.ptr(),
+        };
+        globals.insert(GlobalRef::Function("GetMem".to_string()), MemCell::Function(get_mem));
+
         let mut heap = RcHeap::new();
         heap.trace = opts.trace_heap;
 
@@ -404,7 +410,7 @@ impl Interpreter {
             }
 
             // can't contain rc pointers
-            _ => {},
+            _ => {}
         }
     }
 
@@ -482,6 +488,26 @@ impl Interpreter {
                     };
 
                     self.assign(out, out_val);
+                }
+
+                Instruction::Gt { out, a, b } => {
+                    let gt = match (self.evaluate(a), self.evaluate(b)) {
+                        (MemCell::I32(a), MemCell::I32(b)) => a > b,
+                        (MemCell::U8(a), MemCell::U8(b)) => a > b,
+                        (MemCell::F32(a), MemCell::F32(b)) => a > b,
+                        _ => panic!("Gt is not valid for {:?} > {:?}", a, b),
+                    };
+
+                    self.assign(out, MemCell::Bool(gt));
+                }
+
+                Instruction::Not { out, a } => {
+                    let val = match self.evaluate(a) {
+                        MemCell::Bool(a) => MemCell::Bool(!a),
+                        _ => panic!("Not is not valid for {:?}", a),
+                    };
+
+                    self.assign(out, val);
                 }
 
                 Instruction::Set { out, new_val } => {

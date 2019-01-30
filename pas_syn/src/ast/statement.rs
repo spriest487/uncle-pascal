@@ -67,6 +67,7 @@ pub enum Statement<A: Annotation> {
     Call(Call<A>),
     Exit(Exit<A>),
     Block(Block<A>),
+    ForLoop(ForLoop<A>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -79,6 +80,7 @@ impl<A: Annotation> Statement<A> {
                 Exit::WithoutValue(a) => a,
             },
             Statement::Block(block) => &block.annotation,
+            Statement::ForLoop(for_loop) => &for_loop.annotation,
         }
     }
 
@@ -105,6 +107,7 @@ impl<A: Annotation> Statement<A> {
 
 pub fn statement_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
+        .or(Keyword::For)
         .or(Keyword::Exit)
         .or(expression::match_operand_start())
 }
@@ -116,8 +119,12 @@ impl Statement<Span> {
         match tokens.look_ahead().match_one(stmt_start.clone()) {
             Some(TokenTree::Keyword { kw: Keyword::Let, .. }) => {
                 let binding = LetBinding::parse(tokens)?;
-
                 Ok(Statement::LetBinding(binding))
+            }
+
+            Some(TokenTree::Keyword { kw: Keyword::For, .. }) => {
+                let for_loop = ForLoop::parse(tokens)?;
+                Ok(Statement::ForLoop(for_loop))
             }
 
             Some(_) => {
@@ -163,6 +170,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::Call(call) => write!(f, "{}", call),
             Statement::Exit(exit) => write!(f, "{}", exit),
             Statement::Block(block) => write!(f, "{}", block),
+            Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
         }
     }
 }
