@@ -1,31 +1,31 @@
-mod heap;
-mod builtin;
-
 use {
     crate::{
         Function as FunctionIR,
+        GlobalRef,
         Instruction,
         metadata::*,
-        Ref,
-        GlobalRef,
-        Type,
         Module,
+        Ref,
+        Type,
         Value,
-    },
-    std::{
-        collections::HashMap,
-        fmt,
-        f32,
-        ops::{
-            Add,
-            Sub,
-        },
     },
     self::heap::{
         Heap,
         HeapAddress,
     },
+    std::{
+        collections::HashMap,
+        f32,
+        fmt,
+        ops::{
+            Add,
+            Sub,
+        },
+    },
 };
+
+mod heap;
+mod builtin;
 
 #[derive(Clone)]
 pub enum Function {
@@ -618,9 +618,21 @@ impl Interpreter {
             // let int := 1;
             // @int -> stack address of int cell
             Ref::Local(id) => {
-                let type_at = self.load(target).value_ty();
+                // find the highest frame in which this cell id is allocated
+                let (frame_id, type_at) = self.stack.iter()
+                    .enumerate()
+                    .rev()
+                    .filter_map(|(frame_id, stack_frame)| {
+                        let local: &MemCell = stack_frame.locals.get(*id)
+                            .and_then(|maybe_cell| maybe_cell.as_ref())?;
+
+                        Some((frame_id, local.value_ty()))
+                    })
+                    .next()
+                    .unwrap();
+
                 Pointer::Local {
-                    frame: self.stack.len() - 1,
+                    frame: frame_id,
                     id: *id,
                     ty: type_at,
                 }
