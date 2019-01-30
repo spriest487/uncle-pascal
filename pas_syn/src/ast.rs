@@ -28,11 +28,10 @@ use {
     crate::{
         ident::Ident,
         token_tree::*,
-        parse::*,
+        parse::prelude::*,
     },
     pas_common::{
         TracedError,
-        span::*,
     },
 };
 
@@ -46,21 +45,26 @@ impl Annotation for Span {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeName {
-    Ident(Ident),
+    Ident { ident: Ident, indirection: usize },
 }
 
 impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
-            TypeName::Ident(ident) => ident.span(),
+            TypeName::Ident { ident, .. } => ident.span(),
         }
     }
 }
 
 impl TypeName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let mut indirection = 0;
+        while tokens.look_ahead().match_one(Operator::Deref).is_some() {
+            indirection += 1;
+        }
+
         match tokens.match_one(Matcher::AnyIdent)? {
-            TokenTree::Ident(ident) => Ok(TypeName::Ident(ident)),
+            TokenTree::Ident(ident) => Ok(TypeName::Ident { ident, indirection }),
             unexpected => {
                 let expected = Matcher::AnyIdent;
                 Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, Some(expected))))
@@ -72,7 +76,12 @@ impl TypeName {
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeName::Ident(ident) => write!(f, "{}", ident)
+            TypeName::Ident { ident, indirection } => {
+                for _ in 0..*indirection {
+                    write!(f, "^")?;
+                }
+                write!(f, "{}", ident)
+            }
         }
     }
 }

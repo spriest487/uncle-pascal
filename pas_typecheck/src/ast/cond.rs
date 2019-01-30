@@ -10,10 +10,10 @@ pub fn typecheck_if_cond(
     ctx: &mut Context)
     -> TypecheckResult<IfCond>
 {
-    let cond = typecheck_expr(&if_cond.cond, &Type::Boolean, ctx)?;
-    if cond.annotation.ty != Type::Boolean {
+    let cond = typecheck_expr(&if_cond.cond, &Type::Primitive(Primitive::Boolean), ctx)?;
+    if cond.annotation.ty != Type::Primitive(Primitive::Boolean) {
         return Err(TypecheckError::TypeMismatch {
-            expected: Type::Boolean,
+            expected: Type::Primitive(Primitive::Boolean),
             actual: cond.annotation.ty,
             span: cond.annotation.span,
         });

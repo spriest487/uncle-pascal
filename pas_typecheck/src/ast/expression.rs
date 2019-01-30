@@ -89,7 +89,7 @@ pub fn typecheck_expr(
 
         ast::Expression::Literal(ast::Literal::Boolean(b)) => {
             let binding = ValueKind::Immutable;
-            let annotation = TypeAnnotation::typed_value(Type::Boolean, binding, span.clone());
+            let annotation = TypeAnnotation::typed_value(Primitive::Boolean, binding, span.clone());
             let expr = ast::Expression::Literal(ast::Literal::Boolean(*b));
 
             Ok(ast::ExpressionNode::new(expr, annotation))
@@ -99,7 +99,7 @@ pub fn typecheck_expr(
             let binding = ValueKind::Immutable;
 
             let ty = if i.as_i32().is_some() {
-                Type::Integer
+                Type::from(Primitive::Int32)
             } else {
                 unimplemented!("integers outside range of i32")
             };
@@ -113,7 +113,7 @@ pub fn typecheck_expr(
             let binding = ValueKind::Immutable;
 
             let ty = if x.as_f32().is_some() {
-                Type::Real32
+                Type::from(Primitive::Real32)
             } else {
                 unimplemented!("real literal outside range of f32")
             };

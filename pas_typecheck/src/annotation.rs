@@ -22,9 +22,9 @@ pub struct TypeAnnotation {
 }
 
 impl TypeAnnotation {
-    pub fn typed_value(ty: Type, kind: ValueKind, span: Span) -> TypeAnnotation {
+    pub fn typed_value(ty: impl Into<Type>, kind: ValueKind, span: Span) -> TypeAnnotation {
         Self {
-            ty,
+            ty: ty.into(),
             value_kind: Some(kind),
             span,
         }

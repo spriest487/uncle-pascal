@@ -5,8 +5,6 @@ use {
     },
     crate::{
         ident::*,
-        keyword::*,
-        operators::*,
         token_tree::*,
         parse::*,
         ast::*,

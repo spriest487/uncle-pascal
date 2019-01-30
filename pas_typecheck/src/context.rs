@@ -5,6 +5,7 @@ use {
         },
         FunctionSig,
         Type,
+        Primitive,
     },
     pas_common::{
         span::*,
@@ -176,21 +177,24 @@ impl Context {
         let nothing_ident = Ident::new("Nothing", builtin_span.clone());
         root_ctx.declare_type(nothing_ident, Type::Nothing).unwrap();
 
-        let int_ident = Ident::new("Integer", builtin_span.clone());
-        root_ctx.declare_type(int_ident, Type::Integer).unwrap();
+        let bool_ident = Ident::new(Primitive::Boolean.name(), builtin_span.clone());
+        root_ctx.declare_type(bool_ident, Primitive::Boolean).unwrap();
 
-        let bool_ident = Ident::new("Boolean", builtin_span.clone());
-        root_ctx.declare_type(bool_ident, Type::Boolean).unwrap();
+        let byte_ident = Ident::new(Primitive::Byte.name(), builtin_span.clone());
+        root_ctx.declare_type(byte_ident, Primitive::Byte).unwrap();
 
-        let single_ident = Ident::new("Single", builtin_span.clone());
-        root_ctx.declare_type(single_ident, Type::Real32).unwrap();
+        let int_ident = Ident::new(Primitive::Int32.name(), builtin_span.clone());
+        root_ctx.declare_type(int_ident, Primitive::Int32).unwrap();
+
+        let single_ident = Ident::new(Primitive::Real32.name(), builtin_span.clone());
+        root_ctx.declare_type(single_ident, Primitive::Real32).unwrap();
 
         let string_ident = root_ctx.string_class.ident.clone();
         root_ctx.declare_type(string_ident, Type::Class(root_ctx.string_class.clone())).unwrap();
 
         root_ctx.declare_function(Ident::new("IntToStr", builtin_span.clone()),
             FunctionSig {
-                params: vec![Type::Integer],
+                params: vec![Primitive::Int32.into()],
                 return_ty: Type::Class(root_ctx.string_class.clone()),
             })
             .unwrap();
@@ -257,8 +261,8 @@ impl Context {
         self.declare(name, Decl::BoundValue(binding))
     }
 
-    pub fn declare_type(&mut self, name: Ident, ty: Type) -> NamingResult<()> {
-        self.declare(name, Decl::Type(ty))
+    pub fn declare_type(&mut self, name: Ident, ty: impl Into<Type>) -> NamingResult<()> {
+        self.declare(name, Decl::Type(ty.into()))
     }
 
     pub fn declare_function(&mut self, name: Ident, sig: FunctionSig) -> NamingResult<()> {
@@ -268,11 +272,14 @@ impl Context {
         }))
     }
 
-    pub fn find_type(&self, ty: &ast::TypeName) -> NamingResult<&Type> {
+    pub fn find_type(&self, ty: &ast::TypeName) -> NamingResult<Type> {
         match ty {
-            ast::TypeName::Ident(ident) => {
+            ast::TypeName::Ident { ident, indirection } => {
                 match self.find(ident) {
-                    Some((_, Decl::Type(ty))) => Ok(ty),
+                    Some((_, Decl::Type(ty))) => {
+                        let ty = ty.clone().indirect_by(*indirection);
+                        Ok(ty)
+                    },
                     Some((_, unexpected)) => Err(NameError::ExpectedType(ident.clone(), unexpected.clone())),
                     None => Err(NameError::NotFound(ident.clone())),
                 }

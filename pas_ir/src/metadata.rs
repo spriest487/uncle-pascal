@@ -72,6 +72,7 @@ pub enum Type {
     Pointer(Box<Type>),
     Struct(StructId),
     Bool,
+    U8,
     I32,
     F32,
 }
@@ -96,6 +97,7 @@ impl fmt::Display for Type {
             Type::I32 => write!(f, "i32"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
+            Type::U8 => write!(f, "u8"),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
         }
@@ -166,9 +168,13 @@ impl Metadata {
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
             pas_typecheck::Type::Nothing => Type::Nothing,
-            pas_typecheck::Type::Boolean => Type::Bool,
-            pas_typecheck::Type::Integer => Type::I32,
-            pas_typecheck::Type::Real32 => Type::F32,
+
+            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
+
+            pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
 
             pas_typecheck::Type::Record(class) => {
                 let ty_name = class.ident.to_string();

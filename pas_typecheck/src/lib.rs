@@ -27,6 +27,7 @@ pub mod ast {
                 result::*,
                 Type,
                 TypeAnnotation,
+                Primitive,
                 FunctionSig,
             },
         };
@@ -108,23 +109,45 @@ pub mod ty {
     }
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
+    pub enum Primitive {
+        Boolean,
+        Byte,
+        Int32,
+        Real32,
+    }
+
+    impl Primitive {
+        pub fn name(&self) -> &str {
+            match self {
+                Primitive::Boolean => "Boolean",
+                Primitive::Byte => "Byte",
+                Primitive::Int32 => "Integer",
+                Primitive::Real32 => "Real32",
+            }
+        }
+    }
+
+    #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub enum Type {
         Nothing,
-        Integer,
-        Real32,
-        Boolean,
+        Primitive(Primitive),
+        Pointer(Box<Type>),
         Function(Rc<FunctionSig>),
         Record(Rc<Class>),
         Class(Rc<Class>),
+    }
+
+    impl From<Primitive> for Type {
+        fn from(primitive: Primitive) -> Self {
+            Type::Primitive(primitive)
+        }
     }
 
     impl Type {
         pub fn full_name(&self) -> Option<String> {
             match self {
                 Type::Nothing => Some("Nothing".to_string()),
-                Type::Boolean => Some("Boolean".to_string()),
-                Type::Integer => Some("Integer".to_string()),
-                Type::Real32 => Some("Single".to_string()),
+                Type::Primitive(p) => Some(p.name().to_string()),
                 Type::Class(class) => Some(class.ident.to_string()),
                 _ => None,
             }
@@ -171,6 +194,14 @@ pub mod ty {
                 Type::Class(class) => class.kind == ClassKind::Object,
                 _ => false,
             }
+        }
+
+        pub fn ptr(self) -> Self {
+            Type::Pointer(Box::new(self))
+        }
+
+        pub fn indirect_by(self, indirection: usize) -> Self {
+            (0..indirection).fold(self, |ty, _| ty.ptr())
         }
     }
 

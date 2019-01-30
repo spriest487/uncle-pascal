@@ -428,13 +428,13 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Value {
     match lit {
         ast::Literal::Boolean(b) => {
-            assert_eq!(pas_ty::Type::Boolean, *ty);
+            assert_eq!(pas_ty::Type::Primitive(pas_ty::Primitive::Boolean), *ty);
             Value::LiteralBool(*b)
         }
 
         ast::Literal::Integer(i) => {
             match ty {
-                pas_ty::Type::Integer => {
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => {
                     Value::LiteralI32(i.as_i32()
                         .expect("Int32-typed constant must be within range of i32"))
                 }
@@ -444,7 +444,7 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
 
         ast::Literal::Real(r) => {
             match ty {
-                pas_ty::Type::Real32 => {
+                pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
                     Value::LiteralF32(r.as_f32()
                         .expect("Real32-typed constant must be within range of f32"))
                 }

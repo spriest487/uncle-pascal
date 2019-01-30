@@ -7,7 +7,11 @@ pub type ObjectCtorMember = ast::ObjectCtorMember<TypeAnnotation>;
 pub type ObjecCtorArgs = ast::ObjectCtorArgs<TypeAnnotation>;
 
 pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) -> TypecheckResult<ObjectCtor> {
-    let ty_ident = ast::TypeName::Ident(ctor.ident.clone());
+    let ty_ident = ast::TypeName::Ident {
+        ident: ctor.ident.clone(),
+        indirection: 0
+    };
+
     let ty = ctx.find_type(&ty_ident)?.clone();
 
     let ty_members: Vec<_> = ty.members().cloned().collect();

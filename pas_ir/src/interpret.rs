@@ -88,6 +88,7 @@ impl Add<usize> for Pointer {
 #[derive(Debug, Clone)]
 pub enum MemCell {
     Bool(bool),
+    U8(u8),
     I32(i32),
     F32(f32),
     Function(Function),
@@ -99,6 +100,13 @@ impl MemCell {
     pub fn as_struct(&self) -> Option<&Vec<MemCell>> {
         match self {
             MemCell::Structure(fields) => Some(fields),
+            _ => None,
+        }
+    }
+
+    pub fn as_u8(&self) -> Option<u8> {
+        match self {
+            MemCell::U8(x) => Some(*x),
             _ => None,
         }
     }
@@ -561,12 +569,15 @@ impl Interpreter {
 
     fn create_string(&mut self, content: &str) -> MemCell {
         let chars: Vec<_> = content.chars()
-            .map(|c| MemCell::I32(c as i32))
+            .map(|c| MemCell::U8(c as u8))
             .collect();
         let chars_ptr = self.heap.alloc(chars);
 
         let str_cell = MemCell::Structure(vec![
-            MemCell::Pointer(Pointer::Rc(Type::I32, chars_ptr)),
+            //field 0: `chars: ^Byte`
+            MemCell::Pointer(Pointer::Rc(Type::U8, chars_ptr)),
+
+            //field 1: `len: Integer`
             MemCell::I32(content.len() as i32),
         ]);
 
@@ -599,10 +610,10 @@ impl Interpreter {
             let char_addr = RcAddress(chars_addr.0 + i);
             let char_val = self.heap.get(char_addr)
                 .unwrap()
-                .as_i32()
+                .as_u8()
                 .unwrap_or_else(|| panic!("expected string char @ {}", char_addr));
 
-            chars.push(char_val as u8 as char);
+            chars.push(char_val as char);
         }
 
         chars.into_iter().collect()
