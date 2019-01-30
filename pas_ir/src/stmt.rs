@@ -34,6 +34,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
         }
+
+        ast::Statement::If(if_stmt) => {
+            translate_if_stmt(if_stmt, builder);
+        }
     }
 }
 
@@ -105,4 +109,36 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move { out: lhs, new_val: rhs.into() });
+}
+
+fn translate_if_stmt(if_stmt: &pas_ty::ast::IfStatement, builder: &mut Builder) {
+    builder.begin_scope();
+    let then_label = builder.alloc_label();
+    let end_label = builder.alloc_label();
+    let else_label = if_stmt.else_branch.as_ref().map(|_| builder.alloc_label());
+
+    let test_val = translate_expr(&if_stmt.cond, builder);
+    builder.append(Instruction::JumpIf { test: test_val.into(), dest: then_label });
+    if let Some(else_label) = else_label {
+        builder.append(Instruction::Jump { dest: else_label });
+    } else {
+        builder.append(Instruction::Jump { dest: end_label });
+    }
+
+    builder.append(Instruction::Label(then_label));
+    builder.begin_scope();
+    translate_stmt(&if_stmt.then_branch, builder);
+    builder.end_scope();
+    builder.append(Instruction::Jump { dest: end_label });
+
+    if let Some(else_branch) = &if_stmt.else_branch {
+        builder.append(Instruction::Label(else_label.unwrap()));
+        builder.begin_scope();
+        translate_stmt(else_branch, builder);
+        builder.end_scope();
+    }
+
+    builder.append(Instruction::Label(end_label));
+
+    builder.end_scope();
 }

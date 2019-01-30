@@ -56,7 +56,8 @@ pub enum TypecheckError {
         rhs: Type,
         op: Operator,
         span: Span,
-    }
+    },
+    InvalidBlockOutput(Box<ExpressionNode>),
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -81,6 +82,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotDerefable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
+            TypecheckError::InvalidBlockOutput(expr) => expr.annotation.span(),
         }
     }
 }
@@ -148,6 +150,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidUnaryOp { operand, op, .. } => {
                 write!(f, "operator {} cannot be applied to an operand of type {}", op, operand)
+            }
+
+            TypecheckError::InvalidBlockOutput(expr) => {
+                write!(f, "expression `{}` is not valid as the final expression in a block because it is not a complete statement", expr)
             }
         }
     }

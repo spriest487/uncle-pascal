@@ -1,4 +1,6 @@
-use crate::ast::prelude::*;
+use {
+    crate::ast::prelude::*,
+};
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -11,7 +13,19 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     }
 
     let output = match &block.output {
-        Some(expr) => Some(typecheck_expr(expr, expect_ty, ctx)?),
+        Some(expr) => {
+            let out_expr = typecheck_expr(expr, expect_ty, ctx)?;
+            if out_expr.annotation.ty == Type::Nothing {
+                // the block contains a final expression which returns no value,
+                // so it should just be treated like a statement
+                let last_stmt = Statement::try_from_expr(out_expr)
+                    .map_err(|invalid| TypecheckError::InvalidBlockOutput(Box::new(invalid)))?;
+                statements.push(last_stmt);
+                None
+            } else {
+                Some(out_expr)
+            }
+        },
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example
@@ -53,9 +67,12 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     let span = block.annotation.span().clone();
     let annotation = match &output {
         Some(out_expr) => {
-            let out_ty = out_expr.annotation.ty.clone();
-            assert_ne!(Type::Nothing, out_ty);
-            TypeAnnotation::typed_value(out_ty, ValueKind::Temporary, span)
+            if out_expr.annotation.ty == Type::Nothing {
+                TypeAnnotation::untyped(span)
+            } else {
+                let out_ty = out_expr.annotation.ty.clone();
+                TypeAnnotation::typed_value(out_ty, ValueKind::Temporary, span)
+            }
         },
         None => TypeAnnotation::untyped(span),
     };

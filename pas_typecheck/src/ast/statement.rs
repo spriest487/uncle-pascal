@@ -1,8 +1,8 @@
 use {
-    pas_syn::Operator,
     crate::{
         ast::prelude::*,
     },
+    pas_syn::Operator,
 };
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
@@ -83,6 +83,31 @@ pub fn typecheck_assignment(
     })
 }
 
+pub type IfStatement = ast::IfStatement<TypeAnnotation>;
+
+fn typecheck_if_stmt(
+    if_stmt: &ast::IfStatement<Span>,
+    ctx: &mut Context)
+    -> TypecheckResult<IfStatement>
+{
+    let cond = typecheck_expr(&if_stmt.cond, &Type::Nothing, ctx)?;
+    let then_branch = typecheck_stmt(&if_stmt.then_branch, ctx)?;
+
+    let else_branch = match &if_stmt.else_branch {
+        Some(else_branch) => Some(typecheck_stmt(&else_branch, ctx)?),
+        None => None,
+    };
+
+    let annotation = TypeAnnotation::untyped(if_stmt.span().clone());
+
+    Ok(IfStatement {
+        cond,
+        then_branch: Box::new(then_branch),
+        else_branch: else_branch.map(Box::new),
+        annotation,
+    })
+}
+
 pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> TypecheckResult<Statement> {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
@@ -115,6 +140,11 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
 
         ast::Statement::Exit(_exit) => {
             unimplemented!()
+        }
+
+        ast::Statement::If(if_stmt) => {
+            typecheck_if_stmt(if_stmt, ctx)
+                .map(ast::Statement::If)
         }
     }
 }

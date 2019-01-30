@@ -146,10 +146,6 @@ pub fn typecheck_expr(
 
         ast::Expression::Call(call) => {
             let call = typecheck_call(call, ctx)?;
-            if call.annotation.ty == Type::Nothing {
-                return Err(TypecheckError::InvalidCallInExpression(call.clone()));
-            }
-
             let annotation = call.annotation.clone();
             Ok(ast::ExpressionNode::new(call, annotation))
         }

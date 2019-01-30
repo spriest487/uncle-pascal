@@ -745,8 +745,6 @@ impl Interpreter {
                         .map(|arg_val| self.evaluate(arg_val))
                         .collect();
 
-                    println!("arg cells: {:?}", arg_cells);
-
                     match self.evaluate(function) {
                         MemCell::Function(function) => {
                             self.call(&function, &arg_cells, out.as_ref())

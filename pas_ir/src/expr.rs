@@ -63,7 +63,7 @@ pub fn translate_expr(
 
         ast::Expression::Call(call) => {
             let return_ref = translate_call(call, builder)
-                .expect("call used in expression must have a return type");
+                .expect("call used in expression must have a return value");
             return_ref
         }
 
@@ -89,7 +89,7 @@ pub fn translate_expr(
     out_val
 }
 
-fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Option<Ref> {
+pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Option<Ref> {
     let (out_val, out_ty) = match &if_cond.annotation.ty {
         pas_ty::Type::Nothing => (None, Type::Nothing),
         out_ty => {
@@ -110,22 +110,31 @@ fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Op
 
     if let Some(else_label) = else_label {
         builder.append(Instruction::Jump { dest: else_label });
+    } else {
+        builder.append(Instruction::Jump { dest: end_label });
     }
 
     builder.append(Instruction::Label(then_label));
+
+    builder.begin_scope();
     let then_val = translate_expr(&if_cond.then_branch, builder);
+
     if let Some(out_val) = out_val.clone() {
         builder.append(Instruction::Move { out: out_val, new_val: then_val.into() });
     }
+    builder.end_scope();
     builder.append(Instruction::Jump { dest: end_label });
 
     if let Some(else_branch) = &if_cond.else_branch {
         builder.append(Instruction::Label(else_label.unwrap()));
 
+        builder.begin_scope();
         let else_val = translate_expr(else_branch, builder);
+
         if let Some(out_val) = out_val.clone() {
             builder.append(Instruction::Move { out: out_val, new_val: else_val.into() });
         }
+        builder.end_scope();
     }
 
     builder.append(Instruction::Label(end_label));
@@ -351,7 +360,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
                 _ => panic!("bad object ctor: class type {:?} doesn't have struct layout", struct_ty),
             };
 
-            let class_ty = (*struct_ty).clone().ptr();
+            let class_ty = (*struct_ty).clone().rc();
             let out_ptr = builder.local_new(class_ty, None);
 
             // allocate class struct at out pointer

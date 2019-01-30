@@ -99,6 +99,30 @@ impl<A: Annotation> fmt::Display for Assignment<A> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct IfStatement<A: Annotation> {
+    pub cond: ExpressionNode<A>,
+    pub then_branch: Box<Statement<A>>,
+    pub else_branch: Option<Box<Statement<A>>>,
+    pub annotation: A,
+}
+
+impl<A: Annotation> Spanned for IfStatement<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
+impl<A: Annotation> fmt::Display for IfStatement<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "if {} then {}", self.cond, self.then_branch)?;
+        if let Some(else_branch) = &self.else_branch {
+            write!(f, " else {}", else_branch)?;
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
     LocalBinding(LocalBinding<A>),
     Call(Call<A>),
@@ -106,6 +130,7 @@ pub enum Statement<A: Annotation> {
     Block(Block<A>),
     ForLoop(ForLoop<A>),
     Assignment(Assignment<A>),
+    If(IfStatement<A>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -120,6 +145,7 @@ impl<A: Annotation> Statement<A> {
             Statement::Block(block) => &block.annotation,
             Statement::ForLoop(for_loop) => &for_loop.annotation,
             Statement::Assignment(assignment) => &assignment.annotation,
+            Statement::If(if_stmt) => &if_stmt.annotation,
         }
     }
 
@@ -138,6 +164,58 @@ impl<A: Annotation> Statement<A> {
             }
 
             _ => None,
+        }
+    }
+
+    pub fn try_from_expr(expr: ExpressionNode<A>) -> Result<Self, ExpressionNode<A>> {
+        match *expr.expr {
+            Expression::Call(call) => Ok(Statement::Call(call)),
+            Expression::Block(mut block) => {
+                block.output = match block.output {
+                    Some(output_expr) => {
+                        let last_stmt = Self::try_from_expr(output_expr)?;
+                        block.statements.push(last_stmt);
+                        None
+                    },
+                    None => None,
+                };
+
+                Ok(Statement::Block(block))
+            },
+
+            Expression::BinOp(bin_op) => {
+                if bin_op.op == Operator::Assignment {
+                    let assignment = Assignment {
+                        lhs: bin_op.lhs,
+                        rhs: bin_op.rhs,
+                        annotation: bin_op.annotation,
+                    };
+                    Ok(Statement::Assignment(assignment))
+                } else {
+                    let invalid_bin_op = ExpressionNode::new(bin_op, expr.annotation);
+                    Err(invalid_bin_op)
+                }
+            }
+
+            Expression::IfCond(if_cond) => {
+                let then_branch = Self::try_from_expr(if_cond.then_branch)?;
+                let else_branch = match if_cond.else_branch {
+                    Some(expr) => Some(Self::try_from_expr(expr)?),
+                    None => None,
+                };
+
+                Ok(Statement::If(IfStatement {
+                    cond: if_cond.cond,
+                    then_branch: Box::new(then_branch),
+                    else_branch: else_branch.map(Box::new),
+                    annotation: if_cond.annotation,
+                }))
+            }
+
+            invalid => {
+                let invalid_node = ExpressionNode::new(invalid, expr.annotation);
+                Err(invalid_node)
+            }
         }
     }
 }
@@ -169,49 +247,16 @@ impl Statement<Span> {
             Some(_) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = ExpressionNode::parse(tokens)?;
-                expr_to_stmt(expr)
+
+                Self::try_from_expr(expr.clone())
+                    .map_err(|invalid_expr| {
+                        TracedError::trace(ParseError::InvalidStatement(invalid_expr))
+                    })
             }
 
             None => {
                 Err(TracedError::trace(ParseError::UnexpectedEOF(stmt_start, tokens.context().clone())))
             }
-        }
-    }
-}
-
-fn expr_to_stmt(expr: ExpressionNode<Span>) -> ParseResult<Statement<Span>> {
-    match *expr.expr {
-        Expression::Call(call) => Ok(Statement::Call(call)),
-        Expression::Block(mut block) => {
-            block.output = match block.output {
-                Some(output_expr) => {
-                    let last_stmt = expr_to_stmt(output_expr)?;
-                    block.statements.push(last_stmt);
-                    None
-                },
-                None => None,
-            };
-
-            Ok(Statement::Block(block))
-        },
-
-        Expression::BinOp(bin_op) => {
-            if bin_op.op == Operator::Assignment {
-                let assignment = Assignment {
-                    lhs: bin_op.lhs,
-                    rhs: bin_op.rhs,
-                    annotation: bin_op.annotation,
-                };
-                Ok(Statement::Assignment(assignment))
-            } else {
-                let invalid_node = ExpressionNode::new(bin_op, expr.annotation);
-                Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
-            }
-        }
-
-        invalid => {
-            let invalid_node = ExpressionNode::new(invalid, expr.annotation);
-            Err(TracedError::trace(ParseError::InvalidStatement(invalid_node)))
         }
     }
 }
@@ -225,6 +270,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::Block(block) => write!(f, "{}", block),
             Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
             Statement::Assignment(assignment) => write!(f, "{}", assignment),
+            Statement::If(if_stmt) => write!(f, "{}", if_stmt),
         }
     }
 }
