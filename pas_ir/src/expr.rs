@@ -120,7 +120,8 @@ pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -
     let then_val = translate_expr(&if_cond.then_branch, builder);
 
     if let Some(out_val) = out_val.clone() {
-        builder.append(Instruction::Move { out: out_val, new_val: then_val.into() });
+        builder.append(Instruction::Move { out: out_val.clone(), new_val: then_val.into() });
+        builder.retain(out_val.clone(), &out_ty);
     }
     builder.end_scope();
     builder.append(Instruction::Jump { dest: end_label });
@@ -132,17 +133,13 @@ pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -
         let else_val = translate_expr(else_branch, builder);
 
         if let Some(out_val) = out_val.clone() {
-            builder.append(Instruction::Move { out: out_val, new_val: else_val.into() });
+            builder.append(Instruction::Move { out: out_val.clone(), new_val: else_val.into() });
+            builder.retain(out_val.clone(), &out_ty);
         }
         builder.end_scope();
     }
 
     builder.append(Instruction::Label(end_label));
-
-    if let Some(out_val) = &out_val {
-        builder.retain(out_val.clone(), &out_ty);
-    }
-
     builder.end_scope();
 
     out_val
