@@ -158,6 +158,7 @@ impl<A: Annotation> Statement<A> {
 
             Statement::Block(block) => if block.output.is_some() {
                 let annotation = block.annotation.clone();
+
                 Some(ExpressionNode::new(block, annotation))
             } else {
                 None
@@ -168,12 +169,15 @@ impl<A: Annotation> Statement<A> {
     }
 
     pub fn try_from_expr(expr: ExpressionNode<A>) -> Result<Self, ExpressionNode<A>> {
-        match *expr.expr {
-            Expression::Call(call) => Ok(Statement::Call(call)),
+        match *expr.expr.clone() {
             Expression::Block(mut block) => {
                 block.output = match block.output {
                     Some(output_expr) => {
-                        let last_stmt = Self::try_from_expr(output_expr)?;
+                        let last_stmt = match Self::try_from_expr(output_expr) {
+                            Err(_) => return Err(expr),
+                            Ok(stmt) => stmt,
+                        };
+
                         block.statements.push(last_stmt);
                         None
                     },
@@ -182,6 +186,7 @@ impl<A: Annotation> Statement<A> {
 
                 Ok(Statement::Block(block))
             },
+            Expression::Call(call) => Ok(Statement::Call(call)),
 
             Expression::BinOp(bin_op) => {
                 if bin_op.op == Operator::Assignment {
@@ -198,9 +203,16 @@ impl<A: Annotation> Statement<A> {
             }
 
             Expression::IfCond(if_cond) => {
-                let then_branch = Self::try_from_expr(if_cond.then_branch)?;
+                let then_branch = match Self::try_from_expr(if_cond.then_branch) {
+                    Ok(then_stmt) => then_stmt,
+                    Err(_) => return Err(expr),
+                };
+
                 let else_branch = match if_cond.else_branch {
-                    Some(expr) => Some(Self::try_from_expr(expr)?),
+                    Some(else_expr) => match Self::try_from_expr(else_expr) {
+                        Ok(else_stmt) => Some(else_stmt),
+                        Err(_) => return Err(expr),
+                    },
                     None => None,
                 };
 
@@ -248,10 +260,11 @@ impl Statement<Span> {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = ExpressionNode::parse(tokens)?;
 
-                Self::try_from_expr(expr.clone())
+                let stmt = Self::try_from_expr(expr.clone())
                     .map_err(|invalid_expr| {
                         TracedError::trace(ParseError::InvalidStatement(invalid_expr))
-                    })
+                    })?;
+                Ok(stmt)
             }
 
             None => {

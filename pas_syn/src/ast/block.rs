@@ -60,7 +60,7 @@ impl Block<Span> {
 
         body_tokens.finish()?;
 
-        Ok(Self {
+        let block = Self {
             statements,
             annotation: span,
 
@@ -68,7 +68,9 @@ impl Block<Span> {
             output: output_expr,
             begin,
             end,
-        })
+        };
+
+        Ok(block)
     }
 }
 

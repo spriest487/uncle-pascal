@@ -14,6 +14,7 @@ use {
         HeapAddress,
     },
     std::{
+        rc::Rc,
         collections::HashMap,
         f32,
         fmt,
@@ -33,7 +34,7 @@ pub enum Function {
         func: fn(state: &mut Interpreter),
         ret: Type,
     },
-    IR(FunctionIR),
+    IR(Rc<FunctionIR>),
 }
 
 impl Function {
@@ -306,6 +307,12 @@ impl Interpreter {
         };
         globals.insert(GlobalRef::Function("FreeMem".to_string()), MemCell::Function(free_mem));
 
+        let dispose_str = Function::Builtin {
+            func: builtin::string_dispose,
+            ret: Type::Nothing,
+        };
+        globals.insert(GlobalRef::Function("StringDispose".to_string()), MemCell::Function(dispose_str));
+
         let mut heap = Heap::new();
         heap.trace = opts.trace_heap;
 
@@ -532,7 +539,20 @@ impl Interpreter {
     // todo: this should be handled in the IR so we don't need to know cell types
     fn release_cell(&mut self, cell: &MemCell) {
         match cell {
-            MemCell::Structure(StructCell { fields, .. }) => {
+            MemCell::Structure(StructCell { fields, id }) => {
+                let struct_def = &self.metadata.structs()[id];
+                let dispose_impl_name = struct_def.find_impl("System.Disposable", "Dispose")
+                    .map(|name| name.to_string());
+                if let Some(dispose_func) = dispose_impl_name {
+                    let dispose_ref = GlobalRef::Function(dispose_func);
+                    let func = match self.globals.get(&dispose_ref) {
+                        Some(MemCell::Function(func)) => func.clone(),
+                        _ => panic!("missing {} for {}", dispose_ref, struct_def.name),
+                    };
+
+                    self.call(&func, &[cell.clone()], None);
+                }
+
                 for cell in fields {
                     self.release_cell(cell);
                 }
@@ -874,7 +894,7 @@ impl Interpreter {
         self.metadata.extend(&module.metadata);
 
         for (func_name, func) in &module.functions {
-            let func_cell = MemCell::Function(Function::IR(func.clone()));
+            let func_cell = MemCell::Function(Function::IR(Rc::new(func.clone())));
             let func_ref = GlobalRef::Function(func_name.clone());
 
             self.globals.insert(func_ref, func_cell);
@@ -908,6 +928,8 @@ impl Interpreter {
         let chars: Vec<_> = content.chars()
             .map(|c| MemCell::U8(c as u8))
             .collect();
+        let chars_len = chars.len();
+
         let chars_ptr = self.heap.alloc(chars);
 
         let str_fields = vec![
@@ -915,7 +937,7 @@ impl Interpreter {
             MemCell::Pointer(Pointer::Heap(Type::U8, chars_ptr)),
 
             //field 1: `len: Integer`
-            MemCell::I32(content.len() as i32),
+            MemCell::I32(chars_len as i32),
         ];
 
         let str_cell = MemCell::Structure(StructCell { id: STRING_ID, fields: str_fields });

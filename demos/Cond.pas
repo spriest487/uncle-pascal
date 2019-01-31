@@ -1,14 +1,19 @@
-function DoMaybe(cond: Boolean)
+function Maybe(cond: Boolean): Integer
 begin
     if cond then
-        WriteLn('Doing it')
+        1
     else
-        WriteLn('Not doing it')
+        2
 end;
-
 
 let x: Integer := if true then 123 else 312;
 WriteLn(IntToStr(x));
+
+let z := if false then 'first'
+    else if false then 'second'
+    else 'third';
+
+WriteLn(z);
 
 WriteLn(begin
     let a: Integer := 543;
@@ -18,5 +23,5 @@ WriteLn(begin
     IntToStr(if cond then a else b)
 end);
 
-DoMaybe(true);
-DoMaybe(false);
+WriteLn(IntToStr(Maybe(true)));
+WriteLn(IntToStr(Maybe(false)));

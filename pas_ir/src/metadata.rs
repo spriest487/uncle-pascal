@@ -33,6 +33,11 @@ pub const RC_REF_COUNT_FIELD: usize = 0;
 pub const RC_VALUE_FIELD: usize = 1;
 
 #[derive(Clone, Debug)]
+pub struct InterfaceImpl {
+    pub methods: HashMap<String, String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct StructField {
     pub name: String,
     pub ty: Type,
@@ -43,6 +48,8 @@ pub struct StructField {
 pub struct Struct {
     pub name: String,
     pub fields: HashMap<usize, StructField>,
+
+    pub impls: HashMap<String, InterfaceImpl>,
 }
 
 impl Struct {
@@ -55,23 +62,54 @@ impl Struct {
             })
     }
 
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
-            name: name.to_string(),
+            name: name.into(),
             fields: HashMap::new(),
+            impls: HashMap::new(),
         }
     }
 
-    pub fn with_field(mut self, name: &str, ty: Type, rc: bool) -> Self {
+    pub fn with_field(mut self, name: impl Into<String>, ty: Type, rc: bool) -> Self {
         let id = self.fields.keys().max().map(|id| *id + 1).unwrap_or(0);
 
         self.fields.insert(id, StructField {
-            name: name.to_string(),
+            name: name.into(),
             ty,
             rc,
         });
 
         self
+    }
+
+    pub fn with_fields(mut self, fields: HashMap<usize, StructField>) -> Self {
+        self.fields.extend(fields);
+        self
+    }
+
+    pub fn with_impl(
+        mut self,
+        interface_name: impl Into<String>,
+        method: impl Into<String>,
+        func_name: impl Into<String>)
+        -> Self
+    {
+        let iface_impl = self.impls.entry(interface_name.into())
+            .or_insert_with(|| InterfaceImpl {
+                methods: HashMap::new()
+            });
+
+        let method = method.into();
+        assert!(!iface_impl.methods.contains_key(&method));
+
+        iface_impl.methods.insert(method, func_name.into());
+        self
+    }
+
+    pub fn find_impl(&self, iface_name: &str, method: &str) -> Option<&str> {
+        self.impls.get(iface_name)
+            .and_then(|iface_impl| iface_impl.methods.get(method))
+            .map(|func_name| func_name.as_str())
     }
 }
 
@@ -142,7 +180,8 @@ impl Metadata {
 
         metadata.structs.insert(STRING_ID, Struct::new("String")
             .with_field("chars", Type::I32.ptr(), false)
-            .with_field("len", Type::I32, false));
+            .with_field("len", Type::I32, false)
+            .with_impl("System.Disposable", "Dispose", "StringDispose"));
 
         metadata
     }
@@ -193,7 +232,10 @@ impl Metadata {
             .next()
             .unwrap();
 
-        self.structs.insert(id, Struct { name: struct_def.ident.to_string(), fields });
+        let struct_def = Struct::new(struct_def.ident.to_string())
+            .with_fields(fields);
+
+        self.structs.insert(id, struct_def);
         id
     }
 

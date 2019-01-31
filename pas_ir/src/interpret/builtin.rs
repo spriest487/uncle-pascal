@@ -6,13 +6,11 @@ use {
             MemCell,
             Pointer,
         },
-        metadata::{
-            Type,
-        },
+        metadata::*,
     }
 };
 
-/// $1: Integer -> $0: ^String
+/// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {
     let return_ref = Ref::Local(0);
     let arg_0 = Ref::Local(1);
@@ -24,7 +22,7 @@ pub(super) fn int_to_str(state: &mut Interpreter) {
     state.store(&return_ref, string);
 }
 
-/// $0: ^String -> Nothing
+/// $0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) {
     let arg_0 = Ref::Local(0);
     let string = state.read_string(&arg_0.deref());
@@ -46,7 +44,7 @@ pub(super) fn get_mem(state: &mut Interpreter) {
     state.store(&ret, MemCell::Pointer(Pointer::Heap(Type::U8, mem)));
 }
 
-// $1: ^Byte -> Nothing
+/// $0: ^Byte -> Nothing
 pub(super) fn free_mem(state: &mut Interpreter) {
     let arg_0 = Ref::Local(0);
 
@@ -55,4 +53,24 @@ pub(super) fn free_mem(state: &mut Interpreter) {
         .unwrap_or_else(|| panic!("FreeMem expected heap pointer argument"));
 
     state.heap.free(ptr);
+}
+
+/// $0: String -> Nothing
+pub(super) fn string_dispose(state: &mut Interpreter) {
+    let arg_0 = Ref::Local(0);
+
+    // hack: we release by (copied) value, and that can't change until we can
+    // take pointers to struct fields. normally arg0 should be an rc
+    // pointer to a string, not the string cell itself
+    let string_cell = state.load(&arg_0).as_struct(STRING_ID)
+        .unwrap();
+
+    let string_len = string_cell.fields[STRING_LEN_FIELD].as_i32().unwrap();
+    if string_len > 0 {
+        let chars_addr = string_cell.fields[STRING_CHARS_FIELD]
+            .as_pointer()
+            .and_then(|ptr| ptr.as_heap_addr())
+            .unwrap();
+        state.heap.free(chars_addr);
+    }
 }
