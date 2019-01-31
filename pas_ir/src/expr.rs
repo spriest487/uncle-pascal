@@ -41,22 +41,22 @@ pub fn translate_expr(
                     Ref::Global(func_ref)
                 }
 
+                // ident lvalues are evaluated as pointers to the original values. they don't need
+                // to be refcounted separately, because if they have a name, they must exist
+                // in a scope at least as wide as the current one
                 Some(pas_ty::ValueKind::Immutable) |
                 Some(pas_ty::ValueKind::Mutable) => {
                     let local_ref = builder.find_local(&ident.name)
-                        .map(|local| Value::Ref(local.local_ref()))
+                        .map(|local| Ref::Local(local.id()))
                         .unwrap_or_else(|| {
                             panic!("identifier not found in local scope @ {}: {}", expr.annotation.span, ident)
                         });
 
-                    // we need to bind rc values to a local so we know when to
-                    // release the ref, even if we're simply referencing a local by name
-                    let temp_ty = builder.metadata.translate_type(&expr.annotation.ty).clone();
-                    let temp_val = builder.local_new(temp_ty.clone(), None);
+                    let ref_ty = builder.metadata.translate_type(&expr.annotation.ty).clone();
+                    let ref_temp = builder.local_temp(ref_ty.clone().ptr());
 
-                    builder.append(Instruction::Move { out: temp_val.clone(), new_val: local_ref });
-                    builder.retain(temp_val.clone(), &temp_ty);
-                    temp_val
+                    builder.append(Instruction::AddrOf { out: ref_temp.clone(), a: local_ref });
+                    ref_temp.deref()
                 }
             }
         }

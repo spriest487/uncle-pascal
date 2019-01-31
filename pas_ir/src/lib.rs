@@ -259,10 +259,6 @@ impl Local {
             Local::Bound { name, .. } => name.as_ref(),
         }
     }
-
-    pub fn local_ref(&self) -> Ref {
-        Ref::Local(self.id())
-    }
 }
 
 #[derive(Debug)]

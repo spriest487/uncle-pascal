@@ -1,18 +1,20 @@
-let nothingPtr: ^Integer := nil;
+//let nothingPtr: ^Integer := nil;
 
-var x := 1;
+//var x := 1;
 
-x := 2;
-x := x + 1;
-WriteLn(IntToStr(x));
+//x := 2;
+//x := x + 1;
+//WriteLn(IntToStr(x));
 
 var y: Integer := 123321;
 var yPtr := @y;
-WriteLn(IntToStr(yPtr^));
+let z := yPtr^;
+
+WriteLn(IntToStr(z));
 
 // illegal: @y returns a temporary ^Integer
-//let yPtrPtr: ^^Integer := @@y;
-//WriteLn(IntToStr(yPtrPtr^^));
+// let yPtrPtr: ^^Integer := @@y;
+// WriteLn(IntToStr(yPtrPtr^^));
 
 let yPtrPtr := @yPtr;
 WriteLn(IntToStr(yPtrPtr^^));

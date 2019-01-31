@@ -932,10 +932,14 @@ impl Interpreter {
         let len = &str_cell.fields[STRING_LEN_FIELD]
             .as_i32().unwrap();
 
+        if *len == 0 {
+            return String::new();
+        }
+
         let chars_addr = &str_cell.fields[STRING_CHARS_FIELD]
             .as_pointer()
             .and_then(|ptr| ptr.as_heap_addr())
-            .unwrap_or_else(|| panic!("string contained non-heap-alloced `chars` pointer"));
+            .unwrap_or_else(|| panic!("string contained non-heap-alloced `chars` pointer: {:?}", str_cell));
 
         let mut chars = Vec::new();
         for i in 0..*len as usize {
