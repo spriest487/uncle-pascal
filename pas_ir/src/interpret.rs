@@ -648,7 +648,7 @@ impl Interpreter {
     }
 
     fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) {
-        let dispose_impl_id = self.metadata.find_impl(ty, DISPOSABLE_ID, "Dispose");
+        let dispose_impl_id = self.metadata.find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_METHOD);
 
         if let Some(dispose_func) = dispose_impl_id {
             let dispose_desc = self.metadata.func_desc(dispose_func);

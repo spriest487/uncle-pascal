@@ -1,10 +1,12 @@
 use std::{collections::HashMap, fmt};
 
 use pas_ir::{
-    metadata::{self, FieldID, StructID},
+    metadata::{self, FieldID, StructID, InterfaceID, FunctionID},
 };
 
 use crate::ast::Module;
+use crate::ast::function::FunctionName;
+use pas_ir::metadata::ClassID;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
@@ -208,3 +210,77 @@ impl fmt::Display for StructDef {
         write!(f, "}};")
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct InterfaceImpl {
+    method_impls: HashMap<String, FunctionName>
+}
+
+#[derive(Clone, Debug)]
+pub struct Class {
+    struct_id: StructID,
+    impls: HashMap<InterfaceID, InterfaceImpl>,
+    disposer: Option<FunctionName>,
+}
+
+impl Class {
+    pub fn translate(
+        struct_id: StructID,
+        struct_def: &metadata::Struct,
+        metadata: &metadata::Metadata,
+    ) -> Self {
+        let class_ty = metadata::Type::RcPointer(ClassID::Class(struct_id));
+        let mut impls = HashMap::new();
+
+        for (iface_id, iface) in metadata.ifaces() {
+            let method_impls: HashMap<_, _> = iface.methods.iter()
+                .filter_map(|method| {
+                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method)?;
+
+                    Some((method.clone(), FunctionName::ID(method_impl)))
+                })
+                .collect();
+
+            if method_impls.len() == 0 {
+                continue;
+            }
+
+            impls.insert(*iface_id, InterfaceImpl {
+                method_impls,
+            });
+        }
+
+        let disposer = impls.get(&metadata::DISPOSABLE_ID)
+            .and_then(|disposable_impl| {
+                disposable_impl.method_impls.get(metadata::DISPOSABLE_DISPOSE_METHOD)
+                    .cloned()
+            });
+
+        Class {
+            struct_id,
+            impls,
+            disposer,
+        }
+    }
+
+    pub fn to_def_string(&self) -> String {
+        let mut def = format!("struct Class Class_{} = {{\n", self.struct_id);
+
+        def.push_str("  .size = sizeof(struct ");
+        def.push_str(&StructName::ID(self.struct_id).to_string());
+        def.push_str("),\n");
+
+        def.push_str("  .disposer = ");
+        if let Some(disposer_func) = self.disposer {
+            def.push('&');
+            def.push_str(&disposer_func.to_string());
+        } else {
+            def.push_str("NULL");
+        };
+        def.push_str(",\n");
+
+        def.push_str("};");
+        def
+    }
+}
+

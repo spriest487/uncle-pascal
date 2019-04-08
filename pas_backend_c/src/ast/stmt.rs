@@ -43,6 +43,7 @@ impl fmt::Display for PrefixOp {
 pub enum Expr {
     Local(LocalID),
     Function(FunctionName),
+    Class(StructID),
     Deref(Box<Expr>),
     LitString(StringID),
     LitBool(bool),
@@ -205,6 +206,9 @@ impl fmt::Display for Expr {
             }
             Expr::SizeOf(ty) => {
                 write!(f, "sizeof({})", ty.typename())
+            }
+            Expr::Class(struct_id) => {
+                write!(f, "Class_{}", struct_id)
             }
         }
     }
@@ -409,11 +413,11 @@ impl<'a> Builder<'a> {
         struct_id: StructID,
     ) {
         let struct_ty = Type::Struct(StructName::ID(struct_id));
-        let ty_size = Expr::SizeOf(struct_ty);
+        let ty_class = Expr::Class(struct_id).addr_of();
 
         let new_rc = Expr::Call {
             func: Box::new(Expr::Function(FunctionName::RcAlloc)),
-            args: vec![ty_size],
+            args: vec![ty_class],
         };
 
         self.stmts.push(Statement::Expr(Expr::translate_assign(out, new_rc, self.module)))

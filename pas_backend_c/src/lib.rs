@@ -5,6 +5,7 @@ mod ast;
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Options {
     pub trace_heap: bool,
+    pub trace_rc: bool,
 }
 
 pub fn translate(ir_module: &ir::Module, opts: Options) -> ast::Module {

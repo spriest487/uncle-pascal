@@ -6,8 +6,11 @@
 
 struct Rc;
 
+typedef void (*Disposer)(struct Rc*);
+
 struct Class {
-    struct Rc* name;
+    size_t size;
+    Disposer disposer;
 };
 
 struct Rc {
@@ -73,15 +76,19 @@ static void Free(void* mem) {
 
 // RC runtime functions
 
-static struct Rc* RcAlloc(size_t len) {
+static struct Rc* RcAlloc(struct Class* class) {
+    if (!class) {
+        abort();
+    }
+
     struct Rc* rc = Alloc(sizeof(struct Rc));
     if (!rc) {
         abort();
     }
 
     rc->count = 1;
-    rc->class = NULL;
-    rc->resource = Alloc(len);
+    rc->class = class;
+    rc->resource = Alloc(class->size);
 
     return rc;
 }
@@ -90,6 +97,10 @@ static void RcRetain(struct Rc* rc) {
     if (!rc || !rc->count) {
         abort();
     }
+
+#if TRACE_RC
+    printf("rc: retained ref @ 0x%p\n", rc->resource);
+#endif
 
     rc->count += 1;
 }
@@ -101,66 +112,35 @@ static void RcRelease(struct Rc* rc) {
 
     if (rc->count > 1) {
         rc->count -= 1;
+
+#if TRACE_RC
+        printf("rc: released ref @ 0x%p\n", rc->resource);
+#endif
     } else {
+        if (rc->class->disposer) {
+#if TRACE_RC
+            printf("rc: deleting disposable resource @ 0x%p\n", rc->resource);
+#endif
+            rc->class->disposer(rc);
+        } else {
+#if TRACE_RC
+            printf("rc: deleting resource without disposer @ 0x%p\n", rc->resource);
+#endif
+        }
+
         Free(rc->resource);
         Free(rc);
     }
 }
 
-// hack: define a struct identical to System.String so we can access its fields
-struct InternalString {
-    unsigned char* chars;
-    int32_t len;
-};
-
 // implementations of System.pas builtins
 
-static int32_t System_StrToInt(struct Rc* str_rc) {
-    if (!str_rc || !str_rc->resource) {
-        abort();
-    }
-
-    struct InternalString* str = str_rc->resource;
-    int i = atoi((char*) str->chars);
-    return (int32_t) i;
-}
-
-static struct Rc* System_IntToStr(int32_t i) {
-    char buf[12];
-    sprintf(buf, "%d", i);
-
-    struct Rc* str_rc = RcAlloc(sizeof(struct InternalString));
-    struct InternalString* str = (struct InternalString*) str_rc->resource;
-    str->len = strlen(buf);
-    str->chars = Alloc(str->len);
-    memcpy(str->chars, buf, str->len);
-
-    return str_rc;
-}
-
-static unsigned char* System_GetMem(int32_t len) {
-    return (unsigned char*) Alloc(len);
-}
-
-static void System_FreeMem(unsigned char* mem) {
-    Free(mem);
-}
-
-static void System_Write(struct Rc* str_rc) {
-    if (!str_rc || !str_rc->resource) {
-        abort();
-    }
-
-    struct InternalString* str = (struct InternalString*) str_rc->resource;
-    char* chars = (char*) str->chars;
-
-    printf("%.*s", (int) str->len, chars);
-}
-
-static void System_WriteLn(struct Rc* str_rc) {
-    System_Write(str_rc);
-    putchar('\n');
-}
+static int32_t System_StrToInt(struct Rc* str_rc);
+static struct Rc* System_IntToStr(int32_t i);
+static unsigned char* System_GetMem(int32_t len);
+static void System_FreeMem(unsigned char* mem);
+static void System_Write(struct Rc* str_rc);
+static void System_WriteLn(struct Rc* str_rc);
 
 // runtime start/stop
 

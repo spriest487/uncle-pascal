@@ -41,6 +41,7 @@ impl fmt::Display for InterfaceID {
 
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
+pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
 
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);

@@ -10,7 +10,7 @@ use crate::ast::{
     Builder,
 };
 
-#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+#[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {
     // c main function
     Main,

@@ -23,6 +23,7 @@ pub struct Module {
     functions: Vec<FunctionDef>,
     static_array_types: HashMap<ArraySig, Type>,
     struct_defs: Vec<StructDef>,
+    classes: Vec<Class>,
 
     builtin_funcs: HashMap<FunctionID, FunctionName>,
 
@@ -51,10 +52,17 @@ impl Module {
         lookup_sys_builtin(metadata, &mut builtin_funcs, "FreeMem", FunctionName::FreeMem);
         lookup_sys_builtin(metadata, &mut builtin_funcs, "WriteLn", FunctionName::WriteLn);
 
+        let classes = metadata.structs()
+            .iter()
+            .map(|(struct_id, struct_def)| Class::translate(*struct_id, struct_def, metadata))
+            .collect();
+
         Module {
             functions: Vec::new(),
             struct_defs: Vec::new(),
             static_array_types: HashMap::new(),
+
+            classes,
 
             builtin_funcs,
 
@@ -140,6 +148,10 @@ impl fmt::Display for Module {
             writeln!(f, "#define TRACE_HEAP 1")?;
         }
 
+        if self.opts.trace_rc {
+            writeln!(f, "#define TRACE_RC 1")?;
+        }
+
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
         for struct_def in &self.struct_defs {
@@ -157,10 +169,17 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
+        for class in &self.classes {
+            writeln!(f, "{}", class.to_def_string())?;
+            writeln!(f)?;
+        }
+
         for func in &self.functions {
             writeln!(f, "{}", func)?;
             writeln!(f)?;
         }
+
+        writeln!(f, "{}", include_str!("epilogue.h"))?;
 
         writeln!(f)
     }
