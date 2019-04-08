@@ -7,7 +7,7 @@ use crate::ast::{
     Type,
     Module,
     Statement,
-    translate_instructions,
+    Builder,
 };
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
@@ -100,9 +100,12 @@ pub struct FunctionDef {
 
 impl FunctionDef {
     pub fn translate(id: FunctionID, func: &ir::Function, module: &mut Module) -> Self {
+        let mut builder = Builder::new(module);
+        builder.translate_instructions(&func.body);
+
         Self {
+            body: builder.stmts,
             decl: FunctionDecl::translate(id, func, module),
-            body: translate_instructions(&func.body, module),
         }
     }
 }

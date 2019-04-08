@@ -3,7 +3,6 @@ use crate::ast::{Type, Module, StructName, FunctionName};
 use std::fmt;
 use ir::metadata::{self, StringID, StructID};
 use crate::ast::ty::FieldName;
-use crate::ast::ty::Type::Struct;
 
 pub enum InfixOp {
     Eq,
@@ -63,7 +62,7 @@ impl Expr {
             ir::Ref::Global(ir::GlobalRef::Function(id)) => {
                 let name = module.function_name(*id);
                 Expr::Function(name)
-            },
+            }
             ir::Ref::Global(ir::GlobalRef::StringLiteral(id)) => Expr::LitString(*id),
         }
     }
@@ -205,122 +204,7 @@ pub enum Statement {
     IfCond {
         cond: Expr,
         then: Box<Statement>,
-    }
-}
-
-impl Statement {
-    pub fn translate(instruction: &ir::Instruction, module: &mut Module, stmts: &mut Vec<Self>) {
-        match instruction {
-            ir::Instruction::LocalAlloc(id, ty) => {
-                let ty = Type::from_metadata(ty, module);
-                stmts.push(Statement::VariableDecl { ty, id: *id });
-            }
-
-            ir::Instruction::LocalBegin => stmts.push(Statement::BeginBlock),
-            ir::Instruction::LocalEnd => stmts.push(Statement::EndBlock),
-            ir::Instruction::Label(label) => stmts.push(Statement::Label(*label)),
-            ir::Instruction::Jump { dest } => stmts.push(Statement::Goto(*dest)),
-            ir::Instruction::JumpIf { dest, test } => {
-                let cond_expr = Expr::translate_val(test, module);
-                stmts.push(Statement::IfCond {
-                    cond: cond_expr,
-                    then: Box::new(Statement::Goto(*dest)),
-                });
-            },
-            ir::Instruction::Comment(text) => {
-                let safe_text = text
-                    .replace("/*", "")
-                    .replace("*/", "");
-                stmts.push(Statement::Comment(safe_text));
-            }
-
-            ir::Instruction::AddrOf { out, a } => {
-                let addr = Expr::translate_ref(a, module).addr_of();
-                stmts.push(Statement::Expr(Expr::translate_assign(out, addr, module)));
-            }
-
-            ir::Instruction::Move { out, new_val } => {
-                let val = Expr::translate_val(new_val, module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, val, module)));
-            }
-
-            ir::Instruction::Eq { out, a, b } => {
-                let cmp = Expr::translate_infix_op(a, InfixOp::Eq, b, module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, cmp, module)));
-            }
-
-            ir::Instruction::Add { out, a, b } => {
-                let add = Expr::translate_infix_op(a, InfixOp::Add, b, module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, add, module)));
-            }
-
-            ir::Instruction::Sub { out, a, b } => {
-                let sub = Expr::translate_infix_op(a, InfixOp::Sub, b, module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, sub, module)));
-            }
-
-            ir::Instruction::Element { out, a, index, element: _ } => {
-                let element = Expr::translate_element(a, index, module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, element, module)));
-            }
-
-            ir::Instruction::Field { out, a, of_ty, field } => {
-                let field = Expr::translate_field(a, of_ty, FieldName::ID(*field), module);
-                stmts.push(Statement::Expr(Expr::translate_assign(out, field, module)))
-            }
-
-            ir::Instruction::Call { out, function, args } => {
-                Self::translate_call(out.as_ref(), function, args, stmts, module);
-            }
-
-            ir::Instruction::RcNew { out, struct_id } => {
-                Self::translate_rc_new(out, *struct_id, stmts, module);
-            }
-
-            _ => {
-                eprintln!("missing: C backend translation of instruction `{}`", instruction);
-            }
-        }
-    }
-
-    fn translate_call(
-        out: Option<&ir::Ref>,
-        function: &ir::Value,
-        args: &[ir::Value],
-        stmts: &mut Vec<Statement>,
-        module: &Module,
-    ) {
-        let func_expr = Expr::translate_val(function, module);
-        let args = args.iter()
-            .map(|arg_val| Expr::translate_val(arg_val, module));
-
-        let call = Expr::call(func_expr, args);
-
-        stmts.push(Statement::Expr(match out {
-            Some(out) => {
-                Expr::translate_assign(out, call, module)
-            }
-
-            None => call,
-        }));
-    }
-
-    fn translate_rc_new(
-        out: &ir::Ref,
-        struct_id: StructID,
-        stmts: &mut Vec<Statement>,
-        module: &Module
-    ) {
-        let struct_ty = Type::Struct(StructName::ID(struct_id));
-        let ty_size = Expr::SizeOf(struct_ty);
-
-        let new_rc = Expr::Call {
-            func: Box::new(Expr::Function(FunctionName::RcAlloc)),
-            args: vec![ty_size],
-        };
-
-        stmts.push(Statement::Expr(Expr::translate_assign(out, new_rc, module)))
-    }
+    },
 }
 
 impl fmt::Display for Statement {
@@ -350,14 +234,135 @@ impl fmt::Display for Statement {
     }
 }
 
-pub fn translate_instructions(
-    instructions: &[ir::Instruction],
-    module: &mut Module,
-) -> Vec<Statement> {
-    let mut stmts = Vec::new();
-    for instruction in instructions {
-        stmts.push(Statement::Comment(instruction.to_string()));
-        Statement::translate(instruction, module, &mut stmts);
+pub struct Builder<'a> {
+    module: &'a mut Module,
+    pub stmts: Vec<Statement>,
+}
+
+impl<'a> Builder<'a> {
+    pub fn new(module: &'a mut Module) -> Self {
+        Self {
+            module,
+            stmts: Vec::new(),
+        }
     }
-    stmts
+
+    pub fn translate_instructions(&mut self, instructions: &[ir::Instruction]) {
+        for instruction in instructions {
+            self.translate_instruction(instruction);
+        }
+    }
+
+    fn translate_instruction(&mut self, instruction: &ir::Instruction) {
+        self.stmts.push(Statement::Comment(instruction.to_string()));
+
+        match instruction {
+            ir::Instruction::LocalAlloc(id, ty) => {
+                let ty = Type::from_metadata(ty, self.module);
+                self.stmts.push(Statement::VariableDecl { ty, id: *id });
+            }
+
+            ir::Instruction::LocalBegin => self.stmts.push(Statement::BeginBlock),
+            ir::Instruction::LocalEnd => self.stmts.push(Statement::EndBlock),
+            ir::Instruction::Label(label) => self.stmts.push(Statement::Label(*label)),
+            ir::Instruction::Jump { dest } => self.stmts.push(Statement::Goto(*dest)),
+            ir::Instruction::JumpIf { dest, test } => {
+                let cond_expr = Expr::translate_val(test, self.module);
+                self.stmts.push(Statement::IfCond {
+                    cond: cond_expr,
+                    then: Box::new(Statement::Goto(*dest)),
+                });
+            }
+            ir::Instruction::Comment(text) => {
+                let safe_text = text
+                    .replace("/*", "")
+                    .replace("*/", "");
+                self.stmts.push(Statement::Comment(safe_text));
+            }
+
+            ir::Instruction::AddrOf { out, a } => {
+                let addr = Expr::translate_ref(a, self.module).addr_of();
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, addr, self.module)));
+            }
+
+            ir::Instruction::Move { out, new_val } => {
+                let val = Expr::translate_val(new_val, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, val, self.module)));
+            }
+
+            ir::Instruction::Eq { out, a, b } => {
+                let cmp = Expr::translate_infix_op(a, InfixOp::Eq, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, cmp, self.module)));
+            }
+
+            ir::Instruction::Add { out, a, b } => {
+                let add = Expr::translate_infix_op(a, InfixOp::Add, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, add, self.module)));
+            }
+
+            ir::Instruction::Sub { out, a, b } => {
+                let sub = Expr::translate_infix_op(a, InfixOp::Sub, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, sub, self.module)));
+            }
+
+            ir::Instruction::Element { out, a, index, element: _ } => {
+                let element = Expr::translate_element(a, index, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, element, self.module)));
+            }
+
+            ir::Instruction::Field { out, a, of_ty, field } => {
+                let field = Expr::translate_field(a, of_ty, FieldName::ID(*field), self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, field, self.module)))
+            }
+
+            ir::Instruction::Call { out, function, args } => {
+                self.translate_call(out.as_ref(), function, args);
+            }
+
+            ir::Instruction::RcNew { out, struct_id } => {
+                self.translate_rc_new(out, *struct_id);
+            }
+
+            _ => {
+                eprintln!("missing: C backend translation of instruction `{}`", instruction);
+            }
+        }
+    }
+
+    fn translate_call(
+        &mut self,
+        out: Option<&ir::Ref>,
+        function: &ir::Value,
+        args: &[ir::Value],
+    ) {
+        let func_expr = Expr::translate_val(function, self.module);
+        let args = args.iter()
+            .map(|arg_val| Expr::translate_val(arg_val, self.module));
+
+        let call = Expr::call(func_expr, args);
+
+        self.stmts.push(Statement::Expr(match out {
+            Some(out) => {
+                Expr::translate_assign(out, call, self.module)
+            }
+
+            None => call,
+        }));
+    }
+
+    fn translate_rc_new(
+        &mut self,
+        out: &ir::Ref,
+        struct_id: StructID,
+    ) {
+        let struct_ty = Type::Struct(StructName::ID(struct_id));
+        let ty_size = Expr::SizeOf(struct_ty);
+
+        let new_rc = Expr::Call {
+            func: Box::new(Expr::Function(FunctionName::RcAlloc)),
+            args: vec![ty_size],
+        };
+
+        self.stmts.push(Statement::Expr(Expr::translate_assign(out, new_rc, self.module)))
+    }
 }

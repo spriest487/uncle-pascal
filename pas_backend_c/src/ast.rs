@@ -119,8 +119,10 @@ impl Module {
             },
         };
 
-        let init_stmts = translate_instructions(&module.init, self);
-        main.body.extend(init_stmts);
+        let mut init_builder = Builder::new(self);
+        init_builder.translate_instructions(&module.init);
+
+        main.body.extend(init_builder.stmts);
 
         self.functions.push(main);
     }
