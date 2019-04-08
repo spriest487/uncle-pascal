@@ -41,15 +41,16 @@ static void* Alloc(size_t len) {
     struct AllocTrace* new_alloc = malloc(sizeof(struct AllocTrace));
     new_alloc->next = alloc_traces;
     new_alloc->len = len;
+    new_alloc->at = mem;
     alloc_traces = new_alloc;
+
+    fprintf(stderr, "heap: allocated %4zu bytes at 0x%p\n", len, mem);
 #endif
 
     return mem;
 }
 
 static void Free(void* mem) {
-    free(mem);
-
 #ifdef TRACE_HEAP
     struct AllocTrace** alloc = &alloc_traces;
 
@@ -57,12 +58,17 @@ static void Free(void* mem) {
         if ((*alloc)->at == mem) {
             struct AllocTrace* removed = *alloc;
             *alloc = removed->next;
+
+            fprintf(stderr, "heap: freed %4zu bytes at 0x%p\n", removed->len, removed->at);
             free(removed);
+            break;
         } else {
             alloc = &((*alloc)->next);
         }
     }
 #endif
+
+    free(mem);
 }
 
 // RC runtime functions
@@ -80,7 +86,15 @@ static struct Rc* RcAlloc(size_t len) {
     return rc;
 }
 
-static void RcFree(struct Rc* rc) {
+static void RcRetain(struct Rc* rc) {
+    if (!rc || !rc->count) {
+        abort();
+    }
+
+    rc->count += 1;
+}
+
+static void RcRelease(struct Rc* rc) {
     if (!rc || !rc->count) {
         abort();
     }
@@ -88,8 +102,8 @@ static void RcFree(struct Rc* rc) {
     if (rc->count > 1) {
         rc->count -= 1;
     } else {
-        free(rc->resource);
-        free(rc);
+        Free(rc->resource);
+        Free(rc);
     }
 }
 
@@ -156,7 +170,7 @@ static void RuntimeExit(int code) {
 #if TRACE_HEAP
     struct AllocTrace* leaked_alloc = alloc_traces;
     while (leaked_alloc) {
-        printf("heap: leaked allocation of length %8zu at 0x%p\n", leaked_alloc->len, leaked_alloc->at);
+        fprintf(stderr, "heap: leaked allocation of length %4zu at 0x%p\n", leaked_alloc->len, leaked_alloc->at);
         leaked_alloc = leaked_alloc->next;
     }
 #endif

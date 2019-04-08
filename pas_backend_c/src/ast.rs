@@ -119,6 +119,7 @@ impl Module {
                     name: FunctionName::Init,
                     params: Vec::new(),
                     return_ty: Type::Void,
+                    comment: None,
                 },
                 body: Vec::new(),
             },

@@ -3,7 +3,7 @@ pub use self::{
     interpret::{Interpreter, InterpreterOpts},
 };
 use crate::{expr::*, metadata::*, stmt::*};
-use pas_syn::ast;
+use pas_syn::{ast, IdentPath};
 use pas_typecheck as pas_ty;
 use std::{collections::HashMap, fmt};
 
@@ -531,12 +531,17 @@ impl<'metadata> Builder<'metadata> {
 
 #[derive(Clone, Debug)]
 pub struct Function {
+    pub name: NamePath,
+
     pub body: Vec<Instruction>,
     pub return_ty: Type,
     pub params: Vec<Type>,
 }
 
 pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) -> Function {
+    // todo: this should be a name path already
+    let name = NamePath::from_ident(IdentPath::from(func.decl.ident.clone()));
+
     let mut body_builder = Builder::new(metadata);
 
     let return_ty = match func.decl.return_ty.as_ref() {
@@ -615,6 +620,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             .map(|(_id, ty)| ty)
             .collect(),
         return_ty,
+        name,
     }
 }
 

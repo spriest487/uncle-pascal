@@ -364,8 +364,20 @@ impl<'a> Builder<'a> {
                 self.stmts.push(Statement::Expr(Expr::translate_assign(out, not, self.module)))
             }
 
-            _ => {
-                eprintln!("missing: C backend translation of instruction `{}`", instruction);
+            ir::Instruction::Retain { at } => {
+                let release = Expr::Function(FunctionName::RcRetain);
+                let rc_ptr = Expr::translate_ref(at, self.module);
+                self.stmts.push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
+            }
+
+            ir::Instruction::Release { at } => {
+                let release = Expr::Function(FunctionName::RcRelease);
+                let rc_ptr = Expr::translate_ref(at, self.module);
+                self.stmts.push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
+            }
+
+            ir::Instruction::VirtualCall { .. } => {
+                unimplemented!("virtual calls not implemented in C backend")
             }
         }
     }

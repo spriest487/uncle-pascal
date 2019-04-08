@@ -22,9 +22,8 @@ pub enum FunctionName {
 
     // runtime functions
     RcAlloc,
-//    RcFree,
-//    RcRetain,
-//    RcRelease,
+    RcRetain,
+    RcRelease,
 
     // builtins
     IntToStr,
@@ -42,6 +41,8 @@ impl fmt::Display for FunctionName {
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
+            FunctionName::RcRetain => write!(f, "RcRetain"),
+            FunctionName::RcRelease => write!(f, "RcRelease"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::IntToStr => write!(f, "System_IntToStr"),
@@ -56,6 +57,8 @@ pub struct FunctionDecl {
     pub name: FunctionName,
     pub return_ty: Type,
     pub params: Vec<Type>,
+
+    pub comment: Option<String>,
 }
 
 impl FunctionDecl {
@@ -68,16 +71,32 @@ impl FunctionDecl {
             .map(|param| Type::from_metadata(param, module))
             .collect();
 
+        let mut comment = func.name.to_string();
+        comment.push_str(": (");
+        for (i, arg) in func.params.iter().enumerate() {
+            if i > 0 {
+                comment.push_str(", ");
+            }
+            comment.push_str(&arg.to_string());
+        }
+        comment.push_str(") -> ");
+        comment.push_str(&func.return_ty.to_string());
+
         Self {
             name,
             return_ty,
             params,
+            comment: Some(comment),
         }
     }
 }
 
 impl fmt::Display for FunctionDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(comment) = &self.comment {
+            writeln!(f, "/** {} **/", comment)?;
+        }
+
         let name = self.name.to_string();
 
         write!(f, "{}(", self.return_ty.to_decl_string(&name))?;
