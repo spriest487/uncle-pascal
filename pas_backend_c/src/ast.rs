@@ -5,6 +5,7 @@ use pas_ir::{
     metadata::{
         FunctionID,
         GlobalName,
+        StringID,
     },
 };
 use crate::Options;
@@ -27,6 +28,8 @@ pub struct Module {
     ifaces: Vec<Interface>,
 
     builtin_funcs: HashMap<FunctionID, FunctionName>,
+
+    string_literals: HashMap<StringID, String>,
 
     opts: Options,
 }
@@ -58,10 +61,16 @@ impl Module {
             .map(|(struct_id, struct_def)| Class::translate(*struct_id, struct_def, metadata))
             .collect();
 
+        let string_literals = metadata.strings()
+            .map(|(id, str)| (id, str.to_string()))
+            .collect();
+
         let mut module = Module {
             functions: Vec::new(),
             struct_defs: Vec::new(),
             static_array_types: HashMap::new(),
+
+            string_literals,
 
             classes,
             ifaces: Vec::new(),
@@ -169,6 +178,11 @@ impl fmt::Display for Module {
         }
 
         for struct_def in &self.struct_defs {
+            // special case for System.String: we expect it to already be defined in the prelude
+            if struct_def.decl.name == StructName::ID(ir::metadata::STRING_ID) {
+                continue;
+            }
+
             writeln!(f, "{}", struct_def)?;
             writeln!(f)?;
         }
@@ -186,6 +200,20 @@ impl fmt::Display for Module {
         for class in &self.classes {
             writeln!(f, "{}", class.to_def_string())?;
             writeln!(f)?;
+        }
+
+        for (str_id, lit) in &self.string_literals {
+            let string_name = StructName::ID(ir::metadata::STRING_ID);
+            writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
+            writeln!(f, "  .field_0 = (unsigned char*) \"{}\",", lit)?;
+            writeln!(f, "  .field_1 = {},", lit.len())?;
+            writeln!(f, "}};")?;
+
+            writeln!(f, "static struct {} StringRc_{} = {{", StructName::Rc, str_id.0)?;
+            writeln!(f, "  .resource = &String_{},", str_id.0)?;
+            writeln!(f, "  .class = &Class_{},", ir::metadata::STRING_ID.0)?;
+            writeln!(f, "  .count = -1,")?;
+            writeln!(f, "}};")?;
         }
 
         for func in &self.functions {

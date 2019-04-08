@@ -107,6 +107,11 @@ static void RcRetain(struct Rc* rc) {
         abort();
     }
 
+    // don't retain immortal refs
+    if (rc->count < 0) {
+        return;
+    }
+
 #if TRACE_RC
     printf("rc: retained ref @ 0x%p\n", rc->resource);
 #endif
@@ -115,8 +120,18 @@ static void RcRetain(struct Rc* rc) {
 }
 
 static void RcRelease(struct Rc* rc) {
-    if (!rc || !rc->count) {
+    if (!rc) {
+        // releasing NULL should be ignored
+        return;
+    }
+
+    if (!rc->count) {
         abort();
+    }
+
+    if (rc->count < 0) {
+        // immortal
+        return;
     }
 
     if (rc->count > 1) {
@@ -150,6 +165,14 @@ static unsigned char* System_GetMem(int32_t len);
 static void System_FreeMem(unsigned char* mem);
 static void System_Write(struct Rc* str_rc);
 static void System_WriteLn(struct Rc* str_rc);
+
+// Strings
+
+// this needs to match what would ordinarily be generated for the System.String decl
+struct Struct_1 {
+    unsigned char* field_0;
+    int32_t field_1;
+};
 
 // runtime start/stop
 

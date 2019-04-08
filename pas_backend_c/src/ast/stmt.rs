@@ -172,7 +172,7 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::LitString(_id) => write!(f, "/* NYI: string literals */ NULL"),
+            Expr::LitString(id) => write!(f, "&StringRc_{}", id.0),
             Expr::LitFloat(x) => write!(f, "{}", x),
             Expr::LitInt(i) => write!(f, "{}", i),
             Expr::LitBool(b) => write!(f, "{}", b),
@@ -219,6 +219,7 @@ pub enum Statement {
     VariableDecl {
         ty: Type,
         id: ir::LocalID,
+        null_init: bool,
     },
     Expr(Expr),
     BeginBlock,
@@ -235,9 +236,15 @@ pub enum Statement {
 impl fmt::Display for Statement {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Statement::VariableDecl { ty, id } => {
+            Statement::VariableDecl { ty, id, null_init } => {
                 let name = format!("L{}", id.0);
-                write!(f, "{};", ty.to_decl_string(&name))
+                write!(f, "{}", ty.to_decl_string(&name))?;
+
+                if *null_init {
+                    write!(f, " = NULL")?;
+                }
+
+                write!(f, ";")
             }
 
             Statement::Expr(expr) => write!(f, "{};", expr),
@@ -283,8 +290,9 @@ impl<'a> Builder<'a> {
 
         match instruction {
             ir::Instruction::LocalAlloc(id, ty) => {
+                let null_init = ty.rc_resource_type_id().is_some();
                 let ty = Type::from_metadata(ty, self.module);
-                self.stmts.push(Statement::VariableDecl { ty, id: *id });
+                self.stmts.push(Statement::VariableDecl { ty, id: *id, null_init });
             }
 
             ir::Instruction::LocalBegin => self.stmts.push(Statement::BeginBlock),
