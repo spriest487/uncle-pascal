@@ -7,6 +7,7 @@ use pas_ir::{
         GlobalName,
     },
 };
+use crate::Options;
 
 pub use self::{
     function::*,
@@ -24,10 +25,12 @@ pub struct Module {
     struct_defs: Vec<StructDef>,
 
     builtin_funcs: HashMap<FunctionID, FunctionName>,
+
+    opts: Options,
 }
 
 impl Module {
-    pub fn new(metadata: &ir::metadata::Metadata) -> Self {
+    pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
         let mut builtin_funcs = HashMap::new();
 
         fn lookup_sys_builtin(
@@ -54,6 +57,8 @@ impl Module {
             static_array_types: HashMap::new(),
 
             builtin_funcs,
+
+            opts,
         }
     }
 
@@ -103,17 +108,17 @@ impl Module {
             self.functions.push(c_func);
         }
 
-        let main_index = self
+        let init_index = self
             .functions
             .iter()
-            .position(|f| f.decl.name == FunctionName::Main);
-        let mut main = match main_index {
+            .position(|f| f.decl.name == FunctionName::Init);
+        let mut init_func = match init_index {
             Some(index) => self.functions.remove(index),
             None => FunctionDef {
                 decl: FunctionDecl {
-                    name: FunctionName::Main,
+                    name: FunctionName::Init,
                     params: Vec::new(),
-                    return_ty: Type::Int,
+                    return_ty: Type::Void,
                 },
                 body: Vec::new(),
             },
@@ -122,14 +127,18 @@ impl Module {
         let mut init_builder = Builder::new(self);
         init_builder.translate_instructions(&module.init);
 
-        main.body.extend(init_builder.stmts);
+        init_func.body.extend(init_builder.stmts);
 
-        self.functions.push(main);
+        self.functions.push(init_func);
     }
 }
 
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.opts.trace_heap {
+            writeln!(f, "#define TRACE_HEAP 1")?;
+        }
+
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
         for struct_def in &self.struct_defs {

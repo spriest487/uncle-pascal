@@ -283,16 +283,13 @@ fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(
 }
 
 fn compile(
-    module_path: impl Into<PathBuf>,
     units: impl IntoIterator<Item = PathBuf>,
-    opts: BuildOptions,
-    interpret_opts: InterpreterOpts,
-    out_kind: Stage,
-    out_path: Option<PathBuf>,
+    args: &Args,
 ) -> Result<(), CompileError> {
-    let module_path = module_path.into();
+    let mut opts = BuildOptions::default();
+    opts.verbose = args.verbose;
 
-    let all_filenames = units.into_iter().chain(vec![module_path.clone()]);
+    let all_filenames = units.into_iter().chain(vec![args.file.clone()]);
 
     // todo: search paths should be an arg or env var
     let compiler_dir = env::current_exe()
@@ -321,7 +318,7 @@ fn compile(
         .map(|unit_filename| preprocess(unit_filename, &search_paths, &opts))
         .collect::<Result<_, CompileError>>()?;
 
-    if out_kind == Stage::Preprocessed {
+    if args.stage == Stage::Preprocessed {
         for unit in pp_units {
             println!("{}", unit.source);
         }
@@ -339,7 +336,7 @@ fn compile(
         })
         .collect::<Result<_, CompileError>>()?;
 
-    if out_kind == Stage::SyntaxAst {
+    if args.stage == Stage::SyntaxAst {
         for unit in parsed_units {
             println!("{}", unit);
         }
@@ -353,7 +350,7 @@ fn compile(
         typed_units.push(ty_ast::typecheck_unit(&unit, &mut root_ctx)?);
     }
 
-    if out_kind == Stage::TypecheckAst {
+    if args.stage == Stage::TypecheckAst {
         for unit in typed_units {
             println!("{}", unit);
         }
@@ -361,21 +358,30 @@ fn compile(
     }
 
     let module = ir::translate_units(&typed_units);
-    if out_kind == Stage::Intermediate {
+    if args.stage == Stage::Intermediate {
         println!("{}", module);
         return Ok(());
     }
 
-    if let Some(out_path) = out_path {
+    if let Some(out_path) = &args.output {
         let ext = out_path.extension().map(|ext| ext.to_string_lossy());
         match ext.as_ref().map(|ext| ext.as_ref()) {
             Some("c") => {
-                let module = backend_c::translate(&module);
+                let opts = backend_c::Options {
+                    trace_heap: args.trace_heap,
+                };
+                let module = backend_c::translate(&module, opts);
                 write_output_file(&out_path, &module)?;
             },
             _ => unimplemented!("backend supporting output file {}", out_path.display()),
         }
     } else {
+        let interpret_opts = InterpreterOpts {
+            trace_rc: args.trace_rc,
+            trace_heap: args.trace_heap,
+            trace_ir: args.trace_ir,
+        };
+
         let mut interpreter = Interpreter::new(&interpret_opts);
         interpreter.load_module(&module);
         interpreter.shutdown();
@@ -386,14 +392,6 @@ fn compile(
 
 fn main() {
     let args: Args = Args::from_args();
-    let mut opts = BuildOptions::default();
-    opts.verbose = args.verbose;
-
-    let interpret_opts = InterpreterOpts {
-        trace_rc: args.trace_rc,
-        trace_heap: args.trace_heap,
-        trace_ir: args.trace_ir,
-    };
 
     let print_bt = args.backtrace;
 
@@ -403,9 +401,9 @@ fn main() {
         vec![PathBuf::from("System.pas")]
     };
 
-    unit_paths.extend(args.units.into_iter().map(PathBuf::from));
+    unit_paths.extend(args.units.iter().map(PathBuf::from));
 
-    if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage, args.output) {
+    if let Err(err) = compile(unit_paths, &args) {
         if let Err(io_err) = reporting::report_err(&err) {
             eprintln!(
                 "error occurred displaying source for compiler message: {}",

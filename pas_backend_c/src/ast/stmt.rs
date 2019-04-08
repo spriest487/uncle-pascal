@@ -9,6 +9,9 @@ pub enum InfixOp {
     Assign,
     Add,
     Sub,
+    Gt,
+    And,
+    Or,
 }
 
 impl fmt::Display for InfixOp {
@@ -18,6 +21,21 @@ impl fmt::Display for InfixOp {
             InfixOp::Assign => write!(f, "="),
             InfixOp::Add => write!(f, "+"),
             InfixOp::Sub => write!(f, "-"),
+            InfixOp::Gt => write!(f, ">"),
+            InfixOp::And => write!(f, "&&"),
+            InfixOp::Or => write!(f, "||"),
+        }
+    }
+}
+
+pub enum PrefixOp {
+    Not,
+}
+
+impl fmt::Display for PrefixOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            PrefixOp::Not => write!(f, "!"),
         }
     }
 }
@@ -32,6 +50,7 @@ pub enum Expr {
     LitFloat(f64),
     Null,
     InfixOp { lhs: Box<Expr>, op: InfixOp, rhs: Box<Expr> },
+    PrefixOp { op: PrefixOp, operand: Box<Expr>, },
     Call {
         func: Box<Expr>,
         args: Vec<Expr>,
@@ -158,6 +177,7 @@ impl fmt::Display for Expr {
             Expr::Deref(inner) => write!(f, "(*({}))", inner),
             Expr::AddrOf(inner) => write!(f, "&({})", inner),
             Expr::InfixOp { lhs, op, rhs } => write!(f, "({} {} {})", lhs, op, rhs),
+            Expr::PrefixOp { op, operand } => write!(f, "({}({}))", op, operand),
             Expr::Null => write!(f, "NULL"),
             Expr::Local(id) => write!(f, "L{}", id.0),
             Expr::Function(name) => write!(f, "{}", name),
@@ -321,6 +341,27 @@ impl<'a> Builder<'a> {
 
             ir::Instruction::RcNew { out, struct_id } => {
                 self.translate_rc_new(out, *struct_id);
+            }
+
+            ir::Instruction::Gt { out, a, b } => {
+                let gt = Expr::translate_infix_op(a, InfixOp::Gt, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, gt, self.module)))
+            }
+
+            ir::Instruction::And { out, a, b } => {
+                let and = Expr::translate_infix_op(a, InfixOp::And, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, and, self.module)))
+            }
+
+            ir::Instruction::Or { out, a, b } => {
+                let or = Expr::translate_infix_op(a, InfixOp::Or, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, or, self.module)))
+            }
+
+            ir::Instruction::Not { out, a } => {
+                let a_expr = Expr::translate_val(a, self.module);
+                let not = Expr::PrefixOp { op: PrefixOp::Not, operand: Box::new(a_expr) };
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, not, self.module)))
             }
 
             _ => {

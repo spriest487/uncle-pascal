@@ -17,15 +17,65 @@ struct Rc {
     int count;
 };
 
+// internal memory allocation
+
+#ifdef TRACE_HEAP
+
+    struct AllocTrace {
+        void* at;
+        size_t len;
+        struct AllocTrace* next;
+    };
+
+    static struct AllocTrace* alloc_traces;
+
+#endif
+
+static void* Alloc(size_t len) {
+    void* mem = calloc((size_t) len, 1);
+    if (!mem) {
+        abort();
+    }
+
+#ifdef TRACE_HEAP
+    struct AllocTrace* new_alloc = malloc(sizeof(struct AllocTrace));
+    new_alloc->next = alloc_traces;
+    new_alloc->len = len;
+    alloc_traces = new_alloc;
+#endif
+
+    return mem;
+}
+
+static void Free(void* mem) {
+    free(mem);
+
+#ifdef TRACE_HEAP
+    struct AllocTrace** alloc = &alloc_traces;
+
+    while (*alloc) {
+        if ((*alloc)->at == mem) {
+            struct AllocTrace* removed = *alloc;
+            *alloc = removed->next;
+            free(removed);
+        } else {
+            alloc = &((*alloc)->next);
+        }
+    }
+#endif
+}
+
+// RC runtime functions
+
 static struct Rc* RcAlloc(size_t len) {
-    struct Rc* rc = malloc(sizeof(struct Rc));
+    struct Rc* rc = Alloc(sizeof(struct Rc));
     if (!rc) {
         abort();
     }
 
     rc->count = 1;
     rc->class = NULL;
-    rc->resource = calloc(len, 1);
+    rc->resource = Alloc(len);
 
     return rc;
 }
@@ -49,6 +99,8 @@ struct InternalString {
     int32_t len;
 };
 
+// implementations of System.pas builtins
+
 static int32_t System_StrToInt(struct Rc* str_rc) {
     if (!str_rc || !str_rc->resource) {
         abort();
@@ -66,23 +118,18 @@ static struct Rc* System_IntToStr(int32_t i) {
     struct Rc* str_rc = RcAlloc(sizeof(struct InternalString));
     struct InternalString* str = (struct InternalString*) str_rc->resource;
     str->len = strlen(buf);
-    str->chars = malloc(str->len);
+    str->chars = Alloc(str->len);
     memcpy(str->chars, buf, str->len);
 
     return str_rc;
 }
 
 static unsigned char* System_GetMem(int32_t len) {
-    unsigned char* mem = calloc((size_t) len, 1);
-    if (!mem) {
-        abort();
-    }
-
-    return mem;
+    return (unsigned char*) Alloc(len);
 }
 
 static void System_FreeMem(unsigned char* mem) {
-    free(mem);
+    Free(mem);
 }
 
 static void System_Write(struct Rc* str_rc) {
@@ -99,4 +146,25 @@ static void System_Write(struct Rc* str_rc) {
 static void System_WriteLn(struct Rc* str_rc) {
     System_Write(str_rc);
     putchar('\n');
+}
+
+// runtime start/stop
+
+void ModuleInit();
+
+static void RuntimeExit(int code) {
+#if TRACE_HEAP
+    struct AllocTrace* leaked_alloc = alloc_traces;
+    while (leaked_alloc) {
+        printf("heap: leaked allocation of length %8zu at 0x%p\n", leaked_alloc->len, leaked_alloc->at);
+        leaked_alloc = leaked_alloc->next;
+    }
+#endif
+
+    exit(code);
+}
+
+int main() {
+    ModuleInit();
+    RuntimeExit(0);
 }

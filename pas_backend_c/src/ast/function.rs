@@ -12,7 +12,12 @@ use crate::ast::{
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {
+    // c main function
     Main,
+
+    // init function that all loaded modules append their init code into
+    Init,
+
     ID(FunctionID),
 
     // runtime functions
@@ -33,6 +38,7 @@ impl fmt::Display for FunctionName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FunctionName::Main => write!(f, "main"),
+            FunctionName::Init => write!(f, "ModuleInit"),
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),

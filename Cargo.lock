@@ -200,6 +200,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "pas_backend_c"
 version = "0.1.0"
 dependencies = [
+ "pas_common 0.1.0",
  "pas_ir 0.1.0",
 ]
 
