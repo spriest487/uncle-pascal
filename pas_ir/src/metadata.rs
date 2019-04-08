@@ -42,6 +42,7 @@ impl fmt::Display for InterfaceID {
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
+pub const DISPOSABLE_DISPOSE_INDEX: usize = 0;
 
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
@@ -74,14 +75,21 @@ impl<Iter: IntoIterator<Item = String>> From<Iter> for NamePath {
 }
 
 #[derive(Clone, Debug)]
+pub struct Method {
+    pub name: String,
+    pub return_ty: Type,
+    pub params: Vec<Type>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Interface {
     pub name: NamePath,
-    pub methods: Vec<String>,
+    pub methods: Vec<Method>,
     pub impls: HashMap<Type, InterfaceImpl>,
 }
 
 impl Interface {
-    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<String>>) -> Self {
+    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<Method>>) -> Self {
         Self {
             name: name.into(),
             methods: methods.into(),
@@ -89,9 +97,8 @@ impl Interface {
         }
     }
 
-    pub fn add_impl(&mut self, implementor: Type, method: impl Into<String>, func_id: FunctionID) {
-        let method = method.into();
-        assert!(self.methods.contains(&method));
+    pub fn add_impl(&mut self, implementor: Type, method: usize, func_id: FunctionID) {
+        assert!(method < self.methods.len());
 
         let methods_len = self.methods.len();
         let impl_entry = self
@@ -102,12 +109,17 @@ impl Interface {
 
         impl_entry.methods.insert(method, func_id);
     }
+
+    pub fn method_index(&self, name: &str) -> Option<usize> {
+        self.methods.iter()
+            .position(|m| m.name.as_str() == name)
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    // method name -> method impl
-    pub methods: HashMap<String, FunctionID>,
+    // method index -> method impl
+    pub methods: HashMap<usize, FunctionID>,
 }
 
 impl InterfaceImpl {
@@ -255,7 +267,10 @@ impl fmt::Display for Type {
             Type::U8 => write!(f, "u8"),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
-            Type::RcPointer(id) => write!(f, "rc {{{}}}", id),
+            Type::RcPointer(id) => match id {
+                ClassID::Class(id) => write!(f, "class {}", id),
+                ClassID::Interface(id) => write!(f, "iface {}", id),
+            },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
         }
     }
@@ -536,12 +551,6 @@ impl Metadata {
     }
 
     pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
-        let methods: Vec<_> = iface_def
-            .methods
-            .iter()
-            .map(|method| method.ident.to_string())
-            .collect();
-
         // System.Disposable is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
         let name = NamePath::from_ident(iface_def.ident.clone());
@@ -552,6 +561,31 @@ impl Metadata {
         } else {
             self.next_iface_id()
         };
+
+        let methods: Vec<_> = iface_def
+            .methods
+            .iter()
+            .map(|method| {
+                let self_ty = Type::RcPointer(ClassID::Interface(id));
+
+                Method {
+                    name: method.ident.to_string(),
+                    return_ty: match &method.return_ty {
+                        Some(pas_ty::Type::GenericSelf) => self_ty.clone(),
+                        Some(return_ty) => self.translate_type(return_ty),
+                        None => Type::Nothing,
+                    },
+                    params: method
+                        .params
+                        .iter()
+                        .map(|param| match &param.ty {
+                            pas_ty::Type::GenericSelf => self_ty.clone(),
+                            param_ty => self.translate_type(param_ty),
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
 
         self.ifaces.insert(id, Interface::new(name, methods));
 
@@ -571,27 +605,32 @@ impl Metadata {
         &mut self,
         iface_id: InterfaceID,
         for_ty: Type,
-        method: impl Into<String>,
+        method_name: impl Into<String>,
         func_id: FunctionID,
     ) {
-        self.ifaces
+        let method_name = method_name.into();
+
+        let iface = self.ifaces
             .get_mut(&iface_id)
             .unwrap_or_else(|| {
                 panic!(
-                    "trying to impl method for interface {} which doesn't exist",
+                    "trying to impl method {} for interface {} which doesn't exist",
+                    method_name,
                     iface_id
                 )
-            })
-            .add_impl(for_ty, method, func_id);
+            });
+
+        let index = iface.method_index(&method_name).unwrap();
+        iface.add_impl(for_ty, index, func_id);
     }
 
-    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: &str) -> Option<FunctionID> {
+    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: usize) -> Option<FunctionID> {
         self.ifaces
             .get(&iface_id)
             .unwrap_or_else(|| panic!("expected interface {} to exist", iface_id))
             .impls
             .get(ty)
-            .and_then(|ty_impl| ty_impl.methods.get(method))
+            .and_then(|ty_impl| ty_impl.methods.get(&method))
             .cloned()
     }
 

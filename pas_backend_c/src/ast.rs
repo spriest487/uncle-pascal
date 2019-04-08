@@ -24,6 +24,7 @@ pub struct Module {
     static_array_types: HashMap<ArraySig, Type>,
     struct_defs: Vec<StructDef>,
     classes: Vec<Class>,
+    ifaces: Vec<Interface>,
 
     builtin_funcs: HashMap<FunctionID, FunctionName>,
 
@@ -57,17 +58,25 @@ impl Module {
             .map(|(struct_id, struct_def)| Class::translate(*struct_id, struct_def, metadata))
             .collect();
 
-        Module {
+        let mut module = Module {
             functions: Vec::new(),
             struct_defs: Vec::new(),
             static_array_types: HashMap::new(),
 
             classes,
+            ifaces: Vec::new(),
 
             builtin_funcs,
 
             opts,
-        }
+        };
+
+        module.ifaces = metadata.ifaces()
+            .iter()
+            .map(|(iface_id, iface_def)| Interface::translate(*iface_id, iface_def, &mut module))
+            .collect();
+
+        module
     }
 
     fn make_array_type(&mut self, element: Type, dim: usize) -> Type {
@@ -166,6 +175,11 @@ impl fmt::Display for Module {
 
         for func in &self.functions {
             writeln!(f, "{};", func.decl)?;
+            writeln!(f)?;
+        }
+
+        for iface in &self.ifaces {
+            writeln!(f, "{}", iface.method_table_string())?;
             writeln!(f)?;
         }
 

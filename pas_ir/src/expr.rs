@@ -290,10 +290,15 @@ fn translate_call_with_args(
             let self_arg = arg_vals[0].clone();
             let rest_args = arg_vals[1..].to_vec();
 
+            let method_index = builder.metadata.ifaces()[&iface_id]
+                .methods.iter()
+                .position(|m| m.name == method)
+                .unwrap();
+
             Instruction::VirtualCall {
                 out: out_val.clone(),
                 iface_id,
-                method,
+                method: method_index,
                 self_arg,
                 rest_args,
             }
@@ -344,6 +349,9 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             };
 
             let method_name = method_call.ident.to_string();
+            let method_index = builder.metadata.ifaces()[&iface_id].method_index(&method_name)
+                .unwrap_or_else(|| panic!("missing method {} for interface {}", method_name, iface_id));
+
             let self_ty = builder.metadata.translate_type(&method_call.self_type);
             let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
 
@@ -356,7 +364,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 _ => {
                     let impl_func = builder
                         .metadata
-                        .find_impl(&self_ty, iface_id, &method_name)
+                        .find_impl(&self_ty, iface_id, method_index)
                         .expect("referenced impl func must be declared");
 
                     let func_val = Ref::Global(GlobalRef::Function(impl_func));
@@ -617,7 +625,11 @@ fn translate_bin_op(
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 
-    builder.retain(out_val.clone(), &out_ty);
+    if bin_op.op == syn::Operator::Member {
+        builder.retain(out_val.clone().deref(), &out_ty);
+    } else {
+        builder.retain(out_val.clone(), &out_ty);
+    }
 
     builder.end_scope();
 

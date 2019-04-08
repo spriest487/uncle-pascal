@@ -41,7 +41,10 @@ static void System_Write(struct Rc* str_rc) {
         abort();
     }
 
-    printf("%.*s", (int) STRING_LEN(str_rc), (char*) STRING_CHARS(str_rc));
+    int len = (int) STRING_LEN(str_rc);
+    char* chars = (char*) STRING_CHARS(str_rc);
+
+    printf("%.*s", len, chars);
 }
 
 static void System_WriteLn(struct Rc* str_rc) {

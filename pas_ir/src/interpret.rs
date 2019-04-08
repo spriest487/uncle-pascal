@@ -588,7 +588,7 @@ impl Interpreter {
             .expect("called current_frame without no stackframes")
     }
 
-    fn vcall_lookup(&self, self_cell: &MemCell, iface_id: InterfaceID, method: &str) -> FunctionID {
+    fn vcall_lookup(&self, self_cell: &MemCell, iface_id: InterfaceID, method: usize) -> FunctionID {
         let self_rc = self_cell.as_pointer()
             .and_then(|rc_ptr| {
                 let rc_addr = rc_ptr.as_heap_addr()?;
@@ -648,7 +648,7 @@ impl Interpreter {
     }
 
     fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) {
-        let dispose_impl_id = self.metadata.find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_METHOD);
+        let dispose_impl_id = self.metadata.find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
 
         if let Some(dispose_func) = dispose_impl_id {
             let dispose_desc = self.metadata.func_desc(dispose_func);
@@ -1009,7 +1009,7 @@ impl Interpreter {
                     rest_args,
                 } => {
                     let self_cell = self.evaluate(&self_arg);
-                    let func = self.vcall_lookup(&self_cell, *iface_id, method);
+                    let func = self.vcall_lookup(&self_cell, *iface_id, *method);
 
                     let mut arg_cells = vec![self_cell];
                     arg_cells.extend(rest_args.iter().map(|arg_val| self.evaluate(arg_val)));

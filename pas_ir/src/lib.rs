@@ -184,7 +184,7 @@ pub enum Instruction {
     VirtualCall {
         out: Option<Ref>,
         iface_id: InterfaceID,
-        method: String,
+        method: usize,
         self_arg: Value,
         rest_args: Vec<Value>,
     },
@@ -731,10 +731,13 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
                     let method_name = func_def.decl.ident.to_string();
 
                     let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
+                    let method_index = metadata.ifaces()[&iface_id].method_index(&method_name)
+                        .unwrap_or_else(|| panic!("method {} not found in interface {}", method_name, iface_id));
+
                     let self_ty = metadata.translate_type(&impl_iface.for_ty);
 
                     metadata
-                        .find_impl(&self_ty, iface_id, &method_name)
+                        .find_impl(&self_ty, iface_id, method_index)
                         .expect("all defined method impls must be declared first")
                 }
             };

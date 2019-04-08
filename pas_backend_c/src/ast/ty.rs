@@ -1,13 +1,14 @@
 use std::{collections::HashMap, fmt};
 
 use pas_ir::{
-    metadata::{self, FieldID, StructID, InterfaceID, FunctionID},
+    metadata::{self, FieldID, StructID, InterfaceID},
 };
 
 use crate::ast::Module;
-use crate::ast::function::FunctionName;
+use crate::ast::function::{FunctionName, FunctionDecl};
 use pas_ir::metadata::ClassID;
 
+#[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     Void,
@@ -19,6 +20,10 @@ pub enum Type {
     Float,
     UChar,
     SizedArray(Box<Type>, usize),
+    FunctionPointer {
+        return_ty: Box<Type>,
+        params: Vec<Type>,
+    },
 }
 
 impl Type {
@@ -83,6 +88,20 @@ impl Type {
                 right.push_str(&size.to_string());
                 right.push(']');
             }
+
+            Type::FunctionPointer { return_ty, params } => {
+                left.push_str(&return_ty.typename());
+                left.push_str("(*");
+
+                right.push_str(")(");
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        right.push_str(", ");
+                    }
+                    right.push_str(&param.typename());
+                }
+                right.push(')');
+            }
         }
     }
 
@@ -107,10 +126,22 @@ impl Type {
             Type::Bool => "bool".to_string(),
             Type::Float => "float".to_string(),
             Type::UChar => "unsigned char".to_string(),
+            Type::FunctionPointer { return_ty, params } => {
+                let mut name = format!("{} (*)(", return_ty.typename());
+                for (i, param) in params.iter().enumerate() {
+                    if i > 0 {
+                        name.push_str(", ");
+                    }
+                    name.push_str(&param.typename());
+                }
+                name.push(')');
+                name
+            }
         }
     }
 }
 
+#[allow(unused)]
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum FieldName {
     // ID from metadata
@@ -213,7 +244,7 @@ impl fmt::Display for StructDef {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: HashMap<String, FunctionName>
+    method_impls: HashMap<usize, FunctionName>
 }
 
 #[derive(Clone, Debug)]
@@ -226,7 +257,7 @@ pub struct Class {
 impl Class {
     pub fn translate(
         struct_id: StructID,
-        struct_def: &metadata::Struct,
+        _struct_def: &metadata::Struct,
         metadata: &metadata::Metadata,
     ) -> Self {
         let class_ty = metadata::Type::RcPointer(ClassID::Class(struct_id));
@@ -234,10 +265,11 @@ impl Class {
 
         for (iface_id, iface) in metadata.ifaces() {
             let method_impls: HashMap<_, _> = iface.methods.iter()
-                .filter_map(|method| {
-                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method)?;
+                .enumerate()
+                .filter_map(|(method_index, _method)| {
+                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method_index)?;
 
-                    Some((method.clone(), FunctionName::ID(method_impl)))
+                    Some((method_index, FunctionName::ID(method_impl)))
                 })
                 .collect();
 
@@ -252,7 +284,7 @@ impl Class {
 
         let disposer = impls.get(&metadata::DISPOSABLE_ID)
             .and_then(|disposable_impl| {
-                disposable_impl.method_impls.get(metadata::DISPOSABLE_DISPOSE_METHOD)
+                disposable_impl.method_impls.get(&metadata::DISPOSABLE_DISPOSE_INDEX)
                     .cloned()
             });
 
@@ -264,7 +296,42 @@ impl Class {
     }
 
     pub fn to_def_string(&self) -> String {
-        let mut def = format!("struct Class Class_{} = {{\n", self.struct_id);
+        let mut def = String::new();
+
+        // impl method tables
+        let impls: Vec<_> = self.impls.iter().enumerate().collect();
+        for (i, (iface_id, iface_impl)) in &impls {
+            def.push_str(&format!("struct MethodTable_{} ImplTable_{}_{} = {{\n", iface_id.0, self.struct_id.0, iface_id.0));
+            for (method_index, method_name) in &iface_impl.method_impls {
+                def.push_str("  .base = {\n");
+
+                def.push_str("    .iface = ");
+                def.push_str(&iface_id.to_string());
+                def.push_str(",\n");
+
+                def.push_str("    .next = ");
+                match impls.get(i + 1) {
+                    Some((_, (next_impl_id, _))) => {
+                        def.push_str(&format!("ImplTable_{}_{}", self.struct_id, next_impl_id));
+                    },
+                    None => def.push_str("NULL")
+                }
+
+                def.push_str(",\n");
+                def.push_str("  },\n");
+
+                def.push_str("  .method_");
+                def.push_str(&method_index.to_string());
+                def.push_str(" = &");
+                def.push_str(&method_name.to_string());
+                def.push_str(",\n");
+            }
+            def.push_str("};\n\n");
+        }
+
+        // class struct
+
+        def.push_str(&format!("struct Class Class_{} = {{\n", self.struct_id));
 
         def.push_str("  .size = sizeof(struct ");
         def.push_str(&StructName::ID(self.struct_id).to_string());
@@ -279,8 +346,111 @@ impl Class {
         };
         def.push_str(",\n");
 
-        def.push_str("};");
+        def.push_str("  .iface_methods = ");
+        if let Some((_, (first_iface_id, _))) = impls.get(0) {
+            def.push_str(&format!("(struct MethodTable*) &ImplTable_{}_{}", self.struct_id, first_iface_id));
+        } else {
+            def.push_str("NULL");
+        }
+        def.push_str(",\n");
+
+        def.push_str("};\n\n");
+
         def
+    }
+}
+
+pub struct Interface {
+    id: InterfaceID,
+    methods: Vec<FunctionDecl>,
+}
+
+impl Interface {
+    pub fn translate(iface_id: InterfaceID, iface: &metadata::Interface, module: &mut Module) -> Self {
+        Self {
+            id: iface_id,
+            methods: iface.methods.iter()
+                .enumerate()
+                .map(|(method_index, method)| FunctionDecl {
+                    return_ty: Type::from_metadata(&method.return_ty, module),
+                    params: method.params.iter()
+                        .map(|param| Type::from_metadata(param, module))
+                        .collect(),
+                    name: FunctionName::Method(iface_id, method_index),
+                    comment: Some(format!("Method {} of interface {}", method.name, iface.name)),
+                })
+                .collect(),
+        }
+    }
+
+    pub fn method_table_string(&self) -> String {
+        let mut table = format!("struct MethodTable_{} {{\n", self.id.0);
+        table.push_str("  struct MethodTable base;\n");
+
+        for (method_index, method) in self.methods.iter().enumerate() {
+            table.push_str("  ");
+            let method_ptr_name = format!("method_{}", method_index);
+            table.push_str(&method.ptr_type().to_decl_string(&method_ptr_name));
+            table.push_str(";\n");
+        }
+
+        table.push_str("};\n\n");
+
+        // vcall thunks for each method
+        for (method_index, method) in self.methods.iter().enumerate() {
+            table.push_str(&method.to_string());
+            table.push_str(" {\n");
+
+            let (self_arg_local, arg_offset) = match method.return_ty {
+                Type::Void => ("L0", 0),
+                _ => ("L1", 1),
+            };
+
+            // find the matching table
+            table.push_str(&format!("  struct MethodTable* table = {}->class->iface_methods;\n", self_arg_local));
+            table.push_str("  while (table) {\n");
+            table.push_str(&format!("    if (table->iface == {}) {{\n", self.id.0));
+            table.push_str(&format!("      struct MethodTable_{}* my_table = (struct MethodTable_{}*) table;\n", self.id.0, self.id.0));
+
+            // get the pointer from the table
+            table.push_str("      ");
+            table.push_str(&method.ptr_type().to_decl_string("method_ptr"));
+            table.push_str(&format!(" = my_table->method_{};\n", method_index));
+
+            if method.return_ty == Type::Void {
+                table.push_str("      ");
+            } else {
+                table.push_str("      return ");
+            }
+
+            // call the function
+            table.push_str("method_ptr(");
+
+            for (i, _param) in method.params.iter().enumerate() {
+                if i > 0 {
+                    table.push_str(", ");
+                }
+                table.push_str("L");
+                table.push_str(&(i + arg_offset).to_string());
+            }
+            table.push_str(");\n");
+
+            if method.return_ty == Type::Void {
+                table.push_str("      return;\n");
+            }
+
+            table.push_str("    } else {\n");
+            table.push_str("      table = table->next;\n");
+            table.push_str("    }\n");
+
+            table.push_str("  }\n");
+
+            // missing vcall
+            table.push_str("  abort();\n");
+
+            table.push_str("}\n\n");
+        }
+        table
     }
 }
 

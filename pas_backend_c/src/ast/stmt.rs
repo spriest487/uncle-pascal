@@ -40,6 +40,7 @@ impl fmt::Display for PrefixOp {
     }
 }
 
+#[allow(unused)]
 pub enum Expr {
     Local(LocalID),
     Function(FunctionName),
@@ -380,8 +381,19 @@ impl<'a> Builder<'a> {
                 self.stmts.push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
             }
 
-            ir::Instruction::VirtualCall { .. } => {
-                unimplemented!("virtual calls not implemented in C backend")
+            ir::Instruction::VirtualCall { out, iface_id, method, self_arg, rest_args, } => {
+                let method_func = Expr::Function(FunctionName::Method(*iface_id, *method));
+
+                let mut args = vec![Expr::translate_val(self_arg, self.module)];
+                args.extend(rest_args.iter()
+                    .map(|arg| Expr::translate_val(arg, self.module)));
+
+                let call = Expr::call(method_func, args);
+
+                self.stmts.push(Statement::Expr(match out {
+                    Some(out) => Expr::translate_assign(out, call, self.module),
+                    None => call,
+                }));
             }
         }
     }
@@ -412,7 +424,6 @@ impl<'a> Builder<'a> {
         out: &ir::Ref,
         struct_id: StructID,
     ) {
-        let struct_ty = Type::Struct(StructName::ID(struct_id));
         let ty_class = Expr::Class(struct_id).addr_of();
 
         let new_rc = Expr::Call {

@@ -8,8 +8,17 @@ struct Rc;
 
 typedef void (*Disposer)(struct Rc*);
 
+// classes and interfaces runtime support
+
+struct MethodTable {
+    size_t iface;
+    struct MethodTable* next;
+};
+
 struct Class {
     size_t size;
+
+    struct MethodTable* iface_methods;
     Disposer disposer;
 };
 

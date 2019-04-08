@@ -1,6 +1,6 @@
 use std::fmt;
 use pas_ir::{
-    metadata::{FunctionID},
+    metadata::{FunctionID, InterfaceID},
     self as ir,
 };
 use crate::ast::{
@@ -19,6 +19,7 @@ pub enum FunctionName {
     Init,
 
     ID(FunctionID),
+    Method(InterfaceID, usize),
 
     // runtime functions
     RcAlloc,
@@ -39,6 +40,7 @@ impl fmt::Display for FunctionName {
             FunctionName::Main => write!(f, "main"),
             FunctionName::Init => write!(f, "ModuleInit"),
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
+            FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method),
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),
@@ -87,6 +89,13 @@ impl FunctionDecl {
             return_ty,
             params,
             comment: Some(comment),
+        }
+    }
+
+    pub fn ptr_type(&self) -> Type {
+        Type::FunctionPointer {
+            return_ty: Box::new(self.return_ty.clone()),
+            params: self.params.clone(),
         }
     }
 }

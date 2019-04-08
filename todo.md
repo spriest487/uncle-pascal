@@ -10,6 +10,7 @@
 * parse failure: can't distinguish Ctor() expr with 0 args from a function call
 * does symbol with same name declared in branch scope confuse the initialization consolidation?
 * interpreter should disallow overwriting cells on stack/heap with cells of different types (by dtor)
+* use ids for methods instead of names
 
 # big features
 
