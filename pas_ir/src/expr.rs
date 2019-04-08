@@ -686,7 +686,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
     for member in &ctor.args.members {
         let member_val = translate_expr(&member.value, builder);
-        let field = struct_def
+        let field_id = struct_def
             .find_field(&member.ident.name)
             .unwrap_or_else(|| {
                 panic!(
@@ -695,19 +695,18 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
                 )
             });
 
-        let member_ty = builder
-            .metadata
-            .translate_type(member.value.annotation().ty());
-        builder.comment(&format!("{}: {}", member.ident, member.value));
+        let field_def = struct_def.get_field(field_id).unwrap();
 
-        builder.retain(member_val.clone(), &member_ty);
+        builder.comment(&format!("{}: {} ({})", member.ident, member.value, field_def.ty));
 
-        let field_ptr = builder.local_temp(member_ty.ptr());
+        builder.retain(member_val.clone(), &field_def.ty);
+
+        let field_ptr = builder.local_temp(field_def.ty.clone().ptr());
         builder.append(Instruction::Field {
             out: field_ptr.clone(),
             a: out_ptr.clone(),
             of_ty: struct_ty.clone(),
-            field,
+            field: field_id,
         });
 
         builder.mov(field_ptr.deref(), member_val);
@@ -727,7 +726,7 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
 
             builder.begin_scope();
 
-            let el_ptr = builder.local_temp(el_ty.clone());
+            let el_ptr = builder.local_temp(el_ty.clone().ptr());
 
             for (i, el) in ctor.elements.iter().enumerate() {
                 builder.begin_scope();

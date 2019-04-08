@@ -137,6 +137,10 @@ impl Struct {
             .find_map(|(id, field)| if field.name == name { Some(*id) } else { None })
     }
 
+    pub fn get_field(&self, id: FieldID) -> Option<&StructField> {
+        self.fields.get(&id)
+    }
+
     pub fn new(name: impl Into<NamePath>) -> Self {
         Self {
             name: name.into(),

@@ -67,7 +67,7 @@ impl Type {
                 left.push_str("float");
             }
             Type::UChar => {
-                left.push_str("char");
+                left.push_str("unsigned char");
             }
 
             Type::Struct(name) => {
@@ -84,13 +84,56 @@ impl Type {
         }
     }
 
-    pub fn to_decl_string(&self, name: &str) -> String {
+    pub fn to_decl_string<Name>(&self, name: &Name) -> String
+        where Name: ?Sized + fmt::Display
+    {
         let mut left = String::new();
         let mut right = String::new();
 
         self.build_decl_string(&mut left, &mut right);
 
         format!("{} {} {}", left, name, right).trim().to_string()
+    }
+
+    pub fn typename(&self) -> String {
+        match self {
+            Type::Void => "void".to_string(),
+            Type::Int => "int".to_string(),
+            Type::Int32 => "int32_t".to_string(),
+            Type::Struct(name) => format!("struct {}", name),
+            Type::SizedArray(ty, ..) | Type::Pointer(ty) => format!("{}*", ty.typename()),
+            Type::Bool => "bool".to_string(),
+            Type::Float => "float".to_string(),
+            Type::UChar => "unsigned char".to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum FieldName {
+    // ID from metadata
+    ID(FieldID),
+
+    // builtin name: ref count field of RC internal struct
+    RcRefCount,
+    // builtin name: resource pointer field of RC internal strut
+    RcResource,
+    // builtin name: class info pointer field of RC internal struct
+    RcClass,
+
+    // builtin name: static array inner array
+    StaticArrayElements,
+}
+
+impl fmt::Display for FieldName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FieldName::ID(id) => write!(f, "field_{}", id.0),
+            FieldName::RcRefCount => write!(f, "count"),
+            FieldName::RcResource => write!(f, "resource"),
+            FieldName::RcClass => write!(f, "class"),
+            FieldName::StaticArrayElements => write!(f, "elements"),
+        }
     }
 }
 
@@ -118,15 +161,15 @@ impl fmt::Display for StructDecl {
 
 pub struct StructDef {
     pub decl: StructDecl,
-    pub members: HashMap<FieldID, Type>,
+    pub members: HashMap<FieldName, Type>,
 }
 
 impl fmt::Display for StructName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StructName::Rc => write!(f, "Rc"),
-            StructName::ID(id) => write!(f, "Struct{}", id),
-            StructName::StaticArray(i) => write!(f, "StaticArray{}", i),
+            StructName::ID(id) => write!(f, "Struct_{}", id),
+            StructName::StaticArray(i) => write!(f, "StaticArray_{}", i),
         }
     }
 }
@@ -142,7 +185,7 @@ impl StructDef {
             .iter()
             .map(|(id, field)| {
                 let ty = Type::from_metadata(&field.ty, module);
-                (*id, ty)
+                (FieldName::ID(*id), ty)
             })
             .collect();
 
@@ -158,8 +201,8 @@ impl StructDef {
 impl fmt::Display for StructDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{} {{", self.decl)?;
-        for (id, member) in self.members.iter() {
-            let name = format!("member_{}", id.0);
+        for (field_name, member) in self.members.iter() {
+            let name = format!("{}", field_name);
             writeln!(f, "{};", member.to_decl_string(&name))?;
         }
         write!(f, "}};")

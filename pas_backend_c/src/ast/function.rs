@@ -14,13 +14,26 @@ use crate::ast::{
 pub enum FunctionName {
     Main,
     ID(FunctionID),
+
+    // builtins
+    IntToStr,
+    StrToInt,
+    WriteLn,
+    GetMem,
+    FreeMem,
 }
 
 impl fmt::Display for FunctionName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FunctionName::Main => write!(f, "main"),
-            FunctionName::ID(id) => write!(f, "Function{}", id.0),
+            FunctionName::ID(id) => write!(f, "Function_{}", id.0),
+
+            FunctionName::WriteLn => write!(f, "System_WriteLn"),
+            FunctionName::IntToStr => write!(f, "System_IntToStr"),
+            FunctionName::StrToInt => write!(f, "System_StrToInt"),
+            FunctionName::GetMem => write!(f, "System_GetMem"),
+            FunctionName::FreeMem => write!(f, "System_FreeMem"),
         }
     }
 }
@@ -34,6 +47,7 @@ pub struct FunctionDecl {
 impl FunctionDecl {
     pub fn translate(id: FunctionID, func: &ir::Function, module: &mut Module) -> Self {
         let name = FunctionName::ID(id);
+        println!("func name: {}", id);
         let return_ty = Type::from_metadata(&func.return_ty, module);
         let params = func
             .params

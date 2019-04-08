@@ -457,13 +457,13 @@ impl<'metadata> Builder<'metadata> {
             }
 
             Type::Array { element, dim } => {
-                let element_ref = self.local_temp(*element.clone());
+                let element_ref = self.local_temp(element.clone().ptr());
                 for i in 0..*dim {
                     self.append(Instruction::Element {
                         out: element_ref.clone(),
                         a: at.clone(),
                         element: *element.clone(),
-                        index: Value::LiteralI32(i as i32), //todo: real usize type
+                        index: Value::LiteralI32(i as i32), //todo: real usize type,
                     });
 
                     self.visit_deep(element_ref.clone().deref(), element, f);

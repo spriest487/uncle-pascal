@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use pas_ir::{
     self as ir,
-    metadata::FieldID,
+    metadata::FunctionID,
 };
 
 pub use self::{
@@ -10,6 +10,8 @@ pub use self::{
     stmt::*,
     ty::*,
 };
+use pas_ir::metadata::GlobalName;
+use crate::ast::stmt::Expr::Function;
 
 mod stmt;
 mod function;
@@ -19,14 +21,38 @@ pub struct Module {
     functions: Vec<FunctionDef>,
     static_array_types: HashMap<ArraySig, Type>,
     struct_defs: Vec<StructDef>,
+
+    builtin_funcs: HashMap<FunctionID, FunctionName>,
 }
 
 impl Module {
-    pub fn new() -> Self {
+    pub fn new(metadata: &ir::metadata::Metadata) -> Self {
+        let mut builtin_funcs = HashMap::new();
+
+        fn lookup_sys_builtin(
+            metadata: &ir::metadata::Metadata,
+            results: &mut HashMap<FunctionID, FunctionName>,
+            decl_name: &str,
+            c_name: FunctionName,
+        ) {
+            let global_name = &GlobalName::new(decl_name, vec!["System"]);
+            if let Some(inttostr_id) = metadata.find_function(global_name) {
+                results.insert(inttostr_id, c_name);
+            }
+        }
+
+        lookup_sys_builtin(metadata, &mut builtin_funcs, "IntToStr", FunctionName::IntToStr);
+        lookup_sys_builtin(metadata, &mut builtin_funcs, "StrToInt", FunctionName::StrToInt);
+        lookup_sys_builtin(metadata, &mut builtin_funcs, "GetMem", FunctionName::GetMem);
+        lookup_sys_builtin(metadata, &mut builtin_funcs, "FreeMem", FunctionName::FreeMem);
+        lookup_sys_builtin(metadata, &mut builtin_funcs, "WriteLn", FunctionName::WriteLn);
+
         Module {
             functions: Vec::new(),
             struct_defs: Vec::new(),
             static_array_types: HashMap::new(),
+
+            builtin_funcs,
         }
     }
 
@@ -42,7 +68,7 @@ impl Module {
             let next_id = self.static_array_types.len();
 
             let mut array_members = HashMap::new();
-            array_members.insert(FieldID(0), element.clone().sized_array(dim));
+            array_members.insert(FieldName::StaticArrayElements, element.clone().sized_array(dim));
 
             let name = StructName::StaticArray(next_id);
             let array_struct = StructDef {
@@ -55,6 +81,13 @@ impl Module {
             self.static_array_types.insert(sig, array_struct_ty.clone());
 
             array_struct_ty
+        }
+    }
+
+    pub fn function_name(&self, id: FunctionID) -> FunctionName {
+        match self.builtin_funcs.get(&id) {
+            Some(builtin) => *builtin,
+            None => FunctionName::ID(id),
         }
     }
 
