@@ -17,7 +17,7 @@ struct Rc {
     int count;
 };
 
-static struct Rc* RcAlloc(const void* val, size_t len) {
+static struct Rc* RcAlloc(size_t len) {
     struct Rc* rc = malloc(sizeof(struct Rc));
     if (!rc) {
         abort();
@@ -25,8 +25,7 @@ static struct Rc* RcAlloc(const void* val, size_t len) {
 
     rc->count = 1;
     rc->class = NULL;
-    rc->resource = malloc(len);
-    memmove(rc->resource, val, len);
+    rc->resource = calloc(len, 1);
 
     return rc;
 }
@@ -64,17 +63,17 @@ static struct Rc* System_IntToStr(int32_t i) {
     char buf[12];
     sprintf(buf, "%d", i);
 
-    struct InternalString str;
-    str.len = strlen(buf);
-    str.chars = malloc(str.len);
-    memcpy(str.chars, buf, str.len);
+    struct Rc* str_rc = RcAlloc(sizeof(struct InternalString));
+    struct InternalString* str = (struct InternalString*) str_rc->resource;
+    str->len = strlen(buf);
+    str->chars = malloc(str->len);
+    memcpy(str->chars, buf, str->len);
 
-    struct Rc* str_rc = RcAlloc(&str, sizeof(str));
     return str_rc;
 }
 
 static unsigned char* System_GetMem(int32_t len) {
-    unsigned char* mem = malloc((size_t) len);
+    unsigned char* mem = calloc((size_t) len, 1);
     if (!mem) {
         abort();
     }

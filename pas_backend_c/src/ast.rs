@@ -2,7 +2,10 @@ use std::{collections::HashMap, fmt};
 
 use pas_ir::{
     self as ir,
-    metadata::FunctionID,
+    metadata::{
+        FunctionID,
+        GlobalName,
+    },
 };
 
 pub use self::{
@@ -10,8 +13,6 @@ pub use self::{
     stmt::*,
     ty::*,
 };
-use pas_ir::metadata::GlobalName;
-use crate::ast::stmt::Expr::Function;
 
 mod stmt;
 mod function;

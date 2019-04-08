@@ -15,6 +15,12 @@ pub enum FunctionName {
     Main,
     ID(FunctionID),
 
+    // runtime functions
+    RcAlloc,
+//    RcFree,
+//    RcRetain,
+//    RcRelease,
+
     // builtins
     IntToStr,
     StrToInt,
@@ -28,6 +34,8 @@ impl fmt::Display for FunctionName {
         match self {
             FunctionName::Main => write!(f, "main"),
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
+
+            FunctionName::RcAlloc => write!(f, "RcAlloc"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::IntToStr => write!(f, "System_IntToStr"),
@@ -47,7 +55,6 @@ pub struct FunctionDecl {
 impl FunctionDecl {
     pub fn translate(id: FunctionID, func: &ir::Function, module: &mut Module) -> Self {
         let name = FunctionName::ID(id);
-        println!("func name: {}", id);
         let return_ty = Type::from_metadata(&func.return_ty, module);
         let params = func
             .params

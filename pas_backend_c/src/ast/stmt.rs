@@ -1,9 +1,9 @@
 use pas_ir::{self as ir, Label, LocalID};
 use crate::ast::{Type, Module, StructName, FunctionName};
 use std::fmt;
-use ir::metadata::{self, FunctionID, StringID};
+use ir::metadata::{self, StringID, StructID};
 use crate::ast::ty::FieldName;
-use std::io::SeekFrom::Start;
+use crate::ast::ty::Type::Struct;
 
 pub enum InfixOp {
     Eq,
@@ -42,6 +42,7 @@ pub enum Expr {
     Field { base: Box<Expr>, field: FieldName },
     Arrow { base: Box<Expr>, field: FieldName },
     Cast(Box<Expr>, Type),
+    SizeOf(Type),
 }
 
 impl Expr {
@@ -183,6 +184,9 @@ impl fmt::Display for Expr {
             Expr::Cast(value, ty) => {
                 write!(f, "(({}){})", ty.typename(), value)
             }
+            Expr::SizeOf(ty) => {
+                write!(f, "sizeof({})", ty.typename())
+            }
         }
     }
 }
@@ -198,6 +202,10 @@ pub enum Statement {
     Label(Label),
     Goto(Label),
     Comment(String),
+    IfCond {
+        cond: Expr,
+        then: Box<Statement>,
+    }
 }
 
 impl Statement {
@@ -212,6 +220,13 @@ impl Statement {
             ir::Instruction::LocalEnd => stmts.push(Statement::EndBlock),
             ir::Instruction::Label(label) => stmts.push(Statement::Label(*label)),
             ir::Instruction::Jump { dest } => stmts.push(Statement::Goto(*dest)),
+            ir::Instruction::JumpIf { dest, test } => {
+                let cond_expr = Expr::translate_val(test, module);
+                stmts.push(Statement::IfCond {
+                    cond: cond_expr,
+                    then: Box::new(Statement::Goto(*dest)),
+                });
+            },
             ir::Instruction::Comment(text) => {
                 let safe_text = text
                     .replace("/*", "")
@@ -255,25 +270,56 @@ impl Statement {
             }
 
             ir::Instruction::Call { out, function, args } => {
-                let func_expr = Expr::translate_val(function, module);
-                let args = args.iter()
-                    .map(|arg_val| Expr::translate_val(arg_val, module));
+                Self::translate_call(out.as_ref(), function, args, stmts, module);
+            }
 
-                let call = Expr::call(func_expr, args);
-
-                stmts.push(Statement::Expr(match out {
-                    Some(out) => {
-                        Expr::translate_assign(out, call, module)
-                    }
-
-                    None => call,
-                }));
+            ir::Instruction::RcNew { out, struct_id } => {
+                Self::translate_rc_new(out, *struct_id, stmts, module);
             }
 
             _ => {
                 eprintln!("missing: C backend translation of instruction `{}`", instruction);
             }
         }
+    }
+
+    fn translate_call(
+        out: Option<&ir::Ref>,
+        function: &ir::Value,
+        args: &[ir::Value],
+        stmts: &mut Vec<Statement>,
+        module: &Module,
+    ) {
+        let func_expr = Expr::translate_val(function, module);
+        let args = args.iter()
+            .map(|arg_val| Expr::translate_val(arg_val, module));
+
+        let call = Expr::call(func_expr, args);
+
+        stmts.push(Statement::Expr(match out {
+            Some(out) => {
+                Expr::translate_assign(out, call, module)
+            }
+
+            None => call,
+        }));
+    }
+
+    fn translate_rc_new(
+        out: &ir::Ref,
+        struct_id: StructID,
+        stmts: &mut Vec<Statement>,
+        module: &Module
+    ) {
+        let struct_ty = Type::Struct(StructName::ID(struct_id));
+        let ty_size = Expr::SizeOf(struct_ty);
+
+        let new_rc = Expr::Call {
+            func: Box::new(Expr::Function(FunctionName::RcAlloc)),
+            args: vec![ty_size],
+        };
+
+        stmts.push(Statement::Expr(Expr::translate_assign(out, new_rc, module)))
     }
 }
 
@@ -294,6 +340,12 @@ impl fmt::Display for Statement {
             Statement::Goto(label) => write!(f, "goto J{};", label.0),
 
             Statement::Comment(text) => write!(f, "/* {} */", text),
+
+            Statement::IfCond { cond, then } => {
+                writeln!(f, "if ({}) {{", cond)?;
+                writeln!(f, "{}", then)?;
+                writeln!(f, "}}")
+            }
         }
     }
 }
