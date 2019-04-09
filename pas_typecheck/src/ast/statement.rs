@@ -144,7 +144,16 @@ pub fn typecheck_stmt(
             typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
         }
 
-        ast::Statement::Call(call) => typecheck_call(call, ctx).map(ast::Statement::Call),
+        ast::Statement::Call(call) => {
+            match typecheck_call(call, ctx)? {
+                CallOrCtor::Call(call) => Ok(ast::Statement::Call(call)),
+                CallOrCtor::Ctor(ctor) => {
+                    let ctor_expr = Expression::from(ctor);
+                    let invalid_stmt = InvalidStatement(ctor_expr);
+                    Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
+                }
+            }
+        },
 
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, &Type::Nothing, ctx)?;

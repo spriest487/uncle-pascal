@@ -18,6 +18,8 @@ pub struct MethodCall<A: Annotation> {
 
     pub args: Vec<Expression<A>>,
     pub annotation: A,
+
+    pub args_brackets: (Span, Span),
 }
 
 impl<A: Annotation> Spanned for MethodCall<A> {
@@ -45,6 +47,7 @@ pub struct FunctionCall<A: Annotation> {
     pub args: Vec<Expression<A>>,
 
     pub annotation: A,
+    pub args_brackets: (Span, Span),
 }
 
 impl<A: Annotation> fmt::Display for FunctionCall<A> {
@@ -71,6 +74,24 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
 pub enum Call<A: Annotation> {
     Function(FunctionCall<A>),
     Method(MethodCall<A>),
+}
+
+impl<A: Annotation> Call<A> {
+    pub fn args(&self) -> &[Expression<A>] {
+        match self {
+            Call::Function(func_call) => &func_call.args,
+            Call::Method(method_call) => &method_call.args,
+        }
+    }
+
+    pub fn args_brackets(&self) -> (&Span, &Span) {
+        let brackets = match self {
+            Call::Function(func_call) => &func_call.args_brackets,
+            Call::Method(method_call) => &method_call.args_brackets
+        };
+
+        (&brackets.0, &brackets.1)
+    }
 }
 
 impl<A: Annotation> fmt::Display for Call<A> {

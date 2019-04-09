@@ -16,7 +16,7 @@ fn parse_branch_expr(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> 
         Ok(stmt) => Ok(Expression::from(Block::single_stmt(stmt))),
 
         Err(TracedError {
-            err: ParseError::InvalidStatement(expr),
+            err: ParseError::InvalidStatement(InvalidStatement(expr)),
             ..
         }) => Ok(expr),
 

@@ -6,6 +6,8 @@ use crate::{
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, Ident, Operator};
 use std::fmt;
+use pas_syn::parse::InvalidStatement;
+use crate::annotation::TypeAnnotation;
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -79,7 +81,8 @@ pub enum TypecheckError {
     },
     InvalidRefExpression {
         expr: Box<Expression>,
-    }
+    },
+    InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -113,6 +116,7 @@ impl Spanned for TypecheckError {
             TypecheckError::BindingWithNoType { binding } => binding.annotation.span(),
             TypecheckError::NotInitialized { usage, .. } => usage.span(),
             TypecheckError::InvalidRefExpression { expr } => expr.annotation().span(),
+            TypecheckError::InvalidStatement(expr) => expr.0.annotation().span(),
         }
     }
 }
@@ -148,6 +152,7 @@ impl DiagnosticOutput for TypecheckError {
             }
             TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
             TypecheckError::InvalidRefExpression { .. } => "Invalid reference expression".to_string(),
+            TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
         }
     }
 
@@ -305,6 +310,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidRefExpression { expr } => {
                 write!(f, "`{}` does not refer to a local variable that can be passed by reference", expr)
+            }
+
+            TypecheckError::InvalidStatement(invalid_stmt) => {
+                write!(f, "{}", invalid_stmt)
             }
         }
     }

@@ -196,6 +196,7 @@ fn desugar_string_concat(
                 annotation: annotation.clone(),
                 args: vec![lhs, rhs],
                 target: concat_func,
+                args_brackets: (span.clone(), span.clone())
             });
 
             Ok(ast::Expression::from(concat_call))

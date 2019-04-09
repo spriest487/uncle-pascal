@@ -7,6 +7,13 @@ pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
 pub type Call = ast::Call<TypeAnnotation>;
 pub type Expression = ast::Expression<TypeAnnotation>;
 
+// it's possible that during typechecking we discover what was parsed as a call with zero args
+// is actually the ctor for a class with no fields
+pub enum CallOrCtor {
+    Call(Call),
+    Ctor(ObjectCtor),
+}
+
 fn invalid_args(
     actual_args: Vec<Expression>,
     expected: &[FunctionParamSig],
@@ -126,7 +133,7 @@ fn typecheck_args(
     Ok(checked_args)
 }
 
-pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckResult<Call> {
+pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckResult<CallOrCtor> {
     let func_call = match call {
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
@@ -134,25 +141,44 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
 
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
-    let call = match target.annotation() {
+    let expr = match target.annotation() {
         TypeAnnotation::TypedValue {
             ty: Type::Function(sig),
             ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)?,
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
+            .map(CallOrCtor::Call)?,
 
         TypeAnnotation::Function {
             ty: Type::Function(sig),
             ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)?,
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
+            .map(CallOrCtor::Call)?,
 
         TypeAnnotation::Method(method_annotation) => {
-            typecheck_method_call(&func_call, &method_annotation, ctx)?
+            typecheck_method_call(&func_call, &method_annotation, ctx)
+                .map(CallOrCtor::Call)?
+        }
+
+        TypeAnnotation::Type(ty, ..) if call.args().is_empty() && ty.full_path().is_some() => {
+            let ty: &Type = ty;
+            let (open, close) = call.args_brackets();
+            let ctor = ast::ObjectCtor {
+                ident: ty.full_path().unwrap(),
+                annotation: call.span().clone(),
+                args: ast::ObjectCtorArgs {
+                    open: open.clone(),
+                    close: close.clone(),
+                    members: Vec::new(),
+                },
+            };
+
+            typecheck_object_ctor(&ctor, ctx).map(CallOrCtor::Ctor)?
         }
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };
 
-    Ok(call)
+    Ok(expr)
 }
 
 fn typecheck_method_call(
@@ -227,6 +253,7 @@ fn typecheck_method_call(
         func_type: Type::Function(impl_sig.into()),
         ident: method_annotation.method.ident.clone(),
         of_type: method_annotation.iface_ty.clone(),
+        args_brackets: func_call.args_brackets.clone(),
     }))
 }
 
@@ -256,6 +283,7 @@ fn typecheck_func_call(
         annotation,
         args,
         target,
+        args_brackets: func_call.args_brackets.clone(),
     }))
 }
 
@@ -364,8 +392,11 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Call(call) => {
-            let call = typecheck_call(call, ctx)?;
-            Ok(ast::Expression::from(call))
+            let expr = match typecheck_call(call, ctx)? {
+                CallOrCtor::Call(call) => ast::Expression::from(call),
+                CallOrCtor::Ctor(ctor) => ast::Expression::from(ctor),
+            };
+            Ok(expr)
         }
 
         ast::Expression::ObjectCtor(ctor) => {

@@ -219,10 +219,15 @@ fn resolve_ops_by_precedence(
     if parts.len() == 1 {
         return Ok(match parts.into_iter().next().unwrap() {
             CompoundExpressionPart::Operand(operand) => operand,
-            CompoundExpressionPart::Operator(op_token) => panic!(
-                "expression with one part must not be an operator (got: `{:?}`)",
-                op_token
-            ),
+            CompoundExpressionPart::Operator(op_part) => {
+                let err = ParseError::UnexpectedOperator {
+                    operator: match op_part {
+                        OperatorPart::Call { args_open, .. } => args_open,
+                        OperatorPart::Symbol(op_symbol) => op_symbol.token.span().clone(),
+                    }
+                };
+                return Err(TracedError::trace(err));
+            },
         });
     }
 
@@ -239,25 +244,26 @@ fn resolve_ops_by_precedence(
         .unwrap();
 
     match lo_op {
-        OperatorPart::Call(args_span, args) => {
+        OperatorPart::Call { args, args_open, args_close } => {
             let (before_op, after_op) = parts.split_at(lo_op_index);
 
             if before_op.is_empty() {
                 return Err(TracedError::trace(ParseError::EmptyOperand {
-                    operator: args_span.clone(),
+                    operator: args_open.to(&args_close),
                     before: true,
                 }));
             }
 
             // everything on the left becomes the target
             let target = resolve_ops_by_precedence(before_op.to_vec())?;
-            let span = args_span.to(target.annotation().span());
+            let span = target.annotation().span().to(&args_close);
 
             let op_expr = Expression::from(
                 Call::Function(FunctionCall {
                     target,
                     annotation: span.clone(),
                     args,
+                    args_brackets: (args_open, args_close),
                 }),
             );
 
@@ -423,7 +429,7 @@ fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expression<Span>>
 }
 
 #[derive(Debug, Clone)]
-struct OperatorToken {
+struct SymbolOperator {
     op: Operator,
     pos: Position,
     token: TokenTree,
@@ -432,28 +438,32 @@ struct OperatorToken {
 #[derive(Debug, Clone)]
 enum OperatorPart {
     // symbol operator e.g. +, *
-    Symbol(OperatorToken),
+    Symbol(SymbolOperator),
 
     // () operator with inner argument list
-    Call(Span, Vec<Expression<Span>>),
+    Call {
+        args: Vec<Expression<Span>>,
+        args_open: Span,
+        args_close: Span,
+    }
 }
 
 impl OperatorPart {
     fn cmp_precedence(&self, b: &Self) -> Ordering {
         let (op_a, pos_a, op_b, pos_b) = match (self, b) {
-            (OperatorPart::Call(_, _), OperatorPart::Call(_, _)) => (
+            (OperatorPart::Call { .. }, OperatorPart::Call { .. }) => (
                 Operator::Call,
                 Position::Postfix,
                 Operator::Call,
                 Position::Postfix,
             ),
-            (OperatorPart::Call(_, _), OperatorPart::Symbol(sym_op)) => (
+            (OperatorPart::Call { .. }, OperatorPart::Symbol(sym_op)) => (
                 Operator::Call,
                 Position::Postfix,
                 sym_op.op,
                 sym_op.pos,
             ),
-            (OperatorPart::Symbol(sym_op), OperatorPart::Call(_, _)) => (
+            (OperatorPart::Symbol(sym_op), OperatorPart::Call { .. }) => (
                 sym_op.op,
                 sym_op.pos,
                 Operator::Call,
@@ -690,8 +700,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     self.add_operand(Expression::from(ctor));
                 } else {
                     let args = Call::parse_arg_list(&mut self.tokens)?;
-                    let span = open.to(&close);
-                    self.add_operator_call(span, args);
+                    self.add_operator_call(args, open, close);
                 }
             }
 
@@ -747,13 +756,13 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(true)
     }
 
-    fn add_operator_call(&mut self, span: Span, args: Vec<Expression<Span>>) {
-        let op_call = OperatorPart::Call(span, args);
+    fn add_operator_call(&mut self, args: Vec<Expression<Span>>, args_open: Span, args_close: Span) {
+        let op_call = OperatorPart::Call { args, args_open, args_close };
         self.parts.push(CompoundExpressionPart::Operator(op_call));
     }
 
     fn add_operator_token(&mut self, op_token: TokenTree, pos: Position) {
-        let op_token = OperatorPart::Symbol(OperatorToken {
+        let op_token = OperatorPart::Symbol(SymbolOperator {
             op: op_token.as_operator().unwrap(),
             pos,
             token: op_token,

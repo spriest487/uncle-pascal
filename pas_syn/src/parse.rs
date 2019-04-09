@@ -37,11 +37,27 @@ pub use self::{
 };
 
 #[derive(Debug)]
+pub struct InvalidStatement<A: Annotation>(pub Expression<A>);
+
+impl<A: Annotation> fmt::Display for InvalidStatement<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "the expression `{}` is not valid as a statement", self.0)
+    }
+}
+
+impl<A: Annotation> InvalidStatement<A> {
+    pub fn title(&self) -> String {
+        "Invalid statement".to_string()
+    }
+}
+
+#[derive(Debug)]
 pub enum ParseError {
     UnexpectedToken(TokenTree, Option<Matcher>),
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: Span, before: bool },
-    InvalidStatement(Expression<Span>),
+    UnexpectedOperator { operator: Span },
+    InvalidStatement(InvalidStatement<Span>),
     InvalidMember(BinOp<Span>, Span),
     DuplicateModifier { new: DeclMod, existing: DeclMod },
 }
@@ -54,7 +70,8 @@ impl Spanned for ParseError {
             ParseError::UnexpectedToken(tt, _) => tt.span(),
             ParseError::UnexpectedEOF(_, tt) => tt.span(),
             ParseError::EmptyOperand { operator, .. } => operator.span(),
-            ParseError::InvalidStatement(expr) => expr.annotation().span(),
+            ParseError::UnexpectedOperator { operator } => operator.span(),
+            ParseError::InvalidStatement(invalid) => invalid.0.annotation().span(),
             ParseError::InvalidMember(_, span) => span,
             ParseError::DuplicateModifier { new, .. } => new.span(),
         }
@@ -67,7 +84,8 @@ impl fmt::Display for ParseError {
             ParseError::UnexpectedToken(..) => write!(f, "Unexpected token"),
             ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of file"),
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
-            ParseError::InvalidStatement(..) => write!(f, "Invalid statement"),
+            ParseError::UnexpectedOperator { .. } => write!(f, "Unexpected operator"),
+            ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),
             ParseError::InvalidMember(..) => write!(f, "Invalid member expression"),
             ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
         }
@@ -93,8 +111,12 @@ impl DiagnosticOutput for ParseError {
                 format!("expected operand {} {}", pos_name, operator)
             },
 
-            ParseError::InvalidStatement(expr) => {
-                format!("the expression `{}` is not valid as a statement", expr)
+            ParseError::UnexpectedOperator { .. } => {
+                "expected operand, found operator".to_string()
+            }
+
+            ParseError::InvalidStatement(invalid_stmt) => {
+                invalid_stmt.to_string()
             },
 
             ParseError::InvalidMember(bin_op, _) => format!(

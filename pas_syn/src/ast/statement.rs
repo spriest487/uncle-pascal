@@ -240,7 +240,9 @@ impl Statement<Span> {
                 let expr = Expression::parse(tokens)?;
 
                 let stmt = Self::try_from_expr(expr.clone()).map_err(|invalid_expr| {
-                    TracedError::trace(ParseError::InvalidStatement(invalid_expr))
+                    let invalid_stmt = InvalidStatement(invalid_expr);
+                    let err = ParseError::InvalidStatement(invalid_stmt);
+                    TracedError::trace(err)
                 })?;
                 Ok(stmt)
             }

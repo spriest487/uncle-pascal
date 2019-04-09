@@ -45,7 +45,7 @@ impl Block<Span> {
             _ => unreachable!(),
         };
 
-        let mut output_expr = None;
+        let mut output_expr: Option<Expression<_>> = None;
 
         let statements = body_tokens.match_separated(Separator::Semicolon, |_, tokens| {
             match Statement::parse(tokens) {
@@ -56,7 +56,7 @@ impl Block<Span> {
                     // expression, assume it's the block output. some expressions (eg calls) are
                     // always valid as statements regardless of type, so in some cases the block
                     // output can't be determined until typechecking
-                    ParseError::InvalidStatement(expr) => {
+                    ParseError::InvalidStatement(InvalidStatement(expr)) => {
                         output_expr = Some(expr.clone());
                         Ok(Generate::Break)
                     },

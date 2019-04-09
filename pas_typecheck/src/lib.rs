@@ -22,6 +22,7 @@ pub mod ast {
         pub use pas_common::span::*;
         pub use pas_syn::{
             ast::{self, FunctionParamMod},
+            parse::InvalidStatement,
             ident::*,
         };
     }
