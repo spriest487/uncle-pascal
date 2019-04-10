@@ -90,7 +90,9 @@ pub fn typecheck_assignment(
 
     // lhs must evaluate to a mutable typed value
     match lhs.annotation() {
-        TypeAnnotation::TypedValue { span, value_kind, .. } => {
+        TypeAnnotation::TypedValue {
+            span, value_kind, ..
+        } => {
             if !value_kind.mutable() {
                 let span = span.clone();
                 return Err(TypecheckError::NotMutable {
@@ -144,14 +146,12 @@ pub fn typecheck_stmt(
             typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
         }
 
-        ast::Statement::Call(call) => {
-            match typecheck_call(call, ctx)? {
-                CallOrCtor::Call(call) => Ok(ast::Statement::Call(call)),
-                CallOrCtor::Ctor(ctor) => {
-                    let ctor_expr = Expression::from(ctor);
-                    let invalid_stmt = InvalidStatement(ctor_expr);
-                    Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
-                }
+        ast::Statement::Call(call) => match typecheck_call(call, ctx)? {
+            CallOrCtor::Call(call) => Ok(ast::Statement::Call(call)),
+            CallOrCtor::Ctor(ctor) => {
+                let ctor_expr = Expression::from(ctor);
+                let invalid_stmt = InvalidStatement(ctor_expr);
+                Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
             }
         },
 

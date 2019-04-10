@@ -1,11 +1,25 @@
-type
-    Option of T = variant
-        some: T,
-        none: Nothing,
-    end;
+uses System;
 
-let x: Option := Option of Integer(some: 1);
-let val = if x is Option(some: val) then val else 0;
+type MaybeInt = variant
+    Some: Integer;
+    None;
+end;
 
-//let x := List of Integer [1, 2, 3];
+function Display(label: String; i: MaybeInt)
+begin
+    case i of
+        MaybeInt.Some(val): begin
+            WriteLn(label + ' is ' + val);
+        end;
 
+        MaybeInt.None: begin
+            WriteLn(label + ' is nothing');
+        end;
+    end
+end;
+
+let x := MaybeInt.Some(1);
+Display(x);
+
+let y := MaybeInt.None;
+Display(y);

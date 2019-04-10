@@ -37,7 +37,7 @@ pub use self::{annotation::*, context::*, result::*, ty::*};
 
 pub mod ty {
     use crate::{
-        ast::{Class, FunctionDecl, Interface},
+        ast::{Class, FunctionDecl, Interface, Variant},
         Context, TypeAnnotation,
     };
     use pas_common::span::*;
@@ -232,6 +232,7 @@ pub mod ty {
         Record(Rc<Class>),
         Class(Rc<Class>),
         Interface(Rc<Interface>),
+        Variant(Rc<Variant>),
         Array { element: Box<Type>, dim: usize },
         GenericSelf,
     }
@@ -285,6 +286,8 @@ pub mod ty {
                         ..
                     },
                 ) => Type::Class(Rc::new(class.clone())),
+
+                ast::TypeDecl::Variant(variant) => Type::Variant(Rc::new(variant.clone())),
 
                 ast::TypeDecl::Interface(iface) => Type::Interface(Rc::new(iface.clone())),
             }

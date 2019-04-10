@@ -682,11 +682,15 @@ impl Metadata {
                 }
             }
 
-            pas_typecheck::Type::GenericSelf => {
+            pas_ty::Type::Variant(variant) => {
+                unimplemented!("ir type for variant ({:#?})", variant)
+            }
+
+            pas_ty::Type::GenericSelf => {
                 unreachable!("Self is not a real type in this context")
             }
 
-            pas_typecheck::Type::Function(sig) => {
+            pas_ty::Type::Function(sig) => {
                 unimplemented!("No IR type exists to represent function: {}", sig)
             }
         }

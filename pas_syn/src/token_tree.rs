@@ -242,7 +242,7 @@ impl TokenTree {
             },
         }
 
-        write!(f, " @ {}", self.span())
+        Ok(())
     }
 }
 

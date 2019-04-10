@@ -13,9 +13,7 @@ use pas_syn::{
 };
 use std::{
     borrow::Borrow,
-    collections::{
-        hash_map::{Entry, HashMap},
-    },
+    collections::hash_map::{Entry, HashMap},
     fmt,
     hash::Hash,
     rc::Rc,
@@ -796,7 +794,7 @@ impl Context {
                 } else {
                     panic!("{} does not refer to a mutable binding", local_id);
                 }
-            },
+            }
             _ => panic!("{} does not refer to a mutable binding", local_id),
         }
     }
@@ -809,11 +807,15 @@ impl Context {
     pub fn consolidate_branches(&mut self, branch_contexts: &[Self]) {
         let scope = self.scopes.current_path();
 
-        let uninit_names: Vec<_> = scope.top().decls.iter()
+        let uninit_names: Vec<_> = scope
+            .top()
+            .decls
+            .iter()
             .filter_map(|(ident, decl)| match decl {
-                Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Uninitialized, .. })) => {
-                    Some(ident)
-                },
+                Member::Value(Decl::BoundValue(Binding {
+                    kind: ValueKind::Uninitialized,
+                    ..
+                })) => Some(ident),
                 _ => None,
             })
             .collect();
@@ -822,18 +824,23 @@ impl Context {
         // names initialized in all branches
         let mut all_init = Vec::new();
         for uninit_name in uninit_names {
-            let is_init_in_all = branch_contexts.iter()
-                .all(|ctx| match ctx.find(uninit_name).unwrap() {
-                    MemberRef::Value { value, parent_path, .. } => match value {
-                        Decl::BoundValue(binding) => {
-                            parent_path.as_slice().len() == this_depth && binding.kind == ValueKind::Mutable
-                        }
+            let is_init_in_all =
+                branch_contexts
+                    .iter()
+                    .all(|ctx| match ctx.find(uninit_name).unwrap() {
+                        MemberRef::Value {
+                            value, parent_path, ..
+                        } => match value {
+                            Decl::BoundValue(binding) => {
+                                parent_path.as_slice().len() == this_depth
+                                    && binding.kind == ValueKind::Mutable
+                            }
 
-                        _ => false,
-                    }
+                            _ => false,
+                        },
 
-                    MemberRef::Namespace { .. } => false,
-                });
+                        MemberRef::Namespace { .. } => false,
+                    });
 
             if is_init_in_all {
                 all_init.push(uninit_name.clone());

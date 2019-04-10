@@ -156,10 +156,89 @@ impl<A: Annotation> fmt::Display for Interface<A> {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Variant<A: Annotation> {
+    pub ident: IdentPath,
+    pub cases: Vec<VariantCase<A>>,
+
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct VariantCase<A: Annotation> {
+    pub ident: Ident,
+    pub data_ty: Option<A::Type>,
+
+    pub span: Span,
+}
+
+impl Variant<Span> {
+    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+        let kw = tokens.match_one(Keyword::Variant)?;
+        let cases = tokens.match_separated(Separator::Semicolon, |_, tokens| {
+            if tokens.look_ahead().match_one(Keyword::End).is_some() {
+                return Ok(Generate::Break);
+            }
+
+            let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+
+            let (data_ty, span) = match tokens.look_ahead().match_one(Separator::Colon) {
+                Some(..) => {
+                    tokens.advance(1);
+                    let ty = TypeName::parse(tokens)?;
+                    let span = ident.span().to(ty.span());
+                    (Some(ty), span)
+                }
+                None => (None, ident.span().clone()),
+            };
+
+            let ident = ident_tt.into_ident().unwrap();
+
+            Ok(Generate::Yield(VariantCase {
+                ident,
+                data_ty,
+                span,
+            }))
+        })?;
+
+        let end_kw = tokens.match_one(Keyword::End)?;
+
+        let span = kw.span().to(end_kw.span());
+
+        Ok(Variant {
+            ident: IdentPath::from(ident),
+            cases,
+
+            span,
+        })
+    }
+}
+
+impl<A: Annotation> fmt::Display for Variant<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "variant {}", self.ident)?;
+        for case in &self.cases {
+            write!(f, "  {}", case.ident)?;
+            if let Some(data_ty) = &case.data_ty {
+                write!(f, ": {}", data_ty)?;
+            }
+            writeln!(f, ";")?;
+        }
+        write!(f, "end")
+    }
+}
+
+impl<A: Annotation> Spanned for Variant<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
     Class(Class<A>),
     Interface(Interface<A>),
+    Variant(Variant<A>),
 }
 
 impl<A: Annotation> TypeDecl<A> {
@@ -167,6 +246,7 @@ impl<A: Annotation> TypeDecl<A> {
         match self {
             TypeDecl::Class(class) => &class.ident,
             TypeDecl::Interface(iface) => &iface.ident,
+            TypeDecl::Variant(variant) => &variant.ident,
         }
     }
 }
@@ -201,10 +281,11 @@ impl TypeDecl<Span> {
         let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
         tokens.match_one(Operator::Equals)?;
 
-        let decl_start_matcher = Matcher::from(Keyword::Class);
+        let class_matcher = Class::match_kw();
+        let decl_start_matcher = class_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
-            Some(ref tt) if Class::match_kw().is_match(tt) => {
+            Some(ref tt) if class_matcher.is_match(tt) => {
                 let class_decl = Class::parse(tokens, ident.clone())?;
                 Ok(TypeDecl::Class(class_decl))
             },
@@ -217,10 +298,19 @@ impl TypeDecl<Span> {
                 Ok(TypeDecl::Interface(iface_decl))
             },
 
+            Some(TokenTree::Keyword {
+                kw: Keyword::Variant,
+                ..
+                 }) => {
+                let variant_decl = Variant::parse(tokens, ident.clone())?;
+                Ok(TypeDecl::Variant(variant_decl))
+            }
+
             Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
                 unexpected,
                 Some(decl_start_matcher.clone()),
             ))),
+
             None => Err(TracedError::trace(ParseError::UnexpectedEOF(
                 decl_start_matcher.clone(),
                 tokens.context().clone(),
@@ -234,6 +324,7 @@ impl<A: Annotation> Spanned for TypeDecl<A> {
         match self {
             TypeDecl::Class(class) => class.span(),
             TypeDecl::Interface(iface) => iface.span(),
+            TypeDecl::Variant(variant) => variant.span(),
         }
     }
 }
@@ -245,6 +336,7 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
         match self {
             TypeDecl::Class(class) => write!(f, "{}", class),
             TypeDecl::Interface(iface) => write!(f, "{}", iface),
+            TypeDecl::Variant(variant) => write!(f, "{}", variant),
         }
     }
 }

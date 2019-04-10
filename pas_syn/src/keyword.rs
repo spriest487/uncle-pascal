@@ -41,6 +41,7 @@ pub enum Keyword {
     With,
     Exit,
     Export,
+    Variant,
 }
 
 impl Keyword {
@@ -85,6 +86,7 @@ impl Keyword {
             "with" => Some(Keyword::With),
             "exit" => Some(Keyword::Exit),
             "export" => Some(Keyword::Export),
+            "variant" => Some(Keyword::Variant),
             _ => None,
         }
     }
@@ -140,6 +142,7 @@ impl fmt::Display for Keyword {
             Keyword::With => "with",
             Keyword::Exit => "exit",
             Keyword::Export => "export",
+            Keyword::Variant => "variant",
         })
     }
 }

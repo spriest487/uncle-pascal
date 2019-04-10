@@ -1,13 +1,13 @@
+use crate::annotation::TypeAnnotation;
 use crate::{
     ast::{Call, Expression},
     context::NameError,
     Type, ValueKind,
 };
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
+use pas_syn::parse::InvalidStatement;
 use pas_syn::{ast, Ident, Operator};
 use std::fmt;
-use pas_syn::parse::InvalidStatement;
-use crate::annotation::TypeAnnotation;
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -83,6 +83,7 @@ pub enum TypecheckError {
         expr: Box<Expression>,
     },
     InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
+    EmptyVariant(Box<ast::Variant<Span>>),
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -117,6 +118,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotInitialized { usage, .. } => usage.span(),
             TypecheckError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypecheckError::InvalidStatement(expr) => expr.0.annotation().span(),
+            TypecheckError::EmptyVariant(variant) => variant.span(),
         }
     }
 }
@@ -151,8 +153,12 @@ impl DiagnosticOutput for TypecheckError {
                 "Value bound to name must have a type".to_string()
             }
             TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
-            TypecheckError::InvalidRefExpression { .. } => "Invalid reference expression".to_string(),
+            TypecheckError::InvalidRefExpression { .. } => {
+                "Invalid reference expression".to_string()
+            }
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
+            TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
+
         }
     }
 
@@ -315,6 +321,11 @@ impl fmt::Display for TypecheckError {
             TypecheckError::InvalidStatement(invalid_stmt) => {
                 write!(f, "{}", invalid_stmt)
             }
+
+            TypecheckError::EmptyVariant(variant) => {
+                write!(f, "variant `{}` has no cases", variant.ident)
+            }
+
         }
     }
 }

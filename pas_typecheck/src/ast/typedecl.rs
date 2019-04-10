@@ -5,6 +5,7 @@ pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
 pub type Member = ast::Member<TypeAnnotation>;
 pub type Interface = ast::Interface<TypeAnnotation>;
+pub type Variant = ast::Variant<TypeAnnotation>;
 
 pub fn typecheck_type_decl(
     type_decl: &ast::TypeDecl<Span>,
@@ -18,6 +19,11 @@ pub fn typecheck_type_decl(
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(iface, ctx)?;
             Ok(ast::TypeDecl::Interface(iface))
+        }
+
+        ast::TypeDecl::Variant(variant) => {
+            let variant = typecheck_variant(variant, ctx)?;
+            Ok(ast::TypeDecl::Variant(variant))
         }
     }
 }
@@ -85,5 +91,34 @@ pub fn typecheck_iface(
         ident,
         span: iface.span.clone(),
         methods,
+    })
+}
+
+pub fn typecheck_variant(
+    variant: &ast::Variant<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<Variant> {
+    if variant.cases.len() == 0 {
+        return Err(TypecheckError::EmptyVariant(Box::new(variant.clone())));
+    }
+
+    let mut cases = Vec::with_capacity(variant.cases.len());
+    for case in &variant.cases {
+        let data_ty = match &case.data_ty {
+            Some(data_ty) => Some(ctx.find_type(data_ty)?),
+            None => None,
+        };
+
+        cases.push(ast::VariantCase {
+            ident: case.ident.clone(),
+            span: case.span.clone(),
+            data_ty,
+        });
+    }
+
+    Ok(Variant {
+        ident: ctx.qualify_name(variant.ident.last().clone()),
+        cases,
+        span: variant.span().clone(),
     })
 }
