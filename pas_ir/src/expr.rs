@@ -209,24 +209,26 @@ pub fn translate_if_cond(
         }
 
         Some(ast::CondPattern::Positive { binding, is_ty, .. }) => {
-            let cond_val = translate_expr(&if_cond.cond, builder);
-            let test_val = builder.local_temp(Type::Bool);
-            builder.append(Instruction::IsClass {
+            let is_ty = builder.metadata.translate_type(is_ty);
+            let is = translate_is(cond_val.clone(), &is_ty, builder);
 
-            });
-
-            let binding = binding.map(|binding| {
-                let binding_ty = builder.metadata.translate_type(is_ty);
+            let binding = binding.as_ref().map(|binding| {
                 let binding_name = binding.name.to_string();
+                let binding_ref = cond_val;
 
-                (binding_name, binding_ty)
+                (binding_name, is_ty, binding_ref)
             });
 
-            (test_val, binding)
+            (is, binding)
         }
 
         Some(ast::CondPattern::Negative { is_not_ty, .. }) => {
+            let is_not_ty = builder.metadata.translate_type(is_not_ty);
+            let is = translate_is(cond_val, &is_not_ty, builder);
 
+            let is_not = builder.local_temp(Type::Bool);
+            builder.append(Instruction::Not { out: is_not.clone(), a: Value::Ref(is) });
+            (is_not, None)
         }
     };
 
@@ -244,6 +246,15 @@ pub fn translate_if_cond(
     builder.append(Instruction::Label(then_label));
 
     builder.begin_scope();
+
+    if let Some((binding_name, binding_ty, binding_ref)) = binding {
+        // since there's no fancy destructuring yet, we just need to mov the old value into a
+        // new local, which pascal will see as a variable of the new type
+        let pattern_binding = builder.local_new(binding_ty.clone(), Some(binding_name));
+        builder.mov(pattern_binding.clone(), binding_ref);
+        builder.retain(pattern_binding, &binding_ty);
+    }
+
     translate_branch(
         &if_cond.then_branch,
         out_val.as_ref(),
@@ -267,6 +278,22 @@ pub fn translate_if_cond(
     builder.end_scope();
 
     out_val
+}
+
+fn translate_is(val: Ref, ty: &Type, builder: &mut Builder) -> Ref {
+    let result = builder.local_temp(Type::Bool);
+    match ty {
+        Type::RcPointer(class_id) => {
+            builder.append(Instruction::ClassIs {
+                out: result.clone(),
+                a: Value::Ref(val),
+                class_id: *class_id
+            });
+        }
+
+        _ => unimplemented!("is-pattern for type {}", ty),
+    }
+    result
 }
 
 fn translate_call_with_args(

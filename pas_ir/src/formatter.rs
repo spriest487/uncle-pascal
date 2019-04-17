@@ -141,6 +141,16 @@ pub trait InstructionFormatter {
                 write!(f, ")")
             }
 
+            Instruction::ClassIs { out, a, class_id } => {
+                write!(f, "{:>width$} ", "is", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " is ")?;
+                self.format_type(&Type::RcPointer(*class_id), f)
+            }
+
             Instruction::AddrOf { out, a } => {
                 write!(f, "{:>width$} ", "addrof", width = IX_WIDTH)?;
 

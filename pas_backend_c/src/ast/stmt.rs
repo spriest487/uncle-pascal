@@ -403,6 +403,8 @@ impl<'a> Builder<'a> {
                     None => call,
                 }));
             }
+
+            ir::Instruction::ClassIs { .. } => unimplemented!("ClassIs instruction in C backend"),
         }
     }
 

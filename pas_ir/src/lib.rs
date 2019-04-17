@@ -188,6 +188,11 @@ pub enum Instruction {
         self_arg: Value,
         rest_args: Vec<Value>,
     },
+    ClassIs {
+        out: Ref,
+        a: Value,
+        class_id: ClassID,
+    },
 
     Label(Label),
     Jump {

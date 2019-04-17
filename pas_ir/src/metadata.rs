@@ -68,7 +68,7 @@ impl NamePath {
     }
 }
 
-impl<Iter: IntoIterator<Item = String>> From<Iter> for NamePath {
+impl<Iter: IntoIterator<Item=String>> From<Iter> for NamePath {
     fn from(iter: Iter) -> Self {
         NamePath(Path::<String>::from_parts(iter))
     }
@@ -282,14 +282,14 @@ pub struct GlobalName {
 }
 
 impl GlobalName {
-    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = impl Into<String>>) -> Self {
+    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item=impl Into<String>>) -> Self {
         let mut path: Vec<String> = ns.into_iter().map(|p| p.into()).collect();
         path.push(name.into());
 
         Self { path }
     }
 
-    pub fn path(&self) -> impl Iterator<Item = &String> {
+    pub fn path(&self) -> impl Iterator<Item=&String> {
         self.path.iter()
     }
 }
@@ -625,13 +625,15 @@ impl Metadata {
     }
 
     pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: usize) -> Option<FunctionID> {
-        self.ifaces
-            .get(&iface_id)
-            .unwrap_or_else(|| panic!("expected interface {} to exist", iface_id))
-            .impls
-            .get(ty)
+        let impls = &self.ifaces[&iface_id].impls;
+        impls.get(ty)
             .and_then(|ty_impl| ty_impl.methods.get(&method))
             .cloned()
+    }
+
+    pub fn is_impl(&self, ty: &Type, iface_id: InterfaceID) -> bool {
+        let impls = &self.ifaces[&iface_id].impls;
+        impls.contains_key(ty)
     }
 
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
@@ -741,7 +743,7 @@ impl Metadata {
         self.string_literals.get(&id)
     }
 
-    pub fn strings(&self) -> impl Iterator<Item = (StringID, &str)> + '_ {
+    pub fn strings(&self) -> impl Iterator<Item=(StringID, &str)> + '_ {
         self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
     }
 }

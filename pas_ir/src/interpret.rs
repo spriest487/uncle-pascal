@@ -1023,6 +1023,26 @@ impl Interpreter {
                     self.call(&func, &arg_cells, out.as_ref())
                 }
 
+                Instruction::ClassIs { out, a, class_id } => {
+                    let rc_addr = self.evaluate(a)
+                        .as_pointer().and_then(|p| p.as_heap_addr())
+                        .expect("argument a of ClassIs instruction must evaluate to a heap pointer");
+                    let rc_cell = self.heap.get(rc_addr)
+                        .and_then(|cell| cell.as_rc())
+                        .expect("rc pointer target of ClassIs instruction must point to an rc cell");
+
+                    let is = match class_id {
+                        ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
+                        ClassID::Interface(iface_id) => {
+                            let actual_ty = Type::RcPointer(ClassID::Class(rc_cell.struct_id));
+
+                            self.metadata.is_impl(&actual_ty, *iface_id)
+                        }
+                    };
+
+                    self.store(out, MemCell::Bool(is));
+                }
+
                 Instruction::AddrOf { out, a } => {
                     let a_ptr = self.addr_of_ref(a);
                     self.store(out, MemCell::Pointer(a_ptr));
