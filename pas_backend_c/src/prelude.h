@@ -29,6 +29,18 @@ struct Rc {
     int count;
 };
 
+static bool IsImpl(struct Class* class, size_t iface) {
+    struct MethodTable* next = class->iface_methods;
+    while (next) {
+        if (next->iface == iface) {
+            return true;
+        }
+        next = next->next;
+    }
+
+    return false;
+}
+
 // internal memory allocation
 
 #ifdef TRACE_HEAP

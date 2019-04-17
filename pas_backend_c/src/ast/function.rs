@@ -25,6 +25,7 @@ pub enum FunctionName {
     RcAlloc,
     RcRetain,
     RcRelease,
+    IsImpl,
 
     // builtins
     IntToStr,
@@ -45,6 +46,7 @@ impl fmt::Display for FunctionName {
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),
             FunctionName::RcRelease => write!(f, "RcRelease"),
+            FunctionName::IsImpl => write!(f, "IsImpl"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::IntToStr => write!(f, "System_IntToStr"),
