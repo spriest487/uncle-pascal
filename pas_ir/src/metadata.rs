@@ -518,6 +518,12 @@ impl Metadata {
                 .map(|def| def.name.to_string())
                 .unwrap_or_else(|| id.to_string()),
 
+            Type::Variant(id) => self
+                .variants
+                .get(id)
+                .map(|def| def.name.to_string())
+                .unwrap_or_else(|| id.to_string()),
+
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
                 format!("array [{}] of {}", dim, elem_name)

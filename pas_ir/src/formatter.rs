@@ -301,6 +301,14 @@ impl InstructionFormatter for Metadata {
     }
 
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Type::Variant(..) = of_ty {
+            return match field {
+                VARIANT_TAG_FIELD => write!(f, "TAG"),
+                VARIANT_DATA_FIELD => write!(f, "DATA"),
+                _ => write!(f, "{}", field),
+            }
+        }
+
         let field_name = of_ty
             .as_struct()
             .or_else(|| match of_ty.rc_resource_type_id()? {
