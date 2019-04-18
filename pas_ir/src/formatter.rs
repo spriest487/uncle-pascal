@@ -194,6 +194,27 @@ pub trait InstructionFormatter {
                 self.format_field(of_ty, *field, f)
             }
 
+            Instruction::VariantTag { out, a, of_ty } => {
+                write!(f, "{:>width$} ", "vartag", width = IX_WIDTH)?;
+                self.format_ref(out, f)?;
+                write!(f, " := (")?;
+                self.format_ref(a, f)?;
+                write!(f, " as ")?;
+                self.format_type(of_ty, f)?;
+                write!(f, ").tag")
+            }
+
+            Instruction::VariantData { out, a, of_ty, tag } => {
+                write!(f, "{:>width$} ", "vardata", width = IX_WIDTH)?;
+                self.format_ref(out, f)?;
+                write!(f, " := (")?;
+                self.format_ref(a, f)?;
+                write!(f, " as ")?;
+                self.format_type(of_ty, f)?;
+                write!(f, ").")?;
+                self.format_variant_case(of_ty, *tag, f)
+            }
+
             Instruction::Label(label) => {
                 write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
             }
@@ -225,6 +246,7 @@ pub trait InstructionFormatter {
     fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result;
     fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result;
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result;
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result;
 }
 
 pub struct RawInstructionFormatter;
@@ -245,6 +267,10 @@ impl InstructionFormatter for RawInstructionFormatter {
     fn format_field(&self, _of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", field)
     }
+
+    fn format_variant_case(&self, _of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "data_{}", tag)
+    }
 }
 
 impl InstructionFormatter for Metadata {
@@ -255,7 +281,7 @@ impl InstructionFormatter for Metadata {
     fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result {
         match val {
             Value::Ref(r) => self.format_ref(r, f),
-            _ => write!(f, "{}", val),
+            _ => RawInstructionFormatter.format_val(val, f),
         }
     }
 
@@ -296,32 +322,38 @@ impl InstructionFormatter for Metadata {
                 }
             }
 
-            _ => write!(f, "{}", r),
+            _ => RawInstructionFormatter.format_ref(r, f),
         }
     }
 
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
-        if let Type::Variant(..) = of_ty {
-            return match field {
-                VARIANT_TAG_FIELD => write!(f, "TAG"),
-                VARIANT_DATA_FIELD => write!(f, "DATA"),
-                _ => write!(f, "{}", field),
-            }
-        }
-
         let field_name = of_ty
             .as_struct()
             .or_else(|| match of_ty.rc_resource_type_id()? {
                 ClassID::Class(struct_id) => Some(struct_id),
                 _ => None,
             })
-            .and_then(|struct_id| self.structs().get(&struct_id))
+            .and_then(|struct_id| self.get_struct(struct_id))
             .and_then(|struct_def| struct_def.fields.get(&field))
             .map(|field| &field.name);
 
         match field_name {
             Some(name) => write!(f, "{}", name),
-            _ => write!(f, "{}", field),
+            _ => RawInstructionFormatter.format_field(of_ty, field, f),
+        }
+    }
+
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result {
+        let case_name = match of_ty {
+            Type::Variant(id) => self.get_variant(*id)
+                .and_then(|variant| variant.cases.get(tag))
+                .map(|case| &case.name),
+            _ => None,
+        };
+
+        match case_name {
+            Some(name) => write!(f, "{}", name),
+            _ => RawInstructionFormatter.format_variant_case(of_ty, tag, f),
         }
     }
 }

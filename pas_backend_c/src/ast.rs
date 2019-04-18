@@ -23,7 +23,7 @@ mod ty;
 pub struct Module {
     functions: Vec<FunctionDef>,
     static_array_types: HashMap<ArraySig, Type>,
-    struct_defs: Vec<StructDef>,
+    type_defs: Vec<TypeDef>,
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
 
@@ -56,9 +56,14 @@ impl Module {
         lookup_sys_builtin(metadata, &mut builtin_funcs, "FreeMem", FunctionName::FreeMem);
         lookup_sys_builtin(metadata, &mut builtin_funcs, "WriteLn", FunctionName::WriteLn);
 
-        let classes = metadata.structs()
+        let classes = metadata.type_defs()
             .iter()
-            .map(|(struct_id, struct_def)| Class::translate(*struct_id, struct_def, metadata))
+            .filter_map(|(id, def)| match def {
+                ir::metadata::TypeDef::Struct(struct_def) => {
+                    Some(Class::translate(*id, struct_def, metadata))
+                }
+                _ => None,
+            })
             .collect();
 
         let string_literals = metadata.strings()
@@ -67,7 +72,7 @@ impl Module {
 
         let mut module = Module {
             functions: Vec::new(),
-            struct_defs: Vec::new(),
+            type_defs: Vec::new(),
             static_array_types: HashMap::new(),
 
             string_literals,
@@ -108,7 +113,7 @@ impl Module {
                 members: array_members,
             };
 
-            self.struct_defs.push(array_struct);
+            self.type_defs.push(TypeDef::Struct(array_struct));
             let array_struct_ty = Type::Struct(name);
             self.static_array_types.insert(sig, array_struct_ty.clone());
 
@@ -124,9 +129,17 @@ impl Module {
     }
 
     pub fn add_ir(&mut self, module: &ir::Module) {
-        for (id, struct_def) in module.metadata.structs() {
-            let c_struct = StructDef::translate(*id, struct_def, self);
-            self.struct_defs.push(c_struct);
+        for (id, type_def) in module.metadata.type_defs() {
+            let c_type_def = match type_def {
+                ir::metadata::TypeDef::Struct(struct_def) => {
+                    TypeDef::Struct(StructDef::translate(*id, struct_def, self))
+                },
+
+                ir::metadata::TypeDef::Variant(variant_def) => {
+                    TypeDef::Variant(VariantDef::translate(*id, variant_def, self))
+                },
+            };
+            self.type_defs.push(c_type_def);
         }
 
         for (id, func) in &module.functions {
@@ -172,18 +185,18 @@ impl fmt::Display for Module {
 
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
-        for struct_def in &self.struct_defs {
-            writeln!(f, "{};", struct_def.decl)?;
+        for def in &self.type_defs {
+            writeln!(f, "{};", def.decl())?;
             writeln!(f)?;
         }
 
-        for struct_def in &self.struct_defs {
+        for def in &self.type_defs {
             // special case for System.String: we expect it to already be defined in the prelude
-            if struct_def.decl.name == StructName::Class(ir::metadata::STRING_ID) {
+            if def.decl().name == StructName::Class(ir::metadata::STRING_ID) {
                 continue;
             }
 
-            writeln!(f, "{}", struct_def)?;
+            writeln!(f, "{}", def)?;
             writeln!(f)?;
         }
 

@@ -63,6 +63,7 @@ pub enum Pointer {
     },
     VariantData {
         variant: Box<Pointer>,
+        tag: usize,
     },
 }
 
@@ -163,7 +164,7 @@ impl PartialEq<Self> for StructCell {
 
 #[derive(Debug, Clone)]
 pub struct VariantCell {
-    pub id: VariantID,
+    pub id: StructID,
     pub tag: Box<MemCell>,
     pub data: Box<MemCell>,
 }
@@ -394,7 +395,7 @@ impl Interpreter {
     }
 
     fn init_struct(&mut self, id: StructID) -> MemCell {
-        let struct_def = self.metadata.structs()[&id].clone();
+        let struct_def = self.metadata.get_struct(id).unwrap().clone();
 
         let mut fields = Vec::new();
         for (&id, field) in &struct_def.fields {
@@ -484,9 +485,13 @@ impl Interpreter {
                 }
             }
 
-            Pointer::VariantData { variant } => {
+            Pointer::VariantData { variant, tag } => {
+                let expect_tag = *tag as i32; //todo proper size type
                 match self.deref_ptr(variant) {
-                    MemCell::Variant(VariantCell { data, .. }) => data.as_ref(),
+                    MemCell::Variant(VariantCell { data, tag, .. }) => {
+                        assert_eq!(tag.as_i32().unwrap(), expect_tag);
+                        data.as_ref()
+                    },
                     other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
             }
@@ -542,9 +547,13 @@ impl Interpreter {
                 }
             }
 
-            Pointer::VariantData { variant } => {
+            Pointer::VariantData { variant, tag } => {
+                let expect_tag = *tag as i32; //todo proper size type
                 match self.deref_ptr_mut(variant) {
-                    MemCell::Variant(VariantCell { data, .. }) => data.as_mut(),
+                    MemCell::Variant(VariantCell { data, tag, .. }) => {
+                        assert_eq!(tag.as_i32().unwrap(), expect_tag);
+                        data.as_mut()
+                    },
                     other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
             }
@@ -735,7 +744,7 @@ impl Interpreter {
                 let cell_ty = Type::Struct(struct_id);
 
                 self.invoke_disposer(&cell, &cell_ty);
-                let struct_def: Struct = self.metadata.structs()[&struct_id].clone();
+                let struct_def: Struct = self.metadata.get_struct(struct_id).unwrap().clone();
 
                 for (field_id, field_def) in &struct_def.fields {
                     let field_cell = &struct_cell[*field_id];
@@ -1135,15 +1144,6 @@ impl Interpreter {
                             }
                         }
 
-                        Type::Variant(..) => {
-                            let variant = Box::new(self.addr_of_ref(a));
-                            match *field {
-                                VARIANT_TAG_FIELD => Pointer::VariantTag { variant },
-                                VARIANT_DATA_FIELD => Pointer::VariantData { variant },
-                                _ => panic!("bad field {} passed to Field instruction for variant", field),
-                            }
-                        }
-
                         _ => panic!(
                             "invalid base type referenced in Field instruction: {}.{}",
                             of_ty, field
@@ -1173,6 +1173,21 @@ impl Interpreter {
                             array: Box::new(array),
                         }),
                     );
+                }
+
+                Instruction::VariantTag { out, a, .. } => {
+                    let a_ptr = self.addr_of_ref(a);
+                    self.store(out, MemCell::Pointer(Pointer::VariantTag {
+                        variant: Box::new(a_ptr),
+                    }));
+                }
+
+                Instruction::VariantData { out, a, tag, .. } => {
+                    let a_ptr = self.addr_of_ref(a);
+                    self.store(out, MemCell::Pointer(Pointer::VariantData {
+                        variant: Box::new(a_ptr),
+                        tag: *tag,
+                    }));
                 }
 
                 Instruction::Label(_) => {

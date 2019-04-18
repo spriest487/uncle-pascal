@@ -163,19 +163,19 @@ impl Expr {
     pub fn translate_field(
         a: &ir::Ref,
         of_ty: &metadata::Type,
-        field: FieldName,
+        field_id: metadata::FieldID,
         module: &Module,
     ) -> Self {
         let a_expr = Expr::translate_ref(a, module);
 
-        match of_ty.rc_resource_type_id() {
-            // pointer to RC containing pointer to class resource
-            Some(resource_ty) => {
-                let class_ty = match resource_ty {
-                    metadata::ClassID::Class(struct_id) => Type::Struct(StructName::Class(struct_id)),
+        match of_ty {
+            metadata::Type::RcPointer(class_id) => {
+                // pointer to RC containing pointer to class resource
+                let class_ty = match class_id {
+                    metadata::ClassID::Class(struct_id) => Type::Struct(StructName::Class(*struct_id)),
                     _ => panic!(
                         "bad resource type {:?} in Field instruction target",
-                        resource_ty
+                        class_id
                     ),
                 };
 
@@ -185,18 +185,18 @@ impl Expr {
                 };
                 let class_ptr = Expr::Cast(Box::new(resource_ptr), class_ty.ptr());
 
-                Expr::Arrow {
+                let field_ref = Expr::Arrow {
                     base: Box::new(class_ptr),
-                    field,
-                }
-                .addr_of()
+                    field: FieldName::ID(field_id),
+                };
+                field_ref.addr_of()
             }
 
-            // local struct
-            None => {
+            _ => {
+                // local struct
                 let field = Expr::Field {
                     base: Box::new(a_expr),
-                    field,
+                    field: FieldName::ID(field_id),
                 };
 
                 field.addr_of()
@@ -412,13 +412,44 @@ impl<'a> Builder<'a> {
                 of_ty,
                 field,
             } => {
-                let field = Expr::translate_field(a, of_ty, FieldName::ID(*field), self.module);
+                let field = Expr::translate_field(a, of_ty, *field, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
                     field,
                     self.module,
                 )))
             }
+
+            ir::Instruction::VariantTag { out, a, .. } => {
+                let tag_field = Expr::Field {
+                    base: Box::new(Expr::translate_ref(a, self.module)),
+                    field: FieldName::VariantTag,
+                };
+
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    tag_field.addr_of(),
+                    self.module,
+                )));
+            },
+
+            ir::Instruction::VariantData { out, a, tag, .. } => {
+                let data_field = Expr::Field {
+                    base: Box::new(Expr::translate_ref(a, self.module)),
+                    field: FieldName::VariantData,
+                };
+
+                let case_field = Expr::Field {
+                    base: Box::new(data_field),
+                    field: FieldName::VariantDataCase(*tag),
+                };
+
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    case_field.addr_of(),
+                    self.module,
+                )));
+            },
 
             ir::Instruction::Call {
                 out,

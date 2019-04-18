@@ -166,6 +166,20 @@ pub enum Instruction {
         element: Type,
     },
 
+    /// stores a pointer to the tag of a variant at `a` into `out`
+    VariantTag {
+        out: Ref,
+        a: Ref,
+        of_ty: Type,
+    },
+    /// stores a pointer to the data for a variant case of index `tag` at `a` into `out`
+    VariantData {
+        out: Ref,
+        a: Ref,
+        tag: usize,
+        of_ty: Type,
+    },
+
     /// Stores the address of an object field from object of type `of_ty` at location `a` into `out`.
     /// `of_ty` must match the type of the value stored at `a` and must also be a structured type
     /// i.e. one that has fields (struct or RC-pointer to struct).
@@ -439,7 +453,7 @@ impl<'metadata> Builder<'metadata> {
     {
         match ty {
             Type::Struct(struct_id) => {
-                let fields: Vec<_> = self.metadata.structs()[&struct_id]
+                let fields: Vec<_> = self.metadata.get_struct(*struct_id).unwrap()
                     .fields
                     .iter()
                     .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
@@ -639,20 +653,42 @@ pub struct Module {
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Structures")?;
-        let mut structs: Vec<_> = self.metadata.structs().iter().collect();
-        structs.sort_by_key(|(id, _)| **id);
+        let mut defs: Vec<_> = self.metadata.type_defs().iter().collect();
+        defs.sort_by_key(|(id, _)| **id);
 
-        for (id, struct_def) in structs {
-            writeln!(f, "{{{}}} ({}):", id, struct_def.name)?;
-            for (id, field) in &struct_def.fields {
-                writeln!(
-                    f,
-                    "  {:8>} ({}): {}",
-                    format!(".{}", id),
-                    field.name,
-                    field.ty
-                )?;
+        for (id, def) in defs {
+            match def {
+                TypeDef::Struct(s) => {
+                writeln!(f, "{{{}}} ({}):", id, s.name)?;
+                    for (id, field) in &s.fields {
+                        writeln!(
+                            f,
+                            "  {:8>} ({}): {}",
+                            format!(".{}", id),
+                            field.name,
+                            field.ty
+                        )?;
+                    }
+                },
+
+                TypeDef::Variant(v) => {
+                    writeln!(f, "{{{}}} ({}):", id, v.name)?;
+                    for (i, case) in v.cases.iter().enumerate() {
+                        write!(
+                            f,
+                            "  {:8>} ({})",
+                            format!(".{}", i),
+                            case.name,
+                        )?;
+
+                        if let Some(ty) = &case.ty {
+                            write!(f, ": {}", ty)?;
+                        }
+                        writeln!(f)?;
+                    }
+                }
             }
+
             writeln!(f)?;
         }
 

@@ -246,11 +246,11 @@ pub fn translate_if_cond(
                     let binding_ty = builder.metadata.translate_type(&case_ty);
                     let data_ptr = builder.local_temp(binding_ty.clone().ptr());
 
-                    builder.append(Instruction::Field {
+                    builder.append(Instruction::VariantData {
                         out: data_ptr.clone(),
                         a: cond_val.clone(),
                         of_ty: variant_ty,
-                        field: VARIANT_DATA_FIELD,
+                        tag: *case_index,
                     });
 
                     vec![(binding_name, binding_ty, data_ptr.deref())]
@@ -331,11 +331,10 @@ fn translate_is_variant(
     let ty = builder.metadata.translate_type(&variant_ty);
 
     let tag_ptr = builder.local_temp(Type::I32.ptr());
-    builder.append(Instruction::Field {
+    builder.append(Instruction::VariantTag {
         out: tag_ptr.clone(),
         a: val,
         of_ty: ty,
-        field: VARIANT_TAG_FIELD,
     });
 
     let is = builder.local_temp(Type::Bool);
@@ -510,11 +509,10 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
             builder.begin_scope();
 
-            let tag_ptr = builder.local_temp(Type::I32);
-            builder.append(Instruction::Field {
+            let tag_ptr = builder.local_temp(Type::I32.ptr());
+            builder.append(Instruction::VariantTag {
                 out: tag_ptr.clone(),
                 a: out.clone(),
-                field: VARIANT_TAG_FIELD,
                 of_ty: out_ty.clone()
             });
 
@@ -526,10 +524,10 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
                 let arg_ty = builder.metadata.translate_type(arg.annotation().ty());
                 let field_ptr = builder.local_temp(arg_ty.ptr());
-                builder.append(Instruction::Field {
+                builder.append(Instruction::VariantData {
                     out: field_ptr.clone(),
                     a: out.clone(),
-                    field: VARIANT_DATA_FIELD,
+                    tag: variant_ctor.case_index,
                     of_ty: out_ty.clone()
                 });
                 builder.mov(field_ptr.deref(), Value::Ref(arg_ref));

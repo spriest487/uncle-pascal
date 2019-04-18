@@ -7,7 +7,7 @@ end;
 
 let x := MaybeInt.Some(1);
 if x is MaybeInt.Some val then
-    WriteLn('value of x is ' + IntToStr(val));
+    WriteLn('x is Some ' + IntToStr(val));
 
 if x is not MaybeInt.None then
     WriteLn('x is not None');

@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use pas_ir::{
-    metadata::{self, FieldID, StructID, InterfaceID, ClassID, VariantID},
+    metadata::{self, FieldID, StructID, InterfaceID, ClassID},
 };
 
 use crate::ast::{
@@ -159,6 +159,10 @@ pub enum FieldName {
 
     // builtin name: static array inner array
     StaticArrayElements,
+
+    VariantTag,
+    VariantData,
+    VariantDataCase(usize),
 }
 
 impl fmt::Display for FieldName {
@@ -169,6 +173,9 @@ impl fmt::Display for FieldName {
             FieldName::RcResource => write!(f, "resource"),
             FieldName::RcClass => write!(f, "class"),
             FieldName::StaticArrayElements => write!(f, "elements"),
+            FieldName::VariantTag => write!(f, "tag"),
+            FieldName::VariantData => write!(f, "data"),
+            FieldName::VariantDataCase(case) => write!(f, "data_{}", case),
         }
     }
 }
@@ -182,7 +189,7 @@ pub enum StructName {
     Class(StructID),
 
     // struct from variant def ID
-    Variant(VariantID),
+    Variant(StructID),
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
@@ -246,6 +253,79 @@ impl fmt::Display for StructDef {
             writeln!(f, "{};", member.to_decl_string(&name))?;
         }
         write!(f, "}};")
+    }
+}
+
+pub struct VariantCaseDef {
+    pub ty: Option<Type>,
+}
+
+pub struct VariantDef {
+    pub decl: StructDecl,
+    pub cases: Vec<VariantCaseDef>,
+}
+
+impl VariantDef {
+    pub fn translate(id: StructID, variant: &metadata::Variant, module: &mut Module) -> Self {
+        let cases = variant.cases.iter()
+            .map(|case| {
+                let ty = case.ty.as_ref().map(|data_ty| Type::from_metadata(data_ty, module));
+                VariantCaseDef { ty, }
+            })
+            .collect();
+
+        Self {
+            decl: StructDecl {
+                name: StructName::Variant(id),
+            },
+            cases,
+        }
+    }
+}
+
+impl fmt::Display for VariantDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{} {{", self.decl)?;
+
+        writeln!(f, "  {};", Type::Int32.to_decl_string(&FieldName::VariantTag))?;
+
+        if self.cases.iter().any(|c| c.ty.is_some()) {
+            writeln!(f, "  union Data {{")?;
+            for (index, case) in self.cases.iter().enumerate() {
+                let name = FieldName::VariantDataCase(index);
+
+                if let Some(case_ty) = &case.ty {
+                    writeln!(f, "   {};", case_ty.to_decl_string(&name))?;
+                }
+            }
+
+            writeln!(f, "  }} {};", FieldName::VariantData)?;
+        }
+
+        write!(f, "}};")
+    }
+}
+
+pub enum TypeDef {
+    Struct(StructDef),
+    Variant(VariantDef),
+}
+
+impl TypeDef {
+    pub fn decl(&self) -> &StructDecl {
+        match self {
+            TypeDef::Struct(s) => &s.decl,
+            TypeDef::Variant(v) => &v.decl,
+        }
+    }
+}
+
+impl fmt::Display for TypeDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeDef::Struct(s) => write!(f, "{}", s),
+            TypeDef::Variant(v) => write!(f, "{}", v),
+        }
     }
 }
 

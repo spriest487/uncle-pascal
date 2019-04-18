@@ -40,15 +40,6 @@ impl fmt::Display for InterfaceID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct VariantID(pub usize);
-
-impl fmt::Display for VariantID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
@@ -57,9 +48,6 @@ pub const DISPOSABLE_DISPOSE_INDEX: usize = 0;
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
-
-pub const VARIANT_TAG_FIELD: FieldID = FieldID(0);
-pub const VARIANT_DATA_FIELD: FieldID = FieldID(1);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath(Path<String>);
@@ -217,6 +205,7 @@ impl fmt::Display for ClassID {
 
 #[derive(Clone, Debug)]
 pub struct VariantCase {
+    pub name: String,
     pub ty: Option<Type>,
     pub rc: bool,
 }
@@ -224,7 +213,22 @@ pub struct VariantCase {
 #[derive(Clone, Debug)]
 pub struct Variant {
     pub name: NamePath,
-    pub cases: HashMap<FieldID, VariantCase>,
+    pub cases: Vec<VariantCase>,
+}
+
+#[derive(Clone, Debug)]
+pub enum TypeDef {
+    Struct(Struct),
+    Variant(Variant),
+}
+
+impl TypeDef {
+    pub fn name(&self) -> &NamePath {
+        match self {
+            TypeDef::Struct(s) => &s.name,
+            TypeDef::Variant(v) => &v.name,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -234,7 +238,7 @@ pub enum Type {
 
     Pointer(Box<Type>),
     Struct(StructID),
-    Variant(VariantID),
+    Variant(StructID),
     Array {
         element: Box<Type>,
         dim: usize,
@@ -349,10 +353,9 @@ pub struct FunctionDecl {
 
 #[derive(Debug, Clone)]
 pub struct Metadata {
-    structs: HashMap<StructID, Struct>,
+    type_defs: HashMap<StructID, TypeDef>,
     string_literals: HashMap<StringID, String>,
     ifaces: HashMap<InterfaceID, Interface>,
-    variants: HashMap<VariantID, Variant>,
 
     functions: HashMap<FunctionID, FunctionDecl>,
 }
@@ -360,25 +363,24 @@ pub struct Metadata {
 impl Metadata {
     pub fn new() -> Self {
         Self {
-            structs: HashMap::new(),
+            type_defs: HashMap::new(),
             string_literals: HashMap::new(),
             ifaces: HashMap::new(),
-            variants: HashMap::new(),
             functions: HashMap::new(),
         }
     }
 
     pub fn extend(&mut self, other: &Metadata) {
-        for (id, struct_def) in &other.structs {
-            if self.structs.contains_key(id) {
-                let existing = self.structs.get(id).unwrap();
+        for (id, def) in other.type_defs() {
+            if self.type_defs.contains_key(id) {
+                let existing = self.type_defs.get(id).unwrap();
                 panic!(
                     "duplicate struct ID {} in metadata (new: {}, existing: {})",
-                    id, struct_def.name, existing.name
+                    id, def.name(), existing.name()
                 );
             }
 
-            self.structs.insert(*id, struct_def.clone());
+            self.type_defs.insert(*id, def.clone());
         }
 
         for (id, string_lit) in &other.string_literals {
@@ -424,14 +426,28 @@ impl Metadata {
         }
     }
 
-    pub fn structs(&self) -> &HashMap<StructID, Struct> {
-        &self.structs
+    pub fn type_defs(&self) -> &HashMap<StructID, TypeDef> {
+        &self.type_defs
+    }
+
+    pub fn get_struct(&self, struct_id: StructID) -> Option<&Struct> {
+        match self.type_defs.get(&struct_id)? {
+            TypeDef::Variant(..) => None,
+            TypeDef::Struct(s) => Some(s),
+        }
+    }
+
+    pub fn get_variant(&self, struct_id: StructID) -> Option<&Variant> {
+        match self.type_defs.get(&struct_id)? {
+            TypeDef::Struct(..) => None,
+            TypeDef::Variant(v) => Some(v),
+        }
     }
 
     fn next_struct_id(&mut self) -> StructID {
         (0..)
             .map(StructID)
-            .filter(|id| !self.structs.contains_key(id))
+            .filter(|id| !self.type_defs.contains_key(id))
             .next()
             .unwrap()
     }
@@ -512,16 +528,10 @@ impl Metadata {
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Struct(id) => self
-                .structs
+            Type::Struct(id) | Type::Variant(id) => self
+                .type_defs
                 .get(id)
-                .map(|def| def.name.to_string())
-                .unwrap_or_else(|| id.to_string()),
-
-            Type::Variant(id) => self
-                .variants
-                .get(id)
-                .map(|def| def.name.to_string())
+                .map(|def| def.name().to_string())
                 .unwrap_or_else(|| id.to_string()),
 
             Type::Array { element, dim } => {
@@ -570,39 +580,45 @@ impl Metadata {
         };
 
         assert!(
-            !self.structs.values().any(|def| def.name == struct_name),
-            "duplicate struct def: {}",
+            !self.type_defs.values().any(|def| *def.name() == struct_name),
+            "duplicate type def: {}",
             struct_name
         );
 
         let struct_def = Struct::new(struct_name).with_fields(fields);
 
-        self.structs.insert(id, struct_def);
+        self.type_defs.insert(id, TypeDef::Struct(struct_def));
         id
     }
 
-    pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> VariantID {
+    pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
         let name_path = NamePath::from_ident(variant_def.ident.clone());
 
-        let variant_id = VariantID(self.next_struct_id().0);
+        let variant_id = self.next_struct_id();
 
-        let mut cases = HashMap::new();
-        for (id, case) in variant_def.cases.iter().enumerate() {
-            let case_id = FieldID(id);
+        let mut cases = Vec::new();
+        for case in &variant_def.cases {
             let (case_ty, case_rc) = match &case.data_ty {
                 Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
                 None => (None, false)
             };
-            cases.insert(case_id, VariantCase {
+            cases.push(VariantCase {
+                name: case.ident.to_string(),
                 ty: case_ty,
                 rc: case_rc,
             });
         }
 
-        self.variants.insert(variant_id, Variant {
+        assert!(
+            !self.type_defs.values().any(|def| *def.name() == name_path),
+            "duplicate type def: {}",
+            name_path
+        );
+
+        self.type_defs.insert(variant_id, TypeDef::Variant(Variant {
             name: name_path,
             cases,
-        });
+        }));
 
         variant_id
     }
@@ -763,21 +779,29 @@ impl Metadata {
     }
 
     pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, &Struct)> {
-        self.structs.iter().find_map(|(id, struct_def)| {
-            if struct_def.name == *name {
-                Some((*id, struct_def))
-            } else {
-                None
+        self.type_defs.iter().find_map(|(id, def)| {
+            match def {
+                TypeDef::Struct(struct_def) => if struct_def.name == *name {
+                    Some((*id, struct_def))
+                } else {
+                    None
+                },
+
+                _ => None,
             }
         })
     }
 
-    pub fn find_variant(&self, name: &NamePath) -> Option<(VariantID, &Variant)> {
-        self.variants.iter().find_map(|(id, variant_def)| {
-            if variant_def.name == *name {
-                Some((*id, variant_def))
-            } else {
-                None
+    pub fn find_variant(&self, name: &NamePath) -> Option<(StructID, &Variant)> {
+        self.type_defs.iter().find_map(|(id, def)| {
+            match def {
+                TypeDef::Variant(variant_def) => if variant_def.name == *name {
+                    Some((*id, variant_def))
+                } else {
+                    None
+                },
+
+                _ => None,
             }
         })
     }
