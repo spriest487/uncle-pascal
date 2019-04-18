@@ -701,7 +701,7 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
                     metadata.define_iface(iface);
                 }
                 ast::TypeDecl::Variant(variant) => {
-                    unimplemented!("variant translation ({:#?})", variant)
+                    metadata.define_variant(variant);
                 }
             }
         }

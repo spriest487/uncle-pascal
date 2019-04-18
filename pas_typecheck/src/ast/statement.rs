@@ -157,8 +157,7 @@ pub fn typecheck_stmt(
 
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, &Type::Nothing, ctx)?;
-            assert_eq!(&Type::Nothing, block.annotation.ty());
-            assert!(block.annotation.is_untyped());
+            assert_eq!(Type::Nothing, *block.annotation.ty());
 
             Ok(ast::Statement::Block(block))
         }

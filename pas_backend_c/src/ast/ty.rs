@@ -1,12 +1,14 @@
 use std::{collections::HashMap, fmt};
 
 use pas_ir::{
-    metadata::{self, FieldID, StructID, InterfaceID},
+    metadata::{self, FieldID, StructID, InterfaceID, ClassID, VariantID},
 };
 
-use crate::ast::Module;
-use crate::ast::function::{FunctionName, FunctionDecl};
-use pas_ir::metadata::ClassID;
+use crate::ast::{
+    Module,
+    FunctionName,
+    FunctionDecl,
+};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -31,7 +33,8 @@ impl Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::RcPointer(..) => Type::Struct(StructName::Rc).ptr(),
-            metadata::Type::Struct(id) => Type::Struct(StructName::ID(*id)),
+            metadata::Type::Struct(id) => Type::Struct(StructName::Class(*id)),
+            metadata::Type::Variant(id) => Type::Struct(StructName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
             metadata::Type::I32 => Type::Int32,
             metadata::Type::Bool => Type::Bool,
@@ -175,8 +178,11 @@ pub enum StructName {
     // internal struct for implementation of RC pointers
     Rc,
 
-    // struct from ID
-    ID(StructID),
+    // struct from class def ID
+    Class(StructID),
+
+    // struct from variant def ID
+    Variant(VariantID),
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
@@ -201,7 +207,8 @@ impl fmt::Display for StructName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StructName::Rc => write!(f, "Rc"),
-            StructName::ID(id) => write!(f, "Struct_{}", id),
+            StructName::Class(id) => write!(f, "Struct_{}", id.0),
+            StructName::Variant(id) => write!(f, "Variant_{}", id.0),
             StructName::StaticArray(i) => write!(f, "StaticArray_{}", i),
         }
     }
@@ -224,7 +231,7 @@ impl StructDef {
 
         Self {
             decl: StructDecl {
-                name: StructName::ID(id),
+                name: StructName::Class(id),
             },
             members,
         }
@@ -334,7 +341,7 @@ impl Class {
         def.push_str(&format!("struct Class Class_{} = {{\n", self.struct_id));
 
         def.push_str("  .size = sizeof(struct ");
-        def.push_str(&StructName::ID(self.struct_id).to_string());
+        def.push_str(&StructName::Class(self.struct_id).to_string());
         def.push_str("),\n");
 
         def.push_str("  .disposer = ");

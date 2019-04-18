@@ -1,7 +1,8 @@
+use std::{collections::hash_map::HashMap, fmt};
+
 use pas_syn as syn;
 use pas_syn::{Ident, Path};
 use pas_typecheck as pas_ty;
-use std::{collections::hash_map::HashMap, fmt};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -39,6 +40,15 @@ impl fmt::Display for InterfaceID {
     }
 }
 
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+pub struct VariantID(pub usize);
+
+impl fmt::Display for VariantID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
@@ -47,6 +57,9 @@ pub const DISPOSABLE_DISPOSE_INDEX: usize = 0;
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
+
+pub const VARIANT_TAG_FIELD: FieldID = FieldID(0);
+pub const VARIANT_DATA_FIELD: FieldID = FieldID(1);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath(Path<String>);
@@ -202,6 +215,18 @@ impl fmt::Display for ClassID {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct VariantCase {
+    pub ty: Option<Type>,
+    pub rc: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct Variant {
+    pub name: NamePath,
+    pub cases: HashMap<FieldID, VariantCase>,
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     /// no type or unknown type (used for raw pointers like void*)
@@ -209,6 +234,7 @@ pub enum Type {
 
     Pointer(Box<Type>),
     Struct(StructID),
+    Variant(VariantID),
     Array {
         element: Box<Type>,
         dim: usize,
@@ -266,7 +292,8 @@ impl fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),
             Type::Pointer(target) => write!(f, "^{}", target),
-            Type::Struct(id) => write!(f, "{{{}}}", id),
+            Type::Struct(id) => write!(f, "{{struct {}}}", id),
+            Type::Variant(id) => write!(f, "{{variant {}}}", id),
             Type::RcPointer(id) => match id {
                 ClassID::Class(id) => write!(f, "class {}", id),
                 ClassID::Interface(id) => write!(f, "iface {}", id),
@@ -325,6 +352,7 @@ pub struct Metadata {
     structs: HashMap<StructID, Struct>,
     string_literals: HashMap<StringID, String>,
     ifaces: HashMap<InterfaceID, Interface>,
+    variants: HashMap<VariantID, Variant>,
 
     functions: HashMap<FunctionID, FunctionDecl>,
 }
@@ -335,6 +363,7 @@ impl Metadata {
             structs: HashMap::new(),
             string_literals: HashMap::new(),
             ifaces: HashMap::new(),
+            variants: HashMap::new(),
             functions: HashMap::new(),
         }
     }
@@ -546,6 +575,32 @@ impl Metadata {
         id
     }
 
+    pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> VariantID {
+        let name_path = NamePath::from_ident(variant_def.ident.clone());
+
+        let variant_id = VariantID(self.next_struct_id().0);
+
+        let mut cases = HashMap::new();
+        for (id, case) in variant_def.cases.iter().enumerate() {
+            let case_id = FieldID(id);
+            let (case_ty, case_rc) = match &case.data_ty {
+                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
+                None => (None, false)
+            };
+            cases.insert(case_id, VariantCase {
+                ty: case_ty,
+                rc: case_rc,
+            });
+        }
+
+        self.variants.insert(variant_id, Variant {
+            name: name_path,
+            cases,
+        });
+
+        variant_id
+    }
+
     pub fn ifaces(&self) -> &HashMap<InterfaceID, Interface> {
         &self.ifaces
     }
@@ -663,7 +718,7 @@ impl Metadata {
                 let ty_name = NamePath::from_ident(class.ident.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
-                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
+                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty_name));
                 Type::Struct(id)
             }
 
@@ -671,7 +726,7 @@ impl Metadata {
                 let ty_name = NamePath::from_ident(class.ident.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
-                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
+                    .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty_name));
 
                 Type::RcPointer(ClassID::Class(id))
             }
@@ -685,7 +740,10 @@ impl Metadata {
             }
 
             pas_ty::Type::Variant(variant) => {
-                unimplemented!("ir type for variant ({:#?})", variant)
+                let ty_name = NamePath::from_ident(variant.ident.clone());
+                let (id, _) = self.find_variant(&ty_name)
+                    .unwrap_or_else(|| panic!("variant {} must exist in metadata", ty_name));
+                Type::Variant(id)
             }
 
             pas_ty::Type::GenericSelf => {
@@ -702,6 +760,16 @@ impl Metadata {
         self.structs.iter().find_map(|(id, struct_def)| {
             if struct_def.name == *name {
                 Some((*id, struct_def))
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn find_variant(&self, name: &NamePath) -> Option<(VariantID, &Variant)> {
+        self.variants.iter().find_map(|(id, variant_def)| {
+            if variant_def.name == *name {
+                Some((*id, variant_def))
             } else {
                 None
             }

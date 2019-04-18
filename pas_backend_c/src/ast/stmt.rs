@@ -172,7 +172,7 @@ impl Expr {
             // pointer to RC containing pointer to class resource
             Some(resource_ty) => {
                 let class_ty = match resource_ty {
-                    metadata::ClassID::Class(struct_id) => Type::Struct(StructName::ID(struct_id)),
+                    metadata::ClassID::Class(struct_id) => Type::Struct(StructName::Class(struct_id)),
                     _ => panic!(
                         "bad resource type {:?} in Field instruction target",
                         resource_ty

@@ -1,11 +1,13 @@
+use std::{fmt, rc::Rc};
+
+use pas_common::span::*;
+use pas_syn::{ast::Annotation, ident::IdentPath, Ident};
+
 use crate::{
-    ast::{Expression, FunctionDecl},
+    ast::{Expression, FunctionDecl, Variant},
     result::*,
     FunctionSig, Type, ValueKind,
 };
-use pas_common::span::*;
-use pas_syn::{ast::Annotation, ident::IdentPath, Ident};
-use std::{fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -60,6 +62,42 @@ impl MethodAnnotation {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct VariantCtorAnnotation {
+    pub span: Span,
+
+    variant_ty: Type,
+    pub case_index: usize,
+}
+
+impl VariantCtorAnnotation {
+    pub fn new(variant: Rc<Variant>, case_index: usize, span: Span) -> Self {
+        Self {
+            span,
+            case_index,
+            variant_ty: Type::Variant(variant),
+        }
+    }
+
+    pub fn ty(&self) -> &Type {
+        &self.variant_ty
+    }
+
+    pub fn decl(&self) -> Rc<Variant> {
+        match &self.variant_ty {
+            Type::Variant(variant) => variant.clone(),
+            _ => unreachable!("variant ctor must always have a variant type"),
+        }
+    }
+
+    pub fn decl_span(&self) -> &Span {
+        match &self.variant_ty {
+            Type::Variant(variant) => variant.span(),
+            _ => unreachable!("variant ctor must always have a variant type"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeAnnotation {
     Untyped(Span),
@@ -78,16 +116,10 @@ pub enum TypeAnnotation {
     Type(Type, Span),
     Namespace(IdentPath, Span),
     Method(MethodAnnotation),
+    VariantCtor(VariantCtorAnnotation),
 }
 
 impl TypeAnnotation {
-    pub fn is_untyped(&self) -> bool {
-        match self {
-            TypeAnnotation::Untyped(_) => true,
-            _ => false,
-        }
-    }
-
     pub fn expect_value(&self, expect_ty: &Type) -> TypecheckResult<()> {
         assert_ne!(Type::Nothing, *expect_ty);
 
@@ -118,6 +150,12 @@ impl TypeAnnotation {
                 expected: expect_ty.clone(),
                 actual: Type::Nothing,
             }),
+
+            TypeAnnotation::VariantCtor(ctor) => Err(TypecheckError::TypeMismatch {
+                span: ctor.span.clone(),
+                expected: expect_ty.clone(),
+                actual: ctor.ty().clone(),
+            }),
         }
     }
 
@@ -127,6 +165,7 @@ impl TypeAnnotation {
             TypeAnnotation::Untyped(_) => &Type::Nothing,
             TypeAnnotation::Type(_, _) => &Type::Nothing,
             TypeAnnotation::Method(method) => &method.method_ty,
+            TypeAnnotation::VariantCtor(..) => &Type::Nothing,
 
             TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. } => ty,
         }
@@ -140,6 +179,8 @@ impl TypeAnnotation {
             TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
+
+            TypeAnnotation::VariantCtor(ctor) => Some(ctor.decl_span()),
         }
     }
 
@@ -171,6 +212,7 @@ impl Spanned for TypeAnnotation {
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::TypedValue { span, .. }
             | TypeAnnotation::Method(MethodAnnotation { span, .. })
+            | TypeAnnotation::VariantCtor(VariantCtorAnnotation { span, .. })
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
         }

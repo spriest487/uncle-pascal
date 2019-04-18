@@ -1,13 +1,15 @@
-use self::heap::{Heap, HeapAddress};
-use crate::{
-    metadata::*, Function as FunctionIR, GlobalRef, Instruction, LocalID, Module, Ref, Type, Value,
-};
 use std::{
     collections::HashMap,
     f32, fmt,
     ops::{Add, Index, IndexMut, Sub},
     rc::Rc,
 };
+
+use crate::{
+    Function as FunctionIR, GlobalRef, Instruction, LocalID, metadata::*, Module, Ref, Type, Value,
+};
+
+use self::heap::{Heap, HeapAddress};
 
 mod builtin;
 mod heap;
@@ -56,6 +58,12 @@ pub enum Pointer {
         structure: Box<Pointer>,
         field: FieldID,
     },
+    VariantTag {
+        variant: Box<Pointer>,
+    },
+    VariantData {
+        variant: Box<Pointer>,
+    },
 }
 
 impl Pointer {
@@ -83,7 +91,9 @@ impl Add<usize> for Pointer {
                 array,
                 offset: offset + rhs,
             },
-            Pointer::IntoStruct { .. } => {
+            Pointer::VariantData { .. }
+            | Pointer::VariantTag { .. }
+            | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
         }
@@ -106,7 +116,9 @@ impl Sub<usize> for Pointer {
                 array,
                 offset: offset - rhs,
             },
-            Pointer::IntoStruct { .. } => {
+            Pointer::VariantData { .. }
+            | Pointer::VariantTag { .. }
+            | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
         }
@@ -147,6 +159,13 @@ impl PartialEq<Self> for StructCell {
                 None => panic!("structs can only contain comparable fields"),
             })
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct VariantCell {
+    pub id: VariantID,
+    pub tag: Box<MemCell>,
+    pub data: Box<MemCell>,
 }
 
 #[derive(Debug, Clone)]
@@ -200,6 +219,7 @@ pub enum MemCell {
     RcCell(RcCell),
     Function(Function),
     Structure(StructCell),
+    Variant(VariantCell),
     Pointer(Pointer),
     Array(ArrayCell),
 }
@@ -326,7 +346,7 @@ impl StackFrame {
     pub fn new() -> Self {
         Self {
             locals: Vec::new(),
-            block_stack: vec![Block { decls: Vec::new() }]
+            block_stack: vec![Block { decls: Vec::new() }],
         }
     }
 }
@@ -411,6 +431,14 @@ impl Interpreter {
                 })
             }
 
+            Type::Variant(id) => {
+                MemCell::Variant(VariantCell {
+                    id: *id,
+                    tag: Box::new(MemCell::I32(0)),
+                    data: Box::new(MemCell::Pointer(Pointer::Null)),
+                })
+            }
+
             _ => panic!("can't initialize default cell of type `{:?}`", ty),
         }
     }
@@ -446,6 +474,20 @@ impl Interpreter {
                     }
 
                     other => panic!("dereferencing struct member pointer which doesn't point into a struct (was: {:#?})", other)
+                }
+            }
+
+            Pointer::VariantTag { variant } => {
+                match self.deref_ptr(variant) {
+                    MemCell::Variant(variant_cell) => variant_cell.tag.as_ref(),
+                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
+                }
+            }
+
+            Pointer::VariantData { variant } => {
+                match self.deref_ptr(variant) {
+                    MemCell::Variant(VariantCell { data, .. }) => data.as_ref(),
+                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
             }
 
@@ -490,6 +532,20 @@ impl Interpreter {
                     }
 
                     other => panic!("dereferencing struct member pointer which doesn't point into a struct (was: {:#?})", other),
+                }
+            }
+
+            Pointer::VariantTag { variant } => {
+                match self.deref_ptr_mut(variant) {
+                    MemCell::Variant(variant_cell) => variant_cell.tag.as_mut(),
+                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
+                }
+            }
+
+            Pointer::VariantData { variant } => {
+                match self.deref_ptr_mut(variant) {
+                    MemCell::Variant(VariantCell { data, .. }) => data.as_mut(),
+                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
             }
 
@@ -1054,32 +1110,44 @@ impl Interpreter {
                     field,
                     of_ty,
                 } => {
-                    let struct_ptr = match of_ty {
-                        Type::Struct(_) => self.addr_of_ref(a),
+                    let field_ptr = match of_ty {
+                        Type::Struct(..) => {
+                            let struct_ptr = self.addr_of_ref(a);
 
-                        Type::RcPointer(ClassID::Class(..)) => {
-                            let rc_addr = self
+                            Pointer::IntoStruct {
+                                field: *field,
+                                structure: Box::new(struct_ptr),
+                            }
+                        }
+
+                        Type::RcPointer(..) => {
+                            let struct_ptr = self
                                 .load(&a.clone().deref())
                                 .as_rc()
-                                .map(|rc_cell| rc_cell.resource_addr)
+                                .map(|rc_cell| Pointer::Heap(rc_cell.resource_addr))
                                 .unwrap_or_else(|| {
                                     panic!("failed to read value pointer of rc pointer @ {}", a);
                                 });
 
-                            Pointer::Heap(rc_addr)
+                            Pointer::IntoStruct {
+                                field: *field,
+                                structure: Box::new(struct_ptr),
+                            }
                         }
 
-                        _ => {
-                            panic!(
-                                "invalid base type referenced in Field instruction: {}.{}",
-                                of_ty, field
-                            );
+                        Type::Variant(..) => {
+                            let variant = Box::new(self.addr_of_ref(a));
+                            match *field {
+                                VARIANT_TAG_FIELD => Pointer::VariantTag { variant },
+                                VARIANT_DATA_FIELD => Pointer::VariantData { variant },
+                                _ => panic!("bad field {} passed to Field instruction for variant", field),
+                            }
                         }
-                    };
 
-                    let field_ptr = Pointer::IntoStruct {
-                        field: *field,
-                        structure: Box::new(struct_ptr),
+                        _ => panic!(
+                            "invalid base type referenced in Field instruction: {}.{}",
+                            of_ty, field
+                        ),
                     };
 
                     self.store(out, MemCell::Pointer(field_ptr));

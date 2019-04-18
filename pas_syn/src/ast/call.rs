@@ -2,10 +2,14 @@ use crate::{
     ast::{
         Annotation,
         Expression,
+        Variant,
     },
     parse::prelude::*,
 };
-use std::fmt;
+use std::{
+    fmt,
+    rc::Rc,
+};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -71,27 +75,37 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
 }
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
+pub struct VariantCtorCall<A: Annotation> {
+    pub variant: Rc<Variant<A>>,
+    pub case_index: usize,
+
+    pub arg: Option<Expression<A>>,
+    pub annotation: A,
+}
+
+impl<A: Annotation> fmt::Display for VariantCtorCall<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let case = &self.variant.cases[self.case_index];
+
+        write!(f, "{}.{}(", self.variant.ident, case.ident)?;
+        if let Some(arg) = &self.arg {
+            write!(f, "{}", arg)?;
+        }
+        write!(f, ")")
+    }
+}
+
+impl<A: Annotation> Spanned for VariantCtorCall<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
+#[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub enum Call<A: Annotation> {
     Function(FunctionCall<A>),
     Method(MethodCall<A>),
-}
-
-impl<A: Annotation> Call<A> {
-    pub fn args(&self) -> &[Expression<A>] {
-        match self {
-            Call::Function(func_call) => &func_call.args,
-            Call::Method(method_call) => &method_call.args,
-        }
-    }
-
-    pub fn args_brackets(&self) -> (&Span, &Span) {
-        let brackets = match self {
-            Call::Function(func_call) => &func_call.args_brackets,
-            Call::Method(method_call) => &method_call.args_brackets
-        };
-
-        (&brackets.0, &brackets.1)
-    }
+    VariantCtor(VariantCtorCall<A>),
 }
 
 impl<A: Annotation> fmt::Display for Call<A> {
@@ -99,6 +113,7 @@ impl<A: Annotation> fmt::Display for Call<A> {
         match self {
             Call::Function(func_call) => write!(f, "{}", func_call),
             Call::Method(method_call) => write!(f, "{}", method_call),
+            Call::VariantCtor(var_ctor_call) => write!(f, "{}", var_ctor_call),
         }
     }
 }
@@ -108,6 +123,7 @@ impl<A: Annotation> Spanned for Call<A> {
         match self {
             Call::Function(call) => call.span(),
             Call::Method(call) => call.span(),
+            Call::VariantCtor(call) => call.span(),
         }
     }
 }
@@ -117,6 +133,7 @@ impl<A: Annotation> Call<A> {
         match self {
             Call::Function(call) => &call.annotation,
             Call::Method(call) => &call.annotation,
+            Call::VariantCtor(call) => &call.annotation,
         }
     }
 }

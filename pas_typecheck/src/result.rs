@@ -164,7 +164,6 @@ impl DiagnosticOutput for TypecheckError {
             }
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
             TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
-
         }
     }
 

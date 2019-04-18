@@ -1,8 +1,15 @@
+pub use self::{annotation::*, context::*, result::*, ty::*};
+
 mod annotation;
 mod context;
 mod result;
 
 pub mod ast {
+    pub use self::{
+        block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
+        typedecl::*, unit::*,
+    };
+
     mod block;
     mod cond;
     mod ctor;
@@ -15,38 +22,34 @@ pub mod ast {
     mod unit;
 
     mod prelude {
-        pub use crate::{
-            ast::*, context::*, result::*, FunctionParamSig, FunctionSig, MethodAnnotation,
-            Primitive, Type, TypeAnnotation,
-        };
         pub use pas_common::span::*;
         pub use pas_syn::{
             ast::{self, FunctionParamMod},
-            parse::InvalidStatement,
             ident::*,
+            parse::InvalidStatement,
+        };
+
+        pub use crate::{
+            annotation::*, ast::*, context::*, result::*, FunctionParamSig, FunctionSig, Primitive,
+            Type,
         };
     }
-
-    pub use self::{
-        block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-        typedecl::*, unit::*,
-    };
 }
 
-pub use self::{annotation::*, context::*, result::*, ty::*};
-
 pub mod ty {
-    use crate::{
-        ast::{Class, FunctionDecl, Interface, Variant},
-        Context, TypeAnnotation,
-    };
+    use std::{fmt, rc::Rc};
+
     use pas_common::span::*;
     use pas_syn::{
         ast::{self, ClassKind, FunctionParamMod, Typed},
         ident::*,
         Operator,
     };
-    use std::{fmt, rc::Rc};
+
+    use crate::{
+        ast::{Class, FunctionDecl, Interface, Variant},
+        Context, TypeAnnotation,
+    };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub struct FunctionParamSig {
@@ -256,6 +259,7 @@ pub mod ty {
                 Type::Primitive(p) => Some(builtin_path(p.name())),
                 Type::Interface(iface) => Some(iface.ident.clone()),
                 Type::Record(class) | Type::Class(class) => Some(class.ident.clone()),
+                Type::Variant(variant) => Some(variant.ident.clone()),
                 _ => None,
             }
         }
@@ -267,6 +271,7 @@ pub mod ty {
                 Type::Primitive(p) => Some(p.name().to_string()),
                 Type::Interface(iface) => Some(iface.ident.to_string()),
                 Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
+                Type::Variant(variant) => Some(variant.ident.to_string()),
                 _ => None,
             }
         }
@@ -466,8 +471,9 @@ pub mod ty {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use crate::FunctionParamSig;
+
+    use super::*;
 
     const INT32: Type = Type::Primitive(Primitive::Int32);
     const BOOL: Type = Type::Primitive(Primitive::Boolean);

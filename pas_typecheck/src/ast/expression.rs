@@ -1,6 +1,9 @@
-use crate::{ast::prelude::*, ty::FunctionParamSig};
 use pas_common::span::*;
 use pas_syn::ast;
+
+use crate::{ast::prelude::*, ty::FunctionParamSig};
+
+use std::rc::Rc;
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -145,23 +148,20 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
         TypeAnnotation::TypedValue {
             ty: Type::Function(sig),
             ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
-            .map(CallOrCtor::Call)?,
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx).map(CallOrCtor::Call)?,
 
         TypeAnnotation::Function {
             ty: Type::Function(sig),
             ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
-            .map(CallOrCtor::Call)?,
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx).map(CallOrCtor::Call)?,
 
         TypeAnnotation::Method(method_annotation) => {
-            typecheck_method_call(&func_call, &method_annotation, ctx)
-                .map(CallOrCtor::Call)?
+            typecheck_method_call(&func_call, &method_annotation, ctx).map(CallOrCtor::Call)?
         }
 
-        TypeAnnotation::Type(ty, ..) if call.args().is_empty() && ty.full_path().is_some() => {
+        TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
             let ty: &Type = ty;
-            let (open, close) = call.args_brackets();
+            let (open, close) = &func_call.args_brackets;
             let ctor = ast::ObjectCtor {
                 ident: ty.full_path().unwrap(),
                 annotation: call.span().clone(),
@@ -173,6 +173,16 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
             };
 
             typecheck_object_ctor(&ctor, ctx).map(CallOrCtor::Ctor)?
+        }
+
+        TypeAnnotation::VariantCtor(variant, ..) => {
+            typecheck_variant_ctor_call(
+                variant.decl(),
+                &func_call.args,
+                variant.case_index,
+                call.span().clone(),
+                ctx,
+            ).map(CallOrCtor::Call)?
         }
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
@@ -284,6 +294,69 @@ fn typecheck_func_call(
         args,
         target,
         args_brackets: func_call.args_brackets.clone(),
+    }))
+}
+
+fn typecheck_variant_ctor_call(
+    variant: Rc<Variant>,
+    args: &[ast::Expression<Span>],
+    case_index: usize,
+    span: Span,
+    ctx: &mut Context,
+) -> TypecheckResult<Call> {
+    let arg = match &variant.cases[case_index].data_ty {
+        None => {
+            if args.len() != 0 {
+                let bad_args: Vec<_> = args.iter()
+                    .map(|arg| typecheck_expr(arg, &Type::Nothing, ctx)
+                        .map(|arg| arg.annotation().ty().clone()))
+                    .collect::<TypecheckResult<_>>()?;
+
+                return Err(TypecheckError::InvalidArgs {
+                    expected: Vec::new(),
+                    actual: bad_args,
+                    span,
+                });
+            }
+
+            None
+        }
+
+        Some(data_ty) => {
+            let args: Vec<Expression> = args.iter()
+                .map(|arg| typecheck_expr(arg, data_ty, ctx))
+                .collect::<TypecheckResult<_>>()?;
+
+            if args.len() != 1 {
+                let bad_args: Vec<_> = args.into_iter()
+                    .map(|arg| arg.annotation().ty().clone())
+                    .collect();
+
+                return Err(TypecheckError::InvalidArgs {
+                    expected: Vec::new(),
+                    actual: bad_args,
+                    span,
+                });
+            }
+
+            args[0].annotation().expect_value(data_ty)?;
+
+            Some(args.into_iter().next().unwrap())
+        }
+    };
+
+    let annotation = TypeAnnotation::TypedValue {
+        decl: None,
+        span,
+        ty: Type::Variant(variant.clone()),
+        value_kind: ValueKind::Temporary,
+    };
+
+    Ok(ast::Call::VariantCtor(ast::VariantCtorCall {
+        variant,
+        annotation,
+        arg,
+        case_index,
     }))
 }
 
@@ -523,7 +596,7 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
                     ident: decl_ident.clone(),
                     usage: ident.span().clone(),
                 })
-            },
+            }
 
             _ => Ok(()),
         },
@@ -627,6 +700,12 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
             };
 
             expect_args_initialized(params, &method_call.args, ctx)?;
+        }
+
+        ast::Call::VariantCtor(ctor_call) => {
+            if let Some(arg_expr) = &ctor_call.arg {
+                expect_expr_initialized(&arg_expr, ctx)?;
+            }
         }
     }
 

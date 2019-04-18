@@ -1,3 +1,4 @@
+use crate::annotation::VariantCtorAnnotation;
 use crate::ast::prelude::*;
 use pas_syn::Operator;
 
@@ -196,7 +197,7 @@ fn desugar_string_concat(
                 annotation: annotation.clone(),
                 args: vec![lhs, rhs],
                 target: concat_func,
-                args_brackets: (span.clone(), span.clone())
+                args_brackets: (span.clone(), span.clone()),
             });
 
             Ok(ast::Expression::from(concat_call))
@@ -218,6 +219,24 @@ fn typecheck_member_of(
             let member_ident = member_ident.clone();
 
             let annotation = match lhs.annotation() {
+                TypeAnnotation::Type(Type::Variant(variant), ..) => {
+                    let case_index = variant
+                        .cases
+                        .iter()
+                        .position(|case| case.ident == member_ident)
+                        .ok_or_else(|| NameError::MemberNotFound {
+                            span: rhs.annotation().span().clone(),
+                            base: Type::Variant(variant.clone()),
+                            member: member_ident.clone(),
+                        })?;
+
+                    TypeAnnotation::VariantCtor(VariantCtorAnnotation::new(
+                        variant.clone(),
+                        case_index,
+                        member_ident.span().clone(),
+                    ))
+                }
+
                 TypeAnnotation::TypedValue {
                     value_kind: base_value_kind,
                     ty: base_ty,

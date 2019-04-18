@@ -11,6 +11,7 @@
 * does symbol with same name declared in branch scope confuse the initialization consolidation?
 * interpreter should disallow overwriting cells on stack/heap with cells of different types (by dtor)
 * use ids for methods instead of names
+* unify StructID, InterfaceID, VariantID into TypeID
 
 # big features
 

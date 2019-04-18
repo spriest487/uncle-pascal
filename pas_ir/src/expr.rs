@@ -434,6 +434,42 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
             translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
         }
+
+        ast::Call::VariantCtor(variant_ctor) => {
+            let variant_ty = pas_ty::Type::Variant(variant_ctor.variant.clone());
+            let out_ty = builder.metadata.translate_type(&variant_ty);
+            let out = builder.local_temp(out_ty.clone());
+
+            builder.begin_scope();
+
+            let tag_ptr = builder.local_temp(Type::I32);
+            builder.append(Instruction::Field {
+                out: tag_ptr.clone(),
+                a: out.clone(),
+                field: VARIANT_TAG_FIELD,
+                of_ty: out_ty.clone()
+            });
+
+            //todo: proper index type
+            builder.mov(tag_ptr.deref(), Value::LiteralI32(variant_ctor.case_index as i32));
+
+            if let Some(arg) = &variant_ctor.arg {
+                let arg_ref = translate_expr(arg, builder);
+
+                let arg_ty = builder.metadata.translate_type(arg.annotation().ty());
+                let field_ptr = builder.local_temp(arg_ty.ptr());
+                builder.append(Instruction::Field {
+                    out: field_ptr.clone(),
+                    a: out.clone(),
+                    field: VARIANT_DATA_FIELD,
+                    of_ty: out_ty.clone()
+                });
+                builder.mov(field_ptr.deref(), Value::Ref(arg_ref));
+            }
+
+            builder.end_scope();
+            Some(out)
+        }
     }
 }
 

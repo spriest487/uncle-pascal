@@ -17,12 +17,16 @@ pub fn typecheck_if_cond(
 
     // ...and verify the condition is definitely a boolean in non-is-match conditions
     if if_cond.is_pattern.is_none() {
-        cond.annotation().expect_value(&Type::Primitive(Primitive::Boolean))?;
+        cond.annotation()
+            .expect_value(&Type::Primitive(Primitive::Boolean))?;
     }
 
     fn check_matchable(ty: &Type, span: &Span) -> TypecheckResult<()> {
         if !ty.is_matchable() {
-            Err(TypecheckError::NotMatchable { ty: ty.clone(), span: span.clone() })
+            Err(TypecheckError::NotMatchable {
+                ty: ty.clone(),
+                span: span.clone(),
+            })
         } else {
             Ok(())
         }

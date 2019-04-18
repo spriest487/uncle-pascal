@@ -179,7 +179,7 @@ impl fmt::Display for Module {
 
         for struct_def in &self.struct_defs {
             // special case for System.String: we expect it to already be defined in the prelude
-            if struct_def.decl.name == StructName::ID(ir::metadata::STRING_ID) {
+            if struct_def.decl.name == StructName::Class(ir::metadata::STRING_ID) {
                 continue;
             }
 
@@ -203,7 +203,7 @@ impl fmt::Display for Module {
         }
 
         for (str_id, lit) in &self.string_literals {
-            let string_name = StructName::ID(ir::metadata::STRING_ID);
+            let string_name = StructName::Class(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
             writeln!(f, "  .field_0 = (unsigned char*) \"{}\",", lit)?;
             writeln!(f, "  .field_1 = {},", lit.len())?;
