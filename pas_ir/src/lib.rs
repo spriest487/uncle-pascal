@@ -475,17 +475,76 @@ impl<'metadata> Builder<'metadata> {
                 }
             }
 
+            Type::Variant(id) => {
+                let cases = &self.metadata.get_variant(*id).unwrap()
+                    .cases.to_vec();
+
+                // get the tag
+                let tag_ptr = self.local_temp(Type::I32.ptr());
+                self.append(Instruction::VariantTag {
+                    out: tag_ptr.clone(),
+                    a: at.clone(),
+                    of_ty: Type::Variant(*id),
+                });
+
+                // jump out of the search loop if we find the matching case
+                let break_label = self.alloc_label();
+
+                // for each case, check if the tag matches and jump past it if not
+                let is_not_case = self.local_temp(Type::Bool);
+                for (tag, case) in cases.iter().enumerate() {
+                    if let Some(data_ty) = &case.ty {
+                        let skip_case_label = self.alloc_label();
+
+                        // is_not_case := tag_ptr^ != tag
+                        self.append(Instruction::Eq {
+                            out: is_not_case.clone(),
+                            a: Value::Ref(tag_ptr.clone().deref()),
+                            b: Value::LiteralI32(tag as i32), //todo proper size type
+                        });
+                        self.append(Instruction::Not {
+                            out: is_not_case.clone(),
+                            a: Value::Ref(is_not_case.clone()),
+                        });
+
+                        self.append(Instruction::JumpIf {
+                            dest: skip_case_label,
+                            test: Value::Ref(is_not_case.clone()),
+                        });
+
+                        // get ptr into case data and visit it
+                        let data_ptr = self.local_temp(data_ty.clone().ptr());
+                        self.append(Instruction::VariantData {
+                            out: data_ptr.clone(),
+                            a: at.clone(),
+                            of_ty: Type::Variant(*id),
+                            tag,
+                        });
+
+                        self.visit_deep(data_ptr.deref(), &data_ty, f);
+
+                        // break
+                        self.append(Instruction::Jump { dest: break_label });
+
+                        // jump to here if this case isn't active
+                        self.append(Instruction::Label(skip_case_label));
+                    }
+                }
+
+                self.append(Instruction::Label(break_label));
+            }
+
             Type::Array { element, dim } => {
-                let element_ref = self.local_temp(element.clone().ptr());
+                let element_ptr = self.local_temp(element.clone().ptr());
                 for i in 0..*dim {
                     self.append(Instruction::Element {
-                        out: element_ref.clone(),
+                        out: element_ptr.clone(),
                         a: at.clone(),
                         element: *element.clone(),
                         index: Value::LiteralI32(i as i32), //todo: real usize type,
                     });
 
-                    self.visit_deep(element_ref.clone().deref(), element, f);
+                    self.visit_deep(element_ptr.clone().deref(), element, f);
                 }
             }
 
