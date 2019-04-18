@@ -31,7 +31,7 @@ pub mod ast {
 
         pub use crate::{
             annotation::*, ast::*, context::*, result::*, FunctionParamSig, FunctionSig, Primitive,
-            Type,
+            Type, TypePattern,
         };
     }
 }
@@ -48,7 +48,9 @@ pub mod ty {
 
     use crate::{
         ast::{Class, FunctionDecl, Interface, Variant},
-        Context, TypeAnnotation,
+        context::ns,
+        result::*,
+        Context, Decl, NameError, TypeAnnotation,
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -466,6 +468,226 @@ pub mod ty {
     pub struct MemberRef<'ty> {
         pub ident: &'ty Ident,
         pub ty: &'ty Type,
+    }
+
+    #[derive(Debug, Clone, Eq, PartialEq, Hash)]
+    pub enum TypePattern {
+        VariantCase {
+            variant: Rc<Variant>,
+            case_index: usize,
+            data_binding: Option<Ident>,
+            span: Span,
+        },
+        NegatedVariantCase {
+            variant: Rc<Variant>,
+            case_index: usize,
+            span: Span,
+        },
+        Type {
+            ty: Type,
+            binding: Option<Ident>,
+            span: Span,
+        },
+        NegatedType {
+            ty: Type,
+            span: Span,
+        },
+    }
+
+    impl Spanned for TypePattern {
+        fn span(&self) -> &Span {
+            match self {
+                TypePattern::VariantCase { span, .. } => span,
+                TypePattern::NegatedVariantCase { span, .. } => span,
+                TypePattern::Type { span, .. } => span,
+                TypePattern::NegatedType { span, .. } => span,
+            }
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+    pub struct PatternBinding<'pat> {
+        pub ident: &'pat Ident,
+        pub ty: &'pat Type,
+    }
+
+    impl TypePattern {
+        fn find_variant_case(
+            path: &IdentPath,
+            ctx: &Context,
+        ) -> TypecheckResult<Option<(Rc<Variant>, usize)>> {
+            let variant_parts = path.iter().cloned().take(path.as_slice().len() - 1);
+            let stem_name = IdentPath::from_parts(variant_parts);
+
+            match ctx.resolve(&stem_name) {
+                Some(ns::MemberRef::Value {
+                    value: Decl::Type(Type::Variant(variant)),
+                    ..
+                }) => {
+                    let case_ident = path.last();
+
+                    let case_index = variant.case_position(case_ident).ok_or_else(|| {
+                        let err_span = path.first().span.to(&case_ident.span);
+
+                        TypecheckError::from(NameError::MemberNotFound {
+                            base: Type::Variant(variant.clone()),
+                            member: case_ident.clone(),
+                            span: err_span,
+                        })
+                    })?;
+
+                    let case = (variant.clone(), case_index);
+                    Ok(Some(case))
+                }
+
+                _ => Ok(None),
+            }
+        }
+
+        fn find_pattern_ty(
+            ty: &ast::TypeName,
+            span: &Span,
+            ctx: &Context,
+        ) -> TypecheckResult<Type> {
+            let ty = ctx.find_type(ty)?;
+
+            if !ty.is_matchable() {
+                Err(TypecheckError::NotMatchable {
+                    ty: ty.clone(),
+                    span: span.clone(),
+                })
+            } else {
+                Ok(ty)
+            }
+        }
+
+        pub fn find(pattern: &ast::TypeNamePattern, ctx: &Context) -> TypecheckResult<TypePattern> {
+            match pattern {
+                ast::TypeNamePattern::TypeName {
+                    ty:
+                        ast::TypeName::Ident {
+                            indirection: 0,
+                            ident,
+                        },
+                    binding,
+                    span,
+                } if ident.as_slice().len() > 1 => match Self::find_variant_case(ident, ctx)? {
+                    Some((variant, case_index)) => Ok(TypePattern::VariantCase {
+                        variant: variant.clone(),
+                        case_index,
+                        data_binding: binding.clone(),
+                        span: span.clone(),
+                    }),
+
+                    None => {
+                        let ty_name = ast::TypeName::Ident { ident: ident.clone(), indirection: 0 };
+                        let ty = Self::find_pattern_ty(&ty_name, pattern.span(), ctx)?;
+                        Ok(TypePattern::Type {
+                            ty,
+                            binding: binding.clone(),
+                            span: span.clone(),
+                        })
+                    }
+                },
+
+                ast::TypeNamePattern::NegatedTypeName {
+                    ty:
+                        ast::TypeName::Ident {
+                            indirection: 0,
+                            ident,
+                        },
+                    span,
+                } if ident.as_slice().len() > 1 => match Self::find_variant_case(ident, ctx)? {
+                    Some((variant, case_index)) => Ok(TypePattern::NegatedVariantCase {
+                        variant: variant.clone(),
+                        case_index,
+                        span: span.clone(),
+                    }),
+
+                    None => {
+                        let ty_name = ast::TypeName::Ident { ident: ident.clone(), indirection: 0 };
+                        let ty = Self::find_pattern_ty(&ty_name, pattern.span(), ctx)?;
+                        Ok(TypePattern::NegatedType { ty, span: span.clone(), })
+                    }
+                },
+
+                ast::TypeNamePattern::TypeName { ty, binding, span, } => {
+                    let ty = Self::find_pattern_ty(ty, pattern.span(), ctx)?;
+                    Ok(TypePattern::Type {
+                        ty,
+                        binding: binding.clone(),
+                        span: span.clone(),
+                    })
+                }
+
+                ast::TypeNamePattern::NegatedTypeName { ty, span } => {
+                    let ty = Self::find_pattern_ty(ty, pattern.span(), ctx)?;
+                    Ok(TypePattern::NegatedType { ty, span: span.clone(), })
+                }
+            }
+        }
+
+        pub fn bindings(&self) -> Vec<PatternBinding> {
+            match self {
+                TypePattern::Type {
+                    ty,
+                    binding: Some(ident),
+                    ..
+                } => vec![PatternBinding { ident: ident, ty }],
+
+                TypePattern::VariantCase {
+                    variant,
+                    case_index,
+                    data_binding: Some(ident),
+                    ..
+                } => {
+                    let case_ty = variant.cases[*case_index].data_ty.as_ref()
+                        .expect("variant case pattern with a binding must always reference a case which has a data member");
+                    vec![PatternBinding { ty: case_ty, ident }]
+                }
+
+                _ => Vec::new(),
+            }
+        }
+    }
+
+    impl fmt::Display for TypePattern {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                TypePattern::Type { ty, binding, .. } => {
+                    write!(f, "{}", ty)?;
+                    if let Some(binding) = binding {
+                        write!(f, " {}", binding)?;
+                    }
+                    Ok(())
+                }
+
+                TypePattern::NegatedType { ty ,.. } => write!(f, "not {}", ty),
+
+                TypePattern::VariantCase {
+                    variant,
+                    case_index,
+                    data_binding,
+                    ..
+                } => {
+                    let case_ident = &variant.cases[*case_index].ident;
+                    write!(f, "{}.{}", variant.ident, case_ident)?;
+                    if let Some(binding) = data_binding {
+                        write!(f, " {}", binding)?;
+                    }
+                    Ok(())
+                }
+
+                TypePattern::NegatedVariantCase {
+                    variant,
+                    case_index,
+                    ..
+                } => {
+                    let case_ident = &variant.cases[*case_index].ident;
+                    write!(f, "not {}.{}", variant.ident, case_ident)
+                }
+            }
+        }
     }
 }
 

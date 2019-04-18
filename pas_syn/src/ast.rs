@@ -39,10 +39,12 @@ pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
 
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
+    type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
     type Type = TypeName;
+    type Pattern = TypeNamePattern;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -148,6 +150,77 @@ impl fmt::Display for TypeName {
             }
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum TypeNamePattern {
+    TypeName { ty: TypeName, binding: Option<Ident>, span: Span, },
+    NegatedTypeName { ty: TypeName, span: Span, },
+}
+
+impl TypeNamePattern {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let not_kw = match tokens.look_ahead().match_one(Operator::Not) {
+            Some(kw) => {
+                tokens.advance(1);
+                Some(kw)
+            },
+            None => None,
+        } ;
+
+        let ty = TypeName::parse(tokens)?;
+
+        match not_kw {
+            Some(not_kw) => Ok(TypeNamePattern::NegatedTypeName {
+                span: not_kw.span().to(ty.span()),
+                ty,
+            }),
+
+            None => {
+                let (span, binding) = match tokens.look_ahead().match_one(Matcher::AnyIdent) {
+                    Some(binding) => {
+                        tokens.advance(1);
+                        let binding_ident = binding.into_ident().unwrap();
+                        let span = ty.span().to(binding_ident.span());
+
+                        (span, Some(binding_ident))
+                    }
+
+                    None => (ty.span().clone() , None)
+                };
+
+                Ok(TypeNamePattern::TypeName {
+                    ty,
+                    binding,
+                    span,
+                })
+            }
+        }
+    }
+}
+
+impl fmt::Display for TypeNamePattern {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeNamePattern::TypeName { ty, binding, .. } => {
+                write!(f, "{}", ty)?;
+                if let Some(binding) = binding {
+                    write!(f, " {}", binding)?;
+                }
+                Ok(())
+            }
+            TypeNamePattern::NegatedTypeName { ty, .. } => write!(f, "not {}", ty),
+        }
+    }
+}
+
+impl Spanned for TypeNamePattern {
+    fn span(&self) -> &Span {
+        match self {
+            TypeNamePattern::TypeName { span, .. } => span,
+            TypeNamePattern::NegatedTypeName { span, .. } => span,
         }
     }
 }

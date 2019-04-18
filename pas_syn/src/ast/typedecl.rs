@@ -172,6 +172,13 @@ pub struct VariantCase<A: Annotation> {
     pub span: Span,
 }
 
+impl<A: Annotation> Variant<A> {
+    pub fn case_position(&self, case_ident: &Ident) -> Option<usize> {
+        self.cases.iter()
+            .position(|c| c.ident == *case_ident)
+    }
+}
+
 impl Variant<Span> {
     pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;

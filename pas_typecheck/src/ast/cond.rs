@@ -21,62 +21,25 @@ pub fn typecheck_if_cond(
             .expect_value(&Type::Primitive(Primitive::Boolean))?;
     }
 
-    fn check_matchable(ty: &Type, span: &Span) -> TypecheckResult<()> {
-        if !ty.is_matchable() {
-            Err(TypecheckError::NotMatchable {
-                ty: ty.clone(),
-                span: span.clone(),
-            })
-        } else {
-            Ok(())
-        }
-    }
-
-    let is_pattern: Option<ast::CondPattern<TypeAnnotation>> = match &if_cond.is_pattern {
-        Some(ast::CondPattern::Positive {
-            is_ty,
-            binding,
-            span,
-        }) => {
-            let is_ty = ctx.find_type(is_ty)?;
-            check_matchable(&is_ty, span)?;
-
-            Some(ast::CondPattern::Positive {
-                is_ty,
-                binding: binding.clone(),
-                span: span.clone(),
-            })
-        }
-        Some(ast::CondPattern::Negative { is_not_ty, span }) => {
-            let is_not_ty = ctx.find_type(is_not_ty)?;
-            check_matchable(&is_not_ty, span)?;
-
-            Some(ast::CondPattern::Negative {
-                is_not_ty,
-                span: span.clone(),
-            })
-        }
+    let is_pattern = match &if_cond.is_pattern {
+        Some(pattern) => Some(TypePattern::find(pattern, ctx)?),
         None => None,
     };
 
     let mut then_ctx = ctx.clone();
 
     // is-pattern binding only exists in the "then" branch, if present
-    if let Some(ast::CondPattern::Positive {
-        binding: Some(binding),
-        is_ty,
-        span: binding_span,
-        ..
-    }) = &is_pattern
-    {
-        then_ctx.declare_binding(
-            binding.clone(),
-            Binding {
-                kind: cond.annotation().value_kind().unwrap(),
-                ty: is_ty.clone(),
-                def: Some(binding_span.clone()),
-            },
-        )?;
+    if let Some(pattern) = &is_pattern {
+        for binding in pattern.bindings() {
+            then_ctx.declare_binding(
+                binding.ident.clone(),
+                Binding {
+                    kind: cond.annotation().value_kind().unwrap(),
+                    ty: binding.ty.clone(),
+                    def: Some(binding.ident.span().clone()),
+                },
+            )?;
+        }
     }
 
     let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, &mut then_ctx)?;

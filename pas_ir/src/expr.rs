@@ -1,7 +1,8 @@
 use crate::{prelude::*, translate_stmt};
 use pas_common::span::*;
 use pas_syn::{self as syn, ast};
-use pas_typecheck::{self as pas_ty, TypeAnnotation, ValueKind};
+use pas_typecheck::{self as pas_ty, TypeAnnotation, TypePattern, ValueKind};
+use std::rc::Rc;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     let out_val = match expr {
@@ -203,32 +204,71 @@ pub fn translate_if_cond(
 
     let cond_val = translate_expr(&if_cond.cond, builder);
 
-    let (test_val, binding) = match &if_cond.is_pattern {
+    let (test_val, pattern_bindings) = match &if_cond.is_pattern {
         None => {
-            (cond_val, None)
+            (cond_val, Vec::new())
         }
 
-        Some(ast::CondPattern::Positive { binding, is_ty, .. }) => {
-            let is_ty = builder.metadata.translate_type(is_ty);
-            let is = translate_is(cond_val.clone(), &is_ty, builder);
+        Some(TypePattern::Type { binding, ty, .. }) => {
+            let is_ty = builder.metadata.translate_type(ty);
+            let is = translate_is_ty(cond_val.clone(), &is_ty, builder);
 
-            let binding = binding.as_ref().map(|binding| {
-                let binding_name = binding.name.to_string();
-                let binding_ref = cond_val;
+            let bindings = match binding {
+                Some(binding) => {
+                    let binding_name = binding.name.to_string();
+                    let binding_ref = cond_val;
 
-                (binding_name, is_ty, binding_ref)
-            });
+                    vec![(binding_name, is_ty, binding_ref)]
+                },
+                None => Vec::new(),
+            };
 
-            (is, binding)
+            (is, bindings)
         }
 
-        Some(ast::CondPattern::Negative { is_not_ty, .. }) => {
-            let is_not_ty = builder.metadata.translate_type(is_not_ty);
-            let is = translate_is(cond_val, &is_not_ty, builder);
+        Some(TypePattern::NegatedType { ty, .. }) => {
+            let is_not_ty = builder.metadata.translate_type(ty);
+            let is = translate_is_ty(cond_val, &is_not_ty, builder);
 
             let is_not = builder.local_temp(Type::Bool);
             builder.append(Instruction::Not { out: is_not.clone(), a: Value::Ref(is) });
-            (is_not, None)
+            (is_not, Vec::new())
+        }
+
+        Some(TypePattern::VariantCase { variant, case_index, data_binding, .. }) => {
+            let bindings = match data_binding {
+                Some(binding) => {
+                    let binding_name = binding.name.to_string();
+                    let case_ty = variant.cases[*case_index].data_ty.as_ref()
+                        .expect("variant case pattern with a binding must reference a variant case which has a data member");
+
+                    let variant_ty = builder.metadata.translate_type(&pas_ty::Type::Variant(variant.clone()));
+                    let binding_ty = builder.metadata.translate_type(&case_ty);
+                    let data_ptr = builder.local_temp(binding_ty.clone().ptr());
+
+                    builder.append(Instruction::Field {
+                        out: data_ptr.clone(),
+                        a: cond_val.clone(),
+                        of_ty: variant_ty,
+                        field: VARIANT_DATA_FIELD,
+                    });
+
+                    vec![(binding_name, binding_ty, data_ptr.deref())]
+                },
+                None => Vec::new(),
+            };
+
+            let is = translate_is_variant(cond_val, variant.clone(), *case_index, builder);
+            (is, bindings)
+        }
+
+        Some(TypePattern::NegatedVariantCase { variant, case_index, ..}) => {
+            let is = translate_is_variant(cond_val, variant.clone(), *case_index, builder);
+
+            let is_not = builder.local_temp(Type::Bool);
+            builder.append(Instruction::Not { out: is_not.clone(), a: Value::Ref(is) });
+
+            (is_not, Vec::new())
         }
     };
 
@@ -247,7 +287,7 @@ pub fn translate_if_cond(
 
     builder.begin_scope();
 
-    if let Some((binding_name, binding_ty, binding_ref)) = binding {
+    for (binding_name, binding_ty, binding_ref) in pattern_bindings {
         // since there's no fancy destructuring yet, we just need to mov the old value into a
         // new local, which pascal will see as a variable of the new type
         let pattern_binding = builder.local_new(binding_ty.clone(), Some(binding_name));
@@ -280,7 +320,35 @@ pub fn translate_if_cond(
     out_val
 }
 
-fn translate_is(val: Ref, ty: &Type, builder: &mut Builder) -> Ref {
+fn translate_is_variant(
+    val: Ref,
+    variant: Rc<pas_ty::ast::Variant>,
+    case_index: usize,
+    builder: &mut Builder
+) -> Ref {
+    let variant_ty = pas_ty::Type::Variant(variant);
+
+    let ty = builder.metadata.translate_type(&variant_ty);
+
+    let tag_ptr = builder.local_temp(Type::I32.ptr());
+    builder.append(Instruction::Field {
+        out: tag_ptr.clone(),
+        a: val,
+        of_ty: ty,
+        field: VARIANT_TAG_FIELD,
+    });
+
+    let is = builder.local_temp(Type::Bool);
+    builder.append(Instruction::Eq {
+        out: is.clone(),
+        a: Value::Ref(tag_ptr.deref()),
+        b: Value::LiteralI32(case_index as i32) //todo: proper size type,
+    });
+
+    is
+}
+
+fn translate_is_ty(val: Ref, ty: &Type, builder: &mut Builder) -> Ref {
     let result = builder.local_temp(Type::Bool);
     match ty {
         Type::RcPointer(class_id) => {

@@ -6,6 +6,7 @@ pub mod prelude {
         ast::{
             Annotation,
             TypeName,
+            TypeNamePattern,
         },
         ident::*,
         keyword::*,

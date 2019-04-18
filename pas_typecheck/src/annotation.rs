@@ -6,7 +6,7 @@ use pas_syn::{ast::Annotation, ident::IdentPath, Ident};
 use crate::{
     ast::{Expression, FunctionDecl, Variant},
     result::*,
-    FunctionSig, Type, ValueKind,
+    FunctionSig, Type, TypePattern, ValueKind,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -221,4 +221,5 @@ impl Spanned for TypeAnnotation {
 
 impl Annotation for TypeAnnotation {
     type Type = Type;
+    type Pattern = TypePattern;
 }

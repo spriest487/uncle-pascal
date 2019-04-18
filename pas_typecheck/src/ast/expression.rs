@@ -175,15 +175,14 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
             typecheck_object_ctor(&ctor, ctx).map(CallOrCtor::Ctor)?
         }
 
-        TypeAnnotation::VariantCtor(variant, ..) => {
-            typecheck_variant_ctor_call(
-                variant.decl(),
-                &func_call.args,
-                variant.case_index,
-                call.span().clone(),
-                ctx,
-            ).map(CallOrCtor::Call)?
-        }
+        TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
+            variant.decl(),
+            &func_call.args,
+            variant.case_index,
+            call.span().clone(),
+            ctx,
+        )
+        .map(CallOrCtor::Call)?,
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };
@@ -307,9 +306,12 @@ fn typecheck_variant_ctor_call(
     let arg = match &variant.cases[case_index].data_ty {
         None => {
             if args.len() != 0 {
-                let bad_args: Vec<_> = args.iter()
-                    .map(|arg| typecheck_expr(arg, &Type::Nothing, ctx)
-                        .map(|arg| arg.annotation().ty().clone()))
+                let bad_args: Vec<_> = args
+                    .iter()
+                    .map(|arg| {
+                        typecheck_expr(arg, &Type::Nothing, ctx)
+                            .map(|arg| arg.annotation().ty().clone())
+                    })
                     .collect::<TypecheckResult<_>>()?;
 
                 return Err(TypecheckError::InvalidArgs {
@@ -323,12 +325,14 @@ fn typecheck_variant_ctor_call(
         }
 
         Some(data_ty) => {
-            let args: Vec<Expression> = args.iter()
+            let args: Vec<Expression> = args
+                .iter()
                 .map(|arg| typecheck_expr(arg, data_ty, ctx))
                 .collect::<TypecheckResult<_>>()?;
 
             if args.len() != 1 {
-                let bad_args: Vec<_> = args.into_iter()
+                let bad_args: Vec<_> = args
+                    .into_iter()
                     .map(|arg| arg.annotation().ty().clone())
                     .collect();
 

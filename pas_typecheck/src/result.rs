@@ -1,6 +1,6 @@
 use crate::annotation::TypeAnnotation;
 use crate::{
-    ast::{Call, Expression},
+    ast::{Call, Expression, Variant},
     context::NameError,
     Type, ValueKind,
 };
@@ -88,6 +88,11 @@ pub enum TypecheckError {
     },
     InvalidStatement(Box<InvalidStatement<TypeAnnotation>>),
     EmptyVariant(Box<ast::Variant<Span>>),
+    EmptyVariantCaseBinding {
+        variant: Box<Variant>,
+        case_index: usize,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -124,6 +129,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidRefExpression { expr } => expr.annotation().span(),
             TypecheckError::InvalidStatement(expr) => expr.0.annotation().span(),
             TypecheckError::EmptyVariant(variant) => variant.span(),
+            TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
         }
     }
 }
@@ -164,6 +170,9 @@ impl DiagnosticOutput for TypecheckError {
             }
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
             TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
+            TypecheckError::EmptyVariantCaseBinding { .. } => {
+                "Empty variant case binding".to_string()
+            }
         }
     }
 
@@ -335,6 +344,10 @@ impl fmt::Display for TypecheckError {
                 write!(f, "variant `{}` has no cases", variant.ident)
             }
 
+            TypecheckError::EmptyVariantCaseBinding { variant, case_index, .. } => {
+                let case_ident = &variant.cases[*case_index].ident;
+                write!(f, "cannot bind value of empty variant case `{}.{}`", variant.ident, case_ident)
+            }
         }
     }
 }
