@@ -240,6 +240,7 @@ pub mod ty {
         Variant(Rc<Variant>),
         Array { element: Box<Type>, dim: usize },
         GenericSelf,
+        Any,
     }
 
     impl From<Primitive> for Type {
@@ -257,6 +258,7 @@ pub mod ty {
 
             match self {
                 Type::Nothing => Some(builtin_path("Nothing")),
+                Type::Any => Some(builtin_path("Any")),
                 Type::GenericSelf => Some(builtin_path("Self")),
                 Type::Primitive(p) => Some(builtin_path(p.name())),
                 Type::Interface(iface) => Some(iface.ident.clone()),
@@ -269,6 +271,7 @@ pub mod ty {
         pub fn full_name(&self) -> Option<String> {
             match self {
                 Type::Nothing => Some("Nothing".to_string()),
+                Type::Any => Some("Any".to_string()),
                 Type::GenericSelf => Some("Self".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
                 Type::Interface(iface) => Some(iface.ident.to_string()),
@@ -340,6 +343,7 @@ pub mod ty {
             match self {
                 Type::Class(..) => true,
                 Type::Interface(..) => true,
+                Type::Any => true,
 
                 _ => false,
             }
@@ -390,6 +394,10 @@ pub mod ty {
                     Type::Interface(from_iface) => iface.ident == from_iface.ident,
                     _ => false,
                 },
+                Type::Any => match from {
+                    Type::Class(..) | Type::Interface(..) => true,
+                    _ => false,
+                }
                 _ => *self == *from,
             }
         }
@@ -435,7 +443,7 @@ pub mod ty {
 
         pub fn is_matchable(&self) -> bool {
             match self {
-                Type::Class(..) | Type::Interface(..) => true,
+                Type::Class(..) | Type::Interface(..) | Type::Any => true,
                 _ => false,
             }
         }

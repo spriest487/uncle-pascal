@@ -172,7 +172,10 @@ impl Expr {
             metadata::Type::RcPointer(class_id) => {
                 // pointer to RC containing pointer to class resource
                 let class_ty = match class_id {
-                    metadata::ClassID::Class(struct_id) => Type::Struct(StructName::Class(*struct_id)),
+                    Some(metadata::ClassID::Class(struct_id)) => {
+                        Type::Struct(StructName::Class(*struct_id))
+                    },
+
                     _ => panic!(
                         "bad resource type {:?} in Field instruction target",
                         class_id
@@ -314,7 +317,7 @@ impl<'a> Builder<'a> {
 
         match instruction {
             ir::Instruction::LocalAlloc(id, ty) => {
-                let null_init = ty.rc_resource_type_id().is_some();
+                let null_init = ty.is_rc();
                 let ty = Type::from_metadata(ty, self.module);
                 self.stmts.push(Statement::VariableDecl {
                     ty,

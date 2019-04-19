@@ -662,7 +662,7 @@ impl Interpreter {
             })
             .unwrap_or_else(|| panic!("expected target of virtual call {}.{} to be an rc cell, but found {:?}", iface_id, method, self_cell));
 
-        let instance_ty = Type::RcPointer(ClassID::Class(self_rc.struct_id));
+        let instance_ty = Type::RcPointer(Some(ClassID::Class(self_rc.struct_id)));
 
         self.metadata.find_impl(&instance_ty, iface_id, method)
             .unwrap_or_else(|| panic!("virtual call {}.{} missing implementation for {}", iface_id, method, instance_ty))
@@ -782,7 +782,8 @@ impl Interpreter {
 
                     // Dispose() the inner resource. For an RC type, interfaces are implemented
                     // for the RC pointer type, not the resource type
-                    self.invoke_disposer(&cell, &Type::RcPointer(ClassID::Class(rc_cell.struct_id)));
+                    let resource_id = ClassID::Class(rc_cell.struct_id);
+                    self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)));
 
                     let resource_cell = self.heap[rc_cell.resource_addr].clone();
 
@@ -1099,7 +1100,8 @@ impl Interpreter {
                     let is = match class_id {
                         ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
                         ClassID::Interface(iface_id) => {
-                            let actual_ty = Type::RcPointer(ClassID::Class(rc_cell.struct_id));
+                            let resource_id = ClassID::Class(rc_cell.struct_id);
+                            let actual_ty = Type::RcPointer(Some(resource_id));
 
                             self.metadata.is_impl(&actual_ty, *iface_id)
                         }
@@ -1317,7 +1319,7 @@ impl Interpreter {
                 str_ref,
                 GlobalCell {
                     value: str_cell,
-                    ty: Type::RcPointer(ClassID::Class(STRING_ID)),
+                    ty: Type::RcPointer(Some(ClassID::Class(STRING_ID))),
                 },
             );
         }

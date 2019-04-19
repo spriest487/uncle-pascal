@@ -350,7 +350,7 @@ fn translate_is_variant(
 fn translate_is_ty(val: Ref, ty: &Type, builder: &mut Builder) -> Ref {
     let result = builder.local_temp(Type::Bool);
     match ty {
-        Type::RcPointer(class_id) => {
+        Type::RcPointer(Some(class_id)) => {
             builder.append(Instruction::ClassIs {
                 out: result.clone(),
                 a: Value::Ref(val),
@@ -465,7 +465,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 .expect("method referenced in method call must exist");
 
             let iface_id = match builder.metadata.translate_type(of_ty) {
-                Type::RcPointer(ClassID::Interface(iface_id)) => iface_id,
+                Type::RcPointer(Some(ClassID::Interface(iface_id))) => iface_id,
 
                 // UFCS "methods" that aren't interface impls are treated as function calls
                 _ => unimplemented!("non-interface method call"),
@@ -482,7 +482,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
 
             let call_target = match &self_ty {
-                Type::RcPointer(ClassID::Interface(iface_id)) => CallTarget::Virtual {
+                Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
                     iface_id: *iface_id,
                     method: method_call.ident.to_string(),
                 },
@@ -842,7 +842,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let out_ptr = builder.local_new(struct_ty.clone(), None);
 
     match &struct_ty {
-        Type::RcPointer(ClassID::Class(struct_id)) => {
+        Type::RcPointer(Some(ClassID::Class(struct_id))) => {
             // allocate class struct at out pointer
             builder.append(Instruction::RcNew {
                 out: out_ptr.clone(),

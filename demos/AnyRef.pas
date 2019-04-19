@@ -1,32 +1,20 @@
 uses System;
 
-type Animal = interface
-    function Say(self: Self);
-end;
-
-type Cat = class
-    name: String;
-end;
-
-function Animal.Say(self: Cat)
-begin
-    WriteLn(self.name + ' says nya!');
-end;
-
 type Dog = class
     name: String;
 end;
 
-function Animal.Say(self: Dog)
-begin
-    WriteLn(self.name + ' says wan!');
+type Cat = class
 end;
 
-var animal: Animal;
+let animal: Any := Dog(name: 'Rover');
 
-animal := Cat(name: 'Blake');
-animal.Say();
+if animal is not Cat then
+    WriteLn('not a cat');
 
-animal := Dog(name: 'Yang');
-animal.Say();
+if animal is Dog d then
+    WriteLn(d.name);
+
+// can't assign Integer to Any
+// let a: Any := 1;
 

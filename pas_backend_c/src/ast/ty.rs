@@ -347,7 +347,8 @@ impl Class {
         _struct_def: &metadata::Struct,
         metadata: &metadata::Metadata,
     ) -> Self {
-        let class_ty = metadata::Type::RcPointer(ClassID::Class(struct_id));
+        let class_id = ClassID::Class(struct_id);
+        let class_ty = metadata::Type::RcPointer(Some(class_id));
         let mut impls = HashMap::new();
 
         for (iface_id, iface) in metadata.ifaces() {

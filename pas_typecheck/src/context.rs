@@ -213,6 +213,9 @@ impl Context {
         let nothing_ident = Ident::new("Nothing", builtin_span.clone());
         root_ctx.declare_type(nothing_ident, Type::Nothing).unwrap();
 
+        let any_ident = Ident::new("Any", builtin_span.clone());
+        root_ctx.declare_type(any_ident, Type::Any).unwrap();
+
         let bool_ident = Ident::new(Primitive::Boolean.name(), builtin_span.clone());
         root_ctx
             .declare_type(bool_ident, Primitive::Boolean)

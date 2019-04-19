@@ -245,8 +245,10 @@ pub enum Type {
     },
 
     /// pointer to an RC object somewhere on the heap, which can be dereferenced to yield a value
-    /// of the inner type
-    RcPointer(ClassID),
+    /// of the inner type. the resource type is Some in the case that the type is known, and
+    /// None for the Any type
+    RcPointer(Option<ClassID>),
+
     Bool,
     U8,
     I32,
@@ -279,9 +281,16 @@ impl Type {
         }
     }
 
-    pub fn rc_resource_type_id(&self) -> Option<ClassID> {
+    pub fn is_rc(&self) -> bool {
         match self {
-            Type::RcPointer(class_id) => Some(*class_id),
+            Type::RcPointer(..) => true,
+            _ => false,
+        }
+    }
+
+    pub fn rc_resource_class_id(&self) -> Option<ClassID> {
+        match self {
+            Type::RcPointer(Some(class_id)) => Some(*class_id),
             _ => None,
         }
     }
@@ -299,8 +308,9 @@ impl fmt::Display for Type {
             Type::Struct(id) => write!(f, "{{struct {}}}", id),
             Type::Variant(id) => write!(f, "{{variant {}}}", id),
             Type::RcPointer(id) => match id {
-                ClassID::Class(id) => write!(f, "class {}", id),
-                ClassID::Interface(id) => write!(f, "iface {}", id),
+                None => write!(f, "any"),
+                Some(ClassID::Class(id)) => write!(f, "class {}", id),
+                Some(ClassID::Interface(id)) => write!(f, "iface {}", id),
             },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
         }
@@ -541,13 +551,18 @@ impl Metadata {
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
-                    ClassID::Interface(iface_id) => self
-                        .ifaces
-                        .get(iface_id)
-                        .map(|def| def.name.to_string())
-                        .unwrap_or_else(|| format!("<interface {}>", iface_id)),
+                    None => "any".to_string(),
 
-                    ClassID::Class(struct_id) => self.pretty_ty_name(&Type::Struct(*struct_id)),
+                    Some(ClassID::Interface(iface_id)) => {
+                        let iface = self.ifaces.get(iface_id);
+
+                        iface.map(|def| def.name.to_string())
+                            .unwrap_or_else(|| format!("<interface {}>", iface_id))
+                    }
+
+                    Some(ClassID::Class(struct_id)) => {
+                        self.pretty_ty_name(&Type::Struct(*struct_id))
+                    }
                 };
                 format!("rc {}", resource_name)
             }
@@ -643,7 +658,7 @@ impl Metadata {
             .methods
             .iter()
             .map(|method| {
-                let self_ty = Type::RcPointer(ClassID::Interface(id));
+                let self_ty = Type::RcPointer(Some(ClassID::Interface(id)));
 
                 Method {
                     name: method.ident.to_string(),
@@ -726,7 +741,7 @@ impl Metadata {
                     .find(|(_id, iface)| iface.name == ty_name)
                     .map(|(id, _iface)| *id)
                     .unwrap_or_else(|| panic!("interface {} must exist in metadata", ty_name));
-                Type::RcPointer(ClassID::Interface(id))
+                Type::RcPointer(Some(ClassID::Interface(id)))
             }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
@@ -750,7 +765,7 @@ impl Metadata {
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty_name));
 
-                Type::RcPointer(ClassID::Class(id))
+                Type::RcPointer(Some(ClassID::Class(id)))
             }
 
             pas_ty::Type::Array { element, dim } => {
@@ -774,6 +789,10 @@ impl Metadata {
 
             pas_ty::Type::Function(sig) => {
                 unimplemented!("No IR type exists to represent function: {}", sig)
+            }
+
+            pas_ty::Type::Any => {
+                Type::RcPointer(None)
             }
         }
     }
