@@ -43,6 +43,8 @@ pub enum Keyword {
     Export,
     Variant,
     Is,
+    Break,
+    Continue,
 }
 
 impl Keyword {
@@ -89,6 +91,8 @@ impl Keyword {
             "export" => Some(Keyword::Export),
             "variant" => Some(Keyword::Variant),
             "is" => Some(Keyword::Is),
+            "break" => Some(Keyword::Break),
+            "continue" => Some(Keyword::Continue),
             _ => None,
         }
     }
@@ -146,6 +150,8 @@ impl fmt::Display for Keyword {
             Keyword::Export => "export",
             Keyword::Variant => "variant",
             Keyword::Is => "is",
+            Keyword::Break => "break",
+            Keyword::Continue => "continue",
         })
     }
 }

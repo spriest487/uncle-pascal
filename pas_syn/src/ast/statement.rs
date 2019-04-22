@@ -110,6 +110,8 @@ pub enum Statement<A: Annotation> {
     ForLoop(ForLoop<A>),
     Assignment(Assignment<A>),
     If(IfCond<A>),
+    Break(A),
+    Continue(A),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -125,6 +127,8 @@ impl<A: Annotation> Statement<A> {
             Statement::ForLoop(for_loop) => &for_loop.annotation,
             Statement::Assignment(assignment) => &assignment.annotation,
             Statement::If(if_stmt) => &if_stmt.annotation,
+            Statement::Break(a) => a,
+            Statement::Continue(a) => a,
         }
     }
 
@@ -210,6 +214,8 @@ pub fn statement_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
         .or(Keyword::Var)
         .or(Keyword::For)
+        .or(Keyword::Break)
+        .or(Keyword::Continue)
         .or(Keyword::Exit)
         .or(match_operand_start())
 }
@@ -220,21 +226,29 @@ impl Statement<Span> {
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
             Some(TokenTree::Keyword {
-                kw: Keyword::Let, ..
-            })
+                     kw: Keyword::Let, ..
+                 })
             | Some(TokenTree::Keyword {
-                kw: Keyword::Var, ..
-            }) => {
+                       kw: Keyword::Var, ..
+                   }) => {
                 let binding = LocalBinding::parse(tokens, true)?;
                 Ok(Statement::LocalBinding(binding))
             }
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::For, ..
-            }) => {
+            Some(TokenTree::Keyword { kw: Keyword::For, .. }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(for_loop))
             }
+
+            Some(TokenTree::Keyword { kw: Keyword::Break, span, }) => {
+                tokens.advance(1);
+                Ok(Statement::Break(span))
+            },
+
+            Some(TokenTree::Keyword { kw: Keyword::Continue, span, }) => {
+                tokens.advance(1);
+                Ok(Statement::Continue(span))
+            },
 
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
@@ -248,10 +262,18 @@ impl Statement<Span> {
                 Ok(stmt)
             }
 
-            None => Err(TracedError::trace(ParseError::UnexpectedEOF(
-                stmt_start,
-                tokens.context().clone(),
-            ))),
+            None => {
+                Err(TracedError::trace(match tokens.look_ahead().next() {
+                    Some(unexpected) => ParseError::UnexpectedToken(
+                        unexpected,
+                        Some(stmt_start),
+                    ),
+                    None => ParseError::UnexpectedEOF(
+                        stmt_start,
+                        tokens.context().clone(),
+                    )
+                }))
+            },
         }
     }
 }
@@ -266,6 +288,8 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
             Statement::Assignment(assignment) => write!(f, "{}", assignment),
             Statement::If(if_stmt) => write!(f, "{}", if_stmt),
+            Statement::Break(..) => write!(f, "{}", Keyword::Break),
+            Statement::Continue(..) => write!(f, "{}", Keyword::Continue),
         }
     }
 }

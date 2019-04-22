@@ -102,9 +102,9 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::UnexpectedToken(tt, None) => format!("unexpected {}", tt),
 
-            ParseError::UnexpectedEOF(expected, tt) => format!(
-                "expected {} after {} but reached end of sequence",
-                expected, tt
+            ParseError::UnexpectedEOF(expected, _tt) => format!(
+                "expected {} but reached end of sequence",
+                expected
             ),
 
             ParseError::EmptyOperand { operator, before } => {

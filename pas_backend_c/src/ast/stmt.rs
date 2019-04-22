@@ -313,7 +313,9 @@ impl<'a> Builder<'a> {
     }
 
     fn translate_instruction(&mut self, instruction: &ir::Instruction) {
-        self.stmts.push(Statement::Comment(instruction.to_string()));
+        if self.module.opts.trace_ir {
+            self.stmts.push(Statement::Comment(instruction.to_string()));
+        }
 
         match instruction {
             ir::Instruction::LocalAlloc(id, ty) => {

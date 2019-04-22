@@ -43,6 +43,23 @@ begin
     end
 end;
 
+{
+function StringCompare(a, b: String): Boolean
+begin
+    if a.len = b.len then
+        false
+    else begin
+        for let i := 0 to a.len do
+        begin
+            if a.chars[i] = b.chars[i] then
+                exit false;
+        end;
+
+        true
+    end;
+end;
+}
+
 function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
     let strBytes: ^Byte := GetMem(len);

@@ -88,7 +88,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         });
     }
 
-    ctx.pop_scope(unit_scope)?;
+    ctx.pop_scope(unit_scope);
 
     Ok(Unit {
         ident: unit.ident.clone(),

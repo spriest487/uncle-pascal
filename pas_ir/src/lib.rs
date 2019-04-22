@@ -11,6 +11,9 @@ mod expr;
 mod formatter;
 mod stmt;
 
+#[cfg(test)]
+mod test;
+
 pub mod prelude {
     pub use crate::{
         metadata::*,
@@ -45,7 +48,7 @@ impl fmt::Display for GlobalRef {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
     Local(LocalID),
     Global(GlobalRef),
@@ -68,7 +71,7 @@ impl fmt::Display for Ref {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Ref(Ref),
     LiteralNull,
@@ -104,7 +107,7 @@ impl fmt::Display for Label {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Comment(String),
 
@@ -232,7 +235,11 @@ pub enum Instruction {
 
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        RawInstructionFormatter.format_instruction(self, f)
+        let mut buf = String::new();
+        RawInstructionFormatter.format_instruction(self, &mut buf)
+            .map_err(|_| fmt::Error)?;
+
+        f.write_str(&buf)
     }
 }
 
@@ -295,10 +302,17 @@ impl Local {
 }
 
 
-
 #[derive(Debug)]
 struct Scope {
     locals: Vec<Local>,
+}
+
+#[derive(Debug)]
+pub struct LoopBlock {
+    pub continue_label: Label,
+    pub break_label: Label,
+
+    pub block_level: usize,
 }
 
 #[derive(Debug)]
@@ -308,6 +322,8 @@ pub struct Builder<'metadata> {
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
     next_label: Label,
+
+    loop_stack: Vec<LoopBlock>,
 }
 
 impl<'metadata> Builder<'metadata> {
@@ -318,6 +334,8 @@ impl<'metadata> Builder<'metadata> {
             next_label: Label(0),
 
             scopes: vec![Scope { locals: Vec::new() }],
+
+            loop_stack: Vec::new(),
         }
     }
 
@@ -448,8 +466,8 @@ impl<'metadata> Builder<'metadata> {
     }
 
     fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: &Visitor)
-    where
-        Visitor: Fn(&mut Builder, &Type, Ref),
+        where
+            Visitor: Fn(&mut Builder, &Type, Ref),
     {
         match ty {
             Type::Struct(struct_id) => {
@@ -554,43 +572,83 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
-        self.begin_scope();
-        self.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
-            if let Type::RcPointer(..) = element_ty {
-                builder.append(Instruction::Retain { at: element_ref });
-            }
+        self.scope(|builder| {
+            builder.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+                if let Type::RcPointer(..) = element_ty {
+                    builder.append(Instruction::Retain { at: element_ref });
+                }
+            });
         });
-        self.end_scope();
     }
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
-        self.begin_scope();
-        self.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
-            if let Type::RcPointer(..) = element_ty {
-                builder.append(Instruction::Release { at: element_ref });
-            }
+        self.scope(|builder| {
+            builder.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+                if let Type::RcPointer(..) = element_ty {
+                    builder.append(Instruction::Release { at: element_ref.clone() });
+
+                    // a local might be reused within the same scope, for example in a second
+                    // loop iteration and we rely on RC pointers being null when they're uninitialized
+                    builder.mov(element_ref, Value::LiteralNull);
+                }
+            });
         });
+    }
+
+    pub fn begin_loop_body_scope(&mut self, continue_label: Label, break_label: Label) {
+        self.loop_stack.push(LoopBlock {
+            continue_label,
+            break_label,
+            block_level: self.scopes.len(),
+        });
+
+        self.begin_scope();
+    }
+
+    pub fn end_loop_body_scope(&mut self) {
         self.end_scope();
+
+        self.loop_stack.pop()
+            .expect("end_loop called without an active loop");
+    }
+
+    pub fn current_loop(&self) -> Option<&LoopBlock> {
+        self.loop_stack.last()
     }
 
     pub fn begin_scope(&mut self) {
         self.instructions.push(Instruction::LocalBegin);
-        self.scopes.push(Scope { locals: Vec::new() })
+        self.scopes.push(Scope { locals: Vec::new() });
     }
 
-    pub fn end_scope(&mut self) {
-        let popped_locals = self
-            .scopes
-            .last()
-            .expect("called end_scope with no active scope")
-            .locals
-            .clone();
+    pub fn scope<F>(&mut self, f: F)
+        where F: FnOnce(&mut Self),
+    {
+        self.begin_scope();
+        f(self);
+        self.end_scope();
+    }
 
-        /* release local bindings that will be lost when the current scope is popped.
-        of course, running release code may create new locals, but we just assume
-        that none of those will need cleanup themselves, because they should never
-        */
-        for local in popped_locals.into_iter().rev() {
+    /// release locals in all scopes after the position indicated by
+    /// `to_scope` in the scope stack
+    /// this should be used when jumping out a scope, or before popping one
+    fn cleanup_scope(&mut self, to_scope: usize) {
+        assert!(self.scopes.len() > to_scope, "reset_scope index out of range: {}", to_scope);
+
+        // locals from all scopes up to the target scope, in order of deepest->shallowest,
+        // then in reverse allocation order
+        let locals: Vec<_> = self.scopes[to_scope..].iter().rev()
+            .flat_map(|scope| {
+                let mut locals = scope.locals.to_vec();
+                locals.reverse();
+                locals
+            })
+            .collect();
+
+        // release local bindings that will be lost when the current scope is popped.
+        // of course, running release code may create new locals, but we just assume
+        // that none of those will need cleanup themselves, because they should never
+        for local in locals {
             match local {
                 Local::Bound { id, ty, .. } | Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
@@ -601,6 +659,25 @@ impl<'metadata> Builder<'metadata> {
                 }
             }
         }
+    }
+
+    pub fn break_loop(&mut self) {
+        let (break_label, break_scope) = {
+            let current_loop = self.current_loop()
+                .expect("break statement must appear in a loop");
+
+            (current_loop.break_label, current_loop.block_level)
+        };
+
+        // write cleanup code for the broken scope and its children
+        self.cleanup_scope(break_scope);
+
+        // jump to the label (presumably somewhere outside the broken scope!)
+        self.append(Instruction::Jump { dest: break_label })
+    }
+
+    pub fn end_scope(&mut self) {
+        self.cleanup_scope(self.scopes.len() - 1);
 
         self.scopes.pop().unwrap();
         self.instructions.push(Instruction::LocalEnd);
@@ -718,7 +795,7 @@ impl fmt::Display for Module {
         for (id, def) in defs {
             match def {
                 TypeDef::Struct(s) => {
-                writeln!(f, "{{{}}} ({}):", id, s.name)?;
+                    writeln!(f, "{{{}}} ({}):", id, s.name)?;
                     for (id, field) in &s.fields {
                         writeln!(
                             f,
@@ -728,7 +805,7 @@ impl fmt::Display for Module {
                             field.ty
                         )?;
                     }
-                },
+                }
 
                 TypeDef::Variant(v) => {
                     writeln!(f, "{{{}}} ({}):", id, v.name)?;
@@ -762,18 +839,21 @@ impl fmt::Display for Module {
 
         writeln!(f, "* Functions")?;
         for (id, func) in funcs {
+            let formatter = StatefulIndentedFormatter::new(&self.metadata, 8);
+
             writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
 
             for instruction in &func.body {
-                self.metadata.format_instruction(instruction, f)?;
+                formatter.format_instruction(instruction, f)?;
                 writeln!(f)?;
             }
             writeln!(f)?;
         }
 
+        let formatter = StatefulIndentedFormatter::new(&self.metadata, 8);
         writeln!(f, "* Init:")?;
         for instruction in &self.init {
-            self.metadata.format_instruction(instruction, f)?;
+            formatter.format_instruction(instruction, f)?;
             writeln!(f)?;
         }
         Ok(())

@@ -24,9 +24,11 @@ pub fn typecheck_for_loop(
         });
     }
 
+    ctx.push_loop(for_loop.span().clone());
     let body = typecheck_stmt(&for_loop.body, ctx).map(Box::new)?;
+    ctx.pop_loop();
 
-    ctx.pop_scope(inner_scope)?;
+    ctx.pop_scope(inner_scope);
 
     Ok(ForLoop {
         init_binding,

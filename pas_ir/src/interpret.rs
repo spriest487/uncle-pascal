@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    Function as FunctionIR, GlobalRef, Instruction, LocalID, metadata::*, Module, Ref, Type, Value,
+    Function as FunctionIR, GlobalRef, Instruction, Label, LocalID, metadata::*, Module, Ref, Type, Value,
 };
 
 use self::heap::{Heap, HeapAddress};
@@ -898,14 +898,7 @@ impl Interpreter {
     }
 
     pub fn execute(&mut self, instructions: &[Instruction]) {
-        let labels: HashMap<_, _> = instructions
-            .iter()
-            .enumerate()
-            .filter_map(|(off, instruction)| match instruction {
-                Instruction::Label(label) => Some((*label, off)),
-                _ => None,
-            })
-            .collect();
+        let labels = find_labels(instructions);
 
         let mut pc = 0;
         while pc < instructions.len() {
@@ -1197,13 +1190,14 @@ impl Interpreter {
                 }
 
                 Instruction::Jump { dest } => {
-                    pc = labels[dest];
+                    self.jump(&mut pc, &labels[dest]);
                     continue;
                 }
 
                 Instruction::JumpIf { dest, test } => match self.evaluate(test) {
                     MemCell::Bool(true) => {
-                        pc = labels[dest];
+                        self.jump(&mut pc, &labels[dest]);
+                        continue;
                     }
                     MemCell::Bool(false) => {}
                     _ => panic!("JumpIf instruction testing non-boolean cell"),
@@ -1221,6 +1215,24 @@ impl Interpreter {
             }
 
             pc += 1;
+        }
+    }
+
+    fn jump(&mut self, pc: &mut usize, label: &LabelLocation) {
+        *pc = label.pc_offset;
+
+        // assume all jumps are either upwards or to the same level
+        let frame = self.current_frame_mut();
+        let current_block = frame.block_stack.len() - 1;
+
+        assert!(current_block >= label.block_depth,
+            "jmp from block level {} to {} is invalid, can only jmp upwards in the block stack",
+            current_block,
+            label.block_depth);
+
+        let pop_blocks = current_block - label.block_depth;
+        for _ in 0..pop_blocks {
+            frame.block_stack.pop().unwrap();
         }
     }
 
@@ -1415,4 +1427,34 @@ impl Interpreter {
 
         self.heap.finalize()
     }
+}
+
+struct LabelLocation {
+    pc_offset: usize,
+    block_depth: usize,
+}
+
+fn find_labels(instructions: &[Instruction]) -> HashMap<Label, LabelLocation> {
+    let mut block_depth = 0;
+    let mut locations = HashMap::new();
+
+    for (pc_offset, instruction) in instructions.iter().enumerate() {
+        match instruction {
+            Instruction::LocalBegin => {
+                block_depth += 1
+            },
+            Instruction::LocalEnd => {
+                block_depth -= 1
+            },
+            Instruction::Label(label) => {
+                locations.insert(label.clone(), LabelLocation {
+                    block_depth,
+                    pc_offset,
+                });
+            },
+            _ => continue,
+        }
+    }
+
+    locations
 }

@@ -1,5 +1,5 @@
 use crate::ast::prelude::*;
-use pas_syn::Operator;
+use pas_syn::{Operator};
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
@@ -172,9 +172,31 @@ pub fn typecheck_stmt(
 
         ast::Statement::Exit(_exit) => unimplemented!(),
 
+        ast::Statement::Break(span) => {
+            expect_in_loop(stmt, ctx)?;
+            let annotation = TypeAnnotation::Untyped(span.clone());
+            Ok(ast::Statement::Break(annotation))
+        }
+
+        ast::Statement::Continue(span) => {
+            expect_in_loop(stmt, ctx)?;
+            let annotation = TypeAnnotation::Untyped(span.clone());
+            Ok(ast::Statement::Continue(annotation))
+        }
+
         ast::Statement::If(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, &Type::Nothing, ctx)?;
             Ok(ast::Statement::If(if_cond))
         }
+    }
+}
+
+fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult<()> {
+    match ctx.in_loop() {
+        Some(..) => Ok(()),
+
+        None => Err(TypecheckError::NoLoopContext {
+            stmt: Box::new(stmt.clone()),
+        })
     }
 }

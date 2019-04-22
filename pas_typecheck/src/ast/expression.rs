@@ -588,6 +588,8 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
         },
 
         ast::Statement::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
+
+        ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(())
     }
 }
 

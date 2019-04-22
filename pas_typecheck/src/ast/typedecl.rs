@@ -78,7 +78,7 @@ pub fn typecheck_iface(
         methods.push(method);
     }
 
-    ctx.pop_scope(iface_scope)?;
+    ctx.pop_scope(iface_scope);
 
     assert_eq!(
         1,

@@ -1,12 +1,11 @@
-use crate::annotation::TypeAnnotation;
 use crate::{
+    annotation::TypeAnnotation,
     ast::{Call, Expression, Variant},
     context::NameError,
     Type, ValueKind,
 };
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
-use pas_syn::parse::InvalidStatement;
-use pas_syn::{ast, Ident, Operator};
+use pas_syn::{parse::InvalidStatement, ast, Ident, Operator};
 use std::fmt;
 
 #[derive(Debug)]
@@ -93,6 +92,9 @@ pub enum TypecheckError {
         case_index: usize,
         span: Span,
     },
+    NoLoopContext {
+        stmt: Box<ast::Statement<Span>>,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -130,6 +132,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidStatement(expr) => expr.0.annotation().span(),
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
+            TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
         }
     }
 }
@@ -173,6 +176,10 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::EmptyVariantCaseBinding { .. } => {
                 "Empty variant case binding".to_string()
             }
+
+            TypecheckError::NoLoopContext { .. } => {
+                "Statement requires loop context".to_string()
+            },
         }
     }
 
@@ -230,7 +237,7 @@ impl DiagnosticOutput for TypecheckError {
     }
 }
 
-fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item = &'a Type>) -> fmt::Result {
+fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item=&'a Type>) -> fmt::Result {
     for (i, arg) in args.into_iter().enumerate() {
         if i > 0 {
             write!(f, ", ")?;
@@ -347,6 +354,10 @@ impl fmt::Display for TypecheckError {
             TypecheckError::EmptyVariantCaseBinding { variant, case_index, .. } => {
                 let case_ident = &variant.cases[*case_index].ident;
                 write!(f, "cannot bind value of empty variant case `{}.{}`", variant.ident, case_ident)
+            }
+
+            TypecheckError::NoLoopContext { stmt } => {
+                write!(f, "the statement `{}` can only appear inside a loop", stmt)
             }
         }
     }

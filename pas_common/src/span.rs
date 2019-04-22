@@ -3,6 +3,7 @@ use std::{
     fmt,
     path::PathBuf,
     rc::Rc,
+    env,
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -81,7 +82,17 @@ impl fmt::Debug for Span {
 
 impl fmt::Display for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}:{}", self.file.to_string_lossy(), self.start)
+        let rel_file = env::current_dir().ok()
+            .and_then(|cwd| cwd.canonicalize().ok())
+            .and_then(|cwd| self.file.strip_prefix(cwd).ok());
+
+        if let Some(rel_file) = rel_file {
+            write!(f, "{}", rel_file.display())?;
+        } else {
+            write!(f, "{}", self.file.display())?;
+        }
+
+        write!(f, ":{}", self.start)
     }
 }
 

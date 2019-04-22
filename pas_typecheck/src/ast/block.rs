@@ -98,7 +98,7 @@ pub fn typecheck_block(
         out_ty.unwrap_or(Type::Nothing)
     });
 
-    ctx.pop_scope(block_scope)?;
+    ctx.pop_scope(block_scope);
 
     Ok(block)
 }

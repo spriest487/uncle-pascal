@@ -1,8 +1,9 @@
-use crate::{metadata::*, GlobalRef, Instruction, Ref, Value};
-use std::fmt;
+use std::{fmt, cell::Cell};
+
+use crate::{GlobalRef, Instruction, metadata::*, Ref, Value};
 
 pub trait InstructionFormatter {
-    fn format_instruction(&self, instruction: &Instruction, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_instruction<W: fmt::Write>(&self, instruction: &Instruction, f: &mut W) -> fmt::Result {
         const IX_WIDTH: usize = 8;
         match instruction {
             Instruction::Comment(comment) => write!(f, "// {}", comment),
@@ -242,50 +243,50 @@ pub trait InstructionFormatter {
         }
     }
 
-    fn format_type(&self, ty: &Type, f: &mut fmt::Formatter) -> fmt::Result;
-    fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result;
-    fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result;
-    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result;
-    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result;
+    fn format_type(&self, ty: &Type, f: &mut fmt::Write) -> fmt::Result;
+    fn format_val(&self, val: &Value, f: &mut fmt::Write) -> fmt::Result;
+    fn format_ref(&self, r: &Ref, f: &mut fmt::Write) -> fmt::Result;
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Write) -> fmt::Result;
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result;
 }
 
 pub struct RawInstructionFormatter;
 
 impl InstructionFormatter for RawInstructionFormatter {
-    fn format_type(&self, ty: &Type, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_type(&self, ty: &Type, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "{}", ty)
     }
 
-    fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_val(&self, val: &Value, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "{}", val)
     }
 
-    fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_ref(&self, r: &Ref, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "{}", r)
     }
 
-    fn format_field(&self, _of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_field(&self, _of_ty: &Type, field: FieldID, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "{}", field)
     }
 
-    fn format_variant_case(&self, _of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_variant_case(&self, _of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "data_{}", tag)
     }
 }
 
 impl InstructionFormatter for Metadata {
-    fn format_type(&self, ty: &Type, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_type(&self, ty: &Type, f: &mut fmt::Write) -> fmt::Result {
         write!(f, "{}", self.pretty_ty_name(ty))
     }
 
-    fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_val(&self, val: &Value, f: &mut fmt::Write) -> fmt::Result {
         match val {
             Value::Ref(r) => self.format_ref(r, f),
             _ => RawInstructionFormatter.format_val(val, f),
         }
     }
 
-    fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_ref(&self, r: &Ref, f: &mut fmt::Write) -> fmt::Result {
         match r {
             Ref::Global(GlobalRef::StringLiteral(string_id)) => match self.get_string(*string_id) {
                 Some(string_lit) => write!(f, "'{}'", string_lit),
@@ -326,7 +327,7 @@ impl InstructionFormatter for Metadata {
         }
     }
 
-    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Write) -> fmt::Result {
         let field_name = of_ty
             .as_struct()
             .or_else(|| match of_ty.rc_resource_class_id()? {
@@ -343,7 +344,7 @@ impl InstructionFormatter for Metadata {
         }
     }
 
-    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Formatter) -> fmt::Result {
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result {
         let case_name = match of_ty {
             Type::Variant(id) => self.get_variant(*id)
                 .and_then(|variant| variant.cases.get(tag))
@@ -355,5 +356,59 @@ impl InstructionFormatter for Metadata {
             Some(name) => write!(f, "{}", name),
             _ => RawInstructionFormatter.format_variant_case(of_ty, tag, f),
         }
+    }
+}
+
+pub struct StatefulIndentedFormatter<'f, F: InstructionFormatter> {
+    wrapped: &'f F,
+    tabs: Cell<usize>,
+    tab_width: usize,
+}
+
+impl<'f, F: InstructionFormatter> StatefulIndentedFormatter<'f, F> {
+    pub fn new(wrapped: &'f F, tab_width: usize) -> Self {
+        Self {
+            wrapped,
+            tabs: Cell::new(0),
+            tab_width,
+        }
+    }
+}
+
+impl<'f, F: InstructionFormatter> InstructionFormatter for StatefulIndentedFormatter<'f, F> {
+    fn format_instruction<W: fmt::Write>(&self, instruction: &Instruction, f: &mut W) -> fmt::Result {
+        if let Instruction::LocalEnd = instruction {
+            self.tabs.set(self.tabs.get() - 1);
+        }
+
+        for _ in 0..self.tabs.get() * self.tab_width {
+            f.write_char(' ')?;
+        }
+
+        if let Instruction::LocalBegin = instruction {
+            self.tabs.set(self.tabs.get() + 1);
+        }
+
+        self.wrapped.format_instruction(instruction, f)
+    }
+
+    fn format_type(&self, ty: &Type, f: &mut fmt::Write) -> fmt::Result {
+        self.wrapped.format_type(ty, f)
+    }
+
+    fn format_val(&self, val: &Value, f: &mut fmt::Write) -> fmt::Result {
+        self.wrapped.format_val(val, f)
+    }
+
+    fn format_ref(&self, r: &Ref, f: &mut fmt::Write) -> fmt::Result {
+        self.wrapped.format_ref(r, f)
+    }
+
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Write) -> fmt::Result {
+        self.wrapped.format_field(of_ty, field, f)
+    }
+
+    fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result {
+        self.wrapped.format_variant_case(of_ty, tag, f)
     }
 }

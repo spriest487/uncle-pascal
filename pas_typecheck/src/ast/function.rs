@@ -133,7 +133,7 @@ pub fn typecheck_func_def(
 
     let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
 
-    ctx.pop_scope(body_scope)?;
+    ctx.pop_scope(body_scope);
 
     Ok(FunctionDef {
         decl,

@@ -3,7 +3,17 @@ use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
-    builder.comment(stmt);
+    // write the first line of the statement as a comment
+    let stmt_str = stmt.to_string();
+    let mut comment = String::new();
+    for (line_num, line) in stmt_str.lines().enumerate() {
+        if line_num > 0 {
+            comment.push_str("...");
+            break;
+        }
+        comment.push_str(line);
+    }
+    builder.comment(&comment);
 
     match stmt {
         ast::Statement::LocalBinding(binding) => {
@@ -31,6 +41,14 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         ast::Statement::If(if_stmt) => {
             translate_if_cond(if_stmt, builder, true);
         }
+
+        ast::Statement::Break(_) => {
+            builder.break_loop();
+        }
+
+        ast::Statement::Continue(_) => {
+            translate_continue(builder)
+        }
     }
 }
 
@@ -40,79 +58,81 @@ fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder)
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
 
     if let Some(init_expr) = &binding.val {
-        builder.begin_scope();
+        builder.scope(|builder| {
+            let val_ref = translate_expr(init_expr, builder);
 
-        let val_ref = translate_expr(init_expr, builder);
-
-        builder.mov(binding_ref.clone(), val_ref);
-        builder.retain(binding_ref, &bound_ty);
-
-        builder.end_scope();
+            builder.mov(binding_ref.clone(), val_ref);
+            builder.retain(binding_ref, &bound_ty);
+        });
     };
 }
 
 pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
-    builder.begin_scope();
+    let top_label = builder.alloc_label();
+    let continue_label = builder.alloc_label();
+    let break_label = builder.alloc_label();
 
-    // counter
-    let counter_ty = builder
-        .metadata
-        .translate_type(&for_loop.init_binding.val_ty);
-    if counter_ty != Type::I32 {
-        unimplemented!("non-i32 counters");
-    }
+    builder.scope(|builder| {
+        // counter
+        let counter_ty = builder
+            .metadata
+            .translate_type(&for_loop.init_binding.val_ty);
+        if counter_ty != Type::I32 {
+            unimplemented!("non-i32 counters");
+        }
 
-    let counter_init = for_loop
-        .init_binding
-        .val
-        .as_ref()
-        .expect("for loop counter binding must have an init expr");
+        let counter_init = for_loop
+            .init_binding
+            .val
+            .as_ref()
+            .expect("for loop counter binding must have an init expr");
 
-    assert!(
-        !for_loop.init_binding.val_ty.is_rc(),
-        "counter type must not be ref counted"
-    );
+        assert!(
+            !for_loop.init_binding.val_ty.is_rc(),
+            "counter type must not be ref counted"
+        );
 
-    let inc_val = Value::LiteralI32(1);
-    let loop_val = builder.local_temp(Type::Bool);
+        let inc_val = Value::LiteralI32(1);
+        let loop_val = builder.local_temp(Type::Bool);
 
-    let counter_val = builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
-    let init_val = translate_expr(&counter_init, builder);
+        let counter_val = builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
+        let init_val = translate_expr(&counter_init, builder);
 
-    let to_val = translate_expr(&for_loop.to_expr, builder);
+        let to_val = translate_expr(&for_loop.to_expr, builder);
 
-    builder.mov(counter_val.clone(), init_val);
+        builder.mov(counter_val.clone(), init_val);
 
-    let loop_top = builder.alloc_label();
+        builder.append(Instruction::Label(top_label));
 
-    builder.append(Instruction::Label(loop_top));
+        builder.begin_loop_body_scope(continue_label, break_label);
+        translate_stmt(&for_loop.body, builder);
+        builder.end_loop_body_scope();
 
-    builder.begin_scope();
-    translate_stmt(&for_loop.body, builder);
-    builder.end_scope();
+        builder.append(Instruction::Label(continue_label));
 
-    // if not ++loop_counter > loop_val then jmp to loop_top
-    builder.append(Instruction::Add {
-        out: counter_val.clone(),
-        a: Value::Ref(counter_val.clone()),
-        b: inc_val,
+        // if not ++loop_counter > loop_val then jmp to loop_top
+        builder.append(Instruction::Add {
+            out: counter_val.clone(),
+            a: Value::Ref(counter_val.clone()),
+            b: inc_val,
+        });
+
+        builder.append(Instruction::Gt {
+            out: loop_val.clone(),
+            a: Value::Ref(counter_val),
+            b: to_val.into(),
+        });
+        builder.append(Instruction::Not {
+            out: loop_val.clone(),
+            a: Value::Ref(loop_val.clone()),
+        });
+        builder.append(Instruction::JumpIf {
+            test: Value::Ref(loop_val),
+            dest: top_label,
+        });
+
+        builder.append(Instruction::Label(break_label));
     });
-
-    builder.append(Instruction::Gt {
-        out: loop_val.clone(),
-        a: Value::Ref(counter_val),
-        b: to_val.into(),
-    });
-    builder.append(Instruction::Not {
-        out: loop_val.clone(),
-        a: Value::Ref(loop_val.clone()),
-    });
-    builder.append(Instruction::JumpIf {
-        test: Value::Ref(loop_val),
-        dest: loop_top,
-    });
-
-    builder.end_scope();
 }
 
 pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut Builder) {
@@ -127,8 +147,12 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
 
     // the old value is being replaced, release it. local variables can be uninitialized,
     // or ambiguously initialized (initialized in one branch and not another), so we can't check
-    // if the pointer is initialized here. if it's uninitialized it'll be NULL and we need to
-    // handle that in the backend's release mechanism
+    // if the pointer is initialized here.
+    //
+    // if it's uninitialized it'll be NULL and we need to
+    // handle that in the backend's release mechanism.
+    //
+    // the alternative would be to store an initialization flag alongside each rc variable
     let lhs_ty = builder
         .metadata
         .translate_type(assignment.lhs.annotation().ty());
@@ -137,5 +161,15 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.append(Instruction::Move {
         out: lhs,
         new_val: rhs.into(),
+    });
+}
+
+fn translate_continue(builder: &mut Builder) {
+    let continue_label = builder.current_loop()
+        .expect("continue statement must appear in a loop")
+        .continue_label;
+
+    builder.append(Instruction::Jump {
+        dest: continue_label,
     });
 }

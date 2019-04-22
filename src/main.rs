@@ -370,6 +370,7 @@ fn compile(
                 let opts = backend_c::Options {
                     trace_heap: args.trace_heap,
                     trace_rc: args.trace_rc,
+                    trace_ir: args.trace_ir,
                 };
                 let module = backend_c::translate(&module, opts);
                 write_output_file(&out_path, &module)?;

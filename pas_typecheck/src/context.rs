@@ -188,6 +188,8 @@ pub struct Context {
 
     /// decl ident -> definition location
     defs: HashMap<IdentPath, Span>,
+
+    loop_stack: Vec<Span>,
 }
 
 pub fn builtin_span() -> Span {
@@ -208,6 +210,8 @@ impl Context {
 
             defs: HashMap::new(),
             iface_impls: HashMap::new(),
+
+            loop_stack: Vec::new(),
         };
 
         let nothing_ident = Ident::new("Nothing", builtin_span.clone());
@@ -245,7 +249,7 @@ impl Context {
         new_id
     }
 
-    pub fn pop_scope(&mut self, id: ScopeID) -> NamingResult<()> {
+    pub fn pop_scope(&mut self, id: ScopeID) {
         assert_ne!(ScopeID(0), id, "can't pop the root scope");
 
         loop {
@@ -254,9 +258,22 @@ impl Context {
             self.scopes.pop();
 
             if popped_id == id {
-                break Ok(());
+                break;
             }
         }
+    }
+
+    pub fn push_loop(&mut self, at: Span) {
+        self.loop_stack.push(at);
+    }
+
+    pub fn pop_loop(&mut self) -> Span {
+        self.loop_stack.pop()
+            .expect("can't pop loop stack when not in a loop")
+    }
+
+    pub fn in_loop(&self) -> Option<&Span> {
+        self.loop_stack.last()
     }
 
     pub fn find<'a>(&'a self, name: &Ident) -> Option<MemberRef<'a, Scope>> {
