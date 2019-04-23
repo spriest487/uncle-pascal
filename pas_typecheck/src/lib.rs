@@ -76,9 +76,10 @@ pub mod ty {
                 ClassKind,
                 Typed,
             },
-            Ident,
+            ident::*,
             Operator,
         },
+        pas_common::span::*,
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -225,12 +226,33 @@ pub mod ty {
     }
 
     impl Type {
+        pub fn full_path(&self) -> Option<IdentPath> {
+            fn builtin_path(name: &str) -> IdentPath {
+                let builtin_span = Span::zero("<builtin>");
+                IdentPath::new(Ident::new(name, builtin_span), vec![])
+            }
+
+            match self {
+                Type::Nothing => Some(builtin_path("Nothing")),
+                Type::GenericSelf => Some(builtin_path("Self")),
+                Type::Primitive(p) => Some(builtin_path(p.name())),
+                Type::Interface(iface) =>
+                    Some(IdentPath::new(iface.ident.clone(), vec![])),
+                Type::Record(class) | Type::Class(class) =>
+                    Some(IdentPath::new(class.ident.clone(), vec![])),
+                _ => None,
+            }
+        }
+
         pub fn full_name(&self) -> Option<String> {
             match self {
                 Type::Nothing => Some("Nothing".to_string()),
                 Type::GenericSelf => Some("Self".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
-                Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
+                Type::Interface(iface) =>
+                    Some(iface.ident.to_string()),
+                Type::Record(class) | Type::Class(class) =>
+                    Some(class.ident.to_string()),
                 _ => None,
             }
         }
@@ -334,6 +356,13 @@ pub mod ty {
                 Type::Interface(iface) => iface.methods.iter()
                     .find(|m| m.ident == *method),
                 _ => None,
+            }
+        }
+
+        pub fn expect_something(self, msg: &str) -> Self {
+            match self {
+                Type::Nothing => panic!("expected a type: {}", msg),
+                x => x,
             }
         }
     }

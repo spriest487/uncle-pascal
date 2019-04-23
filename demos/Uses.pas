@@ -10,4 +10,4 @@ SayHello();
 Uses.SayHello();
 
 // todo: improve error message
-//Uses.Uses.SayHello();
+Uses.Uses.SayHello();

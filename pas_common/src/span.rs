@@ -36,50 +36,6 @@ impl Span {
         }
     }
 
-    pub fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
-        writeln!(f, "{}:", self)?;
-        writeln!(f)?;
-
-        let line_count = if self.end.line > self.start.line {
-            (self.end.line - self.start.line) + 1
-        } else {
-            1
-        };
-
-        let mut any_lines = false;
-        for (y, line) in source.lines().enumerate().skip(self.start.line).take(line_count) {
-            any_lines = true;
-
-            if y == self.start.line || y == self.end.line {
-                writeln!(f, "    {}", line)?;
-                write!(f, "    ")?;
-
-                for x in 0..line.len() {
-                    let highlight = x >= self.start.col && x <= self.end.col;
-
-                    if highlight {
-                        write!(f, "^")?;
-                    } else {
-                        write!(f, " ")?;
-                    }
-                }
-                writeln!(f)?;
-            }
-        }
-
-        if !any_lines {
-            write!(f, "    <missing line>")?;
-        }
-
-        Ok(())
-    }
-
-    pub fn print_context(&self, source: &str) {
-        let mut out = String::new();
-        let _ = self.fmt_context(&mut out, source);
-        println!("{}", out);
-    }
-
     pub fn to(&self, other: &Span) -> Self {
         Self {
             file: self.file.clone(),
@@ -111,17 +67,6 @@ impl fmt::Display for Span {
 
 pub trait Spanned: fmt::Display {
     fn span(&self) -> &Span;
-
-    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
-        writeln!(f, "{}", self)?;
-        self.span().fmt_context(f, source)
-    }
-
-    fn print_context(&self, source: &str) {
-        let mut msg = String::new();
-        self.fmt_context(&mut msg, source).unwrap();
-        println!("{}", msg);
-    }
 }
 
 impl Spanned for Span {

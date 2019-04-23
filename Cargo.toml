@@ -12,6 +12,8 @@ pas_typecheck = { path = "pas_typecheck" }
 pas_ir = { path = "pas_ir" }
 
 structopt = "0.2.14"
+codespan = "0.2.1"
+codespan-reporting = "0.2.1"
 
 [workspace]
 members = [

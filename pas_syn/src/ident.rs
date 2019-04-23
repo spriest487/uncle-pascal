@@ -1,7 +1,7 @@
 use {
     pas_common::span::*,
     std::{
-        fmt,
+        fmt::{self, Write},
         hash::{Hash, Hasher},
     }
 };
@@ -44,3 +44,66 @@ impl fmt::Display for Ident {
         write!(f, "{}", self.name)
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Path<Part> {
+    parts: Vec<Part>,
+}
+
+impl<Part> Path<Part> {
+    pub fn new(name: Part, namespace: impl IntoIterator<Item=Part>) -> Self {
+        let mut path: Vec<_> = namespace.into_iter().collect();
+        path.push(name);
+
+        Self { parts: path }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&Part> {
+        self.parts.iter()
+    }
+
+    pub fn into_parts(self) -> Vec<Part> {
+        self.parts
+    }
+
+    pub fn map<IntoPart>(self, f: impl FnMut(Part) -> IntoPart) -> Path<IntoPart> {
+        Path {
+            parts: self.parts.into_iter().map(f).collect()
+        }
+    }
+
+    pub fn push(&mut self, part: Part) {
+        self.parts.push(part);
+    }
+
+    pub fn first(&self) -> &Part {
+        self.parts.first().unwrap()
+    }
+
+    pub fn last(&self) -> &Part {
+        self.parts.last().unwrap()
+    }
+}
+
+impl<Part: Clone> Path<Part> {
+    pub fn child(&self, child: Part) -> Self {
+        let mut result = self.clone();
+        result.push(child);
+        result
+    }
+}
+
+impl<Part: fmt::Display> Path<Part> {
+    pub fn join(&self, sep: impl fmt::Display) -> String {
+        let mut joined = String::new();
+        for (i, part) in self.iter().enumerate() {
+            if i > 0 {
+                write!(joined, "{}", sep).unwrap();
+            }
+            write!(joined, "{}", part).unwrap()
+        }
+        joined
+    }
+}
+
+pub type IdentPath = Path<Ident>;

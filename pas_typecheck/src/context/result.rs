@@ -8,9 +8,12 @@ use {
     },
     pas_syn::{
         Ident,
+        IdentPath,
     },
     pas_common::{
         span::*,
+        DiagnosticMessage,
+        DiagnosticOutput,
     },
 };
 
@@ -50,7 +53,7 @@ pub enum NameError {
     ExpectedNamespace(Ident, UnexpectedValue),
     AlreadyDeclared { new: Ident, existing: Ident },
     AlreadyDefined { ident: Ident, existing: Span },
-    Ambiguous { ident: Ident, options: Vec<Ident> },
+    Ambiguous { ident: Ident, options: Vec<IdentPath> },
 }
 
 impl Spanned for NameError {
@@ -68,34 +71,57 @@ impl Spanned for NameError {
             NameError::Ambiguous { ident, .. } => &ident.span,
         }
     }
+}
 
-    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
+impl DiagnosticOutput for NameError {
+    fn title(&self) -> String {
         match self {
-            NameError::AlreadyDeclared { new, existing } => {
-                new.span.fmt_context(&mut f, source)?;
-                writeln!(f, "Previously declared at:")?;
-                existing.span.fmt_context(f, source)
-            }
+            NameError::NotFound(_) => "Name not found",
+            NameError::MemberNotFound { .. } => "Named member not found",
+            NameError::ExpectedType(_, _) => "Expected name to refer to type type",
+            NameError::ExpectedInterface(_, _) => "Expected name to refer to interface",
+            NameError::ExpectedBinding(_, _) => "Expected name to refer to binding",
+            NameError::ExpectedFunction(_, _) => "Expected name to refer to function",
+            NameError::ExpectedNamespace(_, _) => "Expected name to refer to namespace",
+            NameError::AlreadyDeclared {  .. } => "Name already declared",
+            NameError::AlreadyDefined { .. } => "Name already defined",
+            NameError::Ambiguous { .. } => "Name is ambiguous",
+        }.to_string()
+    }
 
-            NameError::AlreadyDefined { ident, existing } => {
-                ident.span.fmt_context(&mut f, source)?;
-                writeln!(f, "Previously defined at:")?;
-                existing.fmt_context(f, source)
-            }
+    fn label(&self) -> Option<String> {
+        Some(self.to_string())
+    }
+
+    fn see_also(&self) -> Vec<DiagnosticMessage> {
+        match self {
+            NameError::AlreadyDeclared { new, existing } => vec![
+                DiagnosticMessage {
+                    title: format!("`{}` previously declared here", new),
+                    label: None,
+                    span: existing.span().clone(),
+                }
+            ],
+
+            NameError::AlreadyDefined { ident, existing } => vec![
+                DiagnosticMessage {
+                    title: format!("`{}` previously defined here", ident),
+                    label: None,
+                    span: existing.span().clone(),
+                }
+            ],
 
             NameError::Ambiguous { ident, options } => {
-                ident.span.fmt_context(&mut f, source)?;
-                writeln!(f, "Could be one of the following:")?;
-                for option in options {
-                    option.span.fmt_context(&mut f, source)?;
-                }
-                Ok(())
+                options.iter()
+                    .map(|option| DiagnosticMessage {
+                        title: format!("`{}` could refer to `{}`", ident, option.join(".")),
+                        label: None,
+                        span: option.last().span().clone(),
+                    })
+                    .collect()
             }
 
-            _ => {
-                writeln!(f, "{}", self)?;
-                self.span().fmt_context(f, source)
-            }
+            _ => Vec::new(),
         }
     }
 }

@@ -9,7 +9,12 @@ use {
         },
     },
     std::fmt,
-    pas_common::span::*,
+    pas_common::{
+        span::*,
+        DiagnosticMessage,
+        DiagnosticOutput,
+        Backtrace,
+    },
     pas_syn::{
         Ident,
         Operator,
@@ -23,7 +28,7 @@ pub enum TypecheckError {
     InvalidArgs {
         expected: Vec<Type>,
         actual: Vec<Type>,
-        span: Span
+        span: Span,
     },
     InvalidCallInExpression(Call),
     TypeMismatch {
@@ -35,7 +40,7 @@ pub enum TypecheckError {
     NotAddressable {
         ty: Type,
         value_kind: Option<ValueKind>,
-        span: Span
+        span: Span,
     },
     NotDerefable {
         ty: Type,
@@ -56,7 +61,7 @@ pub enum TypecheckError {
     AmbiguousMethod {
         method: Ident,
         span: Span,
-    }
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -84,15 +89,42 @@ impl Spanned for TypecheckError {
             TypecheckError::AmbiguousMethod { span, .. } => span,
         }
     }
+}
 
-    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
+impl DiagnosticOutput for TypecheckError {
+    fn title(&self) -> String {
         match self {
-            TypecheckError::ScopeError(err) => err.fmt_context(f, source),
-            _ => {
-                writeln!(f, "{}", self)?;
-                self.span().fmt_context(f, source)
-            }
+            TypecheckError::ScopeError(err) => err.title(),
+            TypecheckError::NotCallable(_) => "Not callable".to_string(),
+            TypecheckError::InvalidArgs { .. } => "Invalid arguments".to_string(),
+            TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
+            TypecheckError::TypeMismatch { .. } => "Type mismatch".to_string(),
+            TypecheckError::NotMutable(_) => "Value not mutable".to_string(),
+            TypecheckError::NotAddressable { .. } => "Value not addressable".to_string(),
+            TypecheckError::NotDerefable { .. } => "Value cannot be dereferenced".to_string(),
+            TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
+            TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
+            TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
+            TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
         }
+    }
+
+    fn label(&self) -> Option<String> {
+        match self {
+            TypecheckError::ScopeError(err) => err.label(),
+            _ => Some(self.to_string()),
+        }
+    }
+
+    fn see_also(&self) -> Vec<DiagnosticMessage> {
+        match self {
+            TypecheckError::ScopeError(err) => err.see_also(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
     }
 }
 
@@ -140,13 +172,13 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::NotAddressable { ty, value_kind, .. } => {
                 match value_kind {
-                    Some(value_kind) => write!(f, "{} of type {} cannot have its address taken",  value_kind, ty),
+                    Some(value_kind) => write!(f, "{} of type {} cannot have its address taken", value_kind, ty),
                     None => write!(f, "expression without a value cannot have its address taken"),
                 }
             }
 
             TypecheckError::NotDerefable { ty, .. } => {
-                write!(f, "value of type {} cannot be dereferenced", ty,)
+                write!(f, "value of type {} cannot be dereferenced", ty, )
             }
 
             TypecheckError::InvalidBinOp { lhs, rhs, op, .. } => {

@@ -1,3 +1,5 @@
+mod lex;
+
 use {
     crate::{
         consts::{
@@ -12,14 +14,13 @@ use {
         TracedError,
         BuildOptions,
         span::*,
+        DiagnosticOutput,
     },
     std::{
         path::PathBuf,
         fmt,
     },
 };
-
-mod lex;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
@@ -264,6 +265,8 @@ impl Spanned for TokenizeError {
     }
 }
 
+impl DiagnosticOutput for TokenizeError {}
+
 pub type TokenizeResult<T> = Result<T, TracedError<TokenizeError>>;
 
 impl TokenTree {
@@ -288,8 +291,7 @@ mod test {
         match TokenTree::tokenize("test", s, &opts) {
             Ok(result) => result,
             Err(err) => {
-                err.print_context(s);
-                panic!("{:#?}", err.bt);
+                panic!("{} @ {:#?}", err.err, err.bt);
             }
         }
     }

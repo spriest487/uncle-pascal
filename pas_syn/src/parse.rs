@@ -1,20 +1,6 @@
 mod token_stream;
 mod matcher;
 
-use {
-    crate::{
-        token_tree::*,
-        ast::*,
-    },
-    std::{
-        fmt,
-    },
-    pas_common::{
-        TracedError,
-        span::*,
-    },
-};
-
 pub mod prelude {
     pub use {
         crate::{
@@ -32,6 +18,21 @@ pub mod prelude {
         },
     };
 }
+
+use {
+    crate::{
+        token_tree::*,
+        ast::*,
+    },
+    std::{
+        fmt,
+    },
+    pas_common::{
+        TracedError,
+        span::*,
+        DiagnosticOutput,
+    },
+};
 
 pub use self::{
     matcher::*,
@@ -88,3 +89,5 @@ impl fmt::Display for ParseError {
         }
     }
 }
+
+impl DiagnosticOutput for ParseError {}

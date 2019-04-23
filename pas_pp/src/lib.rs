@@ -8,6 +8,7 @@ use {
         span::*,
         BuildOptions,
         Mode,
+        DiagnosticOutput,
     },
 };
 
@@ -53,6 +54,8 @@ impl Spanned for PreprocessorError {
         }
     }
 }
+
+impl DiagnosticOutput for PreprocessorError {}
 
 enum Directive {
     Define(String),

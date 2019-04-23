@@ -22,7 +22,7 @@ use {
             self,
             ClassKind,
         },
-        Ident,
+        ident::*,
     },
     std::{
         collections::hash_map::{
@@ -96,7 +96,7 @@ pub enum Decl {
     Function {
         sig: Rc<FunctionSig>,
         def: Option<Span>,
-    }
+    },
 }
 
 impl fmt::Display for Decl {
@@ -325,7 +325,7 @@ impl Context {
             self.scopes.pop();
 
             if popped_id == id {
-                break Ok(())
+                break Ok(());
             }
         }
     }
@@ -349,13 +349,13 @@ impl Context {
                     new: name.clone(),
                     existing: old_ident,
                 })
-            },
+            }
 
             None => {
                 self.scopes.insert(name.clone(), decl)
                     .map_err(|AlreadyDeclared(existing)| NameError::AlreadyDeclared {
                         existing: existing.clone(),
-                        new: name
+                        new: name,
                     })
             }
         }
@@ -488,7 +488,7 @@ impl Context {
                     new: name,
                     existing: path.top().key().cloned()
                         .expect("result of find must be a named path"),
-                })
+                });
             }
 
             None => {
@@ -508,13 +508,13 @@ impl Context {
 
                     Some(MemberRef::Value { value: unexpected, .. }) => {
                         Err(NameError::ExpectedType(ident.clone(), unexpected.clone().into()))
-                    },
+                    }
 
                     Some(MemberRef::Namespace { path }) => {
                         let ns_ident = path.top().key().unwrap().clone();
-                        let unexpected =  UnexpectedValue::Namespace(ns_ident);
+                        let unexpected = UnexpectedValue::Namespace(ns_ident);
                         Err(NameError::ExpectedType(ident.clone(), unexpected))
-                    },
+                    }
 
                     None => Err(NameError::NotFound(ident.clone())),
                 }
@@ -528,10 +528,10 @@ impl Context {
         match self.find(name) {
             Some(MemberRef::Value { value: Decl::Type(Type::Interface(iface)), .. }) => {
                 Ok(iface.as_ref())
-            },
+            }
             Some(MemberRef::Value { value: other, .. }) => {
                 Err(NameError::ExpectedInterface(name.clone(), other.clone().into()))
-            },
+            }
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedInterface(name.clone(), unexpected))
@@ -557,7 +557,7 @@ impl Context {
                             Type::Interface(iface) => (iface_ty, iface),
                             _ => unreachable!()
                         }
-                    },
+                    }
 
                     _ => panic!("invalid kind of decl referenced in iface impl"),
                 };
@@ -590,7 +590,19 @@ impl Context {
         let methods = self.instance_methods_of(of_ty);
         let matching_methods: Vec<_> = methods.iter()
             .filter(|(_of_ty, m)| m.ident == *member)
+            .map(|(of_ty, m)| (*of_ty, *m))
             .collect();
+
+        fn ambig_paths<'a>(options: impl IntoIterator<Item=(&'a Type, &'a Ident)>) -> Vec<IdentPath> {
+            options.into_iter()
+                .map(|(of_ty, ident)| {
+                    match of_ty.full_path() {
+                        Some(base) => base.child(ident.clone()),
+                        None => Path::new(ident.clone(), Vec::new()),
+                    }
+                })
+                .collect()
+        }
 
         match (data_member, matching_methods.len()) {
             (Some(data_member), 0) => {
@@ -605,7 +617,7 @@ impl Context {
 
                 Ok(InstanceMember::Method {
                     iface_ty,
-                    decl: *method,
+                    decl: method,
                 })
             }
 
@@ -617,22 +629,21 @@ impl Context {
                 })
             }
 
+            // there's a data member and 1+ methods
             (Some(data_member), _) => {
                 Err(NameError::Ambiguous {
                     ident: member.clone(),
-                    options: matching_methods.into_iter()
-                        .map(|(_, m)| m.ident.clone())
-                        .chain(vec![data_member.ident.clone()])
-                        .collect()
+                    options: ambig_paths(matching_methods.into_iter()
+                        .map(|(of_ty, method_decl)| (of_ty, &method_decl.ident))
+                        .chain(vec![(of_ty, data_member.ident)])),
                 })
             }
 
             (None, _) => {
                 Err(NameError::Ambiguous {
                     ident: member.clone(),
-                    options: matching_methods.into_iter()
-                        .map(|(_, m)| m.ident.clone())
-                        .collect()
+                    options: ambig_paths(matching_methods.into_iter()
+                        .map(|(of_ty, method_decl)| (of_ty, &method_decl.ident))),
                 })
             }
         }
@@ -641,7 +652,7 @@ impl Context {
     pub fn find_type_member<'ty>(
         &self,
         ty: &'ty Type,
-        member_ident: &Ident
+        member_ident: &Ident,
     ) -> NamingResult<TypeMember<'ty>> {
         match ty {
             Type::Interface(iface) => {

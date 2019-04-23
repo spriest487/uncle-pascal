@@ -1,6 +1,7 @@
 pub mod span;
 
 use {
+    crate::span::*,
     std::{
         fmt,
         ops::Deref,
@@ -11,8 +12,44 @@ use {
             },
         },
     },
+};
+
+pub use {
     backtrace::Backtrace,
 };
+
+pub trait DiagnosticOutput : Spanned {
+    fn title(&self) -> String {
+        self.to_string()
+    }
+
+    fn label(&self) -> Option<String> {
+        None
+    }
+
+    fn main(&self) -> DiagnosticMessage {
+        DiagnosticMessage {
+            title: self.title(),
+            label: self.label(),
+            span: self.span().clone(),
+        }
+    }
+
+    fn see_also(&self) -> Vec<DiagnosticMessage> {
+        Vec::new()
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        None
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct DiagnosticMessage {
+    pub title: String,
+    pub label: Option<String>,
+    pub span: Span,
+}
 
 #[derive(Clone, Debug)]
 pub struct TracedError<T> {

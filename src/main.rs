@@ -1,8 +1,13 @@
+mod reporting;
+
 use {
     pas_common::{
         BuildOptions,
         span::*,
         TracedError,
+        DiagnosticMessage,
+        DiagnosticOutput,
+        Backtrace,
     },
     structopt::StructOpt,
     pas_pp::{
@@ -30,7 +35,7 @@ use {
         fmt,
         process,
         fs::File,
-        io::{self, Read},
+        io::Read,
         path::PathBuf,
         str::FromStr,
     },
@@ -69,6 +74,42 @@ impl From<PreprocessorError> for CompileError {
     }
 }
 
+impl DiagnosticOutput for CompileError {
+    fn main(&self) -> DiagnosticMessage {
+        match self {
+            CompileError::TokenizeError(err) => err.err.main(),
+            CompileError::ParseError(err) => err.err.main(),
+            CompileError::TypecheckError(err) => err.main(),
+            CompileError::PreprocessorError(err) => err.main(),
+            CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
+                title: "Invalid unit filename".to_string(),
+                label: None,
+                span: at.clone(),
+            },
+        }
+    }
+
+    fn see_also(&self) -> Vec<DiagnosticMessage> {
+        match self {
+            CompileError::TokenizeError(err) => err.see_also(),
+            CompileError::ParseError(err) => err.see_also(),
+            CompileError::TypecheckError(err) => err.see_also(),
+            CompileError::PreprocessorError(err) => err.see_also(),
+            CompileError::InvalidUnitFilename(_) => Vec::new(),
+        }
+    }
+
+    fn backtrace(&self) -> Option<&Backtrace> {
+        match self {
+            CompileError::TokenizeError(err) => Some(&err.bt),
+            CompileError::ParseError(err) => Some(&err.bt),
+            CompileError::TypecheckError(_) => None,
+            CompileError::PreprocessorError(_) => None,
+            CompileError::InvalidUnitFilename(_) => None,
+        }
+    }
+}
+
 impl Spanned for CompileError {
     fn span(&self) -> &Span {
         match self {
@@ -77,16 +118,6 @@ impl Spanned for CompileError {
             CompileError::TypecheckError(err) => err.span(),
             CompileError::PreprocessorError(err) => err.span(),
             CompileError::InvalidUnitFilename(span) => span,
-        }
-    }
-
-    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
-        match self {
-            CompileError::TokenizeError(err) => err.fmt_context(f, source),
-            CompileError::ParseError(err) => err.fmt_context(f, source),
-            CompileError::TypecheckError(err) => err.fmt_context(f, source),
-            CompileError::PreprocessorError(err) => err.fmt_context(f, source),
-            CompileError::InvalidUnitFilename(_) => write!(f, "{}", self),
         }
     }
 }
@@ -279,16 +310,6 @@ fn compile(
     Ok(())
 }
 
-fn print_err_context(err: &CompileError) -> io::Result<()> {
-    let err_filename = err.span().file.as_ref();
-
-    let mut src = String::new();
-    File::open(err_filename)?.read_to_string(&mut src)?;
-
-    err.print_context(&src);
-    Ok(())
-}
-
 fn main() {
     let args: Args = Args::from_args();
     let opts = BuildOptions::default();
@@ -304,7 +325,7 @@ fn main() {
         .map(PathBuf::from);
 
     if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {
-        if let Err(io_err) = print_err_context(&err) {
+        if let Err(io_err) = reporting::report_err(&err) {
             eprintln!("error occurred displaying source for compiler message: {}", io_err);
             eprintln!("{}", err);
         }
