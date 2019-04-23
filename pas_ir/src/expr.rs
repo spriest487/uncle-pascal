@@ -450,6 +450,7 @@ pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Opt
         None => (None, Type::Nothing)
     };
 
+    builder.comment("begin");
     builder.begin_scope();
 
     for stmt in &block.statements {
@@ -463,6 +464,7 @@ pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Opt
     }
 
     builder.end_scope();
+    builder.comment("end");
 
     out_val
 }

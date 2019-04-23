@@ -10,6 +10,8 @@ use {
 };
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
+    builder.comment(stmt);
+
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);

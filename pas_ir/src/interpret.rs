@@ -680,6 +680,10 @@ impl Interpreter {
             }
 
             match &instructions[pc] {
+                Instruction::Comment(_) => {
+                    // noop
+                },
+
                 Instruction::LocalAlloc(id, ty) => {
                     while self.current_frame().locals.len() <= *id {
                         self.current_frame_mut().locals.push(None);

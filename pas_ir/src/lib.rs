@@ -51,7 +51,7 @@ pub enum GlobalRef {
 impl fmt::Display for GlobalRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GlobalRef::Function(name) => write!(f, "function `{}`", name),
+            GlobalRef::Function(func_id) => write!(f, "{}", func_id),
             GlobalRef::StringLiteral(id) => write!(f, "string `{}`", id),
         }
     }
@@ -118,6 +118,8 @@ impl fmt::Display for Label {
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
+    Comment(String),
+
     LocalAlloc(usize, Type),
     LocalDelete(usize),
 
@@ -152,6 +154,8 @@ impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         const IX_WIDTH: usize = 8;
         match self {
+            Instruction::Comment(comment) => write!(f, "// {}", comment),
+
             Instruction::LocalAlloc(id, ty) => write!(f, "{:>width$} {} of {}", "local", Ref::Local(*id), ty, width = IX_WIDTH),
             Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", Ref::Local(*id), width = IX_WIDTH),
             Instruction::Move { out, new_val } => write!(f, "{:>width$} {} := {}", "mov", out, new_val, width = IX_WIDTH),
@@ -294,6 +298,10 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn append(&mut self, instruction: Instruction) {
         self.instructions.push(instruction);
+    }
+
+    pub fn comment(&mut self, content: &(impl fmt::Display + ?Sized)) {
+        self.append(Instruction::Comment(content.to_string()));
     }
 
     pub fn mov(&mut self, out: impl Into<Ref>, val: impl Into<Value>) {
