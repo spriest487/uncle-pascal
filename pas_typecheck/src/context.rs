@@ -475,7 +475,7 @@ impl Context {
                             }),
 
                             Entry::Vacant(entry) => {
-                                entry.insert(def.span().clone());
+                                entry.insert(def.decl.span().clone());
                                 Ok(())
                             }
                         }
@@ -505,7 +505,7 @@ impl Context {
                     });
                 }
 
-                self.declare_function_and_def(name, sig, Some(def.span().clone()))
+                self.declare_function_and_def(name, sig, Some(def.decl.span().clone()))
             }
         }
     }
