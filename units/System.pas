@@ -1,14 +1,14 @@
+type String = class
+    chars: ^Byte;
+    len: Integer;
+end;
+
 function GetMem(count: Integer): ^Byte;
 function FreeMem(mem: ^Byte);
 
 function WriteLn(line: String);
 
 function IntToStr(i: Integer): String;
-
-type String = class
-    chars: ^Byte;
-    len: Integer;
-end;
 
 type Disposable = interface
     function Dispose(self: Self);

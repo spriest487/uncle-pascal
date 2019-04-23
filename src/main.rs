@@ -1,40 +1,19 @@
 mod reporting;
 
 use pas_common::{
-    span::*,
-    Backtrace,
-    BuildOptions,
-    DiagnosticMessage,
-    DiagnosticOutput,
-    TracedError,
+    span::*, Backtrace, BuildOptions, DiagnosticMessage, DiagnosticOutput, TracedError,
 };
-use pas_ir::{
-    self as ir,
-    Interpreter,
-    InterpreterOpts,
-};
-use pas_pp::{
-    self as pp,
-    PreprocessedUnit,
-    PreprocessorError,
-};
-use pas_syn::{
-    ast as syn,
-    parse::*,
-    TokenTree,
-    TokenizeError,
-};
-use pas_typecheck::{
-    self as ty,
-    ast as ty_ast,
-    TypecheckError,
-};
+use pas_ir::{self as ir, Interpreter, InterpreterOpts};
+use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
+use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
+use pas_typecheck::{self as ty, ast as ty_ast, TypecheckError};
 use std::{
     fmt,
     fs::File,
-    io::Read,
+    io::{Read},
     path::PathBuf,
     process,
+    env,
     str::FromStr,
 };
 use structopt::StructOpt;
@@ -192,11 +171,29 @@ struct Args {
     backtrace: bool,
 }
 
+fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
+    for search_path in search_paths.iter() {
+        if search_path.exists() && search_path.is_dir() {
+            let file_path = search_path.join(filename);
+            if file_path.exists() {
+                return Some(file_path);
+            }
+        }
+    }
+
+    None
+}
+
 fn preprocess(
-    filename: impl Into<PathBuf>,
+    filename: PathBuf,
+    search_paths: &[PathBuf],
     opts: &BuildOptions,
 ) -> Result<PreprocessedUnit, CompileError> {
-    let filename = filename.into();
+    let filename = find_in_paths(&filename, search_paths)
+        .unwrap_or_else(|| {
+            eprintln!("could not find unit {}", filename.display());
+            process::exit(1);
+        });
 
     let open_file = File::open(&filename).and_then(|mut f| {
         let mut src = String::new();
@@ -207,8 +204,8 @@ fn preprocess(
     let src = match open_file {
         Err(err) => {
             eprintln!("failed to open {}: {}", filename.display(), err);
-            std::process::exit(1);
-        },
+            process::exit(1);
+        }
         Ok(file) => file,
     };
 
@@ -259,8 +256,27 @@ fn compile(
 
     let all_filenames = units.into_iter().chain(vec![module_path.clone()]);
 
+    // todo: search paths should be an arg or env var
+    let compiler_dir = env::current_exe().unwrap()
+        .parent().unwrap()
+        .parent().unwrap()
+        .parent().unwrap()
+        .join("units")
+        .canonicalize()
+        .unwrap();
+
+    let cwd = env::current_dir().unwrap()
+        .canonicalize()
+        .unwrap();
+    let search_paths = vec![cwd, compiler_dir];
+
+    println!("Unit search paths:");
+    for path in &search_paths {
+        println!("  {}", path.display());
+    }
+
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| preprocess(unit_filename, &opts))
+        .map(|unit_filename| preprocess(unit_filename, &search_paths, &opts))
         .collect::<Result<_, CompileError>>()?;
 
     if out_kind == Stage::Preprocessed {
@@ -325,7 +341,8 @@ fn main() {
 
     let print_bt = args.backtrace;
 
-    let unit_paths = args.units.into_iter().map(PathBuf::from);
+    let mut unit_paths = vec![PathBuf::from("System.pas")];
+    unit_paths.extend(args.units.into_iter().map(PathBuf::from));
 
     if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {
         if let Err(io_err) = reporting::report_err(&err) {
@@ -340,13 +357,13 @@ fn main() {
             match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
-                },
+                }
 
                 CompileError::ParseError(err) => {
                     println!("{:?}", err.bt);
-                },
+                }
 
-                _ => {},
+                _ => {}
             }
         }
 

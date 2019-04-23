@@ -1,0 +1,1 @@
+Typecheck - should check all functions are defined. need to mark internal functions as imported

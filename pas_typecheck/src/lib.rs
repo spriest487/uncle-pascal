@@ -342,6 +342,15 @@ pub mod ty {
             }
         }
 
+        pub fn self_orderable(&self) -> bool {
+            match self {
+                Type::Primitive(Primitive::Real32) => true,
+                Type::Primitive(Primitive::Int32) => true,
+                Type::Primitive(Primitive::Byte) => true,
+                _ => false,
+            }
+        }
+
         pub fn assignable_from(&self, from: &Self) -> bool {
             match self {
                 Type::Pointer(_) => *self == *from || *from == Type::Nil,

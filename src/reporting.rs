@@ -1,24 +1,6 @@
-use codespan::{
-    ByteIndex,
-    ByteSpan,
-    CodeMap,
-    ColumnIndex,
-    FileMap,
-    LineIndex,
-    RawIndex,
-};
-use codespan_reporting::{
-    termcolor,
-    Diagnostic,
-    Label,
-    LabelStyle,
-    Severity,
-};
-use pas_common::{
-    span::*,
-    DiagnosticMessage,
-    DiagnosticOutput,
-};
+use codespan::{ByteIndex, ByteSpan, CodeMap, ColumnIndex, FileMap, LineIndex, RawIndex};
+use codespan_reporting::{termcolor, Diagnostic, Label, LabelStyle, Severity};
+use pas_common::{span::*, DiagnosticMessage, DiagnosticOutput};
 use std::io;
 
 fn find_location_index(file_map: &FileMap, loc: &Location, end: bool) -> io::Result<ByteIndex> {

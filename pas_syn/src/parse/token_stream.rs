@@ -1,11 +1,5 @@
-use crate::{
-    parse::*,
-    token_tree::*,
-};
-use pas_common::{
-    span::*,
-    TracedError,
-};
+use crate::{parse::*, token_tree::*};
+use pas_common::{span::*, TracedError};
 use std::collections::VecDeque;
 
 pub struct TokenStream {
@@ -74,7 +68,7 @@ impl TokenStream {
                         Some(matcher),
                     )))
                 }
-            },
+            }
 
             None => Err(TracedError::trace(ParseError::UnexpectedEOF(
                 matcher,
@@ -100,7 +94,7 @@ impl TokenStream {
             Some(ref token) if matcher.is_match(token) => {
                 self.next();
                 Ok(())
-            },
+            }
 
             Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
                 unexpected,
@@ -143,10 +137,10 @@ impl TokenStream {
         Ok(result)
     }
 
-    pub fn match_repeating<T>(
-        &mut self,
-        mut f: impl FnMut(usize, &mut Self) -> ParseResult<Generate<T>>,
-    ) -> ParseResult<Vec<T>> {
+    pub fn match_repeating<T, F>(&mut self, mut f: F) -> ParseResult<Vec<T>>
+    where
+        F: FnMut(usize, &mut TokenStream) -> ParseResult<Generate<T>>,
+    {
         let mut results = Vec::new();
         loop {
             match f(results.len(), self)? {
@@ -177,7 +171,7 @@ impl TokenStream {
                         // no separator means sequence must end here
                         break Ok(results);
                     }
-                },
+                }
 
                 Generate::Break => {
                     // separated sequence can be always optionally be terminated by the separator
@@ -186,7 +180,7 @@ impl TokenStream {
                     }
 
                     break Ok(results);
-                },
+                }
             }
         }
     }
@@ -239,7 +233,7 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
                 None => {
                     // reached end of sequence without incident
                     break Some(matches);
-                },
+                }
             };
 
             match self.next() {
@@ -250,11 +244,11 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
                         // no match
                         break None;
                     }
-                },
+                }
                 None => {
                     // there are less tokens in the stream than in the sequence
                     break None;
-                },
+                }
             };
         }
     }

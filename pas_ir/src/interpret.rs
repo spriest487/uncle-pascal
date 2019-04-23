@@ -286,44 +286,7 @@ pub struct Interpreter {
 
 impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
-        let mut globals = HashMap::new();
-
-        let int_to_str = Function::Builtin {
-            func: builtin::int_to_str,
-            ret: Type::Struct(STRING_ID).ptr(),
-        };
-
-        globals.insert(
-            GlobalRef::Function(INTTOSTR_ID),
-            MemCell::Function(int_to_str),
-        );
-
-        let write_ln = Function::Builtin {
-            func: builtin::write_ln,
-            ret: Type::Nothing,
-        };
-        globals.insert(GlobalRef::Function(WRITELN_ID), MemCell::Function(write_ln));
-
-        let get_mem = Function::Builtin {
-            func: builtin::get_mem,
-            ret: Type::U8.ptr(),
-        };
-        globals.insert(GlobalRef::Function(GETMEM_ID), MemCell::Function(get_mem));
-
-        let free_mem = Function::Builtin {
-            func: builtin::free_mem,
-            ret: Type::Nothing,
-        };
-        globals.insert(GlobalRef::Function(FREEMEM_ID), MemCell::Function(free_mem));
-
-        let dispose_str = Function::Builtin {
-            func: builtin::string_dispose,
-            ret: Type::Nothing,
-        };
-        globals.insert(
-            GlobalRef::Function(STRING_DISPOSE_IMPL_ID),
-            MemCell::Function(dispose_str),
-        );
+        let globals = HashMap::new();
 
         let mut heap = Heap::new();
         heap.trace = opts.trace_heap;
@@ -846,12 +809,19 @@ impl Interpreter {
                                 let val_ptr = fields[RC_VALUE_FIELD]
                                     .as_pointer()
                                     .and_then(|ptr| ptr.as_heap_addr())
-                                    .unwrap();
+                                    .unwrap_or_else(|| panic!(
+                                        "expected rc value pointe to be a heap address - actual value: {:#?}",
+                                        fields[RC_VALUE_FIELD]
+                                    ));
                                 let val_cell = self
                                     .heap
                                     .get(val_ptr)
                                     .and_then(|cell| cell.as_struct(*struct_id))
-                                    .unwrap();
+                                    .unwrap_or_else(|| panic!(
+                                        "expected value of rc cell to be struct {} - actual value: {:#?}",
+                                        struct_id,
+                                        self.heap.get(val_ptr)
+                                    ));
 
                                 &val_cell.fields[*field_id]
                             } else {
@@ -949,6 +919,52 @@ impl Interpreter {
         Pointer::Heap(Type::Struct(RC_ID), addr)
     }
 
+    fn init_globals(&mut self) {
+        let inttostr_name = GlobalName::new("IntToStr", vec!["System"]);
+        if let Some(inttostr_id) = self.metadata.find_function(&inttostr_name) {
+            self.globals.insert(
+                GlobalRef::Function(inttostr_id),
+                MemCell::Function(Function::Builtin {
+                    func: builtin::int_to_str,
+                    ret: Type::Struct(STRING_ID).ptr(),
+                }),
+            );
+        }
+
+        let writeln_name = GlobalName::new("WriteLn", vec!["System"]);
+        if let Some(writeln_id) = self.metadata.find_function(&writeln_name) {
+            self.globals.insert(
+                GlobalRef::Function(writeln_id),
+                MemCell::Function(Function::Builtin {
+                    func: builtin::write_ln,
+                    ret: Type::Nothing,
+                }),
+            );
+        }
+
+        let getmem_name = GlobalName::new("GetMem", vec!["System"]);
+        if let Some(getmem_id) = self.metadata.find_function(&getmem_name) {
+            self.globals.insert(
+                GlobalRef::Function(getmem_id),
+                MemCell::Function(Function::Builtin {
+                    func: builtin::get_mem,
+                    ret: Type::U8.ptr(),
+                }),
+            );
+        }
+
+        let freemem_name = GlobalName::new("FreeMem", vec!["System"]);
+        if let Some(freemem_id) = self.metadata.find_function(&freemem_name) {
+            self.globals.insert(
+                GlobalRef::Function(freemem_id),
+                MemCell::Function(Function::Builtin {
+                    func: builtin::free_mem,
+                    ret: Type::Nothing,
+                }),
+            );
+        }
+    }
+
     pub fn load_module(&mut self, module: &Module) {
         self.metadata.extend(&module.metadata);
 
@@ -965,6 +981,8 @@ impl Interpreter {
 
             self.globals.insert(str_ref, str_cell);
         }
+
+        self.init_globals();
 
         self.push_stack();
         self.execute(&module.init);

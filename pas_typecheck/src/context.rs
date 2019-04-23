@@ -3,9 +3,7 @@ pub mod result;
 
 use crate::{
     ast::{
-        Class,
         FunctionDecl,
-        FunctionParam,
         Interface,
     },
     context::NamespaceStack,
@@ -17,7 +15,7 @@ use pas_common::span::*;
 use pas_syn::{
     ast::{
         self,
-        ClassKind,
+        TypeName,
     },
     ident::*,
 };
@@ -180,8 +178,6 @@ pub struct Context {
     next_id: ScopeID,
     scopes: NamespaceStack<Scope>,
 
-    string_class: Rc<Class>,
-
     /// iface ident -> self ty -> impl details
     iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
 
@@ -189,52 +185,21 @@ pub struct Context {
     defs: HashMap<IdentPath, Span>,
 }
 
+pub fn builtin_span() -> Span {
+    Span {
+        file: Rc::new("<builtin>".into()),
+        start: Location { line: 0, col: 0 },
+        end: Location { line: 0, col: 0 },
+    }
+}
+
 impl Context {
     pub fn root() -> Self {
-        let builtin_span = Span {
-            file: Rc::new("<builtin>".into()),
-            start: Location { line: 0, col: 0 },
-            end: Location { line: 0, col: 0 },
-        };
-
-        let disposable_iface = Rc::new(Interface {
-            ident: Ident::new("Disposable", builtin_span.clone()).into(),
-            methods: vec![FunctionDecl {
-                ident: Ident::new("Dispose", builtin_span.clone()),
-                span: builtin_span.clone(),
-                impl_iface: None,
-                return_ty: Some(Type::Nothing),
-                params: vec![FunctionParam {
-                    ident: Ident::new("self", builtin_span.clone()),
-                    span: builtin_span.clone(),
-                    ty: Type::GenericSelf,
-                }],
-            }],
-            span: builtin_span.clone(),
-        });
-
-        let string_class = Rc::new(Class {
-            kind: ClassKind::Object,
-            ident: Ident::new("String", builtin_span.clone()).into(),
-            span: builtin_span.clone(),
-            members: vec![
-                ast::Member {
-                    ident: Ident::new("chars", builtin_span.clone()),
-                    ty: Type::Primitive(Primitive::Byte).ptr(),
-                    span: builtin_span.clone(),
-                },
-                ast::Member {
-                    ident: Ident::new("len", builtin_span.clone()),
-                    ty: Type::Primitive(Primitive::Int32),
-                    span: builtin_span.clone(),
-                },
-            ],
-        });
+        let builtin_span = builtin_span();
 
         let mut root_ctx = Self {
             scopes: NamespaceStack::new(Scope::new(ScopeID(0), None)),
             next_id: ScopeID(1),
-            string_class,
 
             defs: HashMap::new(),
             iface_impls: HashMap::new(),
@@ -257,64 +222,6 @@ impl Context {
         let single_ident = Ident::new(Primitive::Real32.name(), builtin_span.clone());
         root_ctx
             .declare_type(single_ident, Primitive::Real32)
-            .unwrap();
-
-        let string_ident = root_ctx.string_class.ident.clone();
-        root_ctx
-            .declare_type(string_ident.last().clone(), Type::Class(root_ctx.string_class.clone()))
-            .unwrap();
-
-        let disposable_ident = disposable_iface.ident.clone();
-        root_ctx
-            .declare_type(disposable_ident.last().clone(), Type::Interface(disposable_iface.clone()))
-            .unwrap();
-
-        root_ctx
-            .declare_method_impl(
-                disposable_iface.ident.clone(),
-                Type::Class(root_ctx.string_class.clone()),
-                Ident::new("Dispose", builtin_span.clone()),
-            )
-            .unwrap();
-
-        root_ctx
-            .declare_function(
-                Ident::new("GetMem", builtin_span.clone()),
-                FunctionSig {
-                    params: vec![Type::Primitive(Primitive::Int32)],
-                    return_ty: Type::Primitive(Primitive::Byte).ptr(),
-                },
-            )
-            .unwrap();
-
-        root_ctx
-            .declare_function(
-                Ident::new("FreeMem", builtin_span.clone()),
-                FunctionSig {
-                    params: vec![Type::Primitive(Primitive::Byte).ptr()],
-                    return_ty: Type::Nothing,
-                },
-            )
-            .unwrap();
-
-        root_ctx
-            .declare_function(
-                Ident::new("IntToStr", builtin_span.clone()),
-                FunctionSig {
-                    params: vec![Primitive::Int32.into()],
-                    return_ty: Type::Class(root_ctx.string_class.clone()),
-                },
-            )
-            .unwrap();
-
-        root_ctx
-            .declare_function(
-                Ident::new("WriteLn", builtin_span.clone()),
-                FunctionSig {
-                    params: vec![Type::Class(root_ctx.string_class.clone())],
-                    return_ty: Type::Nothing,
-                },
-            )
             .unwrap();
 
         // builtins are in scope 0, unit is scope 1
@@ -730,7 +637,15 @@ impl Context {
         }
     }
 
-    pub fn string_type(&self) -> Type {
-        Type::Class(self.string_class.clone())
+    pub fn string_type(&self) -> NamingResult<Type> {
+        let ns = IdentPath::from(Ident::new("System", builtin_span()));
+        let str_class_name = TypeName::Ident {
+            ident: ns.child(Ident::new("String", builtin_span())),
+            indirection: 0
+        };
+
+        self.find_type(&str_class_name)
     }
 }
+
+

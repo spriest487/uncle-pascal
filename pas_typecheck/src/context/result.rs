@@ -11,7 +11,10 @@ use pas_syn::{
     Ident,
     IdentPath,
 };
-use std::fmt;
+use std::{
+    fmt,
+    path::PathBuf,
+};
 
 #[derive(Debug)]
 pub enum UnexpectedValue {
@@ -101,11 +104,18 @@ impl DiagnosticOutput for NameError {
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
-            NameError::AlreadyDeclared { new, existing } => vec![DiagnosticMessage {
-                title: format!("`{}` previously declared here", new),
-                label: None,
-                span: existing.span().clone(),
-            }],
+            NameError::AlreadyDeclared { new, existing } => {
+                if *existing.span().file.as_ref() == PathBuf::from("<builtin>") {
+                    // don't show this message for conflicts with builtin identifiers
+                    Vec::new()
+                } else {
+                    vec![DiagnosticMessage {
+                        title: format!("`{}` previously declared here", new),
+                        label: None,
+                        span: existing.span().clone(),
+                    }]
+                }
+            },
 
             NameError::AlreadyDefined { ident, existing } => vec![DiagnosticMessage {
                 title: format!("`{}` previously defined here", ident),

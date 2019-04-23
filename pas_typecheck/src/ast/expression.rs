@@ -205,7 +205,7 @@ pub fn typecheck_expr(
         ast::Expression::Literal(ast::Literal::String(s)) => {
             let binding = ValueKind::Immutable;
             let annotation = TypeAnnotation::TypedValue {
-                ty: ctx.string_type(),
+                ty: ctx.string_type()?,
                 value_kind: binding,
                 span: span.clone(),
             };
@@ -287,10 +287,7 @@ pub fn typecheck_expr(
         },
 
         ast::Expression::BinOp(bin_op) => {
-            let bin_op = typecheck_bin_op(bin_op, ctx)?;
-            let annotation = bin_op.annotation.clone();
-
-            Ok(ast::ExpressionNode::new(bin_op, annotation))
+            typecheck_bin_op(bin_op, ctx)
         },
 
         ast::Expression::UnaryOp(unary_op) => {

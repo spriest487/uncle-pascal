@@ -26,7 +26,6 @@ pub use self::{
 
 use crate::{
     parse::prelude::*,
-    token_tree::*,
 };
 use pas_common::TracedError;
 use std::{
@@ -82,20 +81,22 @@ impl TypeName {
             tokens.advance(1);
         }
 
-        match tokens.match_one(Matcher::AnyIdent)? {
-            TokenTree::Ident(ident) => {
-                // todo: multi-part paths in typenames
-                let ident = Path::from(ident);
-                Ok(TypeName::Ident { ident, indirection })
-            },
-            unexpected => {
-                let expected = Matcher::AnyIdent;
-                Err(TracedError::trace(ParseError::UnexpectedToken(
-                    unexpected,
-                    Some(expected),
-                )))
-            },
-        }
+        let path = tokens.match_repeating(|i, tokens| {
+            if i > 0 {
+                if tokens.look_ahead().match_one(Operator::Member).is_none() {
+                    return Ok(Generate::Break);
+                } else {
+                    tokens.advance(1);
+                }
+            }
+
+            let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+            let ident = ident_tt.into_ident().unwrap();
+            Ok(Generate::Yield(ident))
+        })?;
+        assert!(!path.is_empty(), "parsed type path must always have 1+ parts");
+
+        Ok(TypeName::Ident { ident: Path::from_parts(path), indirection })
     }
 }
 

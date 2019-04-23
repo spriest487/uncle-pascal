@@ -46,12 +46,6 @@ pub const RC_VALUE_FIELD: usize = 1;
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: usize = 0;
 pub const STRING_LEN_FIELD: usize = 1;
-pub const STRING_DISPOSE_IMPL_ID: FunctionID = FunctionID(0);
-
-pub const INTTOSTR_ID: FunctionID = FunctionID(1);
-pub const WRITELN_ID: FunctionID = FunctionID(2);
-pub const GETMEM_ID: FunctionID = FunctionID(3);
-pub const FREEMEM_ID: FunctionID = FunctionID(4);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath(Path<String>);
@@ -230,8 +224,8 @@ pub struct GlobalName {
 }
 
 impl GlobalName {
-    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = String>) -> Self {
-        let mut path: Vec<_> = ns.into_iter().collect();
+    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let mut path: Vec<String> = ns.into_iter().map(|p| p.into()).collect();
         path.push(name.into());
 
         Self { path }
@@ -280,65 +274,12 @@ pub struct Metadata {
 impl Metadata {
     pub fn system() -> Self {
         let mut metadata = Metadata::new();
-        metadata.ifaces.insert(
-            DISPOSABLE_ID,
-            Interface::new(vec!["Disposable".to_string()], vec!["Dispose".to_string()]),
-        );
 
         metadata.structs.insert(
             RC_ID,
             Struct::new(vec!["Rc".to_string()])
                 .with_field("rc", Type::I32, false)
                 .with_field("value", Type::Nothing.ptr(), false),
-        );
-
-        metadata.structs.insert(
-            STRING_ID,
-            Struct::new(vec!["String".to_string()])
-                .with_field("chars", Type::I32.ptr(), false)
-                .with_field("len", Type::I32, false),
-        );
-
-        metadata
-            .functions
-            .insert(STRING_DISPOSE_IMPL_ID, FunctionDecl { global_name: None });
-        metadata.impl_method(
-            DISPOSABLE_ID,
-            Type::Struct(STRING_ID),
-            "Dispose",
-            STRING_DISPOSE_IMPL_ID,
-        );
-
-        let inttostr_name = GlobalName::new("IntToStr", vec![]);
-        metadata.functions.insert(
-            INTTOSTR_ID,
-            FunctionDecl {
-                global_name: Some(inttostr_name),
-            },
-        );
-
-        let writeln_name = GlobalName::new("WriteLn", vec![]);
-        metadata.functions.insert(
-            WRITELN_ID,
-            FunctionDecl {
-                global_name: Some(writeln_name),
-            },
-        );
-
-        let getmem_name = GlobalName::new("GetMem", vec![]);
-        metadata.functions.insert(
-            GETMEM_ID,
-            FunctionDecl {
-                global_name: Some(getmem_name),
-            },
-        );
-
-        let freemem_name = GlobalName::new("FreeMem", vec![]);
-        metadata.functions.insert(
-            FREEMEM_ID,
-            FunctionDecl {
-                global_name: Some(freemem_name),
-            },
         );
 
         metadata
@@ -497,9 +438,17 @@ impl Metadata {
             fields.insert(id, StructField { name, ty, rc });
         }
 
-        let id = self.next_struct_id();
-
         let struct_name = NamePath::from_ident(struct_def.ident.clone());
+
+        // System.String is defined in System.pas but we need to refer to it before processing
+        // any units, so it has a fixed IR struct ID
+        let string_name = NamePath::from(vec!["System".to_string(), "String".to_string()]);
+        let id = if struct_name == string_name {
+            STRING_ID
+        } else {
+            self.next_struct_id()
+        };
+
         assert!(
             !self.structs.values().any(|def| def.name == struct_name),
             "duplicate struct def: {}",
@@ -519,9 +468,16 @@ impl Metadata {
             .map(|method| method.ident.to_string())
             .collect();
 
-        let id = self.next_iface_id();
-
+        // System.Disposable is defined in System.pas but we need to refer to it before processing
+        // any units, so it has a fixed IR struct ID
         let name = NamePath::from_ident(iface_def.ident.clone());
+        let disposable_name = NamePath::from(vec!["System".to_string(), "Disposable".to_string()]);
+
+        let id = if name == disposable_name {
+            DISPOSABLE_ID
+        } else {
+            self.next_iface_id()
+        };
 
         self.ifaces.insert(id, Interface::new(name, methods));
 

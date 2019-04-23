@@ -66,35 +66,42 @@ impl Spanned for ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ParseError::UnexpectedToken(..) => write!(f, "Unexpected token"),
+            ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of file"),
+            ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
+            ParseError::InvalidStatement(..) => write!(f, "Invalid statement"),
+            ParseError::InvalidMember(..) => write!(f, "Invalid member expression"),
+        }
+    }
+}
+
+impl DiagnosticOutput for ParseError {
+    fn label(&self) -> Option<String> {
+        Some(match self {
             ParseError::UnexpectedToken(tt, Some(expected)) => {
-                write!(f, "expected {}, found {}", expected, tt)
+                format!("expected {}, found {}", expected, tt)
             },
 
-            ParseError::UnexpectedToken(tt, None) => write!(f, "unexpected {}", tt),
+            ParseError::UnexpectedToken(tt, None) => format!("unexpected {}", tt),
 
-            ParseError::UnexpectedEOF(expected, tt) => write!(
-                f,
+            ParseError::UnexpectedEOF(expected, tt) => format!(
                 "expected {} after {} but reached end of sequence",
                 expected, tt
             ),
 
             ParseError::EmptyOperand { operator, before } => {
                 let pos_name = if *before { "before" } else { "after" };
-                write!(f, "expected operand {} {}", pos_name, operator)
+                format!("expected operand {} {}", pos_name, operator)
             },
 
             ParseError::InvalidStatement(expr) => {
-                write!(f, "the expression `{}` is not valid as a statement", expr)
+                format!("the expression `{}` is not valid as a statement", expr)
             },
 
-            ParseError::InvalidMember(bin_op, _) => write!(
-                f,
+            ParseError::InvalidMember(bin_op, _) => format!(
                 "the expression `{}` does not denote a member of `{}`",
                 bin_op.rhs, bin_op.lhs
             ),
-        }
+        })
     }
-}
-
-impl DiagnosticOutput for ParseError {
 }
