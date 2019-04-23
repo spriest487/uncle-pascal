@@ -288,7 +288,7 @@ impl fmt::Display for FunctionID {
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
-    global_name: Option<GlobalName>,
+    pub global_name: Option<GlobalName>,
 }
 
 #[derive(Debug, Clone)]
@@ -421,6 +421,10 @@ impl Metadata {
             .iter()
             .find(|(_id, func)| func.global_name.as_ref() == Some(name))
             .map(|(id, _func)| *id)
+    }
+
+    pub fn get_function(&self, id: FunctionID) -> Option<&FunctionDecl> {
+        self.functions.get(&id)
     }
 
     pub fn func_desc(&self, id: FunctionID) -> String {

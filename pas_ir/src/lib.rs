@@ -1,4 +1,7 @@
-pub use self::interpret::{Interpreter, InterpreterOpts};
+pub use self::{
+    interpret::{Interpreter, InterpreterOpts},
+    formatter::*,
+};
 use crate::{expr::*, metadata::*, stmt::*};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
@@ -6,6 +9,7 @@ use std::{collections::HashMap, fmt};
 
 mod expr;
 mod stmt;
+mod formatter;
 
 pub mod prelude {
     pub use crate::{
@@ -203,189 +207,7 @@ pub enum Instruction {
 
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        const IX_WIDTH: usize = 8;
-        match self {
-            Instruction::Comment(comment) => write!(f, "// {}", comment),
-
-            Instruction::LocalAlloc(id, ty) => write!(
-                f,
-                "{:>width$} {} of {}",
-                "local",
-                Ref::Local(*id),
-                ty,
-                width = IX_WIDTH
-            ),
-            Instruction::LocalDelete(id) => write!(
-                f,
-                "{:>width$} {}",
-                "drop",
-                Ref::Local(*id),
-                width = IX_WIDTH
-            ),
-            Instruction::Move { out, new_val } => write!(
-                f,
-                "{:>width$} {} := {}",
-                "mov",
-                out,
-                new_val,
-                width = IX_WIDTH
-            ),
-            Instruction::Add { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} + {}",
-                "add",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-            Instruction::Sub { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} - {}",
-                "sub",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Eq { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} = {}",
-                "eq",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-            Instruction::Gt { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} > {}",
-                "gt",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-            Instruction::Not { out, a } => {
-                write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH)
-            }
-            Instruction::And { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} and {}",
-                "and",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-            Instruction::Or { out, a, b } => write!(
-                f,
-                "{:>width$} {} := {} or {}",
-                "or",
-                out,
-                a,
-                b,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Call {
-                out,
-                function,
-                args,
-            } => {
-                write!(f, "{:>width$} ", "call", width = IX_WIDTH)?;
-                if let Some(out_val) = out {
-                    write!(f, "{} := ", out_val)?;
-                }
-                write!(f, "{}(", function)?;
-                for (i, arg) in args.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", arg)?;
-                }
-                write!(f, ")")
-            }
-
-            Instruction::AddrOf { out, a } => write!(
-                f,
-                "{:>width$} {} := @{}",
-                "addrof",
-                out,
-                a,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Element {
-                out,
-                a,
-                element,
-                index,
-            } => write!(
-                f,
-                "{:>width$} {} := @({} as array of {})[{}]",
-                "el",
-                out,
-                a,
-                element,
-                index,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Field {
-                out,
-                a,
-                of_ty,
-                field,
-            } => write!(
-                f,
-                "{:>width$} {} := @({} as {}).{}",
-                "fld",
-                out,
-                a,
-                of_ty,
-                field,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Label(label) => {
-                write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
-            }
-
-            Instruction::Jump { dest } => write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH),
-
-            Instruction::JumpIf { dest, test } => write!(
-                f,
-                "{:>width$} {} if {}",
-                "jmpif",
-                dest,
-                test,
-                width = IX_WIDTH
-            ),
-
-            Instruction::RcNew { out, struct_id } => write!(
-                f,
-                "{:>width$} {} at {}^",
-                "rcnew",
-                Type::Struct(*struct_id),
-                out,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Release { at, struct_id } => write!(
-                f,
-                "{:>width$} {} as {}",
-                "release",
-                at,
-                struct_id,
-                width = IX_WIDTH
-            ),
-
-            Instruction::Retain { at } => {
-                write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
-            }
-        }
+        RawInstructionFormatter.format_instruction(self, f)
     }
 }
 
@@ -830,14 +652,16 @@ impl fmt::Display for Module {
             writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
 
             for instruction in &func.body {
-                writeln!(f, "{}", instruction)?;
+                self.metadata.format_instruction(instruction, f)?;
+                writeln!(f)?;
             }
             writeln!(f)?;
         }
 
         writeln!(f, "* Init:")?;
         for instruction in &self.init {
-            writeln!(f, "{}", instruction)?;
+            self.metadata.format_instruction(instruction, f)?;
+            writeln!(f)?;
         }
         Ok(())
     }

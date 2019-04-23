@@ -653,12 +653,11 @@ impl Interpreter {
             self.call(&func, &[cell.clone()], None);
         } else {
             if self.trace_rc {
-            eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty))
+                eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty))
+            }
         }
     }
-    }
 
-    // todo: this should be handled in the IR so we don't need to know cell types
     fn release_cell(&mut self, cell: &MemCell, cell_ty: &Type) {
         match cell_ty {
             Type::Struct(struct_id) => {
@@ -681,6 +680,8 @@ impl Interpreter {
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
 
                 if rc_cell.ref_count == 1 {
+                    println!("delete cell {:?} with ty {}", cell, self.metadata.pretty_ty_name(cell_ty));
+
                     // Dispose() the inner resource
                     self.invoke_disposer(&cell, resource_ty.as_ref());
 
@@ -688,7 +689,7 @@ impl Interpreter {
                     self.release_cell(&resource_cell, resource_ty.as_ref());
 
                     if self.trace_rc {
-                        eprintln!("rc: free {} @ {}", resource_ty, rc_addr)
+                        eprintln!("rc: free {} @ {}", self.metadata.pretty_ty_name(resource_ty), rc_addr)
                     }
 
                     self.heap.free(rc_cell.resource_addr);
@@ -698,7 +699,7 @@ impl Interpreter {
                     if self.trace_rc {
                         eprintln!(
                             "rc: release {} @ {} ({} more refs)",
-                            resource_ty,
+                            self.metadata.pretty_ty_name(resource_ty),
                             rc_cell.resource_addr,
                             rc_cell.ref_count - 1
                         )
