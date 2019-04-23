@@ -653,11 +653,10 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
     builder.begin_scope();
 
-    // todo: lookup members by id, don't assume they're in order
     for member in &ctor.args.members {
         let member_val = translate_expr(&member.value, builder);
         let field = struct_def
-            .find_field(&member.ident.to_string())
+            .find_field(&member.ident.name)
             .unwrap_or_else(|| {
                 panic!(
                     "field {} referenced in object ctor must exist",
@@ -710,8 +709,8 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
                 });
 
                 let el_init = translate_expr(el, builder);
-                builder.mov(el_ptr.clone().deref(), el_init);
 
+                builder.mov(el_ptr.clone().deref(), el_init);
                 builder.end_scope();
             }
 

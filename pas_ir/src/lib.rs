@@ -1,6 +1,6 @@
 pub use self::{
-    interpret::{Interpreter, InterpreterOpts},
     formatter::*,
+    interpret::{Interpreter, InterpreterOpts},
 };
 use crate::{expr::*, metadata::*, stmt::*};
 use pas_syn::ast;
@@ -8,8 +8,8 @@ use pas_typecheck as pas_ty;
 use std::{collections::HashMap, fmt};
 
 mod expr;
-mod stmt;
 mod formatter;
+mod stmt;
 
 pub mod prelude {
     pub use crate::{
@@ -414,83 +414,70 @@ impl<'metadata> Builder<'metadata> {
             .next()
     }
 
-    fn visit_struct_deep(
-        &mut self,
-        at: Ref,
-        struct_id: StructID,
-        f: &impl Fn(&mut Builder, &Type, Ref),
-    ) {
-        let fields: Vec<_> = self.metadata.structs()[&struct_id]
-            .fields
-            .iter()
-            .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
-            .collect();
+    fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: &Visitor)
+        where Visitor: Fn(&mut Builder, &Type, Ref)
+    {
+        match ty {
+            Type::Struct(struct_id) => {
+                let fields: Vec<_> = self.metadata.structs()[&struct_id]
+                    .fields
+                    .iter()
+                    .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
+                    .collect();
 
-        for (field, field_ty, field_rc) in fields {
-            if field_rc || field_ty.as_struct().is_some() {
-                // store the field in a temp slot
-                let field_val = self.local_temp(field_ty.clone().ptr());
-                self.append(Instruction::Field {
-                    out: field_val.clone(),
-                    a: at.clone(),
-                    of_ty: Type::Struct(struct_id),
-                    field,
-                });
+                for (field, field_ty, field_rc) in fields {
+                    if field_rc || field_ty.as_struct().is_some() {
+                        // store the field pointer in a temp slot
+                        let field_val = self.local_temp(field_ty.clone().ptr());
+                        self.append(Instruction::Field {
+                            out: field_val.clone(),
+                            a: at.clone(),
+                            of_ty: Type::Struct(*struct_id),
+                            field,
+                        });
 
-                // if it's a struct, visit its fields now
-                if let Type::Struct(field_struct_id) = &field_ty {
-                    self.visit_struct_deep(field_val.deref(), *field_struct_id, f);
-                } else {
-                    f(self, &field_ty, field_val.deref());
+                        self.visit_deep(field_val.deref(), &field_ty, f);
+                    }
                 }
             }
-        }
+
+            Type::Array { element, dim } => {
+                let element_ref = self.local_temp(*element.clone());
+                for i in 0..*dim {
+                    self.append(Instruction::Element {
+                        out: element_ref.clone(),
+                        a: at.clone(),
+                        element: *element.clone(),
+                        index: Value::LiteralI32(i as i32), //todo: real usize type
+                    });
+
+                    self.visit_deep(element_ref.clone().deref(), element, f);
+                }
+            }
+
+            // field or element
+            _ => f(self, ty, at),
+        };
     }
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
-        match ty {
-            Type::RcPointer(_resource_ty) => {
-                self.append(Instruction::Retain { at: at.clone() });
+        self.begin_scope();
+        self.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+            if let Type::RcPointer(..) = element_ty {
+                builder.append(Instruction::Retain { at: element_ref });
             }
-
-            Type::Struct(id) => {
-                self.begin_scope();
-                self.visit_struct_deep(at, *id, &mut |builder, _field_ty, field_ref| {
-                    builder.append(Instruction::Retain { at: field_ref });
-                });
-                self.end_scope();
-            }
-
-            _ => {
-                // nothing to retain
-            }
-        }
+        });
+        self.end_scope();
     }
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
-        match ty {
-            Type::RcPointer(..) => {
-                self.append(Instruction::Release {
-                    at: at.clone(),
-                });
-            },
-
-            Type::Struct(struct_id) => {
-                self.begin_scope();
-                self.visit_struct_deep(at, *struct_id, &mut |builder, field_ty, field_ref| {
-                    if let Type::RcPointer(..) = field_ty {
-                        builder.append(Instruction::Release {
-                            at: field_ref,
-                        });
-                    }
-                });
-                self.end_scope();
+        self.begin_scope();
+        self.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+            if let Type::RcPointer(..) = element_ty {
+                builder.append(Instruction::Release { at: element_ref });
             }
-
-            _ => {
-                // nothing to release
-            }
-        }
+        });
+        self.end_scope();
     }
 
     pub fn begin_scope(&mut self) {
@@ -552,14 +539,19 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         }
     };
 
+    let param_id_offset = match return_ty {
+        Type::Nothing => 0,
+        _ => {
+            assert!(func.decl.return_ty.is_some());
+            1
+        }
+    };
+
+    let mut bound_params = Vec::with_capacity(func.decl.params.len());
+
     for (i, param) in func.decl.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
-        let id = LocalID(if return_ty != Type::Nothing {
-            assert!(func.decl.return_ty.is_some());
-            i + 1
-        } else {
-            i
-        });
+        let id = LocalID(i + param_id_offset);
 
         let (param_ty, by_ref) = match &param.modifier {
             Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
@@ -576,7 +568,11 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         ));
         body_builder.bind_local(id, param_ty.clone(), Some(param.ident.to_string()), by_ref);
 
-        body_builder.retain(Ref::Local(id), &param_ty);
+        bound_params.push((id, param_ty));
+    }
+
+    for (id, ty) in bound_params {
+        body_builder.retain(Ref::Local(id), &ty);
     }
 
     let block_output = translate_block(&func.body, &mut body_builder);

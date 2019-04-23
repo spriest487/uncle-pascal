@@ -245,16 +245,11 @@ impl InstructionFormatter for Metadata {
 
                         match find_iface_impl {
                             Some((iface_name, impl_ty, method_name)) => {
-                                write!(f,
-                                    "{}.{} impl for ",
-                                    iface_name, method_name
-                                )?;
+                                write!(f, "{}.{} impl for ", iface_name, method_name)?;
                                 self.format_type(impl_ty, f)
                             }
 
-                            None => {
-                                write!(f, "{}", r)
-                            }
+                            None => write!(f, "{}", r),
                         }
                     }
                 }
@@ -265,7 +260,8 @@ impl InstructionFormatter for Metadata {
     }
 
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
-        let field_name = of_ty.as_struct()
+        let field_name = of_ty
+            .as_struct()
             .or_else(|| of_ty.rc_resource_type_id())
             .and_then(|struct_id| self.structs().get(&struct_id))
             .and_then(|struct_def| struct_def.fields.get(&field))

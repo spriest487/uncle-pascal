@@ -137,12 +137,18 @@ impl Index<HeapAddress> for Heap {
     type Output = MemCell;
 
     fn index(&self, addr: HeapAddress) -> &MemCell {
-        self.get(addr).unwrap()
+        self.get(addr)
+            .unwrap_or_else(|| panic!("trying to access unallocated heap location {}", addr))
     }
 }
 
 impl IndexMut<HeapAddress> for Heap {
     fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
-        self.get_mut(addr).unwrap()
+        self.get_mut(addr).unwrap_or_else(|| {
+            panic!(
+                "trying to mutably access unallocated heap location {}",
+                addr
+            )
+        })
     }
 }

@@ -13,6 +13,7 @@ use pas_common::{
     span::*,
     BuildOptions,
     DiagnosticOutput,
+    DiagnosticLabel,
     TracedError,
 };
 use std::{
@@ -268,14 +269,16 @@ pub enum TokenizeError {
 impl fmt::Display for TokenizeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TokenizeError::IllegalToken(_) => write!(f, "Illegal token"),
+            TokenizeError::IllegalToken(..) => {
+                write!(f, "Illegal token")
+            },
 
-            TokenizeError::UnmatchedDelimiter {
-                delim, to_match, ..
-            } => write!(f, "unmatched {:?} delimiter from {}", delim, to_match),
+            TokenizeError::UnmatchedDelimiter { .. } => {
+                write!(f, "unmatched delimiter")
+            },
 
-            TokenizeError::UnexpectedCloseDelimited { delim, .. } => {
-                write!(f, "unexpected {:?} close delimiter", delim)
+            TokenizeError::UnexpectedCloseDelimited { .. } => {
+                write!(f, "unexpected close delimiter")
             },
         }
     }
@@ -292,6 +295,30 @@ impl Spanned for TokenizeError {
 }
 
 impl DiagnosticOutput for TokenizeError {
+    fn label(&self) -> Option<DiagnosticLabel> {
+        match self {
+            TokenizeError::IllegalToken(span) => Some(DiagnosticLabel {
+                span: span.clone(),
+                text: None,
+            }),
+
+            TokenizeError::UnmatchedDelimiter { delim, to_match, .. } => Some(DiagnosticLabel {
+                span: to_match.clone(),
+                text: {
+                    let (open, close) = delim.tokens();
+                    Some(format!("opening `{}` is not followed by a closing `{}`", open, close))
+                },
+            }),
+
+            TokenizeError::UnexpectedCloseDelimited { delim, span } => Some(DiagnosticLabel {
+                span: span.clone(),
+                text: {
+                    let (open, close) = delim.tokens();
+                    Some(format!("closing `{}` was not expected here (no opening `{}`)", close, open))
+                },
+            }),
+        }
+    }
 }
 
 pub type TokenizeResult<T> = Result<T, TracedError<TokenizeError>>;

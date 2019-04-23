@@ -79,10 +79,7 @@ impl Add<usize> for Pointer {
                 id: id + rhs,
             },
             Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr + rhs)),
-            Pointer::IntoArray {
-                array,
-                offset,
-            } => Pointer::IntoArray {
+            Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: offset + rhs,
             },
@@ -105,10 +102,7 @@ impl Sub<usize> for Pointer {
                 id: id - rhs,
             },
             Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr - rhs)),
-            Pointer::IntoArray {
-                array,
-                offset,
-            } => Pointer::IntoArray {
+            Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: offset - rhs,
             },
@@ -244,12 +238,9 @@ impl MemCell {
                 Some(MemCell::Pointer(ptr.clone() + *offset as usize))
             }
 
-            (
-                MemCell::Pointer(Pointer::Heap(ref a)),
-                MemCell::Pointer(Pointer::Heap(ref b)),
-            ) => Some(MemCell::Pointer(Pointer::Heap(
-                HeapAddress(a.0 + b.0),
-            ))),
+            (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
+                Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0))))
+            }
 
             _ => None,
         }
@@ -265,12 +256,9 @@ impl MemCell {
                 Some(MemCell::Pointer(ptr.clone() - *offset as usize))
             }
 
-            (
-                MemCell::Pointer(Pointer::Heap(ref a)),
-                MemCell::Pointer(Pointer::Heap(ref b)),
-            ) => Some(MemCell::Pointer(Pointer::Heap(
-                HeapAddress(a.0 - b.0),
-            ))),
+            (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
+                Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
+            }
 
             _ => None,
         }
@@ -404,9 +392,7 @@ impl Interpreter {
 
             Type::RcPointer(_) => MemCell::RcCell(RcCell::uninitialized()),
 
-            Type::Pointer(_target) => {
-                MemCell::Pointer(Pointer::Uninit)
-            }
+            Type::Pointer(_target) => MemCell::Pointer(Pointer::Uninit),
 
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
@@ -686,7 +672,8 @@ impl Interpreter {
             }
 
             ReleaseTarget::RcPointer => {
-                let rc_addr = cell.as_pointer().and_then(|p| p.as_heap_addr()).unwrap();
+                let rc_addr = cell.as_pointer().and_then(|p| p.as_heap_addr())
+                    .unwrap_or_else(|| panic!("cell {:?} was not a heap pointer", cell));
 
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
                 let resource_ty = Type::Struct(rc_cell.ty_id);
@@ -695,8 +682,8 @@ impl Interpreter {
                     if self.trace_rc {
                         println!(
                             "rc: delete cell {:?} of resource ty {}",
-                             cell,
-                             self.metadata.pretty_ty_name(&resource_ty)
+                            cell,
+                            self.metadata.pretty_ty_name(&resource_ty)
                         );
                     }
 
@@ -712,7 +699,11 @@ impl Interpreter {
                     self.release_cell(&resource_cell, ReleaseTarget::Struct(rc_cell.ty_id));
 
                     if self.trace_rc {
-                        eprintln!("rc: free {} @ {}", self.metadata.pretty_ty_name(&resource_ty), rc_addr)
+                        eprintln!(
+                            "rc: free {} @ {}",
+                            self.metadata.pretty_ty_name(&resource_ty),
+                            rc_addr
+                        )
                     }
 
                     self.heap.free(rc_cell.resource_addr);
