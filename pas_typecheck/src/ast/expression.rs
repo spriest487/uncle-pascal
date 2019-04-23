@@ -485,18 +485,13 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
 
 pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckResult<()> {
     match expr {
-        ast::Expression::Ident(ident, ..) => match ctx.find(ident) {
-            Some(MemberRef::Value {
-                value: Decl::BoundValue(binding),
-                key: decl_ident,
-                ..
-            }) => match binding.kind {
-                ValueKind::Uninitialized => Err(TypecheckError::NotInitialized {
+        ast::Expression::Ident(ident, ..) => match expr.annotation().value_kind() {
+            Some(ValueKind::Uninitialized) => {
+                let decl_ident = ctx.find_decl(ident).unwrap_or(ident);
+                Err(TypecheckError::NotInitialized {
                     ident: decl_ident.clone(),
                     usage: ident.span().clone(),
-                }),
-
-                _ => Ok(()),
+                })
             },
 
             _ => Ok(()),

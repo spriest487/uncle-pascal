@@ -23,11 +23,11 @@ RefHello(s);
 OutHello(s);
 }
 
-
+{
 // error: in-ref not initialized
-var s: String;
-RefHello(s);
-
+var uninit: String;
+RefHello(uninit);
+}
 
 {
 var x := ['Salutations'];

@@ -53,27 +53,30 @@ pub fn typecheck_local_binding(
         });
     }
 
-    ctx.declare_binding(
-        binding.name.clone(),
-        Binding {
-            kind: match (binding.mutable, val.is_some()) {
-                (true, true) => ValueKind::Mutable,
-                (true, false) => ValueKind::Uninitialized,
-                (false, _) => ValueKind::Immutable,
-            },
-            ty: binding_ty.clone(),
-            def: Some(binding.annotation.clone()),
-        },
-    )?;
+    let name = binding.name.clone();
+    let mutable = binding.mutable;
+    let span = binding.annotation.span().clone();
 
-    let annotation = TypeAnnotation::Untyped(binding.annotation.span().clone());
+    let binding = Binding {
+        kind: match (binding.mutable, val.is_some()) {
+            (true, true) => ValueKind::Mutable,
+            (true, false) => ValueKind::Uninitialized,
+            (false, _) => ValueKind::Immutable,
+        },
+        ty: binding_ty.clone(),
+        def: Some(binding.annotation.clone()),
+    };
+
+    ctx.declare_binding(name.clone(), binding)?;
+
+    let annotation = TypeAnnotation::Untyped(span);
 
     Ok(LocalBinding {
-        name: binding.name.clone(),
+        name,
         val_ty: binding_ty,
         val,
         annotation,
-        mutable: binding.mutable,
+        mutable,
     })
 }
 

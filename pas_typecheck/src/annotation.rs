@@ -146,7 +146,6 @@ impl TypeAnnotation {
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
             TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
-            //            TypeAnnotation::Function { .. } => Some(ValueKind::Immutable),
             _ => None,
         }
     }

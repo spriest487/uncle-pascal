@@ -268,6 +268,13 @@ impl Context {
         }
     }
 
+    pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
+        match self.find(name)? {
+            MemberRef::Value { key, .. } => Some(key),
+            _ => None,
+        }
+    }
+
     pub fn resolve<'a>(&'a self, path: &IdentPath) -> Option<MemberRef<'a, Scope>> {
         match self.scopes.resolve(path.as_slice()) {
             Some(MemberRef::Value {
@@ -774,20 +781,6 @@ impl Context {
 
         syms
     }
-
-    /// Check if a local decl is marked as initialized.
-    /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
-//    pub fn initialized(&self, local_id: &Ident) -> bool {
-//        let current_ns = self.scopes.current_path();
-//        let scope = current_ns.top();
-//        check_initialize_allowed(scope, local_id);
-//
-//        match &scope.decls[local_id] {
-//            Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Uninitialized, .. })) => false,
-//            Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Mutable, .. })) => true,
-//            _ => panic!("{} does not refer to a mutable binding", local_id),
-//        }
-//    }
 
     /// Mark a local decl as initialized.
     /// No effect if the decl exists and is already initialized.
