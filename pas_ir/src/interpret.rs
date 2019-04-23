@@ -350,7 +350,7 @@ impl Interpreter {
             },
 
             Pointer::Null => {
-                panic!("derefencing null pointer");
+                panic!("dereferencing null pointer");
             },
 
             Pointer::Uninit(ty) => {
@@ -402,7 +402,7 @@ impl Interpreter {
                     *self.deref_ptr_mut(&ptr) = val;
                 },
 
-                x => panic!("can't deref non-pointer cell with value {:?}", x),
+                x => panic!("can't dereference non-pointer cell with value {:?}", x),
             },
         }
     }
@@ -425,7 +425,7 @@ impl Interpreter {
 
             Ref::Deref(inner) => match self.evaluate(inner) {
                 MemCell::Pointer(ptr) => self.deref_ptr(&ptr),
-                x => panic!("can't derefence cell {:?}", x),
+                x => panic!("can't dereference cell {:?}", x),
             },
         }
     }

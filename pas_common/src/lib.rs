@@ -121,6 +121,8 @@ pub struct BuildOptions {
     pub case_sensitive: bool,
     pub mode: Mode,
 
+    pub verbose: bool,
+
     pp_symbols: HashSet<String>,
     switches: HashMap<String, bool>,
 }
@@ -128,6 +130,7 @@ pub struct BuildOptions {
 impl Default for BuildOptions {
     fn default() -> Self {
         BuildOptions {
+            verbose: false,
             case_sensitive: true,
             mode: Mode::Default,
             pp_symbols: HashSet::new(),

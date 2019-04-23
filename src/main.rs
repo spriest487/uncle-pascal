@@ -164,6 +164,9 @@ struct Args {
     /// print compiler backtrace on compilation failure
     #[structopt(long = "backtrace", short = "bt")]
     backtrace: bool,
+
+    #[structopt(long = "verbose", short="v")]
+    verbose: bool,
 }
 
 fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
@@ -266,9 +269,11 @@ fn compile(
     let cwd = env::current_dir().unwrap().canonicalize().unwrap();
     let search_paths = vec![cwd, compiler_dir];
 
-    println!("Unit search paths:");
-    for path in &search_paths {
-        println!("  {}", path.display());
+    if opts.verbose {
+        println!("Unit search paths:");
+        for path in &search_paths {
+            println!("  {}", path.display());
+        }
     }
 
     let pp_units: Vec<_> = all_filenames
@@ -328,7 +333,9 @@ fn compile(
 
 fn main() {
     let args: Args = Args::from_args();
-    let opts = BuildOptions::default();
+    let mut opts = BuildOptions::default();
+    opts.verbose = args.verbose;
+
     let interpret_opts = InterpreterOpts {
         trace_rc: args.trace_rc,
         trace_heap: args.trace_heap,
