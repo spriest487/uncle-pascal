@@ -73,7 +73,7 @@ impl DiagnosticOutput for NameError {
         match self {
             NameError::NotFound(_) => "Name not found",
             NameError::MemberNotFound { .. } => "Named member not found",
-            NameError::ExpectedType(_, _) => "Expected name to refer to type type",
+            NameError::ExpectedType(_, _) => "Expected name to refer to type",
             NameError::ExpectedInterface(_, _) => "Expected name to refer to interface",
             NameError::ExpectedBinding(_, _) => "Expected name to refer to binding",
             NameError::ExpectedFunction(_, _) => "Expected name to refer to function",

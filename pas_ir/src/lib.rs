@@ -161,31 +161,18 @@ pub enum Instruction {
         element: Type,
     },
 
-    /// Stores the address of a struct field from struct at `a` into `out`
-//    Field {
-//        out: Ref,
-//        a: Ref,
-//        struct_id: StructID,
-//        field: usize,
-//    },
+    /// Stores the address of an object field from object of type `of_ty` at location `a` into `out`
+    Field {
+        out: Ref,
+        a: Ref,
+        of_ty: Type,
+        field: FieldID,
+    },
 
     Call {
         out: Option<Ref>,
         function: Value,
         args: Vec<Value>,
-    },
-
-    GetField {
-        out: Ref,
-        of: Ref,
-        struct_id: StructID,
-        field_id: usize,
-    },
-    SetField {
-        of: Ref,
-        new_val: Value,
-        struct_id: StructID,
-        field_id: usize,
     },
 
     Label(Label),
@@ -333,39 +320,16 @@ impl fmt::Display for Instruction {
                 width = IX_WIDTH
             ),
 
-            Instruction::GetField {
+            Instruction::Field { out, a, of_ty, field } => write!(
+                f,
+                "{:>width$} {} := @({} as {}).{}",
+                "fld",
                 out,
-                of,
-                struct_id,
-                field_id,
-            } => {
-                write!(f, "{:>width$} ", "getfld", width = IX_WIDTH)?;
-                write!(
-                    f,
-                    "{} := ({} as {}).{}",
-                    out,
-                    of,
-                    Type::Struct(*struct_id),
-                    field_id
-                )
-            }
-
-            Instruction::SetField {
-                of,
-                new_val,
-                struct_id,
-                field_id,
-            } => {
-                write!(f, "{:>width$} ", "setfld", width = IX_WIDTH)?;
-                write!(
-                    f,
-                    "({} as {}).{} := {}",
-                    of,
-                    Type::Struct(*struct_id),
-                    field_id,
-                    new_val
-                )
-            }
+                a,
+                of_ty,
+                field,
+                width = IX_WIDTH
+            ),
 
             Instruction::Label(label) => {
                 write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
@@ -584,23 +548,23 @@ impl<'metadata> Builder<'metadata> {
             .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
             .collect();
 
-        for (field_id, field_ty, field_rc) in fields {
+        for (field, field_ty, field_rc) in fields {
             // todo: would be more efficient if we didn't have to copy each member
             // of the struct every time and instead knew which members contained deep
             // rc refs. also if we could address the fields by offsets instead of copying
-            if field_rc || field_ty.is_any_struct() {
-                let field_val = self.local_temp(field_ty.clone());
-                self.append(Instruction::GetField {
+            if field_rc || field_ty.as_struct().is_some() {
+                let field_val = self.local_temp(field_ty.clone().ptr());
+                self.append(Instruction::Field {
                     out: field_val.clone(),
-                    of: at.clone(),
-                    struct_id,
-                    field_id,
+                    a: at.clone(),
+                    of_ty: field_ty.clone(),
+                    field,
                 });
 
                 if let Type::Struct(field_struct_id) = &field_ty {
-                    self.visit_struct_deep(field_val, *field_struct_id, f);
+                    self.visit_struct_deep(field_val.deref(), *field_struct_id, f);
                 } else {
-                    f(self, field_val);
+                    f(self, field_val.deref());
                 }
             }
         }

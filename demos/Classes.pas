@@ -1,3 +1,5 @@
+uses System;
+
 type IntBox = class
     value: Integer;
     otherValue: Integer;
@@ -22,9 +24,9 @@ IntToStr(box.otherValue);
 
 let holder: IntBoxHolder := IntBoxHolder(box: box);
 
-//WriteLn(IntToStr(holder.box.value));
-//WriteLn(IntToStr(Value(holder.box)));
+WriteLn(IntToStr(holder.box.value));
+WriteLn(IntToStr(Value(holder.box)));
 
-//WriteLn(IntToStr(Value(IntBox(value: 321; otherValue: 123))));
+WriteLn(IntToStr(Value(IntBox(value: 321; otherValue: 123))));
 
-//WriteLn(IntToStr(Value(GetBox(holder)) + 1));
+WriteLn(IntToStr(Value(GetBox(holder)) + 1));

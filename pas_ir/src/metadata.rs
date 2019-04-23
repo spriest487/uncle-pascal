@@ -22,6 +22,15 @@ impl fmt::Display for StructID {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+pub struct FieldID(pub usize);
+
+impl fmt::Display for FieldID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct InterfaceID(pub usize);
 
 impl fmt::Display for InterfaceID {
@@ -34,12 +43,12 @@ impl fmt::Display for InterfaceID {
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 
 pub const RC_ID: StructID = StructID(0);
-pub const RC_REF_COUNT_FIELD: usize = 0;
-pub const RC_VALUE_FIELD: usize = 1;
+pub const RC_REF_COUNT_FIELD: FieldID = FieldID(0);
+pub const RC_VALUE_FIELD: FieldID = FieldID(1);
 
 pub const STRING_ID: StructID = StructID(1);
-pub const STRING_CHARS_FIELD: usize = 0;
-pub const STRING_LEN_FIELD: usize = 1;
+pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
+pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath(Path<String>);
@@ -122,11 +131,11 @@ pub struct StructField {
 #[derive(Clone, Debug)]
 pub struct Struct {
     pub name: NamePath,
-    pub fields: HashMap<usize, StructField>,
+    pub fields: HashMap<FieldID, StructField>,
 }
 
 impl Struct {
-    pub fn find_field(&self, name: &str) -> Option<usize> {
+    pub fn find_field(&self, name: &str) -> Option<FieldID> {
         self.fields
             .iter()
             .find_map(|(id, field)| if field.name == name { Some(*id) } else { None })
@@ -140,7 +149,12 @@ impl Struct {
     }
 
     pub fn with_field(mut self, name: impl Into<String>, ty: Type, rc: bool) -> Self {
-        let id = self.fields.keys().max().map(|id| *id + 1).unwrap_or(0);
+        let id = self
+            .fields
+            .keys()
+            .max_by_key(|id| id.0)
+            .map(|id| FieldID(id.0 + 1))
+            .unwrap_or(FieldID(0));
 
         self.fields.insert(
             id,
@@ -154,7 +168,7 @@ impl Struct {
         self
     }
 
-    pub fn with_fields(mut self, fields: HashMap<usize, StructField>) -> Self {
+    pub fn with_fields(mut self, fields: HashMap<FieldID, StructField>) -> Self {
         self.fields.extend(fields);
         self
     }
@@ -190,10 +204,10 @@ impl Type {
         }
     }
 
-    pub fn is_any_struct(&self) -> bool {
+    pub fn as_struct(&self) -> Option<StructID> {
         match self {
-            Type::Struct(_) => true,
-            _ => false,
+            Type::Struct(struct_id) => Some(*struct_id),
+            _ => None,
         }
     }
 
@@ -465,7 +479,7 @@ impl Metadata {
             let ty = self.translate_type(&member.ty);
             let rc = member.ty.is_rc();
 
-            fields.insert(id, StructField { name, ty, rc });
+            fields.insert(FieldID(id), StructField { name, ty, rc });
         }
 
         let struct_name = NamePath::from_ident(struct_def.ident.clone());

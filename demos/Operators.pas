@@ -1,4 +1,6 @@
-//let nothingPtr: ^Integer := nil;
+uses System;
+
+let nothingPtr: ^Integer := nil;
 
 //var x := 1;
 

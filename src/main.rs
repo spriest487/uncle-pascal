@@ -144,6 +144,10 @@ struct Args {
     #[structopt(name = "units", short = "u")]
     units: Vec<String>,
 
+    /// don't automatically reference the standard library units
+    #[structopt(long = "no-stdlib")]
+    no_stdlib: bool,
+
     /// target stage. intermediate stages other than `interpret` will cause
     /// compilation to stop at that stage and dump the output.
     #[structopt(short = "s", long = "stage", default_value = "interpret")]
@@ -344,7 +348,12 @@ fn main() {
 
     let print_bt = args.backtrace;
 
-    let mut unit_paths = vec![PathBuf::from("System.pas")];
+    let mut unit_paths = if args.no_stdlib {
+        Vec::new()
+    } else {
+        vec![PathBuf::from("System.pas")]
+    };
+
     unit_paths.extend(args.units.into_iter().map(PathBuf::from));
 
     if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {

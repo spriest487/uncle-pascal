@@ -1,3 +1,5 @@
+uses System;
+
 type Speaker = interface
     function Speak(self: Self): String
 end;
