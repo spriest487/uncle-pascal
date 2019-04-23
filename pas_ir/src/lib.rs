@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use pas_syn::{ast, IdentPath};
+use pas_syn::{ast};
 use pas_typecheck as pas_ty;
 
 use crate::{expr::*, metadata::*, stmt::*};
@@ -724,7 +724,7 @@ pub struct Function {
 
 pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) -> Function {
     // todo: this should be a name path already
-    let name = NamePath::from_ident(IdentPath::from(func.decl.ident.clone()));
+    let name = NamePath::from_ident_path(func.decl.ident.clone());
 
     let mut body_builder = Builder::new(metadata);
 
@@ -824,25 +824,29 @@ impl fmt::Display for Module {
         for (id, def) in defs {
             match def {
                 TypeDef::Struct(s) => {
-                    writeln!(f, "{{{}}} ({}):", id, s.name)?;
+                    write!(f, "{}: ", id.0)?;
+                    self.metadata.format_name(&s.name, f)?;
+                    writeln!(f)?;
+
                     for (id, field) in &s.fields {
-                        writeln!(
+                        write!(
                             f,
-                            "  {:8>} ({}): {}",
-                            format!(".{}", id),
+                            "{:8>} {}: ",
+                            format!("  .{}", id),
                             field.name,
-                            field.ty
                         )?;
+                        self.metadata.format_type(&field.ty, f)?;
+                        writeln!(f)?;
                     }
                 }
 
                 TypeDef::Variant(v) => {
-                    writeln!(f, "{{{}}} ({}):", id, v.name)?;
+                    writeln!(f, "{}: {}", id, v.name)?;
                     for (i, case) in v.cases.iter().enumerate() {
                         write!(
                             f,
-                            "  {:8>} ({})",
-                            format!(".{}", i),
+                            "{:8>} ({})",
+                            format!("  .{}", i),
                             case.name,
                         )?;
 
@@ -857,9 +861,9 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
-        writeln!(f, "* String literals:")?;
+        writeln!(f, "* String literals")?;
         for (id, lit) in self.metadata.strings() {
-            writeln!(f, "`{}`: '{}'", id, lit)?;
+            writeln!(f, "{}: '{}'", id.0, lit)?;
         }
         writeln!(f)?;
 
@@ -870,7 +874,7 @@ impl fmt::Display for Module {
         for (id, func) in funcs {
             let formatter = StatefulIndentedFormatter::new(&self.metadata, 8);
 
-            writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
+            writeln!(f, "{}: {}", id.0, self.metadata.func_desc(*id))?;
 
             for instruction in &func.body {
                 formatter.format_instruction(instruction, f)?;
@@ -895,7 +899,7 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
         // the System.Disposable interface isn't defined in System.pas but it's required
         // for destructors to function with --no-stdlib
         let dispose_iface = Interface {
-            name: NamePath::from(vec!["System".to_string(), "Disposable".to_string()]),
+            name: NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]),
             methods: vec![
                 Method {
                     name: "Dispose".to_string(),
@@ -915,34 +919,18 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
     for unit in units.iter() {
         let unit_ns = vec![unit.ident.to_string()];
 
-        for ty_decl in unit.type_decls() {
-            match ty_decl {
-                ast::TypeDecl::Class(class) => {
-                    metadata.define_struct(class);
-                }
-                ast::TypeDecl::Interface(iface) => {
-                    metadata.define_iface(iface);
-                }
-                ast::TypeDecl::Variant(variant) => {
-                    metadata.define_variant(variant);
-                }
-            }
-        }
-
         // func decls need to be all processed before we translate any code because the code may
         // need to look up their IDs
         for func_decl in unit.func_decls() {
             let id = metadata.declare_func(&[unit.ident.clone()], func_decl);
 
             if let Some(impl_iface) = &func_decl.impl_iface {
-                let iface_id = metadata.find_iface(&impl_iface.iface).unwrap_or_else(|| {
-                    panic!(
-                        "interface {} referenced in method impl of {} must already be defined",
-                        impl_iface.iface, func_decl.ident
-                    );
-                });
+                let iface_id = metadata.translate_type(&impl_iface.iface)
+                    .as_iface()
+                    .expect("implemented type must be an interface");
 
                 let for_ty = metadata.translate_type(&impl_iface.for_ty);
+
                 metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);
             }
         }
@@ -961,7 +949,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
                 Some(impl_iface) => {
                     let method_name = func_def.decl.ident.to_string();
 
-                    let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
+                    let iface_id = metadata.translate_type(&impl_iface.iface)
+                        .as_iface()
+                        .expect("implemented type must be an interface");
+
                     let method_index = metadata.ifaces()[&iface_id].method_index(&method_name)
                         .unwrap_or_else(|| panic!("method {} not found in interface {}", method_name, iface_id));
 

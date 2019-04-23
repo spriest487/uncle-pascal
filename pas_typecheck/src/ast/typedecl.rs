@@ -65,7 +65,7 @@ pub fn typecheck_iface(
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
-            let method_path = name.qualified.clone().child(method.ident.clone());
+            let method_path = name.qualified.clone().child(method.ident.single().clone());
 
             return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
                 ident: method_path,
@@ -117,7 +117,7 @@ pub fn typecheck_variant(
 pub fn parameterize_class(class: &Class, args: Vec<Type>, span: &Span) -> TypecheckResult<Class> {
     let expected_args: &[Ident] = &class.name.decl_name.type_params.as_slice();
     if args.len() != expected_args.len() {
-        return Err(TypecheckError::WrongTypeArgs {
+        return Err(TypecheckError::InvalidTypeArgs {
             ty: Type::Class(class.clone().into()),
             expected: expected_args.len(),
             actual: args.len(),

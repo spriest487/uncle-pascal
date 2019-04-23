@@ -620,20 +620,21 @@ fn translate_bin_op(
                 .metadata
                 .translate_type(bin_op.lhs.annotation().ty());
 
-            let struct_name = NamePath::from_ident({
-                let path = bin_op.lhs.annotation().ty().full_path();
-                path.expect("member access must be of a named type")
-            });
+            let struct_id = match &of_ty {
+                Type::Struct(id) => *id,
+                Type::RcPointer(Some(ClassID::Class(id))) => *id,
+                other => panic!("lhs ty of member binop must be a struct or class, was: {}", other),
+            };
+
+            let struct_def = builder.metadata.get_struct(struct_id)
+                .expect("referenced struct must exist");
+
             let member_name = bin_op
                 .rhs
                 .as_ident()
                 .map(|i| i.to_string())
                 .expect("rhs of member binop must be an ident");
 
-            let (_struct_id, struct_def) = builder
-                .metadata
-                .find_struct(&struct_name)
-                .expect("referenced struct must exist");
             let field = struct_def
                 .find_field(&member_name)
                 .expect("referenced field must exist");
@@ -829,31 +830,27 @@ fn translate_unary_op(
 }
 
 fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Ref {
-    let obj_name = NamePath::from_ident(ctor.ident.clone());
+    let object_ty = builder.metadata.translate_type(ctor.annotation.ty());
 
-    let (_struct_id, struct_def) = builder
-        .metadata
-        .find_struct(&obj_name)
-        .map(|(id, def)| (id, def.clone()))
-        .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
-
-    let struct_ty = builder.metadata.translate_type(ctor.annotation.ty());
-
-    let out_ptr = builder.local_new(struct_ty.clone(), None);
-
-    match &struct_ty {
-        Type::RcPointer(Some(ClassID::Class(struct_id))) => {
-            // allocate class struct at out pointer
-            builder.append(Instruction::RcNew {
-                out: out_ptr.clone(),
-                struct_id: *struct_id,
-            });
-        }
-
-        Type::Struct(_) => { /* no init needed, a local struct is initialized on allocation */ }
-
-        ty => panic!("bad object ctor: type {:?} is not a record or class", ty),
+    let struct_id = match &object_ty {
+        Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
+        Type::Struct(struct_id) => *struct_id,
+        _ => panic!("type of object ctor expression `{}` must be a record or class", ctor),
     };
+
+    let struct_def = builder.metadata.get_struct(struct_id)
+        .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident))
+        .clone();
+
+    let out_ptr = builder.local_new(object_ty.clone(), None);
+
+    if object_ty.is_rc() {
+        // allocate class struct at out pointer
+        builder.append(Instruction::RcNew {
+            out: out_ptr.clone(),
+            struct_id,
+        });
+    }
 
     builder.begin_scope();
 
@@ -881,7 +878,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
         builder.append(Instruction::Field {
             out: field_ptr.clone(),
             a: out_ptr.clone(),
-            of_ty: struct_ty.clone(),
+            of_ty: object_ty.clone(),
             field: field_id,
         });
 

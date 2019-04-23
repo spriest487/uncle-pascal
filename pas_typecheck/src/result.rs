@@ -96,12 +96,17 @@ pub enum TypecheckError {
         stmt: Box<ast::Statement<Span>>,
     },
 
-    WrongTypeArgs {
+    InvalidTypeArgs {
         ty: Type,
         expected: usize,
         actual: usize,
         span: Span,
-    }
+    },
+
+    InvalidMethodInterface {
+        ty: Type,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -140,7 +145,8 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
-            TypecheckError::WrongTypeArgs { span, .. } => span,
+            TypecheckError::InvalidTypeArgs { span, .. } => span,
+            TypecheckError::InvalidMethodInterface { span, .. } => span,
         }
     }
 }
@@ -189,7 +195,11 @@ impl DiagnosticOutput for TypecheckError {
                 "Statement requires loop context".to_string()
             },
 
-            TypecheckError::WrongTypeArgs { .. } => "Wrong type arguments".to_string(),
+            TypecheckError::InvalidTypeArgs { .. } => "Invalid type arguments".to_string(),
+
+            TypecheckError::InvalidMethodInterface { .. } => {
+                "Invalid interface type for method".to_string()
+            }
         }
     }
 
@@ -370,8 +380,12 @@ impl fmt::Display for TypecheckError {
                 write!(f, "the statement `{}` can only appear inside a loop", stmt)
             }
 
-            TypecheckError::WrongTypeArgs { ty, expected, actual, .. } => {
+            TypecheckError::InvalidTypeArgs { ty, expected, actual, .. } => {
                 write!(f, "wrong number of type arguments for type `{}`: expected {}, found {}", ty, expected, actual)
+            }
+
+            TypecheckError::InvalidMethodInterface { ty, .. } => {
+                write!(f, "`{}` is not an interface type and cannot have methods", ty)
             }
         }
     }

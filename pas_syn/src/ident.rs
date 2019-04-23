@@ -111,6 +111,13 @@ impl<Part> Path<Part> {
         self.parts.last().unwrap()
     }
 
+    pub fn single(&self) -> &Part {
+        if self.parts.len() > 1 {
+            panic!("single() expects ident path to have only 1 part");
+        }
+        self.last()
+    }
+
     pub fn as_slice(&self) -> &[Part] {
         self.parts.as_slice()
     }

@@ -5,8 +5,7 @@ type Box<Val> = class
 end;
 
 let y: Box<String> := Box(val: 'test');
+WriteLn('y contains ' + y.val);
 
-//let x := Box(val: 1);
-
-
-//let z: Box<String> := Box(val: 123);
+let z: Box<Integer> := Box(val: 123);
+WriteLn('z contains ' + IntToStr(z.val));

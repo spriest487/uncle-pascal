@@ -215,7 +215,7 @@ fn typecheck_method_call(
                 .impl_ty_from_args(&arg_tys)
                 .cloned()
                 .ok_or_else(|| TypecheckError::AmbiguousMethod {
-                    method: method_annotation.method.ident.clone(),
+                    method: method_annotation.method.ident.single().clone(),
                     span: span.clone(),
                 })?;
 
@@ -260,7 +260,7 @@ fn typecheck_method_call(
         args,
         self_type,
         func_type: Type::Function(impl_sig.into()),
-        ident: method_annotation.method.ident.clone(),
+        ident: method_annotation.method.ident.single().clone(),
         of_type: method_annotation.iface_ty.clone(),
         args_brackets: func_call.args_brackets.clone(),
     }))

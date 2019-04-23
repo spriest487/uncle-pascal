@@ -1,13 +1,10 @@
 use crate::{
-    ast::{Annotation, Block, TypeName, DeclMod},
-    ident::*,
-    keyword::*,
-    parse::*,
-    token_tree::*,
-    Operator,
+    parse::prelude::*,
+    ast::{
+        DeclMod,
+        Block,
+    }
 };
-use pas_common::{span::*, TracedError};
-use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -50,12 +47,12 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct InterfaceImpl<A: Annotation> {
     pub for_ty: A::Type,
-    pub iface: IdentPath,
+    pub iface: A::Type,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionDecl<A: Annotation> {
-    pub ident: Ident,
+    pub ident: IdentPath,
     pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
@@ -152,15 +149,22 @@ impl FunctionDecl<Span> {
             sig_span.to(mods[mods.len() - 1].span())
         };
 
+        // todo: we only allow one ident here for the iface type, it should parse a whole typename
         let impl_iface = impl_iface.map(|tt| {
-            InterfaceImpl {
-                for_ty: TypeName::Unknown(tt.span().clone()),
-                iface: Path::new(tt.into_ident().unwrap(), Vec::new()), // todo
-            }
+            let for_ty = TypeName::Unknown(tt.span().clone());
+
+            let iface = TypeName::Ident {
+                span: tt.span().clone(),
+                indirection: 0,
+                ident: tt.into_ident().unwrap().into(),
+                type_args: Vec::new(),
+            };
+
+            InterfaceImpl { for_ty, iface }
         });
 
         Ok(FunctionDecl {
-            ident: ident_token.into_ident().unwrap(),
+            ident: IdentPath::from(ident_token.into_ident().unwrap()),
             impl_iface,
             span,
             return_ty,
@@ -190,7 +194,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function ")?;
         if let Some(iface_impl) = &self.impl_iface {
-            write!(f, "{}.", iface_impl.iface.join("."))?;
+            write!(f, "{}.", iface_impl.iface)?;
         }
 
         write!(f, "{}(", self.ident)?;

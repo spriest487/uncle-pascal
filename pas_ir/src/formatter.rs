@@ -248,6 +248,23 @@ pub trait InstructionFormatter {
     fn format_ref(&self, r: &Ref, f: &mut fmt::Write) -> fmt::Result;
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Write) -> fmt::Result;
     fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result;
+
+    fn format_name(&self, name: &NamePath, f: &mut fmt::Write) -> fmt::Result {
+        write!(f, "{}", name.path.join("::"))?;
+
+        if !name.type_args.is_empty() {
+            write!(f, "<")?;
+            for (i, arg) in name.type_args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+
+                self.format_type(arg, f)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
+    }
 }
 
 pub struct RawInstructionFormatter;

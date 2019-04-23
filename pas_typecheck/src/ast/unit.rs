@@ -32,16 +32,21 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         }
 
         ast::UnitDecl::FunctionDef(func_def) => {
+            let name = func_def.decl.ident.single().clone();
+
             let func_def = typecheck_func_def(func_def, ctx)?;
             if let Some(impl_iface) = &func_def.decl.impl_iface {
+                let iface_decl = impl_iface.iface.clone().into_iface()
+                    .expect("implemented type must be an interface");
+
                 ctx.define_method_impl(
-                    impl_iface.iface.clone(),
+                    iface_decl,
                     impl_iface.for_ty.clone(),
-                    func_def.decl.ident.clone(),
+                    name,
                 )?;
             } else {
                 ctx.define_function(
-                    func_def.decl.ident.clone(),
+                    name,
                     FunctionSig::of_decl(&func_def.decl).clone(),
                     &func_def,
                 )?;
@@ -51,8 +56,9 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         }
 
         ast::UnitDecl::FunctionDecl(func_decl) => {
+            let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
-            ctx.declare_function(func_decl.ident.clone(), &func_decl)?;
+            ctx.declare_function(name, &func_decl)?;
             Ok(ast::UnitDecl::FunctionDecl(func_decl))
         }
 

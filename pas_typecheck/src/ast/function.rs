@@ -1,6 +1,8 @@
-use pas_syn::{ident::IdentPath, Ident};
+use pas_syn::{Ident};
 
 use crate::ast::prelude::*;
+
+use std::rc::Rc;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
@@ -48,12 +50,16 @@ pub fn typecheck_func_decl(
                     })
                     .collect(),
             };
-            Some(find_iface_impl(
-                &iface_impl.iface,
-                &decl.ident,
-                &method_sig,
-                ctx,
-            )?)
+
+            let iface = match typecheck_type(&iface_impl.iface, ctx)? {
+                Type::Interface(iface) => iface,
+                not_iface => return Err(TypecheckError::InvalidMethodInterface {
+                    ty: not_iface,
+                    span: iface_impl.iface.span().clone(),
+                }),
+            };
+
+            Some(find_iface_impl(iface, decl.ident.single(), &method_sig)?)
         }
         None => None,
     };
@@ -69,17 +75,14 @@ pub fn typecheck_func_decl(
 }
 
 fn find_iface_impl(
-    iface: &IdentPath,
+    iface_decl: Rc<Interface>,
     method_ident: &Ident,
     sig: &FunctionSig,
-    ctx: &Context,
 ) -> TypecheckResult<InterfaceImpl> {
-    let (iface_path, iface_decl) = ctx.find_iface(iface)?;
-
     let impl_for_types: Vec<_> = iface_decl
         .methods
         .iter()
-        .filter(|method| method.ident == *method_ident)
+        .filter(|method| *method.ident.single() == *method_ident)
         .filter_map(|method| FunctionSig::of_decl(method).impl_ty(&sig))
         .collect();
 
@@ -94,7 +97,7 @@ fn find_iface_impl(
         }
 
         1 => Ok(InterfaceImpl {
-            iface: iface_path,
+            iface: Type::Interface(iface_decl),
             for_ty: impl_for_types[0].clone(),
         }),
 

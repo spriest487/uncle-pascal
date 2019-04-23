@@ -46,7 +46,7 @@ pub enum NameError {
         existing: Span,
     },
     AlreadyImplemented {
-        iface: IdentPath,
+        iface: Box<Interface>,
         for_ty: Type,
         method: Ident,
         existing: Span,
@@ -206,7 +206,7 @@ impl fmt::Display for NameError {
             } => write!(
                 f,
                 "`{}.{}` already implemented for `{}`",
-                iface, method, for_ty
+                iface.name, method, for_ty
             ),
         }
     }

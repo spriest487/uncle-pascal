@@ -262,7 +262,7 @@ impl Context {
                 name: disposable_name,
                 methods: vec![
                     FunctionDecl {
-                        ident: Ident::new("Dispose", builtin_span.clone()),
+                        ident: Ident::new("Dispose", builtin_span.clone()).into(),
                         return_ty: None,
                         impl_iface: None,
                         mods: Vec::new(),
@@ -455,17 +455,17 @@ impl Context {
 
     pub fn define_method_impl(
         &mut self,
-        iface_ident: IdentPath,
+        iface: Rc<Interface>,
         self_ty: Type,
         method: Ident,
     ) -> NamingResult<()> {
-        match self.method_impl_entry(iface_ident.clone(), self_ty.clone(), method.clone())? {
+        match self.method_impl_entry(iface.name.qualified.clone(), self_ty.clone(), method.clone())? {
             Entry::Occupied(mut entry) => {
                 if entry.get().def {
                     return Err(NameError::AlreadyImplemented {
                         method,
                         for_ty: self_ty,
-                        iface: iface_ident,
+                        iface: Box::new(iface.as_ref().clone()),
                         existing: entry.key().span.clone(),
                     });
                 } else {
@@ -570,7 +570,7 @@ impl Context {
                 if def.decl.external_src().is_some() {
                     return Err(NameError::AlreadyDefined {
                         existing: def.decl.span().clone(),
-                        ident: self.qualify_name(def.decl.ident.clone()),
+                        ident: def.decl.ident.clone(),
                     });
                 }
 
@@ -702,7 +702,7 @@ impl Context {
         let methods = self.instance_methods_of(of_ty);
         let matching_methods: Vec<_> = methods
             .iter()
-            .filter(|(_of_ty, m)| m.ident == *member)
+            .filter(|(_of_ty, m)| *m.ident.single() == *member)
             .map(|(of_ty, m)| (*of_ty, *m))
             .collect();
 
@@ -745,7 +745,7 @@ impl Context {
                 options: ambig_paths(
                     matching_methods
                         .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, &method_decl.ident))
+                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single()))
                         .chain(vec![(of_ty, data_member.ident)]),
                 ),
             }),
@@ -755,7 +755,7 @@ impl Context {
                 options: ambig_paths(
                     matching_methods
                         .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, &method_decl.ident)),
+                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single())),
                 ),
             }),
         }

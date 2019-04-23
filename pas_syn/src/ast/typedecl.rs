@@ -114,7 +114,7 @@ pub struct Interface<A: Annotation> {
 
 impl<A: Annotation> Interface<A> {
     pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl<A>> {
-        self.methods.iter().find(|m| m.ident == *method)
+        self.methods.iter().find(|m| *m.ident.single() == *method)
     }
 }
 

@@ -387,7 +387,7 @@ impl Type {
 
     pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl> {
         match self {
-            Type::Interface(iface) => iface.methods.iter().find(|m| m.ident == *method),
+            Type::Interface(iface) => iface.methods.iter().find(|m| *m.ident.single() == *method),
             _ => None,
         }
     }
@@ -430,6 +430,13 @@ impl Type {
             && !self.is_generic()
             && self.full_path() == generic_ty.full_path()
     }
+
+    pub fn into_iface(self) -> Result<Rc<Interface>, Self> {
+        match self {
+            Type::Interface(iface) => Ok(iface),
+            other => Err(other)
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -463,7 +470,7 @@ pub struct MemberRef<'ty> {
 }
 
 fn parameterize_type(ty: Type, args: &[ast::TypeName], span: &Span, ctx: &Context) -> TypecheckResult<Type> {
-    let wrong_args = |expected| TypecheckError::WrongTypeArgs {
+    let wrong_args = |expected| TypecheckError::InvalidTypeArgs {
         expected,
         actual: args.len(),
         ty: ty.clone(),
