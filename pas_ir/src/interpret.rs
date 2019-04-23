@@ -153,7 +153,7 @@ impl PartialEq<Self> for StructCell {
 pub struct RcCell {
     pub resource_addr: HeapAddress,
     pub ref_count: usize,
-    pub ty_id: StructID,
+    pub struct_id: StructID,
 }
 
 impl RcCell {
@@ -161,7 +161,7 @@ impl RcCell {
         Self {
             resource_addr: HeapAddress(0),
             ref_count: 0,
-            ty_id: StructID(0),
+            struct_id: StructID(0), // todo: should this be something meaningful?
         }
     }
 }
@@ -377,13 +377,13 @@ impl Interpreter {
             if id.0 >= fields.len() {
                 fields.resize(id.0 + 1, MemCell::I32(-1));
             }
-            fields[id.0] = self.init_cell(&field.ty);
+            fields[id.0] = self.default_init_cell(&field.ty);
         }
 
         MemCell::Structure(StructCell { id, fields })
     }
 
-    fn init_cell(&mut self, ty: &Type) -> MemCell {
+    fn default_init_cell(&mut self, ty: &Type) -> MemCell {
         match ty {
             Type::I32 => MemCell::I32(-1),
             Type::Bool => MemCell::Bool(false),
@@ -397,7 +397,7 @@ impl Interpreter {
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
                 for _ in 0..*dim {
-                    elements.push(self.init_cell(element.as_ref()));
+                    elements.push(self.default_init_cell(element.as_ref()));
                 }
 
                 MemCell::Array(ArrayCell {
@@ -583,13 +583,28 @@ impl Interpreter {
             .expect("called current_frame without no stackframes")
     }
 
+    fn vcall_lookup(&self, self_cell: &MemCell, iface_id: InterfaceID, method: &str) -> FunctionID {
+        let self_rc = self_cell.as_pointer()
+            .and_then(|rc_ptr| {
+                let rc_addr = rc_ptr.as_heap_addr()?;
+                let rc_cell = self.heap.get(rc_addr)?;
+                rc_cell.as_rc()
+            })
+            .unwrap_or_else(|| panic!("expected target of virtual call {}.{} to be an rc cell, but found {:?}", iface_id, method, self_cell));
+
+        let instance_ty = Type::RcPointer(ClassID::Class(self_rc.struct_id));
+
+        self.metadata.find_impl(&instance_ty, iface_id, method)
+            .unwrap_or_else(|| panic!("virtual call {}.{} missing implementation for {}", iface_id, method, instance_ty))
+    }
+
     fn call(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) {
         self.push_stack();
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
-            let result_cell = self.init_cell(return_ty);
+            let result_cell = self.default_init_cell(return_ty);
             self.current_frame_mut().locals.push(Some(result_cell));
         }
 
@@ -672,11 +687,13 @@ impl Interpreter {
             }
 
             ReleaseTarget::RcPointer => {
-                let rc_addr = cell.as_pointer().and_then(|p| p.as_heap_addr())
+                let rc_addr = cell
+                    .as_pointer()
+                    .and_then(|p| p.as_heap_addr())
                     .unwrap_or_else(|| panic!("cell {:?} was not a heap pointer", cell));
 
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
-                let resource_ty = Type::Struct(rc_cell.ty_id);
+                let resource_ty = Type::Struct(rc_cell.struct_id);
 
                 if rc_cell.ref_count == 1 {
                     if self.trace_rc {
@@ -689,14 +706,14 @@ impl Interpreter {
 
                     // Dispose() the inner resource. For an RC type, interfaces are implemented
                     // for the RC pointer type, not the resource type
-                    self.invoke_disposer(&cell, &resource_ty.clone().rc());
+                    self.invoke_disposer(&cell, &Type::RcPointer(ClassID::Class(rc_cell.struct_id)));
 
                     let resource_cell = self.heap[rc_cell.resource_addr].clone();
 
                     // Now release the fields of the resource struct as if it was a normal record.
                     // This could technically invoke another disposer, but it won't, because there's
                     // no way to declare a disposer for the inner resource type of an RC type
-                    self.release_cell(&resource_cell, ReleaseTarget::Struct(rc_cell.ty_id));
+                    self.release_cell(&resource_cell, ReleaseTarget::Struct(rc_cell.struct_id));
 
                     if self.trace_rc {
                         eprintln!(
@@ -830,7 +847,7 @@ impl Interpreter {
                     }
 
                     match self.current_frame().locals[id.0] {
-                        None => self.current_frame_mut().locals[id.0] = Some(self.init_cell(ty)),
+                        None => self.current_frame_mut().locals[id.0] = Some(self.default_init_cell(ty)),
                         _ => panic!("local cell {} is already allocated", id),
                     }
                 }
@@ -845,7 +862,7 @@ impl Interpreter {
 
                 Instruction::RcNew { out, struct_id } => {
                     let struct_ty = Type::Struct(*struct_id);
-                    let init_cells = vec![self.init_cell(&struct_ty)];
+                    let init_cells = vec![self.default_init_cell(&struct_ty)];
 
                     let rc_ptr = self.rc_alloc(init_cells, *struct_id);
 
@@ -955,6 +972,28 @@ impl Interpreter {
                     }
                 }
 
+                Instruction::VirtualCall {
+                    out,
+                    iface_id,
+                    method,
+                    self_arg,
+                    rest_args,
+                } => {
+                    let self_cell = self.evaluate(&self_arg);
+                    let func = self.vcall_lookup(&self_cell, *iface_id, method);
+
+                    let mut arg_cells = vec![self_cell];
+                    arg_cells.extend(rest_args.iter().map(|arg_val| self.evaluate(arg_val)));
+
+                    let func_ref = Ref::Global(GlobalRef::Function(func));
+                    let func = match self.evaluate(&Value::Ref(func_ref)) {
+                        MemCell::Function(func) => func,
+                        unexpected => panic!("invalid function cell: {:?}", unexpected),
+                    };
+
+                    self.call(&func, &arg_cells, out.as_ref())
+                }
+
                 Instruction::AddrOf { out, a } => {
                     let a_ptr = self.addr_of_ref(a);
                     self.store(out, MemCell::Pointer(a_ptr));
@@ -969,7 +1008,7 @@ impl Interpreter {
                     let struct_ptr = match of_ty {
                         Type::Struct(_) => self.addr_of_ref(a),
 
-                        Type::RcPointer(rc_ty) if rc_ty.as_struct().is_some() => {
+                        Type::RcPointer(ClassID::Class(..)) => {
                             let rc_addr = self
                                 .load(&a.clone().deref())
                                 .as_rc()
@@ -1057,7 +1096,7 @@ impl Interpreter {
         let rc_cell = MemCell::RcCell(RcCell {
             ref_count: 1,
             resource_addr,
-            ty_id,
+            struct_id: ty_id,
         });
 
         let addr = self.heap.alloc(vec![rc_cell]);
@@ -1146,7 +1185,7 @@ impl Interpreter {
                 str_ref,
                 GlobalCell {
                     value: str_cell,
-                    ty: Type::Struct(STRING_ID).rc(),
+                    ty: Type::RcPointer(ClassID::Class(STRING_ID)),
                 },
             );
         }

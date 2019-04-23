@@ -13,7 +13,7 @@ mod stmt;
 
 pub mod prelude {
     pub use crate::{
-        metadata::{GlobalName, Metadata, NamePath, StringId, Type, STRING_ID},
+        metadata::*,
         Builder, GlobalRef, Instruction, Interpreter, Label, Ref, Value,
     };
 }
@@ -165,7 +165,9 @@ pub enum Instruction {
         element: Type,
     },
 
-    /// Stores the address of an object field from object of type `of_ty` at location `a` into `out`
+    /// Stores the address of an object field from object of type `of_ty` at location `a` into `out`.
+    /// `of_ty` must match the type of the value stored at `a` and must also be a structured type
+    /// i.e. one that has fields (struct or RC-pointer to struct).
     Field {
         out: Ref,
         a: Ref,
@@ -177,6 +179,13 @@ pub enum Instruction {
         out: Option<Ref>,
         function: Value,
         args: Vec<Value>,
+    },
+    VirtualCall {
+        out: Option<Ref>,
+        iface_id: InterfaceID,
+        method: String,
+        self_arg: Value,
+        rest_args: Vec<Value>,
     },
 
     Label(Label),
@@ -230,6 +239,8 @@ enum Local {
         name: Option<String>,
         ty: Type,
 
+        // values bound in one scope can be references to an outer scope, in which case they
+        // must always be dereferenced to access the value
         by_ref: bool,
     },
 }
@@ -415,7 +426,8 @@ impl<'metadata> Builder<'metadata> {
     }
 
     fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: &Visitor)
-        where Visitor: Fn(&mut Builder, &Type, Ref)
+    where
+        Visitor: Fn(&mut Builder, &Type, Ref),
     {
         match ty {
             Type::Struct(struct_id) => {

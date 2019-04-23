@@ -238,7 +238,7 @@ pub fn translate_if_cond(
 }
 
 fn translate_call_with_args(
-    target: impl Into<Value>,
+    call_target: CallTarget,
     args: &[pas_ty::ast::Expression],
     sig: &pas_ty::FunctionSig,
     builder: &mut Builder,
@@ -275,10 +275,25 @@ fn translate_call_with_args(
         arg_vals.push(Value::from(arg_expr));
     }
 
-    builder.append(Instruction::Call {
-        function: target.into(),
-        args: arg_vals.clone(),
-        out: out_val.clone(),
+    builder.append(match call_target {
+        CallTarget::Function(target_val) => Instruction::Call {
+            function: target_val,
+            args: arg_vals.clone(),
+            out: out_val.clone(),
+        },
+
+        CallTarget::Virtual { iface_id, method } => {
+            let self_arg = arg_vals[0].clone();
+            let rest_args = arg_vals[1..].to_vec();
+
+            Instruction::VirtualCall {
+                out: out_val.clone(),
+                iface_id,
+                method,
+                self_arg,
+                rest_args,
+            }
+        },
     });
 
     // no need to retain, the result of a function must be retained as part of its body
@@ -286,6 +301,14 @@ fn translate_call_with_args(
     builder.end_scope();
 
     out_val
+}
+
+enum CallTarget {
+    Function(Value),
+    Virtual {
+        iface_id: InterfaceID,
+        method: String
+    },
 }
 
 pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
@@ -297,8 +320,9 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             };
 
             let target_val = translate_expr(&func_call.target, builder);
+            let call_target = CallTarget::Function(target_val.into());
 
-            translate_call_with_args(target_val, &func_call.args, sig, builder)
+            translate_call_with_args(call_target, &func_call.args, sig, builder)
         }
 
         ast::Call::Method(method_call) => {
@@ -308,25 +332,38 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 .get_method(&method_call.ident)
                 .expect("method referenced in method call must exist");
 
-            let (impl_func, sig) = match builder.metadata.translate_type(of_ty) {
-                Type::InterfaceRef(iface_id) => {
-                    let method_name = method_call.ident.to_string();
-                    let self_ty = builder.metadata.translate_type(&method_call.self_type);
-                    let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
+            let iface_id = match builder.metadata.translate_type(of_ty) {
+                Type::RcPointer(ClassID::Interface(iface_id)) => iface_id,
 
+                // UFCS "methods" that aren't interface impls are treated as function calls
+                _ => unimplemented!("non-interface method call"),
+            };
+
+            let method_name = method_call.ident.to_string();
+            let self_ty = builder.metadata.translate_type(&method_call.self_type);
+            let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
+
+            let call_target = match &self_ty {
+                Type::RcPointer(ClassID::Interface(iface_id)) => {
+                    CallTarget::Virtual {
+                        iface_id: *iface_id,
+                        method: method_call.ident.to_string(),
+                    }
+                }
+
+                _ => {
                     let impl_func = builder
                         .metadata
                         .find_impl(&self_ty, iface_id, &method_name)
                         .expect("referenced impl func must be declared");
 
-                    (impl_func, method_sig)
+                    let func_val = Ref::Global(GlobalRef::Function(impl_func));
+
+                    CallTarget::Function(func_val.into())
                 }
-                _ => unimplemented!("non-interface method call"),
             };
 
-            let target_val = Ref::Global(GlobalRef::Function(impl_func));
-
-            translate_call_with_args(target_val, &method_call.args, &sig, builder)
+            translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
         }
     }
 }
@@ -630,19 +667,11 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let out_ptr = builder.local_new(struct_ty.clone(), None);
 
     match &struct_ty {
-        Type::RcPointer(struct_ty) => {
-            let struct_id = match struct_ty.as_ref() {
-                Type::Struct(id) => *id,
-                _ => panic!(
-                    "bad object ctor: class type {:?} doesn't have struct layout",
-                    struct_ty
-                ),
-            };
-
+        Type::RcPointer(ClassID::Class(struct_id)) => {
             // allocate class struct at out pointer
             builder.append(Instruction::RcNew {
                 out: out_ptr.clone(),
-                struct_id,
+                struct_id: *struct_id,
             });
         }
 

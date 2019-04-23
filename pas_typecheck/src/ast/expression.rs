@@ -25,10 +25,31 @@ fn invalid_args(
 fn typecheck_args(
     expected_args: &[FunctionParamSig],
     actual_args: &[ast::Expression<Span>],
+    self_arg: Option<&Expression>,
     span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<Vec<Expression>> {
     let mut checked_args = Vec::new();
+
+    let expected_args = if let Some(self_arg) = self_arg {
+        let self_param = &expected_args[0];
+        let self_compatible = self_param
+            .ty
+            .assignable_from(self_arg.annotation().ty(), ctx);
+        if !self_compatible {
+            return Err(TypecheckError::TypeMismatch {
+                actual: self_arg.annotation().ty().clone(),
+                expected: self_param.ty.clone(),
+                span: span.clone(),
+            });
+        }
+
+        checked_args.push(self_arg.clone());
+
+        &expected_args[1..]
+    } else {
+        expected_args
+    };
 
     for (arg, expected_param) in actual_args.iter().zip(expected_args.iter()) {
         let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
@@ -44,8 +65,8 @@ fn typecheck_args(
                 Some(ValueKind::Mutable) | Some(ValueKind::Ref) => {}
                 _ => {
                     return Err(TypecheckError::NotMutable {
-                    expr: Box::new(arg_expr),
-                    decl: None,
+                        expr: Box::new(arg_expr),
+                        decl: None,
                     });
                 }
             }
@@ -67,7 +88,12 @@ fn typecheck_args(
         checked_args.push(arg_expr);
     }
 
-    if checked_args.len() != expected_args.len() {
+    let expected_len = match self_arg {
+        Some(..) => expected_args.len() + 1,
+        None => expected_args.len(),
+    };
+
+    if checked_args.len() != expected_len {
         // arg count doesn't match expected param count
         return Err(invalid_args(checked_args, expected_args, span.clone()));
     }
@@ -138,6 +164,7 @@ fn typecheck_method_call(
             let args = typecheck_args(
                 &method_annotation.decl_sig().params,
                 &func_call.args,
+                None,
                 &span,
                 ctx,
             )?;
@@ -162,21 +189,18 @@ fn typecheck_method_call(
             // we have a self arg, we know how to specialize the signature before checking the
             // arg types
             let self_type = self_arg.annotation().ty().clone();
-            let mut impl_sig = method_annotation.decl_sig().with_self(&self_type);
+            let impl_sig = method_annotation.decl_sig().with_self(&self_type);
 
             // the self-arg is passed as the first argument
             assert!(!impl_sig.params.is_empty());
-            let self_param = impl_sig.params.remove(0);
-            if !self_param.ty.assignable_from(self_arg.annotation().ty(), ctx) {
-                return Err(TypecheckError::TypeMismatch {
-                    actual: self_arg.annotation().ty().clone(),
-                    expected: self_param.ty,
-                    span,
-                });
-            }
 
-            let mut args = typecheck_args(&impl_sig.params, &func_call.args, &span, ctx)?;
-            args.insert(0, (**self_arg).clone());
+            let args = typecheck_args(
+                &impl_sig.params,
+                &func_call.args,
+                Some(self_arg.as_ref()),
+                &span,
+                ctx,
+            )?;
 
             (self_type, impl_sig, args)
         }
@@ -210,7 +234,7 @@ fn typecheck_func_call(
     let span = func_call.span().clone();
 
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
-    let args = typecheck_args(&sig.params, &func_call.args, &span, ctx)?;
+    let args = typecheck_args(&sig.params, &func_call.args, None, &span, ctx)?;
 
     let return_ty = sig.return_ty.clone();
 

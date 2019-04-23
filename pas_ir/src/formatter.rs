@@ -110,6 +110,34 @@ pub trait InstructionFormatter {
                 write!(f, ")")
             }
 
+            Instruction::VirtualCall {
+                out,
+                iface_id,
+                method,
+                self_arg,
+                rest_args,
+            } => {
+                write!(f, "{:>width$} ", "vcall", width = IX_WIDTH)?;
+
+                if let Some(out) = out {
+                    self.format_ref(out, f)?;
+                    write!(f, " := ")?;
+                }
+                write!(f, "(")?;
+
+                self.format_val(self_arg, f)?;
+                write!(f, " as ")?;
+                self.format_type(&Type::RcPointer(ClassID::Interface(*iface_id)), f)?;
+                write!(f, ").{}(", method)?;
+                for (i, arg) in rest_args.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    self.format_val(arg, f)?;
+                }
+                write!(f, ")")
+            }
+
             Instruction::AddrOf { out, a } => {
                 write!(f, "{:>width$} ", "addrof", width = IX_WIDTH)?;
 
@@ -262,7 +290,10 @@ impl InstructionFormatter for Metadata {
     fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
         let field_name = of_ty
             .as_struct()
-            .or_else(|| of_ty.rc_resource_type_id())
+            .or_else(|| match of_ty.rc_resource_type_id()? {
+                ClassID::Class(struct_id) => Some(struct_id),
+                _ => None,
+            })
             .and_then(|struct_id| self.structs().get(&struct_id))
             .and_then(|struct_def| struct_def.fields.get(&field))
             .map(|field| &field.name);

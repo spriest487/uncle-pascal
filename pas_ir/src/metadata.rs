@@ -170,6 +170,21 @@ impl Struct {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum ClassID {
+    Class(StructID),
+    Interface(InterfaceID),
+}
+
+impl fmt::Display for ClassID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ClassID::Class(struct_id) => write!(f, "{}", struct_id),
+            ClassID::Interface(iface_id) => write!(f, "{}", iface_id),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     /// no type or unknown type (used for raw pointers like void*)
@@ -181,11 +196,10 @@ pub enum Type {
         element: Box<Type>,
         dim: usize,
     },
-    InterfaceRef(InterfaceID),
 
     /// pointer to an RC object somewhere on the heap, which can be dereferenced to yield a value
     /// of the inner type
-    RcPointer(Box<Type>),
+    RcPointer(ClassID),
     Bool,
     U8,
     I32,
@@ -195,10 +209,6 @@ pub enum Type {
 impl Type {
     pub fn ptr(self) -> Self {
         Type::Pointer(Box::new(self))
-    }
-
-    pub fn rc(self) -> Self {
-        Type::RcPointer(Box::new(self))
     }
 
     pub fn array(self, dim: usize) -> Self {
@@ -222,9 +232,9 @@ impl Type {
         }
     }
 
-    pub fn rc_resource_type_id(&self) -> Option<StructID> {
+    pub fn rc_resource_type_id(&self) -> Option<ClassID> {
         match self {
-            Type::RcPointer(res_ty) => res_ty.as_struct(),
+            Type::RcPointer(class_id) => Some(*class_id),
             _ => None,
         }
     }
@@ -238,7 +248,6 @@ impl fmt::Display for Type {
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),
-            Type::InterfaceRef(id) => write!(f, "<{}>", id),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
             Type::RcPointer(id) => write!(f, "rc {{{}}}", id),
@@ -465,13 +474,18 @@ impl Metadata {
                 format!("array [{}] of {}", dim, elem_name)
             }
 
-            Type::InterfaceRef(id) => self
-                .ifaces
-                .get(id)
-                .map(|def| def.name.to_string())
-                .unwrap_or_else(|| id.to_string()),
+            Type::RcPointer(class_id) => {
+                let resource_name = match class_id {
+                    ClassID::Interface(iface_id) => self
+                        .ifaces
+                        .get(iface_id)
+                        .map(|def| def.name.to_string())
+                        .unwrap_or_else(|| format!("<interface {}>", iface_id)),
 
-            Type::RcPointer(ty) => format!("rc {}", self.pretty_ty_name(ty)),
+                    ClassID::Class(struct_id) => self.pretty_ty_name(&Type::Struct(*struct_id)),
+                };
+                format!("rc {}", resource_name)
+            }
 
             Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
 
@@ -587,9 +601,9 @@ impl Metadata {
                     .ifaces
                     .iter()
                     .find(|(_id, iface)| iface.name == ty_name)
-                    .map(|(id, _iface)| id)
+                    .map(|(id, _iface)| *id)
                     .unwrap_or_else(|| panic!("interface {} must exist in metadata", ty_name));
-                Type::InterfaceRef(*id)
+                Type::RcPointer(ClassID::Interface(id))
             }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
@@ -613,7 +627,7 @@ impl Metadata {
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
 
-                Type::Struct(id).rc()
+                Type::RcPointer(ClassID::Class(id))
             }
 
             pas_ty::Type::Array { element, dim } => {
