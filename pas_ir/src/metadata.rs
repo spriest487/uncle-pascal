@@ -68,7 +68,7 @@ impl NamePath {
 
 impl<Iter: IntoIterator<Item=String>> From<Iter> for NamePath {
     fn from(iter: Iter) -> Self {
-        Self(Path::<String>::from_parts(iter))
+        NamePath(Path::<String>::from_parts(iter))
     }
 }
 

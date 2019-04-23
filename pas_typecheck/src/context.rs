@@ -685,6 +685,26 @@ impl Context {
 
         self.find_type(&str_class_name)
     }
+
+    pub fn undefined_syms(&self) -> Vec<Ident> {
+        let mut syms = Vec::new();
+        for scope in self.scopes.current_path().as_slice().iter().rev() {
+            for (ident, decl) in scope.decls.iter() {
+                // only functions can possibly be undefined
+                if let Member::Value(Decl::Function(_)) = decl {
+                    let decl_path = IdentPath::from_parts(scope.key().cloned())
+                        .clone()
+                        .child(ident.clone());
+
+                    if self.defs.get(&decl_path).is_none() {
+                        syms.push(ident.clone());
+                    }
+                }
+            }
+        }
+
+        syms
+    }
 }
 
 

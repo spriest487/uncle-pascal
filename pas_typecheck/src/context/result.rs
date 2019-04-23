@@ -1,20 +1,7 @@
-use crate::{
-    context::*,
-    Type,
-};
-use pas_common::{
-    span::*,
-    DiagnosticMessage,
-    DiagnosticOutput,
-};
-use pas_syn::{
-    Ident,
-    IdentPath,
-};
-use std::{
-    fmt,
-    path::PathBuf,
-};
+use crate::{context::*, Type};
+use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
+use pas_syn::{Ident, IdentPath};
+use std::{fmt, path::PathBuf};
 
 #[derive(Debug)]
 pub enum UnexpectedValue {
@@ -98,8 +85,11 @@ impl DiagnosticOutput for NameError {
         .to_string()
     }
 
-    fn label(&self) -> Option<String> {
-        Some(self.to_string())
+    fn label(&self) -> Option<DiagnosticLabel> {
+        Some(DiagnosticLabel {
+            text: Some(self.to_string()),
+            span: self.span().clone(),
+        })
     }
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
@@ -111,16 +101,20 @@ impl DiagnosticOutput for NameError {
                 } else {
                     vec![DiagnosticMessage {
                         title: format!("`{}` previously declared here", new),
-                        label: None,
-                        span: existing.span().clone(),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: existing.span().clone(),
+                        }),
                     }]
                 }
-            },
+            }
 
             NameError::AlreadyDefined { ident, existing } => vec![DiagnosticMessage {
                 title: format!("`{}` previously defined here", ident),
-                label: None,
-                span: existing.span().clone(),
+                label: Some(DiagnosticLabel {
+                    text: None,
+                    span: existing.span().clone(),
+                }),
             }],
 
             NameError::Ambiguous { ident, options } => {
@@ -128,13 +122,15 @@ impl DiagnosticOutput for NameError {
                     .iter()
                     .map(|option| DiagnosticMessage {
                         title: format!("`{}` could refer to `{}`", ident, option.join(".")),
-                        label: None,
-                        span: option.last().span().clone(),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: option.last().span().clone(),
+                        }),
                     })
                     .collect();
                 see_also.sort();
                 see_also
-            },
+            }
 
             _ => Vec::new(),
         }
@@ -147,7 +143,7 @@ impl fmt::Display for NameError {
             NameError::NotFound(ident) => write!(f, "`{}` was not found in this scope", ident),
             NameError::MemberNotFound { base, member, .. } => {
                 write!(f, "type {} does not have a member named `{}`", base, member)
-            },
+            }
             NameError::ExpectedType(ident, unexpected) => write!(
                 f,
                 "`{}` did not refer to a type in this scope (found: {})",
@@ -175,11 +171,11 @@ impl fmt::Display for NameError {
             ),
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "`{}` was already declared in this scope", new)
-            },
+            }
             NameError::AlreadyDefined { ident, .. } => write!(f, "`{}` was already defined", ident),
             NameError::Ambiguous { ident, .. } => {
                 write!(f, "`{}` is ambiguous in this context", ident)
-            },
+            }
         }
     }
 }

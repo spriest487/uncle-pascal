@@ -31,6 +31,7 @@ use crate::{
 use pas_common::{
     span::*,
     DiagnosticOutput,
+    DiagnosticLabel,
     TracedError,
 };
 use std::fmt;
@@ -76,8 +77,8 @@ impl fmt::Display for ParseError {
 }
 
 impl DiagnosticOutput for ParseError {
-    fn label(&self) -> Option<String> {
-        Some(match self {
+    fn label(&self) -> Option<DiagnosticLabel> {
+        let text = match self {
             ParseError::UnexpectedToken(tt, Some(expected)) => {
                 format!("expected {}, found {}", expected, tt)
             },
@@ -102,6 +103,11 @@ impl DiagnosticOutput for ParseError {
                 "the expression `{}` does not denote a member of `{}`",
                 bin_op.rhs, bin_op.lhs
             ),
+        };
+
+        Some(DiagnosticLabel {
+            text: Some(text),
+            span: self.span().clone(),
         })
     }
 }

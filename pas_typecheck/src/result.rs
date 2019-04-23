@@ -1,22 +1,10 @@
 use crate::{
-    ast::{
-        Call,
-        ExpressionNode,
-    },
+    ast::{Call, ExpressionNode},
     context::NameError,
-    Type,
-    ValueKind,
+    Type, ValueKind,
 };
-use pas_common::{
-    span::*,
-    Backtrace,
-    DiagnosticMessage,
-    DiagnosticOutput,
-};
-use pas_syn::{
-    Ident,
-    Operator,
-};
+use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
+use pas_syn::{Ident, Operator};
 use std::fmt;
 
 #[derive(Debug)]
@@ -64,6 +52,10 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    UndefinedSymbols {
+        unit: Ident,
+        syms: Vec<Ident>,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -90,6 +82,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation.span(),
             TypecheckError::AmbiguousMethod { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
+            TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
         }
     }
 }
@@ -109,20 +102,37 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
             TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
-            TypecheckError::InvalidCtorType { .. } => "Invalid constructor expression type".to_string(),
+            TypecheckError::InvalidCtorType { .. } => {
+                "Invalid constructor expression type".to_string()
+            }
+            TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
         }
     }
 
-    fn label(&self) -> Option<String> {
+    fn label(&self) -> Option<DiagnosticLabel> {
         match self {
             TypecheckError::ScopeError(err) => err.label(),
-            _ => Some(self.to_string()),
+            TypecheckError::UndefinedSymbols { .. } => None,
+            _ => Some(DiagnosticLabel {
+                text: Some(self.to_string()),
+                span: self.span().clone(),
+            }),
         }
     }
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
             TypecheckError::ScopeError(err) => err.see_also(),
+            TypecheckError::UndefinedSymbols { syms, .. } => syms
+                .iter()
+                .map(|sym| DiagnosticMessage {
+                    title: format!("`{}` is declared but not defined", sym),
+                    label: Some(DiagnosticLabel {
+                        text: Some("declared here".to_string()),
+                        span: sym.span().clone(),
+                    }),
+                })
+                .collect(),
             _ => Vec::new(),
         }
     }
@@ -204,6 +214,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidCtorType { ty, .. } => {
                 write!(f, "type `{}` cannot be created with a constructor expression", ty)
+            }
+
+            TypecheckError::UndefinedSymbols { unit, .. } => {
+                write!(f, "unit `{}` contains undefined symbols", unit)
             }
         }
     }

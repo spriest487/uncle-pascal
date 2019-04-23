@@ -79,6 +79,14 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         init.push(typecheck_stmt(stmt, ctx)?)
     }
 
+    let undefined = ctx.undefined_syms();
+    if !undefined.is_empty() {
+        return Err(TypecheckError::UndefinedSymbols {
+            unit: unit.ident.clone(),
+            syms: undefined,
+        });
+    }
+
     ctx.pop_scope(unit_scope)?;
 
     Ok(Unit {

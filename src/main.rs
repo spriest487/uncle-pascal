@@ -1,21 +1,14 @@
 mod reporting;
 
 use pas_common::{
-    span::*, Backtrace, BuildOptions, DiagnosticMessage, DiagnosticOutput, TracedError,
+    span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
+    TracedError,
 };
 use pas_ir::{self as ir, Interpreter, InterpreterOpts};
 use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
 use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
 use pas_typecheck::{self as ty, ast as ty_ast, TypecheckError};
-use std::{
-    fmt,
-    fs::File,
-    io::{Read},
-    path::PathBuf,
-    process,
-    env,
-    str::FromStr,
-};
+use std::{env, fmt, fs::File, io::Read, path::PathBuf, process, str::FromStr};
 use structopt::StructOpt;
 
 #[derive(Debug)]
@@ -60,8 +53,10 @@ impl DiagnosticOutput for CompileError {
             CompileError::PreprocessorError(err) => err.main(),
             CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
                 title: "Invalid unit filename".to_string(),
-                label: None,
-                span: at.clone(),
+                label: Some(DiagnosticLabel {
+                    text: None,
+                    span: at.clone(),
+                }),
             },
         }
     }
@@ -189,11 +184,10 @@ fn preprocess(
     search_paths: &[PathBuf],
     opts: &BuildOptions,
 ) -> Result<PreprocessedUnit, CompileError> {
-    let filename = find_in_paths(&filename, search_paths)
-        .unwrap_or_else(|| {
-            eprintln!("could not find unit {}", filename.display());
-            process::exit(1);
-        });
+    let filename = find_in_paths(&filename, search_paths).unwrap_or_else(|| {
+        eprintln!("could not find unit {}", filename.display());
+        process::exit(1);
+    });
 
     let open_file = File::open(&filename).and_then(|mut f| {
         let mut src = String::new();
@@ -257,17 +251,19 @@ fn compile(
     let all_filenames = units.into_iter().chain(vec![module_path.clone()]);
 
     // todo: search paths should be an arg or env var
-    let compiler_dir = env::current_exe().unwrap()
-        .parent().unwrap()
-        .parent().unwrap()
-        .parent().unwrap()
+    let compiler_dir = env::current_exe()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .join("units")
         .canonicalize()
         .unwrap();
 
-    let cwd = env::current_dir().unwrap()
-        .canonicalize()
-        .unwrap();
+    let cwd = env::current_dir().unwrap().canonicalize().unwrap();
     let search_paths = vec![cwd, compiler_dir];
 
     println!("Unit search paths:");

@@ -18,7 +18,7 @@ pub trait DiagnosticOutput: Spanned {
         self.to_string()
     }
 
-    fn label(&self) -> Option<String> {
+    fn label(&self) -> Option<DiagnosticLabel> {
         None
     }
 
@@ -26,7 +26,6 @@ pub trait DiagnosticOutput: Spanned {
         DiagnosticMessage {
             title: self.title(),
             label: self.label(),
-            span: self.span().clone(),
         }
     }
 
@@ -40,13 +39,18 @@ pub trait DiagnosticOutput: Spanned {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct DiagnosticMessage {
-    pub title: String,
-    pub label: Option<String>,
+pub struct DiagnosticLabel {
+    pub text: Option<String>,
     pub span: Span,
 }
 
-impl Ord for DiagnosticMessage {
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct DiagnosticMessage {
+    pub title: String,
+    pub label: Option<DiagnosticLabel>,
+}
+
+impl Ord for DiagnosticLabel {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.span.file.as_ref().cmp(other.span.file.as_ref()) {
             Ordering::Equal => match self.span.end.cmp(&other.span.end) {
@@ -55,6 +59,18 @@ impl Ord for DiagnosticMessage {
             },
             file_ord => file_ord,
         }
+    }
+}
+
+impl PartialOrd for DiagnosticLabel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for DiagnosticMessage {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.label.cmp(&other.label)
     }
 }
 

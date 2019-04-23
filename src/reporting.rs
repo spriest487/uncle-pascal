@@ -23,17 +23,23 @@ fn output_to_report_diag(
     style: LabelStyle,
     severity: Severity,
 ) -> io::Result<Diagnostic> {
-    let file_map = code_map.add_filemap_from_disk(diag.span.file.as_ref())?;
+    let mut report_diag = Diagnostic::new(severity, diag.title);
 
-    let err_start = find_location_index(file_map.as_ref(), &diag.span.start, false)?;
-    let err_end = find_location_index(file_map.as_ref(), &diag.span.end, true)?;
-
-    let mut report_label = Label::new(ByteSpan::new(err_start, err_end), style);
     if let Some(label) = diag.label {
-        report_label = report_label.with_message(label);
+        let file_map = code_map.add_filemap_from_disk(label.span.file.as_ref())?;
+
+        let err_start = find_location_index(file_map.as_ref(), &label.span.start, false)?;
+        let err_end = find_location_index(file_map.as_ref(), &label.span.end, true)?;
+
+        let mut report_label = Label::new(ByteSpan::new(err_start, err_end), style);
+        if let Some(text) = label.text {
+            report_label = report_label.with_message(text);
+        }
+
+        report_diag = report_diag.with_label(report_label);
     }
 
-    Ok(Diagnostic::new(severity, diag.title).with_label(report_label))
+    Ok(report_diag)
 }
 
 pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
