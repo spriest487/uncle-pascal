@@ -270,7 +270,7 @@ fn typecheck_member_of(
                     full_path.push(member_ident.clone());
 
                     match ctx.resolve(&full_path) {
-                        Some(member) => ns_member_ref_to_annotation(member, span),
+                        Some(member) => ns_member_ref_to_annotation(member, span, ctx),
                         None => {
                             return Err(NameError::MemberNotFound {
                                 member: member_ident,

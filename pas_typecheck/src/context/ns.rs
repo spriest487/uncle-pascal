@@ -246,7 +246,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
             }
         }
 
-        None
+        Some(MemberRef::Namespace { path: current })
     }
 }
 

@@ -1,8 +1,8 @@
-//uses String;
+uses System;
 
 function SayHello()
 begin
-    let msg := Strings.StringConcat('hello,', ' world!');
+    let msg := StringConcat('hello,', ' world!');
     WriteLn(msg);
 end;
 
@@ -10,4 +10,4 @@ SayHello();
 Uses.SayHello();
 
 // todo: improve error message
-Uses.Uses.SayHello();
+// Uses.Uses.SayHello();

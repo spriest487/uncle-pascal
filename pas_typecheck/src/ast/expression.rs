@@ -276,7 +276,7 @@ pub fn typecheck_expr(
 
         ast::Expression::Ident(ident) => {
             let annotation = match ctx.find(ident) {
-                Some(member) => ns_member_ref_to_annotation(member, ident.span().clone()),
+                Some(member) => ns_member_ref_to_annotation(member, ident.span().clone(), ctx),
 
                 _ => {
                     return Err(NameError::NotFound(ident.clone()).into());
@@ -322,8 +322,22 @@ pub fn typecheck_expr(
     }
 }
 
-pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> TypeAnnotation {
+pub fn ns_member_ref_to_annotation(
+    member: MemberRef<Scope>,
+    span: Span,
+    ctx: &Context
+) -> TypeAnnotation {
     match member {
+        MemberRef::Value {
+            value: Decl::Alias(aliased),
+            ..
+        } => {
+            let alias_ref = ctx.resolve(aliased)
+                .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
+
+            ns_member_ref_to_annotation(alias_ref, span, ctx)
+        },
+
         MemberRef::Value {
             value: Decl::BoundValue(binding),
             ..

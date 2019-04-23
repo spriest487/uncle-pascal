@@ -86,6 +86,7 @@ pub enum Decl {
     Type(Type),
     BoundValue(Binding),
     Function(Rc<FunctionSig>),
+    Alias(IdentPath),
 }
 
 impl fmt::Display for Decl {
@@ -94,6 +95,7 @@ impl fmt::Display for Decl {
             Decl::Type(ty) => write!(f, "type `{}`", ty),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
             Decl::Function(sig) => write!(f, "{}", sig),
+            Decl::Alias(aliased) => write!(f, "{}", aliased),
         }
     }
 }
@@ -294,6 +296,25 @@ impl Context {
 
     pub fn declare_function(&mut self, name: Ident, sig: FunctionSig) -> NamingResult<()> {
         self.declare_function_and_def(name, sig, None)
+    }
+
+    pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
+        self.declare(name, Decl::Alias(aliased))
+    }
+
+    pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
+        match self.resolve(ns_path) {
+            Some(MemberRef::Namespace { path }) => {
+                Ok(path.top().keys())
+            }
+
+            Some(MemberRef::Value { value: decl, .. }) => {
+                let unexpected = UnexpectedValue::Decl(decl.clone());
+                Err(NameError::ExpectedNamespace(ns_path.clone(), unexpected))
+            }
+
+            None => Err(NameError::NotFound(ns_path.last().clone())),
+        }
     }
 
     fn method_impl_entry(

@@ -5,7 +5,31 @@ pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
 
 fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> TypecheckResult<UnitDecl> {
     match decl {
-        ast::UnitDecl::Uses(uses) => unimplemented!("uses {:#?}", uses),
+        ast::UnitDecl::Uses(uses) => {
+            for unit in &uses.units {
+                match ctx.resolve(&IdentPath::from(unit.clone())) {
+                    Some(MemberRef::Namespace { path }) => {
+                        let aliased_unit = IdentPath::from_parts(path.keys().cloned());
+                        for decl_key in path.top().keys() {
+                            let aliased = aliased_unit.clone().child(decl_key.clone());
+                            ctx.declare_alias(decl_key, aliased)?;
+                        }
+                    }
+
+                    Some(MemberRef::Value { value, .. }) => {
+                        let unexpected = UnexpectedValue::Decl(value.clone());
+                        let err = NameError::ExpectedNamespace(unit.clone().into(), unexpected);
+                        return Err(TypecheckError::from(err))
+                    }
+
+                    None => {
+                        return Err(TypecheckError::from(NameError::NotFound(unit.clone())));
+                    }
+                }
+            }
+
+            Ok(ast::UnitDecl::Uses(uses.clone()))
+        },
 
         ast::UnitDecl::FunctionDef(func_def) => {
             let func_def = typecheck_func_def(func_def, ctx)?;

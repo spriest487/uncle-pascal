@@ -42,3 +42,14 @@ begin
         String(chars: bytes; len: len);
     end
 end;
+
+function StringFromBytes(bytes: ^Byte; len: Integer): String
+begin
+    let strBytes: ^Byte := GetMem(len);
+
+    for let i: Integer := 0 to len do begin
+        (strBytes + i)^ := (bytes + i)^;
+    end;
+
+    String(chars: strBytes; len: len)
+end;
