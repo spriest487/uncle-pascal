@@ -1,4 +1,9 @@
 use {
+    crate::{
+        Type,
+        ValueKind,
+        result::*,
+    },
     std::{
         fmt,
     },
@@ -7,11 +12,6 @@ use {
     },
     pas_syn::{
         ast::Annotation,
-    },
-    crate::{
-        Type,
-        ValueKind,
-        result::*,
     },
 };
 

@@ -25,14 +25,14 @@ pub use self::{
 };
 
 use {
-    std::{
-        fmt,
-        hash::Hash,
-    },
     crate::{
         ident::Ident,
         token_tree::*,
         parse::prelude::*,
+    },
+    std::{
+        fmt,
+        hash::Hash,
     },
     pas_common::{
         TracedError,

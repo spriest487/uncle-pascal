@@ -1,8 +1,4 @@
 use {
-    std::fmt,
-    pas_common::{
-        span::*,
-    },
     crate::{
         ast::{
             Annotation,
@@ -11,7 +7,11 @@ use {
         },
         parse::*,
         token_tree::*,
-    }
+    },
+    std::fmt,
+    pas_common::{
+        span::*,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

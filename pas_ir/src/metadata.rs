@@ -16,25 +16,71 @@ impl fmt::Display for StringId {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
-pub struct StructId(pub usize);
+pub struct TypeId(pub usize);
 
-impl fmt::Display for StructId {
+impl fmt::Display for TypeId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-pub const STRING_ID: StructId = StructId(573196);
+pub const DISPOSABLE_ID: TypeId = TypeId(321);
+
+pub const STRING_ID: TypeId = TypeId(573196);
 pub const STRING_CHARS_FIELD: usize = 0;
 pub const STRING_LEN_FIELD: usize = 1;
 
-pub const RC_ID: StructId = StructId(36);
+pub const RC_ID: TypeId = TypeId(36);
 pub const RC_REF_COUNT_FIELD: usize = 0;
 pub const RC_VALUE_FIELD: usize = 1;
 
+
+#[derive(Clone, Debug)]
+pub struct Interface {
+    pub name: String,
+    pub methods: Vec<String>,
+    pub impls: HashMap<Type, InterfaceImpl>,
+}
+
+impl Interface {
+    pub fn new(name: impl Into<String>, methods: impl Into<Vec<String>>) -> Self {
+        Self {
+            name: name.into(),
+            methods: methods.into(),
+            impls: HashMap::new(),
+        }
+    }
+
+    pub fn add_impl(
+        &mut self,
+        implementor: Type,
+        method: impl Into<String>,
+        func_name: impl Into<String>)
+    {
+        let method = method.into();
+        assert!(self.methods.contains(&method));
+
+        let methods_len = self.methods.len();
+        let impl_entry = self.impls.entry(implementor)
+            .or_insert_with(|| InterfaceImpl::new(methods_len));
+        assert!(!impl_entry.methods.contains_key(&method));
+
+        impl_entry.methods.insert(method, func_name.into());
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
+    // method name -> global name of function
     pub methods: HashMap<String, String>,
+}
+
+impl InterfaceImpl {
+    fn new(method_count: usize) -> Self {
+        Self {
+            methods: HashMap::with_capacity(method_count),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -48,8 +94,6 @@ pub struct StructField {
 pub struct Struct {
     pub name: String,
     pub fields: HashMap<usize, StructField>,
-
-    pub impls: HashMap<String, InterfaceImpl>,
 }
 
 impl Struct {
@@ -66,7 +110,6 @@ impl Struct {
         Self {
             name: name.into(),
             fields: HashMap::new(),
-            impls: HashMap::new(),
         }
     }
 
@@ -86,38 +129,13 @@ impl Struct {
         self.fields.extend(fields);
         self
     }
-
-    pub fn with_impl(
-        mut self,
-        interface_name: impl Into<String>,
-        method: impl Into<String>,
-        func_name: impl Into<String>)
-        -> Self
-    {
-        let iface_impl = self.impls.entry(interface_name.into())
-            .or_insert_with(|| InterfaceImpl {
-                methods: HashMap::new()
-            });
-
-        let method = method.into();
-        assert!(!iface_impl.methods.contains_key(&method));
-
-        iface_impl.methods.insert(method, func_name.into());
-        self
-    }
-
-    pub fn find_impl(&self, iface_name: &str, method: &str) -> Option<&str> {
-        self.impls.get(iface_name)
-            .and_then(|iface_impl| iface_impl.methods.get(method))
-            .map(|func_name| func_name.as_str())
-    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
     Nothing,
     Pointer(Box<Type>),
-    Struct(StructId),
+    Struct(TypeId),
     Rc(Box<Type>),
     Bool,
     U8,
@@ -141,7 +159,7 @@ impl Type {
         }
     }
 
-    pub fn is_struct(&self, id: StructId) -> bool {
+    pub fn is_struct(&self, id: TypeId) -> bool {
         match self {
             Type::Struct(ty_id) => *ty_id == id,
             _ => false,
@@ -166,13 +184,15 @@ impl fmt::Display for Type {
 
 #[derive(Debug, Clone)]
 pub struct Metadata {
-    structs: HashMap<StructId, Struct>,
+    structs: HashMap<TypeId, Struct>,
     string_literals: HashMap<StringId, String>,
+    ifaces: HashMap<TypeId, Interface>,
 }
 
 impl Metadata {
     pub fn system() -> Self {
         let mut metadata = Metadata::new();
+        metadata.ifaces.insert(DISPOSABLE_ID, Interface::new("Disposable", vec!["Dispose".to_string()]));
 
         metadata.structs.insert(RC_ID, Struct::new("Rc")
             .with_field("rc", Type::I32, false)
@@ -180,8 +200,8 @@ impl Metadata {
 
         metadata.structs.insert(STRING_ID, Struct::new("String")
             .with_field("chars", Type::I32.ptr(), false)
-            .with_field("len", Type::I32, false)
-            .with_impl("System.Disposable", "Dispose", "StringDispose"));
+            .with_field("len", Type::I32, false));
+        metadata.impl_method(DISPOSABLE_ID, Type::Struct(STRING_ID), "Dispose", "StringDispose");
 
         metadata
     }
@@ -190,6 +210,7 @@ impl Metadata {
         Self {
             structs: HashMap::new(),
             string_literals: HashMap::new(),
+            ifaces: HashMap::new(),
         }
     }
 
@@ -212,11 +233,18 @@ impl Metadata {
         }
     }
 
-    pub fn structs(&self) -> &HashMap<StructId, Struct> {
+    pub fn structs(&self) -> &HashMap<TypeId, Struct> {
         &self.structs
     }
 
-    pub fn translate_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructId {
+    fn next_type_id(&mut self) -> TypeId {
+        (0..).map(TypeId)
+            .filter(|id| !self.structs.contains_key(id) && !self.ifaces.contains_key(id))
+            .next()
+            .unwrap()
+    }
+
+    pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> TypeId {
         let mut fields = HashMap::new();
         for (id, member) in struct_def.members.iter().enumerate() {
             let name = member.ident.to_string();
@@ -226,23 +254,56 @@ impl Metadata {
             fields.insert(id, StructField { name, ty, rc });
         }
 
-        let id = (0..)
-            .map(StructId)
-            .filter(|id| !self.structs.contains_key(id))
-            .next()
-            .unwrap();
+        let id = self.next_type_id();
 
-        let struct_def = Struct::new(struct_def.ident.to_string())
-            .with_fields(fields);
+        let struct_name = struct_def.ident.to_string();
+        assert!(!self.structs.values().any(|def| def.name == struct_name), "duplicate struct def: {}", struct_name);
+
+        let struct_def = Struct::new(struct_name).with_fields(fields);
 
         self.structs.insert(id, struct_def);
         id
+    }
+
+    pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> TypeId {
+        let methods: Vec<_> = iface_def.methods.iter()
+            .map(|method| method.ident.to_string())
+            .collect();
+
+        let id = self.next_type_id();
+
+        self.ifaces.insert(id, Interface::new(iface_def.ident.to_string(), methods));
+
+        id
+    }
+
+    pub fn impl_method(&mut self,
+                       iface_id: TypeId,
+                       for_ty: Type,
+                       method: impl Into<String>,
+                       func_name: impl Into<String>)
+    {
+        self.ifaces.get_mut(&iface_id)
+            .unwrap_or_else(|| panic!("trying to impl method for interface {} which doesn't exist", iface_id))
+            .add_impl(for_ty, method, func_name);
+    }
+
+    pub fn find_impl(&self, ty: &Type, iface_id: TypeId, method: &str) -> Option<&str> {
+        self.ifaces.get(&iface_id)
+            .unwrap_or_else(|| panic!("expected interface {} to exist", iface_id))
+            .impls.get(ty)
+            .and_then(|ty_impl| ty_impl.methods.get(method))
+            .map(|func_name| func_name.as_str())
     }
 
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
             pas_ty::Type::Nothing => Type::Nothing,
             pas_ty::Type::Nil => Type::Nothing.ptr(),
+
+            pas_ty::Type::Interface(iface) => {
+                unimplemented!("translate_type: {}", iface)
+            }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
@@ -271,7 +332,7 @@ impl Metadata {
         }
     }
 
-    pub fn find_struct(&self, name: &str) -> Option<(StructId, &Struct)> {
+    pub fn find_struct(&self, name: &str) -> Option<(TypeId, &Struct)> {
         self.structs.iter()
             .find_map(|(id, struct_def)| if struct_def.name == name {
                 Some((*id, struct_def))

@@ -114,11 +114,6 @@ version = "0.2.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
-name = "linked-hash-map"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-
-[[package]]
 name = "memchr"
 version = "2.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -186,7 +181,6 @@ dependencies = [
 name = "pas_typecheck"
 version = "0.1.0"
 dependencies = [
- "linked-hash-map 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pas_common 0.1.0",
  "pas_syn 0.1.0",
 ]
@@ -388,7 +382,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum heck 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)" = "20564e78d53d2bb135c343b3f47714a56af2061f1c928fdb541dc7b9fdd94205"
 "checksum lazy_static 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "a374c89b9db55895453a74c1e38861d9deec0b01b405a82516e9d5de4820dea1"
 "checksum libc 0.2.46 (registry+https://github.com/rust-lang/crates.io-index)" = "023a4cd09b2ff695f9734c1934145a315594b7986398496841c7031a5a1bbdbd"
-"checksum linked-hash-map 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)" = "70fb39025bc7cdd76305867c4eccf2f2dcf6e9a57f5b21a93e1c2d86cd03ec9e"
 "checksum memchr 2.1.2 (registry+https://github.com/rust-lang/crates.io-index)" = "db4c41318937f6e76648f42826b1d9ade5c09cafb5aef7e351240a70f39206e9"
 "checksum num-bigint 0.2.2 (registry+https://github.com/rust-lang/crates.io-index)" = "57450397855d951f1a41305e54851b1a7b8f5d2e349543a02a2effe25459f718"
 "checksum num-integer 0.1.39 (registry+https://github.com/rust-lang/crates.io-index)" = "e83d528d2677f0518c570baf2b7abdcf0cd2d248860b68507bdcb3e91d4c0cea"

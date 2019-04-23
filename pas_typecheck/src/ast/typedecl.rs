@@ -5,6 +5,7 @@ use {
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
 pub type Member = ast::Member<TypeAnnotation>;
+pub type Interface = ast::Interface<TypeAnnotation>;
 
 pub fn typecheck_type_decl(
     type_decl: &ast::TypeDecl<Span>,
@@ -16,6 +17,10 @@ pub fn typecheck_type_decl(
             let class = typecheck_class(class, ctx)?;
             Ok(ast::TypeDecl::Class(class))
         },
+        ast::TypeDecl::Interface(iface) => {
+            let iface = typecheck_iface(iface, ctx)?;
+            Ok(ast::TypeDecl::Interface(iface))
+        }
     }
 }
 
@@ -39,5 +44,30 @@ pub fn typecheck_class(
         ident: class.ident.clone(),
         span: class.span.clone(),
         members,
+    })
+}
+
+pub fn typecheck_iface(
+    iface: &ast::Interface<Span>,
+    ctx: &mut Context)
+    -> TypecheckResult<Interface>
+{
+    let mut methods: Vec<FunctionDecl> = Vec::new();
+    for method in &iface.methods {
+        if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
+            return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
+                ident: method.ident.clone(),
+                existing: existing.span().clone(),
+            }));
+        }
+
+        let method = typecheck_func_decl(method, ctx)?;
+        methods.push(method);
+    }
+
+    Ok(Interface {
+        ident: iface.ident.clone(),
+        span: iface.span.clone(),
+        methods,
     })
 }

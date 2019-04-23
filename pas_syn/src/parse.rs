@@ -2,6 +2,10 @@ mod token_stream;
 mod matcher;
 
 use {
+    crate::{
+        token_tree::*,
+        ast::*,
+    },
     std::{
         fmt,
     },
@@ -9,19 +13,10 @@ use {
         TracedError,
         span::*,
     },
-    crate::{
-        token_tree::*,
-        ast::*,
-    },
 };
 
 pub mod prelude {
     pub use {
-        std::fmt,
-        pas_common::{
-            span::*,
-            TracedError,
-        },
         crate::{
             ast::{TypeName, Annotation},
             ident::Ident,
@@ -29,7 +24,12 @@ pub mod prelude {
             token_tree::{ Separator, TokenTree, DelimiterPair, },
             operators::*,
             keyword::*,
-        }
+        },
+        std::fmt,
+        pas_common::{
+            span::*,
+            TracedError,
+        },
     };
 }
 

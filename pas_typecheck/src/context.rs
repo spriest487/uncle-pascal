@@ -1,8 +1,6 @@
 use {
     crate::{
-        ast::{
-            Class,
-        },
+        ast::Class,
         FunctionSig,
         Type,
         Primitive,
@@ -31,6 +29,7 @@ pub enum NameError {
     ExpectedBinding(Ident, Decl),
     ExpectedFunction(Ident, Decl),
     AlreadyDeclared { new: Ident, existing: Ident },
+    AlreadyDefined { ident: Ident, existing: Span },
 }
 
 impl Spanned for NameError {
@@ -41,6 +40,7 @@ impl Spanned for NameError {
             NameError::ExpectedBinding(ident, _) => &ident.span,
             NameError::ExpectedFunction(ident, _) => &ident.span,
             NameError::AlreadyDeclared { new, .. } => &new.span,
+            NameError::AlreadyDefined { ident, .. } => &ident.span,
         }
     }
 
@@ -50,6 +50,12 @@ impl Spanned for NameError {
                 new.span.fmt_context(&mut f, source)?;
                 writeln!(f, "Previously declared at:")?;
                 existing.span.fmt_context(f, source)
+            }
+
+            NameError::AlreadyDefined { ident, existing } => {
+                ident.span.fmt_context(&mut f, source)?;
+                writeln!(f, "Previously defined at:")?;
+                existing.fmt_context(f, source)
             }
 
             _ => self.span().fmt_context(f, source)
@@ -74,6 +80,9 @@ impl fmt::Display for NameError {
             }
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "name `{}` was already declared in this scope", new)
+            }
+            NameError::AlreadyDefined { ident, .. } => {
+                write!(f, "duplicate definition for `{}`", ident)
             }
         }
     }
@@ -112,13 +121,14 @@ impl fmt::Display for ValueKind {
 pub struct Binding {
     pub ty: Type,
     pub kind: ValueKind,
+    pub def: Option<Span>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl {
     Type(Type),
     BoundValue(Binding),
-    Function(Binding),
+//    Function(Binding),
 }
 
 impl fmt::Display for Decl {
@@ -126,7 +136,7 @@ impl fmt::Display for Decl {
         match self {
             Decl::Type(ty) => write!(f, "type `{}`", ty),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
-            Decl::Function(func_binding) => write!(f, "{}", func_binding.ty),
+//            Decl::Function(func_binding) => write!(f, "{}", func_binding.ty),
         }
     }
 }
@@ -207,28 +217,32 @@ impl Context {
         let string_ident = root_ctx.string_class.ident.clone();
         root_ctx.declare_type(string_ident, Type::Class(root_ctx.string_class.clone())).unwrap();
 
-        root_ctx.declare_function(Ident::new("GetMem", builtin_span.clone()),
+        root_ctx.declare_function(
+            Ident::new("GetMem", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Primitive(Primitive::Int32)],
                 return_ty: Type::Primitive(Primitive::Byte).ptr(),
             })
             .unwrap();
 
-        root_ctx.declare_function(Ident::new("FreeMem", builtin_span.clone()),
+        root_ctx.declare_function(
+            Ident::new("FreeMem", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Primitive(Primitive::Byte).ptr()],
                 return_ty: Type::Nothing,
             })
             .unwrap();
 
-        root_ctx.declare_function(Ident::new("IntToStr", builtin_span.clone()),
+        root_ctx.declare_function(
+            Ident::new("IntToStr", builtin_span.clone()),
             FunctionSig {
                 params: vec![Primitive::Int32.into()],
                 return_ty: Type::Class(root_ctx.string_class.clone()),
             })
             .unwrap();
 
-        root_ctx.declare_function(Ident::new("WriteLn", builtin_span.clone()),
+        root_ctx.declare_function(
+            Ident::new("WriteLn", builtin_span.clone()),
             FunctionSig {
                 params: vec![Type::Class(root_ctx.string_class.clone())],
                 return_ty: Type::Nothing,
@@ -295,10 +309,48 @@ impl Context {
     }
 
     pub fn declare_function(&mut self, name: Ident, sig: FunctionSig) -> NamingResult<()> {
+        self.declare_function_and_def(name, sig, None)
+    }
+
+    fn declare_function_and_def(
+        &mut self,
+        name: Ident,
+        sig: FunctionSig,
+        def: Option<Span>)
+        -> NamingResult<()>
+    {
         self.declare(name, Decl::BoundValue(Binding {
             kind: ValueKind::Function,
             ty: Type::Function(Rc::new(sig)),
+            def,
         }))
+    }
+
+    pub fn define_function(&mut self, name: Ident, sig: FunctionSig, def: Span) -> NamingResult<()> {
+        let decl = self.scopes.iter_mut().rev()
+            .find_map(|scope| scope.decls.get_mut(&name));
+
+        match decl {
+            Some(Decl::BoundValue(Binding { kind: ValueKind::Function, def: Some(existing_def), .. })) => {
+                return Err(NameError::AlreadyDefined {
+                    ident: name,
+                    existing: existing_def.clone(),
+                });
+            }
+
+            Some(Decl::BoundValue(ref mut binding @ Binding { kind: ValueKind::Function, def: None, .. })) => {
+                binding.def = Some(def);
+                Ok(())
+            }
+
+            Some(other) => {
+                return Err(NameError::ExpectedFunction(name.clone(), other.clone()));
+            }
+
+            None => {
+                self.declare_function_and_def(name, sig, Some(def))
+            }
+        }
     }
 
     pub fn find_type(&self, ty: &ast::TypeName) -> NamingResult<Type> {
@@ -308,7 +360,7 @@ impl Context {
                     Some((_, Decl::Type(ty))) => {
                         let ty = ty.clone().indirect_by(*indirection);
                         Ok(ty)
-                    },
+                    }
                     Some((_, unexpected)) => Err(NameError::ExpectedType(ident.clone(), unexpected.clone())),
                     None => Err(NameError::NotFound(ident.clone())),
                 }

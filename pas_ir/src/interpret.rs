@@ -110,7 +110,7 @@ impl Sub<usize> for Pointer {
 
 #[derive(Debug, Clone)]
 pub struct StructCell {
-    pub id: StructId,
+    pub id: TypeId,
     pub fields: Vec<MemCell>,
 }
 
@@ -200,14 +200,14 @@ impl MemCell {
         }
     }
 
-    pub fn as_struct_mut(&mut self, struct_id: StructId) -> Option<&mut StructCell> {
+    pub fn as_struct_mut(&mut self, struct_id: TypeId) -> Option<&mut StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
         }
     }
 
-    pub fn as_struct(&self, struct_id: StructId) -> Option<&StructCell> {
+    pub fn as_struct(&self, struct_id: TypeId) -> Option<&StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
@@ -327,7 +327,7 @@ impl Interpreter {
         }
     }
 
-    fn init_struct(&mut self, id: StructId) -> MemCell {
+    fn init_struct(&mut self, id: TypeId) -> MemCell {
         let struct_def = self.metadata.structs()[&id].clone();
 
         let mut fields = Vec::new();
@@ -541,7 +541,7 @@ impl Interpreter {
         match cell {
             MemCell::Structure(StructCell { fields, id }) => {
                 let struct_def = &self.metadata.structs()[id];
-                let dispose_impl_name = struct_def.find_impl("System.Disposable", "Dispose")
+                let dispose_impl_name = self.metadata.find_impl(&Type::Struct(*id), DISPOSABLE_ID, "Dispose")
                     .map(|name| name.to_string());
                 if let Some(dispose_func) = dispose_impl_name {
                     let dispose_ref = GlobalRef::Function(dispose_func);
@@ -877,7 +877,7 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: StructId) -> Pointer {
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: TypeId) -> Pointer {
         let addr = self.heap.alloc(vals);
         let ptr = Pointer::Heap(Type::Struct(struct_id), addr);
 

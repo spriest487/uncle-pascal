@@ -135,14 +135,14 @@ pub enum Instruction {
 
     Call { out: Option<Ref>, function: Value, args: Vec<Value> },
 
-    GetField { out: Ref, of: Ref, struct_id: StructId, field_id: usize },
-    SetField { of: Ref, new_val: Value, struct_id: StructId, field_id: usize },
+    GetField { out: Ref, of: Ref, struct_id: TypeId, field_id: usize },
+    SetField { of: Ref, new_val: Value, struct_id: TypeId, field_id: usize },
 
     Label(Label),
     Jump { dest: Label },
     JumpIf { dest: Label, test: Value },
 
-    RcNew { out: Ref, struct_id: StructId },
+    RcNew { out: Ref, struct_id: TypeId },
 
     Release(Ref),
     Retain(Ref),
@@ -375,7 +375,7 @@ impl<'metadata> Builder<'metadata> {
     fn visit_struct_deep(
         &mut self,
         at: Ref,
-        struct_id: StructId,
+        struct_id: TypeId,
         f: &impl Fn(&mut Builder, Ref))
     {
         let fields: Vec<_> = self.metadata.structs()[&struct_id].fields.iter()
@@ -477,10 +477,10 @@ pub struct Function {
     return_ty: Type,
 }
 
-pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &mut Metadata) -> Function {
+pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) -> Function {
     let mut body_builder = Builder::new(metadata);
 
-    let return_ty = match func.return_ty.as_ref() {
+    let return_ty = match func.decl.return_ty.as_ref() {
         None | Some(pas_ty::Type::Nothing) => Type::Nothing,
         Some(ty) => {
             // anonymous return binding at %0
@@ -490,10 +490,10 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDecl, metadata: &mut Metadata)
         }
     };
 
-    for (i, param) in func.params.iter().enumerate() {
+    for (i, param) in func.decl.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
         let id = if return_ty != Type::Nothing {
-            assert!(func.return_ty.is_some());
+            assert!(func.decl.return_ty.is_some());
             i + 1
         } else {
             i
@@ -569,14 +569,17 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
     for ty_decl in unit.type_decls() {
         match ty_decl {
             ast::TypeDecl::Class(class) => {
-                metadata.translate_struct(class);
+                metadata.define_struct(class);
+            }
+            ast::TypeDecl::Interface(iface) => {
+                metadata.define_iface(iface);
             }
         }
     }
 
-    for func_decl in unit.func_decls() {
-        let func = translate_func(func_decl, &mut metadata);
-        functions.insert(func_decl.ident.to_string(), func);
+    for func_def in unit.func_defs() {
+        let func = translate_func(func_def, &mut metadata);
+        functions.insert(func_def.decl.ident.to_string(), func);
     }
 
     let mut init_builder = Builder::new(&mut metadata);

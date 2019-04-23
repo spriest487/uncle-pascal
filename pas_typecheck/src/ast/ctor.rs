@@ -1,6 +1,6 @@
 use {
-    pas_syn::Operator,
     crate::ast::prelude::*,
+    pas_syn::Operator,
 };
 
 pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;

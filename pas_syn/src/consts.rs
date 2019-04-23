@@ -1,4 +1,7 @@
 use {
+    crate::{
+        ident::Ident
+    },
     std::{
         fmt::{self, Write},
         ops::{Add, Sub},
@@ -9,9 +12,6 @@ use {
         ToPrimitive,
     },
     cast,
-    crate::{
-        ident::Ident
-    }
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]

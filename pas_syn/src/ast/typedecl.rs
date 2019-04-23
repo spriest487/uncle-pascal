@@ -1,5 +1,8 @@
 use {
-    crate::parse::prelude::*,
+    crate::{
+        parse::prelude::*,
+        ast::FunctionDecl,
+    },
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -96,17 +99,64 @@ impl<A: Annotation> fmt::Display for Class<A> {
     }
 }
 
-impl<A: Annotation> TypeDecl<A> {
-    pub fn ident(&self) -> &Ident {
-        match self {
-            TypeDecl::Class(class) => &class.ident,
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Interface<A: Annotation> {
+    pub ident: Ident,
+    pub methods: Vec<FunctionDecl<A>>,
+    pub span: Span,
+}
+
+impl Interface<Span> {
+    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+        let iface_kw = tokens.match_one(Keyword::Interface)?;
+        let methods = tokens.match_separated(Separator::Semicolon, |_, tokens| {
+            if tokens.look_ahead().match_one(Keyword::End).is_some() {
+                return Ok(Generate::Break);
+            }
+
+            let decl = FunctionDecl::parse(tokens)?;
+            Ok(Generate::Yield(decl))
+        })?;
+
+        let end = tokens.match_one(Keyword::End)?;
+
+        Ok(Interface {
+            ident,
+            span: iface_kw.span().to(end.span()),
+            methods
+        })
+    }
+}
+
+impl<A: Annotation> Spanned for Interface<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl<A: Annotation> fmt::Display for Interface<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "interface {}", self.ident)?;
+        for method in &self.methods {
+            writeln!(f, "{};", method)?;
         }
+        write!(f, "end")
     }
 }
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
     Class(Class<A>),
+    Interface(Interface<A>),
+}
+
+impl<A: Annotation> TypeDecl<A> {
+    pub fn ident(&self) -> &Ident {
+        match self {
+            TypeDecl::Class(class) => &class.ident,
+            TypeDecl::Interface(iface) => &iface.ident,
+        }
+    }
 }
 
 impl TypeDecl<Span> {
@@ -148,6 +198,11 @@ impl TypeDecl<Span> {
                 Ok(TypeDecl::Class(class_decl))
             },
 
+            Some(TokenTree::Keyword { kw: Keyword::Interface, .. }) => {
+                let iface_decl = Interface::parse(tokens, ident.clone())?;
+                Ok(TypeDecl::Interface(iface_decl))
+            }
+
             Some(unexpected) => Err(TracedError::trace(
                 ParseError::UnexpectedToken(unexpected, Some(decl_start_matcher.clone()))
             )),
@@ -162,6 +217,7 @@ impl<A: Annotation> Spanned for TypeDecl<A> {
     fn span(&self) -> &Span {
         match self {
             TypeDecl::Class(class) => class.span(),
+            TypeDecl::Interface(iface) => iface.span(),
         }
     }
 }
@@ -172,6 +228,7 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
 
         match self {
             TypeDecl::Class(class) => write!(f, "{}", class),
+            TypeDecl::Interface(iface) => write!(f, "{}", iface),
         }
     }
 }

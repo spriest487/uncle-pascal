@@ -1,10 +1,10 @@
 use {
-    std::fmt,
     crate::{
         token_tree::*,
         operators::*,
         keyword::*,
-    }
+    },
+    std::fmt,
 };
 
 #[derive(Clone, Debug)]

@@ -1,9 +1,9 @@
 use {
-    std::rc::Rc,
-    crate::ast::prelude::*
+    crate::ast::prelude::*,
 };
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
+pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 
 fn typecheck_param(
@@ -13,16 +13,10 @@ fn typecheck_param(
 {
     let ty = ctx.find_type(&param.ty)?.clone();
 
-    let annotation = TypeAnnotation::typed_value(
-        ty.clone(),
-        ValueKind::Immutable,
-        param.annotation.clone()
-    );
-
     Ok(FunctionParam {
         ident: param.ident.clone(),
+        span: param.span.clone(),
         ty,
-        annotation,
     })
 }
 
@@ -36,39 +30,44 @@ pub fn typecheck_func_decl(
         None => Type::Nothing,
     };
 
-    let body_scope = ctx.push_scope();
-
     let mut params = Vec::new();
     for param in &decl.params {
         let param = typecheck_param(param, ctx)?;
-        ctx.declare_binding(param.ident.clone(), Binding {
-            ty: param.ty.clone(),
-            kind: ValueKind::Immutable,
-        })?;
-
         params.push(param);
     }
 
-    let body = typecheck_block(&decl.body, &return_ty, ctx)?;
+    Ok(FunctionDecl {
+        ident: decl.ident.clone(),
+        params,
+        return_ty: Some(return_ty),
+        span: decl.span.clone(),
+    })
+}
+
+pub fn typecheck_func_def(
+    def: &ast::FunctionDef<Span>,
+    ctx: &mut Context)
+    -> TypecheckResult<FunctionDef>
+{
+    let decl = typecheck_func_decl(&def.decl, ctx)?;
+
+    let body_scope = ctx.push_scope();
+
+    for param in &decl.params {
+        ctx.declare_binding(param.ident.clone(), Binding {
+            ty: param.ty.clone(),
+            kind: ValueKind::Immutable,
+            def: Some(param.span().clone()),
+        })?;
+    }
+
+    let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
 
     ctx.pop_scope(body_scope);
 
-    let sig = FunctionSig {
-        params: params.iter().map(|p| p.ty.clone()).collect(),
-        return_ty: return_ty.clone(),
-    };
-
-    let annotation = TypeAnnotation::typed_value(
-        Type::Function(Rc::new(sig)),
-        ValueKind::Function,
-        decl.annotation.clone(),
-    );
-
-    Ok(FunctionDecl {
-        ident: decl.ident.clone(),
-        return_ty: Some(return_ty),
-        annotation,
-        params,
-        body
+    Ok(FunctionDef {
+        decl,
+        body,
+        span: def.span.clone(),
     })
 }

@@ -1,9 +1,4 @@
 use {
-    std::fmt,
-    pas_common::{
-        TracedError,
-        span::*,
-    },
     crate::{
         ident::*,
         parse::*,
@@ -14,14 +9,19 @@ use {
         },
         token_tree::*,
         keyword::*,
-    }
+    },
+    std::fmt,
+    pas_common::{
+        TracedError,
+        span::*,
+    },
 };
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionParam<A: Annotation> {
     pub ident: Ident,
     pub ty: A::Type,
-    pub annotation: A,
+    pub span: Span,
 }
 
 impl<A: Annotation> fmt::Display for FunctionParam<A> {
@@ -32,20 +32,18 @@ impl<A: Annotation> fmt::Display for FunctionParam<A> {
 
 impl<A: Annotation> Spanned for FunctionParam<A> {
     fn span(&self) -> &Span {
-        &self.annotation.span()
+        &self.span
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionDecl<A: Annotation> {
     pub ident: Ident,
-    pub annotation: A,
+    pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
 
     pub return_ty: Option<A::Type>,
-
-    pub body: Block<A>,
 }
 
 impl FunctionDecl<Span> {
@@ -53,6 +51,8 @@ impl FunctionDecl<Span> {
         let func_kw = tokens.match_one(Keyword::Function)?;
         let ident_token = tokens.match_one(Matcher::AnyIdent)?;
         let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
+
+        let args_span = args_tt.span().clone();
 
         let return_ty = match tokens.look_ahead().match_one(Separator::Colon) {
             Some(_) => {
@@ -88,7 +88,7 @@ impl FunctionDecl<Span> {
                 .map(|ident| FunctionParam {
                     ident: ident.into_ident().unwrap(),
                     ty: ty.clone(),
-                    annotation: span.clone(),
+                    span: span.clone(),
                 })
                 .collect();
 
@@ -96,23 +96,23 @@ impl FunctionDecl<Span> {
         })?;
         params_tokens.finish()?;
 
-        let body = Block::parse(tokens)?;
-
-        let span = func_kw.span().to(body.span());
+        let span = match &return_ty {
+            Some(return_ty) => func_kw.span().to(return_ty.span()),
+            None => func_kw.span().to(&args_span),
+        };
 
         Ok(FunctionDecl {
             ident: ident_token.as_ident().cloned().unwrap(),
-            annotation: span,
+            span: span,
             return_ty,
             params: params.into_iter().flat_map(|params| params).collect(),
-            body,
         })
     }
 }
 
 impl<A: Annotation> Spanned for FunctionDecl<A> {
     fn span(&self) -> &Span {
-        self.annotation.span()
+        &self.span
     }
 }
 
@@ -130,7 +130,26 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
         if let Some(ty) = &self.return_ty {
             write!(f, ": {}", ty)?;
         }
-        writeln!(f)?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Hash)]
+pub struct FunctionDef<A: Annotation> {
+    pub decl: FunctionDecl<A>,
+    pub body: Block<A>,
+    pub span: Span,
+}
+
+impl<A: Annotation> Spanned for FunctionDef<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl<A: Annotation> fmt::Display for FunctionDef<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(f, "{}", self.decl)?;
         write!(f, "{}", self.body)
     }
 }

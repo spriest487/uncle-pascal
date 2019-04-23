@@ -40,6 +40,7 @@ pub fn typecheck_local_binding(
             ValueKind::Immutable
         },
         ty: val.annotation.ty.clone(),
+        def: Some(binding.annotation.clone()),
     })?;
 
     let annotation = TypeAnnotation::untyped(binding.annotation.clone());

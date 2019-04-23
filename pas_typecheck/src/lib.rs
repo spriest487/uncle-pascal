@@ -16,12 +16,6 @@ pub mod ast {
 
     mod prelude {
         pub use {
-            pas_common::{
-                span::*,
-            },
-            pas_syn::{
-                ast,
-            },
             crate::{
                 context::*,
                 ast::*,
@@ -30,6 +24,12 @@ pub mod ast {
                 TypeAnnotation,
                 Primitive,
                 FunctionSig,
+            },
+            pas_common::{
+                span::*,
+            },
+            pas_syn::{
+                ast,
             },
         };
     }
@@ -57,6 +57,13 @@ pub use self::{
 
 pub mod ty {
     use {
+        crate::{
+            TypeAnnotation,
+            ast::{
+                Class,
+                Interface,
+            }
+        },
         std::{
             rc::Rc,
             fmt,
@@ -69,12 +76,6 @@ pub mod ty {
             Ident,
             Operator,
         },
-        crate::{
-            TypeAnnotation,
-            ast::{
-                Class,
-            }
-        },
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -84,10 +85,11 @@ pub mod ty {
     }
 
     impl FunctionSig {
-        pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> &FunctionSig {
-            match &decl.annotation.ty {
-                Type::Function(sig) => sig.as_ref(),
-                _ => unreachable!("functions always have function type"),
+        pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> Self {
+            Self {
+                params: decl.params.iter().map(|p| p.ty.clone()).collect(),
+                return_ty: decl.return_ty.clone()
+                    .unwrap_or(Type::Nothing),
             }
         }
     }
@@ -139,6 +141,7 @@ pub mod ty {
         Function(Rc<FunctionSig>),
         Record(Rc<Class>),
         Class(Rc<Class>),
+        Interface(Rc<Interface>),
     }
 
     impl From<Primitive> for Type {
@@ -165,6 +168,10 @@ pub mod ty {
 
                 ast::TypeDecl::Class(class @ ast::Class { kind: ClassKind::Object, .. }) => {
                     Type::Class(Rc::new(class.clone()))
+                }
+
+                ast::TypeDecl::Interface(iface) => {
+                    Type::Interface(Rc::new(iface.clone()))
                 }
             }
         }

@@ -1,10 +1,4 @@
 use {
-    std::fmt,
-    pas_common::span::*,
-    pas_syn::{
-        Ident,
-        Operator,
-    },
     crate::{
         Type,
         ValueKind,
@@ -13,6 +7,12 @@ use {
             ExpressionNode,
             Call,
         },
+    },
+    std::fmt,
+    pas_common::span::*,
+    pas_syn::{
+        Ident,
+        Operator,
     },
 };
 
