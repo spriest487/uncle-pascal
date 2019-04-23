@@ -37,7 +37,7 @@ pub use self::{annotation::*, context::*, result::*, ty::*};
 pub mod ty {
     use crate::{
         ast::{Class, FunctionDecl, Interface},
-        TypeAnnotation,
+        Context, TypeAnnotation,
     };
     use pas_common::span::*;
     use pas_syn::{
@@ -327,8 +327,9 @@ pub mod ty {
 
         pub fn is_rc(&self) -> bool {
             match self {
-                Type::Class(_) => true,
-                Type::Record(_) => false,
+                Type::Class(..) => true,
+                Type::Interface(..) => true,
+
                 _ => false,
             }
         }
@@ -350,7 +351,12 @@ pub mod ty {
 
         pub fn self_comparable(&self) -> bool {
             match self {
-                Type::Class(_) | Type::Record(_) | Type::Nothing | Type::Function(_) => false,
+                Type::Nothing
+                | Type::Interface(..)
+                | Type::Class(..)
+                | Type::Record(..)
+                | Type::Function(..) => false,
+
                 _ => true,
             }
         }
@@ -364,10 +370,15 @@ pub mod ty {
             }
         }
 
-        pub fn assignable_from(&self, from: &Self) -> bool {
+        pub fn assignable_from(&self, from: &Self, ctx: &Context) -> bool {
             match self {
                 Type::Pointer(_) => *self == *from || *from == Type::Nil,
                 Type::Function(_) => false,
+                Type::Interface(iface) => match from {
+                    Type::Class(..) => ctx.is_iface_impl(from, &iface.ident),
+                    Type::Interface(from_iface) => iface.ident == from_iface.ident,
+                    _ => false,
+                },
                 _ => *self == *from,
             }
         }

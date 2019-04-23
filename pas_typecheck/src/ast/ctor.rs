@@ -38,7 +38,7 @@ pub fn typecheck_object_ctor(
                 .into());
             }
 
-            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty()) => {
+            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
                 return Err(TypecheckError::InvalidBinOp {
                     rhs: value.annotation().ty().clone(),
                     lhs: member_ref.ty.clone(),

@@ -564,6 +564,13 @@ impl Context {
         }
     }
 
+    pub fn is_iface_impl(&self, ty: &Type, iface_name: &IdentPath) -> bool {
+        match self.iface_impls.get(iface_name) {
+            None => false,
+            Some(impls) => impls.contains_key(ty),
+        }
+    }
+
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.resolve(name) {
             Some(MemberRef::Value {
@@ -589,41 +596,55 @@ impl Context {
 
     /// an instance method is an interface impl method for `ty` that takes Self as the first argument
     /// TODO: or any function taking `ty` as its first argument
-    fn instance_methods_of(&self, ty: &Type) -> Vec<(&Type, &FunctionDecl)> {
-        let mut methods = Vec::new();
+    fn instance_methods_of<'ctx>(
+        &'ctx self,
+        ty: &'ctx Type,
+    ) -> Vec<(&'ctx Type, &'ctx FunctionDecl)> {
+        match ty {
+            Type::Interface(iface) => iface
+                .methods
+                .iter()
+                .map(|method_decl| (ty, method_decl))
+                .collect(),
 
-        for (iface_ident, iface_impls) in &self.iface_impls {
-            let iface_decl = self
-                .resolve(iface_ident)
-                .and_then(|member| member.as_value())
-                .unwrap();
+            _ => {
+                let mut methods = Vec::new();
 
-            let (iface_ty, iface) = match iface_decl {
-                Decl::Type(iface_ty @ Type::Interface(_)) => match iface_ty {
-                    Type::Interface(iface) => (iface_ty, iface),
-                    _ => unreachable!(),
-                },
+                for (iface_ident, iface_impls) in &self.iface_impls {
+                    let iface_decl = self
+                        .resolve(iface_ident)
+                        .and_then(|member| member.as_value())
+                        .unwrap();
 
-                _ => panic!("invalid kind of decl referenced in iface impl"),
-            };
+                    let (iface_ty, iface) = match iface_decl {
+                        Decl::Type(iface_ty @ Type::Interface(_)) => match iface_ty {
+                            Type::Interface(iface) => (iface_ty, iface),
+                            _ => unreachable!(),
+                        },
 
-            if iface_impls.contains_key(ty) {
-                let iface_instance_methods = iface.methods.iter().filter(|m| {
-                    m.params
-                        .get(0)
-                        .map(|arg_0| arg_0.ty == Type::GenericSelf)
-                        .unwrap_or(false)
-                });
+                        _ => panic!("invalid kind of decl referenced in iface impl"),
+                    };
 
-                // add all the methods, we don't need to check if they're actually defined
-                // or implemented - we should check that elsewhere
-                for method in iface_instance_methods {
-                    methods.push((iface_ty, method))
+                    if iface_impls.contains_key(ty) {
+                        let iface_instance_methods = iface.methods.iter().filter(|method_decl| {
+                            method_decl
+                                .params
+                                .get(0)
+                                .map(|arg_0| arg_0.ty == Type::GenericSelf)
+                                .unwrap_or(false)
+                        });
+
+                        // add all the methods, we don't need to check if they're actually defined
+                        // or implemented - we should check that elsewhere
+                        for method in iface_instance_methods {
+                            methods.push((iface_ty, method))
+                        }
+                    }
                 }
+
+                methods
             }
         }
-
-        methods
     }
 
     pub fn find_instance_member<'ty, 'ctx: 'ty>(

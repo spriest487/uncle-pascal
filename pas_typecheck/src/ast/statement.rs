@@ -29,7 +29,7 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    if !explicit_ty.assignable_from(val.annotation().ty()) {
+                    if !explicit_ty.assignable_from(val.annotation().ty(), ctx) {
                         return Err(TypecheckError::InvalidBinOp {
                             lhs: explicit_ty.clone(),
                             rhs: val.annotation().ty().clone(),
@@ -112,7 +112,11 @@ pub fn typecheck_assignment(
 
     let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
 
-    if !lhs.annotation().ty().assignable_from(rhs.annotation().ty()) {
+    if !lhs
+        .annotation()
+        .ty()
+        .assignable_from(rhs.annotation().ty(), ctx)
+    {
         return Err(TypecheckError::InvalidBinOp {
             lhs: lhs.annotation().ty().clone(),
             rhs: rhs.annotation().ty().clone(),
@@ -166,6 +170,6 @@ pub fn typecheck_stmt(
         ast::Statement::If(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, &Type::Nothing, ctx)?;
             Ok(ast::Statement::If(if_cond))
-        },
+        }
     }
 }

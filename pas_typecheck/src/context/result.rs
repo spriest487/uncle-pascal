@@ -125,12 +125,17 @@ impl DiagnosticOutput for NameError {
                 }),
             }],
 
-            NameError::AlreadyImplemented { iface, method, existing, .. } => vec![DiagnosticMessage {
+            NameError::AlreadyImplemented {
+                iface,
+                method,
+                existing,
+                ..
+            } => vec![DiagnosticMessage {
                 title: format!("`{}.{}` previously implemented here", iface, method),
                 label: Some(DiagnosticLabel {
                     text: None,
                     span: existing.clone(),
-                })
+                }),
             }],
 
             NameError::Ambiguous { ident, options } => {
@@ -193,9 +198,16 @@ impl fmt::Display for NameError {
                 write!(f, "`{}` is ambiguous in this context", ident)
             }
 
-            NameError::AlreadyImplemented { iface, method, for_ty, .. } => {
-                write!(f, "`{}.{}` already implemented for `{}`", iface, method, for_ty)
-            }
+            NameError::AlreadyImplemented {
+                iface,
+                method,
+                for_ty,
+                ..
+            } => write!(
+                f,
+                "`{}.{}` already implemented for `{}`",
+                iface, method, for_ty
+            ),
         }
     }
 }

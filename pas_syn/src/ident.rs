@@ -10,10 +10,16 @@ use std::{
     },
 };
 
-#[derive(Eq, Clone, Debug)]
+#[derive(Eq, Clone)]
 pub struct Ident {
     pub name: String,
     pub span: Span,
+}
+
+impl fmt::Debug for Ident {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "\"{}\" @ {:?}", self.name, self.span)
+    }
 }
 
 impl PartialEq for Ident {
@@ -61,7 +67,7 @@ impl fmt::Display for Ident {
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Eq, Hash, Debug)]
 pub struct Path<Part> {
     parts: Vec<Part>,
 }

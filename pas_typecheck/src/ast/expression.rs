@@ -41,11 +41,13 @@ fn typecheck_args(
 
         if is_in_ref || is_out_ref {
             match arg_expr.annotation().value_kind() {
-                Some(ValueKind::Mutable) | Some(ValueKind::Ref) => {},
-                _ => return Err(TypecheckError::NotMutable {
+                Some(ValueKind::Mutable) | Some(ValueKind::Ref) => {}
+                _ => {
+                    return Err(TypecheckError::NotMutable {
                     expr: Box::new(arg_expr),
                     decl: None,
-                }),
+                    });
+                }
             }
 
             let ref_name = match &arg_expr {
@@ -165,7 +167,7 @@ fn typecheck_method_call(
             // the self-arg is passed as the first argument
             assert!(!impl_sig.params.is_empty());
             let self_param = impl_sig.params.remove(0);
-            if !self_param.ty.assignable_from(self_arg.annotation().ty()) {
+            if !self_param.ty.assignable_from(self_arg.annotation().ty(), ctx) {
                 return Err(TypecheckError::TypeMismatch {
                     actual: self_arg.annotation().ty().clone(),
                     expected: self_param.ty,
@@ -538,7 +540,9 @@ fn expect_args_initialized(
     assert_eq!(
         params.len(),
         args.len(),
-        "function call with wrong number of args shouldn't pass type checking"
+        "function call with wrong number of args shouldn't pass type checking. got:\n{}\nexpected:\n{}",
+        args.iter().map(|arg| arg.to_string()).collect::<Vec<_>>().join("; "),
+        params.iter().map(|param| param.ty.to_string()).collect::<Vec<_>>().join("; "),
     );
 
     for (arg, param) in args.iter().zip(params.iter()) {

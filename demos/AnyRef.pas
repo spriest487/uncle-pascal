@@ -5,23 +5,25 @@ type Animal = interface
 end;
 
 type Cat = class
+    name: String;
 end;
 
 function Animal.Say(self: Cat)
 begin
-    WriteLn('nya!');
+    WriteLn(self.name + ' says nya!');
 end;
 
 type Dog = class
+    name: String;
 end;
 
 function Animal.Say(self: Dog)
 begin
-    WriteLn('wan!');
+    WriteLn(self.name + ' says wan!');
 end;
 
-let animal1: Animal := Cat();
-let animal2: Animal := Dog();
+let animal1: Animal := Cat(name: 'Blake');
+let animal2: Animal := Dog(name: 'Yang');
 
 animal1.Say();
 animal2.Say();
