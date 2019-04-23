@@ -7,7 +7,7 @@ pub mod prelude {
             Annotation,
             TypeName,
         },
-        ident::Ident,
+        ident::*,
         keyword::*,
         operators::*,
         parse::*,

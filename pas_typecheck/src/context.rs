@@ -198,7 +198,7 @@ impl Context {
         };
 
         let disposable_iface = Rc::new(Interface {
-            ident: Ident::new("Disposable", builtin_span.clone()),
+            ident: Ident::new("Disposable", builtin_span.clone()).into(),
             methods: vec![FunctionDecl {
                 ident: Ident::new("Dispose", builtin_span.clone()),
                 span: builtin_span.clone(),
@@ -215,7 +215,7 @@ impl Context {
 
         let string_class = Rc::new(Class {
             kind: ClassKind::Object,
-            ident: Ident::new("String", builtin_span.clone()),
+            ident: Ident::new("String", builtin_span.clone()).into(),
             span: builtin_span.clone(),
             members: vec![
                 ast::Member {
@@ -261,17 +261,17 @@ impl Context {
 
         let string_ident = root_ctx.string_class.ident.clone();
         root_ctx
-            .declare_type(string_ident, Type::Class(root_ctx.string_class.clone()))
+            .declare_type(string_ident.last().clone(), Type::Class(root_ctx.string_class.clone()))
             .unwrap();
 
         let disposable_ident = disposable_iface.ident.clone();
         root_ctx
-            .declare_type(disposable_ident, Type::Interface(disposable_iface.clone()))
+            .declare_type(disposable_ident.last().clone(), Type::Interface(disposable_iface.clone()))
             .unwrap();
 
         root_ctx
             .declare_method_impl(
-                IdentPath::new(disposable_iface.ident.clone(), Vec::new()),
+                disposable_iface.ident.clone(),
                 Type::Class(root_ctx.string_class.clone()),
                 Ident::new("Dispose", builtin_span.clone()),
             )
@@ -453,6 +453,17 @@ impl Context {
         Ok(())
     }
 
+    pub fn qualify_name(&self, name: Ident) -> IdentPath {
+        let parts: Vec<_> = self.scopes.current_path().keys().cloned()
+            .collect();
+
+        if parts.is_empty() {
+            IdentPath::from(name)
+        } else {
+            IdentPath::from_parts(parts).child(name)
+        }
+    }
+
     fn declare_function_and_def(
         &mut self,
         name: Ident,
@@ -462,7 +473,7 @@ impl Context {
         self.declare(name.clone(), Decl::Function(Rc::new(sig)))?;
 
         if let Some(def) = def {
-            let decl_ident = IdentPath::new(name, self.scopes.current_path().keys().cloned());
+            let decl_ident = self.qualify_name(name);
             self.defs.insert(decl_ident, def);
         }
 
@@ -532,7 +543,7 @@ impl Context {
 
     pub fn find_type(&self, ty: &ast::TypeName) -> NamingResult<Type> {
         match ty {
-            ast::TypeName::Ident { ident, indirection } => match self.find(ident) {
+            ast::TypeName::Ident { ident, indirection } => match self.resolve(ident) {
                 Some(MemberRef::Value {
                     value: Decl::Type(ty),
                     ..
@@ -554,7 +565,7 @@ impl Context {
                     Err(NameError::ExpectedType(ident.clone(), unexpected))
                 },
 
-                None => Err(NameError::NotFound(ident.clone())),
+                None => Err(NameError::NotFound(ident.last().clone())),
             },
 
             ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),

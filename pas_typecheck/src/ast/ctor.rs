@@ -15,6 +15,11 @@ pub fn typecheck_object_ctor(
     };
 
     let ty = ctx.find_type(&ty_ident)?.clone();
+    let ty_name = ty.full_path()
+        .ok_or_else(|| TypecheckError::InvalidCtorType {
+            ty: ty.clone(),
+            span: ctor.annotation.span().clone(),
+        })?;
 
     let ty_members: Vec<_> = ty.members().map(|m| m.ty).cloned().collect();
     let mut members = Vec::new();
@@ -74,7 +79,7 @@ pub fn typecheck_object_ctor(
     };
 
     Ok(ObjectCtor {
-        ident: ctor.ident.clone(),
+        ident: ty_name,
         args,
         annotation,
     })

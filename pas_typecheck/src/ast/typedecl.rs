@@ -1,6 +1,5 @@
 use crate::ast::prelude::*;
 use pas_syn::{
-    ident::IdentPath,
     Ident,
 };
 
@@ -36,9 +35,12 @@ pub fn typecheck_class(class: &ast::Class<Span>, ctx: &mut Context) -> Typecheck
         });
     }
 
+    assert_eq!(1, class.ident.as_slice().len(), "parsed class def name must be unqualified");
+    let ident = ctx.qualify_name(class.ident.last().clone());
+
     Ok(Class {
         kind: class.kind,
-        ident: class.ident.clone(),
+        ident,
         span: class.span.clone(),
         members,
     })
@@ -56,9 +58,7 @@ pub fn typecheck_iface(
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
-            // todo: iface should have a full path as its ident
-            let iface_path = IdentPath::new(iface.ident.clone(), Vec::new());
-            let method_path = iface_path.child(method.ident.clone());
+            let method_path = iface.ident.clone().child(method.ident.clone());
 
             return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
                 ident: method_path,
@@ -72,8 +72,11 @@ pub fn typecheck_iface(
 
     ctx.pop_scope(iface_scope)?;
 
+    assert_eq!(1, iface.ident.as_slice().len(), "parsed class def name must be unqualified");
+    let ident = ctx.qualify_name(iface.ident.last().clone());
+
     Ok(Interface {
-        ident: iface.ident.clone(),
+        ident,
         span: iface.span.clone(),
         methods,
     })

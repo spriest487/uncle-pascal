@@ -65,7 +65,7 @@ impl<A: Annotation> fmt::Display for ObjectCtorArgs<A> {
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtor<A: Annotation> {
-    pub ident: Ident,
+    pub ident: IdentPath,
     pub args: ObjectCtorArgs<A>,
     pub annotation: A,
 }

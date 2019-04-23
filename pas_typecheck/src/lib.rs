@@ -237,9 +237,9 @@ pub mod ty {
                 Type::Nothing => Some(builtin_path("Nothing")),
                 Type::GenericSelf => Some(builtin_path("Self")),
                 Type::Primitive(p) => Some(builtin_path(p.name())),
-                Type::Interface(iface) => Some(IdentPath::new(iface.ident.clone(), vec![])),
+                Type::Interface(iface) => Some(iface.ident.clone()),
                 Type::Record(class) | Type::Class(class) => {
-                    Some(IdentPath::new(class.ident.clone(), vec![]))
+                    Some(class.ident.clone())
                 },
                 _ => None,
             }

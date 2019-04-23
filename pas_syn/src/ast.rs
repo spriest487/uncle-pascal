@@ -25,7 +25,6 @@ pub use self::{
 };
 
 use crate::{
-    ident::Ident,
     parse::prelude::*,
     token_tree::*,
 };
@@ -52,7 +51,7 @@ pub enum TypeName {
     /// type is unknown or unnamed at parse time
     Unknown(Span),
     Ident {
-        ident: Ident,
+        ident: IdentPath,
         indirection: usize,
     },
 }
@@ -84,7 +83,11 @@ impl TypeName {
         }
 
         match tokens.match_one(Matcher::AnyIdent)? {
-            TokenTree::Ident(ident) => Ok(TypeName::Ident { ident, indirection }),
+            TokenTree::Ident(ident) => {
+                // todo: multi-part paths in typenames
+                let ident = Path::from(ident);
+                Ok(TypeName::Ident { ident, indirection })
+            },
             unexpected => {
                 let expected = Matcher::AnyIdent;
                 Err(TracedError::trace(ParseError::UnexpectedToken(

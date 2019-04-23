@@ -23,7 +23,7 @@ pub enum ClassKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Class<A: Annotation> {
     pub kind: ClassKind,
-    pub ident: Ident,
+    pub ident: IdentPath,
     pub members: Vec<Member<A>>,
     pub span: Span,
 }
@@ -75,7 +75,7 @@ impl Class<Span> {
 
         Ok(Class {
             kind,
-            ident,
+            ident: ident.into(),
             members,
             span: kw_token.span().to(end_token.span()),
         })
@@ -107,7 +107,7 @@ impl<A: Annotation> fmt::Display for Class<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Interface<A: Annotation> {
-    pub ident: Ident,
+    pub ident: IdentPath,
     pub methods: Vec<FunctionDecl<A>>,
     pub span: Span,
 }
@@ -133,7 +133,7 @@ impl Interface<Span> {
         let end = tokens.match_one(Keyword::End)?;
 
         Ok(Interface {
-            ident,
+            ident: ident.into(),
             span: iface_kw.span().to(end.span()),
             methods,
         })
@@ -148,7 +148,7 @@ impl<A: Annotation> Spanned for Interface<A> {
 
 impl<A: Annotation> fmt::Display for Interface<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "interface {}", self.ident)?;
+        writeln!(f, "interface")?;
         for method in &self.methods {
             writeln!(f, "{};", method)?;
         }
@@ -163,7 +163,7 @@ pub enum TypeDecl<A: Annotation> {
 }
 
 impl<A: Annotation> TypeDecl<A> {
-    pub fn ident(&self) -> &Ident {
+    pub fn ident(&self) -> &IdentPath {
         match self {
             TypeDecl::Class(class) => &class.ident,
             TypeDecl::Interface(iface) => &iface.ident,
@@ -240,7 +240,7 @@ impl<A: Annotation> Spanned for TypeDecl<A> {
 
 impl<A: Annotation> fmt::Display for TypeDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "type {} = ", self.ident())?;
+        write!(f, "type {} = ", self.ident().last())?;
 
         match self {
             TypeDecl::Class(class) => write!(f, "{}", class),

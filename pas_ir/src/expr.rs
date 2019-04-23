@@ -292,7 +292,7 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
         },
 
         ast::Literal::String(s) => match ty {
-            pas_ty::Type::Class(class) if class.ident.name == "String" => {
+            pas_ty::Type::Class(class) if class.ident == syn::Path::from("String".to_string()) => {
                 let lit_id = builder.metadata.find_or_insert_string(s);
                 let lit_ref = GlobalRef::StringLiteral(lit_id);
 
@@ -330,12 +330,12 @@ fn translate_bin_op(
                 lhs_val
             };
 
-            let struct_name = bin_op
+            let struct_name = NamePath::from_ident(bin_op
                 .lhs
                 .annotation
                 .value_ty()
-                .full_name()
-                .expect("member access must be of a named type");
+                .full_path()
+                .expect("member access must be of a named type"));
             let member_name = bin_op
                 .rhs
                 .expr
@@ -442,9 +442,11 @@ fn translate_unary_op(
 }
 
 fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Ref {
+    let obj_name = NamePath::from_ident(ctor.ident.clone());
+
     let (struct_id, struct_def) = builder
         .metadata
-        .find_struct(&ctor.ident.to_string())
+        .find_struct(&obj_name)
         .map(|(id, def)| (id, def.clone()))
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident));
 

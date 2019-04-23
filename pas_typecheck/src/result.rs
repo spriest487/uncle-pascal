@@ -60,6 +60,10 @@ pub enum TypecheckError {
         method: Ident,
         span: Span,
     },
+    InvalidCtorType {
+        ty: Type,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -85,6 +89,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidUnaryOp { span, .. } => span,
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation.span(),
             TypecheckError::AmbiguousMethod { span, .. } => span,
+            TypecheckError::InvalidCtorType { span, .. } => span,
         }
     }
 }
@@ -104,6 +109,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
             TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
+            TypecheckError::InvalidCtorType { .. } => "Invalid constructor expression type".to_string(),
         }
     }
 
@@ -194,6 +200,10 @@ impl fmt::Display for TypecheckError {
             TypecheckError::AmbiguousMethod { method, .. } => {
                 // todo: show ambiguous options
                 write!(f, "call to method `{}` was ambiguous", method)
+            }
+
+            TypecheckError::InvalidCtorType { ty, .. } => {
+                write!(f, "type `{}` cannot be created with a constructor expression", ty)
             }
         }
     }

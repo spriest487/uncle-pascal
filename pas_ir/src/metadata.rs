@@ -1,5 +1,8 @@
 use pas_syn as syn;
-use pas_syn::Ident;
+use pas_syn::{
+    Ident,
+    Path,
+};
 use pas_typecheck as pas_ty;
 use std::{
     collections::hash_map::HashMap,
@@ -50,15 +53,40 @@ pub const WRITELN_ID: FunctionID = FunctionID(2);
 pub const GETMEM_ID: FunctionID = FunctionID(3);
 pub const FREEMEM_ID: FunctionID = FunctionID(4);
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct NamePath(Path<String>);
+
+impl fmt::Display for NamePath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0.join("::"))
+    }
+}
+
+impl NamePath {
+    pub fn from_ident(ident: syn::IdentPath) -> Self {
+        let parts = ident.into_parts()
+            .into_iter()
+            .map(|ident| ident.to_string());
+
+        NamePath::from(parts)
+    }
+}
+
+impl<Iter: IntoIterator<Item=String>> From<Iter> for NamePath {
+    fn from(iter: Iter) -> Self {
+        Self(Path::<String>::from_parts(iter))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Interface {
-    pub name: String,
+    pub name: NamePath,
     pub methods: Vec<String>,
     pub impls: HashMap<Type, InterfaceImpl>,
 }
 
 impl Interface {
-    pub fn new(name: impl Into<String>, methods: impl Into<Vec<String>>) -> Self {
+    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<String>>) -> Self {
         Self {
             name: name.into(),
             methods: methods.into(),
@@ -104,7 +132,7 @@ pub struct StructField {
 
 #[derive(Clone, Debug)]
 pub struct Struct {
-    pub name: String,
+    pub name: NamePath,
     pub fields: HashMap<usize, StructField>,
 }
 
@@ -115,7 +143,7 @@ impl Struct {
             .find_map(|(id, field)| if field.name == name { Some(*id) } else { None })
     }
 
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<NamePath>) -> Self {
         Self {
             name: name.into(),
             fields: HashMap::new(),
@@ -254,19 +282,19 @@ impl Metadata {
         let mut metadata = Metadata::new();
         metadata.ifaces.insert(
             DISPOSABLE_ID,
-            Interface::new("Disposable", vec!["Dispose".to_string()]),
+            Interface::new(vec!["Disposable".to_string()], vec!["Dispose".to_string()]),
         );
 
         metadata.structs.insert(
             RC_ID,
-            Struct::new("Rc")
+            Struct::new(vec!["Rc".to_string()])
                 .with_field("rc", Type::I32, false)
                 .with_field("value", Type::Nothing.ptr(), false),
         );
 
         metadata.structs.insert(
             STRING_ID,
-            Struct::new("String")
+            Struct::new(vec!["String".to_string()])
                 .with_field("chars", Type::I32.ptr(), false)
                 .with_field("len", Type::I32, false),
         );
@@ -471,7 +499,7 @@ impl Metadata {
 
         let id = self.next_struct_id();
 
-        let struct_name = struct_def.ident.to_string();
+        let struct_name = NamePath::from_ident(struct_def.ident.clone());
         assert!(
             !self.structs.values().any(|def| def.name == struct_name),
             "duplicate struct def: {}",
@@ -493,17 +521,17 @@ impl Metadata {
 
         let id = self.next_iface_id();
 
-        self.ifaces
-            .insert(id, Interface::new(iface_def.ident.to_string(), methods));
+        let name = NamePath::from_ident(iface_def.ident.clone());
+
+        self.ifaces.insert(id, Interface::new(name, methods));
 
         id
     }
 
     pub fn find_iface(&self, iface_ident: &syn::IdentPath) -> Option<InterfaceID> {
-        let name = iface_ident.to_string();
+        let name = NamePath::from_ident(iface_ident.clone());
 
-        self.ifaces
-            .iter()
+        self.ifaces.iter()
             .find(|(_id, def)| def.name == name)
             .map(|(id, _def)| *id)
     }
@@ -542,7 +570,7 @@ impl Metadata {
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                let ty_name = iface.ident.to_string();
+                let ty_name = NamePath::from_ident(iface.ident.clone());
                 let id = self
                     .ifaces
                     .iter()
@@ -560,7 +588,7 @@ impl Metadata {
             pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
 
             pas_typecheck::Type::Record(class) => {
-                let ty_name = class.ident.to_string();
+                let ty_name = NamePath::from_ident(class.ident.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
@@ -568,7 +596,7 @@ impl Metadata {
             },
 
             pas_typecheck::Type::Class(class) => {
-                let ty_name = class.ident.to_string();
+                let ty_name = NamePath::from_ident(class.ident.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
@@ -586,9 +614,9 @@ impl Metadata {
         }
     }
 
-    pub fn find_struct(&self, name: &str) -> Option<(StructID, &Struct)> {
+    pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, &Struct)> {
         self.structs.iter().find_map(|(id, struct_def)| {
-            if struct_def.name == name {
+            if struct_def.name == *name {
                 Some((*id, struct_def))
             } else {
                 None

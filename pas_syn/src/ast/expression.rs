@@ -664,7 +664,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
                     let span = ident.span().to(&args.close);
                     let ctor = ObjectCtor {
-                        ident,
+                        ident: ident.into(),
                         args,
                         annotation: span.clone(),
                     };

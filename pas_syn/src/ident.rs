@@ -22,6 +22,18 @@ impl PartialEq for Ident {
     }
 }
 
+impl PartialEq<String> for Ident {
+    fn eq(&self, name: &String) -> bool {
+        self.name == *name
+    }
+}
+
+impl PartialEq<str> for Ident {
+    fn eq(&self, name: &str) -> bool {
+        self.name == name
+    }
+}
+
 impl Hash for Ident {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.name.hash(state)
@@ -49,7 +61,7 @@ impl fmt::Display for Ident {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, Hash)]
 pub struct Path<Part> {
     parts: Vec<Part>,
 }
@@ -113,6 +125,20 @@ impl<Part: fmt::Display> Path<Part> {
             write!(joined, "{}", part).unwrap()
         }
         joined
+    }
+}
+
+impl<Part> From<Part> for Path<Part> {
+    fn from(part: Part) -> Self {
+        Self { parts: vec![part] }
+    }
+}
+
+impl<OtherPart, Part: PartialEq<OtherPart>> PartialEq<Path<OtherPart>> for Path<Part> {
+    fn eq(&self, other: &Path<OtherPart>) -> bool {
+        self.parts.len() == other.parts.len()
+            && self.parts.iter().zip(other.parts.iter())
+                .all(|(a, b)| *a == *b)
     }
 }
 
