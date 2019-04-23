@@ -195,10 +195,6 @@ pub enum Instruction {
 
     Release {
         at: Ref,
-
-        /// release instruction needs to know the resource type to correctly dispose it when
-        /// the count becomes zero. this is the type ID of the reference-counted resource
-        struct_id: StructID,
     },
     Retain {
         at: Ref,
@@ -473,23 +469,18 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
         match ty {
-            Type::RcPointer(resource_ty) => match resource_ty.as_ref() {
-                Type::Struct(struct_id) => {
-                    self.append(Instruction::Release {
-                        at: at.clone(),
-                        struct_id: *struct_id,
-                    });
-                }
-                _ => panic!("type {} cannot be managed by a rc pointer", resource_ty),
+            Type::RcPointer(..) => {
+                self.append(Instruction::Release {
+                    at: at.clone(),
+                });
             },
 
             Type::Struct(struct_id) => {
                 self.begin_scope();
                 self.visit_struct_deep(at, *struct_id, &mut |builder, field_ty, field_ref| {
-                    if let Some(field_resource_id) = field_ty.rc_resource_type_id() {
+                    if let Type::RcPointer(..) = field_ty {
                         builder.append(Instruction::Release {
                             at: field_ref,
-                            struct_id: field_resource_id,
                         });
                     }
                 });

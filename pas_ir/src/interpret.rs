@@ -159,6 +159,7 @@ impl PartialEq<Self> for StructCell {
 pub struct RcCell {
     pub resource_addr: HeapAddress,
     pub ref_count: usize,
+    pub ty_id: StructID,
 }
 
 impl RcCell {
@@ -166,6 +167,22 @@ impl RcCell {
         Self {
             resource_addr: HeapAddress(0),
             ref_count: 0,
+            ty_id: StructID(0),
+        }
+    }
+}
+
+enum ReleaseTarget {
+    RcPointer,
+    Struct(StructID),
+}
+
+impl ReleaseTarget {
+    fn for_ty(ty: &Type) -> Option<Self> {
+        match ty {
+            Type::RcPointer(..) => Some(ReleaseTarget::RcPointer),
+            Type::Struct(id) => Some(ReleaseTarget::Struct(*id)),
+            _ => None,
         }
     }
 }
@@ -649,45 +666,53 @@ impl Interpreter {
         }
     }
 
-    fn release_cell(&mut self, cell: &MemCell, cell_ty: &Type) {
-        match cell_ty {
-            Type::Struct(struct_id) => {
-                let struct_cell = cell.as_struct(*struct_id).unwrap();
+    fn release_cell(&mut self, cell: &MemCell, target: ReleaseTarget) {
+        match target {
+            ReleaseTarget::Struct(struct_id) => {
+                let struct_cell = cell.as_struct(struct_id).unwrap();
+                let cell_ty = Type::Struct(struct_id);
 
-                self.invoke_disposer(&cell, cell_ty);
-                let struct_def: Struct = self.metadata.structs()[struct_id].clone();
+                self.invoke_disposer(&cell, &cell_ty);
+                let struct_def: Struct = self.metadata.structs()[&struct_id].clone();
 
                 for (field_id, field_def) in &struct_def.fields {
                     let field_cell = &struct_cell[*field_id];
                     let field_ty = &field_def.ty;
 
-                    self.release_cell(field_cell, field_ty);
+                    if let Some(field_release_target) = ReleaseTarget::for_ty(field_ty) {
+                        self.release_cell(field_cell, field_release_target);
+                    }
                 }
             }
 
-            Type::RcPointer(resource_ty) => {
+            ReleaseTarget::RcPointer => {
                 let rc_addr = cell.as_pointer().and_then(|p| p.as_heap_addr()).unwrap();
 
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
+                let resource_ty = Type::Struct(rc_cell.ty_id);
 
                 if rc_cell.ref_count == 1 {
                     if self.trace_rc {
                         println!(
-                            "rc: delete cell {:?} of {}/resource ty {}",
+                            "rc: delete cell {:?} of resource ty {}",
                              cell,
-                             self.metadata.pretty_ty_name(cell_ty),
-                             self.metadata.pretty_ty_name(resource_ty)
+                             self.metadata.pretty_ty_name(&resource_ty)
                         );
                     }
 
-                    // Dispose() the inner resource
-                    self.invoke_disposer(&cell, cell_ty);
+                    // Dispose() the inner resource. For an RC type, interfaces are implemented
+                    // for the RC pointer type, not the resource type
+                    self.invoke_disposer(&cell, &resource_ty.clone().rc());
 
                     let resource_cell = self.heap[rc_cell.resource_addr].clone();
-                    self.release_cell(&resource_cell, resource_ty.as_ref());
+
+                    // Now release the fields of the resource struct as if it was a normal record.
+                    // This could technically invoke another disposer, but it won't, because there's
+                    // no way to declare a disposer for the inner resource type of an RC type
+                    self.release_cell(&resource_cell, ReleaseTarget::Struct(rc_cell.ty_id));
 
                     if self.trace_rc {
-                        eprintln!("rc: free {} @ {}", self.metadata.pretty_ty_name(resource_ty), rc_addr)
+                        eprintln!("rc: free {} @ {}", self.metadata.pretty_ty_name(&resource_ty), rc_addr)
                     }
 
                     self.heap.free(rc_cell.resource_addr);
@@ -697,21 +722,18 @@ impl Interpreter {
                     if self.trace_rc {
                         eprintln!(
                             "rc: release {} @ {} ({} more refs)",
-                            self.metadata.pretty_ty_name(resource_ty),
+                            self.metadata.pretty_ty_name(&resource_ty),
                             rc_cell.resource_addr,
                             rc_cell.ref_count - 1
                         )
                     }
 
                     self.heap[rc_addr] = MemCell::RcCell(RcCell {
-                        resource_addr: rc_cell.resource_addr,
                         ref_count: rc_cell.ref_count - 1,
+                        ..rc_cell
                     });
                 }
             }
-
-            // other value types can't contain rc pointers
-            _ => {}
         }
     }
 
@@ -1023,9 +1045,9 @@ impl Interpreter {
                     _ => panic!("JumpIf instruction testing non-boolean cell"),
                 },
 
-                Instruction::Release { at, struct_id } => {
+                Instruction::Release { at } => {
                     let cell = self.load(at).clone();
-                    self.release_cell(&cell, &Type::Struct(*struct_id).rc());
+                    self.release_cell(&cell, ReleaseTarget::RcPointer);
                 }
 
                 Instruction::Retain { at } => {
@@ -1038,12 +1060,13 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, vals: Vec<MemCell>, _struct_id: StructID) -> Pointer {
-        let addr = self.heap.alloc(vals);
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, ty_id: StructID) -> Pointer {
+        let resource_addr = self.heap.alloc(vals);
 
         let rc_cell = MemCell::RcCell(RcCell {
             ref_count: 1,
-            resource_addr: addr,
+            resource_addr,
+            ty_id,
         });
 
         let addr = self.heap.alloc(vec![rc_cell]);
@@ -1221,7 +1244,9 @@ impl Interpreter {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
         for GlobalCell { value, ty } in globals {
-            self.release_cell(&value, &ty);
+            if let Some(release_target) = ReleaseTarget::for_ty(&ty) {
+                self.release_cell(&value, release_target);
+            }
         }
 
         self.heap.finalize()

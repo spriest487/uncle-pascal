@@ -1,3 +1,5 @@
+uses System;
+
 type Box = class
     val: Integer;
 end;
@@ -16,8 +18,13 @@ begin
     wrapper
 end;
 
-let wrapper := Wrapper(box: Box(val: 123));
+begin
+    let wrapper := Wrapper(box: Box(val: 123));
 
-DoNothing(wrapper);
+    DoNothing(wrapper);
+end;
 
-let wrapper2 := BigWrapper(wrapper1: wrapper; wrapper2: wrapper);
+begin
+    let wrapper := Wrapper(box: Box(val: 123));
+    let wrapper2 := BigWrapper(wrapper1: wrapper; wrapper2: wrapper);
+end;
