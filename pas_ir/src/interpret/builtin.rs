@@ -1,6 +1,5 @@
 use crate::{
     interpret::{Interpreter, MemCell, Pointer},
-    metadata::*,
     LocalID, Ref,
 };
 
@@ -39,7 +38,7 @@ pub(super) fn get_mem(state: &mut Interpreter) {
     let empty_bytes = vec![MemCell::U8(0); len as usize];
     let mem = state.heap.alloc(empty_bytes);
 
-    state.store(&ret, MemCell::Pointer(Pointer::Heap(Type::U8, mem)));
+    state.store(&ret, MemCell::Pointer(Pointer::Heap(mem)));
 }
 
 /// $0: ^Byte -> Nothing

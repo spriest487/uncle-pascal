@@ -42,8 +42,8 @@ impl fmt::Debug for Function {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
     Null,
-    Uninit(Type),
-    Heap(Type, HeapAddress),
+    Uninit,
+    Heap(HeapAddress),
     Local {
         frame: usize,
         id: usize,
@@ -51,19 +51,17 @@ pub enum Pointer {
     IntoArray {
         array: Box<Pointer>,
         offset: usize,
-        element: Type,
     },
     IntoStruct {
         structure: Box<Pointer>,
         field: FieldID,
-        field_ty: Type,
     },
 }
 
 impl Pointer {
     pub fn as_heap_addr(&self) -> Option<HeapAddress> {
         match self {
-            Pointer::Heap(_ty, addr) => Some(*addr),
+            Pointer::Heap(addr) => Some(*addr),
             _ => None,
         }
     }
@@ -75,20 +73,18 @@ impl Add<usize> for Pointer {
     fn add(self, rhs: usize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Uninit(ty) => Pointer::Uninit(ty),
+            Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
                 id: id + rhs,
             },
-            Pointer::Heap(ty, HeapAddress(addr)) => Pointer::Heap(ty, HeapAddress(addr + rhs)),
+            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr + rhs)),
             Pointer::IntoArray {
                 array,
                 offset,
-                element,
             } => Pointer::IntoArray {
                 array,
                 offset: offset + rhs,
-                element,
             },
             Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
@@ -103,20 +99,18 @@ impl Sub<usize> for Pointer {
     fn sub(self, rhs: usize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Uninit(ty) => Pointer::Uninit(ty),
+            Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
                 id: id - rhs,
             },
-            Pointer::Heap(ty, HeapAddress(addr)) => Pointer::Heap(ty, HeapAddress(addr - rhs)),
+            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr - rhs)),
             Pointer::IntoArray {
                 array,
                 offset,
-                element,
             } => Pointer::IntoArray {
                 array,
                 offset: offset - rhs,
-                element,
             },
             Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
@@ -234,10 +228,9 @@ impl MemCell {
             }
 
             (
-                MemCell::Pointer(Pointer::Heap(ref a_ty, ref a)),
-                MemCell::Pointer(Pointer::Heap(ref b_ty, ref b)),
-            ) if a_ty == b_ty => Some(MemCell::Pointer(Pointer::Heap(
-                a_ty.clone(),
+                MemCell::Pointer(Pointer::Heap(ref a)),
+                MemCell::Pointer(Pointer::Heap(ref b)),
+            ) => Some(MemCell::Pointer(Pointer::Heap(
                 HeapAddress(a.0 + b.0),
             ))),
 
@@ -256,10 +249,9 @@ impl MemCell {
             }
 
             (
-                MemCell::Pointer(Pointer::Heap(ref a_ty, ref a)),
-                MemCell::Pointer(Pointer::Heap(ref b_ty, ref b)),
-            ) if a_ty == b_ty => Some(MemCell::Pointer(Pointer::Heap(
-                a_ty.clone(),
+                MemCell::Pointer(Pointer::Heap(ref a)),
+                MemCell::Pointer(Pointer::Heap(ref b)),
+            ) => Some(MemCell::Pointer(Pointer::Heap(
                 HeapAddress(a.0 - b.0),
             ))),
 
@@ -395,9 +387,8 @@ impl Interpreter {
 
             Type::RcPointer(_) => MemCell::RcCell(RcCell::uninitialized()),
 
-            Type::Pointer(target) => {
-                let ptr = Pointer::Uninit((**target).clone());
-                MemCell::Pointer(ptr)
+            Type::Pointer(_target) => {
+                MemCell::Pointer(Pointer::Uninit)
             }
 
             Type::Array { element, dim } => {
@@ -418,7 +409,7 @@ impl Interpreter {
 
     fn deref_ptr(&self, ptr: &Pointer) -> &MemCell {
         match ptr {
-            Pointer::Heap(_ty, slot) => self
+            Pointer::Heap(slot) => self
                 .heap
                 .get(*slot)
                 .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new())),
@@ -454,15 +445,15 @@ impl Interpreter {
                 panic!("dereferencing null pointer");
             }
 
-            Pointer::Uninit(ty) => {
-                panic!("dereferencing uninitialized {} pointer", ty);
+            Pointer::Uninit => {
+                panic!("dereferencing uninitialized pointer");
             }
         }
     }
 
     fn deref_ptr_mut(&mut self, ptr: &Pointer) -> &mut MemCell {
         match ptr {
-            Pointer::Heap(_ty, slot) => self
+            Pointer::Heap(slot) => self
                 .heap
                 .get_mut(*slot)
                 .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot)),
@@ -494,8 +485,8 @@ impl Interpreter {
                 }
             }
 
-            Pointer::Uninit(ty) => {
-                panic!("dereferencing uninitialized {} pointer", ty);
+            Pointer::Uninit => {
+                panic!("dereferencing uninitialized pointer");
             }
 
             Pointer::Null => panic!("dereferencing null pointer"),
@@ -727,12 +718,12 @@ impl Interpreter {
     // todo: this should be handled in the IR
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
-            MemCell::Pointer(Pointer::Heap(ty, addr)) => {
+            MemCell::Pointer(Pointer::Heap(addr)) => {
                 let rc_cell = self.heap.get_mut(*addr).and_then(|cell| cell.as_rc_mut());
 
                 if let Some(rc_cell) = rc_cell {
                     if self.trace_rc {
-                        eprintln!("rc: retain {} @ {}", ty, addr);
+                        eprintln!("rc: retain @ {}", addr);
                     }
 
                     rc_cell.ref_count += 1;
@@ -962,8 +953,8 @@ impl Interpreter {
                     field,
                     of_ty,
                 } => {
-                    let (struct_id, struct_ptr) = match of_ty {
-                        Type::Struct(struct_id) => (*struct_id, self.addr_of_ref(a)),
+                    let struct_ptr = match of_ty {
+                        Type::Struct(_) => self.addr_of_ref(a),
 
                         Type::RcPointer(rc_ty) if rc_ty.as_struct().is_some() => {
                             let rc_addr = self
@@ -974,9 +965,7 @@ impl Interpreter {
                                     panic!("failed to read value pointer of rc pointer @ {}", a);
                                 });
 
-                            let struct_ptr = Pointer::Heap((**rc_ty).clone(), rc_addr);
-
-                            (rc_ty.as_struct().unwrap(), struct_ptr)
+                            Pointer::Heap(rc_addr)
                         }
 
                         _ => {
@@ -987,22 +976,9 @@ impl Interpreter {
                         }
                     };
 
-                    let field_def = self
-                        .metadata
-                        .structs()
-                        .get(&struct_id)
-                        .and_then(|struct_def| struct_def.fields.get(field))
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "invalid struct field referenced in Field instruction: {}.{}",
-                                struct_id, field
-                            )
-                        });
-
                     let field_ptr = Pointer::IntoStruct {
                         field: *field,
                         structure: Box::new(struct_ptr),
-                        field_ty: field_def.ty.clone(),
                     };
 
                     self.store(out, MemCell::Pointer(field_ptr));
@@ -1011,7 +987,9 @@ impl Interpreter {
                 Instruction::Element {
                     out,
                     a,
-                    element,
+                    // not used because the interpreter doesn't need to know element type to
+                    // calculate the pointer offset
+                    element: _el,
                     index,
                 } => {
                     let array = self.addr_of_ref(a);
@@ -1022,7 +1000,6 @@ impl Interpreter {
                     self.store(
                         out,
                         MemCell::Pointer(Pointer::IntoArray {
-                            element: element.clone(),
                             offset,
                             array: Box::new(array),
                         }),
@@ -1061,7 +1038,7 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: StructID) -> Pointer {
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, _struct_id: StructID) -> Pointer {
         let addr = self.heap.alloc(vals);
 
         let rc_cell = MemCell::RcCell(RcCell {
@@ -1070,7 +1047,7 @@ impl Interpreter {
         });
 
         let addr = self.heap.alloc(vec![rc_cell]);
-        Pointer::Heap(Type::Struct(struct_id).rc(), addr)
+        Pointer::Heap(addr)
     }
 
     fn init_globals(&mut self) {
@@ -1181,7 +1158,7 @@ impl Interpreter {
 
         let chars_ptr = if chars_len > 0 {
             let heap_addr = self.heap.alloc(chars);
-            Pointer::Heap(Type::U8, heap_addr)
+            Pointer::Heap(heap_addr)
         } else {
             Pointer::Null
         };
