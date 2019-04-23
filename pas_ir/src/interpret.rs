@@ -156,16 +156,6 @@ pub struct RcCell {
     pub struct_id: StructID,
 }
 
-impl RcCell {
-    fn uninitialized() -> Self {
-        Self {
-            resource_addr: HeapAddress(0),
-            ref_count: 0,
-            struct_id: StructID(0), // todo: should this be something meaningful?
-        }
-    }
-}
-
 enum ReleaseTarget {
     RcPointer,
     Struct(StructID),
@@ -390,7 +380,7 @@ impl Interpreter {
             Type::F32 => MemCell::F32(f32::INFINITY),
             Type::Struct(id) => self.init_struct(*id),
 
-            Type::RcPointer(_) => MemCell::RcCell(RcCell::uninitialized()),
+            Type::RcPointer(_) => MemCell::Pointer(Pointer::Null),
 
             Type::Pointer(_target) => MemCell::Pointer(Pointer::Uninit),
 
@@ -687,10 +677,16 @@ impl Interpreter {
             }
 
             ReleaseTarget::RcPointer => {
-                let rc_addr = cell
-                    .as_pointer()
-                    .and_then(|p| p.as_heap_addr())
-                    .unwrap_or_else(|| panic!("cell {:?} was not a heap pointer", cell));
+                let ptr = cell.as_pointer()
+                    .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
+                // NULL is a valid release target because we release uninitialized local RC pointers
+                // just do nothing
+                if *ptr == Pointer::Null {
+                    return;
+                }
+
+                let rc_addr = ptr.as_heap_addr()
+                    .unwrap_or_else(|| panic!("released cell was not a heap pointer, found: {:?}", cell));
 
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
                 let resource_ty = Type::Struct(rc_cell.struct_id);

@@ -125,13 +125,14 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
         .translate_type(assignment.rhs.annotation().ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
-    // the old value is being replaced, release it
-    if assignment.lhs.annotation().value_kind() != Some(pas_ty::ValueKind::Uninitialized) {
-        let lhs_ty = builder
-            .metadata
-            .translate_type(assignment.lhs.annotation().ty());
-        builder.release(lhs.clone(), &lhs_ty);
-    }
+    // the old value is being replaced, release it. local variables can be uninitialized,
+    // or ambiguously initialized (initialized in one branch and not another), so we can't check
+    // if the pointer is initialized here. if it's uninitialized it'll be NULL and we need to
+    // handle that in the backend's release mechanism
+    let lhs_ty = builder
+        .metadata
+        .translate_type(assignment.lhs.annotation().ty());
+    builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move {
         out: lhs,
