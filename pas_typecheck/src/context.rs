@@ -255,11 +255,21 @@ impl Context {
     }
 
     pub fn find<'a>(&'a self, name: &Ident) -> Option<MemberRef<'a, Scope>> {
-        self.scopes.current_path().find(name)
+        match self.scopes.current_path().find(name) {
+            Some(MemberRef::Value { value: Decl::Alias(aliased), .. }) => {
+                self.resolve(aliased)
+            }
+            result => result
+        }
     }
 
     pub fn resolve<'a>(&'a self, path: &IdentPath) -> Option<MemberRef<'a, Scope>> {
-        self.scopes.resolve(path.as_slice())
+        match self.scopes.resolve(path.as_slice()) {
+            Some(MemberRef::Value { value: Decl::Alias(aliased), .. }) => {
+                self.resolve(aliased)
+            }
+            result => result
+        }
     }
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
