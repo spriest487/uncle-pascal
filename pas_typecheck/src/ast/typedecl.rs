@@ -1,5 +1,6 @@
 use {
     crate::ast::prelude::*,
+    pas_syn::Ident,
 };
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
@@ -52,6 +53,11 @@ pub fn typecheck_iface(
     ctx: &mut Context)
     -> TypecheckResult<Interface>
 {
+    let iface_scope = ctx.push_scope();
+
+    let self_ident = Ident::new("Self", iface.span().clone());
+    ctx.declare_type(self_ident, Type::GenericSelf)?;
+
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
@@ -64,6 +70,8 @@ pub fn typecheck_iface(
         let method = typecheck_func_decl(method, ctx)?;
         methods.push(method);
     }
+
+    ctx.pop_scope(iface_scope);
 
     Ok(Interface {
         ident: iface.ident.clone(),

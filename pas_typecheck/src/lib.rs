@@ -142,6 +142,7 @@ pub mod ty {
         Record(Rc<Class>),
         Class(Rc<Class>),
         Interface(Rc<Interface>),
+        GenericSelf,
     }
 
     impl From<Primitive> for Type {
@@ -154,6 +155,7 @@ pub mod ty {
         pub fn full_name(&self) -> Option<String> {
             match self {
                 Type::Nothing => Some("Nothing".to_string()),
+                Type::GenericSelf => Some("Self".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
                 Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
                 _ => None,

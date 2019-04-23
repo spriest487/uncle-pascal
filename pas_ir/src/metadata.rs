@@ -328,6 +328,8 @@ impl Metadata {
                 Type::Struct(id).rc()
             }
 
+            pas_typecheck::Type::GenericSelf => unreachable!("Self is not a real type in this context"),
+
             pas_typecheck::Type::Function(_) => unimplemented!(),
         }
     }
