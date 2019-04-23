@@ -6,7 +6,6 @@
 * unique compiler error codes
 * any-references
 * string comparison
-* RC support for array elements
 * module privacy/exported functions and impls (so you can't call `String.Dispose` explicitly)
 
 # big features

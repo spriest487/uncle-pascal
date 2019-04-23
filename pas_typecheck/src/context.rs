@@ -381,11 +381,13 @@ impl Context {
         self_ty: Type,
         method: Ident,
     ) -> NamingResult<()> {
-        match self.method_impl_entry(iface_ident.clone(), self_ty, method.clone())? {
+        match self.method_impl_entry(iface_ident.clone(), self_ty.clone(), method.clone())? {
             Entry::Occupied(mut entry) => {
                 if entry.get().def {
-                    return Err(NameError::AlreadyDefined {
-                        ident: iface_ident.child(method),
+                    return Err(NameError::AlreadyImplemented {
+                        method,
+                        for_ty: self_ty,
+                        iface: iface_ident,
                         existing: entry.key().span.clone(),
                     });
                 } else {

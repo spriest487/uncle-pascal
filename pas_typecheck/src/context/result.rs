@@ -45,6 +45,12 @@ pub enum NameError {
         ident: IdentPath,
         existing: Span,
     },
+    AlreadyImplemented {
+        iface: IdentPath,
+        for_ty: Type,
+        method: Ident,
+        existing: Span,
+    },
     Ambiguous {
         ident: Ident,
         options: Vec<IdentPath>,
@@ -64,6 +70,7 @@ impl Spanned for NameError {
             NameError::AlreadyDeclared { new, .. } => &new.span,
             NameError::AlreadyDefined { ident, .. } => &ident.span(),
             NameError::Ambiguous { ident, .. } => &ident.span,
+            NameError::AlreadyImplemented { method, .. } => method.span(),
         }
     }
 }
@@ -81,6 +88,7 @@ impl DiagnosticOutput for NameError {
             NameError::AlreadyDeclared { .. } => "Name already declared",
             NameError::AlreadyDefined { .. } => "Name already defined",
             NameError::Ambiguous { .. } => "Name is ambiguous",
+            NameError::AlreadyImplemented { .. } => "Method already implemented",
         }
         .to_string()
     }
@@ -115,6 +123,14 @@ impl DiagnosticOutput for NameError {
                     text: None,
                     span: existing.span().clone(),
                 }),
+            }],
+
+            NameError::AlreadyImplemented { iface, method, existing, .. } => vec![DiagnosticMessage {
+                title: format!("`{}.{}` previously implemented here", iface, method),
+                label: Some(DiagnosticLabel {
+                    text: None,
+                    span: existing.clone(),
+                })
             }],
 
             NameError::Ambiguous { ident, options } => {
@@ -175,6 +191,10 @@ impl fmt::Display for NameError {
             NameError::AlreadyDefined { ident, .. } => write!(f, "`{}` was already defined", ident),
             NameError::Ambiguous { ident, .. } => {
                 write!(f, "`{}` is ambiguous in this context", ident)
+            }
+
+            NameError::AlreadyImplemented { iface, method, for_ty, .. } => {
+                write!(f, "`{}.{}` already implemented for `{}`", iface, method, for_ty)
             }
         }
     }
