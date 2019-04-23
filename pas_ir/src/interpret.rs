@@ -6,6 +6,7 @@ use {
         metadata::*,
         Module,
         Ref,
+        LocalID,
         Type,
         Value,
     },
@@ -413,7 +414,7 @@ impl Interpreter {
 
     fn store(&mut self, at: &Ref, val: MemCell) {
         match at {
-            Ref::Local(id) => {
+            Ref::Local(LocalID(id)) => {
                 match self.current_frame_mut().locals.get_mut(*id) {
                     Some(Some(cell)) => { *cell = val; }
                     None | Some(None) => panic!("local cell {} is not allocated", id),
@@ -441,7 +442,7 @@ impl Interpreter {
 
     fn load(&self, at: &Ref) -> &MemCell {
         match at {
-            Ref::Local(id) => match self.current_frame().locals.get(*id) {
+            Ref::Local(LocalID(id)) => match self.current_frame().locals.get(*id) {
                 Some(Some(cell)) => cell,
                 None | Some(None) => {
                     panic!("local cell {} is not allocated", id);
@@ -516,7 +517,7 @@ impl Interpreter {
         let result_cell = match return_ty {
             Type::Nothing => None,
             _ => {
-                let return_val = self.evaluate(&Value::Ref(Ref::Local(0)));
+                let return_val = self.evaluate(&Value::Ref(Ref::Local(LocalID(0))));
                 Some(return_val)
             }
         };
@@ -644,7 +645,7 @@ impl Interpreter {
                     .enumerate()
                     .rev()
                     .filter_map(|(frame_id, stack_frame)| {
-                        let local: &MemCell = stack_frame.locals.get(*id)
+                        let local: &MemCell = stack_frame.locals.get(id.0)
                             .and_then(|maybe_cell| maybe_cell.as_ref())?;
 
                         Some((frame_id, local.value_ty()))
@@ -654,7 +655,7 @@ impl Interpreter {
 
                 Pointer::Local {
                     frame: frame_id,
-                    id: *id,
+                    id: id.0,
                     ty: type_at,
                 }
             }
@@ -685,22 +686,22 @@ impl Interpreter {
                 },
 
                 Instruction::LocalAlloc(id, ty) => {
-                    while self.current_frame().locals.len() <= *id {
+                    while self.current_frame().locals.len() <= id.0 {
                         self.current_frame_mut().locals.push(None);
                     }
 
-                    match self.current_frame().locals[*id] {
-                        None => self.current_frame_mut().locals[*id] = Some(self.init_cell(ty)),
-                        _ => panic!("local cell {} is already allocated", Ref::Local(*id)),
+                    match self.current_frame().locals[id.0] {
+                        None => self.current_frame_mut().locals[id.0] = Some(self.init_cell(ty)),
+                        _ => panic!("local cell {} is already allocated", id),
                     }
                 }
 
                 Instruction::LocalDelete(id) => {
-                    if *id >= self.current_frame().locals.len() {
-                        panic!("local cell {} is not allocated");
+                    if id.0 >= self.current_frame().locals.len() {
+                        panic!("local cell {} is not allocated", id);
                     }
 
-                    self.current_frame_mut().locals[*id] = None;
+                    self.current_frame_mut().locals[id.0] = None;
                 }
 
                 Instruction::RcNew { out, struct_id, } => {

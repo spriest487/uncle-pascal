@@ -7,6 +7,10 @@ pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
 
 fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> TypecheckResult<UnitDecl> {
     match decl {
+        ast::UnitDecl::Uses(uses) => {
+            unimplemented!("uses {:#?}", uses)
+        }
+
         ast::UnitDecl::FunctionDef(func_def) => {
             let func_def = typecheck_func_def(func_def, ctx)?;
             if let Some(impl_iface) = &func_def.decl.impl_iface {
@@ -42,20 +46,23 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
     }
 }
 
-pub fn typecheck_unit(unit: &ast::Unit<Span>) -> TypecheckResult<Unit> {
-    let mut unit_ctx = Context::root();
+pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<Unit> {
+    let unit_scope = ctx.push_scope(Some(unit.ident.clone()));
 
     let mut decls = Vec::new();
     for decl in &unit.decls {
-        decls.push(typecheck_unit_decl(decl, &mut unit_ctx)?);
+        decls.push(typecheck_unit_decl(decl, ctx)?);
     }
 
     let mut init = Vec::new();
     for stmt in &unit.init {
-        init.push(typecheck_stmt(stmt, &mut unit_ctx)?)
+        init.push(typecheck_stmt(stmt, ctx)?)
     }
 
+    ctx.pop_scope(unit_scope)?;
+
     Ok(Unit {
+        ident: unit.ident.clone(),
         init,
         decls,
     })

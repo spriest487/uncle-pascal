@@ -53,7 +53,7 @@ pub fn typecheck_iface(
     ctx: &mut Context)
     -> TypecheckResult<Interface>
 {
-    let iface_scope = ctx.push_scope();
+    let iface_scope = ctx.push_scope(None);
 
     let self_ident = Ident::new("Self", iface.span().clone());
     ctx.declare_type(self_ident, Type::GenericSelf)?;
@@ -71,7 +71,7 @@ pub fn typecheck_iface(
         methods.push(method);
     }
 
-    ctx.pop_scope(iface_scope);
+    ctx.pop_scope(iface_scope)?;
 
     Ok(Interface {
         ident: iface.ident.clone(),

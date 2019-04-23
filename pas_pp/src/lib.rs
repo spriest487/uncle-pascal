@@ -194,6 +194,7 @@ pub struct Preprocessor {
 
 #[derive(Clone, Debug)]
 pub struct PreprocessedUnit {
+    pub filename: PathBuf,
     pub source: String,
 
     pub opts: BuildOptions,
@@ -240,6 +241,7 @@ impl Preprocessor {
         }
 
         Ok(PreprocessedUnit {
+            filename: self.filename,
             source: self.output,
             opts: self.opts,
         })

@@ -23,16 +23,16 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
 
         match ty.find_member(&ctor_member.ident) {
             None => {
-                return Err(TypecheckError::MemberNotFound {
+                return Err(NameError::MemberNotFound {
                     base: ty,
                     member: ctor_member.ident.clone(),
                     span: ctor_member.ident.span.clone(),
-                });
+                }.into());
             },
 
-            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation.ty())  => {
+            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation.value_ty())  => {
                 return Err(TypecheckError::InvalidBinOp {
-                    rhs: value.annotation.ty().clone(),
+                    rhs: value.annotation.value_ty().clone(),
                     lhs: member_ref.ty.clone(),
                     op: Operator::Assignment,
                     span: ctor_member.value.annotation.span().clone(),
@@ -50,7 +50,7 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
 
     if members.len() != ty.members_len() {
         let actual = members.into_iter()
-            .map(|m| m.value.annotation.ty().clone())
+            .map(|m| m.value.annotation.value_ty().clone())
             .collect();
         return Err(TypecheckError::InvalidArgs {
             span: ctor.annotation.clone(),

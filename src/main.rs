@@ -8,6 +8,7 @@ use {
     pas_pp::{
         self as pp,
         PreprocessorError,
+        PreprocessedUnit,
     },
     pas_syn::{
         ast as syn,
@@ -16,7 +17,8 @@ use {
         TokenTree,
     },
     pas_typecheck::{
-        ast as typ,
+        self as ty,
+        ast as ty_ast,
         TypecheckError,
     },
     pas_ir::{
@@ -28,7 +30,7 @@ use {
         fmt,
         process,
         fs::File,
-        io::Read,
+        io::{self, Read},
         path::PathBuf,
         str::FromStr,
     },
@@ -40,6 +42,7 @@ pub enum CompileError {
     ParseError(TracedError<ParseError>),
     TypecheckError(TypecheckError),
     PreprocessorError(PreprocessorError),
+    InvalidUnitFilename(Span),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -73,15 +76,17 @@ impl Spanned for CompileError {
             CompileError::ParseError(err) => err.span(),
             CompileError::TypecheckError(err) => err.span(),
             CompileError::PreprocessorError(err) => err.span(),
+            CompileError::InvalidUnitFilename(span) => span,
         }
     }
 
-    fn fmt_context(&self, f: impl fmt::Write, source: &str) -> fmt::Result {
+    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
         match self {
             CompileError::TokenizeError(err) => err.fmt_context(f, source),
             CompileError::ParseError(err) => err.fmt_context(f, source),
             CompileError::TypecheckError(err) => err.fmt_context(f, source),
             CompileError::PreprocessorError(err) => err.fmt_context(f, source),
+            CompileError::InvalidUnitFilename(_) => write!(f, "{}", self),
         }
     }
 }
@@ -93,6 +98,9 @@ impl fmt::Display for CompileError {
             CompileError::ParseError(err) => write!(f, "{}", err.err),
             CompileError::TypecheckError(err) => write!(f, "{}", err),
             CompileError::PreprocessorError(err) => write!(f, "{}", err),
+            CompileError::InvalidUnitFilename(span) => {
+                write!(f, "invalid unit identifier in filename: {}", span.file.display())
+            }
         }
     }
 }
@@ -127,6 +135,10 @@ struct Args {
     #[structopt(name = "FILE", parse(from_os_str))]
     file: PathBuf,
 
+    /// additional units to link
+    #[structopt(name = "units", short = "u")]
+    units: Vec<String>,
+
     /// target stage. intermediate stages other than `interpret` will cause
     /// compilation to stop at that stage and dump the output.
     #[structopt(short = "s", long = "stage", default_value = "interpret")]
@@ -149,51 +161,131 @@ struct Args {
     backtrace: bool,
 }
 
-fn compile(filename: impl Into<PathBuf>,
-    src: &str,
-    opts: BuildOptions,
-    interpret_opts: InterpreterOpts,
-    out_kind: Stage)
-    -> Result<(), CompileError>
-{
+fn preprocess(
+    filename: impl Into<PathBuf>,
+    opts: &BuildOptions,
+) -> Result<PreprocessedUnit, CompileError> {
     let filename = filename.into();
 
-    let pp = pp::Preprocessor::new(filename.clone(), opts);
-    let preprocessed = pp.preprocess(src)?;
+    let open_file = File::open(&filename).and_then(|mut f| {
+        let mut src = String::new();
+        f.read_to_string(&mut src)?;
+        Ok(src)
+    });
 
-    if out_kind == Stage::Preprocessed {
-        println!("{}", preprocessed.source);
-        return Ok(());
-    }
+    let src = match open_file {
+        Err(err) => {
+            eprintln!("failed to open {}: {}", filename.display(), err);
+            std::process::exit(1);
+        }
+        Ok(file) => file,
+    };
 
-    let tokens = TokenTree::tokenize(filename.clone(), &preprocessed.source, &preprocessed.opts)?;
+    let pp = pp::Preprocessor::new(filename, opts.clone());
+    let preprocessed = pp.preprocess(&src)?;
 
-    let context = Span::zero(filename);
+    Ok(preprocessed)
+}
 
-    let mut token_stream = TokenStream::new(tokens, context);
-    let unit = syn::Unit::parse(&mut token_stream)?;
+fn parse(
+    unit_path: impl Into<PathBuf>,
+    src: &str,
+    opts: &BuildOptions,
+) -> Result<syn::Unit<Span>, CompileError> {
+    let unit_path = unit_path.into();
+    let file_span = Span::zero(unit_path.clone());
+
+    let unit_ident = unit_path.with_extension("").file_name()
+        .and_then(|file_name| {
+            let file_name = file_name.to_str()?;
+            let token = TokenTree::tokenize(&unit_path, file_name, opts).ok()?;
+            match token.as_slice() {
+                [TokenTree::Ident(ident)] => Some(ident.clone()),
+                _ => None,
+            }
+        })
+        .ok_or_else(|| CompileError::InvalidUnitFilename(file_span.clone()))?;
+
+    let tokens = TokenTree::tokenize(unit_path.clone(), src, opts)?;
+
+    let mut token_stream = TokenStream::new(tokens, file_span);
+    let unit = syn::Unit::parse(&mut token_stream, unit_ident)?;
     token_stream.finish()?;
 
+    Ok(unit)
+}
+
+fn compile(
+    module_path: impl Into<PathBuf>,
+    units: impl IntoIterator<Item=PathBuf>,
+    opts: BuildOptions,
+    interpret_opts: InterpreterOpts,
+    out_kind: Stage,
+) -> Result<(), CompileError> {
+    let module_path = module_path.into();
+
+    let all_filenames = units.into_iter()
+        .chain(vec![module_path.clone()]);
+
+    let pp_units: Vec<_> = all_filenames
+        .map(|unit_filename| {
+            preprocess(unit_filename, &opts)
+        })
+        .collect::<Result<_, CompileError>>()?;
+
+    if out_kind == Stage::Preprocessed {
+        for unit in pp_units {
+            println!("{}", unit.source);
+        }
+        return Ok(());
+    }
+
+    let parsed_units: Vec<_> = pp_units.into_iter()
+        .map(|preprocessed| {
+            parse(preprocessed.filename, &preprocessed.source, &preprocessed.opts)
+        })
+        .collect::<Result<_, CompileError>>()?;
+
     if out_kind == Stage::SyntaxAst {
-        println!("{}", unit);
+        for unit in parsed_units {
+            println!("{}", unit);
+        }
         return Ok(());
     }
 
-    let unit = typ::typecheck_unit(&unit)?;
+    let mut root_ctx = ty::Context::root();
+    let mut typed_units = Vec::new();
+
+    for unit in parsed_units {
+        typed_units.push(ty_ast::typecheck_unit(&unit, &mut root_ctx)?);
+    }
+
     if out_kind == Stage::TypecheckAst {
-        println!("{}", unit);
+        for unit in typed_units {
+            println!("{}", unit);
+        }
         return Ok(());
     }
 
-    let unit = ir::translate_unit(&unit);
+    let module = ir::translate_units(&typed_units);
     if out_kind == Stage::Intermediate {
-        println!("{}", unit);
+        println!("{}", module);
         return Ok(());
     }
 
     let mut interpreter = Interpreter::new(&interpret_opts);
-    interpreter.load_module(&unit);
+    interpreter.load_module(&module);
 
+    Ok(())
+}
+
+fn print_err_context(err: &CompileError) -> io::Result<()> {
+    let err_filename = err.span().file.as_ref();
+
+    let mut src = String::new();
+    File::open(err_filename)?.read_to_string(&mut src)?;
+
+    err.print_context(&src);
     Ok(())
 }
 
@@ -206,24 +298,16 @@ fn main() {
         trace_ir: args.trace_ir,
     };
 
-    let open_file = File::open(&args.file).and_then(|mut f| {
-        let mut src = String::new();
-        f.read_to_string(&mut src)?;
-        Ok(src)
-    });
-
-    let src = match open_file {
-        Err(err) => {
-            eprintln!("failed to open {}: {}", args.file.display(), err);
-            std::process::exit(1);
-        }
-        Ok(file) => file,
-    };
-
     let print_bt = args.backtrace;
 
-    if let Err(err) = compile(args.file, &src, opts, interpret_opts, args.stage) {
-        err.print_context(&src);
+    let unit_paths = args.units.into_iter()
+        .map(PathBuf::from);
+
+    if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {
+        if let Err(io_err) = print_err_context(&err) {
+            eprintln!("error occurred displaying source for compiler message: {}", io_err);
+            eprintln!("{}", err);
+        }
 
         if print_bt {
             match err {
@@ -235,7 +319,7 @@ fn main() {
                     println!("{:?}", err.bt);
                 }
 
-                _ => {},
+                _ => {}
             }
         }
 

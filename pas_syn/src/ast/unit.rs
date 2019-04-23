@@ -1,46 +1,18 @@
 use {
     crate::{
-        parse::*,
+        parse::prelude::*,
         token_tree::*,
         ast::*,
     },
     std::{
         fmt,
     },
-    pas_common::{
-        span::*,
-    },
 };
 
 #[derive(Clone, Debug)]
-pub enum UnitDecl<A: Annotation> {
-    FunctionDecl(FunctionDecl<A>),
-    FunctionDef(FunctionDef<A>),
-    Type(TypeDecl<A>),
-}
-
-impl<A: Annotation> Spanned for UnitDecl<A> {
-    fn span(&self) -> &Span {
-        match self {
-            UnitDecl::FunctionDecl(func_decl) => func_decl.span(),
-            UnitDecl::FunctionDef(func_def) => func_def.span(),
-            UnitDecl::Type(type_decl) => type_decl.span(),
-        }
-    }
-}
-
-impl<A: Annotation> fmt::Display for UnitDecl<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            UnitDecl::FunctionDecl(func_decl) => write!(f, "{}", func_decl),
-            UnitDecl::FunctionDef(func_def) => write!(f, "{}", func_def),
-            UnitDecl::Type(ty_decl) => write!(f, "{}", ty_decl),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
 pub struct Unit<A: Annotation> {
+    pub ident: Ident,
+
     pub decls: Vec<UnitDecl<A>>,
     pub init: Vec<Statement<A>>,
 }
@@ -73,7 +45,7 @@ impl<A: Annotation> Unit<A> {
 }
 
 impl Unit<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
         let mut decls = Vec::new();
 
         // can't use match_separated here because it doesn't play nicely
@@ -100,6 +72,11 @@ impl Unit<Span> {
                     decls.push(UnitDecl::Type(ty_decl));
                 }
 
+                Some(TokenTree::Keyword { kw: Keyword::Uses, .. }) => {
+                    let uses_decl = UseDecl::parse(tokens)?;
+                    decls.push(UnitDecl::Uses(uses_decl));
+                }
+
                 _ => break,
             }
 
@@ -119,6 +96,7 @@ impl Unit<Span> {
         })?;
 
         Ok(Unit {
+            ident,
             init,
             decls,
         })
@@ -137,5 +115,84 @@ impl<A: Annotation> fmt::Display for Unit<A> {
             writeln!(f, "{};", init_stmt)?;
         }
         Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum UnitDecl<A: Annotation> {
+    FunctionDecl(FunctionDecl<A>),
+    FunctionDef(FunctionDef<A>),
+    Type(TypeDecl<A>),
+    Uses(UseDecl),
+}
+
+impl<A: Annotation> Spanned for UnitDecl<A> {
+    fn span(&self) -> &Span {
+        match self {
+            UnitDecl::FunctionDecl(func_decl) => func_decl.span(),
+            UnitDecl::FunctionDef(func_def) => func_def.span(),
+            UnitDecl::Type(type_decl) => type_decl.span(),
+            UnitDecl::Uses(use_decl) => use_decl.span(),
+        }
+    }
+}
+
+impl<A: Annotation> fmt::Display for UnitDecl<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnitDecl::FunctionDecl(func_decl) => write!(f, "{}", func_decl),
+            UnitDecl::FunctionDef(func_def) => write!(f, "{}", func_def),
+            UnitDecl::Type(ty_decl) => write!(f, "{}", ty_decl),
+            UnitDecl::Uses(uses) => write!(f, "{}", uses),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct UseDecl {
+    pub units: Vec<Ident>,
+    pub span: Span,
+}
+
+impl Spanned for UseDecl {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for UseDecl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "uses ")?;
+        for (i, unit) in self.units.iter().enumerate() {
+            if i > 0 {
+                write!(f, ",")?;
+            }
+            write!(f, "{}", unit)?;
+        }
+        Ok(())
+    }
+}
+
+impl UseDecl {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let kw = tokens.match_one(Keyword::Uses)?;
+        let units = tokens.match_separated(Separator::Comma, |_, tokens| {
+            let unit_ident = tokens.match_one(Matcher::AnyIdent)?;
+            Ok(Generate::Yield(unit_ident.into_ident().unwrap()))
+        })?;
+
+        if units.is_empty() {
+            return Err(TracedError::trace(match tokens.look_ahead().next() {
+                None => ParseError::UnexpectedEOF(Matcher::AnyIdent, kw.span().clone()),
+                Some(x) => ParseError::UnexpectedToken(x, Some(Matcher::AnyIdent)),
+            }))
+        }
+
+        let span = kw.span().to(units.last().unwrap().span());
+
+        Ok(Self {
+            units,
+            span,
+        })
     }
 }

@@ -6,14 +6,15 @@ use {
             MemCell,
             Pointer,
         },
+        LocalID,
         metadata::*,
     }
 };
 
 /// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {
-    let return_ref = Ref::Local(0);
-    let arg_0 = Ref::Local(1);
+    let return_ref = Ref::Local(LocalID(0));
+    let arg_0 = Ref::Local(LocalID(1));
 
     let int = state.load(&arg_0).as_i32()
         .unwrap_or_else(|| panic!("IntToStr expected I32 argument"));
@@ -24,7 +25,7 @@ pub(super) fn int_to_str(state: &mut Interpreter) {
 
 /// $0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) {
-    let arg_0 = Ref::Local(0);
+    let arg_0 = Ref::Local(LocalID(0));
     let string = state.read_string(&arg_0.deref());
 
     println!("{}", string);
@@ -32,8 +33,8 @@ pub(super) fn write_ln(state: &mut Interpreter) {
 
 /// $1: Integer -> $0: ^Byte
 pub(super) fn get_mem(state: &mut Interpreter) {
-    let ret = Ref::Local(0);
-    let arg_0 = Ref::Local(1);
+    let ret = Ref::Local(LocalID(0));
+    let arg_0 = Ref::Local(LocalID(1));
 
     let len = state.load(&arg_0).as_i32()
         .unwrap_or_else(|| panic!("GetMem expected I32 argument"));
@@ -46,7 +47,7 @@ pub(super) fn get_mem(state: &mut Interpreter) {
 
 /// $0: ^Byte -> Nothing
 pub(super) fn free_mem(state: &mut Interpreter) {
-    let arg_0 = Ref::Local(0);
+    let arg_0 = Ref::Local(LocalID(0));
 
     let ptr = state.load(&arg_0).as_pointer()
         .and_then(|ptr| ptr.as_heap_addr())
@@ -57,7 +58,7 @@ pub(super) fn free_mem(state: &mut Interpreter) {
 
 /// $0: String -> Nothing
 pub(super) fn string_dispose(state: &mut Interpreter) {
-    let arg_0 = Ref::Local(0);
+    let arg_0 = Ref::Local(LocalID(0));
 
     // hack: we release by (copied) value, and that can't change until we can
     // take pointers to struct fields. normally arg0 should be an rc

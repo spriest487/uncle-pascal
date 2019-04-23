@@ -1,15 +1,6 @@
-uses System.*;
+//uses System.*;
 
-type String = class
-    chars: ^Byte;
-    len: Integer;
-end;
-
-interface Disposable
-    function Dispose(self: Self);
-end;
-
-function StringFromBytes(strBytes: ^Byte; len: Integer): String
+function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
     let strBytes: ^Byte := GetMem(len);
 
@@ -17,7 +8,7 @@ begin
         (strBytes + i)^ := (bytes + i)^;
     end;
 
-    String(bytes: bytes; len: len)
+    String(chars: strBytes; len: len)
 end;
 
 function StringConcat(a, b: String): String
@@ -39,10 +30,3 @@ begin
     end
 end;
 
-function Disposable.Dispose(self: String)
-begin
-    if self.len > 0 then FreeMem(self.chars);
-
-    self.chars := nil;
-    self.len := 0;
-end;

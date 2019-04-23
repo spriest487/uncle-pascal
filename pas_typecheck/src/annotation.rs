@@ -18,6 +18,7 @@ use {
     },
     pas_syn::{
         ast::Annotation,
+        Ident,
     },
 };
 
@@ -77,15 +78,30 @@ pub enum TypeAnnotation {
         ty: Type,
         value_kind: ValueKind,
     },
+    Function {
+        span: Span,
+        name: Ident,
+        ns: Vec<Ident>,
+        ty: Type,
+    },
     Type(Type, Span),
+    Namespace(Vec<Ident>, Span),
     Method(MethodAnnotation),
 }
 
 impl TypeAnnotation {
+    pub fn is_untyped(&self) -> bool {
+        match self {
+            TypeAnnotation::Untyped(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn expect_value(&self, expect_ty: &Type) -> TypecheckResult<()> {
         assert_ne!(Type::Nothing, *expect_ty);
 
         match self {
+            TypeAnnotation::Function { ty, .. } |
             TypeAnnotation::TypedValue { ty, .. } if ty == expect_ty => {
                 Ok(())
             },
@@ -106,15 +122,10 @@ impl TypeAnnotation {
                 })
             }
 
-            TypeAnnotation::Untyped(span) => {
-                Err(TypecheckError::TypeMismatch {
-                    span: span.clone(),
-                    expected: expect_ty.clone(),
-                    actual: Type::Nothing,
-                })
-            }
-
-            TypeAnnotation::Type(_ty, span) => {
+            TypeAnnotation::Function { span, .. } |
+            TypeAnnotation::Untyped(span) |
+            TypeAnnotation::Namespace(_, span) |
+            TypeAnnotation::Type(_, span) => {
                 Err(TypecheckError::TypeMismatch {
                     span: span.clone(),
                     expected: expect_ty.clone(),
@@ -124,19 +135,30 @@ impl TypeAnnotation {
         }
     }
 
-    pub fn ty(&self) -> &Type {
+    pub fn value_ty(&self) -> &Type {
         match self {
+            TypeAnnotation::Namespace(_, _) => &Type::Nothing,
             TypeAnnotation::Untyped(_) => &Type::Nothing,
+            TypeAnnotation::Type(_, _) => &Type::Nothing,
             TypeAnnotation::Method(method) => &method.method_ty,
+
+            TypeAnnotation::Function { ty, .. } |
             TypeAnnotation::TypedValue { ty, .. } => ty,
-            TypeAnnotation::Type(ty, _) => ty,
         }
     }
 
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
             TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
+//            TypeAnnotation::Function { .. } => Some(ValueKind::Immutable),
             _ => None,
+        }
+    }
+
+    pub fn is_namespace(&self) -> bool {
+        match self {
+            TypeAnnotation::Namespace(_, _) => true,
+            _ => false,
         }
     }
 }
@@ -150,10 +172,12 @@ impl fmt::Display for TypeAnnotation {
 impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
         match self {
-            TypeAnnotation::Untyped(span) => span,
-            TypeAnnotation::TypedValue { span, .. } => span,
-            TypeAnnotation::Method(MethodAnnotation { span, .. }) => span,
-            TypeAnnotation::Type(_, span) => span,
+            TypeAnnotation::Function { span, .. } |
+            TypeAnnotation::Untyped(span) |
+            TypeAnnotation::TypedValue { span, .. } |
+            TypeAnnotation::Method(MethodAnnotation { span, .. }) |
+            TypeAnnotation::Type(_, span) |
+            TypeAnnotation::Namespace(_, span) => span,
         }
     }
 }

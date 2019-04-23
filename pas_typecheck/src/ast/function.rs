@@ -68,11 +68,11 @@ fn find_iface_impl(iface: &Ident, method_ident: &Ident, sig: &FunctionSig, ctx: 
 
     match impl_for_types.len() {
         0 => {
-            return Err(TypecheckError::MemberNotFound {
+            return Err(NameError::MemberNotFound {
                 base: Type::Interface(iface.clone().into()),
                 span: method_ident.span().clone(),
                 member: method_ident.clone(),
-            })
+            }.into())
         },
 
         1 => Ok(InterfaceImpl {
@@ -93,7 +93,7 @@ pub fn typecheck_func_def(
 {
     let decl = typecheck_func_decl(&def.decl, ctx)?;
 
-    let body_scope = ctx.push_scope();
+    let body_scope = ctx.push_scope(None);
 
     for param in &decl.params {
         ctx.declare_binding(param.ident.clone(), Binding {
@@ -105,7 +105,7 @@ pub fn typecheck_func_def(
 
     let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
 
-    ctx.pop_scope(body_scope);
+    ctx.pop_scope(body_scope)?;
 
     Ok(FunctionDef {
         decl,

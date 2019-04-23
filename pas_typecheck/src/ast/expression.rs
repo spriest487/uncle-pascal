@@ -21,7 +21,7 @@ fn invalid_args(
     TypecheckError::InvalidArgs {
         expected: expected.to_vec(),
         actual: actual_args.into_iter()
-            .map(|arg| arg.annotation.ty().clone())
+            .map(|arg| arg.annotation.value_ty().clone())
             .collect(),
         span,
     }
@@ -48,7 +48,7 @@ fn typecheck_args(
     let mut self_ty = None;
 
     let all_arg_tys = checked_args.iter()
-        .map(|arg_expr| arg_expr.annotation.ty())
+        .map(|arg_expr| arg_expr.annotation.value_ty())
         .zip(expected_args.iter());
 
     for (actual, expected) in all_arg_tys {
@@ -81,6 +81,10 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
             typecheck_func_call(&func_call, sig.as_ref(), ctx)?
         }
 
+        TypeAnnotation::Function { ty: Type::Function(sig), .. } => {
+            typecheck_func_call(&func_call, sig.as_ref(), ctx)?
+        }
+
         TypeAnnotation::Method(method_annotation) => {
             typecheck_method_call(&func_call, &method_annotation, ctx)?
         }
@@ -104,7 +108,7 @@ fn typecheck_method_call(
             let args = typecheck_args(&method_annotation.decl_sig().params, &func_call.args, &span, ctx)?;
 
             let arg_tys: Vec<_> = args.iter()
-                .map(|a| a.annotation.ty().clone())
+                .map(|a| a.annotation.value_ty().clone())
                 .collect();
 
             let self_type = method_annotation.decl_sig()
@@ -123,15 +127,15 @@ fn typecheck_method_call(
         Some(self_arg) => {
             // we have a self arg, we know how to specialize the signature before checking the
             // arg types
-            let self_type = self_arg.annotation.ty().clone();
+            let self_type = self_arg.annotation.value_ty().clone();
             let mut impl_sig = method_annotation.decl_sig().with_self(&self_type);
 
             // the self-arg is passed as the first argument
             assert!(!impl_sig.params.is_empty());
             let self_param = impl_sig.params.remove(0);
-            if !self_param.assignable_from(self_arg.annotation.ty()) {
+            if !self_param.assignable_from(self_arg.annotation.value_ty()) {
                 return Err(TypecheckError::TypeMismatch {
-                    actual: self_arg.annotation.ty().clone(),
+                    actual: self_arg.annotation.value_ty().clone(),
                     expected: self_param,
                     span,
                 });
@@ -260,9 +264,15 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Ident(ident) => {
-            let sem = ctx.get(ident)?;
+            let annotation = match ctx.find(ident) {
+                Some(member) => ns_member_ref_to_annotation(member, ident.span().clone()),
 
-            Ok(ast::ExpressionNode::new(ident.clone(), sem))
+                _ => {
+                    return Err(NameError::NotFound(ident.clone()).into());
+                }
+            };
+
+            Ok(ast::ExpressionNode::new(ident.clone(), annotation))
         }
 
         ast::Expression::BinOp(bin_op) => {
@@ -300,6 +310,35 @@ pub fn typecheck_expr(
             let block = typecheck_block(block, expect_ty, ctx)?;
             let annotation = block.annotation.clone();
             Ok(ast::ExpressionNode::new(block, annotation))
+        }
+    }
+}
+
+pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> TypeAnnotation {
+    match member {
+        MemberRef::Value { value: Decl::BoundValue(binding), .. } => {
+            TypeAnnotation::TypedValue {
+                span,
+                ty: binding.ty.clone(),
+                value_kind: binding.kind,
+            }
+        }
+
+        MemberRef::Value { value: Decl::Function { sig, .. }, ref parent_path, key } => {
+            TypeAnnotation::Function {
+                span,
+                ns: parent_path.keys().cloned().collect(),
+                name: key.clone(),
+                ty: Type::Function(sig.clone()),
+            }
+        }
+
+        MemberRef::Value { value: Decl::Type(ty), .. } => {
+            TypeAnnotation::Type(ty.clone(), span)
+        }
+
+        MemberRef::Namespace { path } => {
+            TypeAnnotation::Namespace(path.keys().cloned().collect(), span)
         }
     }
 }

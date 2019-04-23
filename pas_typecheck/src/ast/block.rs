@@ -15,7 +15,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     let output = match &block.output {
         Some(expr) => {
             let out_expr = typecheck_expr(expr, expect_ty, ctx)?;
-            if *out_expr.annotation.ty() == Type::Nothing {
+            if *out_expr.annotation.value_ty() == Type::Nothing {
                 // the block contains a final expression which returns no value,
                 // so it should just be treated like a statement
                 let last_stmt = Statement::try_from_expr(out_expr)
@@ -34,7 +34,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         // stmt into the output if the type matches
         None if *expect_ty != Type::Nothing => {
             let last_stmt_type = statements.last()
-                .map(|s: &Statement| s.annotation().ty());
+                .map(|s: &Statement| s.annotation().value_ty());
 
             if last_stmt_type == Some(expect_ty) {
                 Some(statements.pop()
@@ -50,7 +50,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
 
     if *expect_ty != Type::Nothing {
         let output_ty = output.as_ref()
-            .map(|o| o.annotation.ty());
+            .map(|o| o.annotation.value_ty());
 
         if output_ty != Some(expect_ty) {
             return Err(TypecheckError::TypeMismatch {
@@ -67,10 +67,10 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     let span = block.annotation.span().clone();
     let annotation = match &output {
         Some(out_expr) => {
-            if *out_expr.annotation.ty() == Type::Nothing {
+            if *out_expr.annotation.value_ty() == Type::Nothing {
                 TypeAnnotation::Untyped(span)
             } else {
-                let out_ty = out_expr.annotation.ty().clone();
+                let out_ty = out_expr.annotation.value_ty().clone();
                 TypeAnnotation::TypedValue {
                     ty: out_ty,
                     value_kind: ValueKind::Temporary,
@@ -90,8 +90,8 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         end: block.end.clone(),
     };
 
-    assert_eq!(*block.annotation.ty(), {
-        let out_ty = block.output.as_ref().map(|o| o.annotation.ty().clone());
+    assert_eq!(*block.annotation.value_ty(), {
+        let out_ty = block.output.as_ref().map(|o| o.annotation.value_ty().clone());
         out_ty.unwrap_or(Type::Nothing)
     });
 

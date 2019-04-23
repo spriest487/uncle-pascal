@@ -31,11 +31,6 @@ pub enum TypecheckError {
         actual: Type,
         span: Span,
     },
-    MemberNotFound {
-        base: Type,
-        member: Ident,
-        span: Span,
-    },
     NotMutable(Box<ExpressionNode>),
     NotAddressable {
         ty: Type,
@@ -80,7 +75,6 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
             TypecheckError::TypeMismatch { span, .. } => span,
-            TypecheckError::MemberNotFound { span, .. } => span,
             TypecheckError::NotMutable(expr) => expr.annotation.span(),
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
@@ -138,10 +132,6 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::TypeMismatch { expected, actual, .. } => {
                 write!(f, "type mismatch: expected {}, found {}", expected, actual)
-            }
-
-            TypecheckError::MemberNotFound { base, member, .. } => {
-                write!(f, "type {} does not have a member named `{}`", base, member)
             }
 
             TypecheckError::NotMutable(expr) => {

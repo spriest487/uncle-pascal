@@ -42,6 +42,15 @@ pub mod prelude {
 pub mod metadata;
 pub mod interpret;
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct LocalID(usize);
+
+impl fmt::Display for LocalID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "%{}", self.0)
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum GlobalRef {
     Function(FunctionID),
@@ -59,7 +68,7 @@ impl fmt::Display for GlobalRef {
 
 #[derive(Debug, Clone)]
 pub enum Ref {
-    Local(usize),
+    Local(LocalID),
     Global(GlobalRef),
     Deref(Box<Value>),
 }
@@ -73,7 +82,7 @@ impl Ref {
 impl fmt::Display for Ref {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Ref::Local(id) => write!(f, "%{}", id),
+            Ref::Local(id) => write!(f, "{}", id),
             Ref::Global(name) => write!(f, "{}", name),
             Ref::Deref(at) => write!(f, "{}^", at),
         }
@@ -120,8 +129,8 @@ impl fmt::Display for Label {
 pub enum Instruction {
     Comment(String),
 
-    LocalAlloc(usize, Type),
-    LocalDelete(usize),
+    LocalAlloc(LocalID, Type),
+    LocalDelete(LocalID),
 
     Move { out: Ref, new_val: Value },
     Add { out: Ref, a: Value, b: Value },
@@ -228,27 +237,27 @@ impl fmt::Display for Instruction {
 enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
     New {
-        id: usize,
+        id: LocalID,
         name: Option<String>,
         ty: Type,
     },
 
     // the builder created this local allocation but we don't want to track its lifetime
     Temp {
-        id: usize,
+        id: LocalID,
         ty: Type,
     },
 
     // the builder didn't create this local allocation but we know it exists e.g. we know where
     // function params are found due to the calling convention. we never need to drop these
     Bound {
-        id: usize,
+        id: LocalID,
         name: Option<String>,
     },
 }
 
 impl Local {
-    fn id(&self) -> usize {
+    fn id(&self) -> LocalID {
         match self {
             Local::New { id, .. } => *id,
             Local::Temp { id, .. } => *id,
@@ -276,7 +285,7 @@ pub struct Builder<'metadata> {
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
-    next_id: usize,
+    next_label: Label,
 }
 
 impl<'metadata> Builder<'metadata> {
@@ -284,7 +293,7 @@ impl<'metadata> Builder<'metadata> {
         Self {
             metadata,
             instructions: Vec::new(),
-            next_id: 0,
+            next_label: Label(0),
 
             scopes: vec![Scope { locals: Vec::new() }],
         }
@@ -308,7 +317,7 @@ impl<'metadata> Builder<'metadata> {
         self.append(Instruction::Move { out: out.into(), new_val: val.into() });
     }
 
-    pub fn bind_local(&mut self, id: usize, name: Option<String>) {
+    pub fn bind_local(&mut self, id: LocalID, name: Option<String>) {
         assert!(!self.current_scope_mut().locals.iter()
             .any(|local| local.id() == id),
             "scope must not already have a binding for {}: {:?}", Ref::Local(id), self.current_scope_mut());
@@ -319,14 +328,21 @@ impl<'metadata> Builder<'metadata> {
         }
 
         self.current_scope_mut().locals.push(Local::Bound { id, name });
+    }
 
-        self.next_id = usize::max(id + 1, self.next_id + 1);
+    fn find_next_local_id(&self) -> LocalID {
+        self.scopes.iter()
+            .flat_map(|scope| scope.locals.iter())
+            .map(|l| l.id())
+            .max_by_key(|id| id.0)
+            .map(|id| LocalID(id.0 + 1))
+            .unwrap_or(LocalID(0))
     }
 
     pub fn alloc_label(&mut self) -> Label {
-        let id = self.next_id;
-        self.next_id += 1;
-        Label(id)
+        let label = self.next_label;
+        self.next_label = Label(self.next_label.0 + 1);
+        label
     }
 
     fn current_scope_mut(&mut self) -> &mut Scope {
@@ -337,14 +353,12 @@ impl<'metadata> Builder<'metadata> {
     pub fn local_temp(&mut self, ty: Type) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
-        let id = self.next_id;
+        let id = self.find_next_local_id();
 
         self.current_scope_mut().locals.push(Local::Temp {
             id,
             ty: ty.clone(),
         });
-
-        self.next_id += 1;
 
         self.instructions.push(Instruction::LocalAlloc(id, ty));
         Ref::Local(id)
@@ -353,15 +367,13 @@ impl<'metadata> Builder<'metadata> {
     pub fn local_new(&mut self, ty: Type, name: Option<String>) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
-        let id = self.next_id;
+        let id = self.find_next_local_id();
 
         self.current_scope_mut().locals.push(Local::New {
             id,
             name,
             ty: ty.clone(),
         });
-
-        self.next_id += 1;
 
         self.instructions.push(Instruction::LocalAlloc(id, ty));
         Ref::Local(id)
@@ -492,7 +504,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         None | Some(pas_ty::Type::Nothing) => Type::Nothing,
         Some(ty) => {
             // anonymous return binding at %0
-            body_builder.bind_local(0, None);
+            body_builder.bind_local(LocalID(0), None);
 
             body_builder.metadata.translate_type(ty)
         }
@@ -500,20 +512,21 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 
     for (i, param) in func.decl.params.iter().enumerate() {
         // if the function returns a value, $0 is the return pointer, and args start at $1
-        let id = if return_ty != Type::Nothing {
+        let id = LocalID(if return_ty != Type::Nothing {
             assert!(func.decl.return_ty.is_some());
             i + 1
         } else {
             i
-        };
+        });
 
+        body_builder.comment(&format!("{} = {}", id, param));
         body_builder.bind_local(id, Some(param.ident.to_string()));
     }
 
     let block_output = translate_block(&func.body, &mut body_builder);
 
     if let Some(return_val) = block_output {
-        let return_at = Ref::Local(0);
+        let return_at = Ref::Local(LocalID(0));
         body_builder.append(Instruction::Move { out: return_at.clone(), new_val: Value::Ref(return_val) });
         body_builder.retain(return_at, &return_ty);
     }
@@ -568,64 +581,71 @@ impl fmt::Display for Module {
     }
 }
 
-pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
+pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
     let mut metadata = Metadata::new();
     // add refs
     metadata.extend(&Metadata::system());
 
-    for ty_decl in unit.type_decls() {
-        match ty_decl {
-            ast::TypeDecl::Class(class) => {
-                metadata.define_struct(class);
-            }
-            ast::TypeDecl::Interface(iface) => {
-                metadata.define_iface(iface);
-            }
-        }
-    }
-
     let mut functions = HashMap::new();
 
-    // func decls need to be all processed before we translate any code because the code may
-    // need to look up their IDs
-    for func_decl in unit.func_decls() {
-        let id = metadata.declare_func(func_decl);
+    for unit in units.iter() {
+        let unit_ns = vec![unit.ident.to_string()];
 
-        if let Some(impl_iface) = &func_decl.impl_iface {
-            let iface_id = metadata.find_iface(&impl_iface.iface)
-                .expect("interface referenced in method implemention must already be defined");
-
-            let for_ty = metadata.translate_type(&impl_iface.for_ty);
-            metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);
-        }
-    }
-
-    for func_def in unit.func_defs() {
-        let func = translate_func(func_def, &mut metadata);
-        let func_id = match &func_def.decl.impl_iface {
-            None => metadata.find_function(&func_def.decl.ident.to_string())
-                .expect("all defined functions must be declared first"),
-
-            Some(impl_iface) => {
-                let method_name = func_def.decl.ident.to_string();
-
-                let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
-                let self_ty = metadata.translate_type(&impl_iface.for_ty);
-
-                metadata.find_impl(&self_ty, iface_id, &method_name)
-                    .expect("all defined method impls must be declared first")
+        for ty_decl in unit.type_decls() {
+            match ty_decl {
+                ast::TypeDecl::Class(class) => {
+                    metadata.define_struct(class);
+                }
+                ast::TypeDecl::Interface(iface) => {
+                    metadata.define_iface(iface);
+                }
             }
-        };
+        }
 
-        functions.insert(func_id, func);
+        // func decls need to be all processed before we translate any code because the code may
+        // need to look up their IDs
+        for func_decl in unit.func_decls() {
+            let id = metadata.declare_func(&[unit.ident.clone()], func_decl);
+
+            if let Some(impl_iface) = &func_decl.impl_iface {
+                let iface_id = metadata.find_iface(&impl_iface.iface)
+                    .expect("interface referenced in method implemention must already be defined");
+
+                let for_ty = metadata.translate_type(&impl_iface.for_ty);
+                metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);
+            }
+        }
+
+        for func_def in unit.func_defs() {
+            let func = translate_func(func_def, &mut metadata);
+            let func_id = match &func_def.decl.impl_iface {
+                None => {
+                    let global_name = GlobalName::new(func_def.decl.ident.to_string(), unit_ns.clone());
+                    metadata.find_function(&global_name)
+                        .expect("all defined functions must be declared first")
+                },
+
+                Some(impl_iface) => {
+                    let method_name = func_def.decl.ident.to_string();
+
+                    let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
+                    let self_ty = metadata.translate_type(&impl_iface.for_ty);
+
+                    metadata.find_impl(&self_ty, iface_id, &method_name)
+                        .expect("all defined method impls must be declared first")
+                }
+            };
+
+            functions.insert(func_id, func);
+        }
     }
 
     let mut init_builder = Builder::new(&mut metadata);
-
-    for stmt in &unit.init {
-        translate_stmt(stmt, &mut init_builder);
+    for unit in units.iter() {
+        for stmt in &unit.init {
+            translate_stmt(stmt, &mut init_builder);
+        }
     }
-
     init_builder.finish();
 
     Module {

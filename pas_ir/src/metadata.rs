@@ -4,9 +4,9 @@ use {
     std::{
         collections::hash_map::HashMap,
         fmt,
-        borrow::Cow,
     },
 };
+use pas_syn::Ident;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct StringId(pub usize);
@@ -201,6 +201,38 @@ impl fmt::Display for Type {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct GlobalName {
+    path: Vec<String>,
+}
+
+impl GlobalName {
+    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item=String>) -> Self {
+        let mut path: Vec<_> = ns.into_iter().collect();
+        path.push(name.into());
+
+        Self {
+            path
+        }
+    }
+
+    pub fn path(&self) -> impl Iterator<Item=&String> {
+        self.path.iter()
+    }
+}
+
+impl fmt::Display for GlobalName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (i, part) in self.path.iter().enumerate() {
+            if i > 0 {
+                write!(f, "::")?;
+            }
+            write!(f, "{}", part)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionID(usize);
 
@@ -212,7 +244,7 @@ impl fmt::Display for FunctionID {
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
-    global_name: Option<String>,
+    global_name: Option<GlobalName>,
 }
 
 #[derive(Debug, Clone)]
@@ -240,10 +272,17 @@ impl Metadata {
         metadata.functions.insert(STRING_DISPOSE_IMPL_ID, FunctionDecl { global_name: None });
         metadata.impl_method(DISPOSABLE_ID, Type::Struct(STRING_ID), "Dispose", STRING_DISPOSE_IMPL_ID);
 
-        metadata.functions.insert(INTTOSTR_ID, FunctionDecl { global_name: Some("IntToStr".to_string() )});
-        metadata.functions.insert(WRITELN_ID, FunctionDecl { global_name: Some("WriteLn".to_string() )});
-        metadata.functions.insert(GETMEM_ID, FunctionDecl { global_name: Some("GetMem".to_string() )});
-        metadata.functions.insert(FREEMEM_ID, FunctionDecl { global_name: Some("FreeMem".to_string() )});
+        let inttostr_name = GlobalName::new("IntToStr", vec![]);
+        metadata.functions.insert(INTTOSTR_ID, FunctionDecl { global_name: Some(inttostr_name)});
+
+        let writeln_name = GlobalName::new("WriteLn", vec![]);
+        metadata.functions.insert(WRITELN_ID, FunctionDecl { global_name: Some(writeln_name)});
+
+        let getmem_name = GlobalName::new("GetMem", vec![]);
+        metadata.functions.insert(GETMEM_ID, FunctionDecl { global_name: Some(getmem_name)});
+
+        let freemem_name = GlobalName::new("FreeMem", vec![]);
+        metadata.functions.insert(FREEMEM_ID, FunctionDecl { global_name: Some(freemem_name)});
 
         metadata
     }
@@ -287,8 +326,12 @@ impl Metadata {
             if self.functions.contains_key(id) {
                 let existing = &self.functions[id];
 
-                let name = func_decl.global_name.as_ref().map(|n| n.as_str()).unwrap_or("<unnamed>");
-                let existing_name = existing.global_name.as_ref().map(|n| n.as_str()).unwrap_or("<unnamed>");
+                let name = func_decl.global_name.as_ref()
+                    .map(|n| n.to_string())
+                    .unwrap_or("<unnamed>".to_string());
+                let existing_name = existing.global_name.as_ref()
+                    .map(|n| n.to_string())
+                    .unwrap_or("<unnamed>".to_string());
 
                 panic!("duplicate function ID {} in metadata (new: {}, existing: {})", id, name, existing_name);
             }
@@ -321,12 +364,17 @@ impl Metadata {
             .unwrap()
     }
 
-    pub fn declare_func(&mut self, func_decl: &pas_ty::ast::FunctionDecl) -> FunctionID {
+    pub fn declare_func(&mut self, ns: &[Ident], func_decl: &pas_ty::ast::FunctionDecl) -> FunctionID {
         let id = self.next_function_id();
 
         let global_name = match &func_decl.impl_iface {
             Some(_) => None,
-            None => Some(func_decl.ident.to_string()),
+            None => {
+                let name = func_decl.ident.to_string();
+                let ns = ns.iter().map(|i| i.to_string());
+
+                Some(GlobalName::new(name, ns))
+            },
         };
 
         self.functions.insert(id, FunctionDecl {
@@ -336,23 +384,22 @@ impl Metadata {
         id
     }
 
-    pub fn find_function(&self, name: &str) -> Option<FunctionID> {
+    pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
         self.functions.iter()
-            .find(|(_id, func)| func.global_name.as_ref().map(String::as_str) == Some(name))
+            .find(|(_id, func)| func.global_name.as_ref() == Some(name))
             .map(|(id, _func)| *id)
     }
 
-    pub fn func_desc(&self, id: FunctionID) -> Cow<str> {
+    pub fn func_desc(&self, id: FunctionID) -> String {
         self.functions.get(&id)
             .and_then(|decl| decl.global_name.as_ref())
-            .map(|s| Cow::Borrowed(s.as_str()))
+            .map(|global_name| global_name.to_string())
             .or_else(|| {
                 self.ifaces.values()
                     .find_map(|iface| iface.impls.iter()
                         .find_map(|(impl_ty, iface_impl)| iface_impl.methods.iter()
                             .find_map(|(method, impl_id)| if *impl_id == id {
-                                let desc = format!("impl of {}.{} for {}", iface.name, method, impl_ty);
-                                Some(Cow::Owned(desc))
+                                Some(format!("impl of {}.{} for {}", iface.name, method, impl_ty))
                             } else {
                                 None
                             })))
@@ -460,7 +507,7 @@ impl Metadata {
 
             pas_typecheck::Type::GenericSelf => unreachable!("Self is not a real type in this context"),
 
-            pas_typecheck::Type::Function(_) => unimplemented!(),
+            pas_typecheck::Type::Function(sig) => unimplemented!("No IR type exists to represent function: {}", sig),
         }
     }
 

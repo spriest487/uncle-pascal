@@ -10,7 +10,7 @@ pub fn typecheck_for_loop(
 {
     let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
 
-    let inner_scope = ctx.push_scope();
+    let inner_scope = ctx.push_scope(None);
     let init_binding = typecheck_local_binding(&for_loop.init_binding, ctx)?;
 
     if init_binding.val_ty != Type::Primitive(Primitive::Int32) {
@@ -18,17 +18,17 @@ pub fn typecheck_for_loop(
     }
 
     let to_expr = typecheck_expr(&for_loop.to_expr, &Type::Primitive(Primitive::Boolean), ctx)?;
-    if *to_expr.annotation.ty() != init_binding.val_ty {
+    if *to_expr.annotation.value_ty() != init_binding.val_ty {
         return Err(TypecheckError::TypeMismatch {
             expected: init_binding.val_ty,
-            actual: to_expr.annotation.ty().clone(),
+            actual: to_expr.annotation.value_ty().clone(),
             span: annotation.span().clone(),
         })
     }
 
     let body = typecheck_stmt(&for_loop.body, ctx).map(Box::new)?;
 
-    ctx.pop_scope(inner_scope);
+    ctx.pop_scope(inner_scope)?;
 
     Ok(ForLoop {
         init_binding,

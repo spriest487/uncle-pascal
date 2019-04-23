@@ -42,14 +42,14 @@ pub fn typecheck_bin_op(
 
         Operator::Equals | Operator::NotEquals => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
 
-            rhs.annotation.expect_value(lhs.annotation.ty())?;
+            rhs.annotation.expect_value(lhs.annotation.value_ty())?;
 
-            if !lhs.annotation.ty().self_comparable() {
+            if !lhs.annotation.value_ty().self_comparable() {
                 return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation.ty().clone(),
-                    rhs: rhs.annotation.ty().clone(),
+                    lhs: lhs.annotation.value_ty().clone(),
+                    rhs: rhs.annotation.value_ty().clone(),
                     op: bin_op.op,
                     span: bin_op.annotation.span().clone(),
                 });
@@ -75,19 +75,19 @@ pub fn typecheck_bin_op(
         Operator::Multiply |
         Operator::Divide => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
 
-            if !lhs.annotation.ty().valid_math_op(bin_op.op, rhs.annotation.ty()) {
+            if !lhs.annotation.value_ty().valid_math_op(bin_op.op, rhs.annotation.value_ty()) {
                 return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation.ty().clone(),
-                    rhs: rhs.annotation.ty().clone(),
+                    lhs: lhs.annotation.value_ty().clone(),
+                    rhs: rhs.annotation.value_ty().clone(),
                     op: bin_op.op,
                     span: bin_op.annotation.span().clone(),
                 });
             }
 
             // check valid ops etc, result type etc
-            let result_ty = lhs.annotation.ty().clone();
+            let result_ty = lhs.annotation.value_ty().clone();
 
             let annotation = match result_ty {
                 Type::Nothing => TypeAnnotation::Untyped(span),
@@ -125,7 +125,7 @@ fn typecheck_member_of(
 
     let annotation = match &lhs.annotation {
         TypeAnnotation::TypedValue { value_kind, .. } => {
-            let member = ctx.find_instance_member(lhs.annotation.ty(), &member_ident)?;
+            let member = ctx.find_instance_member(lhs.annotation.value_ty(), &member_ident)?;
 
             match member {
                 InstanceMember::Method { iface_ty, decl } => {
@@ -159,12 +159,28 @@ fn typecheck_member_of(
             }
         }
 
+        TypeAnnotation::Namespace(path, _) => {
+            let mut full_path = path.clone();
+            full_path.push(member_ident.clone());
+
+            match ctx.resolve(&full_path) {
+                Some(member) => ns_member_ref_to_annotation(member, span),
+                None => {
+                    return Err(NameError::MemberNotFound {
+                        member: member_ident,
+                        span,
+                        base: lhs.annotation.value_ty().clone(),
+                    }.into());
+                }
+            }
+        }
+
         _ => {
-            return Err(TypecheckError::MemberNotFound {
+            return Err(NameError::MemberNotFound {
                 member: member_ident,
                 span,
-                base: lhs.annotation.ty().clone(),
-            });
+                base: lhs.annotation.value_ty().clone(),
+            }.into());
         }
     };
 
@@ -190,10 +206,10 @@ pub fn typecheck_unary_op(
 
     let annotation = match unary_op.op {
         Operator::AddressOf => {
-            let addr_ty = match (operand.annotation.ty(), operand.annotation.value_kind()) {
+            let addr_ty = match (operand.annotation.value_ty(), operand.annotation.value_kind()) {
                 (Type::Pointer(_), Some(ValueKind::Mutable)) |
                 (Type::Record(_), Some(ValueKind::Mutable)) |
-                (Type::Primitive(_), Some(ValueKind::Mutable)) => operand.annotation.ty().clone().ptr(),
+                (Type::Primitive(_), Some(ValueKind::Mutable)) => operand.annotation.value_ty().clone().ptr(),
 
                 (ty, kind) => return Err(TypecheckError::NotAddressable {
                     ty: ty.clone(),
@@ -210,10 +226,10 @@ pub fn typecheck_unary_op(
         }
 
         Operator::Deref => {
-            let deref_ty = operand.annotation.ty().deref_ty()
+            let deref_ty = operand.annotation.value_ty().deref_ty()
                 .cloned()
                 .ok_or_else(|| TypecheckError::NotDerefable {
-                    ty: operand.annotation.ty().clone(),
+                    ty: operand.annotation.value_ty().clone(),
                     span: span.clone(),
                 })?;
 
@@ -229,7 +245,7 @@ pub fn typecheck_unary_op(
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
                 op: unary_op.op,
-                operand: operand.annotation.ty().clone(),
+                operand: operand.annotation.value_ty().clone(),
                 span: unary_op.annotation.clone(),
             })
         }
