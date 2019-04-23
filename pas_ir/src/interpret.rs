@@ -651,9 +651,11 @@ impl Interpreter {
             }
 
             self.call(&func, &[cell.clone()], None);
-        } else if self.trace_rc {
+        } else {
+            if self.trace_rc {
             eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty))
         }
+    }
     }
 
     // todo: this should be handled in the IR so we don't need to know cell types

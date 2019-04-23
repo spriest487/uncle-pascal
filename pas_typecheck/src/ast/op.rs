@@ -145,8 +145,9 @@ pub fn typecheck_bin_op(
         }
 
         _ => unimplemented!(
-            "typechecking for expression containing binary operator {}",
-            bin_op.op
+            "typechecking for expression containing binary operator {} @ {}",
+            bin_op.op,
+            bin_op.span()
         ),
     }
 }

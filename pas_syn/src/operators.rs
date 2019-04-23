@@ -42,15 +42,22 @@ pub enum Operator {
     RangeInclusive,
     In,
     Member,
+
+    // not used as a syntactical operator, but included so it can easily
+    // participate in precedence comparisons
+    Call,
 }
 
-pub static PRECEDENCE: [(Operator, Position); 21] = [
+/// canonical operator precedence ordering. operations higher in the list
+/// take precedence over ones below them
+pub static PRECEDENCE: [(Operator, Position); 22] = [
+    (Operator::Member, Position::Binary),
+    (Operator::Call, Position::Postfix),
     (Operator::Deref, Position::Postfix),
     (Operator::AddressOf, Position::Prefix),
     (Operator::Plus, Position::Prefix),
     (Operator::Minus, Position::Prefix),
     (Operator::Not, Position::Prefix),
-    (Operator::Member, Position::Binary),
     (Operator::Multiply, Position::Binary),
     (Operator::Divide, Position::Binary),
     (Operator::Plus, Position::Binary),
@@ -64,8 +71,8 @@ pub static PRECEDENCE: [(Operator, Position); 21] = [
     (Operator::In, Position::Binary),
     (Operator::And, Position::Binary),
     (Operator::Or, Position::Binary),
-    (Operator::Assignment, Position::Binary),
     (Operator::RangeInclusive, Position::Binary),
+    (Operator::Assignment, Position::Binary),
 ];
 
 impl Operator {
@@ -143,6 +150,7 @@ impl fmt::Display for Operator {
                 Operator::Lte => "<=",
                 Operator::In => "in",
                 Operator::RangeInclusive => "..",
+                Operator::Call => "(...)",
             }
         )
     }

@@ -173,6 +173,7 @@ impl<A: Annotation> Statement<A> {
                     };
                     Ok(Statement::Assignment(assignment))
                 } else {
+                    println!("{} with operator {:?} not a stmt", bin_op, bin_op.op);
                     let invalid_bin_op = Expression::BinOp(bin_op);
                     Err(invalid_bin_op)
                 }

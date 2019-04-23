@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::{
     ast::{
         Annotation,
@@ -437,16 +440,36 @@ enum OperatorPart {
 
 impl OperatorPart {
     fn cmp_precedence(&self, b: &Self) -> Ordering {
-        match (self, b) {
-            (OperatorPart::Call(_, _), OperatorPart::Call(_, _)) => Ordering::Equal,
-            (OperatorPart::Call(_, _), OperatorPart::Symbol(_)) => Ordering::Greater,
-            (OperatorPart::Symbol(_), OperatorPart::Call(_, _)) => Ordering::Less,
-            (OperatorPart::Symbol(op_a), OperatorPart::Symbol(op_b)) => {
-                let prec_a = op_a.op.precedence(op_a.pos);
-                let prec_b = op_b.op.precedence(op_b.pos);
-                prec_a.cmp(&prec_b)
-            }
-        }
+        let (op_a, pos_a, op_b, pos_b) = match (self, b) {
+            (OperatorPart::Call(_, _), OperatorPart::Call(_, _)) => (
+                Operator::Call,
+                Position::Postfix,
+                Operator::Call,
+                Position::Postfix,
+            ),
+            (OperatorPart::Call(_, _), OperatorPart::Symbol(sym_op)) => (
+                Operator::Call,
+                Position::Postfix,
+                sym_op.op,
+                sym_op.pos,
+            ),
+            (OperatorPart::Symbol(sym_op), OperatorPart::Call(_, _)) => (
+                sym_op.op,
+                sym_op.pos,
+                Operator::Call,
+                Position::Postfix,
+            ),
+            (OperatorPart::Symbol(sym_op_a), OperatorPart::Symbol(sym_op_b)) => (
+                sym_op_a.op,
+                sym_op_a.pos,
+                sym_op_b.op,
+                sym_op_b.pos,
+            )
+        };
+
+        let prec_a = op_a.precedence(pos_a);
+        let prec_b = op_b.precedence(pos_b);
+        prec_a.cmp(&prec_b)
     }
 }
 
