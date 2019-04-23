@@ -10,22 +10,16 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let raw_ty = find_type(&ctor.ident, ctx)?.clone();
+    let raw_ty = find_type(&ctor.ident, ctx)?;
 
     // generic types can't be constructed, but if the type hint is a parameterized instance of
     // the generic type the constructor expression refers to, use that instead
-    let ty = if raw_ty.is_generic() {
-        if expect_ty.is_specialization_of(&raw_ty) {
-            expect_ty.clone()
-        } else {
-           return Err(TypecheckError::InvalidCtorType {
-               ty: raw_ty.clone(),
-               span: ctor.annotation.span().clone(),
-           })
-        }
-    } else {
-        raw_ty
-    };
+    let ty = raw_ty.infer_specialized_from_hint(expect_ty)
+        .ok_or_else(|| TypecheckError::InvalidCtorType {
+            ty: raw_ty.clone(),
+            span: ctor.annotation.span().clone(),
+        })?
+        .clone();
 
     let ty_name = ty
         .full_path()

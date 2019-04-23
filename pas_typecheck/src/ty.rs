@@ -8,10 +8,11 @@ use pas_syn::{
 };
 
 use crate::{
-    ast::{Class, FunctionDecl, Interface, Variant, parameterize_class},
+    ast::{Class, FunctionDecl, Interface, Variant},
     context::{self, ns, ns::Namespace as _},
     result::*,
     Context, Decl, NameError, TypeAnnotation,
+    QualifiedDeclName,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -413,24 +414,6 @@ impl Type {
         }
     }
 
-    pub fn is_generic(&self) -> bool {
-        match self {
-            Type::Class(class) | Type::Record(class) => {
-                class.name.type_args.len() != class.name.decl_name.type_params.len()
-            }
-
-            _ => false,
-        }
-    }
-
-    pub fn is_specialization_of(&self, generic_ty: &Type) -> bool {
-        // should be fine to compare full_path from both, because a generic type will always have
-        // a full path - only declared types can be generic
-        generic_ty.is_generic()
-            && !self.is_generic()
-            && self.full_path() == generic_ty.full_path()
-    }
-
     pub fn into_iface(self) -> Result<Rc<Interface>, Self> {
         match self {
             Type::Interface(iface) => Ok(iface),
@@ -489,8 +472,10 @@ fn parameterize_type(ty: Type, args: &[ast::TypeName], span: &Span, ctx: &Contex
         }
 
         //todo: should be parameterizable
+        Type::Variant(variant) => {
+            parameterize_variant(variant, args, span).map(Rc::new).map(Type::Variant)
+        }
         Type::Interface(_) |
-        Type::Variant(_) |
         Type::GenericParam(_) |
 
         // will never be parameterizable
@@ -549,6 +534,137 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
         }
 
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
+    }
+}
+
+fn substitute_type_param<'a, 't: 'a>(ty: &'t Type, params: &[Ident], args: &'a [Type]) -> &'a Type {
+    match ty {
+        Type::GenericParam(ident) => {
+            let index = params.iter().position(|arg| *arg == *ident)
+                .expect("member with generic param type must match one of the generic params");
+
+            &args[index]
+        },
+
+        not_generic => not_generic,
+    }
+}
+
+pub fn parameterize_class(
+    class: &Class,
+    args: Vec<Type>,
+    span: &Span
+) -> TypecheckResult<Class> {
+    let type_params: &[Ident] = &class.name.decl_name.type_params.as_slice();
+    if args.len() != type_params.len() {
+        return Err(TypecheckError::InvalidTypeArgs {
+            ty: Type::Class(class.clone().into()),
+            expected: type_params.len(),
+            actual: args.len(),
+            span: span.clone(),
+        })
+    }
+
+    let members: Vec<_> = class.members.iter()
+        .map(|member| ast::Member {
+            ty: substitute_type_param(&member.ty, type_params, &args).clone(),
+            ..member.clone()
+        })
+        .collect();
+
+    let parameterized_name = QualifiedDeclName {
+        type_args: args,
+        ..class.name.clone()
+    };
+
+    Ok(Class {
+        name: parameterized_name,
+        members,
+        span: class.span.clone(),
+        kind: class.kind.clone(),
+    })
+}
+
+pub fn parameterize_variant(
+    variant: &Variant,
+    args: Vec<Type>,
+    span: &Span
+) -> TypecheckResult<Variant> {
+    let type_params: &[Ident] = &variant.name.decl_name.type_params.as_slice();
+    if args.len() != type_params.len() {
+        return Err(TypecheckError::InvalidTypeArgs {
+            ty: Type::Variant(variant.clone().into()),
+            expected: type_params.len(),
+            actual: args.len(),
+            span: span.clone(),
+        })
+    }
+
+    let cases: Vec<_> = variant.cases.iter()
+        .map(|case| ast::VariantCase {
+            data_ty: case.data_ty.as_ref()
+                .map(|ty| substitute_type_param(ty, type_params, &args))
+                .cloned(),
+            ..case.clone()
+        })
+        .collect();
+
+    let parameterized_name = QualifiedDeclName {
+        type_args: args,
+        ..variant.name.clone()
+    };
+
+    Ok(Variant {
+        name: parameterized_name,
+        span: variant.span().clone(),
+        cases,
+    })
+}
+
+pub trait Specializable {
+    type GenericID: PartialEq;
+
+    fn is_generic(&self) -> bool;
+    fn name(&self) -> Self::GenericID;
+
+    fn is_specialization_of(&self, generic: &Self) -> bool {
+        generic.is_generic()
+            && !self.is_generic()
+            && self.name() == generic.name()
+    }
+
+    fn infer_specialized_from_hint<'out, 'a: 'out, 'b: 'out>(
+        &'a self,
+        hint: &'b Self
+    ) -> Option<&'out Self> {
+        if self.is_generic() {
+            if hint.is_specialization_of(self) {
+                Some(hint)
+            } else {
+                None
+            }
+        } else {
+            Some(self)
+        }
+    }
+}
+
+impl Specializable for Type {
+    type GenericID = IdentPath;
+
+    fn is_generic(&self) -> bool {
+        match self {
+            Type::Class(class)
+            | Type::Record(class) => class.name.is_generic(),
+
+            Type::Variant(variant) => variant.name.is_generic(),
+
+            _ => false,
+        }
+    }
+
+    fn name(&self) -> IdentPath {
+        self.full_path().expect("only types with full paths can be specialized")
     }
 }
 

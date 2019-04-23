@@ -6,4 +6,6 @@ type Option<T> = variant
 end;
 
 let some: Option<String> := Option.Some('thing');
-if something is Option.Some val then WriteLn(val);
+
+if some is Option.Some val then
+    WriteLn(val);

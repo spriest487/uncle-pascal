@@ -30,10 +30,7 @@ pub mod ast {
         };
 
         pub use crate::{
-            annotation::*, ast::*, context::*, result::*, FunctionParamSig, FunctionSig, Primitive,
-            Type, TypePattern,
-            find_type, string_type,
-            typecheck_type,
+            annotation::*, ast::*, context::*, result::*, ty::*,
         };
     }
 }

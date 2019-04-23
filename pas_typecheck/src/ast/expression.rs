@@ -180,6 +180,7 @@ pub fn typecheck_call(call: &ast::Call<Span>, expect_ty: &Type, ctx: &mut Contex
             &func_call.args,
             variant.case_index,
             call.span().clone(),
+            expect_ty,
             ctx,
         )
         .map(CallOrCtor::Call)?,
@@ -301,8 +302,19 @@ fn typecheck_variant_ctor_call(
     args: &[ast::Expression<Span>],
     case_index: usize,
     span: Span,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
+    // infer the specialized generic type if the written one is generic and the hint is a specialized
+    // version of that same generic variant
+    let variant = match expect_ty {
+        Type::Variant(expect_variant) if expect_variant.name.is_specialization_of(&variant.name) => {
+            expect_variant.clone()
+        }
+
+        _ => variant,
+    };
+
     let arg = match &variant.cases[case_index].data_ty {
         None => {
             if args.len() != 0 {

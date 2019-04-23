@@ -6,7 +6,8 @@ use pas_syn::{ast::{ Annotation, TypeDeclName, DeclNamed }, ident::IdentPath, Id
 use crate::{
     ast::{Expression, FunctionDecl, Variant},
     result::*,
-    FunctionSig, Type, TypePattern, ValueKind,
+    ty::*,
+    ValueKind,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -221,8 +222,8 @@ impl Spanned for TypeAnnotation {
 
 impl Annotation for TypeAnnotation {
     type Type = Type;
-    type Pattern = TypePattern;
     type DeclName = QualifiedDeclName;
+    type Pattern = TypePattern;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -230,6 +231,19 @@ pub struct QualifiedDeclName {
     pub decl_name: TypeDeclName,
     pub qualified: IdentPath,
     pub type_args: Vec<Type>,
+}
+
+impl Specializable for QualifiedDeclName {
+    type GenericID = IdentPath;
+
+    // is this either a type without type args, or does it already have all the type args it needs?
+    fn is_generic(&self) -> bool {
+        self.type_args.len() != self.decl_name.type_params.len()
+    }
+
+    fn name(&self) -> IdentPath {
+        self.qualified.clone()
+    }
 }
 
 impl DeclNamed for QualifiedDeclName {
