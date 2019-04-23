@@ -505,30 +505,38 @@ impl Interpreter {
         }
     }
 
+    fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) {
+        let dispose_impl_id = self.metadata.find_impl(
+            ty,
+            DISPOSABLE_ID,
+            "Dispose"
+        );
+
+        if let Some(dispose_func) = dispose_impl_id {
+            let dispose_desc = self.metadata.func_desc(dispose_func);
+            let disposed_name = self.metadata.pretty_ty_name(ty);
+
+            let dispose_ref = GlobalRef::Function(dispose_func);
+            let func = match self.globals.get(&dispose_ref) {
+                Some(MemCell::Function(func)) => func.clone(),
+                _ => panic!("missing {} for {}", dispose_desc, disposed_name),
+            };
+
+            if self.trace_rc {
+                eprintln!("rc: invoking {}", dispose_desc);
+            }
+
+            self.call(&func, &[cell.clone()], None);
+        } else if self.trace_rc {
+            eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty))
+        }
+    }
+
     // todo: this should be handled in the IR so we don't need to know cell types
     fn release_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Structure(StructCell { fields, id }) => {
-                let struct_def = &self.metadata.structs()[id];
-                let dispose_impl_id = self.metadata.find_impl(
-                    &Type::Struct(*id),
-                    DISPOSABLE_ID,
-                    "Dispose"
-                );
-
-                if let Some(dispose_func) = dispose_impl_id {
-                    let dispose_ref = GlobalRef::Function(dispose_func);
-                    let func = match self.globals.get(&dispose_ref) {
-                        Some(MemCell::Function(func)) => func.clone(),
-                        _ => panic!("missing {} for {}", dispose_ref, struct_def.name),
-                    };
-
-                    if self.trace_rc {
-                        eprintln!("rc: automatically invoking dispose impl of {}", struct_def.name);
-                    }
-
-                    self.call(&func, &[cell.clone()], None);
-                }
+                self.invoke_disposer(&cell, &Type::Struct(*id));
 
                 for cell in fields {
                     self.release_cell(cell);
@@ -536,21 +544,28 @@ impl Interpreter {
             },
 
             MemCell::Pointer(Pointer::Heap(ty, addr)) => {
-                let rc_cell = self
+                let rc = self
                     .heap
-                    .get_mut(*addr)
-                    .and_then(|cell| cell.as_struct_mut(RC_ID));
+                    .get(*addr)
+                    .and_then(|cell| cell.as_struct(RC_ID))
+                    .map(|rc_struct| rc_struct.fields[RC_REF_COUNT_FIELD].as_i32().unwrap());
 
-                if let Some(rc_cell) = rc_cell {
-                    let rc = rc_cell.fields[RC_REF_COUNT_FIELD].as_i32().unwrap();
-
+                if let Some(rc) = rc {
                     if rc == 1 {
-                        let val_addr = rc_cell.fields[RC_VALUE_FIELD]
-                            .as_pointer()
+                        let val_field = self.heap[*addr]
+                            .as_struct(RC_ID)
+                            .unwrap()
+                            .fields[RC_VALUE_FIELD]
+                            .clone();
+
+                        let val_addr = val_field.as_pointer()
                             .and_then(|ptr| ptr.as_heap_addr())
                             .unwrap();
 
-                        let heap_cell = self.heap.get(val_addr).cloned().unwrap();
+                        let val_ty = self.heap[val_addr].value_ty().rc();
+                        self.invoke_disposer(&cell, &val_ty);
+
+                        let heap_cell = self.heap[val_addr].clone();
                         self.release_cell(&heap_cell);
 
                         if self.trace_rc {
@@ -565,7 +580,9 @@ impl Interpreter {
                             eprintln!("rc: release {} @ {} ({} more refs)", ty, addr, rc - 1)
                         }
 
-                        rc_cell.fields[RC_REF_COUNT_FIELD] = MemCell::I32(rc - 1);
+                        self.heap[*addr].as_struct_mut(RC_ID)
+                            .unwrap()
+                            .fields[RC_REF_COUNT_FIELD] = MemCell::I32(rc - 1);
                     }
                 }
             },

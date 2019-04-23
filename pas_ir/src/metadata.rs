@@ -213,7 +213,7 @@ impl fmt::Display for Type {
             Type::InterfaceRef(id) => write!(f, "<{}>", id),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
-            Type::Rc(id) => write!(f, "{{{} rc}}", id),
+            Type::Rc(id) => write!(f, "rc {{{}}}", id),
         }
     }
 }
@@ -443,7 +443,9 @@ impl Metadata {
                     .unwrap_or_else(|| id.to_string())
             }
 
-            Type::Rc(ty) => self.pretty_ty_name(ty),
+            Type::Rc(ty) => {
+                format!("rc {}", self.pretty_ty_name(ty))
+            },
 
             Type::Pointer(ty) => {
                 format!("^{}", self.pretty_ty_name(ty))

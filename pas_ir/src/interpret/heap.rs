@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fmt,
     mem::size_of,
-    ops::Add,
+    ops::{Add, Index, IndexMut},
 };
 
 #[derive(Debug, Clone)]
@@ -108,6 +108,20 @@ impl Heap {
 
     pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut MemCell> {
         self.slots.get_mut(addr.0).and_then(|slot| slot.as_mut())
+    }
+}
+
+impl Index<HeapAddress> for Heap {
+    type Output = MemCell;
+
+    fn index(&self, addr: HeapAddress) -> &MemCell {
+        self.get(addr).unwrap()
+    }
+}
+
+impl IndexMut<HeapAddress> for Heap {
+    fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
+        self.get_mut(addr).unwrap()
     }
 }
 
