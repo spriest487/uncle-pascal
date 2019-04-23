@@ -44,6 +44,10 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                 | TypeAnnotation::TypedValue {
                     value_kind: ValueKind::Mutable,
                     ..
+                }
+                | TypeAnnotation::TypedValue {
+                    value_kind: ValueKind::Uninitialized,
+                    ..
                 } => {
                     let local_ref = builder
                         .find_local(&ident.to_string())
@@ -73,7 +77,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                     ref_temp.deref()
                 }
 
-                _ => panic!("wrong kind of node annotation for ident: {:?}",),
+                _ => panic!("wrong kind of node annotation for ident: {:?}", expr),
             }
         }
 
@@ -293,7 +297,7 @@ fn translate_call_with_args(
                 self_arg,
                 rest_args,
             }
-        },
+        }
     });
 
     // no need to retain, the result of a function must be retained as part of its body
@@ -307,7 +311,7 @@ enum CallTarget {
     Function(Value),
     Virtual {
         iface_id: InterfaceID,
-        method: String
+        method: String,
     },
 }
 
@@ -344,12 +348,10 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
 
             let call_target = match &self_ty {
-                Type::RcPointer(ClassID::Interface(iface_id)) => {
-                    CallTarget::Virtual {
-                        iface_id: *iface_id,
-                        method: method_call.ident.to_string(),
-                    }
-                }
+                Type::RcPointer(ClassID::Interface(iface_id)) => CallTarget::Virtual {
+                    iface_id: *iface_id,
+                    method: method_call.ident.to_string(),
+                },
 
                 _ => {
                     let impl_func = builder

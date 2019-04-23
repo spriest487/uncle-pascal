@@ -56,19 +56,15 @@ pub fn typecheck_local_binding(
     ctx.declare_binding(
         binding.name.clone(),
         Binding {
-            kind: if binding.mutable {
-                ValueKind::Mutable
-            } else {
-                ValueKind::Immutable
+            kind: match (binding.mutable, val.is_some()) {
+                (true, true) => ValueKind::Mutable,
+                (true, false) => ValueKind::Uninitialized,
+                (false, _) => ValueKind::Immutable,
             },
             ty: binding_ty.clone(),
             def: Some(binding.annotation.clone()),
         },
     )?;
-
-    if val.is_some() && binding.mutable {
-        ctx.initialize(&binding.name);
-    }
 
     let annotation = TypeAnnotation::Untyped(binding.annotation.span().clone());
 
@@ -91,16 +87,14 @@ pub fn typecheck_assignment(
 
     // lhs must evaluate to a mutable typed value
     match lhs.annotation() {
-        TypeAnnotation::TypedValue {
-            value_kind: ValueKind::Mutable,
-            ..
-        } => {}
-        TypeAnnotation::TypedValue { span, .. } => {
-            let span = span.clone();
-            return Err(TypecheckError::NotMutable {
-                expr: Box::new(lhs),
-                decl: Some(span),
-            });
+        TypeAnnotation::TypedValue { span, value_kind, .. } => {
+            if !value_kind.mutable() {
+                let span = span.clone();
+                return Err(TypecheckError::NotMutable {
+                    expr: Box::new(lhs),
+                    decl: Some(span),
+                });
+            }
         }
         _ => {
             return Err(TypecheckError::NotMutable {

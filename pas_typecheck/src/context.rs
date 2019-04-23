@@ -15,7 +15,6 @@ use std::{
     borrow::Borrow,
     collections::{
         hash_map::{Entry, HashMap},
-        HashSet,
     },
     fmt,
     hash::Hash,
@@ -28,6 +27,9 @@ pub use self::{ns::*, result::*};
 pub enum ValueKind {
     /// local value in an immutable location
     Immutable,
+
+    /// uninitialized mutable location
+    Uninitialized,
 
     /// local value in mutable location
     Mutable,
@@ -43,10 +45,20 @@ pub enum ValueKind {
 impl fmt::Display for ValueKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            ValueKind::Uninitialized => write!(f, "Uninitialized binding"),
             ValueKind::Immutable => write!(f, "Immutable binding"),
             ValueKind::Mutable => write!(f, "Mutable binding"),
             ValueKind::Temporary => write!(f, "Temporary value"),
             ValueKind::Ref => write!(f, "Reference"),
+        }
+    }
+}
+
+impl ValueKind {
+    pub fn mutable(&self) -> bool {
+        match self {
+            ValueKind::Mutable | ValueKind::Uninitialized => true,
+            _ => false,
         }
     }
 }
@@ -119,7 +131,6 @@ pub struct Scope {
     id: ScopeID,
     ident: Option<Ident>,
     decls: HashMap<Ident, Member<Scope>>,
-    uninit: HashSet<Ident>,
 }
 
 impl Scope {
@@ -128,7 +139,6 @@ impl Scope {
             id,
             ident,
             decls: HashMap::new(),
-            uninit: HashSet::new(),
         }
     }
 }
@@ -294,15 +304,7 @@ impl Context {
     }
 
     pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> NamingResult<()> {
-        let uninit = binding.kind == ValueKind::Mutable;
-
-        if uninit {
-            self.declare(name.clone(), Decl::BoundValue(binding))?;
-            self.scopes.current_mut().uninit.insert(name);
-        } else {
-            self.declare(name, Decl::BoundValue(binding))?;
-        }
-
+        self.declare(name, Decl::BoundValue(binding))?;
         Ok(())
     }
 
@@ -775,13 +777,17 @@ impl Context {
 
     /// Check if a local decl is marked as initialized.
     /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
-    pub fn initialized(&self, local_id: &Ident) -> bool {
-        let current_ns = self.scopes.current_path();
-        let scope = current_ns.top();
-        check_initialize_allowed(scope, local_id);
-
-        !scope.uninit.contains(local_id)
-    }
+//    pub fn initialized(&self, local_id: &Ident) -> bool {
+//        let current_ns = self.scopes.current_path();
+//        let scope = current_ns.top();
+//        check_initialize_allowed(scope, local_id);
+//
+//        match &scope.decls[local_id] {
+//            Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Uninitialized, .. })) => false,
+//            Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Mutable, .. })) => true,
+//            _ => panic!("{} does not refer to a mutable binding", local_id),
+//        }
+//    }
 
     /// Mark a local decl as initialized.
     /// No effect if the decl exists and is already initialized.
@@ -790,7 +796,16 @@ impl Context {
         let scope = self.scopes.current_mut();
         check_initialize_allowed(scope, local_id);
 
-        scope.uninit.remove(local_id);
+        match scope.decls.get_mut(local_id) {
+            Some(Member::Value(Decl::BoundValue(Binding { kind, .. }))) => {
+                if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
+                    *kind = ValueKind::Mutable;
+                } else {
+                    panic!("{} does not refer to a mutable binding", local_id);
+                }
+            },
+            _ => panic!("{} does not refer to a mutable binding", local_id),
+        }
     }
 
     pub fn is_local(&self, id: &Ident) -> bool {
@@ -798,17 +813,41 @@ impl Context {
         current.top().decls.contains_key(id)
     }
 
-    pub fn consolidate_branches(&mut self, contexts: &[Self]) {
+    pub fn consolidate_branches(&mut self, branch_contexts: &[Self]) {
         let scope = self.scopes.current_path();
 
-        let mut init_in_all = Vec::new();
-        for uninit_name in &scope.top().uninit {
-            if contexts.iter().all(|ctx| ctx.initialized(uninit_name)) {
-                init_in_all.push(uninit_name.clone());
+        let uninit_names: Vec<_> = scope.top().decls.iter()
+            .filter_map(|(ident, decl)| match decl {
+                Member::Value(Decl::BoundValue(Binding { kind: ValueKind::Uninitialized, .. })) => {
+                    Some(ident)
+                },
+                _ => None,
+            })
+            .collect();
+        let this_depth = scope.as_slice().len();
+
+        // names initialized in all branches
+        let mut all_init = Vec::new();
+        for uninit_name in uninit_names {
+            let is_init_in_all = branch_contexts.iter()
+                .all(|ctx| match ctx.find(uninit_name).unwrap() {
+                    MemberRef::Value { value, parent_path, .. } => match value {
+                        Decl::BoundValue(binding) => {
+                            parent_path.as_slice().len() == this_depth && binding.kind == ValueKind::Mutable
+                        }
+
+                        _ => false,
+                    }
+
+                    MemberRef::Namespace { .. } => false,
+                });
+
+            if is_init_in_all {
+                all_init.push(uninit_name.clone());
             }
         }
 
-        for name in init_in_all {
+        for name in all_init {
             self.initialize(&name);
         }
     }
@@ -817,18 +856,13 @@ impl Context {
 fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
     match scope.decls.get(ident) {
         Some(Member::Value(decl)) => match decl {
-            Decl::BoundValue(Binding {
-                kind: ValueKind::Mutable,
-                ..
-            }) => {
-                // ok
-            }
-
             Decl::BoundValue(Binding { kind, .. }) => {
-                panic!(
-                    "`{}` cannot be initialized: not mutable (was: {})",
-                    ident, kind
-                );
+                if !kind.mutable() {
+                    panic!(
+                        "`{}` cannot be initialized: not mutable (was: {})",
+                        ident, kind
+                    );
+                }
             }
 
             other => {

@@ -22,9 +22,11 @@ begin
     WriteLn(self.name + ' says wan!');
 end;
 
-let animal1: Animal := Cat(name: 'Blake');
-let animal2: Animal := Dog(name: 'Yang');
+var animal: Animal;
 
-animal1.Say();
-animal2.Say();
+animal := Cat(name: 'Blake');
+animal.Say();
+
+animal := Dog(name: 'Yang');
+animal.Say();
 

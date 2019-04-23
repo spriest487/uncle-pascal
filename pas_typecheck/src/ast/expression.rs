@@ -487,16 +487,10 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
                 key: decl_ident,
                 ..
             }) => match binding.kind {
-                ValueKind::Mutable => {
-                    if !ctx.initialized(ident) {
-                        Err(TypecheckError::NotInitialized {
-                            ident: decl_ident.clone(),
-                            usage: ident.span().clone(),
-                        })
-                    } else {
-                        Ok(())
-                    }
-                }
+                ValueKind::Uninitialized => Err(TypecheckError::NotInitialized {
+                    ident: decl_ident.clone(),
+                    usage: ident.span().clone(),
+                }),
 
                 _ => Ok(()),
             },

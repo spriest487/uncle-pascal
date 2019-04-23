@@ -113,7 +113,7 @@ pub fn typecheck_func_def(
     for param in &decl.params {
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
-            Some(ast::FunctionParamMod::Out) => (ValueKind::Mutable, false),
+            Some(ast::FunctionParamMod::Out) => (ValueKind::Uninitialized, false),
             None => (ValueKind::Immutable, false),
         };
 

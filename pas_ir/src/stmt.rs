@@ -126,10 +126,12 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it
-    let lhs_ty = builder
-        .metadata
-        .translate_type(assignment.lhs.annotation().ty());
-    builder.release(lhs.clone(), &lhs_ty);
+    if assignment.lhs.annotation().value_kind() != Some(pas_ty::ValueKind::Uninitialized) {
+        let lhs_ty = builder
+            .metadata
+            .translate_type(assignment.lhs.annotation().ty());
+        builder.release(lhs.clone(), &lhs_ty);
+    }
 
     builder.append(Instruction::Move {
         out: lhs,

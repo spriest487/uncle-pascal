@@ -8,6 +8,7 @@
 * string comparison
 * module privacy/exported functions and impls (so you can't call `String.Dispose` explicitly)
 * parse failure: can't distinguish Ctor() expr with 0 args from a function call
+* does symbol with same name declared in branch scope confuse the initialization consolidation?
 
 # big features
 
