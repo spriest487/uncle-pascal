@@ -22,3 +22,5 @@
 * Binding.def used? 
 * make temporary its own kind of TypeAnnotation?
 * ref params should be able to refer to record fields and array elements
+* expr translations should take an out ref as a param instead of creating and returning one
+    (this shouldn't break RC though, do we ever return non-temp refs)

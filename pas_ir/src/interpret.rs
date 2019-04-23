@@ -653,7 +653,7 @@ impl Interpreter {
             self.call(&func, &[cell.clone()], None);
         } else {
             if self.trace_rc {
-                eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty))
+                eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
             }
         }
     }
@@ -680,10 +680,17 @@ impl Interpreter {
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
 
                 if rc_cell.ref_count == 1 {
-                    println!("delete cell {:?} with ty {}", cell, self.metadata.pretty_ty_name(cell_ty));
+                    if self.trace_rc {
+                        println!(
+                            "rc: delete cell {:?} of {}/resource ty {}",
+                             cell,
+                             self.metadata.pretty_ty_name(cell_ty),
+                             self.metadata.pretty_ty_name(resource_ty)
+                        );
+                    }
 
                     // Dispose() the inner resource
-                    self.invoke_disposer(&cell, resource_ty.as_ref());
+                    self.invoke_disposer(&cell, cell_ty);
 
                     let resource_cell = self.heap[rc_cell.resource_addr].clone();
                     self.release_cell(&resource_cell, resource_ty.as_ref());
@@ -1054,7 +1061,7 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, vals: Vec<MemCell>, _struct_id: StructID) -> Pointer {
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: StructID) -> Pointer {
         let addr = self.heap.alloc(vals);
 
         let rc_cell = MemCell::RcCell(RcCell {
@@ -1063,7 +1070,7 @@ impl Interpreter {
         });
 
         let addr = self.heap.alloc(vec![rc_cell]);
-        Pointer::Heap(Type::Nothing.rc(), addr)
+        Pointer::Heap(Type::Struct(struct_id).rc(), addr)
     }
 
     fn init_globals(&mut self) {
