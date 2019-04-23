@@ -507,6 +507,10 @@ impl Metadata {
         id
     }
 
+    pub fn ifaces(&self) -> &HashMap<InterfaceID, Interface> {
+        &self.ifaces
+    }
+
     pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
         let methods: Vec<_> = iface_def
             .methods

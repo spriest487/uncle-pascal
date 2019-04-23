@@ -149,7 +149,8 @@ pub trait InstructionFormatter {
                 self.format_ref(a, f)?;
                 write!(f, " as ")?;
                 self.format_type(of_ty, f)?;
-                write!(f, ").{}", field)
+                write!(f, ").")?;
+                self.format_field(of_ty, *field, f)
             }
 
             Instruction::Label(label) => {
@@ -169,9 +170,8 @@ pub trait InstructionFormatter {
                 write!(f, " at {}^", out)
             }
 
-            Instruction::Release { at, struct_id } => {
-                write!(f, "{:>width$} {} as ", "release", at, width = IX_WIDTH)?;
-                self.format_type(&Type::Struct(*struct_id), f)
+            Instruction::Release { at } => {
+                write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH)
             }
 
             Instruction::Retain { at } => {
@@ -183,6 +183,7 @@ pub trait InstructionFormatter {
     fn format_type(&self, ty: &Type, f: &mut fmt::Formatter) -> fmt::Result;
     fn format_val(&self, val: &Value, f: &mut fmt::Formatter) -> fmt::Result;
     fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result;
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result;
 }
 
 pub struct RawInstructionFormatter;
@@ -198,6 +199,10 @@ impl InstructionFormatter for RawInstructionFormatter {
 
     fn format_ref(&self, r: &Ref, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", r)
+    }
+
+    fn format_field(&self, _of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", field)
     }
 }
 
@@ -217,19 +222,58 @@ impl InstructionFormatter for Metadata {
         match r {
             Ref::Global(GlobalRef::StringLiteral(string_id)) => match self.get_string(*string_id) {
                 Some(string_lit) => write!(f, "'{}'", string_lit),
-                None => write!(f, "{}", string_id),
+                None => write!(f, "{}", r),
             },
 
             Ref::Global(GlobalRef::Function(id)) => {
-                let name = self.get_function(*id).and_then(|f| f.global_name.as_ref());
+                let func_name = self.get_function(*id).and_then(|f| f.global_name.as_ref());
 
-                match name {
+                match func_name {
                     Some(name) => write!(f, "{}", name),
-                    None => write!(f, "{}", id),
+
+                    None => {
+                        let find_iface_impl = self.ifaces().iter().find_map(|(_id, iface)| {
+                            iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
+                                let (name, _id) = iface_impl
+                                    .methods
+                                    .iter()
+                                    .find(|(_name, method_id)| **method_id == *id)?;
+
+                                Some((&iface.name, impl_ty, name))
+                            })
+                        });
+
+                        match find_iface_impl {
+                            Some((iface_name, impl_ty, method_name)) => {
+                                write!(f,
+                                    "{}.{} impl for ",
+                                    iface_name, method_name
+                                )?;
+                                self.format_type(impl_ty, f)
+                            }
+
+                            None => {
+                                write!(f, "{}", r)
+                            }
+                        }
+                    }
                 }
             }
 
             _ => write!(f, "{}", r),
+        }
+    }
+
+    fn format_field(&self, of_ty: &Type, field: FieldID, f: &mut fmt::Formatter) -> fmt::Result {
+        let field_name = of_ty.as_struct()
+            .or_else(|| of_ty.rc_resource_type_id())
+            .and_then(|struct_id| self.structs().get(&struct_id))
+            .and_then(|struct_def| struct_def.fields.get(&field))
+            .map(|field| &field.name);
+
+        match field_name {
+            Some(name) => write!(f, "{}", name),
+            _ => write!(f, "{}", field),
         }
     }
 }
