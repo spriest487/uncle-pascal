@@ -8,7 +8,8 @@ use pas_ir::{self as ir, Interpreter, InterpreterOpts};
 use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
 use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
 use pas_typecheck::{self as ty, ast as ty_ast, TypecheckError};
-use std::{env, fmt, fs::File, io::Read, path::PathBuf, process, str::FromStr};
+use pas_backend_c as backend_c;
+use std::{env, fmt, fs::{self, File}, io::{self, Read as _, Write as _}, path::PathBuf, process, str::FromStr};
 use structopt::StructOpt;
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub enum CompileError {
     TypecheckError(TypecheckError),
     PreprocessorError(PreprocessorError),
     InvalidUnitFilename(Span),
+    OutputFailed(Span, io::Error),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -51,6 +53,10 @@ impl DiagnosticOutput for CompileError {
             CompileError::ParseError(err) => err.err.main(),
             CompileError::TypecheckError(err) => err.main(),
             CompileError::PreprocessorError(err) => err.main(),
+            CompileError::OutputFailed(span, err) => DiagnosticMessage {
+                title: format!("Writing output file `{}` failed: {}", span.file.display(), err),
+                label: None,
+            },
             CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
                 title: "Invalid unit filename".to_string(),
                 label: Some(DiagnosticLabel {
@@ -67,6 +73,7 @@ impl DiagnosticOutput for CompileError {
             CompileError::ParseError(err) => err.see_also(),
             CompileError::TypecheckError(err) => err.see_also(),
             CompileError::PreprocessorError(err) => err.see_also(),
+            CompileError::OutputFailed(..) => Vec::new(),
             CompileError::InvalidUnitFilename(_) => Vec::new(),
         }
     }
@@ -78,6 +85,7 @@ impl DiagnosticOutput for CompileError {
             CompileError::TypecheckError(_) => None,
             CompileError::PreprocessorError(_) => None,
             CompileError::InvalidUnitFilename(_) => None,
+            CompileError::OutputFailed(..) => None,
         }
     }
 }
@@ -90,6 +98,7 @@ impl Spanned for CompileError {
             CompileError::TypecheckError(err) => err.span(),
             CompileError::PreprocessorError(err) => err.span(),
             CompileError::InvalidUnitFilename(span) => span,
+            CompileError::OutputFailed(span, ..) => span,
         }
     }
 }
@@ -106,6 +115,12 @@ impl fmt::Display for CompileError {
                 "invalid unit identifier in filename: {}",
                 span.file.display()
             ),
+            CompileError::OutputFailed(span, err) => write!(
+                f,
+                "writing to file {} failed: {}",
+                span.file.display(),
+                err,
+            )
         }
     }
 }
@@ -140,6 +155,13 @@ struct Args {
     #[structopt(name = "FILE", parse(from_os_str))]
     file: PathBuf,
 
+    /// output file
+    /// If the output file extension matches a backend, the output from that backend will be written
+    /// to this path.
+    /// If no output path is provided the interpreter will be invoked.
+    #[structopt(name = "OUTPUT", short = "o", parse(from_os_str))]
+    output: Option<PathBuf>,
+
     /// additional units to link
     #[structopt(name = "units", short = "u")]
     units: Vec<String>,
@@ -169,7 +191,7 @@ struct Args {
     #[structopt(long = "backtrace", short = "bt")]
     backtrace: bool,
 
-    #[structopt(long = "verbose", short="v")]
+    #[structopt(long = "verbose", short = "v")]
     verbose: bool,
 }
 
@@ -246,12 +268,27 @@ fn parse(
     Ok(unit)
 }
 
+fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(), CompileError> {
+    let create_dirs = match out_path.parent() {
+        Some(parent) => fs::create_dir_all(parent),
+        None => Ok(()),
+    };
+
+    create_dirs.and_then(|_| File::create(out_path))
+        .and_then(|mut file| write!(file, "{}", output))
+        .map_err(|io_err| {
+            let span = Span::zero(out_path);
+            CompileError::OutputFailed(span, io_err)
+        })
+}
+
 fn compile(
     module_path: impl Into<PathBuf>,
     units: impl IntoIterator<Item = PathBuf>,
     opts: BuildOptions,
     interpret_opts: InterpreterOpts,
     out_kind: Stage,
+    out_path: Option<PathBuf>,
 ) -> Result<(), CompileError> {
     let module_path = module_path.into();
 
@@ -329,9 +366,20 @@ fn compile(
         return Ok(());
     }
 
-    let mut interpreter = Interpreter::new(&interpret_opts);
-    interpreter.load_module(&module);
-    interpreter.shutdown();
+    if let Some(out_path) = out_path {
+        let ext = out_path.extension().map(|ext| ext.to_string_lossy());
+        match ext.as_ref().map(|ext| ext.as_ref()) {
+            Some("c") => {
+                let module = backend_c::translate(&module);
+                write_output_file(&out_path, &module)?;
+            },
+            _ => unimplemented!("backend supporting output file {}", out_path.display()),
+        }
+    } else {
+        let mut interpreter = Interpreter::new(&interpret_opts);
+        interpreter.load_module(&module);
+        interpreter.shutdown();
+    }
 
     Ok(())
 }
@@ -357,7 +405,7 @@ fn main() {
 
     unit_paths.extend(args.units.into_iter().map(PathBuf::from));
 
-    if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {
+    if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage, args.output) {
         if let Err(io_err) = reporting::report_err(&err) {
             eprintln!(
                 "error occurred displaying source for compiler message: {}",

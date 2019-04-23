@@ -1,4 +1,6 @@
-let x: Integer := 1;
-                let y: Integer := x + 2;
+uses System;
 
-                WriteLn(IntToStr
+let x: Integer := 1;
+let y: Integer := x + 2;
+
+WriteLn(IntToStr(y))

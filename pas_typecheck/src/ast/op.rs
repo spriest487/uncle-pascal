@@ -100,13 +100,15 @@ pub fn typecheck_bin_op(
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
 
-            let string_ty = ctx.string_type()?;
-            let string_concat = bin_op.op == Operator::Plus
-                && *lhs.annotation().ty() == string_ty
-                && *rhs.annotation().ty() == string_ty;
+            // string concat sugar isn't available if the String class isn't loaded
+            if let Ok(string_ty) = ctx.string_type() {
+                let string_concat = bin_op.op == Operator::Plus
+                    && *lhs.annotation().ty() == string_ty
+                    && *rhs.annotation().ty() == string_ty;
 
-            if string_concat {
-                return desugar_string_concat(lhs, rhs, &string_ty, ctx);
+                if string_concat {
+                    return desugar_string_concat(lhs, rhs, &string_ty, ctx);
+                }
             }
 
             let valid_math = lhs

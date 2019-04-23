@@ -10,6 +10,7 @@ pas_pp = { path = "pas_pp" }
 pas_syn = { path = "pas_syn" }
 pas_typecheck = { path = "pas_typecheck" }
 pas_ir = { path = "pas_ir" }
+pas_backend_c = { path = "pas_backend_c" }
 
 structopt = "0.2.14"
 codespan = "0.2.1"

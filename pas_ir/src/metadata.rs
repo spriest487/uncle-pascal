@@ -4,9 +4,9 @@ use pas_typecheck as pas_ty;
 use std::{collections::hash_map::HashMap, fmt};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct StringId(pub usize);
+pub struct StringID(pub usize);
 
-impl fmt::Display for StringId {
+impl fmt::Display for StringID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -287,7 +287,7 @@ impl fmt::Display for GlobalName {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct FunctionID(usize);
+pub struct FunctionID(pub usize);
 
 impl fmt::Display for FunctionID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -303,7 +303,7 @@ pub struct FunctionDecl {
 #[derive(Debug, Clone)]
 pub struct Metadata {
     structs: HashMap<StructID, Struct>,
-    string_literals: HashMap<StringId, String>,
+    string_literals: HashMap<StringID, String>,
     ifaces: HashMap<InterfaceID, Interface>,
 
     functions: HashMap<FunctionID, FunctionDecl>,
@@ -658,7 +658,7 @@ impl Metadata {
         })
     }
 
-    pub fn find_or_insert_string(&mut self, s: &str) -> StringId {
+    pub fn find_or_insert_string(&mut self, s: &str) -> StringID {
         let existing =
             self.string_literals
                 .iter()
@@ -671,15 +671,15 @@ impl Metadata {
                     .string_literals
                     .keys()
                     .max_by_key(|id| id.0)
-                    .map(|id| StringId(id.0 + 1))
-                    .unwrap_or(StringId(0));
+                    .map(|id| StringID(id.0 + 1))
+                    .unwrap_or(StringID(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
             }
         }
     }
 
-    pub fn find_string_id(&self, string: &str) -> Option<StringId> {
+    pub fn find_string_id(&self, string: &str) -> Option<StringID> {
         self.string_literals.iter().find_map(|(id, string_lit)| {
             if string_lit == string {
                 Some(*id)
@@ -689,11 +689,11 @@ impl Metadata {
         })
     }
 
-    pub fn get_string(&self, id: StringId) -> Option<&String> {
+    pub fn get_string(&self, id: StringID) -> Option<&String> {
         self.string_literals.get(&id)
     }
 
-    pub fn strings(&self) -> impl Iterator<Item = (StringId, &str)> + '_ {
+    pub fn strings(&self) -> impl Iterator<Item = (StringID, &str)> + '_ {
         self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
     }
 }

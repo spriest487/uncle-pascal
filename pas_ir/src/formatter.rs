@@ -13,10 +13,13 @@ pub trait InstructionFormatter {
                 write!(f, " of ")?;
                 self.format_type(ty, f)
             }
-            Instruction::LocalDelete(id) => {
-                write!(f, "{:>width$} ", "drop", width = IX_WIDTH)?;
-                self.format_ref(&Ref::Local(*id), f)
+            Instruction::LocalBegin => {
+                write!(f, "{:>width$} ", "begin", width = IX_WIDTH)
             }
+            Instruction::LocalEnd => {
+                write!(f, "{:>width$} ", "end", width = IX_WIDTH)
+            }
+
             Instruction::Move { out, new_val } => {
                 write!(f, "{:>width$} ", "mov", width = IX_WIDTH)?;
 

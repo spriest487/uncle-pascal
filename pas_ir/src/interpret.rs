@@ -312,8 +312,23 @@ impl MemCell {
 }
 
 #[derive(Debug)]
+struct Block {
+    decls: Vec<LocalID>,
+}
+
+#[derive(Debug)]
 struct StackFrame {
     locals: Vec<Option<MemCell>>,
+    block_stack: Vec<Block>,
+}
+
+impl StackFrame {
+    pub fn new() -> Self {
+        Self {
+            locals: Vec::new(),
+            block_stack: vec![Block { decls: Vec::new() }]
+        }
+    }
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -554,7 +569,7 @@ impl Interpreter {
     }
 
     fn push_stack(&mut self) {
-        self.stack.push(StackFrame { locals: Vec::new() });
+        self.stack.push(StackFrame::new());
     }
 
     fn pop_stack(&mut self) {
@@ -838,22 +853,40 @@ impl Interpreter {
                 }
 
                 Instruction::LocalAlloc(id, ty) => {
-                    while self.current_frame().locals.len() <= id.0 {
-                        self.current_frame_mut().locals.push(None);
+                    let uninit_cell = self.default_init_cell(ty);
+
+                    let frame = self.current_frame_mut();
+                    while frame.locals.len() <= id.0 {
+                        frame.locals.push(None);
                     }
 
-                    match self.current_frame().locals[id.0] {
-                        None => self.current_frame_mut().locals[id.0] = Some(self.default_init_cell(ty)),
+                    match frame.locals[id.0] {
+                        None => frame.locals[id.0] = Some(uninit_cell),
                         _ => panic!("local cell {} is already allocated", id),
                     }
+
+                    frame.block_stack.last_mut()
+                        .expect("block stack must never be empty")
+                        .decls.push(*id);
                 }
 
-                Instruction::LocalDelete(id) => {
-                    if id.0 >= self.current_frame().locals.len() {
-                        panic!("local cell {} is not allocated", id);
-                    }
+                Instruction::LocalBegin => {
+                    self.current_frame_mut().block_stack.push(Block {
+                        decls: Vec::new()
+                    })
+                }
 
-                    self.current_frame_mut().locals[id.0] = None;
+                Instruction::LocalEnd => {
+                    let frame = self.current_frame_mut();
+                    let popped_block = frame.block_stack.pop()
+                        .expect("block stack must never be empty");
+
+                    for LocalID(id) in popped_block.decls {
+                        if id >= frame.locals.len() {
+                            panic!("local cell {} is not allocated", id);
+                        }
+                        frame.locals[id] = None;
+                    }
                 }
 
                 Instruction::RcNew { out, struct_id } => {

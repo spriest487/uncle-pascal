@@ -22,7 +22,7 @@ pub mod interpret;
 pub mod metadata;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
-pub struct LocalID(usize);
+pub struct LocalID(pub usize);
 
 impl fmt::Display for LocalID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -33,7 +33,7 @@ impl fmt::Display for LocalID {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum GlobalRef {
     Function(FunctionID),
-    StringLiteral(StringId),
+    StringLiteral(StringID),
 }
 
 impl fmt::Display for GlobalRef {
@@ -96,7 +96,7 @@ impl From<Ref> for Value {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct Label(usize);
+pub struct Label(pub usize);
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -109,7 +109,8 @@ pub enum Instruction {
     Comment(String),
 
     LocalAlloc(LocalID, Type),
-    LocalDelete(LocalID),
+    LocalBegin,
+    LocalEnd,
 
     Move {
         out: Ref,
@@ -274,6 +275,8 @@ impl Local {
     }
 }
 
+
+
 #[derive(Debug)]
 struct Scope {
     locals: Vec<Local>,
@@ -292,7 +295,7 @@ impl<'metadata> Builder<'metadata> {
     pub fn new(metadata: &'metadata mut Metadata) -> Self {
         Self {
             metadata,
-            instructions: Vec::new(),
+            instructions: vec![Instruction::LocalBegin],
             next_label: Label(0),
 
             scopes: vec![Scope { locals: Vec::new() }],
@@ -493,6 +496,7 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn begin_scope(&mut self) {
+        self.instructions.push(Instruction::LocalBegin);
         self.scopes.push(Scope { locals: Vec::new() })
     }
 
@@ -504,31 +508,32 @@ impl<'metadata> Builder<'metadata> {
             .locals
             .clone();
 
+        /* release local bindings that will be lost when the current scope is popped.
+        of course, running release code may create new locals, but we just assume
+        that none of those will need cleanup themselves, because they should never
+        */
         for local in popped_locals.into_iter().rev() {
             match local {
-                Local::New { id, ty, .. } => {
+                Local::Bound { id, ty, .. } | Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
-                    self.instructions.push(Instruction::LocalDelete(id));
                 }
 
-                Local::Temp { id, .. } => {
-                    self.instructions.push(Instruction::LocalDelete(id));
-                }
-
-                Local::Bound { id, ty, .. } => {
-                    self.release(Ref::Local(id), &ty);
+                Local::Temp { .. } => {
+                    // no cleanup required
                 }
             }
         }
 
         self.scopes.pop().unwrap();
+        self.instructions.push(Instruction::LocalEnd);
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Function {
-    body: Vec<Instruction>,
-    return_ty: Type,
+    pub body: Vec<Instruction>,
+    pub return_ty: Type,
+    pub params: Vec<Type>,
 }
 
 pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) -> Function {
@@ -583,8 +588,8 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         bound_params.push((id, param_ty));
     }
 
-    for (id, ty) in bound_params {
-        body_builder.retain(Ref::Local(id), &ty);
+    for (id, ty) in &bound_params {
+        body_builder.retain(Ref::Local(*id), ty);
     }
 
     let block_output = translate_block(&func.body, &mut body_builder);
@@ -606,15 +611,18 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 
     Function {
         body: body_builder.instructions,
+        params: bound_params.into_iter()
+            .map(|(_id, ty)| ty)
+            .collect(),
         return_ty,
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct Module {
-    metadata: Metadata,
-    functions: HashMap<FunctionID, Function>,
-    init: Vec<Instruction>,
+    pub metadata: Metadata,
+    pub functions: HashMap<FunctionID, Function>,
+    pub init: Vec<Instruction>,
 }
 
 impl fmt::Display for Module {

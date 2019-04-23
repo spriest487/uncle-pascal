@@ -197,6 +197,13 @@ version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
+name = "pas_backend_c"
+version = "0.1.0"
+dependencies = [
+ "pas_ir 0.1.0",
+]
+
+[[package]]
 name = "pas_common"
 version = "0.1.0"
 dependencies = [
@@ -243,6 +250,7 @@ version = "0.1.0"
 dependencies = [
  "codespan 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "codespan-reporting 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "pas_backend_c 0.1.0",
  "pas_common 0.1.0",
  "pas_ir 0.1.0",
  "pas_pp 0.1.0",
