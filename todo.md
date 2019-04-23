@@ -1,8 +1,9 @@
 # critical
 
+* `var`/`out`
+* variable initialization tracking checks in Context
 * add `NativeUInt` type
 * `exit` statement
-* `var`/`out`
 * while loop
 
 # big features
@@ -13,3 +14,9 @@
 * generic types
 * generic functions
 * c backend
+
+# todos
+
+* Binding.def used? 
+* make temporary its own kind of TypeAnnotation?
+* ref params should be able to refer to record fields and array elements

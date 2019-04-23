@@ -27,7 +27,10 @@ pub enum TypecheckError {
         actual: Type,
         span: Span,
     },
-    NotMutable(Box<Expression>),
+    NotMutable {
+        expr: Box<Expression>,
+        decl: Option<Span>,
+    },
     NotAddressable {
         ty: Type,
         value_kind: Option<ValueKind>,
@@ -63,6 +66,19 @@ pub enum TypecheckError {
     },
     UnableToInferType {
         expr: ast::Expression<Span>,
+    },
+    UninitBindingWithNoType {
+        binding: ast::LocalBinding<Span>,
+    },
+    BindingWithNoType {
+        binding: ast::LocalBinding<Span>,
+    },
+    NotInitialized {
+        ident: Ident,
+        usage: Span,
+    },
+    InvalidRefExpression {
+        expr: Box<Expression>,
     }
 }
 
@@ -83,7 +99,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
             TypecheckError::InvalidIndexer { span, .. } => span,
             TypecheckError::TypeMismatch { span, .. } => span,
-            TypecheckError::NotMutable(expr) => expr.annotation().span(),
+            TypecheckError::NotMutable { expr, .. } => expr.annotation().span(),
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
@@ -93,6 +109,10 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
+            TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
+            TypecheckError::BindingWithNoType { binding } => binding.annotation.span(),
+            TypecheckError::NotInitialized { usage, .. } => usage.span(),
+            TypecheckError::InvalidRefExpression { expr } => expr.annotation().span(),
         }
     }
 }
@@ -106,7 +126,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
             TypecheckError::InvalidIndexer { .. } => "Invalid indexer expression".to_string(),
             TypecheckError::TypeMismatch { .. } => "Type mismatch".to_string(),
-            TypecheckError::NotMutable(_) => "Value not mutable".to_string(),
+            TypecheckError::NotMutable { .. } => "Value not mutable".to_string(),
             TypecheckError::NotAddressable { .. } => "Value not addressable".to_string(),
             TypecheckError::NotDerefable { .. } => "Value cannot be dereferenced".to_string(),
             TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
@@ -117,7 +137,17 @@ impl DiagnosticOutput for TypecheckError {
                 "Invalid constructor expression type".to_string()
             }
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
-            TypecheckError::UnableToInferType { .. } => "Unable to infer type of expression".to_string(),
+            TypecheckError::UnableToInferType { .. } => {
+                "Unable to infer type of expression".to_string()
+            }
+            TypecheckError::UninitBindingWithNoType { .. } => {
+                "Uninitialized binding must have an explicit type".to_string()
+            }
+            TypecheckError::BindingWithNoType { .. } => {
+                "Value bound to name must have a type".to_string()
+            }
+            TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
+            TypecheckError::InvalidRefExpression { .. } => "Invalid reference expression".to_string(),
         }
     }
 
@@ -135,6 +165,7 @@ impl DiagnosticOutput for TypecheckError {
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
             TypecheckError::ScopeError(err) => err.see_also(),
+
             TypecheckError::UndefinedSymbols { syms, .. } => syms
                 .iter()
                 .map(|sym| DiagnosticMessage {
@@ -145,6 +176,26 @@ impl DiagnosticOutput for TypecheckError {
                     }),
                 })
                 .collect(),
+
+            TypecheckError::NotInitialized { ident, .. } => vec![DiagnosticMessage {
+                title: format!("uninitialized value `{}`", ident),
+                label: Some(DiagnosticLabel {
+                    text: Some("declared here".to_string()),
+                    span: ident.span().clone(),
+                }),
+            }],
+
+            TypecheckError::NotMutable {
+                decl: Some(decl_span),
+                ..
+            } => vec![DiagnosticMessage {
+                title: format!("modifying immutable value"),
+                label: Some(DiagnosticLabel {
+                    text: Some("declared as immutable here".to_string()),
+                    span: decl_span.clone(),
+                }),
+            }],
+
             _ => Vec::new(),
         }
     }
@@ -196,7 +247,7 @@ impl fmt::Display for TypecheckError {
                 write!(f, "type mismatch: expected {}, found {}", expected, actual)
             }
 
-            TypecheckError::NotMutable(expr) => {
+            TypecheckError::NotMutable { expr, .. } => {
                 write!(f, "`{}` does not refer to a mutable value", expr)
             }
 
@@ -238,6 +289,22 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnableToInferType { expr } => {
                 write!(f, "unable to infer the type of `{}`", expr)
+            }
+
+            TypecheckError::UninitBindingWithNoType { binding } => {
+                write!(f, "the type of `{}` cannot be inferred because it has no initial value", binding.name)
+            }
+
+            TypecheckError::BindingWithNoType { binding } => {
+                write!(f, "the type of value bound to `{}` cannot be Nothing", binding.name)
+            }
+
+            TypecheckError::NotInitialized { ident, .. } => {
+                write!(f, "`{}` is used before initialization", ident)
+            }
+
+            TypecheckError::InvalidRefExpression { expr } => {
+                write!(f, "`{}` does not refer to a local variable that can be passed by reference", expr)
             }
         }
     }

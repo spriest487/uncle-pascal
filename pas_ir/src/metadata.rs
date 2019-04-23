@@ -3,7 +3,7 @@ use pas_syn::{Ident, Path};
 use pas_typecheck as pas_ty;
 use std::{collections::hash_map::HashMap, fmt};
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringId(pub usize);
 
 impl fmt::Display for StringId {
@@ -12,7 +12,7 @@ impl fmt::Display for StringId {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StructID(pub usize);
 
 impl fmt::Display for StructID {
@@ -21,7 +21,7 @@ impl fmt::Display for StructID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct FieldID(pub usize);
 
 impl fmt::Display for FieldID {
@@ -30,7 +30,7 @@ impl fmt::Display for FieldID {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct InterfaceID(pub usize);
 
 impl fmt::Display for InterfaceID {
@@ -266,7 +266,7 @@ impl fmt::Display for GlobalName {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct FunctionID(usize);
 
 impl fmt::Display for FunctionID {

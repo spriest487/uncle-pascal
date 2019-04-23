@@ -1,7 +1,5 @@
 use crate::ast::prelude::*;
-use pas_syn::{
-    Ident,
-};
+use pas_syn::Ident;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
@@ -16,11 +14,11 @@ pub fn typecheck_type_decl(
         ast::TypeDecl::Class(class) => {
             let class = typecheck_class(class, ctx)?;
             Ok(ast::TypeDecl::Class(class))
-        },
+        }
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(iface, ctx)?;
             Ok(ast::TypeDecl::Interface(iface))
-        },
+        }
     }
 }
 
@@ -35,7 +33,11 @@ pub fn typecheck_class(class: &ast::Class<Span>, ctx: &mut Context) -> Typecheck
         });
     }
 
-    assert_eq!(1, class.ident.as_slice().len(), "parsed class def name must be unqualified");
+    assert_eq!(
+        1,
+        class.ident.as_slice().len(),
+        "parsed class def name must be unqualified"
+    );
     let ident = ctx.qualify_name(class.ident.last().clone());
 
     Ok(Class {
@@ -72,7 +74,11 @@ pub fn typecheck_iface(
 
     ctx.pop_scope(iface_scope)?;
 
-    assert_eq!(1, iface.ident.as_slice().len(), "parsed class def name must be unqualified");
+    assert_eq!(
+        1,
+        iface.ident.as_slice().len(),
+        "parsed class def name must be unqualified"
+    );
     let ident = ctx.qualify_name(iface.ident.last().clone());
 
     Ok(Interface {

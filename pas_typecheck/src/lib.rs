@@ -16,77 +16,87 @@ pub mod ast {
 
     mod prelude {
         pub use crate::{
-            ast::*,
-            context::*,
-            result::*,
-            FunctionSig,
-            MethodAnnotation,
-            Primitive,
-            Type,
-            TypeAnnotation,
+            ast::*, context::*, result::*, FunctionParamSig, FunctionSig, MethodAnnotation,
+            Primitive, Type, TypeAnnotation,
         };
         pub use pas_common::span::*;
         pub use pas_syn::{
-            ast,
+            ast::{self, FunctionParamMod},
             ident::*,
         };
     }
 
     pub use self::{
-        block::*,
-        cond::*,
-        ctor::*,
-        expression::*,
-        function::*,
-        iter::*,
-        op::*,
-        statement::*,
-        typedecl::*,
-        unit::*,
+        block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
+        typedecl::*, unit::*,
     };
 }
 
-pub use self::{
-    annotation::*,
-    context::*,
-    result::*,
-    ty::*,
-};
+pub use self::{annotation::*, context::*, result::*, ty::*};
 
 pub mod ty {
     use crate::{
-        ast::{
-            Class,
-            FunctionDecl,
-            Interface,
-        },
+        ast::{Class, FunctionDecl, Interface},
         TypeAnnotation,
     };
     use pas_common::span::*;
     use pas_syn::{
-        ast::{
-            self,
-            ClassKind,
-            Typed,
-        },
+        ast::{self, ClassKind, FunctionParamMod, Typed},
         ident::*,
         Operator,
     };
-    use std::{
-        fmt,
-        rc::Rc,
-    };
+    use std::{fmt, rc::Rc};
+
+    #[derive(Eq, PartialEq, Hash, Clone, Debug)]
+    pub struct FunctionParamSig {
+        pub modifier: Option<FunctionParamMod>,
+        pub ty: Type,
+    }
+
+    impl FunctionParamSig {
+        pub fn by_val(ty: Type) -> Self {
+            Self { ty, modifier: None }
+        }
+
+        pub fn inout(ty: Type) -> Self {
+            Self {
+                ty,
+                modifier: Some(FunctionParamMod::Var),
+            }
+        }
+
+        pub fn out(ty: Type) -> Self {
+            Self {
+                ty,
+                modifier: Some(FunctionParamMod::Out),
+            }
+        }
+
+        pub fn is_by_ref(&self) -> bool {
+            match &self.modifier {
+                Some(FunctionParamMod::Out) | Some(FunctionParamMod::Var) => true,
+                _ => false,
+            }
+        }
+    }
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
     pub struct FunctionSig {
         pub return_ty: Type,
-        pub params: Vec<Type>,
+        pub params: Vec<FunctionParamSig>,
     }
 
     impl FunctionSig {
         pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> Self {
             Self {
-                params: decl.params.iter().map(|p| p.ty.clone()).collect(),
+                params: decl
+                    .params
+                    .iter()
+                    .map(|p| FunctionParamSig {
+                        ty: p.ty.clone(),
+                        modifier: p.modifier.clone(),
+                    })
+                    .collect(),
                 return_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
             }
         }
@@ -95,8 +105,8 @@ pub mod ty {
         pub fn with_self(&self, self_ty: &Type) -> Self {
             let mut result = self.clone();
             for param in &mut result.params {
-                if *param == Type::GenericSelf {
-                    *param = self_ty.clone();
+                if param.ty == Type::GenericSelf {
+                    param.ty = self_ty.clone();
                 }
             }
 
@@ -113,7 +123,7 @@ pub mod ty {
             let self_arg_pos = self
                 .params
                 .iter()
-                .position(|arg| *arg == Type::GenericSelf)?;
+                .position(|arg| arg.ty == Type::GenericSelf)?;
 
             Some(&args[self_arg_pos])
         }
@@ -130,8 +140,8 @@ pub mod ty {
             } else {
                 self.params
                     .iter()
-                    .position(|param| *param == Type::GenericSelf)
-                    .map(|pos| &impl_func.params[pos])?
+                    .position(|param| param.ty == Type::GenericSelf)
+                    .map(|pos| &impl_func.params[pos].ty)?
             };
 
             // `Nothing` can't have interface impls
@@ -144,7 +154,7 @@ pub mod ty {
                 .iter()
                 .enumerate()
                 .filter_map(|(pos, param)| {
-                    if *param == Type::GenericSelf {
+                    if param.ty == Type::GenericSelf {
                         Some(pos)
                     } else {
                         None
@@ -156,7 +166,7 @@ pub mod ty {
                 if self_positions.contains(&pos) {
                     // self-typed params must all be the same type as either the
                     // first such param, or the return type if it's self-typed too
-                    if impl_func.params[pos] != *self_type {
+                    if impl_func.params[pos].ty != *self_type {
                         return None;
                     }
                 } else if impl_func.params[pos] != self.params[pos] {
@@ -177,7 +187,11 @@ pub mod ty {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
-                write!(f, "{}", param)?;
+                if let Some(modifier) = &param.modifier {
+                    write!(f, "{} ", modifier)?;
+                }
+
+                write!(f, "{}", param.ty)?;
             }
             write!(f, ")")?;
 
@@ -217,10 +231,7 @@ pub mod ty {
         Record(Rc<Class>),
         Class(Rc<Class>),
         Interface(Rc<Interface>),
-        Array {
-            element: Box<Type>,
-            dim: usize,
-        },
+        Array { element: Box<Type>, dim: usize },
         GenericSelf,
     }
 
@@ -242,9 +253,7 @@ pub mod ty {
                 Type::GenericSelf => Some(builtin_path("Self")),
                 Type::Primitive(p) => Some(builtin_path(p.name())),
                 Type::Interface(iface) => Some(iface.ident.clone()),
-                Type::Record(class) | Type::Class(class) => {
-                    Some(class.ident.clone())
-                },
+                Type::Record(class) | Type::Class(class) => Some(class.ident.clone()),
                 _ => None,
             }
         }
@@ -287,7 +296,7 @@ pub mod ty {
                         ident: &m.ident,
                         ty: &m.ty,
                     })
-                },
+                }
 
                 _ => None,
             }
@@ -300,7 +309,7 @@ pub mod ty {
                         ty: &m.ty,
                         ident: &m.ident,
                     })
-                },
+                }
                 _ => None,
             }
         }
@@ -372,7 +381,7 @@ pub mod ty {
                 | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
 
                 // all maths ops are valid for primitives of the same type
-                | (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
+                (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
                 | (Type::Primitive(a), Operator::Minus, Type::Primitive(b))
                 | (Type::Primitive(a), Operator::Divide, Type::Primitive(b))
                 | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
@@ -436,6 +445,7 @@ pub mod ty {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::FunctionParamSig;
 
     const INT32: Type = Type::Primitive(Primitive::Int32);
     const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -489,12 +499,12 @@ mod test {
     fn sig_with_self_param_is_valid_impl() {
         let iface_sig = FunctionSig {
             return_ty: Type::Nothing,
-            params: vec![Type::GenericSelf],
+            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
         };
 
         let impl_sig = FunctionSig {
             return_ty: Type::Nothing,
-            params: vec![INT32],
+            params: vec![FunctionParamSig::by_val(INT32)],
         };
 
         assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
@@ -504,12 +514,12 @@ mod test {
     fn sig_with_self_param_and_return_is_valid_impl() {
         let iface_sig = FunctionSig {
             return_ty: Type::GenericSelf,
-            params: vec![Type::GenericSelf],
+            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
         };
 
         let impl_sig = FunctionSig {
             return_ty: INT32,
-            params: vec![INT32],
+            params: vec![FunctionParamSig::by_val(INT32)],
         };
 
         assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
@@ -519,12 +529,12 @@ mod test {
     fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
         let iface_sig = FunctionSig {
             return_ty: Type::GenericSelf,
-            params: vec![Type::GenericSelf],
+            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
         };
 
         let impl_sig = FunctionSig {
             return_ty: INT32,
-            params: vec![BOOL],
+            params: vec![FunctionParamSig::by_val(BOOL)],
         };
 
         assert_eq!(None, iface_sig.impl_ty(&impl_sig));

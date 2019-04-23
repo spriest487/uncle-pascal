@@ -378,10 +378,14 @@ enum Local {
     },
 
     // the builder didn't create this local allocation but we know it exists e.g. we know where
-    // function params are found due to the calling convention. we never need to drop these
+    // function params are found due to the calling convention. we never need to drop these,
+    // but we do need to release them at the end of scope
     Bound {
         id: LocalID,
         name: Option<String>,
+        ty: Type,
+
+        by_ref: bool,
     },
 }
 
@@ -399,6 +403,17 @@ impl Local {
             Local::New { name, .. } => name.as_ref(),
             Local::Temp { .. } => None,
             Local::Bound { name, .. } => name.as_ref(),
+        }
+    }
+
+    /// if a lcoal is by-ref, it's treated in pascal syntax like a value of this type but in the IR
+    /// it's actually a pointer. if this returns true, it's necessary to wrap Ref::Local values
+    /// that reference this local in a Ref::Deref to achieve the same effect as the pascal syntax
+    fn by_ref(&self) -> bool {
+        match self {
+            Local::New { .. } => false,
+            Local::Temp { .. } => false,
+            Local::Bound { by_ref, .. } => *by_ref,
         }
     }
 }
@@ -449,7 +464,7 @@ impl<'metadata> Builder<'metadata> {
         });
     }
 
-    pub fn bind_local(&mut self, id: LocalID, name: Option<String>) {
+    pub fn bind_local(&mut self, id: LocalID, ty: Type, name: Option<String>, by_ref: bool) {
         assert!(
             !self
                 .current_scope_mut()
@@ -461,6 +476,13 @@ impl<'metadata> Builder<'metadata> {
             self.current_scope_mut()
         );
 
+        if by_ref {
+            assert!(match &ty {
+                Type::Pointer(..) => true,
+                _ => false,
+            }, "by-ref parameters must have pointer type")
+        }
+
         if let Some(name) = name.as_ref() {
             assert!(!self
                 .current_scope_mut()
@@ -471,7 +493,7 @@ impl<'metadata> Builder<'metadata> {
 
         self.current_scope_mut()
             .locals
-            .push(Local::Bound { id, name });
+            .push(Local::Bound { id, name, ty, by_ref });
     }
 
     fn find_next_local_id(&self) -> LocalID {
@@ -622,7 +644,7 @@ impl<'metadata> Builder<'metadata> {
             .locals
             .clone();
 
-        for local in popped_locals {
+        for local in popped_locals.into_iter().rev() {
             match local {
                 Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
@@ -633,7 +655,9 @@ impl<'metadata> Builder<'metadata> {
                     self.instructions.push(Instruction::LocalDelete(id));
                 }
 
-                _ => {}
+                Local::Bound { id, ty, .. } => {
+                    self.release(Ref::Local(id), &ty);
+                }
             }
         }
 
@@ -653,10 +677,17 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
     let return_ty = match func.decl.return_ty.as_ref() {
         None | Some(pas_ty::Type::Nothing) => Type::Nothing,
         Some(ty) => {
-            // anonymous return binding at %0
-            body_builder.bind_local(LocalID(0), None);
+            let return_ty = body_builder.metadata.translate_type(ty);
 
-            body_builder.metadata.translate_type(ty)
+            // anonymous return binding at %0
+            body_builder.comment(&format!(
+                "{} = {} (return slot)",
+                LocalID(0),
+                body_builder.metadata.pretty_ty_name(&return_ty),
+            ));
+            body_builder.bind_local(LocalID(0), return_ty.clone(), None, false);
+
+            return_ty
         }
     };
 
@@ -669,8 +700,24 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             i
         });
 
-        body_builder.comment(&format!("{} = {}", id, param));
-        body_builder.bind_local(id, Some(param.ident.to_string()));
+        let (param_ty, by_ref) = match &param.modifier {
+            Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
+                (body_builder.metadata.translate_type(&param.ty).ptr(), true)
+            }
+
+            None => {
+                (body_builder.metadata.translate_type(&param.ty), false)
+            }
+        };
+
+        body_builder.comment(&format!(
+            "{} = {}",
+            id,
+            body_builder.metadata.pretty_ty_name(&param_ty)
+        ));
+        body_builder.bind_local(id, param_ty.clone(), Some(param.ident.to_string()), by_ref);
+
+        body_builder.retain(Ref::Local(id), &param_ty);
     }
 
     let block_output = translate_block(&func.body, &mut body_builder);
@@ -681,6 +728,10 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             out: return_at.clone(),
             new_val: Value::Ref(return_val),
         });
+        body_builder.retain(return_at.clone(), &return_ty);
+
+        // the return val needs to end the function with +1 reference - if we only retain it once
+        // it'll be released at the end of the function's scope
         body_builder.retain(return_at, &return_ty);
     }
 
@@ -702,7 +753,10 @@ pub struct Module {
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Structures")?;
-        for (id, struct_def) in self.metadata.structs() {
+        let mut structs: Vec<_> = self.metadata.structs().iter().collect();
+        structs.sort_by_key(|(id, _)| **id);
+
+        for (id, struct_def) in structs {
             writeln!(f, "{{{}}} ({}):", id, struct_def.name)?;
             for (id, field) in &struct_def.fields {
                 writeln!(
@@ -722,8 +776,11 @@ impl fmt::Display for Module {
         }
         writeln!(f)?;
 
+        let mut funcs: Vec<_> = self.functions.iter().collect();
+        funcs.sort_by_key(|(id, _)| **id);
+
         writeln!(f, "* Functions")?;
-        for (id, func) in &self.functions {
+        for (id, func) in funcs {
             writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
 
             for instruction in &func.body {

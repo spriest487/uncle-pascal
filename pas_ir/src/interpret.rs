@@ -397,7 +397,7 @@ impl Interpreter {
             Pointer::Heap(_ty, slot) => self
                 .heap
                 .get(*slot)
-                .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot)),
+                .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new())),
 
             Pointer::Local { frame, id, .. } => {
                 let locals = &self.stack[*frame].locals;
@@ -1109,11 +1109,16 @@ impl Interpreter {
         let chars: Vec<_> = content.chars().map(|c| MemCell::U8(c as u8)).collect();
         let chars_len = chars.len();
 
-        let chars_ptr = self.heap.alloc(chars);
+        let chars_ptr = if chars_len > 0 {
+            let heap_addr = self.heap.alloc(chars);
+            Pointer::Heap(Type::U8, heap_addr)
+        } else {
+            Pointer::Null
+        };
 
         let str_fields = vec![
             // field 0: `chars: ^Byte`
-            MemCell::Pointer(Pointer::Heap(Type::U8, chars_ptr)),
+            MemCell::Pointer(chars_ptr),
             // field 1: `len: Integer`
             MemCell::I32(chars_len as i32),
         ];
@@ -1164,14 +1169,15 @@ impl Interpreter {
 
         chars.into_iter().collect()
     }
-}
 
-impl Drop for Interpreter {
-    fn drop(&mut self) {
+    pub fn shutdown(mut self) {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
         for global in globals {
             self.release_cell(&global);
         }
+
+        self.heap.finalize()
     }
 }
+

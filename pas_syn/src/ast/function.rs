@@ -10,14 +10,33 @@ use pas_common::{span::*, TracedError};
 use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FunctionParamMod {
+    Var,
+    Out,
+}
+
+impl fmt::Display for FunctionParamMod {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            FunctionParamMod::Var => "var",
+            FunctionParamMod::Out => "out",
+        })
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionParam<A: Annotation> {
     pub ident: Ident,
     pub ty: A::Type,
     pub span: Span,
+    pub modifier: Option<FunctionParamMod>,
 }
 
 impl<A: Annotation> fmt::Display for FunctionParam<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(modifier) = &self.modifier {
+            write!(f, "{} ", modifier)?;
+        }
         write!(f, "{}: {}", self.ident, self.ty)
     }
 }
@@ -80,6 +99,16 @@ impl FunctionDecl<Span> {
         };
 
         let params = params_tokens.match_separated(Separator::Semicolon, |_, tokens| {
+            let match_mod = Keyword::Var.or(Keyword::Out);
+            let modifier = match tokens.look_ahead().match_one(match_mod.clone()) {
+                Some(_) => match tokens.match_one(match_mod)? {
+                    TokenTree::Keyword { kw: Keyword:: Var, .. } => Some(FunctionParamMod::Var),
+                    TokenTree::Keyword { kw: Keyword:: Out, .. } => Some(FunctionParamMod::Out),
+                    tt => unreachable!("bad token parsing function param modifier: {:?}", tt),
+                }
+                None => None,
+            };
+
             let idents = tokens.match_separated(Separator::Comma, |_, tokens| {
                 let ident = tokens.match_one(Matcher::AnyIdent)?;
                 Ok(Generate::Yield(ident))
@@ -99,6 +128,7 @@ impl FunctionDecl<Span> {
             let params: Vec<_> = idents
                 .into_iter()
                 .map(|ident| FunctionParam {
+                    modifier: modifier.clone(),
                     ident: ident.into_ident().unwrap(),
                     ty: ty.clone(),
                     span: span.clone(),

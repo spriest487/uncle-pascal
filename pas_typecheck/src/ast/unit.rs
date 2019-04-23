@@ -19,7 +19,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                     Some(MemberRef::Value { value, .. }) => {
                         let unexpected = UnexpectedValue::Decl(value.clone());
                         let err = NameError::ExpectedNamespace(unit.clone().into(), unexpected);
-                        return Err(TypecheckError::from(err))
+                        return Err(TypecheckError::from(err));
                     }
 
                     None => {
@@ -29,7 +29,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             }
 
             Ok(ast::UnitDecl::Uses(uses.clone()))
-        },
+        }
 
         ast::UnitDecl::FunctionDef(func_def) => {
             let func_def = typecheck_func_def(func_def, ctx)?;
@@ -48,20 +48,20 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             }
 
             Ok(ast::UnitDecl::FunctionDef(func_def))
-        },
+        }
 
         ast::UnitDecl::FunctionDecl(func_decl) => {
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
             ctx.declare_function(func_decl.ident.clone(), &func_decl)?;
             Ok(ast::UnitDecl::FunctionDecl(func_decl))
-        },
+        }
 
         ast::UnitDecl::Type(type_decl) => {
             let type_decl = typecheck_type_decl(type_decl, ctx)?;
             let decl_ty = Type::of_decl(&type_decl);
             ctx.declare_type(type_decl.ident().last().clone(), decl_ty)?;
             Ok(ast::UnitDecl::Type(type_decl))
-        },
+        }
     }
 }
 
@@ -75,7 +75,9 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
 
     let mut init = Vec::new();
     for stmt in &unit.init {
-        init.push(typecheck_stmt(stmt, ctx)?)
+        let stmt = typecheck_stmt(stmt, ctx)?;
+        expect_stmt_initialized(&stmt, ctx)?;
+        init.push(stmt);
     }
 
     let undefined = ctx.undefined_syms();

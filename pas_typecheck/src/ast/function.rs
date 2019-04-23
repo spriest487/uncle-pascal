@@ -1,8 +1,6 @@
+use pas_syn::{ident::IdentPath, Ident};
+
 use crate::ast::prelude::*;
-use pas_syn::{
-    ident::IdentPath,
-    Ident,
-};
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
@@ -16,6 +14,7 @@ fn typecheck_param(
     let ty = ctx.find_type(&param.ty)?.clone();
 
     Ok(FunctionParam {
+        modifier: param.modifier.clone(),
         ident: param.ident.clone(),
         span: param.span.clone(),
         ty,
@@ -41,7 +40,13 @@ pub fn typecheck_func_decl(
         Some(iface_impl) => {
             let method_sig = FunctionSig {
                 return_ty: return_ty.clone(),
-                params: params.iter().map(|p| p.ty.clone()).collect(),
+                params: params
+                    .iter()
+                    .map(|p| FunctionParamSig {
+                        ty: p.ty.clone(),
+                        modifier: p.modifier.clone(),
+                    })
+                    .collect(),
             };
             Some(find_iface_impl(
                 &iface_impl.iface,
@@ -49,7 +54,7 @@ pub fn typecheck_func_decl(
                 &method_sig,
                 ctx,
             )?)
-        },
+        }
         None => None,
     };
 
@@ -85,8 +90,8 @@ fn find_iface_impl(
                 span: method_ident.span().clone(),
                 member: method_ident.clone(),
             }
-            .into())
-        },
+            .into());
+        }
 
         1 => Ok(InterfaceImpl {
             iface: iface_path,
@@ -106,14 +111,24 @@ pub fn typecheck_func_def(
     let body_scope = ctx.push_scope(None);
 
     for param in &decl.params {
+        let (kind, init) = match param.modifier {
+            Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
+            Some(ast::FunctionParamMod::Out) => (ValueKind::Mutable, false),
+            None => (ValueKind::Immutable, false),
+        };
+
         ctx.declare_binding(
             param.ident.clone(),
             Binding {
                 ty: param.ty.clone(),
-                kind: ValueKind::Immutable,
+                kind,
                 def: Some(param.span().clone()),
             },
         )?;
+
+        if init {
+            ctx.initialize(&param.ident);
+        }
     }
 
     let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;

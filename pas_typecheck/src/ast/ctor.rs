@@ -15,7 +15,8 @@ pub fn typecheck_object_ctor(
     };
 
     let ty = ctx.find_type(&ty_ident)?.clone();
-    let ty_name = ty.full_path()
+    let ty_name = ty
+        .full_path()
         .ok_or_else(|| TypecheckError::InvalidCtorType {
             ty: ty.clone(),
             span: ctor.annotation.span().clone(),
@@ -35,7 +36,7 @@ pub fn typecheck_object_ctor(
                     span: ctor_member.ident.span.clone(),
                 }
                 .into());
-            },
+            }
 
             Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty()) => {
                 return Err(TypecheckError::InvalidBinOp {
@@ -44,7 +45,7 @@ pub fn typecheck_object_ctor(
                     op: Operator::Assignment,
                     span: ctor_member.value.annotation().span().clone(),
                 });
-            },
+            }
 
             Some(_) => members.push(ObjectCtorMember {
                 ident: ctor_member.ident.clone(),
@@ -76,6 +77,7 @@ pub fn typecheck_object_ctor(
         ty,
         value_kind: ValueKind::Temporary,
         span,
+        decl: None,
     };
 
     Ok(ObjectCtor {
@@ -90,7 +92,7 @@ pub type CollectionCtor = ast::CollectionCtor<TypeAnnotation>;
 pub fn typecheck_collection_ctor(
     ctor: &ast::CollectionCtor<Span>,
     expect_ty: &Type,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<CollectionCtor> {
     let mut elements = Vec::new();
 
@@ -99,7 +101,7 @@ pub fn typecheck_collection_ctor(
             // must have at at least one element to infer types
             if ctor.elements.is_empty() {
                 return Err(TypecheckError::UnableToInferType {
-                    expr: ast::Expression::from(ctor.clone())
+                    expr: ast::Expression::from(ctor.clone()),
                 });
             }
 
@@ -131,7 +133,10 @@ pub fn typecheck_collection_ctor(
     };
 
     let collection_ty = match expect_ty {
-        Type::Nothing => Type::Array { element: Box::new(elem_ty.clone()), dim: elements.len() },
+        Type::Nothing => Type::Array {
+            element: Box::new(elem_ty.clone()),
+            dim: elements.len(),
+        },
         _ => expect_ty.clone(),
     };
 
@@ -139,12 +144,11 @@ pub fn typecheck_collection_ctor(
         ty: collection_ty,
         span: ctor.annotation.clone(),
         value_kind: ValueKind::Temporary,
+        decl: None,
     };
 
     Ok(CollectionCtor {
         elements,
-        annotation
+        annotation,
     })
-
-
 }

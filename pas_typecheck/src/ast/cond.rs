@@ -39,9 +39,10 @@ pub fn typecheck_if_cond(
                     ty: then_ty.clone(),
                     value_kind: ValueKind::Temporary,
                     span,
+                    decl: None,
                 }
             }
-        },
+        }
     };
 
     Ok(IfCond {

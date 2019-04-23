@@ -39,13 +39,16 @@ fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder)
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
 
-    builder.begin_scope();
-    let init_val = translate_expr(&binding.val, builder);
+    if let Some(init_expr) = &binding.val {
+        builder.begin_scope();
 
-    builder.mov(binding_ref.clone(), init_val);
-    builder.retain(binding_ref, &bound_ty);
+        let val_ref = translate_expr(init_expr, builder);
 
-    builder.end_scope();
+        builder.mov(binding_ref.clone(), val_ref);
+        builder.retain(binding_ref, &bound_ty);
+
+        builder.end_scope();
+    };
 }
 
 pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder) {
@@ -59,17 +62,16 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         unimplemented!("non-i32 counters");
     }
 
-    assert_eq!(Type::I32, counter_ty, "counter type must be i32");
-    assert!(
-        !for_loop.init_binding.val.annotation().ty().is_rc(),
-        "counter type must not be ref counted"
-    );
+    let counter_init = for_loop.init_binding.val.as_ref()
+        .expect("for loop counter binding must have an init expr");
+
+    assert!(!for_loop.init_binding.val_ty.is_rc(), "counter type must not be ref counted");
 
     let inc_val = Value::LiteralI32(1);
     let loop_val = builder.local_temp(Type::Bool);
 
     let counter_val = builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
-    let init_val = translate_expr(&for_loop.init_binding.val, builder);
+    let init_val = translate_expr(&counter_init, builder);
 
     let to_val = translate_expr(&for_loop.to_expr, builder);
 

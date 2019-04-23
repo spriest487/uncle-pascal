@@ -1,4 +1,4 @@
-use crate::ast::prelude::*;
+use crate::ast::{expect_stmt_initialized, prelude::*};
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -9,12 +9,16 @@ pub fn typecheck_block(
 ) -> TypecheckResult<Block> {
     let mut statements = Vec::new();
     for stmt in &block.statements {
-        statements.push(typecheck_stmt(stmt, ctx)?);
+        let stmt = typecheck_stmt(stmt, ctx)?;
+        expect_stmt_initialized(&stmt, ctx)?;
+        statements.push(stmt);
     }
 
     let output = match &block.output {
         Some(expr) => {
             let out_expr = typecheck_expr(expr, expect_ty, ctx)?;
+            expect_expr_initialized(&out_expr, ctx)?;
+
             if *out_expr.annotation().ty() == Type::Nothing {
                 // the block contains a final expression which returns no value,
                 // so it should just be treated like a statement
@@ -25,7 +29,7 @@ pub fn typecheck_block(
             } else {
                 Some(out_expr)
             }
-        },
+        }
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example
@@ -33,16 +37,14 @@ pub fn typecheck_block(
         // parsing didn't find us the output expression, we can move the final
         // stmt into the output if the type matches
         None if *expect_ty != Type::Nothing => {
-            let last_stmt_type = statements
-                .last()
-                .map(|s: &Statement| s.annotation().ty());
+            let last_stmt_type = statements.last().map(|s: &Statement| s.annotation().ty());
 
             if last_stmt_type == Some(expect_ty) {
                 Some(statements.pop().and_then(|s| s.try_into_expr()).unwrap())
             } else {
                 None
             }
-        },
+        }
 
         None => None,
     };
@@ -73,9 +75,10 @@ pub fn typecheck_block(
                     ty: out_ty,
                     value_kind: ValueKind::Temporary,
                     span,
+                    decl: None,
                 }
             }
-        },
+        }
         None => TypeAnnotation::Untyped(span),
     };
 
@@ -89,10 +92,7 @@ pub fn typecheck_block(
     };
 
     assert_eq!(*block.annotation.ty(), {
-        let out_ty = block
-            .output
-            .as_ref()
-            .map(|o| o.annotation().ty().clone());
+        let out_ty = block.output.as_ref().map(|o| o.annotation().ty().clone());
         out_ty.unwrap_or(Type::Nothing)
     });
 

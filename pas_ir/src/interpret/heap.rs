@@ -109,24 +109,8 @@ impl Heap {
     pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut MemCell> {
         self.slots.get_mut(addr.0).and_then(|slot| slot.as_mut())
     }
-}
 
-impl Index<HeapAddress> for Heap {
-    type Output = MemCell;
-
-    fn index(&self, addr: HeapAddress) -> &MemCell {
-        self.get(addr).unwrap()
-    }
-}
-
-impl IndexMut<HeapAddress> for Heap {
-    fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
-        self.get_mut(addr).unwrap()
-    }
-}
-
-impl Drop for Heap {
-    fn drop(&mut self) {
+    fn expect_empty(&mut self) {
         if self.trace {
             let leaked_addrs = self
                 .slots
@@ -142,5 +126,23 @@ impl Drop for Heap {
                 println!("heap: leaked cell {}: {:?}", addr, val);
             }
         }
+    }
+
+    pub fn finalize(mut self) {
+        self.expect_empty()
+    }
+}
+
+impl Index<HeapAddress> for Heap {
+    type Output = MemCell;
+
+    fn index(&self, addr: HeapAddress) -> &MemCell {
+        self.get(addr).unwrap()
+    }
+}
+
+impl IndexMut<HeapAddress> for Heap {
+    fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
+        self.get_mut(addr).unwrap()
     }
 }

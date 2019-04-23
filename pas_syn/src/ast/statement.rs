@@ -14,7 +14,7 @@ use crate::{
 pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
     pub val_ty: A::Type,
-    pub val: Expression<A>,
+    pub val: Option<Expression<A>>,
     pub mutable: bool,
     pub annotation: A,
 }
@@ -45,9 +45,17 @@ impl LocalBinding<Span> {
             None => TypeName::Unknown(name_token.span().clone()),
         };
 
-        tokens.match_one(Operator::Assignment)?;
-        let val = Expression::parse(tokens)?;
-        let span = let_kw.span().to(val.annotation());
+        let (val, span) = match tokens.look_ahead().match_one(Operator::Assignment) {
+            Some(_) => {
+                tokens.advance(1);
+                let val = Expression::parse(tokens)?;
+                let span = let_kw.span().to(val.annotation());
+                (Some(val), span)
+            },
+            None => {
+                (None, let_kw.span().to(val_ty.span()))
+            },
+        };
 
         Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
@@ -61,11 +69,20 @@ impl LocalBinding<Span> {
 
 impl<A: Annotation> fmt::Display for LocalBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "let {}", self.name)?;
+        let kw = if self.mutable {
+            "var"
+        } else {
+            "let"
+        };
+
+        write!(f, "{} {}", kw, self.name)?;
         if self.val_ty.is_known() {
             write!(f, ": {}", self.val_ty)?;
         }
-        write!(f, " := {}", self.val)
+        if let Some(val) = &self.val {
+            write!(f, " := {}", val)?;
+        }
+        Ok(())
     }
 }
 

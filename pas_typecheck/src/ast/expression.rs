@@ -1,4 +1,4 @@
-use crate::ast::prelude::*;
+use crate::{ast::prelude::*, ty::FunctionParamSig};
 use pas_common::span::*;
 use pas_syn::ast;
 
@@ -7,9 +7,13 @@ pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
 pub type Call = ast::Call<TypeAnnotation>;
 pub type Expression = ast::Expression<TypeAnnotation>;
 
-fn invalid_args(actual_args: Vec<Expression>, expected: &[Type], span: Span) -> TypecheckError {
+fn invalid_args(
+    actual_args: Vec<Expression>,
+    expected: &[FunctionParamSig],
+    span: Span,
+) -> TypecheckError {
     TypecheckError::InvalidArgs {
-        expected: expected.to_vec(),
+        expected: expected.iter().map(|p| p.ty.clone()).collect(),
         actual: actual_args
             .into_iter()
             .map(|arg| arg.annotation().ty().clone())
@@ -19,19 +23,50 @@ fn invalid_args(actual_args: Vec<Expression>, expected: &[Type], span: Span) -> 
 }
 
 fn typecheck_args(
-    expected_args: &[Type],
+    expected_args: &[FunctionParamSig],
     actual_args: &[ast::Expression<Span>],
     span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<Vec<Expression>> {
     let mut checked_args = Vec::new();
 
-    for (arg, param) in actual_args.iter().zip(expected_args.iter()) {
-        checked_args.push(typecheck_expr(arg, param, ctx)?);
+    for (arg, expected_param) in actual_args.iter().zip(expected_args.iter()) {
+        let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
+
+        let (is_in_ref, is_out_ref) = match &expected_param.modifier {
+            None => (false, false),
+            Some(FunctionParamMod::Out) => (false, true),
+            Some(FunctionParamMod::Var) => (true, true),
+        };
+
+        if is_in_ref || is_out_ref {
+            match arg_expr.annotation().value_kind() {
+                Some(ValueKind::Mutable) | Some(ValueKind::Ref) => {},
+                _ => return Err(TypecheckError::NotMutable {
+                    expr: Box::new(arg_expr),
+                    decl: None,
+                }),
+            }
+
+            let ref_name = match &arg_expr {
+                ast::Expression::Ident(ident, ..) => ident,
+                _ => {
+                    return Err(TypecheckError::InvalidRefExpression {
+                        expr: Box::new(arg_expr),
+                    });
+                }
+            };
+
+            if is_out_ref {
+                ctx.initialize(ref_name);
+            }
+        }
+
+        checked_args.push(arg_expr);
     }
 
     if checked_args.len() != expected_args.len() {
-        // arg counts don't match
+        // arg count doesn't match expected param count
         return Err(invalid_args(checked_args, expected_args, span.clone()));
     }
 
@@ -43,7 +78,7 @@ fn typecheck_args(
         .zip(expected_args.iter());
 
     for (actual, expected) in all_arg_tys {
-        if *expected == Type::GenericSelf {
+        if expected.ty == Type::GenericSelf {
             if let Some(self_ty) = &self_ty {
                 if *self_ty != actual {
                     return Err(invalid_args(checked_args, expected_args, span.clone()));
@@ -51,7 +86,7 @@ fn typecheck_args(
             } else {
                 self_ty = Some(actual);
             }
-        } else if *actual != *expected {
+        } else if *actual != expected.ty {
             return Err(invalid_args(checked_args, expected_args, span.clone()));
         }
     }
@@ -80,7 +115,7 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
 
         TypeAnnotation::Method(method_annotation) => {
             typecheck_method_call(&func_call, &method_annotation, ctx)?
-        },
+        }
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };
@@ -105,10 +140,7 @@ fn typecheck_method_call(
                 ctx,
             )?;
 
-            let arg_tys: Vec<_> = args
-                .iter()
-                .map(|a| a.annotation().ty().clone())
-                .collect();
+            let arg_tys: Vec<_> = args.iter().map(|a| a.annotation().ty().clone()).collect();
 
             let self_type = method_annotation
                 .decl_sig()
@@ -122,7 +154,7 @@ fn typecheck_method_call(
             let impl_sig = method_annotation.decl_sig().with_self(&self_type);
 
             (self_type, impl_sig, args)
-        },
+        }
 
         Some(self_arg) => {
             // we have a self arg, we know how to specialize the signature before checking the
@@ -133,10 +165,10 @@ fn typecheck_method_call(
             // the self-arg is passed as the first argument
             assert!(!impl_sig.params.is_empty());
             let self_param = impl_sig.params.remove(0);
-            if !self_param.assignable_from(self_arg.annotation().ty()) {
+            if !self_param.ty.assignable_from(self_arg.annotation().ty()) {
                 return Err(TypecheckError::TypeMismatch {
                     actual: self_arg.annotation().ty().clone(),
-                    expected: self_param,
+                    expected: self_param.ty,
                     span,
                 });
             }
@@ -145,7 +177,7 @@ fn typecheck_method_call(
             args.insert(0, (**self_arg).clone());
 
             (self_type, impl_sig, args)
-        },
+        }
     };
 
     let annotation = match &impl_sig.return_ty {
@@ -154,6 +186,7 @@ fn typecheck_method_call(
             span,
             ty: return_ty.clone(),
             value_kind: ValueKind::Temporary,
+            decl: None,
         },
     };
 
@@ -161,6 +194,7 @@ fn typecheck_method_call(
         annotation,
         args,
         self_type,
+        func_type: Type::Function(impl_sig.into()),
         ident: method_annotation.method.ident.clone(),
         of_type: method_annotation.iface_ty.clone(),
     }))
@@ -184,6 +218,7 @@ fn typecheck_func_call(
             ty: return_ty,
             value_kind: ValueKind::Temporary,
             span,
+            decl: None,
         },
     };
 
@@ -208,26 +243,28 @@ pub fn typecheck_expr(
                 ty: ctx.string_type()?,
                 value_kind: binding,
                 span: span.clone(),
+                decl: None,
             };
 
             Ok(ast::Expression::Literal(
                 ast::Literal::String(s.clone()),
-                annotation
+                annotation,
             ))
-        },
+        }
 
         ast::Expression::Literal(ast::Literal::Boolean(b), _) => {
             let annotation = TypeAnnotation::TypedValue {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Immutable,
                 span,
+                decl: None,
             };
 
             Ok(ast::Expression::Literal(
                 ast::Literal::Boolean(*b),
                 annotation,
             ))
-        },
+        }
 
         ast::Expression::Literal(ast::Literal::Integer(i), _) => {
             let annotation = TypeAnnotation::TypedValue {
@@ -238,13 +275,14 @@ pub fn typecheck_expr(
                 },
                 value_kind: ValueKind::Immutable,
                 span,
+                decl: None,
             };
 
             Ok(ast::Expression::Literal(
                 ast::Literal::Integer(*i),
                 annotation,
             ))
-        },
+        }
 
         ast::Expression::Literal(ast::Literal::Real(x), _) => {
             let ty = if x.as_f32().is_some() {
@@ -257,22 +295,24 @@ pub fn typecheck_expr(
                 ty,
                 value_kind: ValueKind::Immutable,
                 span,
+                decl: None,
             };
 
             Ok(ast::Expression::Literal(
                 ast::Literal::Real(x.clone()),
                 annotation,
             ))
-        },
+        }
 
         ast::Expression::Literal(ast::Literal::Nil, _) => {
             let annotation = TypeAnnotation::TypedValue {
                 ty: Type::Nil,
                 value_kind: ValueKind::Temporary,
                 span,
+                decl: None,
             };
             Ok(ast::Expression::Literal(ast::Literal::Nil, annotation))
-        },
+        }
 
         ast::Expression::Ident(ident, _) => {
             let annotation = match ctx.find(&ident) {
@@ -280,30 +320,28 @@ pub fn typecheck_expr(
 
                 _ => {
                     return Err(NameError::NotFound(ident.clone()).into());
-                },
+                }
             };
 
             Ok(ast::Expression::Ident(ident.clone(), annotation))
-        },
+        }
 
-        ast::Expression::BinOp(bin_op) => {
-            typecheck_bin_op(bin_op, ctx)
-        },
+        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, ctx),
 
         ast::Expression::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, ctx)?;
             Ok(ast::Expression::from(unary_op))
-        },
+        }
 
         ast::Expression::Call(call) => {
             let call = typecheck_call(call, ctx)?;
             Ok(ast::Expression::from(call))
-        },
+        }
 
         ast::Expression::ObjectCtor(ctor) => {
             let ctor = typecheck_object_ctor(ctor, ctx)?;
             Ok(ast::Expression::from(ctor))
-        },
+        }
 
         ast::Expression::CollectionCtor(ctor) => {
             let ctor = typecheck_collection_ctor(ctor, expect_ty, ctx)?;
@@ -313,12 +351,12 @@ pub fn typecheck_expr(
         ast::Expression::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             Ok(ast::Expression::from(if_cond))
-        },
+        }
 
         ast::Expression::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
             Ok(ast::Expression::from(block))
-        },
+        }
 
         ast::Expression::Indexer(indexer) => {
             let indexer = typecheck_indexer(indexer, ctx)?;
@@ -330,18 +368,19 @@ pub fn typecheck_expr(
 pub fn ns_member_ref_to_annotation(
     member: MemberRef<Scope>,
     span: Span,
-    ctx: &Context
+    ctx: &Context,
 ) -> TypeAnnotation {
     match member {
         MemberRef::Value {
             value: Decl::Alias(aliased),
             ..
         } => {
-            let alias_ref = ctx.resolve(aliased)
+            let alias_ref = ctx
+                .resolve(aliased)
                 .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
 
             ns_member_ref_to_annotation(alias_ref, span, ctx)
-        },
+        }
 
         MemberRef::Value {
             value: Decl::BoundValue(binding),
@@ -350,6 +389,7 @@ pub fn ns_member_ref_to_annotation(
             span,
             ty: binding.ty.clone(),
             value_kind: binding.kind,
+            decl: binding.def.clone(),
         },
 
         MemberRef::Value {
@@ -367,7 +407,7 @@ pub fn ns_member_ref_to_annotation(
                 name: key.clone(),
                 ty: Type::Function(sig.clone()),
             }
-        },
+        }
 
         MemberRef::Value {
             value: Decl::Type(ty),
@@ -376,6 +416,177 @@ pub fn ns_member_ref_to_annotation(
 
         MemberRef::Namespace { path } => {
             TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
-        },
+        }
     }
+}
+
+pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResult<()> {
+    match stmt {
+        ast::Statement::Call(call) => expect_call_initialized(call, ctx),
+
+        ast::Statement::If(if_stmt) => {
+            expect_expr_initialized(&if_stmt.cond, ctx)?;
+            expect_stmt_initialized(&if_stmt.then_branch, ctx)?;
+            if let Some(else_branch) = &if_stmt.else_branch {
+                expect_stmt_initialized(else_branch, ctx)?;
+            }
+            Ok(())
+        }
+
+        ast::Statement::Block(block) => expect_block_initialized(block, ctx),
+
+        ast::Statement::LocalBinding(binding) => expect_binding_initialized(binding, ctx),
+
+        ast::Statement::ForLoop(for_loop) => {
+            expect_binding_initialized(&for_loop.init_binding, ctx)?;
+            expect_expr_initialized(&for_loop.to_expr, ctx)?;
+            expect_stmt_initialized(&for_loop.body, ctx)?;
+            Ok(())
+        }
+
+        ast::Statement::Exit(exit) => match exit {
+            ast::Exit::WithoutValue(_) => Ok(()),
+            ast::Exit::WithValue(exit_val) => expect_expr_initialized(exit_val, ctx),
+        },
+
+        ast::Statement::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
+    }
+}
+
+pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckResult<()> {
+    match expr {
+        ast::Expression::Ident(ident, ..) => match ctx.find(ident) {
+            Some(MemberRef::Value {
+                value: Decl::BoundValue(binding),
+                key: decl_ident,
+                ..
+            }) => match binding.kind {
+                ValueKind::Mutable => {
+                    if !ctx.initialized(ident) {
+                        Err(TypecheckError::NotInitialized {
+                            ident: decl_ident.clone(),
+                            usage: ident.span().clone(),
+                        })
+                    } else {
+                        Ok(())
+                    }
+                }
+
+                _ => Ok(()),
+            },
+
+            _ => Ok(()),
+        },
+
+        ast::Expression::Literal(..) => Ok(()),
+
+        ast::Expression::Indexer(indexer) => {
+            expect_expr_initialized(&indexer.base, ctx)?;
+            expect_expr_initialized(&indexer.index, ctx)?;
+            Ok(())
+        }
+
+        ast::Expression::Block(block) => expect_block_initialized(block, ctx),
+
+        ast::Expression::IfCond(cond) => {
+            expect_expr_initialized(&cond.cond, ctx)?;
+            expect_expr_initialized(&cond.then_branch, ctx)?;
+            if let Some(else_branch) = &cond.else_branch {
+                expect_expr_initialized(else_branch, ctx)?;
+            }
+            Ok(())
+        }
+
+        ast::Expression::ObjectCtor(ctor) => {
+            for member in &ctor.args.members {
+                expect_expr_initialized(&member.value, ctx)?;
+            }
+            Ok(())
+        }
+
+        ast::Expression::CollectionCtor(ctor) => {
+            for el in &ctor.elements {
+                expect_expr_initialized(&el, ctx)?;
+            }
+            Ok(())
+        }
+
+        ast::Expression::Call(call) => expect_call_initialized(call, ctx),
+
+        ast::Expression::BinOp(bin_op) => {
+            expect_expr_initialized(&bin_op.lhs, ctx)?;
+            expect_expr_initialized(&bin_op.rhs, ctx)?;
+            Ok(())
+        }
+
+        ast::Expression::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
+    }
+}
+
+fn expect_binding_initialized(binding: &LocalBinding, ctx: &Context) -> TypecheckResult<()> {
+    if let Some(init_val) = &binding.val {
+        expect_expr_initialized(init_val, ctx)?;
+    }
+    Ok(())
+}
+
+fn expect_args_initialized(
+    params: &[FunctionParamSig],
+    args: &[Expression],
+    ctx: &Context,
+) -> TypecheckResult<()> {
+    assert_eq!(
+        params.len(),
+        args.len(),
+        "function call with wrong number of args shouldn't pass type checking"
+    );
+
+    for (arg, param) in args.iter().zip(params.iter()) {
+        if param.modifier != Some(FunctionParamMod::Out) {
+            expect_expr_initialized(arg, ctx)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
+    match call {
+        ast::Call::Function(func_call) => {
+            expect_expr_initialized(&func_call.target, ctx)?;
+
+            let params = match func_call.target.annotation().ty() {
+                Type::Function(sig) => &sig.params,
+                _ => panic!(
+                    "function call with wrong target type shouldn't pass type checking (was: {:#?})",
+                    func_call.target.annotation().ty()
+                ),
+            };
+            expect_args_initialized(params, &func_call.args, ctx)?;
+        }
+
+        ast::Call::Method(method_call) => {
+            let params = match &method_call.func_type {
+                Type::Function(sig) => &sig.params,
+                _ => panic!(
+                    "function call with wrong target type shouldn't pass type checking (was: {:#?})",
+                    method_call.func_type,
+                ),
+            };
+
+            expect_args_initialized(params, &method_call.args, ctx)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()> {
+    for stmt in &block.statements {
+        expect_stmt_initialized(stmt, ctx)?;
+    }
+    if let Some(output) = &block.output {
+        expect_expr_initialized(output, ctx)?;
+    }
+    Ok(())
 }

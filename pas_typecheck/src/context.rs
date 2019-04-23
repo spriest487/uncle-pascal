@@ -2,39 +2,27 @@ pub mod ns;
 pub mod result;
 
 use crate::{
-    ast::{
-        FunctionDecl,
-        FunctionDef,
-        Interface,
-    },
+    ast::{FunctionDecl, FunctionDef, Interface},
     context::NamespaceStack,
-    FunctionSig,
-    Primitive,
-    Type,
+    FunctionSig, Primitive, Type,
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{
-        self,
-        TypeName,
-    },
+    ast::{self, TypeName},
     ident::*,
 };
 use std::{
     borrow::Borrow,
-    collections::hash_map::{
-        Entry,
-        HashMap,
+    collections::{
+        hash_map::{Entry, HashMap},
+        HashSet,
     },
     fmt,
     hash::Hash,
     rc::Rc,
 };
 
-pub use self::{
-    ns::*,
-    result::*,
-};
+pub use self::{ns::*, result::*};
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
 pub enum ValueKind {
@@ -47,6 +35,9 @@ pub enum ValueKind {
     /// rvalue, e.g. value returned from function, result of operation,
     /// with no binding
     Temporary,
+
+    /// reference to a mutable location somewhere else
+    Ref,
 }
 
 impl fmt::Display for ValueKind {
@@ -55,6 +46,7 @@ impl fmt::Display for ValueKind {
             ValueKind::Immutable => write!(f, "Immutable binding"),
             ValueKind::Mutable => write!(f, "Mutable binding"),
             ValueKind::Temporary => write!(f, "Temporary value"),
+            ValueKind::Ref => write!(f, "Reference"),
         }
     }
 }
@@ -127,6 +119,7 @@ pub struct Scope {
     id: ScopeID,
     ident: Option<Ident>,
     decls: HashMap<Ident, Member<Scope>>,
+    uninit: HashSet<Ident>,
 }
 
 impl Scope {
@@ -135,6 +128,7 @@ impl Scope {
             id,
             ident,
             decls: HashMap::new(),
+            uninit: HashSet::new(),
         }
     }
 }
@@ -167,7 +161,7 @@ impl Namespace for Scope {
             Entry::Vacant(entry) => {
                 entry.insert(member_val);
                 Ok(())
-            },
+            }
         }
     }
 
@@ -256,19 +250,21 @@ impl Context {
 
     pub fn find<'a>(&'a self, name: &Ident) -> Option<MemberRef<'a, Scope>> {
         match self.scopes.current_path().find(name) {
-            Some(MemberRef::Value { value: Decl::Alias(aliased), .. }) => {
-                self.resolve(aliased)
-            }
-            result => result
+            Some(MemberRef::Value {
+                value: Decl::Alias(aliased),
+                ..
+            }) => self.resolve(aliased),
+            result => result,
         }
     }
 
     pub fn resolve<'a>(&'a self, path: &IdentPath) -> Option<MemberRef<'a, Scope>> {
         match self.scopes.resolve(path.as_slice()) {
-            Some(MemberRef::Value { value: Decl::Alias(aliased), .. }) => {
-                self.resolve(aliased)
-            }
-            result => result
+            Some(MemberRef::Value {
+                value: Decl::Alias(aliased),
+                ..
+            }) => self.resolve(aliased),
+            result => result,
         }
     }
 
@@ -285,7 +281,7 @@ impl Context {
                     new: name.clone(),
                     existing: old_ident,
                 })
-            },
+            }
 
             None => self
                 .scopes
@@ -298,7 +294,16 @@ impl Context {
     }
 
     pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> NamingResult<()> {
-        self.declare(name, Decl::BoundValue(binding))
+        let uninit = binding.kind == ValueKind::Mutable;
+
+        if uninit {
+            self.declare(name.clone(), Decl::BoundValue(binding))?;
+            self.scopes.current_mut().uninit.insert(name);
+        } else {
+            self.declare(name, Decl::BoundValue(binding))?;
+        }
+
+        Ok(())
     }
 
     pub fn declare_type(&mut self, name: Ident, ty: impl Into<Type>) -> NamingResult<()> {
@@ -321,9 +326,7 @@ impl Context {
 
     pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
         match self.resolve(ns_path) {
-            Some(MemberRef::Namespace { path }) => {
-                Ok(path.top().keys())
-            }
+            Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
 
             Some(MemberRef::Value { value: decl, .. }) => {
                 let unexpected = UnexpectedValue::Decl(decl.clone());
@@ -388,19 +391,18 @@ impl Context {
                 } else {
                     entry.get_mut().def = true;
                 }
-            },
+            }
 
             Entry::Vacant(entry) => {
                 entry.insert(MethodImpl { def: true });
-            },
+            }
         }
 
         Ok(())
     }
 
     pub fn qualify_name(&self, name: Ident) -> IdentPath {
-        let parts: Vec<_> = self.scopes.current_path().keys().cloned()
-            .collect();
+        let parts: Vec<_> = self.scopes.current_path().keys().cloned().collect();
 
         if parts.is_empty() {
             IdentPath::from(name)
@@ -464,23 +466,23 @@ impl Context {
                             Entry::Vacant(entry) => {
                                 entry.insert(def.span().clone());
                                 Ok(())
-                            },
+                            }
                         }
-                    },
+                    }
 
                     other => {
                         let path = Path::new(key.clone(), parent_path.keys().cloned());
                         return Err(NameError::ExpectedFunction(path, other.clone().into()));
-                    },
+                    }
                 }
-            },
+            }
 
             Some(MemberRef::Namespace { path }) => {
                 return Err(NameError::AlreadyDeclared {
                     new: name,
                     existing: IdentPath::from_parts(path.keys().cloned()),
                 });
-            },
+            }
 
             None => {
                 // it wasn't already declared, so we need to declare AND define it. if it
@@ -493,7 +495,7 @@ impl Context {
                 }
 
                 self.declare_function_and_def(name, sig, Some(def.span().clone()))
-            },
+            }
         }
     }
 
@@ -506,7 +508,7 @@ impl Context {
                 }) => {
                     let ty = ty.clone().indirect_by(*indirection);
                     Ok(ty)
-                },
+                }
 
                 Some(MemberRef::Value {
                     value: unexpected, ..
@@ -519,7 +521,7 @@ impl Context {
                     let ns_ident = path.top().key().unwrap().clone();
                     let unexpected = UnexpectedValue::Namespace(ns_ident);
                     Err(NameError::ExpectedType(ident.clone(), unexpected))
-                },
+                }
 
                 None => Err(NameError::NotFound(ident.last().clone())),
             },
@@ -547,7 +549,7 @@ impl Context {
             }) => {
                 let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((parent_path, iface.as_ref()))
-            },
+            }
             Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedInterface(
                 name.clone(),
                 other.clone().into(),
@@ -555,14 +557,19 @@ impl Context {
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedInterface(name.clone(), unexpected))
-            },
+            }
             None => Err(NameError::NotFound(name.last().clone())),
         }
     }
 
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.resolve(name) {
-            Some(MemberRef::Value { value: Decl::Function(sig), key, ref parent_path, .. }) => {
+            Some(MemberRef::Value {
+                value: Decl::Function(sig),
+                key,
+                ref parent_path,
+                ..
+            }) => {
                 let func_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((func_path, sig.clone()))
             }
@@ -573,7 +580,7 @@ impl Context {
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedFunction(name.clone(), unexpected))
-            },
+            }
             None => Err(NameError::NotFound(name.last().clone())),
         }
     }
@@ -656,7 +663,7 @@ impl Context {
                     iface_ty,
                     decl: method,
                 })
-            },
+            }
 
             (None, 0) => Err(NameError::MemberNotFound {
                 span: member.span.clone(),
@@ -703,7 +710,7 @@ impl Context {
                         })?;
 
                 Ok(TypeMember::Method { decl: method_decl })
-            },
+            }
 
             _ => Err(NameError::MemberNotFound {
                 base: ty.clone(),
@@ -717,7 +724,7 @@ impl Context {
         let ns = IdentPath::from(Ident::new("System", builtin_span()));
         let str_class_name = TypeName::Ident {
             ident: ns.child(Ident::new("String", builtin_span())),
-            indirection: 0
+            indirection: 0,
         };
 
         self.find_type(&str_class_name)
@@ -742,6 +749,67 @@ impl Context {
 
         syms
     }
+
+    /// Check if a local decl is marked as initialized.
+    /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
+    pub fn initialized(&self, local_id: &Ident) -> bool {
+        let current_ns = self.scopes.current_path();
+        let scope = current_ns.top();
+        check_initialize_allowed(scope, local_id);
+
+        !scope.uninit.contains(local_id)
+    }
+
+    /// Mark a local decl as initialized.
+    /// No effect if the decl exists and is already initialized.
+    /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
+    pub fn initialize(&mut self, local_id: &Ident) {
+        let scope = self.scopes.current_mut();
+        check_initialize_allowed(scope, local_id);
+
+        scope.uninit.remove(local_id);
+    }
+
+    pub fn is_local(&self, id: &Ident) -> bool {
+        let current = self.scopes.current_path();
+        current.top().decls.contains_key(id)
+    }
 }
 
+fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
+    match scope.decls.get(ident) {
+        Some(Member::Value(decl)) => match decl {
+            Decl::BoundValue(Binding {
+                kind: ValueKind::Mutable,
+                ..
+            }) => {
+                // ok
+            }
 
+            Decl::BoundValue(Binding { kind, .. }) => {
+                panic!(
+                    "`{}` cannot be initialized: not mutable (was: {})",
+                    ident, kind
+                );
+            }
+
+            other => {
+                panic!(
+                    "`{}` cannot be initialized: not a binding (was: {:?})",
+                    ident, other
+                );
+            }
+        },
+
+        Some(other) => {
+            panic!(
+                "`{}` cannot be initialized: not a decl (was: {:?})",
+                ident, other
+            );
+        }
+
+        None => {
+            panic!("`{}` cannot be initialized: not found in this scope", ident);
+        }
+    }
+}

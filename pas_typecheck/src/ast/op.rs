@@ -25,6 +25,7 @@ pub fn typecheck_bin_op(
                 ty: bool_ty,
                 value_kind: ValueKind::Temporary,
                 span,
+                decl: None,
             };
 
             Ok(Expression::from(BinOp {
@@ -54,6 +55,7 @@ pub fn typecheck_bin_op(
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
+                decl: None,
             };
 
             Ok(Expression::from(BinOp {
@@ -83,6 +85,7 @@ pub fn typecheck_bin_op(
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
+                decl: None,
             };
 
             Ok(Expression::from(BinOp {
@@ -129,6 +132,7 @@ pub fn typecheck_bin_op(
                     ty,
                     value_kind: ValueKind::Temporary,
                     span,
+                    decl: None,
                 },
             };
 
@@ -158,6 +162,7 @@ fn desugar_string_concat(
         ty: string_ty.clone(),
         span: span.clone(),
         value_kind: ValueKind::Temporary,
+        decl: None,
     };
 
     // if LHS and RHS are both string literals, we can concat them ahead of time
@@ -165,9 +170,10 @@ fn desugar_string_concat(
         (
             ast::Expression::Literal(ast::Literal::String(a), _),
             ast::Expression::Literal(ast::Literal::String(b), _),
-        ) => {
-            Ok(ast::Expression::Literal(ast::Literal::String(a.clone() + b), annotation))
-        }
+        ) => Ok(ast::Expression::Literal(
+            ast::Literal::String(a.clone() + b),
+            annotation,
+        )),
 
         _ => {
             let system_path = IdentPath::from(Ident::new("System", span.clone()));
@@ -213,8 +219,7 @@ fn typecheck_member_of(
                     ty: base_ty,
                     ..
                 } => {
-                    let member =
-                        ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
+                    let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
 
                     match member {
                         InstanceMember::Method { iface_ty, decl } => {
@@ -240,6 +245,7 @@ fn typecheck_member_of(
                                 ty: member_ty.clone(),
                                 span: span.clone(),
                                 value_kind,
+                                decl: None,
                             }
                         }
                     }
@@ -265,7 +271,7 @@ fn typecheck_member_of(
                                 span,
                                 base: lhs.annotation().ty().clone(),
                             }
-                                .into());
+                            .into());
                         }
                     }
                 }
@@ -276,7 +282,7 @@ fn typecheck_member_of(
                         span,
                         base: lhs.annotation().ty().clone(),
                     }
-                        .into());
+                    .into());
                 }
             };
 
@@ -343,10 +349,7 @@ pub fn typecheck_unary_op(
 
     let annotation = match unary_op.op {
         Operator::AddressOf => {
-            let addr_ty = match (
-                operand.annotation().ty(),
-                operand.annotation().value_kind(),
-            ) {
+            let addr_ty = match (operand.annotation().ty(), operand.annotation().value_kind()) {
                 (Type::Pointer(_), Some(ValueKind::Mutable))
                 | (Type::Record(_), Some(ValueKind::Mutable))
                 | (Type::Primitive(_), Some(ValueKind::Mutable)) => {
@@ -366,6 +369,7 @@ pub fn typecheck_unary_op(
                 ty: addr_ty,
                 value_kind: ValueKind::Temporary,
                 span,
+                decl: None,
             }
         }
 
@@ -386,6 +390,7 @@ pub fn typecheck_unary_op(
                 ty: deref_ty,
                 value_kind,
                 span,
+                decl: operand.annotation().decl().cloned(),
             }
         }
 
@@ -418,7 +423,10 @@ pub fn typecheck_indexer(
 
     let base = typecheck_expr(&indexer.base, &Type::Nothing, ctx)?;
 
-    let (el_ty, value_kind) = base.annotation().ty().collection_element_ty()
+    let (el_ty, value_kind) = base
+        .annotation()
+        .ty()
+        .collection_element_ty()
         .and_then(|el_ty| {
             let value_kind = base.annotation().value_kind()?;
             Some((el_ty.clone(), value_kind))
@@ -433,6 +441,7 @@ pub fn typecheck_indexer(
         value_kind,
         ty: el_ty,
         span: indexer.span().clone(),
+        decl: None,
     };
 
     Ok(Indexer {

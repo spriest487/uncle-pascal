@@ -12,6 +12,8 @@ pub struct MethodCall<A: Annotation> {
     pub of_type: A::Type,
     pub self_type: A::Type,
 
+    pub func_type: A::Type,
+
     pub ident: Ident,
 
     pub args: Vec<Expression<A>>,

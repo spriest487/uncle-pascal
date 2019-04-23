@@ -1,23 +1,11 @@
 use crate::{
-    ast::{
-        Expression,
-        FunctionDecl,
-    },
+    ast::{Expression, FunctionDecl},
     result::*,
-    FunctionSig,
-    Type,
-    ValueKind,
+    FunctionSig, Type, ValueKind,
 };
 use pas_common::span::*;
-use pas_syn::{
-    ast::Annotation,
-    ident::IdentPath,
-    Ident,
-};
-use std::{
-    fmt,
-    rc::Rc,
-};
+use pas_syn::{ast::Annotation, ident::IdentPath, Ident};
+use std::{fmt, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -79,6 +67,7 @@ pub enum TypeAnnotation {
         span: Span,
         ty: Type,
         value_kind: ValueKind,
+        decl: Option<Span>,
     },
     Function {
         span: Span,
@@ -107,7 +96,7 @@ impl TypeAnnotation {
                 if ty == expect_ty =>
             {
                 Ok(())
-            },
+            }
 
             TypeAnnotation::Method(method_annotation) => Err(TypecheckError::TypeMismatch {
                 span: method_annotation.span.clone(),
@@ -140,6 +129,17 @@ impl TypeAnnotation {
             TypeAnnotation::Method(method) => &method.method_ty,
 
             TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. } => ty,
+        }
+    }
+
+    pub fn decl(&self) -> Option<&Span> {
+        match self {
+            TypeAnnotation::Type(..) => None,
+            TypeAnnotation::Method(method) => Some(method.method.span()),
+            TypeAnnotation::Function { .. } => None, //TODO
+            TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
+            TypeAnnotation::Untyped(..) => None,
+            TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
         }
     }
 

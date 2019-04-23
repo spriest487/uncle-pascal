@@ -331,6 +331,7 @@ fn compile(
 
     let mut interpreter = Interpreter::new(&interpret_opts);
     interpreter.load_module(&module);
+    interpreter.shutdown();
 
     Ok(())
 }

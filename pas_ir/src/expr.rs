@@ -5,7 +5,9 @@ use pas_typecheck::{self as pas_ty, TypeAnnotation, ValueKind};
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     let out_val = match expr {
-        ast::Expression::Literal(lit, annotation) => translate_literal(lit, annotation.ty(), builder),
+        ast::Expression::Literal(lit, annotation) => {
+            translate_literal(lit, annotation.ty(), builder)
+        }
 
         ast::Expression::BinOp(bin_op) => translate_bin_op(bin_op, bin_op.annotation.ty(), builder),
 
@@ -45,7 +47,14 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                 } => {
                     let local_ref = builder
                         .find_local(&ident.to_string())
-                        .map(|local| Ref::Local(local.id()))
+                        .map(|local| {
+                            let value_ref = Ref::Local(local.id());
+                            if local.by_ref() {
+                                value_ref.deref()
+                            } else {
+                                value_ref
+                            }
+                        })
                         .unwrap_or_else(|| {
                             panic!(
                                 "identifier not found in local scope @ {}: {}",
@@ -54,10 +63,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                             )
                         });
 
-                    let ref_ty = builder
-                        .metadata
-                        .translate_type(annotation.ty())
-                        .clone();
+                    let ref_ty = builder.metadata.translate_type(annotation.ty()).clone();
                     let ref_temp = builder.local_temp(ref_ty.clone().ptr());
 
                     builder.append(Instruction::AddrOf {
@@ -209,10 +215,10 @@ pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -
 fn translate_call_with_args(
     target: impl Into<Value>,
     args: &[pas_ty::ast::Expression],
-    return_ty: &pas_ty::Type,
+    sig: &pas_ty::FunctionSig,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let out_val = match return_ty {
+    let out_val = match &sig.return_ty {
         pas_ty::Type::Nothing => None,
         return_ty => {
             let out_ty = builder.metadata.translate_type(return_ty).clone();
@@ -224,8 +230,20 @@ fn translate_call_with_args(
     builder.begin_scope();
 
     let mut arg_vals = Vec::new();
-    for arg in args {
-        let arg_expr = translate_expr(arg, builder);
+
+    for (arg, param) in args.iter().zip(sig.params.iter()) {
+        let arg_expr = if param.is_by_ref() {
+            let arg_ref = translate_expr(arg, builder);
+            let arg_ty = builder.metadata.translate_type(arg.annotation().ty());
+            let arg_ptr = builder.local_temp(arg_ty.ptr());
+
+            builder.append(Instruction::AddrOf { out: arg_ptr.clone(), a: arg_ref });
+
+            arg_ptr
+        } else {
+            translate_expr(arg, builder)
+        };
+
         arg_vals.push(Value::from(arg_expr));
     }
 
@@ -252,7 +270,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
             let target_val = translate_expr(&func_call.target, builder);
 
-            translate_call_with_args(target_val, &func_call.args, &sig.return_ty, builder)
+            translate_call_with_args(target_val, &func_call.args, sig, builder)
         }
 
         ast::Call::Method(method_call) => {
@@ -280,7 +298,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
             let target_val = Ref::Global(GlobalRef::Function(impl_func));
 
-            translate_call_with_args(target_val, &method_call.args, &sig.return_ty, builder)
+            translate_call_with_args(target_val, &method_call.args, &sig, builder)
         }
     }
 }
@@ -362,7 +380,9 @@ fn translate_bin_op(
         syn::Operator::Member => {
             // auto-deref for rc types
 
-            let of_ty = builder.metadata.translate_type(bin_op.lhs.annotation().ty());
+            let of_ty = builder
+                .metadata
+                .translate_type(bin_op.lhs.annotation().ty());
 
             let struct_name = NamePath::from_ident({
                 let path = bin_op.lhs.annotation().ty().full_path();
@@ -598,9 +618,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
             });
         }
 
-        Type::Struct(_) => {
-            /* no init needed, a local struct is initialized on allocation */
-        }
+        Type::Struct(_) => { /* no init needed, a local struct is initialized on allocation */ }
 
         ty => panic!("bad object ctor: type {:?} is not a record or class", ty),
     };
