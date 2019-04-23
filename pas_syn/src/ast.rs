@@ -59,7 +59,9 @@ pub enum TypeName {
     Unknown(Span),
     Ident {
         ident: IdentPath,
+        type_args: Vec<TypeName>,
         indirection: usize,
+        span: Span,
     },
     Array {
         element: Box<TypeName>,
@@ -71,7 +73,7 @@ pub enum TypeName {
 impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
-            TypeName::Ident { ident, .. } => Spanned::span(ident),
+            TypeName::Ident { span, .. } => span,
             TypeName::Array { span, .. } => span,
             TypeName::Unknown(span) => span,
         }
@@ -90,7 +92,12 @@ impl Typed for TypeName {
 impl TypeName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut indirection = 0;
-        while tokens.look_ahead().match_one(Operator::Deref).is_some() {
+        let mut indirection_span = None;
+
+        while let Some(deref_tt) = tokens.look_ahead().match_one(Operator::Deref) {
+            if indirection_span.is_none() {
+                indirection_span = Some(deref_tt.span().clone());
+            }
             indirection += 1;
             tokens.advance(1);
         }
@@ -115,28 +122,45 @@ impl TypeName {
 
             let element = Self::parse(tokens)?;
 
+            let array_span = array_kw.span().to(element.span());
+            let span  = match indirection_span {
+                Some(indir_span) => indir_span.to(&array_span),
+                None => array_span,
+            };
+
             Ok(TypeName::Array {
                 dim,
-                span: array_kw.span().to(element.span()),
+                span,
                 element: Box::new(element),
             })
         } else {
-            let path = tokens.match_repeating(|i, tokens| {
-                if i > 0 {
-                    if tokens.look_ahead().match_one(Operator::Member).is_none() {
-                        return Ok(Generate::Break);
-                    } else {
-                        tokens.advance(1);
-                    }
+            let ident = IdentPath::parse(tokens)?;
+
+            // parse type args
+            let (type_args, name_span) = match tokens.look_ahead().match_one(Operator::Lt) {
+                None => {
+                    (Vec::new(), Spanned::span(&ident).clone())
                 }
+                Some(_open_bracket_tt) => {
+                    tokens.advance(1);
 
-                let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
-                let ident = ident_tt.into_ident().unwrap();
-                Ok(Generate::Yield(ident))
-            })?;
-            assert!(!path.is_empty(), "parsed type path must always have 1+ parts");
+                    let type_args = tokens.match_separated(Separator::Comma, |_, tokens| {
+                        let arg_name = TypeName::parse(tokens)?;
+                        Ok(Generate::Yield(arg_name))
+                    })?;
 
-            Ok(TypeName::Ident { ident: Path::from_parts(path), indirection })
+                    let close_bracket_tt = tokens.match_one(Operator::Gt)?;
+
+                    (type_args, Spanned::span(&ident).to(close_bracket_tt.span()))
+                }
+            };
+
+            let span  = match indirection_span {
+                Some(indir_span) => indir_span.to(&name_span),
+                None => name_span,
+            };
+
+            Ok(TypeName::Ident { ident, indirection, type_args, span })
         }
     }
 }
@@ -144,11 +168,24 @@ impl TypeName {
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeName::Ident { ident, indirection } => {
+            TypeName::Ident { ident, indirection, type_args, .. } => {
                 for _ in 0..*indirection {
                     write!(f, "^")?;
                 }
-                write!(f, "{}", ident)
+                write!(f, "{}", ident)?;
+
+                if !type_args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, arg) in type_args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", arg)?;
+                    }
+                    write!(f, ">")?;
+                }
+
+                Ok(())
             },
 
             TypeName::Array { element, dim, .. } => {
@@ -162,8 +199,8 @@ impl fmt::Display for TypeName {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeNamePattern {
-    TypeName { ty: TypeName, binding: Option<Ident>, span: Span, },
-    NegatedTypeName { ty: TypeName, span: Span, },
+    TypeName { name: IdentPath, binding: Option<Ident>, span: Span, },
+    NegatedTypeName { name: IdentPath, span: Span, },
 }
 
 impl TypeNamePattern {
@@ -176,12 +213,12 @@ impl TypeNamePattern {
             None => None,
         } ;
 
-        let ty = TypeName::parse(tokens)?;
+        let name = IdentPath::parse(tokens)?;
 
         match not_kw {
             Some(not_kw) => Ok(TypeNamePattern::NegatedTypeName {
-                span: not_kw.span().to(ty.span()),
-                ty,
+                span: not_kw.span().to(&name),
+                name,
             }),
 
             None => {
@@ -189,16 +226,16 @@ impl TypeNamePattern {
                     Some(binding) => {
                         tokens.advance(1);
                         let binding_ident = binding.into_ident().unwrap();
-                        let span = ty.span().to(binding_ident.span());
+                        let span = name.span().to(binding_ident.span());
 
                         (span, Some(binding_ident))
                     }
 
-                    None => (ty.span().clone() , None)
+                    None => (name.span().clone() , None)
                 };
 
                 Ok(TypeNamePattern::TypeName {
-                    ty,
+                    name,
                     binding,
                     span,
                 })
@@ -210,14 +247,14 @@ impl TypeNamePattern {
 impl fmt::Display for TypeNamePattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeNamePattern::TypeName { ty, binding, .. } => {
-                write!(f, "{}", ty)?;
+            TypeNamePattern::TypeName { name, binding, .. } => {
+                write!(f, "{}", name)?;
                 if let Some(binding) = binding {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
             }
-            TypeNamePattern::NegatedTypeName { ty, .. } => write!(f, "not {}", ty),
+            TypeNamePattern::NegatedTypeName { name, .. } => write!(f, "not {}", name),
         }
     }
 }

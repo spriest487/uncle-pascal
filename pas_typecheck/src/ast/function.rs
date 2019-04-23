@@ -11,7 +11,7 @@ fn typecheck_param(
     param: &ast::FunctionParam<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionParam> {
-    let ty = ctx.find_type(&param.ty)?.clone();
+    let ty = typecheck_type(&param.ty, ctx)?.clone();
 
     Ok(FunctionParam {
         modifier: param.modifier.clone(),
@@ -26,7 +26,7 @@ pub fn typecheck_func_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
     let return_ty = match &decl.return_ty {
-        Some(ty_name) => ctx.find_type(ty_name)?.clone(),
+        Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
         None => Type::Nothing,
     };
 

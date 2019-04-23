@@ -1,7 +1,7 @@
-use codespan::{ByteIndex, ByteSpan, CodeMap, ColumnIndex, FileMap, LineIndex, RawIndex};
+use codespan::{ByteIndex, ByteSpan, CodeMap, ColumnIndex, FileMap, LineIndex, RawIndex, FileName};
 use codespan_reporting::{termcolor, Diagnostic, Label, LabelStyle, Severity};
-use pas_common::{span::*, DiagnosticMessage, DiagnosticOutput};
-use std::io;
+use pas_common::{span::*, DiagnosticMessage, DiagnosticOutput, path_relative_to_cwd};
+use std::{io::{self, Read as _}, fs::File};
 
 fn find_location_index(file_map: &FileMap, loc: &Location, end: bool) -> io::Result<ByteIndex> {
     let line = LineIndex(loc.line as RawIndex);
@@ -26,7 +26,16 @@ fn output_to_report_diag(
     let mut report_diag = Diagnostic::new(severity, diag.title);
 
     if let Some(label) = diag.label {
-        let file_map = code_map.add_filemap_from_disk(label.span.file.as_ref())?;
+        let file_map = {
+            let mut src = String::new();
+
+            let mut file = File::open(label.span.file.as_ref())?;
+            file.read_to_string(&mut src)?;
+
+            let nice_filename = path_relative_to_cwd(&label.span.file);
+
+            code_map.add_filemap(FileName::from(nice_filename), src)
+        };
 
         let err_start = find_location_index(file_map.as_ref(), &label.span.start, false)?;
         let err_end = find_location_index(file_map.as_ref(), &label.span.end, true)?;

@@ -23,7 +23,7 @@ pub enum ClassKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Class<A: Annotation> {
     pub kind: ClassKind,
-    pub ident: A::DeclName,
+    pub name: A::DeclName,
     pub members: Vec<Member<A>>,
     pub span: Span,
 }
@@ -54,7 +54,7 @@ impl Class<Span> {
             let ident = ident_token.into_ident().unwrap();
 
             Ok(Generate::Yield(Member {
-                span: ident.span.to(&ty.span()),
+                span: ident.span.to(&ty),
                 ty,
                 ident,
             }))
@@ -75,7 +75,7 @@ impl Class<Span> {
 
         Ok(Class {
             kind,
-            ident: name,
+            name: name,
             members,
             span: kw_token.span().to(end_token.span()),
         })
@@ -107,7 +107,7 @@ impl<A: Annotation> fmt::Display for Class<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Interface<A: Annotation> {
-    pub ident: A::DeclName,
+    pub name: A::DeclName,
     pub methods: Vec<FunctionDecl<A>>,
     pub span: Span,
 }
@@ -119,7 +119,7 @@ impl<A: Annotation> Interface<A> {
 }
 
 impl Interface<Span> {
-    pub fn parse(tokens: &mut TokenStream, ident: TypeDeclName) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let iface_kw = tokens.match_one(Keyword::Interface)?;
         let methods = tokens.match_separated(Separator::Semicolon, |_, tokens| {
             if tokens.look_ahead().match_one(Keyword::End).is_some() {
@@ -133,7 +133,7 @@ impl Interface<Span> {
         let end = tokens.match_one(Keyword::End)?;
 
         Ok(Interface {
-            ident: ident.into(),
+            name: name.into(),
             span: iface_kw.span().to(end.span()),
             methods,
         })
@@ -158,7 +158,7 @@ impl<A: Annotation> fmt::Display for Interface<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Variant<A: Annotation> {
-    pub ident: A::DeclName,
+    pub name: A::DeclName,
     pub cases: Vec<VariantCase<A>>,
 
     pub span: Span,
@@ -213,7 +213,7 @@ impl Variant<Span> {
         let span = kw.span().to(end_kw.span());
 
         Ok(Variant {
-            ident: name,
+            name: name,
             cases,
 
             span,
@@ -223,7 +223,7 @@ impl Variant<Span> {
 
 impl<A: Annotation> fmt::Display for Variant<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "variant {}", self.ident)?;
+        writeln!(f, "variant {}", self.name)?;
         for case in &self.cases {
             write!(f, "  {}", case.ident)?;
             if let Some(data_ty) = &case.data_ty {
@@ -251,9 +251,9 @@ pub enum TypeDecl<A: Annotation> {
 impl<A: Annotation> TypeDecl<A> {
     pub fn ident(&self) -> &A::DeclName {
         match self {
-            TypeDecl::Class(class) => &class.ident,
-            TypeDecl::Interface(iface) => &iface.ident,
-            TypeDecl::Variant(variant) => &variant.ident,
+            TypeDecl::Class(class) => &class.name,
+            TypeDecl::Interface(iface) => &iface.name,
+            TypeDecl::Variant(variant) => &variant.name,
         }
     }
 }
@@ -296,6 +296,16 @@ impl fmt::Display for TypeDeclName {
 impl Spanned for TypeDeclName {
     fn span(&self) -> &Span {
         &self.span
+    }
+}
+
+impl From<Ident> for TypeDeclName {
+    fn from(ident: Ident) -> Self {
+        TypeDeclName {
+            span: ident.span().clone(),
+            ident,
+            type_params: Vec::new(),
+        }
     }
 }
 

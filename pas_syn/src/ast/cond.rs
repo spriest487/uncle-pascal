@@ -116,8 +116,8 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::TypeName { ty, binding, .. } => {
-                assert_eq!("String", ty.to_string());
+            TypeNamePattern::TypeName { name, binding, .. } => {
+                assert_eq!("String", name.to_string());
                 assert!(binding.is_none());
             }
 
@@ -131,8 +131,8 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::NegatedTypeName { ty, .. } => {
-                assert_eq!("String", ty.to_string());
+            TypeNamePattern::NegatedTypeName { name, .. } => {
+                assert_eq!("String", name.to_string());
             }
 
             _ => panic!("expected negative binding"),
@@ -145,8 +145,8 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::TypeName { ty, binding, .. } => {
-                assert_eq!("String", ty.to_string());
+            TypeNamePattern::TypeName { name, binding, .. } => {
+                assert_eq!("String", name.to_string());
                 assert_eq!(
                     Some("s".to_string()),
                     binding.as_ref().map(|b| b.to_string())

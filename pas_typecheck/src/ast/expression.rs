@@ -136,7 +136,7 @@ fn typecheck_args(
     Ok(checked_args)
 }
 
-pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckResult<CallOrCtor> {
+pub fn typecheck_call(call: &ast::Call<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CallOrCtor> {
     let func_call = match call {
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
@@ -172,7 +172,7 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
                 },
             };
 
-            typecheck_object_ctor(&ctor, ctx).map(CallOrCtor::Ctor)?
+            typecheck_object_ctor(&ctor, expect_ty, ctx).map(CallOrCtor::Ctor)?
         }
 
         TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
@@ -375,7 +375,7 @@ pub fn typecheck_expr(
         ast::Expression::Literal(ast::Literal::String(s), _) => {
             let binding = ValueKind::Immutable;
             let annotation = TypeAnnotation::TypedValue {
-                ty: ctx.string_type()?,
+                ty: string_type(ctx)?,
                 value_kind: binding,
                 span: span.clone(),
                 decl: None,
@@ -461,7 +461,7 @@ pub fn typecheck_expr(
             Ok(ast::Expression::Ident(ident.clone(), annotation))
         }
 
-        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, ctx),
+        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
 
         ast::Expression::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, ctx)?;
@@ -469,7 +469,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Call(call) => {
-            let expr = match typecheck_call(call, ctx)? {
+            let expr = match typecheck_call(call, expect_ty, ctx)? {
                 CallOrCtor::Call(call) => ast::Expression::from(call),
                 CallOrCtor::Ctor(ctor) => ast::Expression::from(ctor),
             };
@@ -477,7 +477,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::ObjectCtor(ctor) => {
-            let ctor = typecheck_object_ctor(ctor, ctx)?;
+            let ctor = typecheck_object_ctor(ctor, expect_ty, ctx)?;
             Ok(ast::Expression::from(ctor))
         }
 

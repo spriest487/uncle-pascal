@@ -95,6 +95,13 @@ pub enum TypecheckError {
     NoLoopContext {
         stmt: Box<ast::Statement<Span>>,
     },
+
+    WrongTypeArgs {
+        ty: Type,
+        expected: usize,
+        actual: usize,
+        span: Span,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -133,6 +140,7 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
+            TypecheckError::WrongTypeArgs { span, .. } => span,
         }
     }
 }
@@ -180,6 +188,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NoLoopContext { .. } => {
                 "Statement requires loop context".to_string()
             },
+
+            TypecheckError::WrongTypeArgs { .. } => "Wrong type arguments".to_string(),
         }
     }
 
@@ -348,16 +358,20 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::EmptyVariant(variant) => {
-                write!(f, "variant `{}` has no cases", variant.ident)
+                write!(f, "variant `{}` has no cases", variant.name)
             }
 
             TypecheckError::EmptyVariantCaseBinding { variant, case_index, .. } => {
                 let case_ident = &variant.cases[*case_index].ident;
-                write!(f, "cannot bind value of empty variant case `{}.{}`", variant.ident, case_ident)
+                write!(f, "cannot bind value of empty variant case `{}.{}`", variant.name, case_ident)
             }
 
             TypecheckError::NoLoopContext { stmt } => {
                 write!(f, "the statement `{}` can only appear inside a loop", stmt)
+            }
+
+            TypecheckError::WrongTypeArgs { ty, expected, actual, .. } => {
+                write!(f, "wrong number of type arguments for type `{}`: expected {}, found {}", ty, expected, actual)
             }
         }
     }

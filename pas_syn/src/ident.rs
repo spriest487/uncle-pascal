@@ -1,4 +1,4 @@
-use pas_common::span::*;
+use crate::parse::prelude::*;
 use std::{
     fmt::{
         self,
@@ -160,6 +160,28 @@ impl<OtherPart, Part: PartialEq<OtherPart>> PartialEq<Path<OtherPart>> for Path<
 }
 
 pub type IdentPath = Path<Ident>;
+
+impl IdentPath {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let path = tokens.match_repeating(|i, tokens| {
+            if i > 0 {
+                if tokens.look_ahead().match_one(Operator::Member).is_none() {
+                    return Ok(Generate::Break);
+                } else {
+                    tokens.advance(1);
+                }
+            }
+
+            let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+            let ident = ident_tt.into_ident().unwrap();
+            Ok(Generate::Yield(ident))
+        })?;
+
+        assert!(!path.is_empty(), "parsed ident path must always have 1+ parts");
+
+        Ok(IdentPath::from_parts(path))
+    }
+}
 
 impl fmt::Display for IdentPath {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -57,9 +57,27 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         }
 
         ast::UnitDecl::Type(type_decl) => {
-            let type_decl = typecheck_type_decl(type_decl, ctx)?;
+            // type decls have an inner scope
+            let ty_scope = ctx.push_scope(None);
+
+            let decl_name = type_decl.ident().clone();
+            let full_name = QualifiedDeclName {
+                qualified: ctx.qualify_name(decl_name.ident.clone()),
+                decl_name,
+                type_args: Vec::new(),
+            };
+
+            for param in &full_name.decl_name.type_params {
+                ctx.declare_type(param.clone(), Type::GenericParam(param.clone()))?;
+            }
+
+            let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
+
+            ctx.pop_scope(ty_scope);
+
             let decl_ty = Type::of_decl(&type_decl);
             ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty)?;
+
             Ok(ast::UnitDecl::Type(type_decl))
         }
     }

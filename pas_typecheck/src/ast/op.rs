@@ -6,12 +6,13 @@ pub type BinOp = ast::BinOp<TypeAnnotation>;
 
 pub fn typecheck_bin_op(
     bin_op: &ast::BinOp<Span>,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Expression> {
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
-        Operator::Member => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, ctx),
+        Operator::Member => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, expect_ty, ctx),
 
         Operator::And | Operator::Or => {
             let bool_ty = Type::Primitive(Primitive::Boolean);
@@ -102,7 +103,7 @@ pub fn typecheck_bin_op(
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
 
             // string concat sugar isn't available if the String class isn't loaded
-            if let Ok(string_ty) = ctx.string_type() {
+            if let Ok(string_ty) = string_type(ctx) {
                 let string_concat = bin_op.op == Operator::Plus
                     && *lhs.annotation().ty() == string_ty
                     && *rhs.annotation().ty() == string_ty;
@@ -209,6 +210,7 @@ fn typecheck_member_of(
     lhs: &ast::Expression<Span>,
     rhs: &ast::Expression<Span>,
     span: Span,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Expression> {
     let lhs = typecheck_expr(lhs, &Type::Nothing, ctx)?;
@@ -337,7 +339,7 @@ fn typecheck_member_of(
                         ..(**ctor).clone()
                     };
 
-                    let ctor = typecheck_object_ctor(&qualified_ctor, ctx)?;
+                    let ctor = typecheck_object_ctor(&qualified_ctor, expect_ty, ctx)?;
                     Ok(Expression::from(ctor))
                 }
 

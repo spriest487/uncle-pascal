@@ -24,7 +24,7 @@ pub fn typecheck_local_binding(
         },
 
         val_ty => {
-            let explicit_ty = ctx.find_type(val_ty)?;
+            let explicit_ty = typecheck_type(val_ty, ctx)?;
             let val = match &binding.val {
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
@@ -146,7 +146,7 @@ pub fn typecheck_stmt(
             typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
         }
 
-        ast::Statement::Call(call) => match typecheck_call(call, ctx)? {
+        ast::Statement::Call(call) => match typecheck_call(call, &Type::Nothing, ctx)? {
             CallOrCtor::Call(call) => Ok(ast::Statement::Call(call)),
             CallOrCtor::Ctor(ctor) => {
                 let ctor_expr = Expression::from(ctor);

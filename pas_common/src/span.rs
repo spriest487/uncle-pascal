@@ -3,8 +3,8 @@ use std::{
     fmt,
     path::PathBuf,
     rc::Rc,
-    env,
 };
+use crate::path_relative_to_cwd;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Location {
@@ -51,11 +51,11 @@ impl Span {
         }
     }
 
-    pub fn to(&self, other: &Span) -> Self {
+    pub fn to(&self, other: &impl Spanned) -> Self {
         Self {
             file: self.file.clone(),
             start: self.start,
-            end: other.end,
+            end: other.span().end,
         }
     }
 }
@@ -71,7 +71,7 @@ impl fmt::Debug for Span {
         write!(
             f,
             "Span({}:{}:{}..{}:{})",
-            self.file.display(),
+            path_relative_to_cwd(&self.file).display(),
             self.start.line,
             self.start.col,
             self.end.line,
@@ -82,17 +82,8 @@ impl fmt::Debug for Span {
 
 impl fmt::Display for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let rel_file = env::current_dir().ok()
-            .and_then(|cwd| cwd.canonicalize().ok())
-            .and_then(|cwd| self.file.strip_prefix(cwd).ok());
-
-        if let Some(rel_file) = rel_file {
-            write!(f, "{}", rel_file.display())?;
-        } else {
-            write!(f, "{}", self.file.display())?;
-        }
-
-        write!(f, ":{}", self.start)
+        let rel_file = path_relative_to_cwd(&self.file);
+        write!(f, "{}:{}", rel_file.display(), self.start)
     }
 }
 

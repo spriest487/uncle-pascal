@@ -9,6 +9,8 @@ use std::{
     },
     fmt,
     ops::Deref,
+    path::Path,
+    env,
 };
 
 pub use backtrace::Backtrace;
@@ -187,4 +189,11 @@ impl fmt::Display for Mode {
             }
         )
     }
+}
+
+pub fn path_relative_to_cwd(path: &Path) -> &Path {
+    env::current_dir().ok()
+        .and_then(|cwd| cwd.canonicalize().ok())
+        .and_then(|cwd| path.strip_prefix(cwd).ok())
+        .unwrap_or_else(|| path)
 }

@@ -229,6 +229,7 @@ impl Annotation for TypeAnnotation {
 pub struct QualifiedDeclName {
     pub decl_name: TypeDeclName,
     pub qualified: IdentPath,
+    pub type_args: Vec<Type>,
 }
 
 impl DeclNamed for QualifiedDeclName {

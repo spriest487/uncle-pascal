@@ -87,7 +87,7 @@ impl<A: Annotation> fmt::Display for VariantCtorCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let case = &self.variant.cases[self.case_index];
 
-        write!(f, "{}.{}(", self.variant.ident, case.ident)?;
+        write!(f, "{}.{}(", self.variant.name, case.ident)?;
         if let Some(arg) = &self.arg {
             write!(f, "{}", arg)?;
         }

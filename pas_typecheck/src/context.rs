@@ -2,14 +2,14 @@ pub mod ns;
 pub mod result;
 
 use crate::{
-    QualifiedDeclName,
     ast::{FunctionDecl, FunctionDef, Interface},
     context::NamespaceStack,
     FunctionSig, Primitive, Type,
+    QualifiedDeclName
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, TypeName},
+    ast::{self},
     ident::*,
 };
 use std::{
@@ -191,6 +191,9 @@ pub struct Context {
     defs: HashMap<IdentPath, Span>,
 
     loop_stack: Vec<Span>,
+
+    // /// current type decl, if we're inside one
+    //decl_scope: Option<TypeDeclName>,
 }
 
 pub fn builtin_span() -> Span {
@@ -213,53 +216,50 @@ impl Context {
             iface_impls: HashMap::new(),
 
             loop_stack: Vec::new(),
+
+//            decl_scope: None,
         };
 
-        let nothing_ident = Ident::new("Nothing", builtin_span.clone());
-        root_ctx.declare_type(nothing_ident, Type::Nothing).unwrap();
+        let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
+            let ident = Ident::new(name, builtin_span.clone());
+            ctx.declare_type(ident, ty).expect("builtin type decl must not fail");
+        };
 
-        let any_ident = Ident::new("Any", builtin_span.clone());
-        root_ctx.declare_type(any_ident, Type::Any).unwrap();
+        declare_builtin(&mut root_ctx, "Nothing", Type::Nothing);
+        declare_builtin(&mut root_ctx, "Any", Type::Any);
 
-        let bool_ident = Ident::new(Primitive::Boolean.name(), builtin_span.clone());
-        root_ctx
-            .declare_type(bool_ident, Primitive::Boolean)
-            .unwrap();
-
-        let byte_ident = Ident::new(Primitive::Byte.name(), builtin_span.clone());
-        root_ctx.declare_type(byte_ident, Primitive::Byte).unwrap();
-
-        let int_ident = Ident::new(Primitive::Int32.name(), builtin_span.clone());
-        root_ctx.declare_type(int_ident, Primitive::Int32).unwrap();
-
-        let single_ident = Ident::new(Primitive::Real32.name(), builtin_span.clone());
-        root_ctx
-            .declare_type(single_ident, Primitive::Real32)
-            .unwrap();
+        let primitives = [
+            Primitive::Boolean,
+            Primitive::Byte,
+            Primitive::Int32,
+            Primitive::Real32,
+        ];
+        for primitive in &primitives {
+            declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
+        }
 
         // builtins are in scope 0, unit is scope 1
         root_ctx.push_scope(None);
 
         if no_stdlib {
+            // the declaration of Disposable needs to be present even for --no-stdlib builds
+            // or destructors won't work
+
             let system_ident = Ident::new("System", builtin_span.clone());
             let disposable_ident = Ident::new("Disposable", builtin_span.clone());
 
             let disposable_name = QualifiedDeclName {
+                qualified: root_ctx.qualify_name(disposable_ident.clone()),
                 decl_name: ast::TypeDeclName {
                     ident: disposable_ident.clone(),
                     span: builtin_span.clone(),
                     type_params: Vec::new(),
                 },
-                qualified: IdentPath::from_parts(vec![
-                    system_ident.clone(),
-                    disposable_ident.clone(),
-                ]),
+                type_args: Vec::new(),
             };
 
-            // the declaration of Disposable needs to be present even for --no-stdlib builds
-            // or destructors won't work
             let disposable_iface = Interface {
-                ident: disposable_name,
+                name: disposable_name,
                 methods: vec![
                     FunctionDecl {
                         ident: Ident::new("Dispose", builtin_span.clone()),
@@ -282,10 +282,8 @@ impl Context {
 
             let system_scope = root_ctx.push_scope(Some(system_ident));
 
-            root_ctx.declare_type(
-                disposable_ident,
-                Type::Interface(Rc::new(disposable_iface))
-            ).unwrap();
+            root_ctx.declare_type(disposable_ident, Type::Interface(Rc::new(disposable_iface)))
+                .expect("builtin System.Disposable type decl must not fail");
 
             root_ctx.pop_scope(system_scope);
         }
@@ -385,8 +383,9 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_type(&mut self, name: Ident, ty: impl Into<Type>) -> NamingResult<()> {
-        self.declare(name, Decl::Type(ty.into()))
+    pub fn declare_type(&mut self, name: Ident, ty: Type) -> NamingResult<()> {
+        self.declare(name, Decl::Type(ty))?;
+        Ok(())
     }
 
     pub fn declare_function(&mut self, name: Ident, decl: &FunctionDecl) -> NamingResult<()> {
@@ -492,15 +491,6 @@ impl Context {
         }
     }
 
-    pub fn qualify_type_name(&self, name: ast::TypeDeclName) -> QualifiedDeclName {
-        let qualified = self.qualify_name(name.ident.clone());
-
-        QualifiedDeclName {
-            decl_name: name,
-            qualified,
-        }
-    }
-
     fn declare_function_and_def(
         &mut self,
         name: Ident,
@@ -586,46 +576,6 @@ impl Context {
 
                 self.declare_function_and_def(name, sig, Some(def.decl.span().clone()))
             }
-        }
-    }
-
-    pub fn find_type(&self, ty: &ast::TypeName) -> NamingResult<Type> {
-        match ty {
-            ast::TypeName::Ident { ident, indirection } => match self.resolve(ident) {
-                Some(MemberRef::Value {
-                    value: Decl::Type(ty),
-                    ..
-                }) => {
-                    let ty = ty.clone().indirect_by(*indirection);
-                    Ok(ty)
-                }
-
-                Some(MemberRef::Value {
-                    value: unexpected, ..
-                }) => Err(NameError::ExpectedType(
-                    ident.clone(),
-                    unexpected.clone().into(),
-                )),
-
-                Some(MemberRef::Namespace { path }) => {
-                    let ns_ident = path.top().key().unwrap().clone();
-                    let unexpected = UnexpectedValue::Namespace(ns_ident);
-                    Err(NameError::ExpectedType(ident.clone(), unexpected))
-                }
-
-                None => Err(NameError::NotFound(ident.last().clone())),
-            },
-
-            ast::TypeName::Array { element, dim, .. } => {
-                let element = self.find_type(element.as_ref())?;
-
-                Ok(Type::Array {
-                    element: Box::new(element),
-                    dim: *dim,
-                })
-            }
-
-            ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
         }
     }
 
@@ -836,16 +786,6 @@ impl Context {
                 member: member_ident.clone(),
             }),
         }
-    }
-
-    pub fn string_type(&self) -> NamingResult<Type> {
-        let ns = IdentPath::from(Ident::new("System", builtin_span()));
-        let str_class_name = TypeName::Ident {
-            ident: ns.child(Ident::new("String", builtin_span())),
-            indirection: 0,
-        };
-
-        self.find_type(&str_class_name)
     }
 
     pub fn undefined_syms(&self) -> Vec<Ident> {
