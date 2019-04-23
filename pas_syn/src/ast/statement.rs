@@ -4,7 +4,6 @@ use crate::{
         Block,
         Call,
         Expression,
-        ExpressionNode,
         ForLoop,
         Typed,
     },
@@ -15,7 +14,7 @@ use crate::{
 pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
     pub val_ty: A::Type,
-    pub val: ExpressionNode<A>,
+    pub val: Expression<A>,
     pub mutable: bool,
     pub annotation: A,
 }
@@ -47,8 +46,8 @@ impl LocalBinding<Span> {
         };
 
         tokens.match_one(Operator::Assignment)?;
-        let val = ExpressionNode::parse(tokens)?;
-        let span = let_kw.span().to(&val.annotation);
+        let val = Expression::parse(tokens)?;
+        let span = let_kw.span().to(val.annotation());
 
         Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
@@ -72,7 +71,7 @@ impl<A: Annotation> fmt::Display for LocalBinding<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
-    WithValue(ExpressionNode<A>),
+    WithValue(Expression<A>),
     WithoutValue(A),
 }
 
@@ -87,8 +86,8 @@ impl<A: Annotation> fmt::Display for Exit<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Assignment<A: Annotation> {
-    pub lhs: ExpressionNode<A>,
-    pub rhs: ExpressionNode<A>,
+    pub lhs: Expression<A>,
+    pub rhs: Expression<A>,
     pub annotation: A,
 }
 
@@ -100,7 +99,7 @@ impl<A: Annotation> fmt::Display for Assignment<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct IfStatement<A: Annotation> {
-    pub cond: ExpressionNode<A>,
+    pub cond: Expression<A>,
     pub then_branch: Box<Statement<A>>,
     pub else_branch: Option<Box<Statement<A>>>,
     pub annotation: A,
@@ -139,7 +138,7 @@ impl<A: Annotation> Statement<A> {
             Statement::LocalBinding(binding) => &binding.annotation,
             Statement::Call(call) => &call.annotation(),
             Statement::Exit(exit) => match exit {
-                Exit::WithValue(expr) => &expr.annotation,
+                Exit::WithValue(expr) => expr.annotation(),
                 Exit::WithoutValue(a) => a,
             },
             Statement::Block(block) => &block.annotation,
@@ -149,18 +148,15 @@ impl<A: Annotation> Statement<A> {
         }
     }
 
-    pub fn try_into_expr(self) -> Option<ExpressionNode<A>> {
+    pub fn try_into_expr(self) -> Option<Expression<A>> {
         match self {
             Statement::Call(call) => {
-                let annotation = call.annotation().clone();
-                Some(ExpressionNode::new(call, annotation))
+                Some(Expression::from(call))
             },
 
             Statement::Block(block) => {
                 if block.output.is_some() {
-                    let annotation = block.annotation.clone();
-
-                    Some(ExpressionNode::new(block, annotation))
+                    Some(Expression::from(block))
                 } else {
                     None
                 }
@@ -170,8 +166,8 @@ impl<A: Annotation> Statement<A> {
         }
     }
 
-    pub fn try_from_expr(expr: ExpressionNode<A>) -> Result<Self, ExpressionNode<A>> {
-        match *expr.expr.clone() {
+    pub fn try_from_expr(expr: Expression<A>) -> Result<Self, Expression<A>> {
+        match expr.clone() {
             Expression::Block(mut block) => {
                 block.output = match block.output {
                     Some(output_expr) => {
@@ -186,9 +182,9 @@ impl<A: Annotation> Statement<A> {
                     None => None,
                 };
 
-                Ok(Statement::Block(block))
+                Ok(Statement::Block(*block))
             },
-            Expression::Call(call) => Ok(Statement::Call(call)),
+            Expression::Call(call) => Ok(Statement::Call(*call)),
 
             Expression::BinOp(bin_op) => {
                 if bin_op.op == Operator::Assignment {
@@ -199,7 +195,7 @@ impl<A: Annotation> Statement<A> {
                     };
                     Ok(Statement::Assignment(assignment))
                 } else {
-                    let invalid_bin_op = ExpressionNode::new(bin_op, expr.annotation);
+                    let invalid_bin_op = Expression::BinOp(bin_op);
                     Err(invalid_bin_op)
                 }
             },
@@ -227,8 +223,7 @@ impl<A: Annotation> Statement<A> {
             },
 
             invalid => {
-                let invalid_node = ExpressionNode::new(invalid, expr.annotation);
-                Err(invalid_node)
+                Err(invalid)
             },
         }
     }
@@ -266,7 +261,7 @@ impl Statement<Span> {
 
             Some(_) => {
                 // it doesn't start with a statement keyword, it must be an expression
-                let expr = ExpressionNode::parse(tokens)?;
+                let expr = Expression::parse(tokens)?;
 
                 let stmt = Self::try_from_expr(expr.clone()).map_err(|invalid_expr| {
                     TracedError::trace(ParseError::InvalidStatement(invalid_expr))

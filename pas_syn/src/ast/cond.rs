@@ -1,33 +1,33 @@
 use crate::{
-    ast::ExpressionNode,
+    ast::Expression,
     parse::prelude::*,
 };
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct IfCond<A: Annotation> {
-    pub cond: ExpressionNode<A>,
-    pub then_branch: ExpressionNode<A>,
-    pub else_branch: Option<ExpressionNode<A>>,
+    pub cond: Expression<A>,
+    pub then_branch: Expression<A>,
+    pub else_branch: Option<Expression<A>>,
     pub annotation: A,
 }
 
 impl IfCond<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let if_token = tokens.match_one(Keyword::If)?;
-        let cond = ExpressionNode::parse(tokens)?;
+        let cond = Expression::parse(tokens)?;
         tokens.match_one(Keyword::Then)?;
-        let then_branch = ExpressionNode::parse(tokens)?;
+        let then_branch = Expression::parse(tokens)?;
 
         let (else_branch, span) = match tokens.look_ahead().match_one(Keyword::Else) {
             Some(_else_token) => {
                 tokens.advance(1);
-                let else_branch = ExpressionNode::parse(tokens)?;
-                let span = if_token.span().to(&else_branch.annotation);
+                let else_branch = Expression::parse(tokens)?;
+                let span = if_token.span().to(else_branch.annotation());
 
                 (Some(else_branch), span)
             },
 
-            None => (None, if_token.span().to(&then_branch.annotation)),
+            None => (None, if_token.span().to(then_branch.annotation())),
         };
 
         Ok(IfCond {

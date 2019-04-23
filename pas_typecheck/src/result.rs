@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Call, ExpressionNode},
+    ast::{Call, Expression},
     context::NameError,
     Type, ValueKind,
 };
@@ -10,7 +10,7 @@ use std::fmt;
 #[derive(Debug)]
 pub enum TypecheckError {
     ScopeError(NameError),
-    NotCallable(Box<ExpressionNode>),
+    NotCallable(Box<Expression>),
     InvalidArgs {
         expected: Vec<Type>,
         actual: Vec<Type>,
@@ -18,7 +18,7 @@ pub enum TypecheckError {
     },
     InvalidCallInExpression(Call),
     InvalidIndexer {
-        base: Box<ExpressionNode>,
+        base: Box<Expression>,
         index_ty: Type,
         span: Span,
     },
@@ -27,7 +27,7 @@ pub enum TypecheckError {
         actual: Type,
         span: Span,
     },
-    NotMutable(Box<ExpressionNode>),
+    NotMutable(Box<Expression>),
     NotAddressable {
         ty: Type,
         value_kind: Option<ValueKind>,
@@ -48,7 +48,7 @@ pub enum TypecheckError {
         op: Operator,
         span: Span,
     },
-    InvalidBlockOutput(Box<ExpressionNode>),
+    InvalidBlockOutput(Box<Expression>),
     AmbiguousMethod {
         method: Ident,
         span: Span,
@@ -62,7 +62,7 @@ pub enum TypecheckError {
         syms: Vec<Ident>,
     },
     UnableToInferType {
-        expr: ast::ExpressionNode<Span>,
+        expr: ast::Expression<Span>,
     }
 }
 
@@ -78,21 +78,21 @@ impl Spanned for TypecheckError {
     fn span(&self) -> &Span {
         match self {
             TypecheckError::ScopeError(err) => err.span(),
-            TypecheckError::NotCallable(expr) => expr.annotation.span(),
+            TypecheckError::NotCallable(expr) => expr.annotation().span(),
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
             TypecheckError::InvalidIndexer { span, .. } => span,
             TypecheckError::TypeMismatch { span, .. } => span,
-            TypecheckError::NotMutable(expr) => expr.annotation.span(),
+            TypecheckError::NotMutable(expr) => expr.annotation().span(),
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
-            TypecheckError::InvalidBlockOutput(expr) => expr.annotation.span(),
+            TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
             TypecheckError::AmbiguousMethod { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
-            TypecheckError::UnableToInferType { expr } => expr.annotation.span(),
+            TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
         }
     }
 }

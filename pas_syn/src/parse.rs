@@ -41,7 +41,7 @@ pub enum ParseError {
     UnexpectedToken(TokenTree, Option<Matcher>),
     UnexpectedEOF(Matcher, Span),
     EmptyOperand { operator: Span, before: bool },
-    InvalidStatement(ExpressionNode<Span>),
+    InvalidStatement(Expression<Span>),
     InvalidMember(BinOp<Span>, Span),
     DuplicateModifier { new: DeclMod, existing: DeclMod },
 }
@@ -54,7 +54,7 @@ impl Spanned for ParseError {
             ParseError::UnexpectedToken(tt, _) => tt.span(),
             ParseError::UnexpectedEOF(_, tt) => tt.span(),
             ParseError::EmptyOperand { operator, .. } => operator.span(),
-            ParseError::InvalidStatement(expr) => &expr.annotation,
+            ParseError::InvalidStatement(expr) => expr.annotation().span(),
             ParseError::InvalidMember(_, span) => span,
             ParseError::DuplicateModifier { new, .. } => new.span(),
         }

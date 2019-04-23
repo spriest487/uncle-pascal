@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        ExpressionNode,
+        Expression,
         LocalBinding,
         Statement,
     },
@@ -10,7 +10,7 @@ use crate::{
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ForLoop<A: Annotation> {
     pub init_binding: LocalBinding<A>,
-    pub to_expr: ExpressionNode<A>,
+    pub to_expr: Expression<A>,
     pub body: Box<Statement<A>>,
     pub annotation: A,
 }
@@ -37,7 +37,7 @@ impl ForLoop<Span> {
         let init_binding = LocalBinding::parse(tokens, false)?;
 
         tokens.match_one(Keyword::To)?;
-        let to_expr = ExpressionNode::parse(tokens)?;
+        let to_expr = Expression::parse(tokens)?;
 
         tokens.match_one(Keyword::Do)?;
         let body = Statement::parse(tokens)?;

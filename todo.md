@@ -1,4 +1,15 @@
-Typecheck - should check all functions are defined. need to mark internal functions as imported
-ast::ExpressionNode - get rid of this, combine into ast::Expression
-add pointer-to-Member instruction, replace Get/SetField
-add NativeUInt type
+# critical
+
+* add `NativeUInt` type
+* `exit` statement
+* `var`/`out`
+* while loop
+
+# big features
+
+* const evaluation
+* variants
+* enums/sets/range types
+* generic types
+* generic functions
+* c backend

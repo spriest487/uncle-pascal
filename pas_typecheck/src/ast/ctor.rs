@@ -37,12 +37,12 @@ pub fn typecheck_object_ctor(
                 .into());
             },
 
-            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation.ty()) => {
+            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty()) => {
                 return Err(TypecheckError::InvalidBinOp {
-                    rhs: value.annotation.ty().clone(),
+                    rhs: value.annotation().ty().clone(),
                     lhs: member_ref.ty.clone(),
                     op: Operator::Assignment,
-                    span: ctor_member.value.annotation.span().clone(),
+                    span: ctor_member.value.annotation().span().clone(),
                 });
             },
 
@@ -56,7 +56,7 @@ pub fn typecheck_object_ctor(
     if members.len() != ty.members_len() {
         let actual = members
             .into_iter()
-            .map(|m| m.value.annotation.ty().clone())
+            .map(|m| m.value.annotation().ty().clone())
             .collect();
         return Err(TypecheckError::InvalidArgs {
             span: ctor.annotation.clone(),
@@ -99,18 +99,18 @@ pub fn typecheck_collection_ctor(
             // must have at at least one element to infer types
             if ctor.elements.is_empty() {
                 return Err(TypecheckError::UnableToInferType {
-                    expr: ast::ExpressionNode::new(ctor.clone(), ctor.annotation.clone())
+                    expr: ast::Expression::from(ctor.clone())
                 });
             }
 
             let first_element = typecheck_expr(&ctor.elements[0], &Type::Nothing, ctx)?;
 
-            let elem_ty = first_element.annotation.ty().clone();
+            let elem_ty = first_element.annotation().ty().clone();
             elements.push(first_element);
 
             for e in ctor.elements.iter().skip(1) {
                 let element = typecheck_expr(e, &elem_ty, ctx)?;
-                element.annotation.expect_value(&elem_ty)?;
+                element.annotation().expect_value(&elem_ty)?;
 
                 elements.push(element);
             }
@@ -121,7 +121,7 @@ pub fn typecheck_collection_ctor(
         Some(elem_ty) => {
             for e in &ctor.elements {
                 let element = typecheck_expr(e, elem_ty, ctx)?;
-                element.annotation.expect_value(&elem_ty)?;
+                element.annotation().expect_value(&elem_ty)?;
 
                 elements.push(element);
             }

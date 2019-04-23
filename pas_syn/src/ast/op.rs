@@ -1,12 +1,12 @@
 use crate::{
-    ast::ExpressionNode,
+    ast::Expression,
     parse::prelude::*,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct UnaryOp<A: Annotation> {
     pub op: Operator,
-    pub operand: ExpressionNode<A>,
+    pub operand: Expression<A>,
     pub annotation: A,
 }
 
@@ -29,9 +29,9 @@ impl<A: Annotation> Spanned for UnaryOp<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct BinOp<A: Annotation> {
-    pub lhs: ExpressionNode<A>,
+    pub lhs: Expression<A>,
     pub op: Operator,
-    pub rhs: ExpressionNode<A>,
+    pub rhs: Expression<A>,
     pub annotation: A,
 }
 
@@ -55,8 +55,8 @@ impl<A: Annotation> Spanned for BinOp<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Indexer<A: Annotation> {
-    pub base: ExpressionNode<A>,
-    pub index: ExpressionNode<A>,
+    pub base: Expression<A>,
+    pub index: Expression<A>,
     pub annotation: A,
 }
 

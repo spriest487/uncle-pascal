@@ -1,3 +1,5 @@
+uses System;
+
 type A = interface
     function Greet(self: Self);
 end;

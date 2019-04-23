@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Annotation,
-        ExpressionNode,
+        Expression,
     },
     parse::prelude::*,
 };
@@ -14,7 +14,7 @@ pub struct MethodCall<A: Annotation> {
 
     pub ident: Ident,
 
-    pub args: Vec<ExpressionNode<A>>,
+    pub args: Vec<Expression<A>>,
     pub annotation: A,
 }
 
@@ -39,8 +39,8 @@ impl<A: Annotation> fmt::Display for MethodCall<A> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct FunctionCall<A: Annotation> {
-    pub target: ExpressionNode<A>,
-    pub args: Vec<ExpressionNode<A>>,
+    pub target: Expression<A>,
+    pub args: Vec<Expression<A>>,
 
     pub annotation: A,
 }
@@ -99,7 +99,7 @@ impl<A: Annotation> Call<A> {
 }
 
 impl Call<Span> {
-    pub fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<ExpressionNode<Span>>> {
+    pub fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<Expression<Span>>> {
         let brackets = tokens.match_one(Matcher::Delimited(DelimiterPair::Bracket))?;
         match brackets {
             TokenTree::Delimited {
@@ -111,7 +111,7 @@ impl Call<Span> {
                 let mut args_tokens = TokenStream::new(inner, span);
 
                 let args = args_tokens.match_separated(Separator::Comma, |_, tokens| {
-                    let arg_expr = ExpressionNode::parse(tokens)?;
+                    let arg_expr = Expression::parse(tokens)?;
                     Ok(Generate::Yield(arg_expr))
                 })?;
 

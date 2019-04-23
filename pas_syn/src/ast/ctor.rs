@@ -1,9 +1,9 @@
-use crate::{ast::ExpressionNode, parse::prelude::*};
+use crate::{ast::Expression, parse::prelude::*};
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {
     pub ident: Ident,
-    pub value: ExpressionNode<A>,
+    pub value: Expression<A>,
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
@@ -27,7 +27,7 @@ impl ObjectCtorArgs<Span> {
         let members = members_tokens.match_separated(Separator::Semicolon, |_, tokens| {
             let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
             tokens.match_one(Separator::Colon)?;
-            let value = ExpressionNode::parse(tokens)?;
+            let value = Expression::parse(tokens)?;
 
             Ok(Generate::Yield(ObjectCtorMember { ident, value }))
         })?;
@@ -75,7 +75,7 @@ impl<A: Annotation> fmt::Display for ObjectCtor<A> {
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct CollectionCtor<A: Annotation> {
-    pub elements: Vec<ExpressionNode<A>>,
+    pub elements: Vec<Expression<A>>,
     pub annotation: A,
 }
 
@@ -104,7 +104,7 @@ impl CollectionCtor<Span> {
             };
 
         let elements = elems_tokens.match_separated(Separator::Comma, |_, elem_tokens| {
-            let elem_expr = ExpressionNode::parse(elem_tokens)?;
+            let elem_expr = Expression::parse(elem_tokens)?;
             Ok(Generate::Yield(elem_expr))
         })?;
 

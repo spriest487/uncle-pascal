@@ -1,7 +1,7 @@
 use crate::{
     ast::{
         Annotation,
-        ExpressionNode,
+        Expression,
         Statement,
     },
     parse::*,
@@ -14,7 +14,7 @@ use std::fmt;
 pub struct Block<A: Annotation> {
     pub statements: Vec<Statement<A>>,
     pub annotation: A,
-    pub output: Option<ExpressionNode<A>>,
+    pub output: Option<Expression<A>>,
 
     pub begin: Span,
     pub end: Span,

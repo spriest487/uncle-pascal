@@ -1,6 +1,6 @@
 use crate::{
     ast::{
-        ExpressionNode,
+        Expression,
         FunctionDecl,
     },
     result::*,
@@ -26,7 +26,7 @@ pub struct MethodAnnotation {
     pub method: Box<FunctionDecl>,
 
     //    pub self_ty: Type,
-    pub self_arg: Option<Box<ExpressionNode>>,
+    pub self_arg: Option<Box<Expression>>,
 
     method_ty: Type,
 }
@@ -35,7 +35,7 @@ impl MethodAnnotation {
     pub fn ufcs(
         span: Span,
         iface_ty: Type,
-        self_arg: ExpressionNode,
+        self_arg: Expression,
         method_decl: FunctionDecl,
     ) -> Self {
         Self {

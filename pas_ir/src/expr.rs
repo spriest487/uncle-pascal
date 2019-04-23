@@ -3,18 +3,18 @@ use pas_common::span::*;
 use pas_syn::{self as syn, ast};
 use pas_typecheck::{self as pas_ty, TypeAnnotation, ValueKind};
 
-pub fn translate_expr(expr: &pas_ty::ast::ExpressionNode, builder: &mut Builder) -> Ref {
-    let out_val = match expr.expr.as_ref() {
-        ast::Expression::Literal(lit) => translate_literal(lit, expr.annotation.ty(), builder),
+pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
+    let out_val = match expr {
+        ast::Expression::Literal(lit, annotation) => translate_literal(lit, annotation.ty(), builder),
 
-        ast::Expression::BinOp(bin_op) => translate_bin_op(bin_op, expr.annotation.ty(), builder),
+        ast::Expression::BinOp(bin_op) => translate_bin_op(bin_op, bin_op.annotation.ty(), builder),
 
         ast::Expression::UnaryOp(unary_op) => {
-            translate_unary_op(unary_op, expr.annotation.ty(), builder)
+            translate_unary_op(unary_op, unary_op.annotation.ty(), builder)
         }
 
-        ast::Expression::Ident(ident) => {
-            match &expr.annotation {
+        ast::Expression::Ident(ident, annotation) => {
+            match annotation {
                 TypeAnnotation::TypedValue {
                     value_kind: ValueKind::Temporary,
                     ..
@@ -49,14 +49,14 @@ pub fn translate_expr(expr: &pas_ty::ast::ExpressionNode, builder: &mut Builder)
                         .unwrap_or_else(|| {
                             panic!(
                                 "identifier not found in local scope @ {}: {}",
-                                expr.annotation.span(),
+                                annotation.span(),
                                 ident
                             )
                         });
 
                     let ref_ty = builder
                         .metadata
-                        .translate_type(expr.annotation.ty())
+                        .translate_type(annotation.ty())
                         .clone();
                     let ref_temp = builder.local_temp(ref_ty.clone().ptr());
 
@@ -115,7 +115,7 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
     let index_ref = translate_expr(&indexer.index, builder);
     let base_ref = translate_expr(&indexer.base, builder);
 
-    match indexer.base.annotation.ty() {
+    match indexer.base.annotation().ty() {
         pas_ty::Type::Array { .. } => {
             builder.append(Instruction::Element {
                 out: ptr_into.clone(),
@@ -133,7 +133,7 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
             });
         }
 
-        _ => unimplemented!("IR for indexing into {}", indexer.base.annotation.ty()),
+        unimpl => unimplemented!("IR for indexing into {}", unimpl),
     }
 
     builder.end_scope();
@@ -208,7 +208,7 @@ pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -
 
 fn translate_call_with_args(
     target: impl Into<Value>,
-    args: &[pas_ty::ast::ExpressionNode],
+    args: &[pas_ty::ast::Expression],
     return_ty: &pas_ty::Type,
     builder: &mut Builder,
 ) -> Option<Ref> {
@@ -245,7 +245,7 @@ fn translate_call_with_args(
 pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
         ast::Call::Function(func_call) => {
-            let sig = match func_call.target.annotation.ty() {
+            let sig = match func_call.target.annotation().ty() {
                 pas_ty::Type::Function(sig) => sig,
                 _ => panic!("type of function target expr must be a function"),
             };
@@ -342,7 +342,7 @@ fn translate_bin_op(
     out_ty: &pas_ty::Type,
     builder: &mut Builder,
 ) -> Ref {
-    if bin_op.lhs.annotation.is_namespace() {
+    if bin_op.lhs.annotation().is_namespace() {
         // there's nothing to actually translate on the lhs, it's just for name resolution
         return translate_expr(&bin_op.rhs, builder);
     }
@@ -362,15 +362,14 @@ fn translate_bin_op(
         syn::Operator::Member => {
             // auto-deref for rc types
 
-            let of_ty = builder.metadata.translate_type(bin_op.lhs.annotation.ty());
+            let of_ty = builder.metadata.translate_type(bin_op.lhs.annotation().ty());
 
             let struct_name = NamePath::from_ident({
-                let path = bin_op.lhs.annotation.ty().full_path();
+                let path = bin_op.lhs.annotation().ty().full_path();
                 path.expect("member access must be of a named type")
             });
             let member_name = bin_op
                 .rhs
-                .expr
                 .as_ident()
                 .map(|i| i.to_string())
                 .expect("rhs of member binop must be an ident");
@@ -622,7 +621,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
         let member_ty = builder
             .metadata
-            .translate_type(member.value.annotation.ty());
+            .translate_type(member.value.annotation().ty());
         builder.comment(&format!("{}: {}", member.ident, member.value));
 
         builder.retain(member_val.clone(), &member_ty);
@@ -682,7 +681,7 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
 pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Ref> {
     let (out_val, out_ty) = match &block.output {
         Some(out_expr) => {
-            let out_ty = builder.metadata.translate_type(out_expr.annotation.ty());
+            let out_ty = builder.metadata.translate_type(out_expr.annotation().ty());
             let out_val = builder.local_new(out_ty.clone(), None);
 
             (Some(out_val), out_ty)

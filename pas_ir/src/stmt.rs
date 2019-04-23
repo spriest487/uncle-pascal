@@ -61,7 +61,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
     assert_eq!(Type::I32, counter_ty, "counter type must be i32");
     assert!(
-        !for_loop.init_binding.val.annotation.ty().is_rc(),
+        !for_loop.init_binding.val.annotation().ty().is_rc(),
         "counter type must not be ref counted"
     );
 
@@ -114,13 +114,13 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     // the new value is being stored in a new location, retain it
     let rhs_ty = builder
         .metadata
-        .translate_type(assignment.rhs.annotation.ty());
+        .translate_type(assignment.rhs.annotation().ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it
     let lhs_ty = builder
         .metadata
-        .translate_type(assignment.lhs.annotation.ty());
+        .translate_type(assignment.lhs.annotation().ty());
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move {

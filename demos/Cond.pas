@@ -1,3 +1,5 @@
+uses System;
+
 function Maybe(cond: Boolean): Integer
 begin
     if cond then

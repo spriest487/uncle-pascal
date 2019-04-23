@@ -15,12 +15,12 @@ pub fn typecheck_local_binding(
             let explicit_ty = ctx.find_type(val_ty)?;
             let val = typecheck_expr(&binding.val, &explicit_ty, ctx)?;
 
-            if !explicit_ty.assignable_from(&val.annotation.ty()) {
+            if !explicit_ty.assignable_from(val.annotation().ty()) {
                 return Err(TypecheckError::InvalidBinOp {
                     lhs: explicit_ty.clone(),
-                    rhs: val.annotation.ty().clone(),
+                    rhs: val.annotation().ty().clone(),
                     op: Operator::Assignment,
-                    span: val.annotation.span().clone(),
+                    span: val.annotation().span().clone(),
                 });
             }
             val
@@ -35,7 +35,7 @@ pub fn typecheck_local_binding(
             } else {
                 ValueKind::Immutable
             },
-            ty: val.annotation.ty().clone(),
+            ty: val.annotation().ty().clone(),
             def: Some(binding.annotation.clone()),
         },
     )?;
@@ -44,7 +44,7 @@ pub fn typecheck_local_binding(
 
     Ok(LocalBinding {
         name: binding.name.clone(),
-        val_ty: val.annotation.ty().clone(),
+        val_ty: val.annotation().ty().clone(),
         val,
         annotation,
         mutable: binding.mutable,
@@ -60,7 +60,7 @@ pub fn typecheck_assignment(
     let lhs = typecheck_expr(&assignment.lhs, &Type::Nothing, ctx)?;
 
     // lhs must evaluate to a mutable typed value
-    match &lhs.annotation {
+    match lhs.annotation() {
         TypeAnnotation::TypedValue {
             value_kind: ValueKind::Mutable,
             ..
@@ -68,18 +68,18 @@ pub fn typecheck_assignment(
         _ => return Err(TypecheckError::NotMutable(Box::new(lhs))),
     }
 
-    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation.ty(), ctx)?;
+    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
 
     if !lhs
-        .annotation
+        .annotation()
         .ty()
-        .assignable_from(rhs.annotation.ty())
+        .assignable_from(rhs.annotation().ty())
     {
         return Err(TypecheckError::InvalidBinOp {
-            lhs: lhs.annotation.ty().clone(),
-            rhs: rhs.annotation.ty().clone(),
+            lhs: lhs.annotation().ty().clone(),
+            rhs: rhs.annotation().ty().clone(),
             op: Operator::Assignment,
-            span: rhs.annotation.span().clone(),
+            span: rhs.annotation().span().clone(),
         });
     }
 
