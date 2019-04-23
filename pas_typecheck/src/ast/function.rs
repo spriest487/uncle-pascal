@@ -2,6 +2,7 @@ use {
     crate::ast::prelude::*,
     pas_syn::Ident,
 };
+use pas_syn::ident::IdentPath;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
@@ -58,8 +59,8 @@ pub fn typecheck_func_decl(
     })
 }
 
-fn find_iface_impl(iface: &Ident, method_ident: &Ident, sig: &FunctionSig, ctx: &Context) -> TypecheckResult<InterfaceImpl> {
-    let iface = ctx.find_iface(iface)?;
+fn find_iface_impl(iface: &IdentPath, method_ident: &Ident, sig: &FunctionSig, ctx: &Context) -> TypecheckResult<InterfaceImpl> {
+    let (iface_path, iface) = ctx.find_iface(iface)?;
 
     let impl_for_types: Vec<_> = iface.methods.iter()
         .filter(|method| method.ident == *method_ident)
@@ -76,7 +77,7 @@ fn find_iface_impl(iface: &Ident, method_ident: &Ident, sig: &FunctionSig, ctx: 
         },
 
         1 => Ok(InterfaceImpl {
-            iface: iface.ident.clone(),
+            iface: iface_path,
             for_ty: impl_for_types[0].clone(),
         }),
 

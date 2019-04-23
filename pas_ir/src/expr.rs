@@ -281,7 +281,11 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
     out
 }
 
-fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder: &mut Builder) -> Ref {
+fn translate_bin_op(
+    bin_op: &pas_ty::ast::BinOp,
+    out_ty: &pas_ty::Type,
+    builder: &mut Builder
+) -> Ref {
     if bin_op.lhs.annotation.is_namespace() {
         // there's nothing to actually translate on the lhs, it's just for name resolution
         return translate_expr(&bin_op.rhs, builder);
@@ -371,9 +375,8 @@ fn translate_bin_op(bin_op: &pas_ty::ast::BinOp, out_ty: &pas_ty::Type, builder:
 fn translate_unary_op(
     unary_op: &pas_ty::ast::UnaryOp,
     out_ty: &pas_ty::Type,
-    builder: &mut Builder)
-    -> Ref
-{
+    builder: &mut Builder
+) -> Ref {
     let operand_ref = translate_expr(&unary_op.operand, builder);
 
     match unary_op.op {
@@ -435,6 +438,8 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
             .unwrap_or_else(|| panic!("field {} referenced in object ctor must exist", member.ident));
 
         let member_ty = builder.metadata.translate_type(member.value.annotation.value_ty());
+        builder.comment(&format!("{}: {}", member.ident, member.value));
+
         builder.retain(member_val.clone(), &member_ty);
 
         builder.append(Instruction::SetField {

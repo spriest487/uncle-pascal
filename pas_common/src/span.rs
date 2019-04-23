@@ -3,6 +3,7 @@ use {
         rc::Rc,
         path::PathBuf,
         fmt::{self},
+        cmp::Ordering,
     },
 };
 
@@ -10,6 +11,21 @@ use {
 pub struct Location {
     pub line: usize,
     pub col: usize,
+}
+
+impl Ord for Location {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.line.cmp(&other.line) {
+            Ordering::Equal => self.col.cmp(&other.line),
+            line_ord => line_ord,
+        }
+    }
+}
+
+impl PartialOrd for Location {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Hash)]

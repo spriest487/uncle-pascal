@@ -21,6 +21,7 @@ use {
         Ident,
     },
 };
+use pas_syn::ident::IdentPath;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -81,11 +82,11 @@ pub enum TypeAnnotation {
     Function {
         span: Span,
         name: Ident,
-        ns: Vec<Ident>,
+        ns: IdentPath,
         ty: Type,
     },
     Type(Type, Span),
-    Namespace(Vec<Ident>, Span),
+    Namespace(IdentPath, Span),
     Method(MethodAnnotation),
 }
 

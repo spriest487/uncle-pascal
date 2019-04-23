@@ -440,7 +440,7 @@ impl Metadata {
         id
     }
 
-    pub fn find_iface(&self, iface_ident: &syn::Ident) -> Option<InterfaceID> {
+    pub fn find_iface(&self, iface_ident: &syn::IdentPath) -> Option<InterfaceID> {
         let name = iface_ident.to_string();
 
         self.ifaces.iter()
@@ -453,8 +453,8 @@ impl Metadata {
         iface_id: InterfaceID,
         for_ty: Type,
         method: impl Into<String>,
-        func_id: FunctionID)
-    {
+        func_id: FunctionID
+    ) {
         self.ifaces.get_mut(&iface_id)
             .unwrap_or_else(|| panic!("trying to impl method for interface {} which doesn't exist", iface_id))
             .add_impl(for_ty, method, func_id);

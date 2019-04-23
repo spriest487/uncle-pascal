@@ -219,7 +219,7 @@ impl fmt::Display for Instruction {
             }
 
             Instruction::RcNew { out, struct_id } => {
-                write!(f, "{:>width$} {} at {}^", "rcnew", struct_id, out, width = IX_WIDTH)
+                write!(f, "{:>width$} {} at {}^", "rcnew", Type::Struct(*struct_id), out, width = IX_WIDTH)
             }
 
             Instruction::Release(at) => {
@@ -233,7 +233,7 @@ impl fmt::Display for Instruction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
     New {
@@ -396,8 +396,8 @@ impl<'metadata> Builder<'metadata> {
         &mut self,
         at: Ref,
         struct_id: StructID,
-        f: &impl Fn(&mut Builder, Ref))
-    {
+        f: &impl Fn(&mut Builder, Ref)
+    ) {
         let fields: Vec<_> = self.metadata.structs()[&struct_id].fields.iter()
             .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
             .collect();
@@ -471,10 +471,11 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn end_scope(&mut self) {
-        let top_scope = self.scopes.pop()
-            .expect("called end_scope with no active scope");
+        let popped_locals = self.scopes.last()
+            .expect("called end_scope with no active scope")
+            .locals.clone();
 
-        for local in top_scope.locals.into_iter().rev() {
+        for local in popped_locals {
             match local {
                 Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
@@ -488,6 +489,8 @@ impl<'metadata> Builder<'metadata> {
                 _ => {},
             }
         }
+
+        self.scopes.pop().unwrap();
     }
 }
 
@@ -609,7 +612,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
 
             if let Some(impl_iface) = &func_decl.impl_iface {
                 let iface_id = metadata.find_iface(&impl_iface.iface)
-                    .expect("interface referenced in method implemention must already be defined");
+                    .unwrap_or_else(|| {
+                        panic!("interface {} referenced in method impl of {} must already be defined",
+                            impl_iface.iface, func_decl.ident);
+                    });
 
                 let for_ty = metadata.translate_type(&impl_iface.for_ty);
                 metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);

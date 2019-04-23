@@ -123,7 +123,7 @@ pub struct NamespaceStack<NS: Namespace> {
 }
 
 #[derive(Debug)]
-pub struct AlreadyDeclared<Key>(pub Key);
+pub struct AlreadyDeclared<Key>(pub Vec<Key>);
 
 #[derive(Debug)]
 pub struct NotDefinedHere<Key>(pub Key);
@@ -159,11 +159,15 @@ impl<NS: Namespace> NamespaceStack<NS> {
         let top = self.current_mut();
 
         if top.key() == Some(&member_key) {
-            return Err(AlreadyDeclared(top.key().cloned().unwrap()));
+            return Err(AlreadyDeclared(top.keys()));
         }
 
         top.insert_member(member_key.clone(), Member::Value(member))
-            .map_err(AlreadyDeclared)
+            .map_err(|key| {
+                let mut path = top.keys();
+                path.push(key);
+                AlreadyDeclared(path)
+            })
     }
 
     // todo: different error codes for "not defined at all" vs "defined but not in the current scope"

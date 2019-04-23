@@ -31,6 +31,7 @@ pub mod ast {
             },
             pas_syn::{
                 ast,
+                ident::*,
             },
         };
     }

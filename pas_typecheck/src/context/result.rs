@@ -47,12 +47,12 @@ pub enum NameError {
         span: Span,
     },
     ExpectedType(Ident, UnexpectedValue),
-    ExpectedInterface(Ident, UnexpectedValue),
-    ExpectedBinding(Ident, UnexpectedValue),
-    ExpectedFunction(Ident, UnexpectedValue),
-    ExpectedNamespace(Ident, UnexpectedValue),
-    AlreadyDeclared { new: Ident, existing: Ident },
-    AlreadyDefined { ident: Ident, existing: Span },
+    ExpectedInterface(IdentPath, UnexpectedValue),
+    ExpectedBinding(IdentPath, UnexpectedValue),
+    ExpectedFunction(IdentPath, UnexpectedValue),
+    ExpectedNamespace(IdentPath, UnexpectedValue),
+    AlreadyDeclared { new: Ident, existing: IdentPath },
+    AlreadyDefined { ident: IdentPath, existing: Span },
     Ambiguous { ident: Ident, options: Vec<IdentPath> },
 }
 
@@ -62,12 +62,12 @@ impl Spanned for NameError {
             NameError::NotFound(ident) => &ident.span,
             NameError::MemberNotFound { span, .. } => span,
             NameError::ExpectedType(ident, _) => &ident.span,
-            NameError::ExpectedInterface(ident, _) => &ident.span,
-            NameError::ExpectedBinding(ident, _) => &ident.span,
-            NameError::ExpectedFunction(ident, _) => &ident.span,
-            NameError::ExpectedNamespace(ident, _) => &ident.span,
+            NameError::ExpectedInterface(ident, _) => &ident.span(),
+            NameError::ExpectedBinding(ident, _) => &ident.span(),
+            NameError::ExpectedFunction(ident, _) => &ident.span(),
+            NameError::ExpectedNamespace(ident, _) => &ident.span(),
             NameError::AlreadyDeclared { new, .. } => &new.span,
-            NameError::AlreadyDefined { ident, .. } => &ident.span,
+            NameError::AlreadyDefined { ident, .. } => &ident.span(),
             NameError::Ambiguous { ident, .. } => &ident.span,
         }
     }
@@ -112,13 +112,15 @@ impl DiagnosticOutput for NameError {
             ],
 
             NameError::Ambiguous { ident, options } => {
-                options.iter()
+                let mut see_also: Vec<_> = options.iter()
                     .map(|option| DiagnosticMessage {
                         title: format!("`{}` could refer to `{}`", ident, option.join(".")),
                         label: None,
                         span: option.last().span().clone(),
                     })
-                    .collect()
+                    .collect();
+                see_also.sort();
+                see_also
             }
 
             _ => Vec::new(),

@@ -40,7 +40,7 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct InterfaceImpl<A: Annotation> {
     pub for_ty: A::Type,
-    pub iface: Ident,
+    pub iface: IdentPath,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -122,7 +122,7 @@ impl FunctionDecl<Span> {
         let impl_iface = impl_iface.map(|tt| {
             InterfaceImpl {
                 for_ty: TypeName::Unknown(tt.span().clone()),
-                iface: tt.into_ident().unwrap(),
+                iface: Path::new(tt.into_ident().unwrap(), Vec::new()), //todo
             }
         });
 
@@ -146,7 +146,7 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "function ")?;
         if let Some(iface_impl) = &self.impl_iface {
-            write!(f, "{}.", iface_impl.iface)?;
+            write!(f, "{}.", iface_impl.iface.join("."))?;
         }
 
         write!(f, "{}(", self.ident)?;

@@ -93,10 +93,7 @@ pub enum TypeMember<'a> {
 pub enum Decl {
     Type(Type),
     BoundValue(Binding),
-    Function {
-        sig: Rc<FunctionSig>,
-        def: Option<Span>,
-    },
+    Function(Rc<FunctionSig>),
 }
 
 impl fmt::Display for Decl {
@@ -104,7 +101,7 @@ impl fmt::Display for Decl {
         match self {
             Decl::Type(ty) => write!(f, "type `{}`", ty),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
-            Decl::Function { sig, .. } => write!(f, "{}", sig),
+            Decl::Function(sig) => write!(f, "{}", sig),
         }
     }
 }
@@ -135,9 +132,6 @@ pub struct Scope {
     id: ScopeID,
     ident: Option<Ident>,
     decls: HashMap<Ident, Member<Scope>>,
-
-    /// iface ident -> self ty -> impl details
-    iface_impls: HashMap<Ident, HashMap<Type, InterfaceImpl>>,
 }
 
 impl Scope {
@@ -146,7 +140,6 @@ impl Scope {
             id,
             ident,
             decls: HashMap::new(),
-            iface_impls: HashMap::new(),
         }
     }
 }
@@ -190,6 +183,12 @@ pub struct Context {
     scopes: NamespaceStack<Scope>,
 
     string_class: Rc<Class>,
+
+    /// iface ident -> self ty -> impl details
+    iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
+
+    /// decl ident -> definition location
+    defs: HashMap<IdentPath, Span>,
 }
 
 impl Context {
@@ -242,6 +241,9 @@ impl Context {
             scopes: NamespaceStack::new(Scope::new(ScopeID(0), None)),
             next_id: ScopeID(1),
             string_class,
+
+            defs: HashMap::new(),
+            iface_impls: HashMap::new(),
         };
 
         let nothing_ident = Ident::new("Nothing", builtin_span.clone());
@@ -266,7 +268,7 @@ impl Context {
         root_ctx.declare_type(disposable_ident, Type::Interface(disposable_iface.clone())).unwrap();
 
         root_ctx.declare_method_impl(
-            disposable_iface.ident.clone(),
+            IdentPath::new(disposable_iface.ident.clone(), Vec::new()),
             Type::Class(root_ctx.string_class.clone()),
             Ident::new("Dispose", builtin_span.clone()),
         ).unwrap();
@@ -334,16 +336,20 @@ impl Context {
         self.scopes.current_path().find(name)
     }
 
-    pub fn resolve<'a>(&'a self, path: &[Ident]) -> Option<MemberRef<'a, Scope>> {
-        self.scopes.resolve(path)
+    pub fn resolve<'a>(&'a self, path: &IdentPath) -> Option<MemberRef<'a, Scope>> {
+        self.scopes.resolve(path.as_slice())
     }
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
         match self.find(&name) {
             Some(old_ref) => {
                 let old_ident = match old_ref {
-                    MemberRef::Value { key, .. } => key.clone(),
-                    MemberRef::Namespace { path } => path.top().key().unwrap().clone(),
+                    MemberRef::Value { key, parent_path, .. } => {
+                        Path::new(key.clone(), parent_path.keys().cloned())
+                    },
+                    MemberRef::Namespace { path } => {
+                        Path::from_parts(path.keys().cloned())
+                    },
                 };
                 Err(NameError::AlreadyDeclared {
                     new: name.clone(),
@@ -354,7 +360,7 @@ impl Context {
             None => {
                 self.scopes.insert(name.clone(), decl)
                     .map_err(|AlreadyDeclared(existing)| NameError::AlreadyDeclared {
-                        existing: existing.clone(),
+                        existing: Path::from_parts(existing),
                         new: name,
                     })
             }
@@ -373,13 +379,14 @@ impl Context {
         self.declare_function_and_def(name, sig, None)
     }
 
-    fn method_impl_entry(&mut self,
-                         iface_ident: Ident,
-                         self_ty: Type,
-                         method: Ident,
+    fn method_impl_entry(
+        &mut self,
+        iface_ident: IdentPath,
+        self_ty: Type,
+        method: Ident,
     ) -> NamingResult<Entry<Ident, MethodImpl>> {
         // check the method exists
-        let iface = self.find_iface(&iface_ident)?;
+        let (_iface_path, iface) = self.find_iface(&iface_ident)?;
         if iface.get_method(&method).is_none() {
             return Err(NameError::MemberNotFound {
                 span: method.span.clone(),
@@ -388,7 +395,7 @@ impl Context {
             });
         }
 
-        let ty_impls = self.scopes.current_mut().iface_impls.entry(iface_ident)
+        let ty_impls = self.iface_impls.entry(iface_ident)
             .or_insert_with(|| HashMap::new());
         let impl_for_ty = ty_impls.entry(self_ty)
             .or_insert_with(|| InterfaceImpl::new());
@@ -396,26 +403,28 @@ impl Context {
         Ok(impl_for_ty.methods.entry(method))
     }
 
-    pub fn declare_method_impl(&mut self,
-                               iface_ident: Ident,
-                               self_ty: Type,
-                               method: Ident,
+    pub fn declare_method_impl(
+        &mut self,
+        iface_ident: IdentPath,
+        self_ty: Type,
+        method: Ident,
     ) -> NamingResult<()> {
         self.method_impl_entry(iface_ident, self_ty, method)?
             .or_insert_with(|| MethodImpl { def: false });
         Ok(())
     }
 
-    pub fn define_method_impl(&mut self,
-                              iface_ident: Ident,
-                              self_ty: Type,
-                              method: Ident,
+    pub fn define_method_impl(
+        &mut self,
+        iface_ident: IdentPath,
+        self_ty: Type,
+        method: Ident,
     ) -> NamingResult<()> {
-        match self.method_impl_entry(iface_ident, self_ty, method.clone())? {
+        match self.method_impl_entry(iface_ident.clone(), self_ty, method.clone())? {
             Entry::Occupied(mut entry) => {
                 if entry.get().def {
                     return Err(NameError::AlreadyDefined {
-                        ident: method.clone(),
+                        ident: iface_ident.child(method),
                         existing: entry.key().span.clone(),
                     });
                 } else {
@@ -435,59 +444,65 @@ impl Context {
         &mut self,
         name: Ident,
         sig: FunctionSig,
-        def: Option<Span>)
-        -> NamingResult<()>
-    {
-        self.declare(name, Decl::Function {
-            sig: Rc::new(sig),
-            def,
-        })
+        def: Option<Span>
+    ) -> NamingResult<()> {
+        self.declare(name.clone(), Decl::Function(Rc::new(sig)))?;
+
+        if let Some(def) = def {
+        let decl_ident = IdentPath::new(name, self.scopes.current_path().keys().cloned());
+            self.defs.insert(decl_ident, def);
+        }
+
+        Ok(())
     }
 
     pub fn define_function(&mut self, name: Ident, sig: FunctionSig, def: Span) -> NamingResult<()> {
         let decl = self.scopes.current_path().find(&name);
 
         match decl {
-            Some(MemberRef::Value { value, key, .. }) => match value {
-                // a function with this name was already declared, and it has a definition,
-                // so it's an error to redefine it
-                Decl::Function { def: Some(existing_def), .. } => {
-                    return Err(NameError::AlreadyDefined {
-                        ident: name,
-                        existing: existing_def.clone(),
-                    });
-                }
+            Some(MemberRef::Value { value, key, parent_path }) => {
+                let path = Path::new(key.clone(), parent_path.keys().cloned());
 
-                // a function with this name was declared but not yet defined, so we need to update
-                // the existing declaration
-                Decl::Function { def: None, sig: old_sig } => {
-                    // sig must match
-                    if sig != *old_sig.as_ref() {
-                        return Err(NameError::AlreadyDeclared {
-                            new: name.clone(),
-                            existing: key.clone(),
-                        });
+                match value {
+                    // a function with this name was declared but not yet defined, so we need to update
+                    // the existing declaration
+                    Decl::Function(old_sig) => {
+                        // sig must match
+                        if sig != *old_sig.as_ref() {
+                            return Err(NameError::AlreadyDeclared {
+                                new: name.clone(),
+                                existing: path,
+                            });
+                        }
+
+                        match self.defs.entry(path.clone()) {
+                            // a function with this name was already declared, and it has a definition,
+                            // so it's an error to redefine it
+                            Entry::Occupied(entry) => {
+                                Err(NameError::AlreadyDefined {
+                                    ident: path,
+                                    existing: entry.get().clone(),
+                                })
+                            }
+
+                            Entry::Vacant(entry) => {
+                                entry.insert(def);
+                                Ok(())
+                            }
+                        }
                     }
 
-                    let def_decl = Decl::Function { sig: Rc::new(sig), def: Some(def) };
-
-                    self.scopes.replace(name, def_decl)
-                        .map_err(|NotDefinedHere(key)| {
-                            NameError::NotFound(key)
-                        })?;
-                    Ok(())
-                }
-
-                other => {
-                    return Err(NameError::ExpectedFunction(name.clone(), other.clone().into()));
+                    other => {
+                        let path = Path::new(key.clone(), parent_path.keys().cloned());
+                        return Err(NameError::ExpectedFunction(path, other.clone().into()));
+                    }
                 }
             }
 
             Some(MemberRef::Namespace { path }) => {
                 return Err(NameError::AlreadyDeclared {
                     new: name,
-                    existing: path.top().key().cloned()
-                        .expect("result of find must be a named path"),
+                    existing: IdentPath::from_parts(path.keys().cloned()),
                 });
             }
 
@@ -524,10 +539,11 @@ impl Context {
         }
     }
 
-    pub fn find_iface(&self, name: &Ident) -> NamingResult<&Interface> {
-        match self.find(name) {
-            Some(MemberRef::Value { value: Decl::Type(Type::Interface(iface)), .. }) => {
-                Ok(iface.as_ref())
+    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Interface)> {
+        match self.resolve(name) {
+            Some(MemberRef::Value { value: Decl::Type(Type::Interface(iface)), key, ref parent_path, .. }) => {
+                let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
+                Ok((parent_path, iface.as_ref()))
             }
             Some(MemberRef::Value { value: other, .. }) => {
                 Err(NameError::ExpectedInterface(name.clone(), other.clone().into()))
@@ -536,7 +552,9 @@ impl Context {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedInterface(name.clone(), unexpected))
             }
-            None => Err(NameError::NotFound(name.clone())),
+            None => {
+                Err(NameError::NotFound(name.last().clone()))
+            },
         }
     }
 
@@ -545,34 +563,32 @@ impl Context {
     fn instance_methods_of(&self, ty: &Type) -> Vec<(&Type, &FunctionDecl)> {
         let mut methods = Vec::new();
 
-        for scope in self.scopes.current_path().as_slice().iter().rev() {
-            for (iface_ident, iface_impls) in &scope.iface_impls {
-                let iface_decl = self.find(iface_ident)
-                    .and_then(|member| member.as_value())
-                    .unwrap();
+        for (iface_ident, iface_impls) in &self.iface_impls {
+            let iface_decl = self.resolve(iface_ident)
+                .and_then(|member| member.as_value())
+                .unwrap();
 
-                let (iface_ty, iface) = match iface_decl {
-                    Decl::Type(iface_ty @ Type::Interface(_)) => {
-                        match iface_ty {
-                            Type::Interface(iface) => (iface_ty, iface),
-                            _ => unreachable!()
-                        }
+            let (iface_ty, iface) = match iface_decl {
+                Decl::Type(iface_ty @ Type::Interface(_)) => {
+                    match iface_ty {
+                        Type::Interface(iface) => (iface_ty, iface),
+                        _ => unreachable!()
                     }
+                }
 
-                    _ => panic!("invalid kind of decl referenced in iface impl"),
-                };
+                _ => panic!("invalid kind of decl referenced in iface impl"),
+            };
 
-                if iface_impls.contains_key(ty) {
-                    let iface_instance_methods = iface.methods.iter()
-                        .filter(|m| m.params.get(0)
-                            .map(|arg_0| arg_0.ty == Type::GenericSelf)
-                            .unwrap_or(false));
+            if iface_impls.contains_key(ty) {
+                let iface_instance_methods = iface.methods.iter()
+                    .filter(|m| m.params.get(0)
+                        .map(|arg_0| arg_0.ty == Type::GenericSelf)
+                        .unwrap_or(false));
 
-                    // add all the methods, we don't need to check if they're actually defined
-                    // or implemented - we should check that elsewhere
-                    for method in iface_instance_methods {
-                        methods.push((iface_ty, method))
-                    }
+                // add all the methods, we don't need to check if they're actually defined
+                // or implemented - we should check that elsewhere
+                for method in iface_instance_methods {
+                    methods.push((iface_ty, method))
                 }
             }
         }
@@ -673,14 +689,6 @@ impl Context {
                 span: member_ident.span.clone(),
                 member: member_ident.clone(),
             }),
-        }
-    }
-
-    pub fn find_named(&self, ident: &Ident) -> NamingResult<&Binding> {
-        match self.find(ident).and_then(|member| member.as_value()) {
-            Some(Decl::BoundValue(binding)) => Ok(binding),
-            Some(unexpected) => Err(NameError::ExpectedBinding(ident.clone(), unexpected.clone().into())),
-            None => Err(NameError::NotFound(ident.clone())),
         }
     }
 

@@ -2,6 +2,7 @@ use {
     crate::ast::prelude::*,
     pas_syn::Ident,
 };
+use pas_syn::ident::IdentPath;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
@@ -50,9 +51,8 @@ pub fn typecheck_class(
 
 pub fn typecheck_iface(
     iface: &ast::Interface<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<Interface>
-{
+    ctx: &mut Context
+) -> TypecheckResult<Interface> {
     let iface_scope = ctx.push_scope(None);
 
     let self_ident = Ident::new("Self", iface.span().clone());
@@ -61,8 +61,12 @@ pub fn typecheck_iface(
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
+            // todo: iface should have a full path as its ident
+            let iface_path = IdentPath::new(iface.ident.clone(), Vec::new());
+            let method_path = iface_path.child(method.ident.clone());
+
             return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
-                ident: method.ident.clone(),
+                ident: method_path,
                 existing: existing.span().clone(),
             }));
         }

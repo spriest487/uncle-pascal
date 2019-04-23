@@ -11,6 +11,7 @@ use {
                 HashMap,
             },
         },
+        cmp::Ordering,
     },
 };
 
@@ -44,11 +45,29 @@ pub trait DiagnosticOutput : Spanned {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DiagnosticMessage {
     pub title: String,
     pub label: Option<String>,
     pub span: Span,
+}
+
+impl Ord for DiagnosticMessage {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.span.file.as_ref().cmp(other.span.file.as_ref()) {
+            Ordering::Equal => match self.span.end.cmp(&other.span.end) {
+                Ordering::Equal => self.span.start.cmp(&other.span.start),
+                end_ord => end_ord,
+            }
+            file_ord => file_ord,
+        }
+    }
+}
+
+impl PartialOrd for DiagnosticMessage {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Clone, Debug)]

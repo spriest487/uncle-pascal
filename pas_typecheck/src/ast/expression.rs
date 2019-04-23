@@ -324,10 +324,14 @@ pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> Type
             }
         }
 
-        MemberRef::Value { value: Decl::Function { sig, .. }, ref parent_path, key } => {
+        MemberRef::Value { value: Decl::Function(sig), ref parent_path, key } => {
+            if parent_path.as_slice().is_empty() {
+                panic!("empty path for decl {}", key);
+            }
+
             TypeAnnotation::Function {
                 span,
-                ns: parent_path.keys().cloned().collect(),
+                ns: IdentPath::from_parts(parent_path.keys().cloned()),
                 name: key.clone(),
                 ty: Type::Function(sig.clone()),
             }
@@ -338,7 +342,7 @@ pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> Type
         }
 
         MemberRef::Namespace { path } => {
-            TypeAnnotation::Namespace(path.keys().cloned().collect(), span)
+            TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         }
     }
 }

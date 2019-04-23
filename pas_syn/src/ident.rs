@@ -58,6 +58,11 @@ impl<Part> Path<Part> {
         Self { parts: path }
     }
 
+    pub fn from_parts(parts: impl IntoIterator<Item=Part>) -> Self {
+        let parts: Vec<_> = parts.into_iter().collect();
+        Self { parts }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item=&Part> {
         self.parts.iter()
     }
@@ -83,13 +88,14 @@ impl<Part> Path<Part> {
     pub fn last(&self) -> &Part {
         self.parts.last().unwrap()
     }
-}
 
-impl<Part: Clone> Path<Part> {
-    pub fn child(&self, child: Part) -> Self {
-        let mut result = self.clone();
-        result.push(child);
-        result
+    pub fn as_slice(&self) -> &[Part] {
+        self.parts.as_slice()
+    }
+
+    pub fn child(mut self, part: Part) -> Self {
+        self.parts.push(part);
+        self
     }
 }
 
@@ -107,3 +113,15 @@ impl<Part: fmt::Display> Path<Part> {
 }
 
 pub type IdentPath = Path<Ident>;
+
+impl fmt::Display for IdentPath {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.join("."))
+    }
+}
+
+impl Spanned for IdentPath {
+    fn span(&self) -> &Span {
+        self.last().span()
+    }
+}
