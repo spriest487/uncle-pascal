@@ -1,12 +1,10 @@
-use {
-    pas_typecheck as pas_ty,
-    pas_syn as syn,
-    std::{
-        collections::hash_map::HashMap,
-        fmt,
-    },
-};
+use pas_syn as syn;
 use pas_syn::Ident;
+use pas_typecheck as pas_ty;
+use std::{
+    collections::hash_map::HashMap,
+    fmt,
+};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct StringId(pub usize);
@@ -35,7 +33,7 @@ impl fmt::Display for InterfaceID {
     }
 }
 
-/* builtin fixed IDs */
+// builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 
 pub const RC_ID: StructID = StructID(0);
@@ -68,17 +66,14 @@ impl Interface {
         }
     }
 
-    pub fn add_impl(
-        &mut self,
-        implementor: Type,
-        method: impl Into<String>,
-        func_id: FunctionID)
-    {
+    pub fn add_impl(&mut self, implementor: Type, method: impl Into<String>, func_id: FunctionID) {
         let method = method.into();
         assert!(self.methods.contains(&method));
 
         let methods_len = self.methods.len();
-        let impl_entry = self.impls.entry(implementor)
+        let impl_entry = self
+            .impls
+            .entry(implementor)
             .or_insert_with(|| InterfaceImpl::new(methods_len));
         assert!(!impl_entry.methods.contains_key(&method));
 
@@ -115,12 +110,9 @@ pub struct Struct {
 
 impl Struct {
     pub fn find_field(&self, name: &str) -> Option<usize> {
-        self.fields.iter()
-            .find_map(|(id, field)| if field.name == name {
-                Some(*id)
-            } else {
-                None
-            })
+        self.fields
+            .iter()
+            .find_map(|(id, field)| if field.name == name { Some(*id) } else { None })
     }
 
     pub fn new(name: impl Into<String>) -> Self {
@@ -133,11 +125,14 @@ impl Struct {
     pub fn with_field(mut self, name: impl Into<String>, ty: Type, rc: bool) -> Self {
         let id = self.fields.keys().max().map(|id| *id + 1).unwrap_or(0);
 
-        self.fields.insert(id, StructField {
-            name: name.into(),
-            ty,
-            rc,
-        });
+        self.fields.insert(
+            id,
+            StructField {
+                name: name.into(),
+                ty,
+                rc,
+            },
+        );
 
         self
     }
@@ -207,16 +202,14 @@ pub struct GlobalName {
 }
 
 impl GlobalName {
-    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item=String>) -> Self {
+    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = String>) -> Self {
         let mut path: Vec<_> = ns.into_iter().collect();
         path.push(name.into());
 
-        Self {
-            path
-        }
+        Self { path }
     }
 
-    pub fn path(&self) -> impl Iterator<Item=&String> {
+    pub fn path(&self) -> impl Iterator<Item = &String> {
         self.path.iter()
     }
 }
@@ -259,30 +252,66 @@ pub struct Metadata {
 impl Metadata {
     pub fn system() -> Self {
         let mut metadata = Metadata::new();
-        metadata.ifaces.insert(DISPOSABLE_ID, Interface::new("Disposable", vec!["Dispose".to_string()]));
+        metadata.ifaces.insert(
+            DISPOSABLE_ID,
+            Interface::new("Disposable", vec!["Dispose".to_string()]),
+        );
 
-        metadata.structs.insert(RC_ID, Struct::new("Rc")
-            .with_field("rc", Type::I32, false)
-            .with_field("value", Type::Nothing.ptr(), false));
+        metadata.structs.insert(
+            RC_ID,
+            Struct::new("Rc")
+                .with_field("rc", Type::I32, false)
+                .with_field("value", Type::Nothing.ptr(), false),
+        );
 
-        metadata.structs.insert(STRING_ID, Struct::new("String")
-            .with_field("chars", Type::I32.ptr(), false)
-            .with_field("len", Type::I32, false));
+        metadata.structs.insert(
+            STRING_ID,
+            Struct::new("String")
+                .with_field("chars", Type::I32.ptr(), false)
+                .with_field("len", Type::I32, false),
+        );
 
-        metadata.functions.insert(STRING_DISPOSE_IMPL_ID, FunctionDecl { global_name: None });
-        metadata.impl_method(DISPOSABLE_ID, Type::Struct(STRING_ID), "Dispose", STRING_DISPOSE_IMPL_ID);
+        metadata
+            .functions
+            .insert(STRING_DISPOSE_IMPL_ID, FunctionDecl { global_name: None });
+        metadata.impl_method(
+            DISPOSABLE_ID,
+            Type::Struct(STRING_ID),
+            "Dispose",
+            STRING_DISPOSE_IMPL_ID,
+        );
 
         let inttostr_name = GlobalName::new("IntToStr", vec![]);
-        metadata.functions.insert(INTTOSTR_ID, FunctionDecl { global_name: Some(inttostr_name)});
+        metadata.functions.insert(
+            INTTOSTR_ID,
+            FunctionDecl {
+                global_name: Some(inttostr_name),
+            },
+        );
 
         let writeln_name = GlobalName::new("WriteLn", vec![]);
-        metadata.functions.insert(WRITELN_ID, FunctionDecl { global_name: Some(writeln_name)});
+        metadata.functions.insert(
+            WRITELN_ID,
+            FunctionDecl {
+                global_name: Some(writeln_name),
+            },
+        );
 
         let getmem_name = GlobalName::new("GetMem", vec![]);
-        metadata.functions.insert(GETMEM_ID, FunctionDecl { global_name: Some(getmem_name)});
+        metadata.functions.insert(
+            GETMEM_ID,
+            FunctionDecl {
+                global_name: Some(getmem_name),
+            },
+        );
 
         let freemem_name = GlobalName::new("FreeMem", vec![]);
-        metadata.functions.insert(FREEMEM_ID, FunctionDecl { global_name: Some(freemem_name)});
+        metadata.functions.insert(
+            FREEMEM_ID,
+            FunctionDecl {
+                global_name: Some(freemem_name),
+            },
+        );
 
         metadata
     }
@@ -300,7 +329,10 @@ impl Metadata {
         for (id, struct_def) in &other.structs {
             if self.structs.contains_key(id) {
                 let existing = self.structs.get(id).unwrap();
-                panic!("duplicate struct ID {} in metadata (new: {}, existing: {})", id, struct_def.name, existing.name);
+                panic!(
+                    "duplicate struct ID {} in metadata (new: {}, existing: {})",
+                    id, struct_def.name, existing.name
+                );
             }
 
             self.structs.insert(*id, struct_def.clone());
@@ -317,7 +349,10 @@ impl Metadata {
         for (id, iface_def) in &other.ifaces {
             if self.ifaces.contains_key(id) {
                 let existing = &self.ifaces[id];
-                panic!("duplicate struct ID {} in metadata (new: {}, existing: {})", id, iface_def.name, existing.name);
+                panic!(
+                    "duplicate struct ID {} in metadata (new: {}, existing: {})",
+                    id, iface_def.name, existing.name
+                );
             }
             self.ifaces.insert(*id, iface_def.clone());
         }
@@ -326,14 +361,21 @@ impl Metadata {
             if self.functions.contains_key(id) {
                 let existing = &self.functions[id];
 
-                let name = func_decl.global_name.as_ref()
+                let name = func_decl
+                    .global_name
+                    .as_ref()
                     .map(|n| n.to_string())
                     .unwrap_or("<unnamed>".to_string());
-                let existing_name = existing.global_name.as_ref()
+                let existing_name = existing
+                    .global_name
+                    .as_ref()
                     .map(|n| n.to_string())
                     .unwrap_or("<unnamed>".to_string());
 
-                panic!("duplicate function ID {} in metadata (new: {}, existing: {})", id, name, existing_name);
+                panic!(
+                    "duplicate function ID {} in metadata (new: {}, existing: {})",
+                    id, name, existing_name
+                );
             }
             self.functions.insert(*id, func_decl.clone());
         }
@@ -344,27 +386,34 @@ impl Metadata {
     }
 
     fn next_struct_id(&mut self) -> StructID {
-        (0..).map(StructID)
+        (0..)
+            .map(StructID)
             .filter(|id| !self.structs.contains_key(id))
             .next()
             .unwrap()
     }
 
     fn next_iface_id(&mut self) -> InterfaceID {
-        (0..).map(InterfaceID)
+        (0..)
+            .map(InterfaceID)
             .filter(|id| !self.ifaces.contains_key(id))
             .next()
             .unwrap()
     }
 
     fn next_function_id(&mut self) -> FunctionID {
-        (0..).map(FunctionID)
+        (0..)
+            .map(FunctionID)
             .filter(|id| !self.functions.contains_key(id))
             .next()
             .unwrap()
     }
 
-    pub fn declare_func(&mut self, ns: &[Ident], func_decl: &pas_ty::ast::FunctionDecl) -> FunctionID {
+    pub fn declare_func(
+        &mut self,
+        ns: &[Ident],
+        func_decl: &pas_ty::ast::FunctionDecl,
+    ) -> FunctionID {
         let id = self.next_function_id();
 
         let global_name = match &func_decl.impl_iface {
@@ -377,32 +426,35 @@ impl Metadata {
             },
         };
 
-        self.functions.insert(id, FunctionDecl {
-            global_name
-        });
+        self.functions.insert(id, FunctionDecl { global_name });
 
         id
     }
 
     pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
-        self.functions.iter()
+        self.functions
+            .iter()
             .find(|(_id, func)| func.global_name.as_ref() == Some(name))
             .map(|(id, _func)| *id)
     }
 
     pub fn func_desc(&self, id: FunctionID) -> String {
-        self.functions.get(&id)
+        self.functions
+            .get(&id)
             .and_then(|decl| decl.global_name.as_ref())
             .map(|global_name| global_name.to_string())
             .or_else(|| {
-                self.ifaces.values()
-                    .find_map(|iface| iface.impls.iter()
-                        .find_map(|(impl_ty, iface_impl)| iface_impl.methods.iter()
-                            .find_map(|(method, impl_id)| if *impl_id == id {
+                self.ifaces.values().find_map(|iface| {
+                    iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
+                        iface_impl.methods.iter().find_map(|(method, impl_id)| {
+                            if *impl_id == id {
                                 Some(format!("impl of {}.{} for {}", iface.name, method, impl_ty))
                             } else {
                                 None
-                            })))
+                            }
+                        })
+                    })
+                })
             })
             .unwrap()
     }
@@ -420,7 +472,11 @@ impl Metadata {
         let id = self.next_struct_id();
 
         let struct_name = struct_def.ident.to_string();
-        assert!(!self.structs.values().any(|def| def.name == struct_name), "duplicate struct def: {}", struct_name);
+        assert!(
+            !self.structs.values().any(|def| def.name == struct_name),
+            "duplicate struct def: {}",
+            struct_name
+        );
 
         let struct_def = Struct::new(struct_name).with_fields(fields);
 
@@ -429,13 +485,16 @@ impl Metadata {
     }
 
     pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
-        let methods: Vec<_> = iface_def.methods.iter()
+        let methods: Vec<_> = iface_def
+            .methods
+            .iter()
             .map(|method| method.ident.to_string())
             .collect();
 
         let id = self.next_iface_id();
 
-        self.ifaces.insert(id, Interface::new(iface_def.ident.to_string(), methods));
+        self.ifaces
+            .insert(id, Interface::new(iface_def.ident.to_string(), methods));
 
         id
     }
@@ -443,7 +502,8 @@ impl Metadata {
     pub fn find_iface(&self, iface_ident: &syn::IdentPath) -> Option<InterfaceID> {
         let name = iface_ident.to_string();
 
-        self.ifaces.iter()
+        self.ifaces
+            .iter()
             .find(|(_id, def)| def.name == name)
             .map(|(id, _def)| *id)
     }
@@ -453,17 +513,25 @@ impl Metadata {
         iface_id: InterfaceID,
         for_ty: Type,
         method: impl Into<String>,
-        func_id: FunctionID
+        func_id: FunctionID,
     ) {
-        self.ifaces.get_mut(&iface_id)
-            .unwrap_or_else(|| panic!("trying to impl method for interface {} which doesn't exist", iface_id))
+        self.ifaces
+            .get_mut(&iface_id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "trying to impl method for interface {} which doesn't exist",
+                    iface_id
+                )
+            })
             .add_impl(for_ty, method, func_id);
     }
 
     pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: &str) -> Option<FunctionID> {
-        self.ifaces.get(&iface_id)
+        self.ifaces
+            .get(&iface_id)
             .unwrap_or_else(|| panic!("expected interface {} to exist", iface_id))
-            .impls.get(ty)
+            .impls
+            .get(ty)
             .and_then(|ty_impl| ty_impl.methods.get(method))
             .cloned()
     }
@@ -475,86 +543,95 @@ impl Metadata {
 
             pas_ty::Type::Interface(iface) => {
                 let ty_name = iface.ident.to_string();
-                let id = self.ifaces.iter()
+                let id = self
+                    .ifaces
+                    .iter()
                     .find(|(_id, iface)| iface.name == ty_name)
                     .map(|(id, _iface)| id)
                     .unwrap_or_else(|| panic!("interface {} must exist in metadata", ty_name));
                 Type::InterfaceRef(*id)
-            }
+            },
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
 
-            pas_ty::Type::Pointer(target) => self.translate_type(target)
-                .ptr(),
+            pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
 
             pas_typecheck::Type::Record(class) => {
                 let ty_name = class.ident.to_string();
-                let (id, _) = self.find_struct(&ty_name)
+                let (id, _) = self
+                    .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
                 Type::Struct(id)
-            }
+            },
 
             pas_typecheck::Type::Class(class) => {
                 let ty_name = class.ident.to_string();
-                let (id, _) = self.find_struct(&ty_name)
+                let (id, _) = self
+                    .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
 
                 Type::Struct(id).rc()
-            }
+            },
 
-            pas_typecheck::Type::GenericSelf => unreachable!("Self is not a real type in this context"),
+            pas_typecheck::Type::GenericSelf => {
+                unreachable!("Self is not a real type in this context")
+            },
 
-            pas_typecheck::Type::Function(sig) => unimplemented!("No IR type exists to represent function: {}", sig),
+            pas_typecheck::Type::Function(sig) => {
+                unimplemented!("No IR type exists to represent function: {}", sig)
+            },
         }
     }
 
     pub fn find_struct(&self, name: &str) -> Option<(StructID, &Struct)> {
-        self.structs.iter()
-            .find_map(|(id, struct_def)| if struct_def.name == name {
+        self.structs.iter().find_map(|(id, struct_def)| {
+            if struct_def.name == name {
                 Some((*id, struct_def))
             } else {
                 None
-            })
+            }
+        })
     }
 
     pub fn find_or_insert_string(&mut self, s: &str) -> StringId {
-        let existing = self.string_literals.iter()
-            .find_map(|(id, literal)| if literal == s {
-                Some(*id)
-            } else {
-                None
-            });
+        let existing =
+            self.string_literals
+                .iter()
+                .find_map(|(id, literal)| if literal == s { Some(*id) } else { None });
 
         match existing {
             Some(id) => id,
             None => {
-                let next_id = self.string_literals.keys()
+                let next_id = self
+                    .string_literals
+                    .keys()
                     .max_by_key(|id| id.0)
                     .map(|id| StringId(id.0 + 1))
                     .unwrap_or(StringId(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
-            }
+            },
         }
     }
 
     pub fn find_string_id(&self, string: &str) -> Option<StringId> {
-        self.string_literals.iter()
-            .find_map(|(id, string_lit)| if string_lit == string {
+        self.string_literals.iter().find_map(|(id, string_lit)| {
+            if string_lit == string {
                 Some(*id)
             } else {
                 None
-            })
+            }
+        })
     }
 
     pub fn get_string(&self, id: StringId) -> Option<&String> {
         self.string_literals.get(&id)
     }
 
-    pub fn strings(&self) -> impl Iterator<Item=(StringId, &str)> + '_ {
+    pub fn strings(&self) -> impl Iterator<Item = (StringId, &str)> + '_ {
         self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
     }
 }

@@ -1,10 +1,6 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::{
-            ExpressionNode,
-        },
-    },
+use crate::{
+    ast::ExpressionNode,
+    parse::prelude::*,
 };
 
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
@@ -29,7 +25,7 @@ impl IfCond<Span> {
                 let span = if_token.span().to(&else_branch.annotation);
 
                 (Some(else_branch), span)
-            }
+            },
 
             None => (None, if_token.span().to(&then_branch.annotation)),
         };

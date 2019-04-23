@@ -1,86 +1,80 @@
-mod result;
-mod context;
 mod annotation;
+mod context;
+mod result;
 
 pub mod ast {
-    mod expression;
-    mod statement;
-    mod unit;
-    mod function;
-    mod typedecl;
     mod block;
-    mod ctor;
-    mod op;
     mod cond;
+    mod ctor;
+    mod expression;
+    mod function;
     mod iter;
+    mod op;
+    mod statement;
+    mod typedecl;
+    mod unit;
 
     mod prelude {
-        pub use {
-            crate::{
-                context::*,
-                ast::*,
-                result::*,
-                Type,
-                TypeAnnotation,
-                MethodAnnotation,
-                Primitive,
-                FunctionSig,
-            },
-            pas_common::{
-                span::*,
-            },
-            pas_syn::{
-                ast,
-                ident::*,
-            },
+        pub use crate::{
+            ast::*,
+            context::*,
+            result::*,
+            FunctionSig,
+            MethodAnnotation,
+            Primitive,
+            Type,
+            TypeAnnotation,
+        };
+        pub use pas_common::span::*;
+        pub use pas_syn::{
+            ast,
+            ident::*,
         };
     }
 
     pub use self::{
-        op::*,
-        cond::*,
-        expression::*,
-        statement::*,
-        unit::*,
-        function::*,
-        typedecl::*,
         block::*,
+        cond::*,
         ctor::*,
+        expression::*,
+        function::*,
         iter::*,
+        op::*,
+        statement::*,
+        typedecl::*,
+        unit::*,
     };
 }
 
 pub use self::{
-    result::*,
-    context::*,
-    ty::*,
     annotation::*,
+    context::*,
+    result::*,
+    ty::*,
 };
 
 pub mod ty {
-    use {
-        crate::{
-            TypeAnnotation,
-            ast::{
-                Class,
-                Interface,
-                FunctionDecl,
-            }
+    use crate::{
+        ast::{
+            Class,
+            FunctionDecl,
+            Interface,
         },
-        std::{
-            rc::Rc,
-            fmt,
+        TypeAnnotation,
+    };
+    use pas_common::span::*;
+    use pas_syn::{
+        ast::{
+            self,
+            ClassKind,
+            Typed,
         },
-        pas_syn::{
-            ast::{
-                self,
-                ClassKind,
-                Typed,
-            },
-            ident::*,
-            Operator,
-        },
-        pas_common::span::*,
+        ident::*,
+        Operator,
+    };
+    use std::{
+        fmt,
+        rc::Rc,
     };
 
     #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -93,8 +87,7 @@ pub mod ty {
         pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> Self {
             Self {
                 params: decl.params.iter().map(|p| p.ty.clone()).collect(),
-                return_ty: decl.return_ty.clone()
-                    .unwrap_or(Type::Nothing),
+                return_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
             }
         }
 
@@ -117,7 +110,9 @@ pub mod ty {
                 return None;
             }
 
-            let self_arg_pos = self.params.iter()
+            let self_arg_pos = self
+                .params
+                .iter()
                 .position(|arg| *arg == Type::GenericSelf)?;
 
             Some(&args[self_arg_pos])
@@ -133,7 +128,8 @@ pub mod ty {
             let self_type = if self.return_ty == Type::GenericSelf {
                 &impl_func.return_ty
             } else {
-                self.params.iter()
+                self.params
+                    .iter()
                     .position(|param| *param == Type::GenericSelf)
                     .map(|pos| &impl_func.params[pos])?
             };
@@ -143,12 +139,16 @@ pub mod ty {
                 return None;
             }
 
-            let self_positions: Vec<_> = self.params.iter()
+            let self_positions: Vec<_> = self
+                .params
+                .iter()
                 .enumerate()
-                .filter_map(|(pos, param)| if *param == Type::GenericSelf {
-                    Some(pos)
-                } else {
-                    None
+                .filter_map(|(pos, param)| {
+                    if *param == Type::GenericSelf {
+                        Some(pos)
+                    } else {
+                        None
+                    }
                 })
                 .collect();
 
@@ -237,10 +237,10 @@ pub mod ty {
                 Type::Nothing => Some(builtin_path("Nothing")),
                 Type::GenericSelf => Some(builtin_path("Self")),
                 Type::Primitive(p) => Some(builtin_path(p.name())),
-                Type::Interface(iface) =>
-                    Some(IdentPath::new(iface.ident.clone(), vec![])),
-                Type::Record(class) | Type::Class(class) =>
-                    Some(IdentPath::new(class.ident.clone(), vec![])),
+                Type::Interface(iface) => Some(IdentPath::new(iface.ident.clone(), vec![])),
+                Type::Record(class) | Type::Class(class) => {
+                    Some(IdentPath::new(class.ident.clone(), vec![]))
+                },
                 _ => None,
             }
         }
@@ -250,34 +250,40 @@ pub mod ty {
                 Type::Nothing => Some("Nothing".to_string()),
                 Type::GenericSelf => Some("Self".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
-                Type::Interface(iface) =>
-                    Some(iface.ident.to_string()),
-                Type::Record(class) | Type::Class(class) =>
-                    Some(class.ident.to_string()),
+                Type::Interface(iface) => Some(iface.ident.to_string()),
+                Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
                 _ => None,
             }
         }
 
         pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
             match type_decl {
-                ast::TypeDecl::Class(class @ ast::Class { kind: ClassKind::Record, .. }) => {
-                    Type::Record(Rc::new(class.clone()))
-                }
+                ast::TypeDecl::Class(
+                    class @ ast::Class {
+                        kind: ClassKind::Record,
+                        ..
+                    },
+                ) => Type::Record(Rc::new(class.clone())),
 
-                ast::TypeDecl::Class(class @ ast::Class { kind: ClassKind::Object, .. }) => {
-                    Type::Class(Rc::new(class.clone()))
-                }
+                ast::TypeDecl::Class(
+                    class @ ast::Class {
+                        kind: ClassKind::Object,
+                        ..
+                    },
+                ) => Type::Class(Rc::new(class.clone())),
 
-                ast::TypeDecl::Interface(iface) => {
-                    Type::Interface(Rc::new(iface.clone()))
-                }
+                ast::TypeDecl::Interface(iface) => Type::Interface(Rc::new(iface.clone())),
             }
         }
 
         pub fn find_member(&self, ident: &Ident) -> Option<MemberRef> {
             match self {
-                Type::Record(class) | Type::Class(class) => class.find_member(ident)
-                    .map(|m| MemberRef { ident: &m.ident, ty: &m.ty }),
+                Type::Record(class) | Type::Class(class) => {
+                    class.find_member(ident).map(|m| MemberRef {
+                        ident: &m.ident,
+                        ty: &m.ty,
+                    })
+                },
 
                 _ => None,
             }
@@ -285,8 +291,12 @@ pub mod ty {
 
         pub fn get_member(&self, index: usize) -> Option<MemberRef> {
             match self {
-                Type::Record(class) | Type::Class(class) => class.members.get(index)
-                    .map(|m| MemberRef { ty: &m.ty, ident: &m.ident }),
+                Type::Record(class) | Type::Class(class) => {
+                    class.members.get(index).map(|m| MemberRef {
+                        ty: &m.ty,
+                        ident: &m.ident,
+                    })
+                },
                 _ => None,
             }
         }
@@ -298,9 +308,8 @@ pub mod ty {
             }
         }
 
-        pub fn members<'ty>(&'ty self) -> impl Iterator<Item=MemberRef<'ty>> {
-            (0..self.members_len())
-                .map(move |m| self.get_member(m).unwrap())
+        pub fn members<'ty>(&'ty self) -> impl Iterator<Item = MemberRef<'ty>> {
+            (0..self.members_len()).map(move |m| self.get_member(m).unwrap())
         }
 
         pub fn is_rc(&self) -> bool {
@@ -343,10 +352,10 @@ pub mod ty {
 
         pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
             match (self, op, rhs) {
-                (Type::Pointer(_), Operator::Plus, Type::Pointer(_)) |
-                (Type::Pointer(_), Operator::Minus, Type::Pointer(_)) |
-                (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32)) |
-                (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
+                (Type::Pointer(_), Operator::Plus, Type::Pointer(_))
+                | (Type::Pointer(_), Operator::Minus, Type::Pointer(_))
+                | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32))
+                | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
 
                 _ => *self == *rhs,
             }
@@ -354,8 +363,7 @@ pub mod ty {
 
         pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl> {
             match self {
-                Type::Interface(iface) => iface.methods.iter()
-                    .find(|m| m.ident == *method),
+                Type::Interface(iface) => iface.methods.iter().find(|m| m.ident == *method),
                 _ => None,
             }
         }
@@ -379,7 +387,7 @@ pub mod ty {
                     Type::Interface(iface) => write!(f, "{}", iface.ident),
                     Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
-                }
+                },
             }
         }
     }
@@ -413,7 +421,7 @@ mod test {
 
         let impl_sig = FunctionSig {
             return_ty: INT32,
-            params: vec![]
+            params: vec![],
         };
 
         assert_eq!(None, iface_sig.impl_ty(&impl_sig));
@@ -428,7 +436,7 @@ mod test {
 
         let impl_sig = FunctionSig {
             return_ty: INT32,
-            params: vec![]
+            params: vec![],
         };
 
         assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
@@ -443,7 +451,7 @@ mod test {
 
         let impl_sig = FunctionSig {
             return_ty: Type::Nothing,
-            params: vec![]
+            params: vec![],
         };
 
         assert_eq!(None, iface_sig.impl_ty(&impl_sig));

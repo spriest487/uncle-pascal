@@ -1,25 +1,23 @@
 mod lex;
 
-use {
-    crate::{
-        consts::{
-            RealConstant,
-            IntConstant,
-        },
-        ident::Ident,
-        keyword::Keyword,
-        operators::Operator,
+use crate::{
+    consts::{
+        IntConstant,
+        RealConstant,
     },
-    pas_common::{
-        TracedError,
-        BuildOptions,
-        span::*,
-        DiagnosticOutput,
-    },
-    std::{
-        path::PathBuf,
-        fmt,
-    },
+    ident::Ident,
+    keyword::Keyword,
+    operators::Operator,
+};
+use pas_common::{
+    span::*,
+    BuildOptions,
+    DiagnosticOutput,
+    TracedError,
+};
+use std::{
+    fmt,
+    path::PathBuf,
 };
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
@@ -41,11 +39,15 @@ impl DelimiterPair {
 
 impl fmt::Display for DelimiterPair {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            DelimiterPair::BeginEnd => "begin/end",
-            DelimiterPair::SquareBracket => "[]",
-            DelimiterPair::Bracket => "()",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                DelimiterPair::BeginEnd => "begin/end",
+                DelimiterPair::SquareBracket => "[]",
+                DelimiterPair::Bracket => "()",
+            }
+        )
     }
 }
 
@@ -58,11 +60,15 @@ pub enum Separator {
 
 impl fmt::Display for Separator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Separator::Colon => ':',
-            Separator::Comma => ',',
-            Separator::Semicolon => ';',
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Separator::Colon => ':',
+                Separator::Comma => ',',
+                Separator::Semicolon => ';',
+            }
+        )
     }
 }
 
@@ -153,22 +159,24 @@ impl TokenTree {
 
     pub fn is_delimited(&self, delim: DelimiterPair) -> bool {
         match self {
-            TokenTree::Delimited { delim: token_delim, .. } => *token_delim == delim,
-            _ => false
+            TokenTree::Delimited {
+                delim: token_delim, ..
+            } => *token_delim == delim,
+            _ => false,
         }
     }
 
     pub fn is_separator(&self, sep: Separator) -> bool {
         match self {
             TokenTree::Separator { sep: token_sep, .. } => *token_sep == sep,
-            _ => false
+            _ => false,
         }
     }
 
     pub fn is_operator(&self, op: Operator) -> bool {
         match self {
             TokenTree::Operator { op: token_op, .. } => *token_op == op,
-            _ => false
+            _ => false,
         }
     }
 
@@ -244,13 +252,13 @@ impl fmt::Display for TokenizeError {
         match self {
             TokenizeError::IllegalToken(_) => write!(f, "Illegal token"),
 
-            TokenizeError::UnmatchedDelimiter { delim, to_match, .. } => {
-                write!(f, "unmatched {:?} delimiter from {}", delim, to_match)
-            }
+            TokenizeError::UnmatchedDelimiter {
+                delim, to_match, ..
+            } => write!(f, "unmatched {:?} delimiter from {}", delim, to_match),
 
             TokenizeError::UnexpectedCloseDelimited { delim, .. } => {
                 write!(f, "unexpected {:?} close delimiter", delim)
-            }
+            },
         }
     }
 }
@@ -265,24 +273,25 @@ impl Spanned for TokenizeError {
     }
 }
 
-impl DiagnosticOutput for TokenizeError {}
+impl DiagnosticOutput for TokenizeError {
+}
 
 pub type TokenizeResult<T> = Result<T, TracedError<TokenizeError>>;
 
 impl TokenTree {
-    pub fn tokenize(filename: impl Into<PathBuf>,
-                    source: &str,
-                    opts: &BuildOptions) -> TokenizeResult<Vec<Self>> {
+    pub fn tokenize(
+        filename: impl Into<PathBuf>,
+        source: &str,
+        opts: &BuildOptions,
+    ) -> TokenizeResult<Vec<Self>> {
         lex::lex(filename, source, opts)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use {
-        super::*,
-        std::rc::Rc,
-    };
+    use super::*;
+    use std::rc::Rc;
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {
         let mut opts = BuildOptions::default();
@@ -292,7 +301,7 @@ mod test {
             Ok(result) => result,
             Err(err) => {
                 panic!("{} @ {:#?}", err.err, err.bt);
-            }
+            },
         }
     }
 
@@ -304,7 +313,7 @@ mod test {
 
         match &result[0] {
             TokenTree::String { value, .. } => assert_eq!("hello world!", value),
-            _ => panic!("got {:#?}, expected a string", result)
+            _ => panic!("got {:#?}, expected a string", result),
         }
     }
 
@@ -315,7 +324,7 @@ mod test {
 
         match result[0] {
             TokenTree::IntNumber { value, .. } => assert_eq!(IntConstant::Char(32), value),
-            _ => panic!("got {:#?}, expected a char literal", result)
+            _ => panic!("got {:#?}, expected a char literal", result),
         }
     }
 
@@ -331,12 +340,20 @@ mod test {
             Keyword::False,
         ];
 
-        assert_eq!(expected_kws.len(), result.len(), "expected 5 keywords, found {:#?}", result);
+        assert_eq!(
+            expected_kws.len(),
+            result.len(),
+            "expected 5 keywords, found {:#?}",
+            result
+        );
 
         for i in 0..expected_kws.len() {
             let kw = match result[i] {
                 TokenTree::Keyword { kw, .. } => kw,
-                _ => panic!("expected result to be a {} keyword token, was {:#?}", expected_kws[i], result),
+                _ => panic!(
+                    "expected result to be a {} keyword token, was {:#?}",
+                    expected_kws[i], result
+                ),
             };
 
             assert_eq!(expected_kws[i], kw);
@@ -348,13 +365,17 @@ mod test {
         let result = tokenize("(a)", false);
 
         match &result[0] {
-            TokenTree::Delimited { delim: DelimiterPair::Bracket, inner, .. } => {
+            TokenTree::Delimited {
+                delim: DelimiterPair::Bracket,
+                inner,
+                ..
+            } => {
                 assert_eq!(1, inner.len());
                 match &inner[0] {
                     TokenTree::Ident(ident) => assert_eq!("a", ident.name),
                     _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                 }
-            }
+            },
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -365,18 +386,24 @@ mod test {
         let result = tokenize("(begin a end)", false);
 
         match &result[0] {
-            TokenTree::Delimited { delim: DelimiterPair::Bracket, inner, .. } => {
+            TokenTree::Delimited {
+                delim: DelimiterPair::Bracket,
+                inner,
+                ..
+            } => {
                 assert_eq!(1, inner.len(), "expected one inner token, got {:#?}", inner);
                 match &inner[0] {
-                    TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, .. } => {
-                        match &inner[0] {
-                            TokenTree::Ident(ident) => assert_eq!("a", ident.name),
-                            _ => panic!("expected ident `a`, found {:#?}", inner[0]),
-                        }
-                    }
+                    TokenTree::Delimited {
+                        delim: DelimiterPair::BeginEnd,
+                        inner,
+                        ..
+                    } => match &inner[0] {
+                        TokenTree::Ident(ident) => assert_eq!("a", ident.name),
+                        _ => panic!("expected ident `a`, found {:#?}", inner[0]),
+                    },
                     _ => panic!("expected begin/end delimited tree, found {:#?}", inner[0]),
                 }
-            }
+            },
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -385,23 +412,38 @@ mod test {
     fn test_span(from: (usize, usize), to: (usize, usize)) -> Span {
         Span {
             file: Rc::new(PathBuf::from("test")),
-            start: Location { line: from.0, col: from.1, },
-            end: Location { line: to.0, col: to.1, },
+            start: Location {
+                line: from.0,
+                col: from.1,
+            },
+            end: Location {
+                line: to.0,
+                col: to.1,
+            },
         }
     }
 
     #[test]
     fn begin_end_delim_has_correct_spans() {
-        let result = tokenize(r"begin
+        let result = tokenize(
+            r"begin
 1 2 3
-end", false);
+end",
+            false,
+        );
         match &result[0] {
-            TokenTree::Delimited { delim: DelimiterPair::BeginEnd, inner, open, close, span } => {
+            TokenTree::Delimited {
+                delim: DelimiterPair::BeginEnd,
+                inner,
+                open,
+                close,
+                span,
+            } => {
                 assert_eq!(&test_span((0, 0), (0, 4)), open, "span of open token");
                 assert_eq!(&test_span((2, 0), (2, 2)), close, "span of close token");
                 assert_eq!(&test_span((0, 0), (2, 2)), span, "total span");
                 assert_eq!(3, inner.len());
-            }
+            },
 
             _ => panic!("expectefd begin/end delim group, got {:?}", result[0]),
         }

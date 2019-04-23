@@ -1,12 +1,10 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::{
-            LocalBinding,
-            ExpressionNode,
-            Statement,
-        },
+use crate::{
+    ast::{
+        ExpressionNode,
+        LocalBinding,
+        Statement,
     },
+    parse::prelude::*,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -19,7 +17,11 @@ pub struct ForLoop<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for ForLoop<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "for {} to {} do {}", self.init_binding, self.to_expr, self.body)
+        write!(
+            f,
+            "for {} to {} do {}",
+            self.init_binding, self.to_expr, self.body
+        )
     }
 }
 
@@ -35,7 +37,7 @@ impl ForLoop<Span> {
         let init_binding = LocalBinding::parse(tokens, false)?;
 
         tokens.match_one(Keyword::To)?;
-        let to_expr  = ExpressionNode::parse(tokens)?;
+        let to_expr = ExpressionNode::parse(tokens)?;
 
         tokens.match_one(Keyword::Do)?;
         let body = Statement::parse(tokens)?;

@@ -1,25 +1,23 @@
-use {
-    crate::{
-        Type,
-        ValueKind,
-        context::NameError,
-        ast::{
-            ExpressionNode,
-            Call,
-        },
+use crate::{
+    ast::{
+        Call,
+        ExpressionNode,
     },
-    std::fmt,
-    pas_common::{
-        span::*,
-        DiagnosticMessage,
-        DiagnosticOutput,
-        Backtrace,
-    },
-    pas_syn::{
-        Ident,
-        Operator,
-    },
+    context::NameError,
+    Type,
+    ValueKind,
 };
+use pas_common::{
+    span::*,
+    Backtrace,
+    DiagnosticMessage,
+    DiagnosticOutput,
+};
+use pas_syn::{
+    Ident,
+    Operator,
+};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -128,7 +126,7 @@ impl DiagnosticOutput for TypecheckError {
     }
 }
 
-fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item=&'a Type>) -> fmt::Result {
+fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item = &'a Type>) -> fmt::Result {
     for (i, arg) in args.into_iter().enumerate() {
         if i > 0 {
             write!(f, ", ")?;

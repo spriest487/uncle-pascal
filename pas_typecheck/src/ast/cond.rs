@@ -1,15 +1,12 @@
-use {
-    crate::ast::prelude::*,
-};
+use crate::ast::prelude::*;
 
 pub type IfCond = ast::IfCond<TypeAnnotation>;
 
 pub fn typecheck_if_cond(
     if_cond: &ast::IfCond<Span>,
     expect_ty: &Type,
-    ctx: &mut Context)
-    -> TypecheckResult<IfCond>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<IfCond> {
     let cond = typecheck_expr(&if_cond.cond, &Type::Primitive(Primitive::Boolean), ctx)?;
     if *cond.annotation.value_ty() != Type::Primitive(Primitive::Boolean) {
         return Err(TypecheckError::TypeMismatch {
@@ -22,15 +19,13 @@ pub fn typecheck_if_cond(
     let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, ctx)?;
     let else_branch = match &if_cond.else_branch {
         Some(else_expr) => Some(typecheck_expr(else_expr, expect_ty, ctx)?),
-        None => None
+        None => None,
     };
 
     let span = if_cond.span().clone();
 
     let annotation = match (then_branch.annotation.value_ty(), else_branch.as_ref()) {
-        (Type::Nothing, _) | (_, None) => {
-            TypeAnnotation::Untyped(span)
-        },
+        (Type::Nothing, _) | (_, None) => TypeAnnotation::Untyped(span),
 
         (then_ty, Some(else_branch)) => {
             if *else_branch.annotation.value_ty() != *then_ty {
@@ -43,10 +38,10 @@ pub fn typecheck_if_cond(
                 TypeAnnotation::TypedValue {
                     ty: then_ty.clone(),
                     value_kind: ValueKind::Temporary,
-                    span
+                    span,
                 }
             }
-        }
+        },
     };
 
     Ok(IfCond {

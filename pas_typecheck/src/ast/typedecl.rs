@@ -1,8 +1,8 @@
-use {
-    crate::ast::prelude::*,
-    pas_syn::Ident,
+use crate::ast::prelude::*;
+use pas_syn::{
+    ident::IdentPath,
+    Ident,
 };
-use pas_syn::ident::IdentPath;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
@@ -11,9 +11,8 @@ pub type Interface = ast::Interface<TypeAnnotation>;
 
 pub fn typecheck_type_decl(
     type_decl: &ast::TypeDecl<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<TypeDecl>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<TypeDecl> {
     match type_decl {
         ast::TypeDecl::Class(class) => {
             let class = typecheck_class(class, ctx)?;
@@ -22,15 +21,11 @@ pub fn typecheck_type_decl(
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(iface, ctx)?;
             Ok(ast::TypeDecl::Interface(iface))
-        }
+        },
     }
 }
 
-pub fn typecheck_class(
-    class: &ast::Class<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<Class>
-{
+pub fn typecheck_class(class: &ast::Class<Span>, ctx: &mut Context) -> TypecheckResult<Class> {
     let mut members = Vec::new();
     for member in &class.members {
         let ty = ctx.find_type(&member.ty)?.clone();
@@ -51,7 +46,7 @@ pub fn typecheck_class(
 
 pub fn typecheck_iface(
     iface: &ast::Interface<Span>,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Interface> {
     let iface_scope = ctx.push_scope(None);
 

@@ -1,16 +1,14 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::{
-            ExpressionNode,
-            Expression,
-            expression::match_operand_start,
-            ForLoop,
-            Call,
-            Block,
-            Typed,
-        },
+use crate::{
+    ast::{
+        expression::match_operand_start,
+        Block,
+        Call,
+        Expression,
+        ExpressionNode,
+        ForLoop,
+        Typed,
     },
+    parse::prelude::*,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -32,7 +30,9 @@ impl LocalBinding<Span> {
 
         let let_kw = tokens.match_one(kw_matcher)?;
         let mutable = match let_kw {
-            TokenTree::Keyword { kw: Keyword::Var, .. } => true,
+            TokenTree::Keyword {
+                kw: Keyword::Var, ..
+            } => true,
             _ => false,
         };
 
@@ -42,7 +42,7 @@ impl LocalBinding<Span> {
             Some(_) => {
                 tokens.advance(1);
                 TypeName::parse(tokens)?
-            }
+            },
             None => TypeName::Unknown(name_token.span().clone()),
         };
 
@@ -154,15 +154,17 @@ impl<A: Annotation> Statement<A> {
             Statement::Call(call) => {
                 let annotation = call.annotation().clone();
                 Some(ExpressionNode::new(call, annotation))
-            }
+            },
 
-            Statement::Block(block) => if block.output.is_some() {
-                let annotation = block.annotation.clone();
+            Statement::Block(block) => {
+                if block.output.is_some() {
+                    let annotation = block.annotation.clone();
 
-                Some(ExpressionNode::new(block, annotation))
-            } else {
-                None
-            }
+                    Some(ExpressionNode::new(block, annotation))
+                } else {
+                    None
+                }
+            },
 
             _ => None,
         }
@@ -200,7 +202,7 @@ impl<A: Annotation> Statement<A> {
                     let invalid_bin_op = ExpressionNode::new(bin_op, expr.annotation);
                     Err(invalid_bin_op)
                 }
-            }
+            },
 
             Expression::IfCond(if_cond) => {
                 let then_branch = match Self::try_from_expr(if_cond.then_branch) {
@@ -222,12 +224,12 @@ impl<A: Annotation> Statement<A> {
                     else_branch: else_branch.map(Box::new),
                     annotation: if_cond.annotation,
                 }))
-            }
+            },
 
             invalid => {
                 let invalid_node = ExpressionNode::new(invalid, expr.annotation);
                 Err(invalid_node)
-            }
+            },
         }
     }
 }
@@ -245,31 +247,37 @@ impl Statement<Span> {
         let stmt_start = statement_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
-            Some(TokenTree::Keyword { kw: Keyword::Let, .. }) |
-            Some(TokenTree::Keyword { kw: Keyword::Var, .. }) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::Let, ..
+            })
+            | Some(TokenTree::Keyword {
+                kw: Keyword::Var, ..
+            }) => {
                 let binding = LocalBinding::parse(tokens, true)?;
                 Ok(Statement::LocalBinding(binding))
-            }
+            },
 
-            Some(TokenTree::Keyword { kw: Keyword::For, .. }) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::For, ..
+            }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(for_loop))
-            }
+            },
 
             Some(_) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = ExpressionNode::parse(tokens)?;
 
-                let stmt = Self::try_from_expr(expr.clone())
-                    .map_err(|invalid_expr| {
-                        TracedError::trace(ParseError::InvalidStatement(invalid_expr))
-                    })?;
+                let stmt = Self::try_from_expr(expr.clone()).map_err(|invalid_expr| {
+                    TracedError::trace(ParseError::InvalidStatement(invalid_expr))
+                })?;
                 Ok(stmt)
-            }
+            },
 
-            None => {
-                Err(TracedError::trace(ParseError::UnexpectedEOF(stmt_start, tokens.context().clone())))
-            }
+            None => Err(TracedError::trace(ParseError::UnexpectedEOF(
+                stmt_start,
+                tokens.context().clone(),
+            ))),
         }
     }
 }
@@ -287,4 +295,3 @@ impl<A: Annotation> fmt::Display for Statement<A> {
         }
     }
 }
-

@@ -1,21 +1,15 @@
-use {
-    crate::{
-        ast::prelude::*,
-    },
-    pas_syn::Operator,
-};
+use crate::ast::prelude::*;
+use pas_syn::Operator;
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<LocalBinding> {
     let val = match &binding.val_ty {
-        ast::TypeName::Unknown(_) => {
-            typecheck_expr(&binding.val, &Type::Nothing, ctx)?
-        },
+        ast::TypeName::Unknown(_) => typecheck_expr(&binding.val, &Type::Nothing, ctx)?,
 
         val_ty => {
             let explicit_ty = ctx.find_type(val_ty)?;
@@ -33,15 +27,18 @@ pub fn typecheck_local_binding(
         },
     };
 
-    ctx.declare_binding(binding.name.clone(), Binding {
-        kind: if binding.mutable {
-            ValueKind::Mutable
-        } else {
-            ValueKind::Immutable
+    ctx.declare_binding(
+        binding.name.clone(),
+        Binding {
+            kind: if binding.mutable {
+                ValueKind::Mutable
+            } else {
+                ValueKind::Immutable
+            },
+            ty: val.annotation.value_ty().clone(),
+            def: Some(binding.annotation.clone()),
         },
-        ty: val.annotation.value_ty().clone(),
-        def: Some(binding.annotation.clone()),
-    })?;
+    )?;
 
     let annotation = TypeAnnotation::Untyped(binding.annotation.clone());
 
@@ -58,20 +55,26 @@ pub type Assignment = ast::Assignment<TypeAnnotation>;
 
 pub fn typecheck_assignment(
     assignment: &ast::Assignment<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<Assignment>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<Assignment> {
     let lhs = typecheck_expr(&assignment.lhs, &Type::Nothing, ctx)?;
 
     // lhs must evaluate to a mutable typed value
     match &lhs.annotation {
-        TypeAnnotation::TypedValue { value_kind: ValueKind::Mutable, .. } => {},
+        TypeAnnotation::TypedValue {
+            value_kind: ValueKind::Mutable,
+            ..
+        } => {},
         _ => return Err(TypecheckError::NotMutable(Box::new(lhs))),
     }
 
     let rhs = typecheck_expr(&assignment.rhs, lhs.annotation.value_ty(), ctx)?;
 
-    if !lhs.annotation.value_ty().assignable_from(rhs.annotation.value_ty()) {
+    if !lhs
+        .annotation
+        .value_ty()
+        .assignable_from(rhs.annotation.value_ty())
+    {
         return Err(TypecheckError::InvalidBinOp {
             lhs: lhs.annotation.value_ty().clone(),
             rhs: rhs.annotation.value_ty().clone(),
@@ -91,9 +94,8 @@ pub type IfStatement = ast::IfStatement<TypeAnnotation>;
 
 fn typecheck_if_stmt(
     if_stmt: &ast::IfStatement<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<IfStatement>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<IfStatement> {
     let cond = typecheck_expr(&if_stmt.cond, &Type::Nothing, ctx)?;
     let then_branch = typecheck_stmt(&if_stmt.then_branch, ctx)?;
 
@@ -112,17 +114,16 @@ fn typecheck_if_stmt(
     })
 }
 
-pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> TypecheckResult<Statement> {
+pub fn typecheck_stmt(
+    stmt: &ast::Statement<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<Statement> {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
-            typecheck_local_binding(binding, ctx)
-                .map(ast::Statement::LocalBinding)
-        }
+            typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
+        },
 
-        ast::Statement::Call(call) => {
-            typecheck_call(call, ctx)
-                .map(ast::Statement::Call)
-        }
+        ast::Statement::Call(call) => typecheck_call(call, ctx).map(ast::Statement::Call),
 
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, &Type::Nothing, ctx)?;
@@ -130,25 +131,18 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
             assert!(block.annotation.is_untyped());
 
             Ok(ast::Statement::Block(block))
-        }
+        },
 
         ast::Statement::ForLoop(for_loop) => {
-            typecheck_for_loop(for_loop, ctx)
-                .map(ast::Statement::ForLoop)
-        }
+            typecheck_for_loop(for_loop, ctx).map(ast::Statement::ForLoop)
+        },
 
         ast::Statement::Assignment(assignment) => {
-            typecheck_assignment(assignment, ctx)
-                .map(ast::Statement::Assignment)
-        }
+            typecheck_assignment(assignment, ctx).map(ast::Statement::Assignment)
+        },
 
-        ast::Statement::Exit(_exit) => {
-            unimplemented!()
-        }
+        ast::Statement::Exit(_exit) => unimplemented!(),
 
-        ast::Statement::If(if_stmt) => {
-            typecheck_if_stmt(if_stmt, ctx)
-                .map(ast::Statement::If)
-        }
+        ast::Statement::If(if_stmt) => typecheck_if_stmt(if_stmt, ctx).map(ast::Statement::If),
     }
 }

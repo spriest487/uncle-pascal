@@ -1,21 +1,17 @@
-use {
-    crate::{
-        context::*,
-        Type,
-    },
-    std::{
-        fmt
-    },
-    pas_syn::{
-        Ident,
-        IdentPath,
-    },
-    pas_common::{
-        span::*,
-        DiagnosticMessage,
-        DiagnosticOutput,
-    },
+use crate::{
+    context::*,
+    Type,
 };
+use pas_common::{
+    span::*,
+    DiagnosticMessage,
+    DiagnosticOutput,
+};
+use pas_syn::{
+    Ident,
+    IdentPath,
+};
+use std::fmt;
 
 #[derive(Debug)]
 pub enum UnexpectedValue {
@@ -51,9 +47,18 @@ pub enum NameError {
     ExpectedBinding(IdentPath, UnexpectedValue),
     ExpectedFunction(IdentPath, UnexpectedValue),
     ExpectedNamespace(IdentPath, UnexpectedValue),
-    AlreadyDeclared { new: Ident, existing: IdentPath },
-    AlreadyDefined { ident: IdentPath, existing: Span },
-    Ambiguous { ident: Ident, options: Vec<IdentPath> },
+    AlreadyDeclared {
+        new: Ident,
+        existing: IdentPath,
+    },
+    AlreadyDefined {
+        ident: IdentPath,
+        existing: Span,
+    },
+    Ambiguous {
+        ident: Ident,
+        options: Vec<IdentPath>,
+    },
 }
 
 impl Spanned for NameError {
@@ -83,10 +88,11 @@ impl DiagnosticOutput for NameError {
             NameError::ExpectedBinding(_, _) => "Expected name to refer to binding",
             NameError::ExpectedFunction(_, _) => "Expected name to refer to function",
             NameError::ExpectedNamespace(_, _) => "Expected name to refer to namespace",
-            NameError::AlreadyDeclared {  .. } => "Name already declared",
+            NameError::AlreadyDeclared { .. } => "Name already declared",
             NameError::AlreadyDefined { .. } => "Name already defined",
             NameError::Ambiguous { .. } => "Name is ambiguous",
-        }.to_string()
+        }
+        .to_string()
     }
 
     fn label(&self) -> Option<String> {
@@ -95,24 +101,21 @@ impl DiagnosticOutput for NameError {
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
-            NameError::AlreadyDeclared { new, existing } => vec![
-                DiagnosticMessage {
-                    title: format!("`{}` previously declared here", new),
-                    label: None,
-                    span: existing.span().clone(),
-                }
-            ],
+            NameError::AlreadyDeclared { new, existing } => vec![DiagnosticMessage {
+                title: format!("`{}` previously declared here", new),
+                label: None,
+                span: existing.span().clone(),
+            }],
 
-            NameError::AlreadyDefined { ident, existing } => vec![
-                DiagnosticMessage {
-                    title: format!("`{}` previously defined here", ident),
-                    label: None,
-                    span: existing.span().clone(),
-                }
-            ],
+            NameError::AlreadyDefined { ident, existing } => vec![DiagnosticMessage {
+                title: format!("`{}` previously defined here", ident),
+                label: None,
+                span: existing.span().clone(),
+            }],
 
             NameError::Ambiguous { ident, options } => {
-                let mut see_also: Vec<_> = options.iter()
+                let mut see_also: Vec<_> = options
+                    .iter()
                     .map(|option| DiagnosticMessage {
                         title: format!("`{}` could refer to `{}`", ident, option.join(".")),
                         label: None,
@@ -121,7 +124,7 @@ impl DiagnosticOutput for NameError {
                     .collect();
                 see_also.sort();
                 see_also
-            }
+            },
 
             _ => Vec::new(),
         }
@@ -131,36 +134,42 @@ impl DiagnosticOutput for NameError {
 impl fmt::Display for NameError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            NameError::NotFound(ident) => {
-                write!(f, "`{}` was not found in this scope", ident)
-            }
+            NameError::NotFound(ident) => write!(f, "`{}` was not found in this scope", ident),
             NameError::MemberNotFound { base, member, .. } => {
                 write!(f, "type {} does not have a member named `{}`", base, member)
-            }
-            NameError::ExpectedType(ident, unexpected) => {
-                write!(f, "`{}` did not refer to a type in this scope (found: {})", ident, unexpected)
-            }
-            NameError::ExpectedInterface(ident, unexpected) => {
-                write!(f, "`{}` did not refer to an interface in this scope (found: {})", ident, unexpected)
-            }
-            NameError::ExpectedBinding(ident, unexpected) => {
-                write!(f, "`{}` did not refer to a value in this scope (found: {})", ident, unexpected)
-            }
-            NameError::ExpectedFunction(ident, unexpected) => {
-                write!(f, "`{}` did not refer to a function in this scope (found: {})", ident, unexpected)
-            }
-            NameError::ExpectedNamespace(ident, unexpected) => {
-                write!(f, "`{}` did not refer to a namespace in this scope (found: {})", ident, unexpected)
-            }
+            },
+            NameError::ExpectedType(ident, unexpected) => write!(
+                f,
+                "`{}` did not refer to a type in this scope (found: {})",
+                ident, unexpected
+            ),
+            NameError::ExpectedInterface(ident, unexpected) => write!(
+                f,
+                "`{}` did not refer to an interface in this scope (found: {})",
+                ident, unexpected
+            ),
+            NameError::ExpectedBinding(ident, unexpected) => write!(
+                f,
+                "`{}` did not refer to a value in this scope (found: {})",
+                ident, unexpected
+            ),
+            NameError::ExpectedFunction(ident, unexpected) => write!(
+                f,
+                "`{}` did not refer to a function in this scope (found: {})",
+                ident, unexpected
+            ),
+            NameError::ExpectedNamespace(ident, unexpected) => write!(
+                f,
+                "`{}` did not refer to a namespace in this scope (found: {})",
+                ident, unexpected
+            ),
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "`{}` was already declared in this scope", new)
-            }
-            NameError::AlreadyDefined { ident, .. } => {
-                write!(f, "`{}` was already defined", ident)
-            }
+            },
+            NameError::AlreadyDefined { ident, .. } => write!(f, "`{}` was already defined", ident),
             NameError::Ambiguous { ident, .. } => {
                 write!(f, "`{}` is ambiguous in this context", ident)
-            }
+            },
         }
     }
 }

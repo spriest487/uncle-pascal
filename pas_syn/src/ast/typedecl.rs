@@ -1,8 +1,6 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::FunctionDecl,
-    },
+use crate::{
+    ast::FunctionDecl,
+    parse::prelude::*,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -32,8 +30,7 @@ pub struct Class<A: Annotation> {
 
 impl<A: Annotation> Class<A> {
     pub fn find_member(&self, by_ident: &Ident) -> Option<&Member<A>> {
-        self.members.iter()
-            .find(|m| m.ident == *by_ident)
+        self.members.iter().find(|m| m.ident == *by_ident)
     }
 }
 
@@ -66,8 +63,13 @@ impl Class<Span> {
         let end_token = tokens.match_one(Keyword::End)?;
 
         let kind = match kw_token {
-            TokenTree::Keyword { kw: Keyword::Class, .. } => ClassKind::Object,
-            TokenTree::Keyword { kw: Keyword::Record, .. } => ClassKind::Record,
+            TokenTree::Keyword {
+                kw: Keyword::Class, ..
+            } => ClassKind::Object,
+            TokenTree::Keyword {
+                kw: Keyword::Record,
+                ..
+            } => ClassKind::Record,
             _ => unreachable!(),
         };
 
@@ -88,10 +90,14 @@ impl<A: Annotation> Spanned for Class<A> {
 
 impl<A: Annotation> fmt::Display for Class<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(f, "{}", match self.kind {
-            ClassKind::Record => "record",
-            ClassKind::Object => "class",
-        })?;
+        writeln!(
+            f,
+            "{}",
+            match self.kind {
+                ClassKind::Record => "record",
+                ClassKind::Object => "class",
+            }
+        )?;
         for member in &self.members {
             writeln!(f, "{}: {};", member.ident, member.ty)?;
         }
@@ -108,8 +114,7 @@ pub struct Interface<A: Annotation> {
 
 impl<A: Annotation> Interface<A> {
     pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl<A>> {
-        self.methods.iter()
-            .find(|m| m.ident == *method)
+        self.methods.iter().find(|m| m.ident == *method)
     }
 }
 
@@ -130,7 +135,7 @@ impl Interface<Span> {
         Ok(Interface {
             ident,
             span: iface_kw.span().to(end.span()),
-            methods
+            methods,
         })
     }
 }
@@ -180,8 +185,7 @@ impl TypeDecl<Span> {
                 return Ok(Generate::Break);
             }
 
-            Self::parse_decl(tokens)
-                .map(Generate::Yield)
+            Self::parse_decl(tokens).map(Generate::Yield)
         })?;
 
         Ok(decls)
@@ -205,17 +209,22 @@ impl TypeDecl<Span> {
                 Ok(TypeDecl::Class(class_decl))
             },
 
-            Some(TokenTree::Keyword { kw: Keyword::Interface, .. }) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::Interface,
+                ..
+            }) => {
                 let iface_decl = Interface::parse(tokens, ident.clone())?;
                 Ok(TypeDecl::Interface(iface_decl))
-            }
+            },
 
-            Some(unexpected) => Err(TracedError::trace(
-                ParseError::UnexpectedToken(unexpected, Some(decl_start_matcher.clone()))
-            )),
-            None => Err(TracedError::trace(
-                ParseError::UnexpectedEOF(decl_start_matcher.clone(), tokens.context().clone())
-            )),
+            Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
+                unexpected,
+                Some(decl_start_matcher.clone()),
+            ))),
+            None => Err(TracedError::trace(ParseError::UnexpectedEOF(
+                decl_start_matcher.clone(),
+                tokens.context().clone(),
+            ))),
         }
     }
 }

@@ -1,25 +1,19 @@
 pub mod span;
 
-use {
-    crate::span::*,
-    std::{
-        fmt,
-        ops::Deref,
-        collections::{
-            HashSet,
-            hash_map::{
-                HashMap,
-            },
-        },
-        cmp::Ordering,
+use crate::span::*;
+use std::{
+    cmp::Ordering,
+    collections::{
+        hash_map::HashMap,
+        HashSet,
     },
+    fmt,
+    ops::Deref,
 };
 
-pub use {
-    backtrace::Backtrace,
-};
+pub use backtrace::Backtrace;
 
-pub trait DiagnosticOutput : Spanned {
+pub trait DiagnosticOutput: Spanned {
     fn title(&self) -> String {
         self.to_string()
     }
@@ -58,7 +52,7 @@ impl Ord for DiagnosticMessage {
             Ordering::Equal => match self.span.end.cmp(&other.span.end) {
                 Ordering::Equal => self.span.start.cmp(&other.span.start),
                 end_ord => end_ord,
-            }
+            },
             file_ord => file_ord,
         }
     }
@@ -93,7 +87,7 @@ impl<T> TracedError<T> {
     pub fn chain<TNext: From<T>>(self) -> TracedError<TNext> {
         TracedError {
             err: self.err.into(),
-            bt: self.bt
+            bt: self.bt,
         }
     }
 }
@@ -164,10 +158,14 @@ pub enum Mode {
 
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Mode::Default => "Default",
-            Mode::Fpc => "FPC-compatible",
-            Mode::Delphi => "Delphi-compatible",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Mode::Default => "Default",
+                Mode::Fpc => "FPC-compatible",
+                Mode::Delphi => "Delphi-compatible",
+            }
+        )
     }
 }

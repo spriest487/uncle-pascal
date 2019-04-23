@@ -1,32 +1,34 @@
-use {
-    crate::{
-        consts::{
-            IntConstant,
-            RealConstant,
-        },
-        ident::Ident,
-        keyword::Keyword,
-        operators::Operator,
-        token_tree::{
-            DelimiterPair,
-            Separator,
-            TokenizeError,
-            TokenizeResult,
-            TokenTree,
-        },
+use crate::{
+    consts::{
+        IntConstant,
+        RealConstant,
     },
-    pas_common::{
-        BuildOptions,
-        TracedError,
-        span::*,
-    },
-    std::{
-        path::PathBuf,
-        rc::Rc,
+    ident::Ident,
+    keyword::Keyword,
+    operators::Operator,
+    token_tree::{
+        DelimiterPair,
+        Separator,
+        TokenTree,
+        TokenizeError,
+        TokenizeResult,
     },
 };
+use pas_common::{
+    span::*,
+    BuildOptions,
+    TracedError,
+};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+};
 
-pub fn lex(file_name: impl Into<PathBuf>, source: &str, opts: &BuildOptions) -> TokenizeResult<Vec<TokenTree>> {
+pub fn lex(
+    file_name: impl Into<PathBuf>,
+    source: &str,
+    opts: &BuildOptions,
+) -> TokenizeResult<Vec<TokenTree>> {
     let mut lexer = Lexer {
         file: Rc::new(file_name.into()),
         line: Vec::new(),
@@ -40,7 +42,10 @@ pub fn lex(file_name: impl Into<PathBuf>, source: &str, opts: &BuildOptions) -> 
     let mut tokens = Vec::new();
     for (line_num, line) in source.lines().enumerate() {
         lexer.line = line.chars().collect();
-        lexer.location = Location { line: line_num, col: 0 };
+        lexer.location = Location {
+            line: line_num,
+            col: 0,
+        };
 
         loop {
             if !lexer.next_token()? {
@@ -78,12 +83,9 @@ struct Lexer {
 }
 
 fn find_ahead(s: &[char], predicate: impl Fn(char) -> bool) -> Option<usize> {
-    s.iter().enumerate()
-        .filter_map(|(col, c)| if predicate(*c) {
-            Some(col)
-        } else {
-            None
-        })
+    s.iter()
+        .enumerate()
+        .filter_map(|(col, c)| if predicate(*c) { Some(col) } else { None })
         .next()
 }
 
@@ -116,8 +118,9 @@ impl Lexer {
         let span = self.span_to_current(start_loc);
 
         RealConstant::parse_str(&chars.iter().collect::<String>())
-            .map(|value| {
-                TokenTree::RealNumber { value, span: span.clone() }
+            .map(|value| TokenTree::RealNumber {
+                value,
+                span: span.clone(),
             })
             .ok_or_else(|| TracedError::trace(TokenizeError::IllegalToken(span)))
     }
@@ -128,7 +131,7 @@ impl Lexer {
             _ => true,
         };
 
-        //find end of integer part, as offset from self.location.col
+        // find end of integer part, as offset from self.location.col
         let mut cur = match find_ahead(&self.line[self.location.col..], find_non_num) {
             Some(after_int_part) => after_int_part,
             // no decimal point or exponent, just numbers until the end
@@ -137,7 +140,7 @@ impl Lexer {
 
         if self.line[self.location.col + cur] == '.' {
             cur += 1;
-            //find end of fractional part
+            // find end of fractional part
             cur = match find_ahead(&self.line[self.location.col + cur..], find_non_num) {
                 Some(after_frac_part) => cur + after_frac_part,
                 // no exponent and entire rest of line after decimal point is fractional part
@@ -147,10 +150,10 @@ impl Lexer {
 
         if self.line[self.location.col + cur] == 'e' || self.line[self.location.col + cur] == 'E' {
             cur += 1;
-            //find end of exponent
+            // find end of exponent
             cur = match find_ahead(&self.line[self.location.col + cur..], find_non_num) {
                 Some(after_exponent) => cur + after_exponent,
-                //exponent is last thing on this line
+                // exponent is last thing on this line
                 None => return self.make_float_token(None),
             }
         }
@@ -161,18 +164,16 @@ impl Lexer {
     fn literal_hex(&mut self) -> TokenizeResult<TokenTree> {
         let start_loc = Location {
             line: self.location.line,
-            col: self.location.col - 1,  // include $ sigil
+            col: self.location.col - 1, // include $ sigil
         };
 
         let line_after_sigil = &self.line[self.location.col + 1..];
         let next_non_hex = find_ahead(line_after_sigil, |c| match c {
-            'a'...'f' |
-            'A'...'F' |
-            '0'...'9' => false,
+            'a'...'f' | 'A'...'F' | '0'...'9' => false,
             _ => true,
         });
 
-        /* this needs to include the $ because IntConstant::parse expects it */
+        // this needs to include the $ because IntConstant::parse expects it
         let int_str = match next_non_hex {
             Some(end) => &self.line[self.location.col..self.location.col + end + 1],
             None => &self.line[self.location.col..],
@@ -209,13 +210,13 @@ impl Lexer {
                 let end_char = self.line[num_start + num_end];
 
                 if end_char == 'E' || end_char == 'e' {
-                    /* the only valid option for num + e is a float with an exponent*/
+                    // the only valid option for num + e is a float with an exponent
                     return self.literal_float();
                 }
 
                 if end_char == '.' && self.line.get(num_start + num_end + 1) != Some(&'.') {
-                    /* a period might mean this is a decimal, but two periods means this
-                    is an integer in a range */
+                    // a period might mean this is a decimal, but two periods means this
+                    // is an integer in a range
                     return self.literal_float();
                 }
             }
@@ -234,9 +235,7 @@ impl Lexer {
                 let int_token = TokenTree::IntNumber { value, span };
                 Ok(int_token)
             },
-            None => {
-                Err(TracedError::trace(TokenizeError::IllegalToken(span)))
-            },
+            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
 
@@ -248,30 +247,32 @@ impl Lexer {
         let mut next_col = self.location.col + 1;
         loop {
             match self.line.get(next_col) {
-                /* todo: better error for unterminated string literal */
-                None => return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
-                    file: self.file.clone(),
-                    start: start_loc,
-                    end: self.location,
-                }))),
+                // todo: better error for unterminated string literal
+                None => {
+                    return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
+                        file: self.file.clone(),
+                        start: start_loc,
+                        end: self.location,
+                    })))
+                },
 
-                /* depends on the token after this one */
+                // depends on the token after this one
                 Some('\'') => match self.line.get(next_col + 1) {
-                    /* it's quoted quote, add it to the contents and advance an extra col */
+                    // it's quoted quote, add it to the contents and advance an extra col
                     Some('\'') => {
                         contents.push('\'');
                         next_col += 1;
-                    }
+                    },
 
-                    /* it's something else, this string ends here */
+                    // it's something else, this string ends here
                     _ => break,
-                }
+                },
 
                 Some(c) => contents.push(*c),
             }
 
             next_col += 1;
-        };
+        }
 
         self.location.col = next_col + 1;
         let span = self.span_to_current(start_loc);
@@ -292,22 +293,22 @@ impl Lexer {
         let mut next_col = self.location.col;
         while let Some(c) = self.line.get(next_col) {
             match c {
-                '0'...'9' => if !token_str.is_empty() {
-                    token_str.push(*c);
-                } else {
-                    //can't start with a number
-                    return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
-                        file: self.file.clone(),
-                        start: start_loc,
-                        end: self.location,
-                    })));
-                }
+                '0'...'9' => {
+                    if !token_str.is_empty() {
+                        token_str.push(*c);
+                    } else {
+                        // can't start with a number
+                        return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
+                            file: self.file.clone(),
+                            start: start_loc,
+                            end: self.location,
+                        })));
+                    }
+                },
 
-                'a'...'z' |
-                'A'...'Z' |
-                '_' => {
+                'a'...'z' | 'A'...'Z' | '_' => {
                     token_str.push(*c);
-                }
+                },
 
                 _ => break,
             }
@@ -334,10 +335,7 @@ impl Lexer {
         self.location.col += len;
         let span = self.span_to_current(start_loc);
 
-        TokenTree::Operator {
-            op,
-            span,
-        }
+        TokenTree::Operator { op, span }
     }
 
     fn separator_token(&mut self, sep: Separator, len: usize) -> TokenTree {
@@ -345,10 +343,7 @@ impl Lexer {
         self.location.col += len;
         let span = self.span_to_current(start_loc);
 
-        TokenTree::Separator {
-            sep,
-            span,
-        }
+        TokenTree::Separator { sep, span }
     }
 
     fn begin_delim_group(&mut self, delim: DelimiterPair, consume: usize) {
@@ -369,12 +364,16 @@ impl Lexer {
         });
     }
 
-    fn end_delim_group(&mut self, delim: DelimiterPair, consume: usize) -> TokenizeResult<TokenTree> {
+    fn end_delim_group(
+        &mut self,
+        delim: DelimiterPair,
+        consume: usize,
+    ) -> TokenizeResult<TokenTree> {
         let start_loc = self.location;
         self.location.col += consume;
 
         let (_, close_token) = delim.tokens();
-        let close_span = self.span_to_current(Location{
+        let close_span = self.span_to_current(Location {
             line: start_loc.line,
             col: start_loc.col - close_token.len(),
         });
@@ -382,27 +381,27 @@ impl Lexer {
         match self.delim_stack.pop() {
             // no group was started, or a delimited group was started, but it wasn't the
             // same type as the one we're closing
-            None => {
-                Err(TracedError::trace(
-                    TokenizeError::UnexpectedCloseDelimited { delim, span: close_span }
-                ))
-            }
-
-            Some(ref group) if group.delim != delim => {
-                Err(TracedError::trace(
-                    TokenizeError::UnexpectedCloseDelimited { delim, span: close_span }
-                ))
-            }
-
-            Some(group) => {
-                Ok(TokenTree::Delimited {
+            None => Err(TracedError::trace(
+                TokenizeError::UnexpectedCloseDelimited {
                     delim,
-                    inner: group.inner,
-                    span: group.open.to(&close_span),
-                    open: group.open,
-                    close: close_span,
-                })
-            }
+                    span: close_span,
+                },
+            )),
+
+            Some(ref group) if group.delim != delim => Err(TracedError::trace(
+                TokenizeError::UnexpectedCloseDelimited {
+                    delim,
+                    span: close_span,
+                },
+            )),
+
+            Some(group) => Ok(TokenTree::Delimited {
+                delim,
+                inner: group.inner,
+                span: group.open.to(&close_span),
+                open: group.open,
+                close: close_span,
+            }),
         }
     }
 
@@ -411,7 +410,7 @@ impl Lexer {
             let next = match self.line.get(self.location.col) {
                 Some(c) => *c,
 
-                //end of stream
+                // end of stream
                 None => return Ok(false),
             };
 
@@ -428,16 +427,12 @@ impl Lexer {
                 self.begin_delim_group(DelimiterPair::Bracket, 1);
                 None
             },
-            ')' => {
-                Some(self.end_delim_group(DelimiterPair::Bracket, 1)?)
-            },
+            ')' => Some(self.end_delim_group(DelimiterPair::Bracket, 1)?),
             '[' => {
                 self.begin_delim_group(DelimiterPair::SquareBracket, 1);
                 None
             },
-            ']' => {
-                Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?)
-            },
+            ']' => Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?),
 
             '+' => Some(self.operator_token(Operator::Plus, 1)),
             '-' => Some(self.operator_token(Operator::Minus, 1)),
@@ -475,15 +470,19 @@ impl Lexer {
             'a'...'z' | '_' | 'A'...'Z' => {
                 match self.word()? {
                     // keyword "begin" always signals the start of a begin..end delimited group
-                    TokenTree::Keyword { kw: Keyword::Begin, .. } => {
+                    TokenTree::Keyword {
+                        kw: Keyword::Begin, ..
+                    } => {
                         self.begin_delim_group(DelimiterPair::BeginEnd, 0);
                         None
-                    }
+                    },
 
                     // keyword "end" can appear on its own in other contexts
-                    TokenTree::Keyword { kw: Keyword::End, .. } if self.in_begin_end() => {
+                    TokenTree::Keyword {
+                        kw: Keyword::End, ..
+                    } if self.in_begin_end() => {
                         Some(self.end_delim_group(DelimiterPair::BeginEnd, 0)?)
-                    }
+                    },
 
                     tt => Some(tt),
                 }
@@ -494,7 +493,7 @@ impl Lexer {
                 self.location.col += 1;
                 let err_span = self.span_to_current(err_start);
                 return Err(TracedError::trace(TokenizeError::IllegalToken(err_span)));
-            }
+            },
         };
 
         if let Some(tt) = token {
@@ -512,7 +511,6 @@ impl Lexer {
 
     fn in_begin_end(&self) -> bool {
         let current_delim = self.delim_stack.last().map(|group| group.delim);
-        current_delim== Some(DelimiterPair::BeginEnd)
+        current_delim == Some(DelimiterPair::BeginEnd)
     }
 }
-

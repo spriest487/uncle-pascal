@@ -9,11 +9,15 @@ pub enum Position {
 
 impl fmt::Display for Position {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Position::Prefix => "prefix",
-            Position::Binary => "binary",
-            Position::Postfix => "postfix",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Position::Prefix => "prefix",
+                Position::Binary => "binary",
+                Position::Postfix => "postfix",
+            }
+        )
     }
 }
 
@@ -42,12 +46,10 @@ pub enum Operator {
 
 pub static PRECEDENCE: [(Operator, Position); 21] = [
     (Operator::Deref, Position::Postfix),
-
     (Operator::AddressOf, Position::Prefix),
     (Operator::Plus, Position::Prefix),
     (Operator::Minus, Position::Prefix),
     (Operator::Not, Position::Prefix),
-
     (Operator::Member, Position::Binary),
     (Operator::Multiply, Position::Binary),
     (Operator::Divide, Position::Binary),
@@ -68,25 +70,28 @@ pub static PRECEDENCE: [(Operator, Position); 21] = [
 
 impl Operator {
     pub fn for_position(position: Position) -> impl Iterator<Item = Operator> {
-        PRECEDENCE.iter()
-            .filter_map(move |(op, pos)| if *pos == position {
-                Some(*op)
-            } else {
-                None
-            })
+        PRECEDENCE
+            .iter()
+            .filter_map(move |(op, pos)| if *pos == position { Some(*op) } else { None })
     }
 
     pub fn precedence(self, in_pos: Position) -> usize {
-        PRECEDENCE.iter().enumerate()
+        PRECEDENCE
+            .iter()
+            .enumerate()
             .find(|(_, (op, pos))| *op == self && *pos == in_pos)
             .map(|(index, _)| index)
             .unwrap_or_else(|| {
-                panic!("operator {} must have a precedence value in position {}", self, in_pos)
+                panic!(
+                    "operator {} must have a precedence value in position {}",
+                    self, in_pos
+                )
             })
     }
 
     pub fn is_valid_in_pos(self, in_pos: Position) -> bool {
-        PRECEDENCE.iter()
+        PRECEDENCE
+            .iter()
             .any(|&(op, pos)| self == op && in_pos == pos)
     }
 
@@ -96,14 +101,14 @@ impl Operator {
             "and" => Some(Operator::And),
             "not" => Some(Operator::Not),
             "in" => Some(Operator::In),
-            _ => None
+            _ => None,
         }
     }
 
-    /* parses operators with english names (and only those operators),
-     because these names might also be valid identifiers. the tokenizer
-     already knows how to parse the ones which have names which aren't
-     valid identifiers*/
+    // parses operators with english names (and only those operators),
+    // because these names might also be valid identifiers. the tokenizer
+    // already knows how to parse the ones which have names which aren't
+    // valid identifiers
     pub fn try_parse_text(from: &str, case_sensitive: bool) -> Option<Operator> {
         if case_sensitive {
             Self::try_parse_text_lowercase(from)
@@ -115,27 +120,30 @@ impl Operator {
 
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            Operator::Member => ".",
-            Operator::Deref => "^",
-            Operator::AddressOf => "@",
-            Operator::Assignment => ":=",
-            Operator::Equals => "=",
-            Operator::NotEquals => "<>",
-            Operator::Plus => "+",
-            Operator::Minus => "-",
-            Operator::Multiply => "*",
-            Operator::Divide => "/",
-            Operator::And => "and",
-            Operator::Not => "not",
-            Operator::Or => "or",
-            Operator::Gt => ">",
-            Operator::Gte => ">=",
-            Operator::Lt => "<",
-            Operator::Lte => "<=",
-            Operator::In => "in",
-            Operator::RangeInclusive => "..",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Operator::Member => ".",
+                Operator::Deref => "^",
+                Operator::AddressOf => "@",
+                Operator::Assignment => ":=",
+                Operator::Equals => "=",
+                Operator::NotEquals => "<>",
+                Operator::Plus => "+",
+                Operator::Minus => "-",
+                Operator::Multiply => "*",
+                Operator::Divide => "/",
+                Operator::And => "and",
+                Operator::Not => "not",
+                Operator::Or => "or",
+                Operator::Gt => ">",
+                Operator::Gte => ">=",
+                Operator::Lt => "<",
+                Operator::Lte => "<=",
+                Operator::In => "in",
+                Operator::RangeInclusive => "..",
+            }
+        )
     }
 }
-

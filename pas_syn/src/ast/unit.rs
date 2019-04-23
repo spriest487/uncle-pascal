@@ -1,13 +1,9 @@
-use {
-    crate::{
-        parse::prelude::*,
-        token_tree::*,
-        ast::*,
-    },
-    std::{
-        fmt,
-    },
+use crate::{
+    ast::*,
+    parse::prelude::*,
+    token_tree::*,
 };
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub struct Unit<A: Annotation> {
@@ -18,29 +14,26 @@ pub struct Unit<A: Annotation> {
 }
 
 impl<A: Annotation> Unit<A> {
-    pub fn func_decls(&self) -> impl Iterator<Item=&FunctionDecl<A>> {
-        self.decls.iter()
-            .filter_map(|decl| match decl {
-                UnitDecl::FunctionDecl(func) => Some(func),
-                UnitDecl::FunctionDef(func_def) => Some(&func_def.decl),
-                _ => None,
-            })
+    pub fn func_decls(&self) -> impl Iterator<Item = &FunctionDecl<A>> {
+        self.decls.iter().filter_map(|decl| match decl {
+            UnitDecl::FunctionDecl(func) => Some(func),
+            UnitDecl::FunctionDef(func_def) => Some(&func_def.decl),
+            _ => None,
+        })
     }
 
-    pub fn func_defs(&self) -> impl Iterator<Item=&FunctionDef<A>> {
-        self.decls.iter()
-            .filter_map(|decl| match decl {
-                UnitDecl::FunctionDef(func_def) => Some(func_def),
-                _ => None,
-            })
+    pub fn func_defs(&self) -> impl Iterator<Item = &FunctionDef<A>> {
+        self.decls.iter().filter_map(|decl| match decl {
+            UnitDecl::FunctionDef(func_def) => Some(func_def),
+            _ => None,
+        })
     }
 
-    pub fn type_decls(&self) -> impl Iterator<Item=&TypeDecl<A>> {
-        self.decls.iter()
-            .filter_map(|decl| match decl {
-                UnitDecl::Type(ty) => Some(ty),
-                _ => None,
-            })
+    pub fn type_decls(&self) -> impl Iterator<Item = &TypeDecl<A>> {
+        self.decls.iter().filter_map(|decl| match decl {
+            UnitDecl::Type(ty) => Some(ty),
+            _ => None,
+        })
     }
 }
 
@@ -52,9 +45,16 @@ impl Unit<Span> {
         // with the fact that type decls are also semicolon-separated lists
         loop {
             match tokens.look_ahead().next() {
-                Some(TokenTree::Keyword { kw: Keyword::Function, .. }) => {
+                Some(TokenTree::Keyword {
+                    kw: Keyword::Function,
+                    ..
+                }) => {
                     let func_decl = FunctionDecl::parse(tokens)?;
-                    if tokens.look_ahead().match_one(DelimiterPair::BeginEnd).is_some() {
+                    if tokens
+                        .look_ahead()
+                        .match_one(DelimiterPair::BeginEnd)
+                        .is_some()
+                    {
                         let body = Block::parse(tokens)?;
 
                         decls.push(UnitDecl::FunctionDef(FunctionDef {
@@ -65,17 +65,21 @@ impl Unit<Span> {
                     } else {
                         decls.push(UnitDecl::FunctionDecl(func_decl));
                     }
-                }
+                },
 
-                Some(TokenTree::Keyword { kw: Keyword::Type, .. }) => {
+                Some(TokenTree::Keyword {
+                    kw: Keyword::Type, ..
+                }) => {
                     let ty_decl = TypeDecl::parse(tokens)?;
                     decls.push(UnitDecl::Type(ty_decl));
-                }
+                },
 
-                Some(TokenTree::Keyword { kw: Keyword::Uses, .. }) => {
+                Some(TokenTree::Keyword {
+                    kw: Keyword::Uses, ..
+                }) => {
                     let uses_decl = UseDecl::parse(tokens)?;
                     decls.push(UnitDecl::Uses(uses_decl));
-                }
+                },
 
                 _ => break,
             }
@@ -86,20 +90,21 @@ impl Unit<Span> {
             }
         }
 
-        let init = tokens.match_separated(Separator::Semicolon, |_i, tokens: &mut TokenStream| {
-            if tokens.look_ahead().match_one(statement_start_matcher()).is_none() {
-                return Ok(Generate::Break);
-            }
+        let init =
+            tokens.match_separated(Separator::Semicolon, |_i, tokens: &mut TokenStream| {
+                if tokens
+                    .look_ahead()
+                    .match_one(statement_start_matcher())
+                    .is_none()
+                {
+                    return Ok(Generate::Break);
+                }
 
-            let stmt = Statement::parse(tokens)?;
-            Ok(Generate::Yield(stmt))
-        })?;
+                let stmt = Statement::parse(tokens)?;
+                Ok(Generate::Yield(stmt))
+            })?;
 
-        Ok(Unit {
-            ident,
-            init,
-            decls,
-        })
+        Ok(Unit { ident, init, decls })
     }
 }
 
@@ -185,14 +190,11 @@ impl UseDecl {
             return Err(TracedError::trace(match tokens.look_ahead().next() {
                 None => ParseError::UnexpectedEOF(Matcher::AnyIdent, kw.span().clone()),
                 Some(x) => ParseError::UnexpectedToken(x, Some(Matcher::AnyIdent)),
-            }))
+            }));
         }
 
         let span = kw.span().to(units.last().unwrap().span());
 
-        Ok(Self {
-            units,
-            span,
-        })
+        Ok(Self { units, span })
     }
 }

@@ -1,13 +1,11 @@
-use {
-    crate::ast::prelude::*,
-};
+use crate::ast::prelude::*;
 
 pub type ForLoop = ast::ForLoop<TypeAnnotation>;
 
 pub fn typecheck_for_loop(
     for_loop: &ast::ForLoop<Span>,
-    ctx: &mut Context) -> TypecheckResult<ForLoop>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<ForLoop> {
     let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
 
     let inner_scope = ctx.push_scope(None);
@@ -23,7 +21,7 @@ pub fn typecheck_for_loop(
             expected: init_binding.val_ty,
             actual: to_expr.annotation.value_ty().clone(),
             span: annotation.span().clone(),
-        })
+        });
     }
 
     let body = typecheck_stmt(&for_loop.body, ctx).map(Box::new)?;

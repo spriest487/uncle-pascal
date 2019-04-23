@@ -1,0 +1,8 @@
+edition="2018"
+merge_imports=true
+imports_layout="Vertical"
+reorder_imports=true
+reorder_modules=true
+normalize_comments=true
+match_block_trailing_comma=true
+empty_item_single_line=false

@@ -1,8 +1,6 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::ExpressionNode,
-    },
+use crate::{
+    ast::ExpressionNode,
+    parse::prelude::*,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -40,16 +38,12 @@ pub struct BinOp<A: Annotation> {
 impl<A: Annotation> fmt::Display for BinOp<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.op {
-            Operator::RangeInclusive |
-            Operator::Member => {
+            Operator::RangeInclusive | Operator::Member => {
                 write!(f, "{}{}{}", self.lhs, self.op, self.rhs)
-            }
+            },
 
-            _ => {
-                write!(f, "{} {} {}", self.lhs, self.op, self.rhs)
-            }
+            _ => write!(f, "{} {} {}", self.lhs, self.op, self.rhs),
         }
-
     }
 }
 

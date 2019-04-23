@@ -1,15 +1,29 @@
+pub mod ast;
+pub mod consts;
+pub mod ident;
 pub mod keyword;
 pub mod operators;
-pub mod token_tree;
-pub mod ident;
-pub mod consts;
 pub mod parse;
-pub mod ast;
+pub mod token_tree;
 
 pub use self::{
-    keyword::Keyword,
-    operators::{Operator, Position},
-    token_tree::{TokenTree, Separator, DelimiterPair, TokenizeResult, TokenizeError},
+    consts::{
+        EnumConstant,
+        IntConstant,
+        RealConstant,
+        SetConstant,
+    },
     ident::*,
-    consts::{EnumConstant, SetConstant, IntConstant, RealConstant},
+    keyword::Keyword,
+    operators::{
+        Operator,
+        Position,
+    },
+    token_tree::{
+        DelimiterPair,
+        Separator,
+        TokenTree,
+        TokenizeError,
+        TokenizeResult,
+    },
 };

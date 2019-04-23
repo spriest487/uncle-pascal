@@ -1,12 +1,12 @@
-use {
-    crate::ast::prelude::*,
-};
+use crate::ast::prelude::*;
 
 pub type Block = ast::Block<TypeAnnotation>;
 
-pub fn typecheck_block(block: &ast::Block<Span>,
-        expect_ty: &Type,
-        ctx: &mut Context) -> TypecheckResult<Block> {
+pub fn typecheck_block(
+    block: &ast::Block<Span>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<Block> {
     let mut statements = Vec::new();
     for stmt in &block.statements {
         statements.push(typecheck_stmt(stmt, ctx)?);
@@ -33,24 +33,22 @@ pub fn typecheck_block(block: &ast::Block<Span>,
         // parsing didn't find us the output expression, we can move the final
         // stmt into the output if the type matches
         None if *expect_ty != Type::Nothing => {
-            let last_stmt_type = statements.last()
+            let last_stmt_type = statements
+                .last()
                 .map(|s: &Statement| s.annotation().value_ty());
 
             if last_stmt_type == Some(expect_ty) {
-                Some(statements.pop()
-                    .and_then(|s| s.try_into_expr())
-                    .unwrap())
+                Some(statements.pop().and_then(|s| s.try_into_expr()).unwrap())
             } else {
                 None
             }
-        }
+        },
 
         None => None,
     };
 
     if *expect_ty != Type::Nothing {
-        let output_ty = output.as_ref()
-            .map(|o| o.annotation.value_ty());
+        let output_ty = output.as_ref().map(|o| o.annotation.value_ty());
 
         if output_ty != Some(expect_ty) {
             return Err(TypecheckError::TypeMismatch {
@@ -59,8 +57,8 @@ pub fn typecheck_block(block: &ast::Block<Span>,
                 span: match &output {
                     Some(expr) => expr.annotation.span().clone(),
                     None => block.end.clone(),
-                }
-            })
+                },
+            });
         }
     }
 
@@ -74,7 +72,7 @@ pub fn typecheck_block(block: &ast::Block<Span>,
                 TypeAnnotation::TypedValue {
                     ty: out_ty,
                     value_kind: ValueKind::Temporary,
-                    span
+                    span,
                 }
             }
         },
@@ -91,7 +89,10 @@ pub fn typecheck_block(block: &ast::Block<Span>,
     };
 
     assert_eq!(*block.annotation.value_ty(), {
-        let out_ty = block.output.as_ref().map(|o| o.annotation.value_ty().clone());
+        let out_ty = block
+            .output
+            .as_ref()
+            .map(|o| o.annotation.value_ty().clone());
         out_ty.unwrap_or(Type::Nothing)
     });
 

@@ -1,45 +1,43 @@
 mod reporting;
 
-use {
-    pas_common::{
-        BuildOptions,
-        span::*,
-        TracedError,
-        DiagnosticMessage,
-        DiagnosticOutput,
-        Backtrace,
-    },
-    structopt::StructOpt,
-    pas_pp::{
-        self as pp,
-        PreprocessorError,
-        PreprocessedUnit,
-    },
-    pas_syn::{
-        ast as syn,
-        parse::*,
-        TokenizeError,
-        TokenTree,
-    },
-    pas_typecheck::{
-        self as ty,
-        ast as ty_ast,
-        TypecheckError,
-    },
-    pas_ir::{
-        self as ir,
-        InterpreterOpts,
-        Interpreter,
-    },
-    std::{
-        fmt,
-        process,
-        fs::File,
-        io::Read,
-        path::PathBuf,
-        str::FromStr,
-    },
+use pas_common::{
+    span::*,
+    Backtrace,
+    BuildOptions,
+    DiagnosticMessage,
+    DiagnosticOutput,
+    TracedError,
 };
+use pas_ir::{
+    self as ir,
+    Interpreter,
+    InterpreterOpts,
+};
+use pas_pp::{
+    self as pp,
+    PreprocessedUnit,
+    PreprocessorError,
+};
+use pas_syn::{
+    ast as syn,
+    parse::*,
+    TokenTree,
+    TokenizeError,
+};
+use pas_typecheck::{
+    self as ty,
+    ast as ty_ast,
+    TypecheckError,
+};
+use std::{
+    fmt,
+    fs::File,
+    io::Read,
+    path::PathBuf,
+    process,
+    str::FromStr,
+};
+use structopt::StructOpt;
 
 #[derive(Debug)]
 pub enum CompileError {
@@ -129,9 +127,11 @@ impl fmt::Display for CompileError {
             CompileError::ParseError(err) => write!(f, "{}", err.err),
             CompileError::TypecheckError(err) => write!(f, "{}", err),
             CompileError::PreprocessorError(err) => write!(f, "{}", err),
-            CompileError::InvalidUnitFilename(span) => {
-                write!(f, "invalid unit identifier in filename: {}", span.file.display())
-            }
+            CompileError::InvalidUnitFilename(span) => write!(
+                f,
+                "invalid unit identifier in filename: {}",
+                span.file.display()
+            ),
         }
     }
 }
@@ -208,7 +208,7 @@ fn preprocess(
         Err(err) => {
             eprintln!("failed to open {}: {}", filename.display(), err);
             std::process::exit(1);
-        }
+        },
         Ok(file) => file,
     };
 
@@ -226,7 +226,9 @@ fn parse(
     let unit_path = unit_path.into();
     let file_span = Span::zero(unit_path.clone());
 
-    let unit_ident = unit_path.with_extension("").file_name()
+    let unit_ident = unit_path
+        .with_extension("")
+        .file_name()
         .and_then(|file_name| {
             let file_name = file_name.to_str()?;
             let token = TokenTree::tokenize(&unit_path, file_name, opts).ok()?;
@@ -248,20 +250,17 @@ fn parse(
 
 fn compile(
     module_path: impl Into<PathBuf>,
-    units: impl IntoIterator<Item=PathBuf>,
+    units: impl IntoIterator<Item = PathBuf>,
     opts: BuildOptions,
     interpret_opts: InterpreterOpts,
     out_kind: Stage,
 ) -> Result<(), CompileError> {
     let module_path = module_path.into();
 
-    let all_filenames = units.into_iter()
-        .chain(vec![module_path.clone()]);
+    let all_filenames = units.into_iter().chain(vec![module_path.clone()]);
 
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| {
-            preprocess(unit_filename, &opts)
-        })
+        .map(|unit_filename| preprocess(unit_filename, &opts))
         .collect::<Result<_, CompileError>>()?;
 
     if out_kind == Stage::Preprocessed {
@@ -271,9 +270,14 @@ fn compile(
         return Ok(());
     }
 
-    let parsed_units: Vec<_> = pp_units.into_iter()
+    let parsed_units: Vec<_> = pp_units
+        .into_iter()
         .map(|preprocessed| {
-            parse(preprocessed.filename, &preprocessed.source, &preprocessed.opts)
+            parse(
+                preprocessed.filename,
+                &preprocessed.source,
+                &preprocessed.opts,
+            )
         })
         .collect::<Result<_, CompileError>>()?;
 
@@ -321,12 +325,14 @@ fn main() {
 
     let print_bt = args.backtrace;
 
-    let unit_paths = args.units.into_iter()
-        .map(PathBuf::from);
+    let unit_paths = args.units.into_iter().map(PathBuf::from);
 
     if let Err(err) = compile(args.file, unit_paths, opts, interpret_opts, args.stage) {
         if let Err(io_err) = reporting::report_err(&err) {
-            eprintln!("error occurred displaying source for compiler message: {}", io_err);
+            eprintln!(
+                "error occurred displaying source for compiler message: {}",
+                io_err
+            );
             eprintln!("{}", err);
         }
 
@@ -334,13 +340,13 @@ fn main() {
             match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
                 CompileError::ParseError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
-                _ => {}
+                _ => {},
             }
         }
 

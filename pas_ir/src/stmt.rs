@@ -1,13 +1,11 @@
-use {
-    crate::{
-        prelude::*,
-        translate_expr,
-        translate_block,
-        translate_call,
-    },
-    pas_syn::ast as ast,
-    pas_typecheck as pas_ty,
+use crate::{
+    prelude::*,
+    translate_block,
+    translate_call,
+    translate_expr,
 };
+use pas_syn::ast;
+use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     builder.comment(stmt);
@@ -15,31 +13,29 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);
-        }
+        },
 
         ast::Statement::Call(call) => {
             translate_call(call, builder);
-        }
+        },
 
         ast::Statement::Block(block) => {
             translate_block(block, builder);
-        }
+        },
 
-        ast::Statement::Exit(_) => {
-            unimplemented!()
-        }
+        ast::Statement::Exit(_) => unimplemented!(),
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
-        }
+        },
 
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
-        }
+        },
 
         ast::Statement::If(if_stmt) => {
             translate_if_stmt(if_stmt, builder);
-        }
+        },
     }
 }
 
@@ -61,13 +57,18 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     builder.begin_scope();
 
     // counter
-    let counter_ty = builder.metadata.translate_type(&for_loop.init_binding.val_ty);
-    if counter_ty !=  Type::I32 {
+    let counter_ty = builder
+        .metadata
+        .translate_type(&for_loop.init_binding.val_ty);
+    if counter_ty != Type::I32 {
         unimplemented!("non-i32 counters");
     }
 
     assert_eq!(Type::I32, counter_ty, "counter type must be i32");
-    assert!(!for_loop.init_binding.val.annotation.value_ty().is_rc(), "counter type must not be ref counted");
+    assert!(
+        !for_loop.init_binding.val.annotation.value_ty().is_rc(),
+        "counter type must not be ref counted"
+    );
 
     let inc_val = Value::LiteralI32(1);
     let loop_val = builder.local_temp(Type::Bool);
@@ -88,11 +89,25 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     builder.end_scope();
 
     // if not ++loop_counter > loop_val then jmp to loop_top
-    builder.append(Instruction::Add { out: counter_val.clone(), a: Value::Ref(counter_val.clone()), b: inc_val });
+    builder.append(Instruction::Add {
+        out: counter_val.clone(),
+        a: Value::Ref(counter_val.clone()),
+        b: inc_val,
+    });
 
-    builder.append(Instruction::Gt { out: loop_val.clone(), a: Value::Ref(counter_val), b: to_val.into() });
-    builder.append(Instruction::Not { out: loop_val.clone(), a: Value::Ref(loop_val.clone()) });
-    builder.append(Instruction::JumpIf { test: Value::Ref(loop_val), dest: loop_top });
+    builder.append(Instruction::Gt {
+        out: loop_val.clone(),
+        a: Value::Ref(counter_val),
+        b: to_val.into(),
+    });
+    builder.append(Instruction::Not {
+        out: loop_val.clone(),
+        a: Value::Ref(loop_val.clone()),
+    });
+    builder.append(Instruction::JumpIf {
+        test: Value::Ref(loop_val),
+        dest: loop_top,
+    });
 
     builder.end_scope();
 }
@@ -102,14 +117,21 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     let rhs = translate_expr(&assignment.rhs, builder);
 
     // the new value is being stored in a new location, retain it
-    let rhs_ty = builder.metadata.translate_type(assignment.rhs.annotation.value_ty());
+    let rhs_ty = builder
+        .metadata
+        .translate_type(assignment.rhs.annotation.value_ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it
-    let lhs_ty = builder.metadata.translate_type(assignment.lhs.annotation.value_ty());
+    let lhs_ty = builder
+        .metadata
+        .translate_type(assignment.lhs.annotation.value_ty());
     builder.release(lhs.clone(), &lhs_ty);
 
-    builder.append(Instruction::Move { out: lhs, new_val: rhs.into() });
+    builder.append(Instruction::Move {
+        out: lhs,
+        new_val: rhs.into(),
+    });
 }
 
 fn translate_if_stmt(if_stmt: &pas_ty::ast::IfStatement, builder: &mut Builder) {
@@ -119,7 +141,10 @@ fn translate_if_stmt(if_stmt: &pas_ty::ast::IfStatement, builder: &mut Builder) 
     let else_label = if_stmt.else_branch.as_ref().map(|_| builder.alloc_label());
 
     let test_val = translate_expr(&if_stmt.cond, builder);
-    builder.append(Instruction::JumpIf { test: test_val.into(), dest: then_label });
+    builder.append(Instruction::JumpIf {
+        test: test_val.into(),
+        dest: then_label,
+    });
     if let Some(else_label) = else_label {
         builder.append(Instruction::Jump { dest: else_label });
     } else {

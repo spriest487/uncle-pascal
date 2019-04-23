@@ -1,26 +1,17 @@
-use {
-    crate::{
-        ast::prelude::*,
-    },
-    pas_common::{
-        span::*,
-    },
-    pas_syn::ast,
-};
+use crate::ast::prelude::*;
+use pas_common::span::*;
+use pas_syn::ast;
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
 pub type Call = ast::Call<TypeAnnotation>;
 pub type ExpressionNode = ast::ExpressionNode<TypeAnnotation>;
 
-fn invalid_args(
-    actual_args: Vec<ExpressionNode>,
-    expected: &[Type],
-    span: Span,
-) -> TypecheckError {
+fn invalid_args(actual_args: Vec<ExpressionNode>, expected: &[Type], span: Span) -> TypecheckError {
     TypecheckError::InvalidArgs {
         expected: expected.to_vec(),
-        actual: actual_args.into_iter()
+        actual: actual_args
+            .into_iter()
             .map(|arg| arg.annotation.value_ty().clone())
             .collect(),
         span,
@@ -31,9 +22,8 @@ fn typecheck_args(
     expected_args: &[Type],
     actual_args: &[ast::ExpressionNode<Span>],
     span: &Span,
-    ctx: &mut Context)
-    -> TypecheckResult<Vec<ExpressionNode>>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<Vec<ExpressionNode>> {
     let mut checked_args = Vec::new();
 
     for (arg, param) in actual_args.iter().zip(expected_args.iter()) {
@@ -47,7 +37,8 @@ fn typecheck_args(
 
     let mut self_ty = None;
 
-    let all_arg_tys = checked_args.iter()
+    let all_arg_tys = checked_args
+        .iter()
         .map(|arg_expr| arg_expr.annotation.value_ty())
         .zip(expected_args.iter());
 
@@ -77,17 +68,19 @@ pub fn typecheck_call(call: &ast::Call<Span>, ctx: &mut Context) -> TypecheckRes
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
     let call = match &target.annotation {
-        TypeAnnotation::TypedValue { ty: Type::Function(sig), .. } => {
-            typecheck_func_call(&func_call, sig.as_ref(), ctx)?
-        }
+        TypeAnnotation::TypedValue {
+            ty: Type::Function(sig),
+            ..
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)?,
 
-        TypeAnnotation::Function { ty: Type::Function(sig), .. } => {
-            typecheck_func_call(&func_call, sig.as_ref(), ctx)?
-        }
+        TypeAnnotation::Function {
+            ty: Type::Function(sig),
+            ..
+        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)?,
 
         TypeAnnotation::Method(method_annotation) => {
             typecheck_method_call(&func_call, &method_annotation, ctx)?
-        }
+        },
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };
@@ -105,13 +98,20 @@ fn typecheck_method_call(
     let (self_type, impl_sig, args) = match &method_annotation.self_arg {
         None => {
             // deduce self-ty from args
-            let args = typecheck_args(&method_annotation.decl_sig().params, &func_call.args, &span, ctx)?;
+            let args = typecheck_args(
+                &method_annotation.decl_sig().params,
+                &func_call.args,
+                &span,
+                ctx,
+            )?;
 
-            let arg_tys: Vec<_> = args.iter()
+            let arg_tys: Vec<_> = args
+                .iter()
                 .map(|a| a.annotation.value_ty().clone())
                 .collect();
 
-            let self_type = method_annotation.decl_sig()
+            let self_type = method_annotation
+                .decl_sig()
                 .impl_ty_from_args(&arg_tys)
                 .cloned()
                 .ok_or_else(|| TypecheckError::AmbiguousMethod {
@@ -122,7 +122,7 @@ fn typecheck_method_call(
             let impl_sig = method_annotation.decl_sig().with_self(&self_type);
 
             (self_type, impl_sig, args)
-        }
+        },
 
         Some(self_arg) => {
             // we have a self arg, we know how to specialize the signature before checking the
@@ -145,7 +145,7 @@ fn typecheck_method_call(
             args.insert(0, (**self_arg).clone());
 
             (self_type, impl_sig, args)
-        }
+        },
     };
 
     let annotation = match &impl_sig.return_ty {
@@ -197,9 +197,8 @@ fn typecheck_func_call(
 pub fn typecheck_expr(
     expr_node: &ast::ExpressionNode<Span>,
     expect_ty: &Type,
-    ctx: &mut Context)
-    -> TypecheckResult<ExpressionNode>
-{
+    ctx: &mut Context,
+) -> TypecheckResult<ExpressionNode> {
     let span = expr_node.annotation.clone();
 
     match expr_node.expr.as_ref() {
@@ -211,8 +210,11 @@ pub fn typecheck_expr(
                 span: span.clone(),
             };
 
-            Ok(ast::ExpressionNode::new(ast::Literal::String(s.clone()), annotation))
-        }
+            Ok(ast::ExpressionNode::new(
+                ast::Literal::String(s.clone()),
+                annotation,
+            ))
+        },
 
         ast::Expression::Literal(ast::Literal::Boolean(b)) => {
             let annotation = TypeAnnotation::TypedValue {
@@ -221,8 +223,11 @@ pub fn typecheck_expr(
                 span,
             };
 
-            Ok(ast::ExpressionNode::new(ast::Literal::Boolean(*b), annotation))
-        }
+            Ok(ast::ExpressionNode::new(
+                ast::Literal::Boolean(*b),
+                annotation,
+            ))
+        },
 
         ast::Expression::Literal(ast::Literal::Integer(i)) => {
             let annotation = TypeAnnotation::TypedValue {
@@ -235,8 +240,11 @@ pub fn typecheck_expr(
                 span,
             };
 
-            Ok(ast::ExpressionNode::new(ast::Literal::Integer(*i), annotation))
-        }
+            Ok(ast::ExpressionNode::new(
+                ast::Literal::Integer(*i),
+                annotation,
+            ))
+        },
 
         ast::Expression::Literal(ast::Literal::Real(x)) => {
             let ty = if x.as_f32().is_some() {
@@ -251,8 +259,11 @@ pub fn typecheck_expr(
                 span,
             };
 
-            Ok(ast::ExpressionNode::new(ast::Literal::Real(x.clone()), annotation))
-        }
+            Ok(ast::ExpressionNode::new(
+                ast::Literal::Real(x.clone()),
+                annotation,
+            ))
+        },
 
         ast::Expression::Literal(ast::Literal::Nil) => {
             let annotation = TypeAnnotation::TypedValue {
@@ -261,7 +272,7 @@ pub fn typecheck_expr(
                 span,
             };
             Ok(ast::ExpressionNode::new(ast::Literal::Nil, annotation))
-        }
+        },
 
         ast::Expression::Ident(ident) => {
             let annotation = match ctx.find(ident) {
@@ -269,62 +280,67 @@ pub fn typecheck_expr(
 
                 _ => {
                     return Err(NameError::NotFound(ident.clone()).into());
-                }
+                },
             };
 
             Ok(ast::ExpressionNode::new(ident.clone(), annotation))
-        }
+        },
 
         ast::Expression::BinOp(bin_op) => {
             let bin_op = typecheck_bin_op(bin_op, ctx)?;
             let annotation = bin_op.annotation.clone();
 
             Ok(ast::ExpressionNode::new(bin_op, annotation))
-        }
+        },
 
         ast::Expression::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, ctx)?;
             let annotation = unary_op.annotation.clone();
             Ok(ast::ExpressionNode::new(unary_op, annotation))
-        }
+        },
 
         ast::Expression::Call(call) => {
             let call = typecheck_call(call, ctx)?;
             let annotation = call.annotation().clone();
             Ok(ast::ExpressionNode::new(call, annotation))
-        }
+        },
 
         ast::Expression::ObjectCtor(ctor) => {
             let ctor = typecheck_object_ctor(ctor, ctx)?;
             let annotation = ctor.annotation.clone();
             Ok(ast::ExpressionNode::new(ctor, annotation))
-        }
+        },
 
         ast::Expression::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             let annotation = if_cond.annotation.clone();
             Ok(ast::ExpressionNode::new(if_cond, annotation))
-        }
+        },
 
         ast::Expression::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
             let annotation = block.annotation.clone();
             Ok(ast::ExpressionNode::new(block, annotation))
-        }
+        },
     }
 }
 
 pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> TypeAnnotation {
     match member {
-        MemberRef::Value { value: Decl::BoundValue(binding), .. } => {
-            TypeAnnotation::TypedValue {
-                span,
-                ty: binding.ty.clone(),
-                value_kind: binding.kind,
-            }
-        }
+        MemberRef::Value {
+            value: Decl::BoundValue(binding),
+            ..
+        } => TypeAnnotation::TypedValue {
+            span,
+            ty: binding.ty.clone(),
+            value_kind: binding.kind,
+        },
 
-        MemberRef::Value { value: Decl::Function(sig), ref parent_path, key } => {
+        MemberRef::Value {
+            value: Decl::Function(sig),
+            ref parent_path,
+            key,
+        } => {
             if parent_path.as_slice().is_empty() {
                 panic!("empty path for decl {}", key);
             }
@@ -335,14 +351,15 @@ pub fn ns_member_ref_to_annotation(member: MemberRef<Scope>, span: Span) -> Type
                 name: key.clone(),
                 ty: Type::Function(sig.clone()),
             }
-        }
+        },
 
-        MemberRef::Value { value: Decl::Type(ty), .. } => {
-            TypeAnnotation::Type(ty.clone(), span)
-        }
+        MemberRef::Value {
+            value: Decl::Type(ty),
+            ..
+        } => TypeAnnotation::Type(ty.clone(), span),
 
         MemberRef::Namespace { path } => {
             TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
-        }
+        },
     }
 }

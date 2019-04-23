@@ -1,8 +1,6 @@
-use {
-    crate::{
-        parse::prelude::*,
-        ast::ExpressionNode,
-    },
+use crate::{
+    ast::ExpressionNode,
+    parse::prelude::*,
 };
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
@@ -22,7 +20,9 @@ impl ObjectCtorArgs<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let args_group = tokens.match_one(DelimiterPair::Bracket)?;
         let (open, inner, close) = match args_group {
-            TokenTree::Delimited { open, inner, close, .. } => (open, inner, close),
+            TokenTree::Delimited {
+                open, inner, close, ..
+            } => (open, inner, close),
             _ => unreachable!(),
         };
 
@@ -32,10 +32,7 @@ impl ObjectCtorArgs<Span> {
             tokens.match_one(Separator::Colon)?;
             let value = ExpressionNode::parse(tokens)?;
 
-            Ok(Generate::Yield(ObjectCtorMember {
-                ident,
-                value,
-            }))
+            Ok(Generate::Yield(ObjectCtorMember { ident, value }))
         })?;
         members_tokens.finish()?;
 
@@ -48,7 +45,7 @@ impl ObjectCtorArgs<Span> {
 }
 
 impl<A: Annotation> ObjectCtorArgs<A> {
-    pub fn iter(&self) -> impl Iterator<Item=&ObjectCtorMember<A>> {
+    pub fn iter(&self) -> impl Iterator<Item = &ObjectCtorMember<A>> {
         self.members.iter()
     }
 }

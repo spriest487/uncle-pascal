@@ -1,17 +1,9 @@
-use {
-    crate::{
-        interpret::{
-            MemCell,
-        },
-    },
-    std::{
-        fmt,
-        mem::size_of,
-        collections::HashMap,
-        ops::{
-            Add,
-        }
-    },
+use crate::interpret::MemCell;
+use std::{
+    collections::HashMap,
+    fmt,
+    mem::size_of,
+    ops::Add,
 };
 
 #[derive(Debug, Clone)]
@@ -40,7 +32,7 @@ impl Add<usize> for HeapAddress {
 }
 
 impl HeapAddress {
-    pub fn range_to(self, other: HeapAddress) -> impl Iterator<Item=Self> {
+    pub fn range_to(self, other: HeapAddress) -> impl Iterator<Item = Self> {
         (self.0..other.0).map(HeapAddress)
     }
 }
@@ -61,7 +53,9 @@ impl Heap {
             panic!("allocation of length 0");
         }
 
-        let free_addr = self.slots.windows(count)
+        let free_addr = self
+            .slots
+            .windows(count)
             .enumerate()
             .find_map(|(addr, window)| {
                 if window.iter().all(|cell| cell.is_none()) {
@@ -94,7 +88,9 @@ impl Heap {
     }
 
     pub fn free(&mut self, addr: HeapAddress) {
-        let free_len = self.alloc_lens.remove(&addr)
+        let free_len = self
+            .alloc_lens
+            .remove(&addr)
             .expect("must have an alloc len for freed cell");
 
         for addr in addr.range_to(addr + free_len) {
@@ -107,20 +103,20 @@ impl Heap {
     }
 
     pub fn get(&self, addr: HeapAddress) -> Option<&MemCell> {
-        self.slots.get(addr.0)
-            .and_then(|slot| slot.as_ref())
+        self.slots.get(addr.0).and_then(|slot| slot.as_ref())
     }
 
     pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut MemCell> {
-        self.slots.get_mut(addr.0)
-            .and_then(|slot| slot.as_mut())
+        self.slots.get_mut(addr.0).and_then(|slot| slot.as_mut())
     }
 }
 
 impl Drop for Heap {
     fn drop(&mut self) {
         if self.trace {
-            let leaked_addrs = self.slots.iter()
+            let leaked_addrs = self
+                .slots
+                .iter()
                 .enumerate()
                 .filter_map(|(addr, s)| match s {
                     Some(_) => Some(HeapAddress(addr)),

@@ -1,38 +1,39 @@
-mod token_stream;
 mod matcher;
+mod token_stream;
 
 pub mod prelude {
-    pub use {
-        crate::{
-            ast::{TypeName, Annotation},
-            ident::Ident,
-            parse::*,
-            token_tree::{ Separator, TokenTree, DelimiterPair, },
-            operators::*,
-            keyword::*,
+    pub use crate::{
+        ast::{
+            Annotation,
+            TypeName,
         },
-        std::fmt,
-        pas_common::{
-            span::*,
-            TracedError,
+        ident::Ident,
+        keyword::*,
+        operators::*,
+        parse::*,
+        token_tree::{
+            DelimiterPair,
+            Separator,
+            TokenTree,
         },
     };
+    pub use pas_common::{
+        span::*,
+        TracedError,
+    };
+    pub use std::fmt;
 }
 
-use {
-    crate::{
-        token_tree::*,
-        ast::*,
-    },
-    std::{
-        fmt,
-    },
-    pas_common::{
-        TracedError,
-        span::*,
-        DiagnosticOutput,
-    },
+use crate::{
+    ast::*,
+    token_tree::*,
 };
+use pas_common::{
+    span::*,
+    DiagnosticOutput,
+    TracedError,
+};
+use std::fmt;
 
 pub use self::{
     matcher::*,
@@ -65,29 +66,35 @@ impl Spanned for ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParseError::UnexpectedToken(tt, Some(expected)) =>
-                write!(f, "expected {}, found {}", expected, tt),
+            ParseError::UnexpectedToken(tt, Some(expected)) => {
+                write!(f, "expected {}, found {}", expected, tt)
+            },
 
-            ParseError::UnexpectedToken(tt, None) =>
-                write!(f, "unexpected {}", tt),
+            ParseError::UnexpectedToken(tt, None) => write!(f, "unexpected {}", tt),
 
-            ParseError::UnexpectedEOF(expected, tt) =>
-                write!(f, "expected {} after {} but reached end of sequence", expected, tt),
+            ParseError::UnexpectedEOF(expected, tt) => write!(
+                f,
+                "expected {} after {} but reached end of sequence",
+                expected, tt
+            ),
 
             ParseError::EmptyOperand { operator, before } => {
                 let pos_name = if *before { "before" } else { "after" };
                 write!(f, "expected operand {} {}", pos_name, operator)
-            }
+            },
 
             ParseError::InvalidStatement(expr) => {
                 write!(f, "the expression `{}` is not valid as a statement", expr)
-            }
+            },
 
-            ParseError::InvalidMember(bin_op, _) => {
-                write!(f, "the expression `{}` does not denote a member of `{}`", bin_op.rhs, bin_op.lhs)
-            }
+            ParseError::InvalidMember(bin_op, _) => write!(
+                f,
+                "the expression `{}` does not denote a member of `{}`",
+                bin_op.rhs, bin_op.lhs
+            ),
         }
     }
 }
 
-impl DiagnosticOutput for ParseError {}
+impl DiagnosticOutput for ParseError {
+}

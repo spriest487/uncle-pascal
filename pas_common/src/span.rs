@@ -1,10 +1,8 @@
-use {
-    std::{
-        rc::Rc,
-        path::PathBuf,
-        fmt::{self},
-        cmp::Ordering,
-    },
+use std::{
+    cmp::Ordering,
+    fmt,
+    path::PathBuf,
+    rc::Rc,
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -69,9 +67,15 @@ impl fmt::Display for Location {
 
 impl fmt::Debug for Span {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "Span({}:{}:{}..{}:{})", self.file.display(),
-               self.start.line, self.start.col,
-               self.end.line, self.end.col)
+        write!(
+            f,
+            "Span({}:{}:{}..{}:{})",
+            self.file.display(),
+            self.start.line,
+            self.start.col,
+            self.end.line,
+            self.end.col
+        )
     }
 }
 

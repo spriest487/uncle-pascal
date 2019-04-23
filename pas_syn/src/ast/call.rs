@@ -1,13 +1,11 @@
-use {
-    crate::{
-        ast::{
-            Annotation,
-            ExpressionNode,
-        },
-        parse::prelude::*,
+use crate::{
+    ast::{
+        Annotation,
+        ExpressionNode,
     },
-    std::fmt,
+    parse::prelude::*,
 };
+use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -104,7 +102,12 @@ impl Call<Span> {
     pub fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<ExpressionNode<Span>>> {
         let brackets = tokens.match_one(Matcher::Delimited(DelimiterPair::Bracket))?;
         match brackets {
-            TokenTree::Delimited { delim: DelimiterPair::Bracket, inner, span, .. } => {
+            TokenTree::Delimited {
+                delim: DelimiterPair::Bracket,
+                inner,
+                span,
+                ..
+            } => {
                 let mut args_tokens = TokenStream::new(inner, span);
 
                 let args = args_tokens.match_separated(Separator::Comma, |_, tokens| {
@@ -115,7 +118,7 @@ impl Call<Span> {
                 args_tokens.finish()?;
 
                 Ok(args)
-            }
+            },
 
             _ => unreachable!(),
         }

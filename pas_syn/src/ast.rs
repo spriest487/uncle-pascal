@@ -1,49 +1,45 @@
-pub mod statement;
-pub mod unit;
-pub mod expression;
-pub mod call;
-pub mod function;
 pub mod block;
-pub mod typedecl;
-pub mod ctor;
+pub mod call;
 pub mod cond;
+pub mod ctor;
+pub mod expression;
+pub mod function;
 pub mod iter;
 pub mod op;
+pub mod statement;
+pub mod typedecl;
+pub mod unit;
 
 pub use self::{
-    statement::*,
-    expression::*,
-    unit::*,
-    call::*,
     block::*,
-    function::*,
-    typedecl::*,
-    ctor::*,
+    call::*,
     cond::*,
+    ctor::*,
+    expression::*,
+    function::*,
     iter::*,
     op::*,
+    statement::*,
+    typedecl::*,
+    unit::*,
 };
 
-use {
-    crate::{
-        ident::Ident,
-        token_tree::*,
-        parse::prelude::*,
-    },
-    std::{
-        fmt,
-        hash::Hash,
-    },
-    pas_common::{
-        TracedError,
-    },
+use crate::{
+    ident::Ident,
+    parse::prelude::*,
+    token_tree::*,
+};
+use pas_common::TracedError;
+use std::{
+    fmt,
+    hash::Hash,
 };
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
 }
 
-pub trait Annotation : Spanned + Clone + PartialEq + Eq + Hash {
+pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
 }
 
@@ -55,7 +51,10 @@ impl Annotation for Span {
 pub enum TypeName {
     /// type is unknown or unnamed at parse time
     Unknown(Span),
-    Ident { ident: Ident, indirection: usize },
+    Ident {
+        ident: Ident,
+        indirection: usize,
+    },
 }
 
 impl Spanned for TypeName {
@@ -88,7 +87,10 @@ impl TypeName {
             TokenTree::Ident(ident) => Ok(TypeName::Ident { ident, indirection }),
             unexpected => {
                 let expected = Matcher::AnyIdent;
-                Err(TracedError::trace(ParseError::UnexpectedToken(unexpected, Some(expected))))
+                Err(TracedError::trace(ParseError::UnexpectedToken(
+                    unexpected,
+                    Some(expected),
+                )))
             },
         }
     }
@@ -102,11 +104,9 @@ impl fmt::Display for TypeName {
                     write!(f, "^")?;
                 }
                 write!(f, "{}", ident)
-            }
+            },
 
-            TypeName::Unknown(_) => {
-                write!(f, "<unknown type>")
-            }
+            TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }
     }
 }

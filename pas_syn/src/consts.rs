@@ -1,17 +1,19 @@
-use {
-    crate::{
-        ident::Ident
+use crate::ident::Ident;
+use bigdecimal::{
+    BigDecimal,
+    ToPrimitive,
+};
+use cast;
+use std::{
+    fmt::{
+        self,
+        Write,
     },
-    std::{
-        fmt::{self, Write},
-        ops::{Add, Sub},
-        i32,
+    i32,
+    ops::{
+        Add,
+        Sub,
     },
-    bigdecimal::{
-        BigDecimal,
-        ToPrimitive,
-    },
-    cast,
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -54,30 +56,30 @@ impl IntConstant {
             '#' => {
                 let val: u8 = s[1..].parse().ok()?;
                 Some(IntConstant::from(val))
-            }
+            },
 
             '$' => {
                 let val = u64::from_str_radix(&s[1..], 16).ok()?;
 
-                /* hex literals always produce unsigned values */
+                // hex literals always produce unsigned values
                 if let Ok(val) = cast::u32(val) {
                     Some(IntConstant::U32(val as u32))
                 } else {
                     Some(IntConstant::U64(val))
                 }
-            }
+            },
 
-            /* negative numbers produce int32, or uint32 if they're too large */
+            // negative numbers produce int32, or uint32 if they're too large
             '-' => {
                 let val: i64 = s.parse().ok()?;
                 Some(IntConstant::from(val))
-            }
+            },
 
-            /* positive numbers produce int32, or i64/u64 if they're too large */
+            // positive numbers produce int32, or i64/u64 if they're too large
             _ => {
                 let val: u64 = s.parse().ok()?;
                 Some(IntConstant::from(val))
-            }
+            },
         }
     }
 
@@ -310,7 +312,7 @@ impl Add for RealConstant {
 impl fmt::Display for RealConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            RealConstant(val) => write!(f, "{}", val)
+            RealConstant(val) => write!(f, "{}", val),
         }
     }
 }
@@ -343,11 +345,11 @@ pub struct SetConstant {
 }
 
 impl SetConstant {
-    pub fn new(included_values: impl IntoIterator<Item=impl Into<Ident>>,
-        set: impl Into<Ident>)
-        -> Self {
-        let vals = included_values.into_iter()
-            .map(|val| val.into());
+    pub fn new(
+        included_values: impl IntoIterator<Item = impl Into<Ident>>,
+        set: impl Into<Ident>,
+    ) -> Self {
+        let vals = included_values.into_iter().map(|val| val.into());
 
         let mut unique_vals = Vec::new();
         for val in vals {

@@ -1,9 +1,13 @@
-use {
-    pas_common::span::*,
-    std::{
-        fmt::{self, Write},
-        hash::{Hash, Hasher},
-    }
+use pas_common::span::*;
+use std::{
+    fmt::{
+        self,
+        Write,
+    },
+    hash::{
+        Hash,
+        Hasher,
+    },
 };
 
 #[derive(Eq, Clone, Debug)]
@@ -51,19 +55,19 @@ pub struct Path<Part> {
 }
 
 impl<Part> Path<Part> {
-    pub fn new(name: Part, namespace: impl IntoIterator<Item=Part>) -> Self {
+    pub fn new(name: Part, namespace: impl IntoIterator<Item = Part>) -> Self {
         let mut path: Vec<_> = namespace.into_iter().collect();
         path.push(name);
 
         Self { parts: path }
     }
 
-    pub fn from_parts(parts: impl IntoIterator<Item=Part>) -> Self {
+    pub fn from_parts(parts: impl IntoIterator<Item = Part>) -> Self {
         let parts: Vec<_> = parts.into_iter().collect();
         Self { parts }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&Part> {
+    pub fn iter(&self) -> impl Iterator<Item = &Part> {
         self.parts.iter()
     }
 
@@ -73,7 +77,7 @@ impl<Part> Path<Part> {
 
     pub fn map<IntoPart>(self, f: impl FnMut(Part) -> IntoPart) -> Path<IntoPart> {
         Path {
-            parts: self.parts.into_iter().map(f).collect()
+            parts: self.parts.into_iter().map(f).collect(),
         }
     }
 

@@ -1,27 +1,19 @@
-use {
-    std::{
-        fmt,
-        path::PathBuf,
-    },
-    regex::*,
-    pas_common::{
-        span::*,
-        BuildOptions,
-        Mode,
-        DiagnosticOutput,
-    },
+use pas_common::{
+    span::*,
+    BuildOptions,
+    DiagnosticOutput,
+    Mode,
+};
+use regex::*;
+use std::{
+    fmt,
+    path::PathBuf,
 };
 
 #[derive(Debug)]
 pub enum PreprocessorError {
-    SymbolNotDefined {
-        name: String,
-        at: Span,
-    },
-    IllegalDirective {
-        directive: String,
-        at: Span,
-    },
+    SymbolNotDefined { name: String, at: Span },
+    IllegalDirective { directive: String, at: Span },
     UnexpectedEndIf(Span),
     UnterminatedCondition(Span),
 }
@@ -29,17 +21,21 @@ pub enum PreprocessorError {
 impl fmt::Display for PreprocessorError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            PreprocessorError::SymbolNotDefined { name, .. } =>
-                write!(f, "symbol `{}` was not defined", name),
+            PreprocessorError::SymbolNotDefined { name, .. } => {
+                write!(f, "symbol `{}` was not defined", name)
+            },
 
-            PreprocessorError::IllegalDirective { directive, .. } =>
-                write!(f, "unrecognized directive `{}`", directive),
+            PreprocessorError::IllegalDirective { directive, .. } => {
+                write!(f, "unrecognized directive `{}`", directive)
+            },
 
-            PreprocessorError::UnexpectedEndIf(_) =>
-                write!(f, "else or endif without matching ifdef or ifndef"),
+            PreprocessorError::UnexpectedEndIf(_) => {
+                write!(f, "else or endif without matching ifdef or ifndef")
+            },
 
-            PreprocessorError::UnterminatedCondition(_) =>
-                write!(f, "unterminated conditional block"),
+            PreprocessorError::UnterminatedCondition(_) => {
+                write!(f, "unterminated conditional block")
+            },
         }
     }
 }
@@ -55,7 +51,8 @@ impl Spanned for PreprocessorError {
     }
 }
 
-impl DiagnosticOutput for PreprocessorError {}
+impl DiagnosticOutput for PreprocessorError {
+}
 
 enum Directive {
     Define(String),
@@ -100,7 +97,8 @@ impl DirectiveParser {
     }
 
     fn match_switches(&self, s: &str) -> Option<Vec<(String, bool)>> {
-        let switches: Vec<_> = s.split(',')
+        let switches: Vec<_> = s
+            .split(',')
             .map(|switch| {
                 if let Some(switch_capture) = self.switch_pattern.captures(&switch.trim()) {
                     let switch_name = switch_capture[1].to_string();
@@ -120,9 +118,7 @@ impl DirectiveParser {
         if switches.iter().any(|switch| switch.is_none()) {
             None
         } else {
-            Some(switches.into_iter()
-                .map(|switch| switch.unwrap())
-                .collect())
+            Some(switches.into_iter().map(|switch| switch.unwrap()).collect())
         }
     }
 
@@ -159,7 +155,7 @@ impl DirectiveParser {
                 unrecognized => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;
-                }
+                },
             };
 
             Some(Directive::Mode(mode))
@@ -219,12 +215,15 @@ impl Preprocessor {
 
             current_line: 0,
 
-            last_char: ' '
+            last_char: ' ',
         }
     }
 
     fn current_span(&self) -> Span {
-        let loc = Location { line: self.current_line, col: 0 };
+        let loc = Location {
+            line: self.current_line,
+            col: 0,
+        };
         Span::new(self.filename.clone(), loc, loc)
     }
 
@@ -238,8 +237,14 @@ impl Preprocessor {
         if let Some(condition) = self.condition_stack.last() {
             return Err(PreprocessorError::UnterminatedCondition(Span::new(
                 self.filename.clone(),
-                Location { line: condition.start_line, col: 0 },
-                Location { line: condition.start_line, col: 0, }
+                Location {
+                    line: condition.start_line,
+                    col: 0,
+                },
+                Location {
+                    line: condition.start_line,
+                    col: 0,
+                },
             )));
         }
 
@@ -251,7 +256,7 @@ impl Preprocessor {
     }
 
     fn process_line(&mut self, mut line: String) -> Result<(), PreprocessorError> {
-        /* line comments never contain pp directives, just discard them */
+        // line comments never contain pp directives, just discard them
         if let Some(comment_pos) = line.find("//") {
             line.truncate(comment_pos);
         };
@@ -290,19 +295,23 @@ impl Preprocessor {
         Ok(())
     }
 
-    /* true when we haven't encountered any conditional compilation flags, or all conditional
-    compilation flags in the current stack are true */
+    // true when we haven't encountered any conditional compilation flags, or all conditional
+    // compilation flags in the current stack are true
     fn condition_active(&self) -> bool {
-        self.condition_stack.iter().all(|symbol_condition| {
-            symbol_condition.value
-        })
+        self.condition_stack
+            .iter()
+            .all(|symbol_condition| symbol_condition.value)
     }
 
     fn push_condition(&mut self, symbol: &str, positive: bool) -> Result<(), PreprocessorError> {
         self.condition_stack.push(SymbolCondition {
             value: {
                 let has_symbol = self.opts.defined(symbol);
-                if positive { has_symbol } else { !has_symbol }
+                if positive {
+                    has_symbol
+                } else {
+                    !has_symbol
+                }
             },
             start_line: self.current_line,
         });
@@ -315,9 +324,15 @@ impl Preprocessor {
             Some(_) => Ok(()),
             None => Err(PreprocessorError::UnexpectedEndIf(Span::new(
                 self.filename.clone(),
-                Location { line: self.current_line, col: 0 },
-                Location { line: self.current_line, col: 0 },
-            )))
+                Location {
+                    line: self.current_line,
+                    col: 0,
+                },
+                Location {
+                    line: self.current_line,
+                    col: 0,
+                },
+            ))),
         }
     }
 
@@ -326,8 +341,10 @@ impl Preprocessor {
             return Ok(());
         }
 
-        /* skip 2 for `{$` and take 1 less for the closing `}` */
-        let directive_name = self.comment_block.chars()
+        // skip 2 for `{$` and take 1 less for the closing `}`
+        let directive_name = self
+            .comment_block
+            .chars()
             .skip(2)
             .take(self.comment_block.len() - 3)
             .collect::<String>()
@@ -341,7 +358,7 @@ impl Preprocessor {
                 }
 
                 Ok(())
-            }
+            },
 
             Some(Directive::Undef(symbol)) => {
                 if !self.condition_active() || self.opts.undef(&symbol) {
@@ -352,34 +369,26 @@ impl Preprocessor {
                         at: self.current_span(),
                     })
                 }
-            }
+            },
 
-            Some(Directive::IfDef(symbol)) => {
-                self.push_condition(&symbol, true)
-            }
+            Some(Directive::IfDef(symbol)) => self.push_condition(&symbol, true),
 
-            Some(Directive::IfNDef(symbol)) => {
-                self.push_condition(&symbol, false)
-            }
+            Some(Directive::IfNDef(symbol)) => self.push_condition(&symbol, false),
 
-            Some(Directive::Else) => {
-                match self.condition_stack.last_mut() {
-                    None => Err(PreprocessorError::UnexpectedEndIf(self.current_span())),
-                    Some(condition) => {
-                        condition.value = !condition.value;
-                        Ok(())
-                    }
-                }
-            }
+            Some(Directive::Else) => match self.condition_stack.last_mut() {
+                None => Err(PreprocessorError::UnexpectedEndIf(self.current_span())),
+                Some(condition) => {
+                    condition.value = !condition.value;
+                    Ok(())
+                },
+            },
 
             Some(Directive::ElseIf(symbol)) => {
                 self.pop_condition()?;
                 self.push_condition(&symbol, true)
-            }
+            },
 
-            Some(Directive::EndIf) => {
-                self.pop_condition()
-            }
+            Some(Directive::EndIf) => self.pop_condition(),
 
             Some(Directive::Switches(switches)) => {
                 if self.condition_active() {
@@ -388,21 +397,21 @@ impl Preprocessor {
                     }
                 }
                 Ok(())
-            }
+            },
 
             Some(Directive::LinkLib(lib_name)) => {
                 if self.condition_active() {
                     self.opts.link_lib(lib_name.clone());
                 }
                 Ok(())
-            }
+            },
 
             Some(Directive::Mode(mode)) => {
                 if self.condition_active() {
                     self.opts.mode = mode;
                 }
                 Ok(())
-            }
+            },
 
             None => {
                 if !self.condition_active() {
@@ -418,7 +427,7 @@ impl Preprocessor {
                         at: self.current_span(),
                     })
                 }
-            }
+            },
         }
     }
 }

@@ -1,22 +1,20 @@
-use {
-    crate::{
-        ident::*,
-        parse::*,
-        ast::{
-            Annotation,
-            TypeName,
-            Block,
-        },
-        token_tree::*,
-        keyword::*,
-        Operator,
+use crate::{
+    ast::{
+        Annotation,
+        Block,
+        TypeName,
     },
-    std::fmt,
-    pas_common::{
-        TracedError,
-        span::*,
-    },
+    ident::*,
+    keyword::*,
+    parse::*,
+    token_tree::*,
+    Operator,
 };
+use pas_common::{
+    span::*,
+    TracedError,
+};
+use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionParam<A: Annotation> {
@@ -77,7 +75,7 @@ impl FunctionDecl<Span> {
                 tokens.advance(1);
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
-            }
+            },
             None => None,
         };
 
@@ -93,16 +91,18 @@ impl FunctionDecl<Span> {
             })?;
 
             if idents.is_empty() {
-                return Err(TracedError::trace(
-                    ParseError::UnexpectedEOF(Matcher::AnyIdent, tokens.context().clone())
-                ));
+                return Err(TracedError::trace(ParseError::UnexpectedEOF(
+                    Matcher::AnyIdent,
+                    tokens.context().clone(),
+                )));
             }
 
             tokens.match_one(Separator::Colon)?;
             let ty = TypeName::parse(tokens)?;
             let span = idents[0].span().to(ty.span());
 
-            let params: Vec<_> = idents.into_iter()
+            let params: Vec<_> = idents
+                .into_iter()
                 .map(|ident| FunctionParam {
                     ident: ident.into_ident().unwrap(),
                     ty: ty.clone(),
@@ -122,7 +122,7 @@ impl FunctionDecl<Span> {
         let impl_iface = impl_iface.map(|tt| {
             InterfaceImpl {
                 for_ty: TypeName::Unknown(tt.span().clone()),
-                iface: Path::new(tt.into_ident().unwrap(), Vec::new()), //todo
+                iface: Path::new(tt.into_ident().unwrap(), Vec::new()), // todo
             }
         });
 

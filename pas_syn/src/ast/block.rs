@@ -1,18 +1,14 @@
-use {
-    crate::{
-        ast::{
-            Annotation,
-            Statement,
-            ExpressionNode,
-        },
-        parse::*,
-        token_tree::*,
+use crate::{
+    ast::{
+        Annotation,
+        ExpressionNode,
+        Statement,
     },
-    std::fmt,
-    pas_common::{
-        span::*,
-    },
+    parse::*,
+    token_tree::*,
 };
+use pas_common::span::*;
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Block<A: Annotation> {
@@ -31,9 +27,9 @@ impl Block<Span> {
         let span = body_tt.span().clone();
 
         let (mut body_tokens, begin, end) = match body_tt {
-            TokenTree::Delimited { inner, open, close, .. } => {
-                (TokenStream::new(inner, open.clone()), open, close)
-            }
+            TokenTree::Delimited {
+                inner, open, close, ..
+            } => (TokenStream::new(inner, open.clone()), open, close),
             _ => unreachable!(),
         };
 
@@ -51,10 +47,10 @@ impl Block<Span> {
                     ParseError::InvalidStatement(expr) => {
                         output_expr = Some(expr.clone());
                         Ok(Generate::Break)
-                    }
+                    },
 
                     _ => Err(traced_err),
-                }
+                },
             }
         })?;
 

@@ -1,46 +1,42 @@
-use {
-    crate::{
-        expr::*,
-        metadata::*,
-        stmt::*,
-    },
-    pas_syn::ast,
-    pas_typecheck as pas_ty,
-    std::{
-        collections::HashMap,
-        fmt,
-    },
+pub use self::interpret::{
+    Interpreter,
+    InterpreterOpts,
 };
-pub use {
-    self::interpret::{
-        Interpreter,
-        InterpreterOpts,
-    },
+use crate::{
+    expr::*,
+    metadata::*,
+    stmt::*,
+};
+use pas_syn::ast;
+use pas_typecheck as pas_ty;
+use std::{
+    collections::HashMap,
+    fmt,
 };
 
-mod stmt;
 mod expr;
+mod stmt;
 
 pub mod prelude {
     pub use crate::{
+        metadata::{
+            Metadata,
+            StringId,
+            Type,
+            STRING_ID,
+        },
         Builder,
         GlobalRef,
         Instruction,
         Interpreter,
         Label,
-        metadata::{
-            Metadata,
-            STRING_ID,
-            StringId,
-            Type,
-        },
         Ref,
         Value,
     };
 }
 
-pub mod metadata;
 pub mod interpret;
+pub mod metadata;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct LocalID(usize);
@@ -132,28 +128,83 @@ pub enum Instruction {
     LocalAlloc(LocalID, Type),
     LocalDelete(LocalID),
 
-    Move { out: Ref, new_val: Value },
-    Add { out: Ref, a: Value, b: Value },
-    Sub { out: Ref, a: Value, b: Value },
+    Move {
+        out: Ref,
+        new_val: Value,
+    },
+    Add {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    Sub {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
 
-    Eq { out: Ref, a: Value, b: Value },
-    Gt { out: Ref, a: Value, b: Value },
-    Not { out: Ref, a: Value },
-    And { out: Ref, a: Value, b: Value },
-    Or { out: Ref, a: Value, b: Value },
+    Eq {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    Gt {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    Not {
+        out: Ref,
+        a: Value,
+    },
+    And {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    Or {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
 
-    AddrOf { out: Ref, a: Ref },
+    AddrOf {
+        out: Ref,
+        a: Ref,
+    },
 
-    Call { out: Option<Ref>, function: Value, args: Vec<Value> },
+    Call {
+        out: Option<Ref>,
+        function: Value,
+        args: Vec<Value>,
+    },
 
-    GetField { out: Ref, of: Ref, struct_id: StructID, field_id: usize },
-    SetField { of: Ref, new_val: Value, struct_id: StructID, field_id: usize },
+    GetField {
+        out: Ref,
+        of: Ref,
+        struct_id: StructID,
+        field_id: usize,
+    },
+    SetField {
+        of: Ref,
+        new_val: Value,
+        struct_id: StructID,
+        field_id: usize,
+    },
 
     Label(Label),
-    Jump { dest: Label },
-    JumpIf { dest: Label, test: Value },
+    Jump {
+        dest: Label,
+    },
+    JumpIf {
+        dest: Label,
+        test: Value,
+    },
 
-    RcNew { out: Ref, struct_id: StructID },
+    RcNew {
+        out: Ref,
+        struct_id: StructID,
+    },
 
     Release(Ref),
     Retain(Ref),
@@ -165,19 +216,93 @@ impl fmt::Display for Instruction {
         match self {
             Instruction::Comment(comment) => write!(f, "// {}", comment),
 
-            Instruction::LocalAlloc(id, ty) => write!(f, "{:>width$} {} of {}", "local", Ref::Local(*id), ty, width = IX_WIDTH),
-            Instruction::LocalDelete(id) => write!(f, "{:>width$} {}", "drop", Ref::Local(*id), width = IX_WIDTH),
-            Instruction::Move { out, new_val } => write!(f, "{:>width$} {} := {}", "mov", out, new_val, width = IX_WIDTH),
-            Instruction::Add { out, a, b } => write!(f, "{:>width$} {} := {} + {}", "add", out, a, b, width = IX_WIDTH),
-            Instruction::Sub { out, a, b } => write!(f, "{:>width$} {} := {} - {}", "sub", out, a, b, width = IX_WIDTH),
+            Instruction::LocalAlloc(id, ty) => write!(
+                f,
+                "{:>width$} {} of {}",
+                "local",
+                Ref::Local(*id),
+                ty,
+                width = IX_WIDTH
+            ),
+            Instruction::LocalDelete(id) => write!(
+                f,
+                "{:>width$} {}",
+                "drop",
+                Ref::Local(*id),
+                width = IX_WIDTH
+            ),
+            Instruction::Move { out, new_val } => write!(
+                f,
+                "{:>width$} {} := {}",
+                "mov",
+                out,
+                new_val,
+                width = IX_WIDTH
+            ),
+            Instruction::Add { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} + {}",
+                "add",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
+            Instruction::Sub { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} - {}",
+                "sub",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
 
-            Instruction::Eq { out, a, b } => write!(f, "{:>width$} {} := {} = {}", "eq", out, a, b, width = IX_WIDTH),
-            Instruction::Gt { out, a, b } => write!(f, "{:>width$} {} := {} > {}", "gt", out, a, b, width = IX_WIDTH),
-            Instruction::Not { out, a } => write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH),
-            Instruction::And { out, a, b } => write!(f, "{:>width$} {} := {} and {}", "and", out, a, b, width = IX_WIDTH),
-            Instruction::Or { out, a, b } => write!(f, "{:>width$} {} := {} or {}", "or", out, a, b, width = IX_WIDTH),
+            Instruction::Eq { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} = {}",
+                "eq",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
+            Instruction::Gt { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} > {}",
+                "gt",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
+            Instruction::Not { out, a } => {
+                write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH)
+            },
+            Instruction::And { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} and {}",
+                "and",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
+            Instruction::Or { out, a, b } => write!(
+                f,
+                "{:>width$} {} := {} or {}",
+                "or",
+                out,
+                a,
+                b,
+                width = IX_WIDTH
+            ),
 
-            Instruction::Call { out, function, args } => {
+            Instruction::Call {
+                out,
+                function,
+                args,
+            } => {
                 write!(f, "{:>width$} ", "call", width = IX_WIDTH)?;
                 if let Some(out_val) = out {
                     write!(f, "{} := ", out_val)?;
@@ -190,45 +315,78 @@ impl fmt::Display for Instruction {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ")")
-            }
+            },
 
-            Instruction::AddrOf { out, a } => {
-                write!(f, "{:>width$} {} := @{}", "addrof", out, a, width = IX_WIDTH)
-            }
+            Instruction::AddrOf { out, a } => write!(
+                f,
+                "{:>width$} {} := @{}",
+                "addrof",
+                out,
+                a,
+                width = IX_WIDTH
+            ),
 
-            Instruction::GetField { out, of, struct_id, field_id } => {
+            Instruction::GetField {
+                out,
+                of,
+                struct_id,
+                field_id,
+            } => {
                 write!(f, "{:>width$} ", "getfld", width = IX_WIDTH)?;
-                write!(f, "{} := ({} as {}).{}", out, of, Type::Struct(*struct_id), field_id)
-            }
+                write!(
+                    f,
+                    "{} := ({} as {}).{}",
+                    out,
+                    of,
+                    Type::Struct(*struct_id),
+                    field_id
+                )
+            },
 
-            Instruction::SetField { of, new_val, struct_id, field_id } => {
+            Instruction::SetField {
+                of,
+                new_val,
+                struct_id,
+                field_id,
+            } => {
                 write!(f, "{:>width$} ", "setfld", width = IX_WIDTH)?;
-                write!(f, "({} as {}).{} := {}", of, Type::Struct(*struct_id), field_id, new_val)
-            }
+                write!(
+                    f,
+                    "({} as {}).{} := {}",
+                    of,
+                    Type::Struct(*struct_id),
+                    field_id,
+                    new_val
+                )
+            },
 
             Instruction::Label(label) => {
                 write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
-            }
+            },
 
-            Instruction::Jump { dest } => {
-                write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH)
-            }
+            Instruction::Jump { dest } => write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH),
 
-            Instruction::JumpIf { dest, test } => {
-                write!(f, "{:>width$} {} if {}", "jmpif", dest, test, width = IX_WIDTH)
-            }
+            Instruction::JumpIf { dest, test } => write!(
+                f,
+                "{:>width$} {} if {}",
+                "jmpif",
+                dest,
+                test,
+                width = IX_WIDTH
+            ),
 
-            Instruction::RcNew { out, struct_id } => {
-                write!(f, "{:>width$} {} at {}^", "rcnew", Type::Struct(*struct_id), out, width = IX_WIDTH)
-            }
+            Instruction::RcNew { out, struct_id } => write!(
+                f,
+                "{:>width$} {} at {}^",
+                "rcnew",
+                Type::Struct(*struct_id),
+                out,
+                width = IX_WIDTH
+            ),
 
-            Instruction::Release(at) => {
-                write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH)
-            }
+            Instruction::Release(at) => write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH),
 
-            Instruction::Retain(at) => {
-                write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
-            }
+            Instruction::Retain(at) => write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH),
         }
     }
 }
@@ -314,24 +472,40 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn mov(&mut self, out: impl Into<Ref>, val: impl Into<Value>) {
-        self.append(Instruction::Move { out: out.into(), new_val: val.into() });
+        self.append(Instruction::Move {
+            out: out.into(),
+            new_val: val.into(),
+        });
     }
 
     pub fn bind_local(&mut self, id: LocalID, name: Option<String>) {
-        assert!(!self.current_scope_mut().locals.iter()
-            .any(|local| local.id() == id),
-            "scope must not already have a binding for {}: {:?}", Ref::Local(id), self.current_scope_mut());
+        assert!(
+            !self
+                .current_scope_mut()
+                .locals
+                .iter()
+                .any(|local| local.id() == id),
+            "scope must not already have a binding for {}: {:?}",
+            Ref::Local(id),
+            self.current_scope_mut()
+        );
 
         if let Some(name) = name.as_ref() {
-            assert!(!self.current_scope_mut().locals.iter()
+            assert!(!self
+                .current_scope_mut()
+                .locals
+                .iter()
                 .any(|l| l.name() == Some(&name) || l.id() == id));
         }
 
-        self.current_scope_mut().locals.push(Local::Bound { id, name });
+        self.current_scope_mut()
+            .locals
+            .push(Local::Bound { id, name });
     }
 
     fn find_next_local_id(&self) -> LocalID {
-        self.scopes.iter()
+        self.scopes
+            .iter()
             .flat_map(|scope| scope.locals.iter())
             .map(|l| l.id())
             .max_by_key(|id| id.0)
@@ -346,7 +520,10 @@ impl<'metadata> Builder<'metadata> {
     }
 
     fn current_scope_mut(&mut self) -> &mut Scope {
-        self.scopes.iter_mut().rev().next()
+        self.scopes
+            .iter_mut()
+            .rev()
+            .next()
             .expect("scope must be active")
     }
 
@@ -355,10 +532,9 @@ impl<'metadata> Builder<'metadata> {
 
         let id = self.find_next_local_id();
 
-        self.current_scope_mut().locals.push(Local::Temp {
-            id,
-            ty: ty.clone(),
-        });
+        self.current_scope_mut()
+            .locals
+            .push(Local::Temp { id, ty: ty.clone() });
 
         self.instructions.push(Instruction::LocalAlloc(id, ty));
         Ref::Local(id)
@@ -380,25 +556,24 @@ impl<'metadata> Builder<'metadata> {
     }
 
     fn find_local(&self, name: &str) -> Option<&Local> {
-        self.scopes.iter().rev()
+        self.scopes
+            .iter()
+            .rev()
             .filter_map(|scope| {
-                scope.locals.iter()
-                    .find(|local| {
-                        local.name()
-                            .map(|local_name| local_name == name)
-                            .unwrap_or(false)
-                    })
+                scope.locals.iter().find(|local| {
+                    local
+                        .name()
+                        .map(|local_name| local_name == name)
+                        .unwrap_or(false)
+                })
             })
             .next()
     }
 
-    fn visit_struct_deep(
-        &mut self,
-        at: Ref,
-        struct_id: StructID,
-        f: &impl Fn(&mut Builder, Ref)
-    ) {
-        let fields: Vec<_> = self.metadata.structs()[&struct_id].fields.iter()
+    fn visit_struct_deep(&mut self, at: Ref, struct_id: StructID, f: &impl Fn(&mut Builder, Ref)) {
+        let fields: Vec<_> = self.metadata.structs()[&struct_id]
+            .fields
+            .iter()
             .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
             .collect();
 
@@ -428,7 +603,7 @@ impl<'metadata> Builder<'metadata> {
         match ty {
             Type::Rc(_) => {
                 self.append(Instruction::Retain(at.clone()));
-            }
+            },
 
             Type::Struct(id) => {
                 self.begin_scope();
@@ -436,7 +611,7 @@ impl<'metadata> Builder<'metadata> {
                     builder.append(Instruction::Retain(field_ref));
                 });
                 self.end_scope();
-            }
+            },
 
             _ => {
                 // nothing to retain
@@ -448,7 +623,7 @@ impl<'metadata> Builder<'metadata> {
         match ty {
             Type::Rc(_) => {
                 self.append(Instruction::Release(at.clone()));
-            }
+            },
 
             Type::Struct(id) => {
                 self.begin_scope();
@@ -456,7 +631,7 @@ impl<'metadata> Builder<'metadata> {
                     builder.append(Instruction::Release(field_ref));
                 });
                 self.end_scope();
-            }
+            },
 
             _ => {
                 // nothing to release
@@ -465,26 +640,27 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn begin_scope(&mut self) {
-        self.scopes.push(Scope {
-            locals: Vec::new(),
-        })
+        self.scopes.push(Scope { locals: Vec::new() })
     }
 
     pub fn end_scope(&mut self) {
-        let popped_locals = self.scopes.last()
+        let popped_locals = self
+            .scopes
+            .last()
             .expect("called end_scope with no active scope")
-            .locals.clone();
+            .locals
+            .clone();
 
         for local in popped_locals {
             match local {
                 Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
                     self.instructions.push(Instruction::LocalDelete(id));
-                }
+                },
 
                 Local::Temp { id, .. } => {
                     self.instructions.push(Instruction::LocalDelete(id));
-                }
+                },
 
                 _ => {},
             }
@@ -510,7 +686,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             body_builder.bind_local(LocalID(0), None);
 
             body_builder.metadata.translate_type(ty)
-        }
+        },
     };
 
     for (i, param) in func.decl.params.iter().enumerate() {
@@ -530,7 +706,10 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 
     if let Some(return_val) = block_output {
         let return_at = Ref::Local(LocalID(0));
-        body_builder.append(Instruction::Move { out: return_at.clone(), new_val: Value::Ref(return_val) });
+        body_builder.append(Instruction::Move {
+            out: return_at.clone(),
+            new_val: Value::Ref(return_val),
+        });
         body_builder.retain(return_at, &return_ty);
     }
 
@@ -555,7 +734,13 @@ impl fmt::Display for Module {
         for (id, struct_def) in self.metadata.structs() {
             writeln!(f, "{{{}}} ({}):", id, struct_def.name)?;
             for (id, field) in &struct_def.fields {
-                writeln!(f, "  {:8>} ({}): {}", format!(".{}", id), field.name, field.ty)?;
+                writeln!(
+                    f,
+                    "  {:8>} ({}): {}",
+                    format!(".{}", id),
+                    field.name,
+                    field.ty
+                )?;
             }
             writeln!(f)?;
         }
@@ -568,7 +753,8 @@ impl fmt::Display for Module {
 
         writeln!(f, "* Functions")?;
         for (id, func) in &self.functions {
-            writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;            writeln!(f, ":")?;
+            writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
+            writeln!(f, ":")?;
 
             for instruction in &func.body {
                 writeln!(f, "{}", instruction)?;
@@ -598,10 +784,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
             match ty_decl {
                 ast::TypeDecl::Class(class) => {
                     metadata.define_struct(class);
-                }
+                },
                 ast::TypeDecl::Interface(iface) => {
                     metadata.define_iface(iface);
-                }
+                },
             }
         }
 
@@ -611,11 +797,12 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
             let id = metadata.declare_func(&[unit.ident.clone()], func_decl);
 
             if let Some(impl_iface) = &func_decl.impl_iface {
-                let iface_id = metadata.find_iface(&impl_iface.iface)
-                    .unwrap_or_else(|| {
-                        panic!("interface {} referenced in method impl of {} must already be defined",
-                            impl_iface.iface, func_decl.ident);
-                    });
+                let iface_id = metadata.find_iface(&impl_iface.iface).unwrap_or_else(|| {
+                    panic!(
+                        "interface {} referenced in method impl of {} must already be defined",
+                        impl_iface.iface, func_decl.ident
+                    );
+                });
 
                 let for_ty = metadata.translate_type(&impl_iface.for_ty);
                 metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);
@@ -626,8 +813,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
             let func = translate_func(func_def, &mut metadata);
             let func_id = match &func_def.decl.impl_iface {
                 None => {
-                    let global_name = GlobalName::new(func_def.decl.ident.to_string(), unit_ns.clone());
-                    metadata.find_function(&global_name)
+                    let global_name =
+                        GlobalName::new(func_def.decl.ident.to_string(), unit_ns.clone());
+                    metadata
+                        .find_function(&global_name)
                         .expect("all defined functions must be declared first")
                 },
 
@@ -637,9 +826,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
                     let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
                     let self_ty = metadata.translate_type(&impl_iface.for_ty);
 
-                    metadata.find_impl(&self_ty, iface_id, &method_name)
+                    metadata
+                        .find_impl(&self_ty, iface_id, &method_name)
                         .expect("all defined method impls must be declared first")
-                }
+                },
             };
 
             functions.insert(func_id, func);

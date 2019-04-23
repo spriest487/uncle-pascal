@@ -1,27 +1,23 @@
-use {
-    crate::{
-        Type,
-        FunctionSig,
-        ValueKind,
-        result::*,
-        ast::{
-            FunctionDecl,
-            ExpressionNode,
-        }
+use crate::{
+    ast::{
+        ExpressionNode,
+        FunctionDecl,
     },
-    std::{
-        fmt,
-        rc::Rc,
-    },
-    pas_common::{
-        span::*
-    },
-    pas_syn::{
-        ast::Annotation,
-        Ident,
-    },
+    result::*,
+    FunctionSig,
+    Type,
+    ValueKind,
 };
-use pas_syn::ident::IdentPath;
+use pas_common::span::*;
+use pas_syn::{
+    ast::Annotation,
+    ident::IdentPath,
+    Ident,
+};
+use std::{
+    fmt,
+    rc::Rc,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -29,14 +25,19 @@ pub struct MethodAnnotation {
     pub iface_ty: Type,
     pub method: Box<FunctionDecl>,
 
-//    pub self_ty: Type,
+    //    pub self_ty: Type,
     pub self_arg: Option<Box<ExpressionNode>>,
 
     method_ty: Type,
 }
 
 impl MethodAnnotation {
-    pub fn ufcs(span: Span, iface_ty: Type, self_arg: ExpressionNode, method_decl: FunctionDecl) -> Self {
+    pub fn ufcs(
+        span: Span,
+        iface_ty: Type,
+        self_arg: ExpressionNode,
+        method_decl: FunctionDecl,
+    ) -> Self {
         Self {
             span,
             iface_ty,
@@ -54,7 +55,7 @@ impl MethodAnnotation {
             method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
             method: Box::new(method_decl),
 
-//            self_ty: Type::GenericSelf,
+            //            self_ty: Type::GenericSelf,
             self_arg: None,
         }
     }
@@ -102,37 +103,32 @@ impl TypeAnnotation {
         assert_ne!(Type::Nothing, *expect_ty);
 
         match self {
-            TypeAnnotation::Function { ty, .. } |
-            TypeAnnotation::TypedValue { ty, .. } if ty == expect_ty => {
+            TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. }
+                if ty == expect_ty =>
+            {
                 Ok(())
             },
 
-            TypeAnnotation::Method(method_annotation) => {
-                Err(TypecheckError::TypeMismatch {
-                    span: method_annotation.span.clone(),
-                    expected: expect_ty.clone(),
-                    actual: method_annotation.method_ty.clone(),
-                })
-            },
+            TypeAnnotation::Method(method_annotation) => Err(TypecheckError::TypeMismatch {
+                span: method_annotation.span.clone(),
+                expected: expect_ty.clone(),
+                actual: method_annotation.method_ty.clone(),
+            }),
 
-            TypeAnnotation::TypedValue { ty, span, .. } => {
-                Err(TypecheckError::TypeMismatch {
-                    span: span.clone(),
-                    expected: expect_ty.clone(),
-                    actual: ty.clone()
-                })
-            }
+            TypeAnnotation::TypedValue { ty, span, .. } => Err(TypecheckError::TypeMismatch {
+                span: span.clone(),
+                expected: expect_ty.clone(),
+                actual: ty.clone(),
+            }),
 
-            TypeAnnotation::Function { span, .. } |
-            TypeAnnotation::Untyped(span) |
-            TypeAnnotation::Namespace(_, span) |
-            TypeAnnotation::Type(_, span) => {
-                Err(TypecheckError::TypeMismatch {
-                    span: span.clone(),
-                    expected: expect_ty.clone(),
-                    actual: Type::Nothing,
-                })
-            }
+            TypeAnnotation::Function { span, .. }
+            | TypeAnnotation::Untyped(span)
+            | TypeAnnotation::Namespace(_, span)
+            | TypeAnnotation::Type(_, span) => Err(TypecheckError::TypeMismatch {
+                span: span.clone(),
+                expected: expect_ty.clone(),
+                actual: Type::Nothing,
+            }),
         }
     }
 
@@ -143,15 +139,14 @@ impl TypeAnnotation {
             TypeAnnotation::Type(_, _) => &Type::Nothing,
             TypeAnnotation::Method(method) => &method.method_ty,
 
-            TypeAnnotation::Function { ty, .. } |
-            TypeAnnotation::TypedValue { ty, .. } => ty,
+            TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. } => ty,
         }
     }
 
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
             TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
-//            TypeAnnotation::Function { .. } => Some(ValueKind::Immutable),
+            //            TypeAnnotation::Function { .. } => Some(ValueKind::Immutable),
             _ => None,
         }
     }
@@ -173,12 +168,12 @@ impl fmt::Display for TypeAnnotation {
 impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
         match self {
-            TypeAnnotation::Function { span, .. } |
-            TypeAnnotation::Untyped(span) |
-            TypeAnnotation::TypedValue { span, .. } |
-            TypeAnnotation::Method(MethodAnnotation { span, .. }) |
-            TypeAnnotation::Type(_, span) |
-            TypeAnnotation::Namespace(_, span) => span,
+            TypeAnnotation::Function { span, .. }
+            | TypeAnnotation::Untyped(span)
+            | TypeAnnotation::TypedValue { span, .. }
+            | TypeAnnotation::Method(MethodAnnotation { span, .. })
+            | TypeAnnotation::Type(_, span)
+            | TypeAnnotation::Namespace(_, span) => span,
         }
     }
 }

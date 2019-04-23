@@ -1,27 +1,25 @@
-use {
-    pas_common::{
-        span::*,
-        DiagnosticOutput,
-        DiagnosticMessage,
-    },
-    std::io,
-    codespan_reporting::{
-        Diagnostic,
-        Severity,
-        Label,
-        LabelStyle,
-        termcolor,
-    },
-    codespan::{
-        CodeMap,
-        FileMap,
-        ByteSpan,
-        LineIndex,
-        ColumnIndex,
-        RawIndex,
-        ByteIndex,
-    },
+use codespan::{
+    ByteIndex,
+    ByteSpan,
+    CodeMap,
+    ColumnIndex,
+    FileMap,
+    LineIndex,
+    RawIndex,
 };
+use codespan_reporting::{
+    termcolor,
+    Diagnostic,
+    Label,
+    LabelStyle,
+    Severity,
+};
+use pas_common::{
+    span::*,
+    DiagnosticMessage,
+    DiagnosticOutput,
+};
+use std::io;
 
 fn find_location_index(file_map: &FileMap, loc: &Location, end: bool) -> io::Result<ByteIndex> {
     let line = LineIndex(loc.line as RawIndex);
@@ -32,10 +30,9 @@ fn find_location_index(file_map: &FileMap, loc: &Location, end: bool) -> io::Res
         ColumnIndex(loc.col as RawIndex)
     };
 
-    file_map.byte_index(line, col)
-        .map_err(|location_err| {
-            io::Error::new(io::ErrorKind::InvalidData, location_err.to_string())
-        })
+    file_map.byte_index(line, col).map_err(|location_err| {
+        io::Error::new(io::ErrorKind::InvalidData, location_err.to_string())
+    })
 }
 
 fn output_to_report_diag(
@@ -54,8 +51,7 @@ fn output_to_report_diag(
         report_label = report_label.with_message(label);
     }
 
-    Ok(Diagnostic::new(severity, diag.title)
-        .with_label(report_label))
+    Ok(Diagnostic::new(severity, diag.title).with_label(report_label))
 }
 
 pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
@@ -71,13 +67,10 @@ pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
 
     codespan_reporting::emit(out.lock(), &code_map, &main_diag)?;
 
-    let see_also_diags: Vec<_> = err.see_also().into_iter()
-        .map(|diag| output_to_report_diag(
-            diag,
-            &mut code_map,
-            LabelStyle::Primary,
-            Severity::Note,
-        ))
+    let see_also_diags: Vec<_> = err
+        .see_also()
+        .into_iter()
+        .map(|diag| output_to_report_diag(diag, &mut code_map, LabelStyle::Primary, Severity::Note))
         .collect::<Result<_, _>>()?;
 
     for diag in see_also_diags {

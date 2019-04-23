@@ -1,11 +1,9 @@
-use {
-    crate::{
-        token_tree::*,
-        operators::*,
-        keyword::*,
-    },
-    std::fmt,
+use crate::{
+    keyword::*,
+    operators::*,
+    token_tree::*,
 };
+use std::fmt;
 
 #[derive(Clone, Debug)]
 pub enum Matcher {
@@ -66,7 +64,7 @@ pub trait MatchOneOf {
 }
 
 impl<M: Into<Matcher>> MatchOneOf for M {
-    fn or(self, next: impl Into<Matcher>) -> Matcher{
+    fn or(self, next: impl Into<Matcher>) -> Matcher {
         self.into().or(next.into())
     }
 }
@@ -97,19 +95,22 @@ impl fmt::Display for Matcher {
             Matcher::AnyLiteralReal => write!(f, "floating point literal"),
             Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
             Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
-            Matcher::OneOf(matchers) => write!(f, "one of: {}", matchers.iter()
-                .map(|matcher| format!("{}", matcher))
-                .collect::<Vec<_>>()
-                .join(", ")),
+            Matcher::OneOf(matchers) => write!(
+                f,
+                "one of: {}",
+                matchers
+                    .iter()
+                    .map(|matcher| format!("{}", matcher))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
         }
     }
 }
 
 impl Matcher {
     pub fn any_operator_in_position(pos: Position) -> Self {
-        Matcher::OneOf(Operator::for_position(pos)
-            .map(Matcher::Operator)
-            .collect())
+        Matcher::OneOf(Operator::for_position(pos).map(Matcher::Operator).collect())
     }
 
     pub fn is_match(&self, token: &TokenTree) -> bool {
@@ -125,11 +126,11 @@ impl Matcher {
             Matcher::AnyLiteralInteger => token.as_literal_int().is_some(),
             Matcher::AnyLiteralReal => token.as_literal_real().is_some(),
             Matcher::AnyLiteralString => token.as_literal_string().is_some(),
-            Matcher::AnyLiteralBoolean => token.is_keyword(Keyword::True) ||
-                token.is_keyword(Keyword::False),
+            Matcher::AnyLiteralBoolean => {
+                token.is_keyword(Keyword::True) || token.is_keyword(Keyword::False)
+            },
             Matcher::Exact(exact_token) => *token == *exact_token,
-            Matcher::OneOf(matchers) => matchers.iter()
-                .any(|matcher| matcher.is_match(token)),
+            Matcher::OneOf(matchers) => matchers.iter().any(|matcher| matcher.is_match(token)),
         }
     }
 
@@ -138,27 +139,25 @@ impl Matcher {
             (Matcher::OneOf(mut options), Matcher::OneOf(others)) => {
                 options.extend(others);
                 Matcher::OneOf(options)
-            }
+            },
 
             (Matcher::OneOf(mut options), other @ _) => {
                 options.push(other);
                 Matcher::OneOf(options)
-            }
+            },
 
             (this, Matcher::OneOf(mut others)) => {
                 others.insert(0, this);
                 Matcher::OneOf(others)
-            }
+            },
 
-            (this, other) => {
-                Matcher::OneOf(vec![this, other])
-            }
+            (this, other) => Matcher::OneOf(vec![this, other]),
         }
     }
 
     pub fn and_then(self, next_matcher: impl Into<Matcher>) -> SequenceMatcher {
         SequenceMatcher {
-            sequence: vec![self, next_matcher.into()]
+            sequence: vec![self, next_matcher.into()],
         }
     }
 }
@@ -185,7 +184,7 @@ impl Matchable for Keyword {
     }
 }
 
-//impl Matchable for operators::Operator {
+// impl Matchable for operators::Operator {
 //    fn as_matcher(&self) -> Matcher {
 //        Matcher::Operator(*self)
 //    }
