@@ -1,9 +1,11 @@
 use {
+    pas_typecheck as pas_ty,
+    pas_syn as syn,
     std::{
         collections::hash_map::HashMap,
         fmt,
+        borrow::Cow,
     },
-    pas_typecheck as pas_ty,
 };
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
@@ -16,24 +18,39 @@ impl fmt::Display for StringId {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
-pub struct TypeId(pub usize);
+pub struct StructID(pub usize);
 
-impl fmt::Display for TypeId {
+impl fmt::Display for StructID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
 }
 
-pub const DISPOSABLE_ID: TypeId = TypeId(321);
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
+pub struct InterfaceID(pub usize);
 
-pub const STRING_ID: TypeId = TypeId(573196);
-pub const STRING_CHARS_FIELD: usize = 0;
-pub const STRING_LEN_FIELD: usize = 1;
+impl fmt::Display for InterfaceID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
-pub const RC_ID: TypeId = TypeId(36);
+/* builtin fixed IDs */
+pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
+
+pub const RC_ID: StructID = StructID(0);
 pub const RC_REF_COUNT_FIELD: usize = 0;
 pub const RC_VALUE_FIELD: usize = 1;
 
+pub const STRING_ID: StructID = StructID(1);
+pub const STRING_CHARS_FIELD: usize = 0;
+pub const STRING_LEN_FIELD: usize = 1;
+pub const STRING_DISPOSE_IMPL_ID: FunctionID = FunctionID(0);
+
+pub const INTTOSTR_ID: FunctionID = FunctionID(1);
+pub const WRITELN_ID: FunctionID = FunctionID(2);
+pub const GETMEM_ID: FunctionID = FunctionID(3);
+pub const FREEMEM_ID: FunctionID = FunctionID(4);
 
 #[derive(Clone, Debug)]
 pub struct Interface {
@@ -55,7 +72,7 @@ impl Interface {
         &mut self,
         implementor: Type,
         method: impl Into<String>,
-        func_name: impl Into<String>)
+        func_id: FunctionID)
     {
         let method = method.into();
         assert!(self.methods.contains(&method));
@@ -65,14 +82,14 @@ impl Interface {
             .or_insert_with(|| InterfaceImpl::new(methods_len));
         assert!(!impl_entry.methods.contains_key(&method));
 
-        impl_entry.methods.insert(method, func_name.into());
+        impl_entry.methods.insert(method, func_id);
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    // method name -> global name of function
-    pub methods: HashMap<String, String>,
+    // method name -> method impl
+    pub methods: HashMap<String, FunctionID>,
 }
 
 impl InterfaceImpl {
@@ -135,7 +152,8 @@ impl Struct {
 pub enum Type {
     Nothing,
     Pointer(Box<Type>),
-    Struct(TypeId),
+    Struct(StructID),
+    InterfaceRef(InterfaceID),
     Rc(Box<Type>),
     Bool,
     U8,
@@ -159,7 +177,7 @@ impl Type {
         }
     }
 
-    pub fn is_struct(&self, id: TypeId) -> bool {
+    pub fn is_struct(&self, id: StructID) -> bool {
         match self {
             Type::Struct(ty_id) => *ty_id == id,
             _ => false,
@@ -175,6 +193,7 @@ impl fmt::Display for Type {
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),
+            Type::InterfaceRef(id) => write!(f, "<{}>", id),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
             Type::Rc(id) => write!(f, "{{{} rc}}", id),
@@ -182,11 +201,27 @@ impl fmt::Display for Type {
     }
 }
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct FunctionID(usize);
+
+impl fmt::Display for FunctionID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "function {}", self.0)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct FunctionDecl {
+    global_name: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct Metadata {
-    structs: HashMap<TypeId, Struct>,
+    structs: HashMap<StructID, Struct>,
     string_literals: HashMap<StringId, String>,
-    ifaces: HashMap<TypeId, Interface>,
+    ifaces: HashMap<InterfaceID, Interface>,
+
+    functions: HashMap<FunctionID, FunctionDecl>,
 }
 
 impl Metadata {
@@ -201,7 +236,14 @@ impl Metadata {
         metadata.structs.insert(STRING_ID, Struct::new("String")
             .with_field("chars", Type::I32.ptr(), false)
             .with_field("len", Type::I32, false));
-        metadata.impl_method(DISPOSABLE_ID, Type::Struct(STRING_ID), "Dispose", "StringDispose");
+
+        metadata.functions.insert(STRING_DISPOSE_IMPL_ID, FunctionDecl { global_name: None });
+        metadata.impl_method(DISPOSABLE_ID, Type::Struct(STRING_ID), "Dispose", STRING_DISPOSE_IMPL_ID);
+
+        metadata.functions.insert(INTTOSTR_ID, FunctionDecl { global_name: Some("IntToStr".to_string() )});
+        metadata.functions.insert(WRITELN_ID, FunctionDecl { global_name: Some("WriteLn".to_string() )});
+        metadata.functions.insert(GETMEM_ID, FunctionDecl { global_name: Some("GetMem".to_string() )});
+        metadata.functions.insert(FREEMEM_ID, FunctionDecl { global_name: Some("FreeMem".to_string() )});
 
         metadata
     }
@@ -211,6 +253,7 @@ impl Metadata {
             structs: HashMap::new(),
             string_literals: HashMap::new(),
             ifaces: HashMap::new(),
+            functions: HashMap::new(),
         }
     }
 
@@ -231,20 +274,93 @@ impl Metadata {
 
             self.string_literals.insert(*id, string_lit.clone());
         }
+
+        for (id, iface_def) in &other.ifaces {
+            if self.ifaces.contains_key(id) {
+                let existing = &self.ifaces[id];
+                panic!("duplicate struct ID {} in metadata (new: {}, existing: {})", id, iface_def.name, existing.name);
+            }
+            self.ifaces.insert(*id, iface_def.clone());
+        }
+
+        for (id, func_decl) in &other.functions {
+            if self.functions.contains_key(id) {
+                let existing = &self.functions[id];
+
+                let name = func_decl.global_name.as_ref().map(|n| n.as_str()).unwrap_or("<unnamed>");
+                let existing_name = existing.global_name.as_ref().map(|n| n.as_str()).unwrap_or("<unnamed>");
+
+                panic!("duplicate function ID {} in metadata (new: {}, existing: {})", id, name, existing_name);
+            }
+            self.functions.insert(*id, func_decl.clone());
+        }
     }
 
-    pub fn structs(&self) -> &HashMap<TypeId, Struct> {
+    pub fn structs(&self) -> &HashMap<StructID, Struct> {
         &self.structs
     }
 
-    fn next_type_id(&mut self) -> TypeId {
-        (0..).map(TypeId)
-            .filter(|id| !self.structs.contains_key(id) && !self.ifaces.contains_key(id))
+    fn next_struct_id(&mut self) -> StructID {
+        (0..).map(StructID)
+            .filter(|id| !self.structs.contains_key(id))
             .next()
             .unwrap()
     }
 
-    pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> TypeId {
+    fn next_iface_id(&mut self) -> InterfaceID {
+        (0..).map(InterfaceID)
+            .filter(|id| !self.ifaces.contains_key(id))
+            .next()
+            .unwrap()
+    }
+
+    fn next_function_id(&mut self) -> FunctionID {
+        (0..).map(FunctionID)
+            .filter(|id| !self.functions.contains_key(id))
+            .next()
+            .unwrap()
+    }
+
+    pub fn declare_func(&mut self, func_decl: &pas_ty::ast::FunctionDecl) -> FunctionID {
+        let id = self.next_function_id();
+
+        let global_name = match &func_decl.impl_iface {
+            Some(_) => None,
+            None => Some(func_decl.ident.to_string()),
+        };
+
+        self.functions.insert(id, FunctionDecl {
+            global_name
+        });
+
+        id
+    }
+
+    pub fn find_function(&self, name: &str) -> Option<FunctionID> {
+        self.functions.iter()
+            .find(|(_id, func)| func.global_name.as_ref().map(String::as_str) == Some(name))
+            .map(|(id, _func)| *id)
+    }
+
+    pub fn func_desc(&self, id: FunctionID) -> Cow<str> {
+        self.functions.get(&id)
+            .and_then(|decl| decl.global_name.as_ref())
+            .map(|s| Cow::Borrowed(s.as_str()))
+            .or_else(|| {
+                self.ifaces.values()
+                    .find_map(|iface| iface.impls.iter()
+                        .find_map(|(impl_ty, iface_impl)| iface_impl.methods.iter()
+                            .find_map(|(method, impl_id)| if *impl_id == id {
+                                let desc = format!("impl of {}.{} for {}", iface.name, method, impl_ty);
+                                Some(Cow::Owned(desc))
+                            } else {
+                                None
+                            })))
+            })
+            .unwrap()
+    }
+
+    pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
         let mut fields = HashMap::new();
         for (id, member) in struct_def.members.iter().enumerate() {
             let name = member.ident.to_string();
@@ -254,7 +370,7 @@ impl Metadata {
             fields.insert(id, StructField { name, ty, rc });
         }
 
-        let id = self.next_type_id();
+        let id = self.next_struct_id();
 
         let struct_name = struct_def.ident.to_string();
         assert!(!self.structs.values().any(|def| def.name == struct_name), "duplicate struct def: {}", struct_name);
@@ -265,35 +381,44 @@ impl Metadata {
         id
     }
 
-    pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> TypeId {
+    pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
         let methods: Vec<_> = iface_def.methods.iter()
             .map(|method| method.ident.to_string())
             .collect();
 
-        let id = self.next_type_id();
+        let id = self.next_iface_id();
 
         self.ifaces.insert(id, Interface::new(iface_def.ident.to_string(), methods));
 
         id
     }
 
-    pub fn impl_method(&mut self,
-                       iface_id: TypeId,
-                       for_ty: Type,
-                       method: impl Into<String>,
-                       func_name: impl Into<String>)
+    pub fn find_iface(&self, iface_ident: &syn::Ident) -> Option<InterfaceID> {
+        let name = iface_ident.to_string();
+
+        self.ifaces.iter()
+            .find(|(_id, def)| def.name == name)
+            .map(|(id, _def)| *id)
+    }
+
+    pub fn impl_method(
+        &mut self,
+        iface_id: InterfaceID,
+        for_ty: Type,
+        method: impl Into<String>,
+        func_id: FunctionID)
     {
         self.ifaces.get_mut(&iface_id)
             .unwrap_or_else(|| panic!("trying to impl method for interface {} which doesn't exist", iface_id))
-            .add_impl(for_ty, method, func_name);
+            .add_impl(for_ty, method, func_id);
     }
 
-    pub fn find_impl(&self, ty: &Type, iface_id: TypeId, method: &str) -> Option<&str> {
+    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: &str) -> Option<FunctionID> {
         self.ifaces.get(&iface_id)
             .unwrap_or_else(|| panic!("expected interface {} to exist", iface_id))
             .impls.get(ty)
             .and_then(|ty_impl| ty_impl.methods.get(method))
-            .map(|func_name| func_name.as_str())
+            .cloned()
     }
 
     pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
@@ -302,7 +427,12 @@ impl Metadata {
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                unimplemented!("translate_type: {}", iface)
+                let ty_name = iface.ident.to_string();
+                let id = self.ifaces.iter()
+                    .find(|(_id, iface)| iface.name == ty_name)
+                    .map(|(id, _iface)| id)
+                    .unwrap_or_else(|| panic!("interface {} must exist in metadata", ty_name));
+                Type::InterfaceRef(*id)
             }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
@@ -334,7 +464,7 @@ impl Metadata {
         }
     }
 
-    pub fn find_struct(&self, name: &str) -> Option<(TypeId, &Struct)> {
+    pub fn find_struct(&self, name: &str) -> Option<(StructID, &Struct)> {
         self.structs.iter()
             .find_map(|(id, struct_def)| if struct_def.name == name {
                 Some((*id, struct_def))

@@ -44,7 +44,7 @@ pub mod interpret;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum GlobalRef {
-    Function(String),
+    Function(FunctionID),
     StringLiteral(StringId),
 }
 
@@ -135,14 +135,14 @@ pub enum Instruction {
 
     Call { out: Option<Ref>, function: Value, args: Vec<Value> },
 
-    GetField { out: Ref, of: Ref, struct_id: TypeId, field_id: usize },
-    SetField { of: Ref, new_val: Value, struct_id: TypeId, field_id: usize },
+    GetField { out: Ref, of: Ref, struct_id: StructID, field_id: usize },
+    SetField { of: Ref, new_val: Value, struct_id: StructID, field_id: usize },
 
     Label(Label),
     Jump { dest: Label },
     JumpIf { dest: Label, test: Value },
 
-    RcNew { out: Ref, struct_id: TypeId },
+    RcNew { out: Ref, struct_id: StructID },
 
     Release(Ref),
     Retain(Ref),
@@ -375,7 +375,7 @@ impl<'metadata> Builder<'metadata> {
     fn visit_struct_deep(
         &mut self,
         at: Ref,
-        struct_id: TypeId,
+        struct_id: StructID,
         f: &impl Fn(&mut Builder, Ref))
     {
         let fields: Vec<_> = self.metadata.structs()[&struct_id].fields.iter()
@@ -521,7 +521,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 #[derive(Clone, Debug)]
 pub struct Module {
     metadata: Metadata,
-    functions: HashMap<String, Function>,
+    functions: HashMap<FunctionID, Function>,
     init: Vec<Instruction>,
 }
 
@@ -543,8 +543,9 @@ impl fmt::Display for Module {
         writeln!(f)?;
 
         writeln!(f, "* Functions")?;
-        for (name, func) in &self.functions {
-            writeln!(f, "{}:", name)?;
+        for (id, func) in &self.functions {
+            writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;            writeln!(f, ":")?;
+
             for instruction in &func.body {
                 writeln!(f, "{}", instruction)?;
             }
@@ -564,8 +565,6 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
     // add refs
     metadata.extend(&Metadata::system());
 
-    let mut functions = HashMap::new();
-
     for ty_decl in unit.type_decls() {
         match ty_decl {
             ast::TypeDecl::Class(class) => {
@@ -577,9 +576,40 @@ pub fn translate_unit(unit: &pas_ty::ast::Unit) -> Module {
         }
     }
 
+    let mut functions = HashMap::new();
+
+    // func decls need to be all processed before we translate any code because the code may
+    // need to look up their IDs
+    for func_decl in unit.func_decls() {
+        let id = metadata.declare_func(func_decl);
+
+        if let Some(impl_iface) = &func_decl.impl_iface {
+            let iface_id = metadata.find_iface(&impl_iface.iface)
+                .expect("interface referenced in method implemention must already be defined");
+
+            let for_ty = metadata.translate_type(&impl_iface.for_ty);
+            metadata.impl_method(iface_id, for_ty, func_decl.ident.to_string(), id);
+        }
+    }
+
     for func_def in unit.func_defs() {
         let func = translate_func(func_def, &mut metadata);
-        functions.insert(func_def.decl.ident.to_string(), func);
+        let func_id = match &func_def.decl.impl_iface {
+            None => metadata.find_function(&func_def.decl.ident.to_string())
+                .expect("all defined functions must be declared first"),
+
+            Some(impl_iface) => {
+                let method_name = func_def.decl.ident.to_string();
+
+                let iface_id = metadata.find_iface(&impl_iface.iface).unwrap();
+                let self_ty = metadata.translate_type(&impl_iface.for_ty);
+
+                metadata.find_impl(&self_ty, iface_id, &method_name)
+                    .expect("all defined method impls must be declared first")
+            }
+        };
+
+        functions.insert(func_id, func);
     }
 
     let mut init_builder = Builder::new(&mut metadata);

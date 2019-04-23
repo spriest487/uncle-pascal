@@ -110,7 +110,7 @@ impl Sub<usize> for Pointer {
 
 #[derive(Debug, Clone)]
 pub struct StructCell {
-    pub id: TypeId,
+    pub id: StructID,
     pub fields: Vec<MemCell>,
 }
 
@@ -200,14 +200,14 @@ impl MemCell {
         }
     }
 
-    pub fn as_struct_mut(&mut self, struct_id: TypeId) -> Option<&mut StructCell> {
+    pub fn as_struct_mut(&mut self, struct_id: StructID) -> Option<&mut StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
         }
     }
 
-    pub fn as_struct(&self, struct_id: TypeId) -> Option<&StructCell> {
+    pub fn as_struct(&self, struct_id: StructID) -> Option<&StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
@@ -287,31 +287,32 @@ impl Interpreter {
             func: builtin::int_to_str,
             ret: Type::Struct(STRING_ID).ptr(),
         };
-        globals.insert(GlobalRef::Function("IntToStr".to_string()), MemCell::Function(int_to_str));
+
+        globals.insert(GlobalRef::Function(INTTOSTR_ID), MemCell::Function(int_to_str));
 
         let write_ln = Function::Builtin {
             func: builtin::write_ln,
             ret: Type::Nothing,
         };
-        globals.insert(GlobalRef::Function("WriteLn".to_string()), MemCell::Function(write_ln));
+        globals.insert(GlobalRef::Function(WRITELN_ID), MemCell::Function(write_ln));
 
         let get_mem = Function::Builtin {
             func: builtin::get_mem,
             ret: Type::U8.ptr(),
         };
-        globals.insert(GlobalRef::Function("GetMem".to_string()), MemCell::Function(get_mem));
+        globals.insert(GlobalRef::Function(GETMEM_ID), MemCell::Function(get_mem));
 
         let free_mem = Function::Builtin {
             func: builtin::free_mem,
             ret: Type::Nothing,
         };
-        globals.insert(GlobalRef::Function("FreeMem".to_string()), MemCell::Function(free_mem));
+        globals.insert(GlobalRef::Function(FREEMEM_ID), MemCell::Function(free_mem));
 
         let dispose_str = Function::Builtin {
             func: builtin::string_dispose,
             ret: Type::Nothing,
         };
-        globals.insert(GlobalRef::Function("StringDispose".to_string()), MemCell::Function(dispose_str));
+        globals.insert(GlobalRef::Function(STRING_DISPOSE_IMPL_ID), MemCell::Function(dispose_str));
 
         let mut heap = Heap::new();
         heap.trace = opts.trace_heap;
@@ -327,7 +328,7 @@ impl Interpreter {
         }
     }
 
-    fn init_struct(&mut self, id: TypeId) -> MemCell {
+    fn init_struct(&mut self, id: StructID) -> MemCell {
         let struct_def = self.metadata.structs()[&id].clone();
 
         let mut fields = Vec::new();
@@ -541,9 +542,9 @@ impl Interpreter {
         match cell {
             MemCell::Structure(StructCell { fields, id }) => {
                 let struct_def = &self.metadata.structs()[id];
-                let dispose_impl_name = self.metadata.find_impl(&Type::Struct(*id), DISPOSABLE_ID, "Dispose")
-                    .map(|name| name.to_string());
-                if let Some(dispose_func) = dispose_impl_name {
+                let dispose_impl_id = self.metadata.find_impl(&Type::Struct(*id), DISPOSABLE_ID, "Dispose");
+
+                if let Some(dispose_func) = dispose_impl_id {
                     let dispose_ref = GlobalRef::Function(dispose_func);
                     let func = match self.globals.get(&dispose_ref) {
                         Some(MemCell::Function(func)) => func.clone(),
@@ -877,7 +878,7 @@ impl Interpreter {
         }
     }
 
-    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: TypeId) -> Pointer {
+    fn rc_alloc(&mut self, vals: Vec<MemCell>, struct_id: StructID) -> Pointer {
         let addr = self.heap.alloc(vals);
         let ptr = Pointer::Heap(Type::Struct(struct_id), addr);
 

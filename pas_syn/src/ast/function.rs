@@ -9,6 +9,7 @@ use {
         },
         token_tree::*,
         keyword::*,
+        Operator,
     },
     std::fmt,
     pas_common::{
@@ -37,6 +38,12 @@ impl<A: Annotation> Spanned for FunctionParam<A> {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct InterfaceImpl<A: Annotation> {
+    pub for_ty: A::Type,
+    pub iface: Ident,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct FunctionDecl<A: Annotation> {
     pub ident: Ident,
     pub span: Span,
@@ -44,12 +51,23 @@ pub struct FunctionDecl<A: Annotation> {
     pub params: Vec<FunctionParam<A>>,
 
     pub return_ty: Option<A::Type>,
+
+    pub impl_iface: Option<InterfaceImpl<A>>,
 }
 
 impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let func_kw = tokens.match_one(Keyword::Function)?;
-        let ident_token = tokens.match_one(Matcher::AnyIdent)?;
+
+        let mut impl_iface = None;
+        let mut ident_token = tokens.match_one(Matcher::AnyIdent)?;
+
+        if tokens.look_ahead().match_one(Operator::Member).is_some() {
+            impl_iface = Some(ident_token);
+            tokens.advance(1);
+            ident_token = tokens.match_one(Matcher::AnyIdent)?;
+        }
+
         let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
 
         let args_span = args_tt.span().clone();
@@ -101,8 +119,16 @@ impl FunctionDecl<Span> {
             None => func_kw.span().to(&args_span),
         };
 
+        let impl_iface = impl_iface.map(|tt| {
+            InterfaceImpl {
+                for_ty: TypeName::Unknown(tt.span().clone()),
+                iface: tt.into_ident().unwrap(),
+            }
+        });
+
         Ok(FunctionDecl {
-            ident: ident_token.as_ident().cloned().unwrap(),
+            ident: ident_token.into_ident().unwrap(),
+            impl_iface,
             span: span,
             return_ty,
             params: params.into_iter().flat_map(|params| params).collect(),
@@ -118,7 +144,12 @@ impl<A: Annotation> Spanned for FunctionDecl<A> {
 
 impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function {}(", self.ident)?;
+        write!(f, "function ")?;
+        if let Some(iface_impl) = &self.impl_iface {
+            write!(f, "{}.", iface_impl.iface)?;
+        }
+
+        write!(f, "{}(", self.ident)?;
         for (i, param) in self.params.iter().enumerate() {
             if i > 0 {
                 write!(f, "; ")?;

@@ -9,8 +9,20 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
     match decl {
         ast::UnitDecl::FunctionDef(func_def) => {
             let func_def = typecheck_func_def(func_def, ctx)?;
-            let sig = FunctionSig::of_decl(&func_def.decl).clone();
-            ctx.define_function(func_def.decl.ident.clone(), sig, func_def.decl.span.clone())?;
+            if let Some(impl_iface) = &func_def.decl.impl_iface {
+                ctx.define_method_impl(
+                    impl_iface.iface.clone(),
+                    impl_iface.for_ty.clone(),
+                    func_def.decl.ident.clone()
+                )?;
+            } else {
+                ctx.define_function(
+                    func_def.decl.ident.clone(),
+                    FunctionSig::of_decl(&func_def.decl).clone(),
+                    func_def.decl.span.clone()
+                )?;
+            }
+
             Ok(ast::UnitDecl::FunctionDef(func_def))
         }
 

@@ -12,3 +12,12 @@ pas_typecheck = { path = "pas_typecheck" }
 pas_ir = { path = "pas_ir" }
 
 structopt = "0.2.14"
+
+[workspace]
+members = [
+    "pas_common",
+    "pas_syn",
+    "pas_typecheck",
+    "pas_pp",
+    "pas_ir",
+]

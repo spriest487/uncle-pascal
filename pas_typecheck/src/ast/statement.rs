@@ -10,26 +10,26 @@ pub type Statement = ast::Statement<TypeAnnotation>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
-    ctx: &mut Context)
-    -> TypecheckResult<LocalBinding>
-{
+    ctx: &mut Context
+) -> TypecheckResult<LocalBinding> {
     let val = match &binding.val_ty {
-        Some(val_ty) => {
+        ast::TypeName::Unknown(_) => {
+            typecheck_expr(&binding.val, &Type::Nothing, ctx)?
+        },
+
+        val_ty => {
             let explicit_ty = ctx.find_type(val_ty)?;
             let val = typecheck_expr(&binding.val, &explicit_ty, ctx)?;
 
-            if !explicit_ty.assignable_from(&val.annotation.ty) {
+            if !explicit_ty.assignable_from(&val.annotation.ty()) {
                 return Err(TypecheckError::InvalidBinOp {
                     lhs: explicit_ty.clone(),
-                    rhs: val.annotation.ty,
+                    rhs: val.annotation.ty().clone(),
                     op: Operator::Assignment,
-                    span: val.annotation.span,
+                    span: val.annotation.span().clone(),
                 });
             }
             val
-        },
-        None => {
-            typecheck_expr(&binding.val, &Type::Nothing, ctx)?
         },
     };
 
@@ -39,15 +39,15 @@ pub fn typecheck_local_binding(
         } else {
             ValueKind::Immutable
         },
-        ty: val.annotation.ty.clone(),
+        ty: val.annotation.ty().clone(),
         def: Some(binding.annotation.clone()),
     })?;
 
-    let annotation = TypeAnnotation::untyped(binding.annotation.clone());
+    let annotation = TypeAnnotation::Untyped(binding.annotation.clone());
 
     Ok(LocalBinding {
         name: binding.name.clone(),
-        val_ty: Some(val.annotation.ty.clone()),
+        val_ty: val.annotation.ty().clone(),
         val,
         annotation,
         mutable: binding.mutable,
@@ -62,25 +62,25 @@ pub fn typecheck_assignment(
     -> TypecheckResult<Assignment>
 {
     let lhs = typecheck_expr(&assignment.lhs, &Type::Nothing, ctx)?;
-    if lhs.annotation.value_kind != Some(ValueKind::Mutable) {
+    if lhs.annotation.value_kind() != Some(ValueKind::Mutable) {
         return Err(TypecheckError::NotMutable(Box::new(lhs)));
     }
 
-    let rhs = typecheck_expr(&assignment.rhs, &lhs.annotation.ty, ctx)?;
+    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation.ty(), ctx)?;
 
-    if !lhs.annotation.ty.assignable_from(&rhs.annotation.ty) {
+    if !lhs.annotation.ty().assignable_from(rhs.annotation.ty()) {
         return Err(TypecheckError::InvalidBinOp {
-            lhs: lhs.annotation.ty,
-            rhs: rhs.annotation.ty,
+            lhs: lhs.annotation.ty().clone(),
+            rhs: rhs.annotation.ty().clone(),
             op: Operator::Assignment,
-            span: rhs.annotation.span,
+            span: rhs.annotation.span().clone(),
         });
     }
 
     Ok(Assignment {
         lhs,
         rhs,
-        annotation: TypeAnnotation::untyped(assignment.annotation.clone()),
+        annotation: TypeAnnotation::Untyped(assignment.annotation.clone()),
     })
 }
 
@@ -99,7 +99,7 @@ fn typecheck_if_stmt(
         None => None,
     };
 
-    let annotation = TypeAnnotation::untyped(if_stmt.span().clone());
+    let annotation = TypeAnnotation::Untyped(if_stmt.span().clone());
 
     Ok(IfStatement {
         cond,
@@ -123,8 +123,8 @@ pub fn typecheck_stmt(stmt: &ast::Statement<Span>, ctx: &mut Context) -> Typeche
 
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, &Type::Nothing, ctx)?;
-            assert_eq!(Type::Nothing, block.annotation.ty);
-            assert_eq!(None, block.annotation.value_kind);
+            assert_eq!(&Type::Nothing, block.annotation.ty());
+            assert_eq!(None, block.annotation.value_kind());
 
             Ok(ast::Statement::Block(block))
         }

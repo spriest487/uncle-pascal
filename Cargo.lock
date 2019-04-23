@@ -156,6 +156,7 @@ dependencies = [
 name = "pas_ir"
 version = "0.1.0"
 dependencies = [
+ "pas_common 0.1.0",
  "pas_syn 0.1.0",
  "pas_typecheck 0.1.0",
 ]

@@ -11,11 +11,11 @@ pub fn typecheck_if_cond(
     -> TypecheckResult<IfCond>
 {
     let cond = typecheck_expr(&if_cond.cond, &Type::Primitive(Primitive::Boolean), ctx)?;
-    if cond.annotation.ty != Type::Primitive(Primitive::Boolean) {
+    if *cond.annotation.ty() != Type::Primitive(Primitive::Boolean) {
         return Err(TypecheckError::TypeMismatch {
             expected: Type::Primitive(Primitive::Boolean),
-            actual: cond.annotation.ty,
-            span: cond.annotation.span,
+            actual: cond.annotation.ty().clone(),
+            span: cond.annotation.span().clone(),
         });
     }
 
@@ -27,18 +27,24 @@ pub fn typecheck_if_cond(
 
     let span = if_cond.span().clone();
 
-    let annotation = match (&then_branch.annotation.ty, else_branch.as_ref()) {
-        (Type::Nothing, _) | (_, None) => TypeAnnotation::untyped(span),
+    let annotation = match (then_branch.annotation.ty(), else_branch.as_ref()) {
+        (Type::Nothing, _) | (_, None) => {
+            TypeAnnotation::Untyped(span)
+        },
 
         (then_ty, Some(else_branch)) => {
-            if else_branch.annotation.ty != *then_ty {
+            if *else_branch.annotation.ty() != *then_ty {
                 return Err(TypecheckError::TypeMismatch {
-                    expected: then_branch.annotation.ty,
-                    actual: else_branch.annotation.ty.clone(),
-                    span: else_branch.annotation.span.clone(),
+                    expected: then_branch.annotation.ty().clone(),
+                    actual: else_branch.annotation.ty().clone(),
+                    span: else_branch.annotation.span().clone(),
                 });
             } else {
-                TypeAnnotation::typed_value(then_ty.clone(), ValueKind::Temporary, span)
+                TypeAnnotation::TypedValue {
+                    ty: then_ty.clone(),
+                    value_kind: ValueKind::Temporary,
+                    span
+                }
             }
         }
     };

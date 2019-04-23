@@ -106,6 +106,13 @@ pub struct Interface<A: Annotation> {
     pub span: Span,
 }
 
+impl<A: Annotation> Interface<A> {
+    pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl<A>> {
+        self.methods.iter()
+            .find(|m| m.ident == *method)
+    }
+}
+
 impl Interface<Span> {
     pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
         let iface_kw = tokens.match_one(Keyword::Interface)?;

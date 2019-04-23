@@ -39,8 +39,12 @@ use {
     },
 };
 
+pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
+    fn is_known(&self) -> bool;
+}
+
 pub trait Annotation : Spanned + Clone + PartialEq + Eq + Hash {
-    type Type: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+    type Type: Typed;
 }
 
 impl Annotation for Span {
@@ -49,6 +53,8 @@ impl Annotation for Span {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeName {
+    /// type is unknown or unnamed at parse time
+    Unknown(Span),
     Ident { ident: Ident, indirection: usize },
 }
 
@@ -56,6 +62,16 @@ impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
             TypeName::Ident { ident, .. } => ident.span(),
+            TypeName::Unknown(span) => span,
+        }
+    }
+}
+
+impl Typed for TypeName {
+    fn is_known(&self) -> bool {
+        match self {
+            TypeName::Unknown(_) => false,
+            _ => true,
         }
     }
 }
@@ -86,6 +102,10 @@ impl fmt::Display for TypeName {
                     write!(f, "^")?;
                 }
                 write!(f, "{}", ident)
+            }
+
+            TypeName::Unknown(_) => {
+                write!(f, "<unknown type>")
             }
         }
     }

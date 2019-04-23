@@ -42,7 +42,7 @@ pub use self::{
 pub enum ParseError {
     UnexpectedToken(TokenTree, Option<Matcher>),
     UnexpectedEOF(Matcher, Span),
-    EmptyOperand { operator: TokenTree, before: bool },
+    EmptyOperand { operator: Span, before: bool },
     InvalidStatement(ExpressionNode<Span>),
     InvalidMember(BinOp<Span>, Span),
 }

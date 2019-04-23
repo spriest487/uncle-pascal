@@ -8,6 +8,7 @@ use {
             ForLoop,
             Call,
             Block,
+            Typed,
         },
     },
 };
@@ -15,7 +16,7 @@ use {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocalBinding<A: Annotation> {
     pub name: Ident,
-    pub val_ty: Option<A::Type>,
+    pub val_ty: A::Type,
     pub val: ExpressionNode<A>,
     pub mutable: bool,
     pub annotation: A,
@@ -40,10 +41,9 @@ impl LocalBinding<Span> {
         let val_ty = match tokens.look_ahead().match_one(Separator::Colon) {
             Some(_) => {
                 tokens.advance(1);
-                let ty = TypeName::parse(tokens)?;
-                Some(ty)
+                TypeName::parse(tokens)?
             }
-            None => None,
+            None => TypeName::Unknown(name_token.span().clone()),
         };
 
         tokens.match_one(Operator::Assignment)?;
@@ -63,8 +63,8 @@ impl LocalBinding<Span> {
 impl<A: Annotation> fmt::Display for LocalBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "let {}", self.name)?;
-        if let Some(val_ty) = &self.val_ty {
-            write!(f, ": {}", val_ty)?;
+        if self.val_ty.is_known() {
+            write!(f, ": {}", self.val_ty)?;
         }
         write!(f, " := {}", self.val)
     }
@@ -137,7 +137,7 @@ impl<A: Annotation> Statement<A> {
     pub fn annotation(&self) -> &A {
         match self {
             Statement::LocalBinding(binding) => &binding.annotation,
-            Statement::Call(call) => &call.annotation,
+            Statement::Call(call) => &call.annotation(),
             Statement::Exit(exit) => match exit {
                 Exit::WithValue(expr) => &expr.annotation,
                 Exit::WithoutValue(a) => a,
@@ -152,7 +152,7 @@ impl<A: Annotation> Statement<A> {
     pub fn try_into_expr(self) -> Option<ExpressionNode<A>> {
         match self {
             Statement::Call(call) => {
-                let annotation = call.annotation.clone();
+                let annotation = call.annotation().clone();
                 Some(ExpressionNode::new(call, annotation))
             }
 

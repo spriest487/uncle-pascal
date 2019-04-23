@@ -118,8 +118,9 @@ pub trait Spanned: fmt::Display {
     }
 
     fn print_context(&self, source: &str) {
-        println!("{}", self);
-        self.span().print_context(source)
+        let mut msg = String::new();
+        self.fmt_context(&mut msg, source).unwrap();
+        println!("{}", msg);
     }
 }
 

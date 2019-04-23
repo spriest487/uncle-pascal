@@ -22,6 +22,7 @@ pub mod ast {
                 result::*,
                 Type,
                 TypeAnnotation,
+                MethodAnnotation,
                 Primitive,
                 FunctionSig,
             },
@@ -62,6 +63,7 @@ pub mod ty {
             ast::{
                 Class,
                 Interface,
+                FunctionDecl,
             }
         },
         std::{
@@ -72,6 +74,7 @@ pub mod ty {
             ast::{
                 self,
                 ClassKind,
+                Typed,
             },
             Ident,
             Operator,
@@ -91,6 +94,76 @@ pub mod ty {
                 return_ty: decl.return_ty.clone()
                     .unwrap_or(Type::Nothing),
             }
+        }
+
+        /// replace all `Self`-typed args with `self_ty`
+        pub fn with_self(&self, self_ty: &Type) -> Self {
+            let mut result = self.clone();
+            for param in &mut result.params {
+                if *param == Type::GenericSelf {
+                    *param = self_ty.clone();
+                }
+            }
+
+            result
+        }
+
+        /// given that `self` is the sig of an interface method with one
+        /// or more `Self`-typed arguments, find the expected self-type for
+        pub fn impl_ty_from_args<'arg>(&self, args: &'arg [Type]) -> Option<&'arg Type> {
+            if args.len() != self.params.len() {
+                return None;
+            }
+
+            let self_arg_pos = self.params.iter()
+                .position(|arg| *arg == Type::GenericSelf)?;
+
+            Some(&args[self_arg_pos])
+        }
+
+        /// given that `self` is the sig of an interface method,
+        /// for what type does `impl_func` implement this method, if any?
+        pub fn impl_ty<'func>(&self, impl_func: &'func Self) -> Option<&'func Type> {
+            if self.params.len() != impl_func.params.len() {
+                return None;
+            }
+
+            let self_type = if self.return_ty == Type::GenericSelf {
+                &impl_func.return_ty
+            } else {
+                self.params.iter()
+                    .position(|param| *param == Type::GenericSelf)
+                    .map(|pos| &impl_func.params[pos])?
+            };
+
+            // `Nothing` can't have interface impls
+            if *self_type == Type::Nothing {
+                return None;
+            }
+
+            let self_positions: Vec<_> = self.params.iter()
+                .enumerate()
+                .filter_map(|(pos, param)| if *param == Type::GenericSelf {
+                    Some(pos)
+                } else {
+                    None
+                })
+                .collect();
+
+            for pos in 0..self.params.len() {
+                if self_positions.contains(&pos) {
+                    // self-typed params must all be the same type as either the
+                    // first such param, or the return type if it's self-typed too
+                    if impl_func.params[pos] != *self_type {
+                        return None;
+                    }
+                } else if impl_func.params[pos] != self.params[pos] {
+                    // non-self params must match exactly
+                    return None;
+                }
+            }
+
+            Some(self_type)
         }
     }
 
@@ -178,10 +251,10 @@ pub mod ty {
             }
         }
 
-        pub fn find_member(&self, ident: &Ident) -> Option<&Type> {
+        pub fn find_member(&self, ident: &Ident) -> Option<MemberRef> {
             match self {
                 Type::Record(class) | Type::Class(class) => class.find_member(ident)
-                    .map(|m| &m.ty),
+                    .map(|m| MemberRef { ident: &m.ident, ty: &m.ty }),
 
                 _ => None,
             }
@@ -255,6 +328,14 @@ pub mod ty {
                 _ => *self == *rhs,
             }
         }
+
+        pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl> {
+            match self {
+                Type::Interface(iface) => iface.methods.iter()
+                    .find(|m| m.ident == *method),
+                _ => None,
+            }
+        }
     }
 
     impl fmt::Display for Type {
@@ -265,6 +346,7 @@ pub mod ty {
                     Type::Nil => write!(f, "nil"),
                     Type::Class(class) => write!(f, "{}", class.ident),
                     Type::Record(class) => write!(f, "{}", class.ident),
+                    Type::Interface(iface) => write!(f, "{}", iface.ident),
                     Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 }
@@ -272,9 +354,113 @@ pub mod ty {
         }
     }
 
+    impl Typed for Type {
+        fn is_known(&self) -> bool {
+            true
+        }
+    }
+
     #[derive(Debug, Copy, Clone)]
     pub struct MemberRef<'ty> {
         pub ident: &'ty Ident,
         pub ty: &'ty Type,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    const INT32: Type = Type::Primitive(Primitive::Int32);
+    const BOOL: Type = Type::Primitive(Primitive::Boolean);
+
+    #[test]
+    fn sig_without_self_is_invalid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: BOOL,
+            params: vec![],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: INT32,
+            params: vec![]
+        };
+
+        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
+    }
+
+    #[test]
+    fn sig_with_self_return_is_valid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: Type::GenericSelf,
+            params: vec![],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: INT32,
+            params: vec![]
+        };
+
+        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
+    }
+
+    #[test]
+    fn sig_with_no_params_is_invalid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: Type::Nothing,
+            params: vec![],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: Type::Nothing,
+            params: vec![]
+        };
+
+        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
+    }
+
+    #[test]
+    fn sig_with_self_param_is_valid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: Type::Nothing,
+            params: vec![Type::GenericSelf],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: Type::Nothing,
+            params: vec![INT32],
+        };
+
+        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
+    }
+
+    #[test]
+    fn sig_with_self_param_and_return_is_valid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: Type::GenericSelf,
+            params: vec![Type::GenericSelf],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: INT32,
+            params: vec![INT32],
+        };
+
+        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
+    }
+
+    #[test]
+    fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
+        let iface_sig = FunctionSig {
+            return_ty: Type::GenericSelf,
+            params: vec![Type::GenericSelf],
+        };
+
+        let impl_sig = FunctionSig {
+            return_ty: INT32,
+            params: vec![BOOL],
+        };
+
+        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
     }
 }

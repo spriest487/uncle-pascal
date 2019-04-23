@@ -30,10 +30,10 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
                 });
             },
 
-            Some(member_ty) if !member_ty.assignable_from(&value.annotation.ty)  => {
+            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation.ty())  => {
                 return Err(TypecheckError::InvalidBinOp {
-                    rhs: value.annotation.ty,
-                    lhs: member_ty.clone(),
+                    rhs: value.annotation.ty().clone(),
+                    lhs: member_ref.ty.clone(),
                     op: Operator::Assignment,
                     span: ctor_member.value.annotation.span().clone(),
                 });
@@ -50,7 +50,7 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
 
     if members.len() != ty.members_len() {
         let actual = members.into_iter()
-            .map(|m| m.value.annotation.ty)
+            .map(|m| m.value.annotation.ty().clone())
             .collect();
         return Err(TypecheckError::InvalidArgs {
             span: ctor.annotation.clone(),
@@ -66,7 +66,11 @@ pub fn typecheck_object_ctor(ctor: &ast::ObjectCtor<Span>, ctx: &mut Context) ->
     };
 
     let span = ctor.annotation.clone();
-    let annotation = TypeAnnotation::typed_value(ty, ValueKind::Temporary, span);
+    let annotation = TypeAnnotation::TypedValue {
+        ty,
+        value_kind: ValueKind::Temporary,
+        span
+    };
 
     Ok(ObjectCtor {
         ident: ctor.ident.clone(),

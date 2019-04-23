@@ -42,8 +42,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 }
 
 fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
-    let binding_val_ty = binding.val_ty.as_ref().unwrap();
-    let bound_ty = builder.metadata.translate_type(binding_val_ty);
+    let bound_ty = builder.metadata.translate_type(&binding.val_ty);
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
 
@@ -60,13 +59,13 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     builder.begin_scope();
 
     // counter
-    let counter_ty = builder.metadata.translate_type(for_loop.init_binding.val_ty.as_ref().unwrap());
+    let counter_ty = builder.metadata.translate_type(&for_loop.init_binding.val_ty);
     if counter_ty !=  Type::I32 {
         unimplemented!("non-i32 counters");
     }
 
     assert_eq!(Type::I32, counter_ty, "counter type must be i32");
-    assert!(!for_loop.init_binding.val.annotation.ty.is_rc(), "counter type must not be ref counted");
+    assert!(!for_loop.init_binding.val.annotation.ty().is_rc(), "counter type must not be ref counted");
 
     let inc_val = Value::LiteralI32(1);
     let loop_val = builder.local_temp(Type::Bool);
@@ -101,11 +100,11 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     let rhs = translate_expr(&assignment.rhs, builder);
 
     // the new value is being stored in a new location, retain it
-    let rhs_ty = builder.metadata.translate_type(&assignment.rhs.annotation.ty);
+    let rhs_ty = builder.metadata.translate_type(assignment.rhs.annotation.ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it
-    let lhs_ty = builder.metadata.translate_type(&assignment.lhs.annotation.ty);
+    let lhs_ty = builder.metadata.translate_type(assignment.lhs.annotation.ty());
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move { out: lhs, new_val: rhs.into() });

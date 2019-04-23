@@ -58,6 +58,10 @@ pub enum TypecheckError {
         span: Span,
     },
     InvalidBlockOutput(Box<ExpressionNode>),
+    AmbiguousMethod {
+        method: Ident,
+        span: Span,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -74,7 +78,7 @@ impl Spanned for TypecheckError {
             TypecheckError::ScopeError(err) => err.span(),
             TypecheckError::NotCallable(expr) => expr.annotation.span(),
             TypecheckError::InvalidArgs { span, .. } => span,
-            TypecheckError::InvalidCallInExpression(call) => call.annotation.span(),
+            TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
             TypecheckError::TypeMismatch { span, .. } => span,
             TypecheckError::MemberNotFound { span, .. } => span,
             TypecheckError::NotMutable(expr) => expr.annotation.span(),
@@ -83,6 +87,17 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation.span(),
+            TypecheckError::AmbiguousMethod { span, .. } => span,
+        }
+    }
+
+    fn fmt_context(&self, mut f: impl fmt::Write, source: &str) -> fmt::Result {
+        match self {
+            TypecheckError::ScopeError(err) => err.fmt_context(f, source),
+            _ => {
+                writeln!(f, "{}", self)?;
+                self.span().fmt_context(f, source)
+            }
         }
     }
 }
@@ -154,6 +169,11 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidBlockOutput(expr) => {
                 write!(f, "expression `{}` is not valid as the final expression in a block because it is not a complete statement", expr)
+            }
+
+            TypecheckError::AmbiguousMethod { method, .. } => {
+                // todo: show ambiguous options
+                write!(f, "call to method `{}` was ambiguous", method)
             }
         }
     }

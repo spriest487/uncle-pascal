@@ -75,6 +75,15 @@ impl Spanned for CompileError {
             CompileError::PreprocessorError(err) => err.span(),
         }
     }
+
+    fn fmt_context(&self, f: impl fmt::Write, source: &str) -> fmt::Result {
+        match self {
+            CompileError::TokenizeError(err) => err.fmt_context(f, source),
+            CompileError::ParseError(err) => err.fmt_context(f, source),
+            CompileError::TypecheckError(err) => err.fmt_context(f, source),
+            CompileError::PreprocessorError(err) => err.fmt_context(f, source),
+        }
+    }
 }
 
 impl fmt::Display for CompileError {

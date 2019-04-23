@@ -1,11 +1,17 @@
 use {
     crate::{
         Type,
+        FunctionSig,
         ValueKind,
         result::*,
+        ast::{
+            FunctionDecl,
+            ExpressionNode,
+        }
     },
     std::{
         fmt,
+        rc::Rc,
     },
     pas_common::{
         span::*
@@ -16,51 +22,139 @@ use {
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct TypeAnnotation {
-    pub ty: Type,
-    pub value_kind: Option<ValueKind>,
+pub struct MethodAnnotation {
     pub span: Span,
+    pub iface_ty: Type,
+    pub method: Box<FunctionDecl>,
+
+//    pub self_ty: Type,
+    pub self_arg: Option<Box<ExpressionNode>>,
+
+    method_ty: Type,
+}
+
+impl MethodAnnotation {
+    pub fn ufcs(span: Span, iface_ty: Type, self_arg: ExpressionNode, method_decl: FunctionDecl) -> Self {
+        Self {
+            span,
+            iface_ty,
+            method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
+            method: Box::new(method_decl),
+
+            self_arg: Some(Box::new(self_arg)),
+        }
+    }
+
+    pub fn explicit(span: Span, iface_ty: Type, method_decl: FunctionDecl) -> Self {
+        Self {
+            span,
+            iface_ty,
+            method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
+            method: Box::new(method_decl),
+
+//            self_ty: Type::GenericSelf,
+            self_arg: None,
+        }
+    }
+
+    pub fn decl_sig(&self) -> &FunctionSig {
+        match &self.method_ty {
+            Type::Function(sig) => sig.as_ref(),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn ty(&self) -> &Type {
+        &self.method_ty
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeAnnotation {
+    Untyped(Span),
+    TypedValue {
+        span: Span,
+        ty: Type,
+        value_kind: ValueKind,
+    },
+    Type(Type, Span),
+    Method(MethodAnnotation),
 }
 
 impl TypeAnnotation {
-    pub fn typed_value(ty: impl Into<Type>, kind: ValueKind, span: Span) -> TypeAnnotation {
-        Self {
-            ty: ty.into(),
-            value_kind: Some(kind),
-            span,
+    pub fn expect_value(&self, expect_ty: &Type) -> TypecheckResult<()> {
+        assert_ne!(Type::Nothing, *expect_ty);
+
+        match self {
+            TypeAnnotation::TypedValue { ty, .. } if ty == expect_ty => {
+                Ok(())
+            },
+
+            TypeAnnotation::Method(method_annotation) => {
+                Err(TypecheckError::TypeMismatch {
+                    span: method_annotation.span.clone(),
+                    expected: expect_ty.clone(),
+                    actual: method_annotation.method_ty.clone(),
+                })
+            },
+
+            TypeAnnotation::TypedValue { ty, span, .. } => {
+                Err(TypecheckError::TypeMismatch {
+                    span: span.clone(),
+                    expected: expect_ty.clone(),
+                    actual: ty.clone()
+                })
+            }
+
+            TypeAnnotation::Untyped(span) => {
+                Err(TypecheckError::TypeMismatch {
+                    span: span.clone(),
+                    expected: expect_ty.clone(),
+                    actual: Type::Nothing,
+                })
+            }
+
+            TypeAnnotation::Type(_ty, span) => {
+                Err(TypecheckError::TypeMismatch {
+                    span: span.clone(),
+                    expected: expect_ty.clone(),
+                    actual: Type::Nothing,
+                })
+            }
         }
     }
 
-    pub fn untyped(span: Span) -> TypeAnnotation {
-        Self {
-            ty: Type::Nothing,
-            value_kind: None,
-            span,
+    pub fn ty(&self) -> &Type {
+        match self {
+            TypeAnnotation::Untyped(_) => &Type::Nothing,
+            TypeAnnotation::Method(method) => &method.method_ty,
+            TypeAnnotation::TypedValue { ty, .. } => ty,
+            TypeAnnotation::Type(ty, _) => ty,
         }
     }
 
-    pub fn expect(&self, expect_ty: &Type) -> TypecheckResult<()> {
-        if self.ty != *expect_ty {
-            Err(TypecheckError::TypeMismatch {
-                span: self.span.clone(),
-                expected: expect_ty.clone(),
-                actual: self.ty.clone(),
-            })
-        } else {
-            Ok(())
+    pub fn value_kind(&self) -> Option<ValueKind> {
+        match self {
+            TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
+            _ => None,
         }
     }
 }
 
 impl fmt::Display for TypeAnnotation {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.span)
+        write!(f, "{}", self.span())
     }
 }
 
 impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
-        &self.span
+        match self {
+            TypeAnnotation::Untyped(span) => span,
+            TypeAnnotation::TypedValue { span, .. } => span,
+            TypeAnnotation::Method(MethodAnnotation { span, .. }) => span,
+            TypeAnnotation::Type(_, span) => span,
+        }
     }
 }
 

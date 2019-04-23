@@ -277,13 +277,13 @@ impl TokenTree {
 #[cfg(test)]
 mod test {
     use {
-        std::rc::Rc,
-        pas_common::span::*,
         super::*,
+        std::rc::Rc,
     };
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {
-        let opts = BuildOptions { case_sensitive };
+        let mut opts = BuildOptions::default();
+        opts.case_sensitive = case_sensitive;
 
         match TokenTree::tokenize("test", s, &opts) {
             Ok(result) => result,
