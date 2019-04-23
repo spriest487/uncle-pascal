@@ -16,7 +16,7 @@ use pas_common::{
     TracedError,
 };
 use std::{
-    fmt,
+    fmt::{self, Write as _},
     path::PathBuf,
 };
 
@@ -207,29 +207,47 @@ impl TokenTree {
             _ => None,
         }
     }
+
+    fn fmt_indented(&self, f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
+        fn write_indent(f: &mut fmt::Formatter, indent: usize) -> fmt::Result {
+            const INDENT_SIZE: usize = 2;
+            for _ in 0..indent * INDENT_SIZE {
+                f.write_char(' ')?;
+            }
+            Ok(())
+        }
+
+        write_indent(f, indent)?;
+
+        match self {
+            TokenTree::Keyword { kw, .. } => write!(f, "keyword `{}`", kw)?,
+            TokenTree::Ident(ident) => write!(f, "identifier `{}`", ident)?,
+            TokenTree::Operator { op, .. } => write!(f, "operator `{}`", op)?,
+            TokenTree::Separator { sep, .. } => write!(f, "separator `{}`", sep)?,
+
+            TokenTree::RealNumber { value, .. } => write!(f, "real number `{}`", value)?,
+            TokenTree::IntNumber { value, .. } => write!(f, "integer number `{}`", value)?,
+            TokenTree::String { value, .. } => write!(f, "string '{}'", value)?,
+
+            TokenTree::Delimited { delim, inner, .. } => {
+                let (open, close) = delim.tokens();
+                writeln!(f, "{} ", open)?;
+                for inner_token in inner {
+                    inner_token.fmt_indented(f, indent + 1)?;
+                    writeln!(f)?;
+                }
+                write_indent(f, indent)?;
+                write!(f, "{}", close)?;
+            },
+        }
+
+        write!(f, " @ {}", self.span())
+    }
 }
 
 impl fmt::Display for TokenTree {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TokenTree::Keyword { kw, .. } => write!(f, "keyword `{}`", kw),
-            TokenTree::Ident(ident) => write!(f, "identifier `{}`", ident),
-            TokenTree::Operator { op, .. } => write!(f, "operator `{}`", op),
-            TokenTree::Separator { sep, .. } => write!(f, "separator `{}`", sep),
-
-            TokenTree::RealNumber { value, .. } => write!(f, "real number `{}`", value),
-            TokenTree::IntNumber { value, .. } => write!(f, "integer number `{}`", value),
-            TokenTree::String { value, .. } => write!(f, "string '{}'", value),
-
-            TokenTree::Delimited { delim, inner, .. } => {
-                let (open, close) = delim.tokens();
-                write!(f, "{} ", open)?;
-                for inner_token in inner {
-                    write!(f, "{} ", inner_token)?;
-                }
-                write!(f, "{}", close)
-            },
-        }
+        self.fmt_indented(f, 0)
     }
 }
 

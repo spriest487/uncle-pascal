@@ -16,10 +16,20 @@ pub fn typecheck_if_cond(
         });
     }
 
-    let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, ctx)?;
+    let mut then_ctx = ctx.clone();
+    let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, &mut then_ctx)?;
     let else_branch = match &if_cond.else_branch {
-        Some(else_expr) => Some(typecheck_expr(else_expr, expect_ty, ctx)?),
-        None => None,
+        Some(else_expr) => {
+            let mut else_ctx = ctx.clone();
+            let else_expr = typecheck_expr(else_expr, expect_ty, &mut else_ctx)?;
+
+            ctx.consolidate_branches(&[then_ctx, else_ctx]);
+            Some(else_expr)
+        },
+        None => {
+            ctx.consolidate_branches(&[then_ctx]);
+            None
+        },
     };
 
     let span = if_cond.span().clone();

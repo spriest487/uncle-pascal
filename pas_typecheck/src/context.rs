@@ -774,6 +774,21 @@ impl Context {
         let current = self.scopes.current_path();
         current.top().decls.contains_key(id)
     }
+
+    pub fn consolidate_branches(&mut self, contexts: &[Self]) {
+        let scope = self.scopes.current_path();
+
+        let mut init_in_all = Vec::new();
+        for uninit_name in &scope.top().uninit {
+            if contexts.iter().all(|ctx| ctx.initialized(uninit_name)) {
+                init_in_all.push(uninit_name.clone());
+            }
+        }
+
+        for name in init_in_all {
+            self.initialize(&name);
+        }
+    }
 }
 
 fn check_initialize_allowed(scope: &Scope, ident: &Ident) {

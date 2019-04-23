@@ -1,12 +1,5 @@
 use crate::{
-    ast::{
-        expression::match_operand_start,
-        Block,
-        Call,
-        Expression,
-        ForLoop,
-        Typed,
-    },
+    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, IfStatement, Typed},
     parse::prelude::*,
 };
 
@@ -41,7 +34,7 @@ impl LocalBinding<Span> {
             Some(_) => {
                 tokens.advance(1);
                 TypeName::parse(tokens)?
-            },
+            }
             None => TypeName::Unknown(name_token.span().clone()),
         };
 
@@ -51,11 +44,11 @@ impl LocalBinding<Span> {
                 let val = Expression::parse(tokens)?;
                 let span = let_kw.span().to(val.annotation());
                 (Some(val), span)
-            },
-            None => {
-                (None, let_kw.span().to(val_ty.span()))
-            },
+            }
+            None => (None, let_kw.span().to(val_ty.span())),
         };
+
+        println!("token after let: {:#?}", tokens.look_ahead().next());
 
         Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
@@ -69,11 +62,7 @@ impl LocalBinding<Span> {
 
 impl<A: Annotation> fmt::Display for LocalBinding<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let kw = if self.mutable {
-            "var"
-        } else {
-            "let"
-        };
+        let kw = if self.mutable { "var" } else { "let" };
 
         write!(f, "{} {}", kw, self.name)?;
         if self.val_ty.is_known() {
@@ -115,30 +104,6 @@ impl<A: Annotation> fmt::Display for Assignment<A> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct IfStatement<A: Annotation> {
-    pub cond: Expression<A>,
-    pub then_branch: Box<Statement<A>>,
-    pub else_branch: Option<Box<Statement<A>>>,
-    pub annotation: A,
-}
-
-impl<A: Annotation> Spanned for IfStatement<A> {
-    fn span(&self) -> &Span {
-        self.annotation.span()
-    }
-}
-
-impl<A: Annotation> fmt::Display for IfStatement<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "if {} then {}", self.cond, self.then_branch)?;
-        if let Some(else_branch) = &self.else_branch {
-            write!(f, " else {}", else_branch)?;
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
     LocalBinding(LocalBinding<A>),
     Call(Call<A>),
@@ -167,9 +132,7 @@ impl<A: Annotation> Statement<A> {
 
     pub fn try_into_expr(self) -> Option<Expression<A>> {
         match self {
-            Statement::Call(call) => {
-                Some(Expression::from(call))
-            },
+            Statement::Call(call) => Some(Expression::from(call)),
 
             Statement::Block(block) => {
                 if block.output.is_some() {
@@ -177,7 +140,7 @@ impl<A: Annotation> Statement<A> {
                 } else {
                     None
                 }
-            },
+            }
 
             _ => None,
         }
@@ -195,12 +158,12 @@ impl<A: Annotation> Statement<A> {
 
                         block.statements.push(last_stmt);
                         None
-                    },
+                    }
                     None => None,
                 };
 
                 Ok(Statement::Block(*block))
-            },
+            }
             Expression::Call(call) => Ok(Statement::Call(*call)),
 
             Expression::BinOp(bin_op) => {
@@ -215,7 +178,7 @@ impl<A: Annotation> Statement<A> {
                     let invalid_bin_op = Expression::BinOp(bin_op);
                     Err(invalid_bin_op)
                 }
-            },
+            }
 
             Expression::IfCond(if_cond) => {
                 let then_branch = match Self::try_from_expr(if_cond.then_branch) {
@@ -237,11 +200,9 @@ impl<A: Annotation> Statement<A> {
                     else_branch: else_branch.map(Box::new),
                     annotation: if_cond.annotation,
                 }))
-            },
+            }
 
-            invalid => {
-                Err(invalid)
-            },
+            invalid => Err(invalid),
         }
     }
 }
@@ -267,16 +228,23 @@ impl Statement<Span> {
             }) => {
                 let binding = LocalBinding::parse(tokens, true)?;
                 Ok(Statement::LocalBinding(binding))
-            },
+            }
 
             Some(TokenTree::Keyword {
                 kw: Keyword::For, ..
             }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(for_loop))
-            },
+            }
 
-            Some(_) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::If, ..
+            }) => {
+                let if_stmt = IfStatement::parse(tokens)?;
+                Ok(Statement::If(if_stmt))
+            }
+
+            Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = Expression::parse(tokens)?;
 
@@ -284,7 +252,7 @@ impl Statement<Span> {
                     TracedError::trace(ParseError::InvalidStatement(invalid_expr))
                 })?;
                 Ok(stmt)
-            },
+            }
 
             None => Err(TracedError::trace(ParseError::UnexpectedEOF(
                 stmt_start,

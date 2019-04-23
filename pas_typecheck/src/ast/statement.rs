@@ -141,11 +141,21 @@ fn typecheck_if_stmt(
     ctx: &mut Context,
 ) -> TypecheckResult<IfStatement> {
     let cond = typecheck_expr(&if_stmt.cond, &Type::Nothing, ctx)?;
-    let then_branch = typecheck_stmt(&if_stmt.then_branch, ctx)?;
+
+    let mut then_ctx = ctx.clone();
+    let then_branch = typecheck_stmt(&if_stmt.then_branch, &mut then_ctx)?;
 
     let else_branch = match &if_stmt.else_branch {
-        Some(else_branch) => Some(typecheck_stmt(&else_branch, ctx)?),
-        None => None,
+        Some(else_branch) => {
+            let mut else_ctx = ctx.clone();
+            let else_stmt = typecheck_stmt(&else_branch, &mut else_ctx)?;
+            ctx.consolidate_branches(&[then_ctx, else_ctx]);
+            Some(else_stmt)
+        },
+        None => {
+            ctx.consolidate_branches(&[then_ctx]);
+            None
+        },
     };
 
     let annotation = TypeAnnotation::Untyped(if_stmt.span().clone());

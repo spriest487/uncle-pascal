@@ -54,6 +54,16 @@ impl Block<Span> {
             }
         })?;
 
+        println!("statements in block @ {}: {}",
+             span,
+            statements.iter().map(|s| s.to_string())
+                .collect::<Vec<_>>()
+                .join(";\n"));
+
+        if let Some(output_expr) = &output_expr {
+            println!("output expr: {}", output_expr);
+        }
+
         body_tokens.finish()?;
 
         let block = Self {
