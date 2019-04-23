@@ -7,6 +7,8 @@ pub fn typecheck_block(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Block> {
+    let block_scope = ctx.push_scope(None);
+
     let mut statements = Vec::new();
     for stmt in &block.statements {
         let stmt = typecheck_stmt(stmt, ctx)?;
@@ -95,6 +97,8 @@ pub fn typecheck_block(
         let out_ty = block.output.as_ref().map(|o| o.annotation().ty().clone());
         out_ty.unwrap_or(Type::Nothing)
     });
+
+    ctx.pop_scope(block_scope)?;
 
     Ok(block)
 }
