@@ -1,9 +1,4 @@
-use crate::{
-    prelude::*,
-    translate_block,
-    translate_call,
-    translate_expr,
-};
+use crate::{prelude::*, translate_block, translate_call, translate_expr};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
@@ -13,29 +8,29 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);
-        },
+        }
 
         ast::Statement::Call(call) => {
             translate_call(call, builder);
-        },
+        }
 
         ast::Statement::Block(block) => {
             translate_block(block, builder);
-        },
+        }
 
         ast::Statement::Exit(_) => unimplemented!(),
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
-        },
+        }
 
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
-        },
+        }
 
         ast::Statement::If(if_stmt) => {
             translate_if_stmt(if_stmt, builder);
-        },
+        }
     }
 }
 
@@ -66,7 +61,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
     assert_eq!(Type::I32, counter_ty, "counter type must be i32");
     assert!(
-        !for_loop.init_binding.val.annotation.value_ty().is_rc(),
+        !for_loop.init_binding.val.annotation.ty().is_rc(),
         "counter type must not be ref counted"
     );
 
@@ -119,13 +114,13 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     // the new value is being stored in a new location, retain it
     let rhs_ty = builder
         .metadata
-        .translate_type(assignment.rhs.annotation.value_ty());
+        .translate_type(assignment.rhs.annotation.ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it
     let lhs_ty = builder
         .metadata
-        .translate_type(assignment.lhs.annotation.value_ty());
+        .translate_type(assignment.lhs.annotation.ty());
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move {

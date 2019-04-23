@@ -1,13 +1,7 @@
 use pas_syn as syn;
-use pas_syn::{
-    Ident,
-    Path,
-};
+use pas_syn::{Ident, Path};
 use pas_typecheck as pas_ty;
-use std::{
-    collections::hash_map::HashMap,
-    fmt,
-};
+use std::{collections::hash_map::HashMap, fmt};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug)]
 pub struct StringId(pub usize);
@@ -58,7 +52,8 @@ impl fmt::Display for NamePath {
 
 impl NamePath {
     pub fn from_ident(ident: syn::IdentPath) -> Self {
-        let parts = ident.into_parts()
+        let parts = ident
+            .into_parts()
             .into_iter()
             .map(|ident| ident.to_string());
 
@@ -66,7 +61,7 @@ impl NamePath {
     }
 }
 
-impl<Iter: IntoIterator<Item=String>> From<Iter> for NamePath {
+impl<Iter: IntoIterator<Item = String>> From<Iter> for NamePath {
     fn from(iter: Iter) -> Self {
         NamePath(Path::<String>::from_parts(iter))
     }
@@ -170,6 +165,7 @@ pub enum Type {
     Nothing,
     Pointer(Box<Type>),
     Struct(StructID),
+    Array { element: Box<Type>, dim: usize },
     InterfaceRef(InterfaceID),
     Rc(Box<Type>),
     Bool,
@@ -185,6 +181,13 @@ impl Type {
 
     pub fn rc(self) -> Self {
         Type::Rc(Box::new(self))
+    }
+
+    pub fn array(self, dim: usize) -> Self {
+        Type::Array {
+            dim,
+            element: Box::new(self),
+        }
     }
 
     pub fn is_any_struct(&self) -> bool {
@@ -214,6 +217,7 @@ impl fmt::Display for Type {
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
             Type::Rc(id) => write!(f, "rc {{{}}}", id),
+            Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
         }
     }
 }
@@ -392,7 +396,7 @@ impl Metadata {
                 let ns = ns.iter().map(|i| i.to_string());
 
                 Some(GlobalName::new(name, ns))
-            },
+            }
         };
 
         self.functions.insert(id, FunctionDecl { global_name });
@@ -418,7 +422,10 @@ impl Metadata {
                         iface_impl.methods.iter().find_map(|(method, impl_id)| {
                             if *impl_id == id {
                                 let impl_ty_name = self.pretty_ty_name(impl_ty);
-                                Some(format!("impl of {}.{} for {}", iface.name, method, impl_ty_name))
+                                Some(format!(
+                                    "impl of {}.{} for {}",
+                                    iface.name, method, impl_ty_name
+                                ))
                             } else {
                                 None
                             }
@@ -431,25 +438,21 @@ impl Metadata {
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Struct(id) => {
-                self.structs.get(id)
-                    .map(|def| def.name.to_string())
-                    .unwrap_or_else(|| id.to_string())
-            }
+            Type::Struct(id) => self
+                .structs
+                .get(id)
+                .map(|def| def.name.to_string())
+                .unwrap_or_else(|| id.to_string()),
 
-            Type::InterfaceRef(id) => {
-                self.ifaces.get(id)
-                    .map(|def| def.name.to_string())
-                    .unwrap_or_else(|| id.to_string())
-            }
+            Type::InterfaceRef(id) => self
+                .ifaces
+                .get(id)
+                .map(|def| def.name.to_string())
+                .unwrap_or_else(|| id.to_string()),
 
-            Type::Rc(ty) => {
-                format!("rc {}", self.pretty_ty_name(ty))
-            },
+            Type::Rc(ty) => format!("rc {}", self.pretty_ty_name(ty)),
 
-            Type::Pointer(ty) => {
-                format!("^{}", self.pretty_ty_name(ty))
-            }
+            Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
 
             ty => ty.to_string(),
         }
@@ -514,7 +517,8 @@ impl Metadata {
     pub fn find_iface(&self, iface_ident: &syn::IdentPath) -> Option<InterfaceID> {
         let name = NamePath::from_ident(iface_ident.clone());
 
-        self.ifaces.iter()
+        self.ifaces
+            .iter()
             .find(|(_id, def)| def.name == name)
             .map(|(id, _def)| *id)
     }
@@ -561,7 +565,7 @@ impl Metadata {
                     .map(|(id, _iface)| id)
                     .unwrap_or_else(|| panic!("interface {} must exist in metadata", ty_name));
                 Type::InterfaceRef(*id)
-            },
+            }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
@@ -576,7 +580,7 @@ impl Metadata {
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
                 Type::Struct(id)
-            },
+            }
 
             pas_typecheck::Type::Class(class) => {
                 let ty_name = NamePath::from_ident(class.ident.clone());
@@ -585,15 +589,23 @@ impl Metadata {
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty));
 
                 Type::Struct(id).rc()
-            },
+            }
+
+            pas_ty::Type::Array { element, dim } => {
+                let element = self.translate_type(element.as_ref());
+                Type::Array {
+                    element: Box::new(element),
+                    dim: *dim,
+                }
+            }
 
             pas_typecheck::Type::GenericSelf => {
                 unreachable!("Self is not a real type in this context")
-            },
+            }
 
             pas_typecheck::Type::Function(sig) => {
                 unimplemented!("No IR type exists to represent function: {}", sig)
-            },
+            }
         }
     }
 
@@ -624,7 +636,7 @@ impl Metadata {
                     .unwrap_or(StringId(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
-            },
+            }
         }
     }
 

@@ -514,6 +514,15 @@ impl Context {
                 None => Err(NameError::NotFound(ident.last().clone())),
             },
 
+            ast::TypeName::Array { element, dim, .. } => {
+                let element = self.find_type(element.as_ref())?;
+
+                Ok(Type::Array {
+                    element: Box::new(element),
+                    dim: *dim,
+                })
+            }
+
             ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
         }
     }

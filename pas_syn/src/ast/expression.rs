@@ -7,8 +7,10 @@ use crate::{
         FunctionCall,
         IfCond,
         ObjectCtor,
+        CollectionCtor,
         ObjectCtorArgs,
         UnaryOp,
+        Indexer,
     },
     consts::*,
     ident::*,
@@ -70,8 +72,10 @@ pub enum Expression<A: Annotation> {
     Ident(Ident),
     Call(Call<A>),
     ObjectCtor(ObjectCtor<A>),
+    CollectionCtor(CollectionCtor<A>),
     IfCond(IfCond<A>),
     Block(Block<A>),
+    Indexer(Indexer<A>),
 }
 
 impl<A: Annotation> From<BinOp<A>> for Expression<A> {
@@ -110,6 +114,12 @@ impl<A: Annotation> From<ObjectCtor<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<CollectionCtor<A>> for Expression<A> {
+    fn from(ctor: CollectionCtor<A>) -> Self {
+        Expression::CollectionCtor(ctor)
+    }
+}
+
 impl<A: Annotation> From<IfCond<A>> for Expression<A> {
     fn from(cond: IfCond<A>) -> Self {
         Expression::IfCond(cond)
@@ -119,6 +129,12 @@ impl<A: Annotation> From<IfCond<A>> for Expression<A> {
 impl<A: Annotation> From<Block<A>> for Expression<A> {
     fn from(block: Block<A>) -> Self {
         Expression::Block(block)
+    }
+}
+
+impl<A: Annotation> From<Indexer<A>> for Expression<A> {
+    fn from(indexer: Indexer<A>) -> Self {
+        Expression::Indexer(indexer)
     }
 }
 
@@ -174,9 +190,11 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::BinOp(op) => write!(f, "{}", op),
             Expression::Call(call) => write!(f, "{}", call),
             Expression::ObjectCtor(ctor) => write!(f, "{}", ctor),
+            Expression::CollectionCtor(ctor) => write!(f, "{}", ctor),
             Expression::IfCond(if_cond) => write!(f, "{}", if_cond),
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
+            Expression::Indexer(indexer) => write!(f, "{}", indexer),
         }
     }
 }
@@ -535,8 +553,10 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     },
 
                     DelimiterPair::SquareBracket => {
-                        let _ctor = unimplemented!("collection ctor");
-                        //                        self.add_operand(ctor);
+                        let ctor = CollectionCtor::parse(self.tokens)?;
+                        let span = ctor.annotation.clone();
+                        let expr = ExpressionNode::new(ctor, span);
+                        self.add_operand(expr);
                     },
 
                     DelimiterPair::BeginEnd => {
@@ -679,9 +699,29 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
             Some(TokenTree::Delimited {
                 delim: DelimiterPair::SquareBracket,
+                open,
+                inner,
+                close,
                 ..
             }) => {
-                let _element_expr = unimplemented!("array element access expr");
+                let base = self.pop_operand();
+
+                let mut index_tokens = TokenStream::new(inner, open);
+                let index_expr = ExpressionNode::parse(&mut index_tokens)?;
+                index_tokens.finish()?;
+
+                self.tokens.advance(1);
+                self.last_was_operand = true;
+
+                let span = base.annotation.span().to(close.span());
+
+                let indexer = Indexer {
+                    base,
+                    annotation: span.clone(),
+                    index: index_expr,
+                };
+
+                self.add_operand(ExpressionNode::new(indexer, span));
             },
 
             Some(TokenTree::Operator { .. }) => {

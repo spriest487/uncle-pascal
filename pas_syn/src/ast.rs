@@ -53,12 +53,18 @@ pub enum TypeName {
         ident: IdentPath,
         indirection: usize,
     },
+    Array {
+        element: Box<TypeName>,
+        dim: usize,
+        span: Span,
+    }
 }
 
 impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
             TypeName::Ident { ident, .. } => ident.span(),
+            TypeName::Array { span, .. } => span,
             TypeName::Unknown(span) => span,
         }
     }
@@ -81,22 +87,49 @@ impl TypeName {
             tokens.advance(1);
         }
 
-        let path = tokens.match_repeating(|i, tokens| {
-            if i > 0 {
-                if tokens.look_ahead().match_one(Operator::Member).is_none() {
-                    return Ok(Generate::Break);
-                } else {
-                    tokens.advance(1);
+        if let Some(array_kw) = tokens.look_ahead().match_one(Keyword::Array) {
+            tokens.advance(1);
+            let dim = match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
+                TokenTree::Delimited { inner, open, .. } => {
+                    let mut dim_tokens = TokenStream::new(inner, open);
+                    let dim = dim_tokens.match_one(Matcher::AnyLiteralInteger)?
+                        .as_literal_int()
+                        .and_then(|i| i.as_usize())
+                        .unwrap();
+                    dim_tokens.finish()?;
+
+                    dim
                 }
-            }
+                _ => unreachable!("match failed"),
+            };
 
-            let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
-            let ident = ident_tt.into_ident().unwrap();
-            Ok(Generate::Yield(ident))
-        })?;
-        assert!(!path.is_empty(), "parsed type path must always have 1+ parts");
+            tokens.match_one(Keyword::Of)?;
 
-        Ok(TypeName::Ident { ident: Path::from_parts(path), indirection })
+            let element = Self::parse(tokens)?;
+
+            Ok(TypeName::Array {
+                dim,
+                span: array_kw.span().to(element.span()),
+                element: Box::new(element),
+            })
+        } else {
+            let path = tokens.match_repeating(|i, tokens| {
+                if i > 0 {
+                    if tokens.look_ahead().match_one(Operator::Member).is_none() {
+                        return Ok(Generate::Break);
+                    } else {
+                        tokens.advance(1);
+                    }
+                }
+
+                let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+                let ident = ident_tt.into_ident().unwrap();
+                Ok(Generate::Yield(ident))
+            })?;
+            assert!(!path.is_empty(), "parsed type path must always have 1+ parts");
+
+            Ok(TypeName::Ident { ident: Path::from_parts(path), indirection })
+        }
     }
 }
 
@@ -109,6 +142,10 @@ impl fmt::Display for TypeName {
                 }
                 write!(f, "{}", ident)
             },
+
+            TypeName::Array { element, dim, .. } => {
+                write!(f, "array[{}] of {}", dim, element)
+            }
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }

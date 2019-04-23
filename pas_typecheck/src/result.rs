@@ -4,7 +4,7 @@ use crate::{
     Type, ValueKind,
 };
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
-use pas_syn::{Ident, Operator};
+use pas_syn::{ast, Ident, Operator};
 use std::fmt;
 
 #[derive(Debug)]
@@ -17,6 +17,11 @@ pub enum TypecheckError {
         span: Span,
     },
     InvalidCallInExpression(Call),
+    InvalidIndexer {
+        base: Box<ExpressionNode>,
+        index_ty: Type,
+        span: Span,
+    },
     TypeMismatch {
         expected: Type,
         actual: Type,
@@ -56,6 +61,9 @@ pub enum TypecheckError {
         unit: Ident,
         syms: Vec<Ident>,
     },
+    UnableToInferType {
+        expr: ast::ExpressionNode<Span>,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -73,6 +81,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotCallable(expr) => expr.annotation.span(),
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
+            TypecheckError::InvalidIndexer { span, .. } => span,
             TypecheckError::TypeMismatch { span, .. } => span,
             TypecheckError::NotMutable(expr) => expr.annotation.span(),
             TypecheckError::NotAddressable { span, .. } => span,
@@ -83,6 +92,7 @@ impl Spanned for TypecheckError {
             TypecheckError::AmbiguousMethod { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
+            TypecheckError::UnableToInferType { expr } => expr.annotation.span(),
         }
     }
 }
@@ -94,6 +104,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NotCallable(_) => "Not callable".to_string(),
             TypecheckError::InvalidArgs { .. } => "Invalid arguments".to_string(),
             TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
+            TypecheckError::InvalidIndexer { .. } => "Invalid indexer expression".to_string(),
             TypecheckError::TypeMismatch { .. } => "Type mismatch".to_string(),
             TypecheckError::NotMutable(_) => "Value not mutable".to_string(),
             TypecheckError::NotAddressable { .. } => "Value not addressable".to_string(),
@@ -106,6 +117,7 @@ impl DiagnosticOutput for TypecheckError {
                 "Invalid constructor expression type".to_string()
             }
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
+            TypecheckError::UnableToInferType { .. } => "Unable to infer type of expression".to_string(),
         }
     }
 
@@ -176,6 +188,10 @@ impl fmt::Display for TypecheckError {
                 write!(f, "function call `{}` returns no value and cannot be used as part of an expression", call)
             }
 
+            TypecheckError::InvalidIndexer { base, index_ty, .. } => {
+                write!(f, "expression `{}` cannot be indexed with an index of type `{}`", base, index_ty)
+            }
+
             TypecheckError::TypeMismatch { expected, actual, .. } => {
                 write!(f, "type mismatch: expected {}, found {}", expected, actual)
             }
@@ -218,6 +234,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UndefinedSymbols { unit, .. } => {
                 write!(f, "unit `{}` contains undefined symbols", unit)
+            }
+
+            TypecheckError::UnableToInferType { expr } => {
+                write!(f, "unable to infer the type of `{}`", expr)
             }
         }
     }

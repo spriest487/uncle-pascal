@@ -16,10 +16,10 @@ pub fn typecheck_for_loop(
     }
 
     let to_expr = typecheck_expr(&for_loop.to_expr, &Type::Primitive(Primitive::Boolean), ctx)?;
-    if *to_expr.annotation.value_ty() != init_binding.val_ty {
+    if *to_expr.annotation.ty() != init_binding.val_ty {
         return Err(TypecheckError::TypeMismatch {
             expected: init_binding.val_ty,
-            actual: to_expr.annotation.value_ty().clone(),
+            actual: to_expr.annotation.ty().clone(),
             span: annotation.span().clone(),
         });
     }

@@ -132,7 +132,7 @@ impl TypeAnnotation {
         }
     }
 
-    pub fn value_ty(&self) -> &Type {
+    pub fn ty(&self) -> &Type {
         match self {
             TypeAnnotation::Namespace(_, _) => &Type::Nothing,
             TypeAnnotation::Untyped(_) => &Type::Nothing,

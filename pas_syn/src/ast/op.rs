@@ -52,3 +52,22 @@ impl<A: Annotation> Spanned for BinOp<A> {
         self.annotation.span()
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct Indexer<A: Annotation> {
+    pub base: ExpressionNode<A>,
+    pub index: ExpressionNode<A>,
+    pub annotation: A,
+}
+
+impl<A: Annotation> Spanned for Indexer<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
+impl<A: Annotation> fmt::Display for Indexer<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}[{}]", self.base, self.index)
+    }
+}

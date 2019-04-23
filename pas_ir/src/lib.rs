@@ -1,37 +1,16 @@
-pub use self::interpret::{
-    Interpreter,
-    InterpreterOpts,
-};
-use crate::{
-    expr::*,
-    metadata::*,
-    stmt::*,
-};
+pub use self::interpret::{Interpreter, InterpreterOpts};
+use crate::{expr::*, metadata::*, stmt::*};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
-use std::{
-    collections::HashMap,
-    fmt,
-};
+use std::{collections::HashMap, fmt};
 
 mod expr;
 mod stmt;
 
 pub mod prelude {
     pub use crate::{
-        metadata::{
-            Metadata,
-            StringId,
-            Type,
-            STRING_ID,
-        },
-        Builder,
-        GlobalRef,
-        Instruction,
-        Interpreter,
-        Label,
-        Ref,
-        Value,
+        metadata::{Metadata, StringId, GlobalName, NamePath, Type, STRING_ID},
+        Builder, GlobalRef, Instruction, Interpreter, Label, Ref, Value,
     };
 }
 
@@ -168,10 +147,27 @@ pub enum Instruction {
         b: Value,
     },
 
+    /// Stores a pointer to `a` into `out`
     AddrOf {
         out: Ref,
         a: Ref,
     },
+
+    /// Stores the address of an array element from array at `a` into `out`
+    Element {
+        out: Ref,
+        a: Ref,
+        index: Value,
+        element: Type,
+    },
+
+    /// Stores the address of a struct field from struct at `a` into `out`
+//    Field {
+//        out: Ref,
+//        a: Ref,
+//        struct_id: StructID,
+//        field: usize,
+//    },
 
     Call {
         out: Option<Ref>,
@@ -278,7 +274,7 @@ impl fmt::Display for Instruction {
             ),
             Instruction::Not { out, a } => {
                 write!(f, "{:>width$} {} := ~{}", "not", out, a, width = IX_WIDTH)
-            },
+            }
             Instruction::And { out, a, b } => write!(
                 f,
                 "{:>width$} {} := {} and {}",
@@ -315,7 +311,7 @@ impl fmt::Display for Instruction {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ")")
-            },
+            }
 
             Instruction::AddrOf { out, a } => write!(
                 f,
@@ -323,6 +319,17 @@ impl fmt::Display for Instruction {
                 "addrof",
                 out,
                 a,
+                width = IX_WIDTH
+            ),
+
+            Instruction::Element { out, a, element, index } => write!(
+                f,
+                "{:>width$} {} := @({} as array of {})[{}]",
+                "el",
+                out,
+                a,
+                element,
+                index,
                 width = IX_WIDTH
             ),
 
@@ -341,7 +348,7 @@ impl fmt::Display for Instruction {
                     Type::Struct(*struct_id),
                     field_id
                 )
-            },
+            }
 
             Instruction::SetField {
                 of,
@@ -358,11 +365,11 @@ impl fmt::Display for Instruction {
                     field_id,
                     new_val
                 )
-            },
+            }
 
             Instruction::Label(label) => {
                 write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
-            },
+            }
 
             Instruction::Jump { dest } => write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH),
 
@@ -603,7 +610,7 @@ impl<'metadata> Builder<'metadata> {
         match ty {
             Type::Rc(_) => {
                 self.append(Instruction::Retain(at.clone()));
-            },
+            }
 
             Type::Struct(id) => {
                 self.begin_scope();
@@ -611,11 +618,11 @@ impl<'metadata> Builder<'metadata> {
                     builder.append(Instruction::Retain(field_ref));
                 });
                 self.end_scope();
-            },
+            }
 
             _ => {
                 // nothing to retain
-            },
+            }
         }
     }
 
@@ -623,7 +630,7 @@ impl<'metadata> Builder<'metadata> {
         match ty {
             Type::Rc(_) => {
                 self.append(Instruction::Release(at.clone()));
-            },
+            }
 
             Type::Struct(id) => {
                 self.begin_scope();
@@ -631,11 +638,11 @@ impl<'metadata> Builder<'metadata> {
                     builder.append(Instruction::Release(field_ref));
                 });
                 self.end_scope();
-            },
+            }
 
             _ => {
                 // nothing to release
-            },
+            }
         }
     }
 
@@ -656,13 +663,13 @@ impl<'metadata> Builder<'metadata> {
                 Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
                     self.instructions.push(Instruction::LocalDelete(id));
-                },
+                }
 
                 Local::Temp { id, .. } => {
                     self.instructions.push(Instruction::LocalDelete(id));
-                },
+                }
 
-                _ => {},
+                _ => {}
             }
         }
 
@@ -686,7 +693,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             body_builder.bind_local(LocalID(0), None);
 
             body_builder.metadata.translate_type(ty)
-        },
+        }
     };
 
     for (i, param) in func.decl.params.iter().enumerate() {
@@ -783,10 +790,10 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
             match ty_decl {
                 ast::TypeDecl::Class(class) => {
                     metadata.define_struct(class);
-                },
+                }
                 ast::TypeDecl::Interface(iface) => {
                     metadata.define_iface(iface);
-                },
+                }
             }
         }
 
@@ -817,7 +824,7 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
                     metadata
                         .find_function(&global_name)
                         .expect("all defined functions must be declared first")
-                },
+                }
 
                 Some(impl_iface) => {
                     let method_name = func_def.decl.ident.to_string();
@@ -828,7 +835,7 @@ pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
                     metadata
                         .find_impl(&self_ty, iface_id, &method_name)
                         .expect("all defined method impls must be declared first")
-                },
+                }
             };
 
             functions.insert(func_id, func);

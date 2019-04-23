@@ -217,6 +217,10 @@ pub mod ty {
         Record(Rc<Class>),
         Class(Rc<Class>),
         Interface(Rc<Interface>),
+        Array {
+            element: Box<Type>,
+            dim: usize,
+        },
         GenericSelf,
     }
 
@@ -390,6 +394,13 @@ pub mod ty {
                 x => x,
             }
         }
+
+        pub fn collection_element_ty(&self) -> Option<&Type> {
+            match self {
+                Type::Array { element, .. } => Some(element.as_ref()),
+                _ => None,
+            }
+        }
     }
 
     impl fmt::Display for Type {
@@ -402,6 +413,7 @@ pub mod ty {
                     Type::Record(class) => write!(f, "{}", class.ident),
                     Type::Interface(iface) => write!(f, "{}", iface.ident),
                     Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
+                    Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
                     _ => unimplemented!("type with no Display impl: {:?}", self),
                 },
             }

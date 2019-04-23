@@ -40,14 +40,14 @@ pub fn typecheck_bin_op(
 
         Operator::Equals | Operator::NotEquals => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.ty(), ctx)?;
 
-            rhs.annotation.expect_value(lhs.annotation.value_ty())?;
+            rhs.annotation.expect_value(lhs.annotation.ty())?;
 
-            if !lhs.annotation.value_ty().self_comparable() {
+            if !lhs.annotation.ty().self_comparable() {
                 return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation.value_ty().clone(),
-                    rhs: rhs.annotation.value_ty().clone(),
+                    lhs: lhs.annotation.ty().clone(),
+                    rhs: rhs.annotation.ty().clone(),
                     op: bin_op.op,
                     span: bin_op.annotation.span().clone(),
                 });
@@ -72,14 +72,14 @@ pub fn typecheck_bin_op(
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.ty(), ctx)?;
 
-            rhs.annotation.expect_value(lhs.annotation.value_ty())?;
+            rhs.annotation.expect_value(lhs.annotation.ty())?;
 
-            if !lhs.annotation.value_ty().self_orderable() {
+            if !lhs.annotation.ty().self_orderable() {
                 return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation.value_ty().clone(),
-                    rhs: rhs.annotation.value_ty().clone(),
+                    lhs: lhs.annotation.ty().clone(),
+                    rhs: rhs.annotation.ty().clone(),
                     op: bin_op.op,
                     span: bin_op.annotation.span().clone(),
                 });
@@ -104,12 +104,12 @@ pub fn typecheck_bin_op(
 
         Operator::Plus | Operator::Minus | Operator::Multiply | Operator::Divide => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.ty(), ctx)?;
 
             let string_ty = ctx.string_type()?;
             let string_concat = bin_op.op == Operator::Plus
-                && *lhs.annotation.value_ty() == string_ty
-                && *rhs.annotation.value_ty() == string_ty;
+                && *lhs.annotation.ty() == string_ty
+                && *rhs.annotation.ty() == string_ty;
 
             if string_concat {
                 return desugar_string_concat(lhs, rhs, &string_ty, ctx);
@@ -117,20 +117,20 @@ pub fn typecheck_bin_op(
 
             let valid_math = lhs
                 .annotation
-                .value_ty()
-                .valid_math_op(bin_op.op, rhs.annotation.value_ty());
+                .ty()
+                .valid_math_op(bin_op.op, rhs.annotation.ty());
 
             if !valid_math {
                 return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation.value_ty().clone(),
-                    rhs: rhs.annotation.value_ty().clone(),
+                    lhs: lhs.annotation.ty().clone(),
+                    rhs: rhs.annotation.ty().clone(),
                     op: bin_op.op,
                     span: bin_op.annotation.span().clone(),
                 });
             }
 
             // check valid ops etc, result type etc
-            let result_ty = lhs.annotation.value_ty().clone();
+            let result_ty = lhs.annotation.ty().clone();
 
             let annotation = match result_ty {
                 Type::Nothing => TypeAnnotation::Untyped(span.clone()),
@@ -226,7 +226,7 @@ fn typecheck_member_of(
                     ..
                 } => {
                     let member =
-                        ctx.find_instance_member(lhs.annotation.value_ty(), &member_ident)?;
+                        ctx.find_instance_member(lhs.annotation.ty(), &member_ident)?;
 
                     match member {
                         InstanceMember::Method { iface_ty, decl } => {
@@ -275,7 +275,7 @@ fn typecheck_member_of(
                             return Err(NameError::MemberNotFound {
                                 member: member_ident,
                                 span,
-                                base: lhs.annotation.value_ty().clone(),
+                                base: lhs.annotation.ty().clone(),
                             }
                             .into());
                         }
@@ -286,7 +286,7 @@ fn typecheck_member_of(
                     return Err(NameError::MemberNotFound {
                         member: member_ident,
                         span,
-                        base: lhs.annotation.value_ty().clone(),
+                        base: lhs.annotation.ty().clone(),
                     }
                     .into());
                 }
@@ -330,7 +330,7 @@ fn typecheck_member_of(
                 }
 
                 _ => Err(TypecheckError::InvalidCtorType {
-                    ty: lhs.annotation.value_ty().clone(),
+                    ty: lhs.annotation.ty().clone(),
                     span,
                 }),
             }
@@ -340,8 +340,8 @@ fn typecheck_member_of(
             let rhs = typecheck_expr(rhs, &Type::Nothing, ctx)?;
 
             Err(TypecheckError::InvalidBinOp {
-                lhs: lhs.annotation.value_ty().clone(),
-                rhs: rhs.annotation.value_ty().clone(),
+                lhs: lhs.annotation.ty().clone(),
+                rhs: rhs.annotation.ty().clone(),
                 span,
                 op: Operator::Member,
             })
@@ -361,13 +361,13 @@ pub fn typecheck_unary_op(
     let annotation = match unary_op.op {
         Operator::AddressOf => {
             let addr_ty = match (
-                operand.annotation.value_ty(),
+                operand.annotation.ty(),
                 operand.annotation.value_kind(),
             ) {
                 (Type::Pointer(_), Some(ValueKind::Mutable))
                 | (Type::Record(_), Some(ValueKind::Mutable))
                 | (Type::Primitive(_), Some(ValueKind::Mutable)) => {
-                    operand.annotation.value_ty().clone().ptr()
+                    operand.annotation.ty().clone().ptr()
                 }
 
                 (ty, kind) => {
@@ -389,11 +389,11 @@ pub fn typecheck_unary_op(
         Operator::Deref => {
             let deref_ty = operand
                 .annotation
-                .value_ty()
+                .ty()
                 .deref_ty()
                 .cloned()
                 .ok_or_else(|| TypecheckError::NotDerefable {
-                    ty: operand.annotation.value_ty().clone(),
+                    ty: operand.annotation.ty().clone(),
                     span: span.clone(),
                 })?;
 
@@ -409,7 +409,7 @@ pub fn typecheck_unary_op(
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
                 op: unary_op.op,
-                operand: operand.annotation.value_ty().clone(),
+                operand: operand.annotation.ty().clone(),
                 span: unary_op.annotation.clone(),
             });
         }
@@ -418,6 +418,43 @@ pub fn typecheck_unary_op(
     Ok(UnaryOp {
         operand,
         op: unary_op.op,
+        annotation,
+    })
+}
+
+pub type Indexer = ast::Indexer<TypeAnnotation>;
+
+pub fn typecheck_indexer(
+    indexer: &ast::Indexer<Span>,
+    ctx: &mut Context
+) -> TypecheckResult<Indexer> {
+    // todo: other index types
+    let index_ty = Type::Primitive(Primitive::Int32);
+    let index = typecheck_expr(&indexer.index, &index_ty, ctx)?;
+    index.annotation.expect_value(&index_ty)?;
+
+    let base = typecheck_expr(&indexer.base, &Type::Nothing, ctx)?;
+
+    let (el_ty, value_kind) = base.annotation.ty().collection_element_ty()
+        .and_then(|el_ty| {
+            let value_kind = base.annotation.value_kind()?;
+            Some((el_ty.clone(), value_kind))
+        })
+        .ok_or_else(|| TypecheckError::InvalidIndexer {
+            index_ty: index_ty.clone(),
+            base: Box::new(base.clone()),
+            span: indexer.span().clone(),
+        })?;
+
+    let annotation = TypeAnnotation::TypedValue {
+        value_kind,
+        ty: el_ty,
+        span: indexer.span().clone(),
+    };
+
+    Ok(Indexer {
+        base,
+        index,
         annotation,
     })
 }

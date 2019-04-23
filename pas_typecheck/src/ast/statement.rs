@@ -15,10 +15,10 @@ pub fn typecheck_local_binding(
             let explicit_ty = ctx.find_type(val_ty)?;
             let val = typecheck_expr(&binding.val, &explicit_ty, ctx)?;
 
-            if !explicit_ty.assignable_from(&val.annotation.value_ty()) {
+            if !explicit_ty.assignable_from(&val.annotation.ty()) {
                 return Err(TypecheckError::InvalidBinOp {
                     lhs: explicit_ty.clone(),
-                    rhs: val.annotation.value_ty().clone(),
+                    rhs: val.annotation.ty().clone(),
                     op: Operator::Assignment,
                     span: val.annotation.span().clone(),
                 });
@@ -35,7 +35,7 @@ pub fn typecheck_local_binding(
             } else {
                 ValueKind::Immutable
             },
-            ty: val.annotation.value_ty().clone(),
+            ty: val.annotation.ty().clone(),
             def: Some(binding.annotation.clone()),
         },
     )?;
@@ -44,7 +44,7 @@ pub fn typecheck_local_binding(
 
     Ok(LocalBinding {
         name: binding.name.clone(),
-        val_ty: val.annotation.value_ty().clone(),
+        val_ty: val.annotation.ty().clone(),
         val,
         annotation,
         mutable: binding.mutable,
@@ -68,16 +68,16 @@ pub fn typecheck_assignment(
         _ => return Err(TypecheckError::NotMutable(Box::new(lhs))),
     }
 
-    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation.value_ty(), ctx)?;
+    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation.ty(), ctx)?;
 
     if !lhs
         .annotation
-        .value_ty()
-        .assignable_from(rhs.annotation.value_ty())
+        .ty()
+        .assignable_from(rhs.annotation.ty())
     {
         return Err(TypecheckError::InvalidBinOp {
-            lhs: lhs.annotation.value_ty().clone(),
-            rhs: rhs.annotation.value_ty().clone(),
+            lhs: lhs.annotation.ty().clone(),
+            rhs: rhs.annotation.ty().clone(),
             op: Operator::Assignment,
             span: rhs.annotation.span().clone(),
         });
@@ -127,7 +127,7 @@ pub fn typecheck_stmt(
 
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, &Type::Nothing, ctx)?;
-            assert_eq!(&Type::Nothing, block.annotation.value_ty());
+            assert_eq!(&Type::Nothing, block.annotation.ty());
             assert!(block.annotation.is_untyped());
 
             Ok(ast::Statement::Block(block))

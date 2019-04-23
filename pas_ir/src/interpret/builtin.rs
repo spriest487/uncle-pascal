@@ -1,12 +1,7 @@
 use crate::{
-    interpret::{
-        Interpreter,
-        MemCell,
-        Pointer,
-    },
+    interpret::{Interpreter, MemCell, Pointer},
     metadata::*,
-    LocalID,
-    Ref,
+    LocalID, Ref,
 };
 
 /// $1: Integer -> $0: String

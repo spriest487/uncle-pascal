@@ -12,7 +12,7 @@ fn invalid_args(actual_args: Vec<ExpressionNode>, expected: &[Type], span: Span)
         expected: expected.to_vec(),
         actual: actual_args
             .into_iter()
-            .map(|arg| arg.annotation.value_ty().clone())
+            .map(|arg| arg.annotation.ty().clone())
             .collect(),
         span,
     }
@@ -39,7 +39,7 @@ fn typecheck_args(
 
     let all_arg_tys = checked_args
         .iter()
-        .map(|arg_expr| arg_expr.annotation.value_ty())
+        .map(|arg_expr| arg_expr.annotation.ty())
         .zip(expected_args.iter());
 
     for (actual, expected) in all_arg_tys {
@@ -107,7 +107,7 @@ fn typecheck_method_call(
 
             let arg_tys: Vec<_> = args
                 .iter()
-                .map(|a| a.annotation.value_ty().clone())
+                .map(|a| a.annotation.ty().clone())
                 .collect();
 
             let self_type = method_annotation
@@ -127,15 +127,15 @@ fn typecheck_method_call(
         Some(self_arg) => {
             // we have a self arg, we know how to specialize the signature before checking the
             // arg types
-            let self_type = self_arg.annotation.value_ty().clone();
+            let self_type = self_arg.annotation.ty().clone();
             let mut impl_sig = method_annotation.decl_sig().with_self(&self_type);
 
             // the self-arg is passed as the first argument
             assert!(!impl_sig.params.is_empty());
             let self_param = impl_sig.params.remove(0);
-            if !self_param.assignable_from(self_arg.annotation.value_ty()) {
+            if !self_param.assignable_from(self_arg.annotation.ty()) {
                 return Err(TypecheckError::TypeMismatch {
-                    actual: self_arg.annotation.value_ty().clone(),
+                    actual: self_arg.annotation.ty().clone(),
                     expected: self_param,
                     span,
                 });
@@ -308,6 +308,12 @@ pub fn typecheck_expr(
             Ok(ast::ExpressionNode::new(ctor, annotation))
         },
 
+        ast::Expression::CollectionCtor(ctor) => {
+            let ctor = typecheck_collection_ctor(ctor, expect_ty, ctx)?;
+            let annotation = ctor.annotation.clone();
+            Ok(ast::ExpressionNode::new(ctor, annotation))
+        }
+
         ast::Expression::IfCond(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             let annotation = if_cond.annotation.clone();
@@ -319,6 +325,12 @@ pub fn typecheck_expr(
             let annotation = block.annotation.clone();
             Ok(ast::ExpressionNode::new(block, annotation))
         },
+
+        ast::Expression::Indexer(indexer) => {
+            let indexer = typecheck_indexer(indexer, ctx)?;
+            let annotation = indexer.annotation.clone();
+            Ok(ast::ExpressionNode::new(indexer, annotation))
+        }
     }
 }
 
