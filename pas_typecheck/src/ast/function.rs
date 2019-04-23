@@ -59,6 +59,7 @@ pub fn typecheck_func_decl(
         params,
         return_ty: Some(return_ty),
         span: decl.span.clone(),
+        mods: decl.mods.clone(),
     })
 }
 

@@ -43,7 +43,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 ctx.define_function(
                     func_def.decl.ident.clone(),
                     FunctionSig::of_decl(&func_def.decl).clone(),
-                    func_def.decl.span.clone(),
+                    &func_def,
                 )?;
             }
 
@@ -52,8 +52,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 
         ast::UnitDecl::FunctionDecl(func_decl) => {
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
-            let sig = FunctionSig::of_decl(&func_decl).clone();
-            ctx.declare_function(func_decl.ident.clone(), sig)?;
+            ctx.declare_function(func_decl.ident.clone(), &func_decl)?;
             Ok(ast::UnitDecl::FunctionDecl(func_decl))
         },
 

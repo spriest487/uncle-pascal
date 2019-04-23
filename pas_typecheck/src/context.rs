@@ -4,6 +4,7 @@ pub mod result;
 use crate::{
     ast::{
         FunctionDecl,
+        FunctionDef,
         Interface,
     },
     context::NamespaceStack,
@@ -294,8 +295,14 @@ impl Context {
         self.declare(name, Decl::Type(ty.into()))
     }
 
-    pub fn declare_function(&mut self, name: Ident, sig: FunctionSig) -> NamingResult<()> {
-        self.declare_function_and_def(name, sig, None)
+    pub fn declare_function(&mut self, name: Ident, decl: &FunctionDecl) -> NamingResult<()> {
+        let def = if decl.external_src().is_some() {
+            Some(decl.span().clone())
+        } else {
+            None
+        };
+
+        self.declare_function_and_def(name, FunctionSig::of_decl(decl), def)
     }
 
     pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
@@ -412,7 +419,7 @@ impl Context {
         &mut self,
         name: Ident,
         sig: FunctionSig,
-        def: Span,
+        def: &FunctionDef,
     ) -> NamingResult<()> {
         let decl = self.scopes.current_path().find(&name);
 
@@ -445,7 +452,7 @@ impl Context {
                             }),
 
                             Entry::Vacant(entry) => {
-                                entry.insert(def);
+                                entry.insert(def.span().clone());
                                 Ok(())
                             },
                         }
@@ -465,7 +472,18 @@ impl Context {
                 });
             },
 
-            None => self.declare_function_and_def(name, sig, Some(def)),
+            None => {
+                // it wasn't already declared, so we need to declare AND define it. if it
+                // has an external modifier, it's defined externally and so it has two definitions
+                if def.decl.external_src().is_some() {
+                    return Err(NameError::AlreadyDefined {
+                        existing: def.decl.span().clone(),
+                        ident: self.qualify_name(def.decl.ident.clone()),
+                    });
+                }
+
+                self.declare_function_and_def(name, sig, Some(def.span().clone()))
+            },
         }
     }
 

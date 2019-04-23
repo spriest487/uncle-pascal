@@ -28,12 +28,7 @@ use crate::{
     ast::*,
     token_tree::*,
 };
-use pas_common::{
-    span::*,
-    DiagnosticOutput,
-    DiagnosticLabel,
-    TracedError,
-};
+use pas_common::{span::*, DiagnosticOutput, DiagnosticLabel, TracedError, DiagnosticMessage};
 use std::fmt;
 
 pub use self::{
@@ -48,6 +43,7 @@ pub enum ParseError {
     EmptyOperand { operator: Span, before: bool },
     InvalidStatement(ExpressionNode<Span>),
     InvalidMember(BinOp<Span>, Span),
+    DuplicateModifier { new: DeclMod, existing: DeclMod },
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -60,6 +56,7 @@ impl Spanned for ParseError {
             ParseError::EmptyOperand { operator, .. } => operator.span(),
             ParseError::InvalidStatement(expr) => &expr.annotation,
             ParseError::InvalidMember(_, span) => span,
+            ParseError::DuplicateModifier { new, .. } => new.span(),
         }
     }
 }
@@ -72,6 +69,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
             ParseError::InvalidStatement(..) => write!(f, "Invalid statement"),
             ParseError::InvalidMember(..) => write!(f, "Invalid member expression"),
+            ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
         }
     }
 }
@@ -103,11 +101,30 @@ impl DiagnosticOutput for ParseError {
                 "the expression `{}` does not denote a member of `{}`",
                 bin_op.rhs, bin_op.lhs
             ),
+
+            ParseError::DuplicateModifier { new, .. } => format!(
+                "the modifier `{}` is already present on this declaration",
+                new.keyword(),
+            )
         };
 
         Some(DiagnosticLabel {
             text: Some(text),
             span: self.span().clone(),
         })
+    }
+
+    fn see_also(&self) -> Vec<DiagnosticMessage> {
+        match self {
+            ParseError::DuplicateModifier { existing, .. } => vec![DiagnosticMessage {
+                title: "Duplicate modifier occurrence".to_string(),
+                label: Some(DiagnosticLabel {
+                    span: existing.span().clone(),
+                    text: Some(format!("`{}` appears here", existing.keyword())),
+                })
+            }],
+
+            _ => Vec::new(),
+        }
     }
 }

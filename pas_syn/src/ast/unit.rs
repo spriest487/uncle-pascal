@@ -1,8 +1,4 @@
-use crate::{
-    ast::*,
-    parse::prelude::*,
-    token_tree::*,
-};
+use crate::{ast::*, parse::prelude::*};
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -65,21 +61,21 @@ impl Unit<Span> {
                     } else {
                         decls.push(UnitDecl::FunctionDecl(func_decl));
                     }
-                },
+                }
 
                 Some(TokenTree::Keyword {
                     kw: Keyword::Type, ..
                 }) => {
                     let ty_decl = TypeDecl::parse(tokens)?;
                     decls.push(UnitDecl::Type(ty_decl));
-                },
+                }
 
                 Some(TokenTree::Keyword {
                     kw: Keyword::Uses, ..
                 }) => {
                     let uses_decl = UseDecl::parse(tokens)?;
                     decls.push(UnitDecl::Uses(uses_decl));
-                },
+                }
 
                 _ => break,
             }
@@ -196,5 +192,76 @@ impl UseDecl {
         let span = kw.span().to(units.last().unwrap().span());
 
         Ok(Self { units, span })
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub enum DeclMod {
+    External { src: String, span: Span },
+}
+
+impl DeclMod {
+    const EXTERNAL_WORD: &'static str = "external";
+
+    pub fn keyword(&self) -> &str {
+        match self {
+            DeclMod::External { .. } => Self::EXTERNAL_WORD,
+        }
+    }
+
+    fn parse_external(tokens: &mut TokenStream) -> ParseResult<DeclMod> {
+        let kw = tokens.match_one(Self::EXTERNAL_WORD)?.into_ident().unwrap();
+        let src = tokens.match_one(Matcher::AnyLiteralString)?;
+
+        Ok(DeclMod::External {
+            span: kw.span().to(src.span()),
+            src: src.as_literal_string().unwrap().to_string(),
+        })
+    }
+
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<DeclMod>> {
+        let mut mods: Vec<DeclMod> = Vec::new();
+
+        let mod_seq = Separator::Semicolon.and_then(Self::EXTERNAL_WORD);
+
+        while let Some(mut seq_tokens) = tokens.look_ahead().match_sequence(mod_seq.clone()) {
+            tokens.advance(1);
+
+            let word_token = seq_tokens.remove(1).into_ident().unwrap();
+
+            let new_mod = match word_token.name.as_str() {
+                Self::EXTERNAL_WORD => Self::parse_external(tokens)?,
+
+                _ => unreachable!("bad modified contextual keyword"),
+            };
+
+            let existing = mods.iter().find(|m| m.keyword() == new_mod.keyword());
+            if let Some(existing) = existing {
+                return Err(TracedError::trace(ParseError::DuplicateModifier {
+                    new: new_mod,
+                    existing: existing.clone(),
+                }));
+            }
+
+            mods.push(new_mod);
+        }
+
+        Ok(mods)
+    }
+}
+
+impl fmt::Display for DeclMod {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DeclMod::External { src, .. } => write!(f, "external '{}'", src),
+        }
+    }
+}
+
+impl Spanned for DeclMod {
+    fn span(&self) -> &Span {
+        match self {
+            DeclMod::External { span, .. } => span,
+        }
     }
 }

@@ -1,19 +1,12 @@
 use crate::{
-    ast::{
-        Annotation,
-        Block,
-        TypeName,
-    },
+    ast::{Annotation, Block, TypeName, DeclMod},
     ident::*,
     keyword::*,
     parse::*,
     token_tree::*,
     Operator,
 };
-use pas_common::{
-    span::*,
-    TracedError,
-};
+use pas_common::{span::*, TracedError};
 use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -51,6 +44,8 @@ pub struct FunctionDecl<A: Annotation> {
     pub return_ty: Option<A::Type>,
 
     pub impl_iface: Option<InterfaceImpl<A>>,
+
+    pub mods: Vec<DeclMod>,
 }
 
 impl FunctionDecl<Span> {
@@ -75,7 +70,7 @@ impl FunctionDecl<Span> {
                 tokens.advance(1);
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
-            },
+            }
             None => None,
         };
 
@@ -114,9 +109,17 @@ impl FunctionDecl<Span> {
         })?;
         params_tokens.finish()?;
 
-        let span = match &return_ty {
+        let mods = DeclMod::parse(tokens)?;
+
+        let sig_span = match &return_ty {
             Some(return_ty) => func_kw.span().to(return_ty.span()),
             None => func_kw.span().to(&args_span),
+        };
+
+        let span = if mods.is_empty() {
+            sig_span
+        } else {
+            sig_span.to(mods[mods.len() - 1].span())
         };
 
         let impl_iface = impl_iface.map(|tt| {
@@ -129,10 +132,21 @@ impl FunctionDecl<Span> {
         Ok(FunctionDecl {
             ident: ident_token.into_ident().unwrap(),
             impl_iface,
-            span: span,
+            span,
             return_ty,
             params: params.into_iter().flat_map(|params| params).collect(),
+            mods,
         })
+    }
+}
+
+impl<A: Annotation> FunctionDecl<A> {
+    pub fn external_src(&self) -> Option<&str> {
+        self.mods.iter()
+            .filter_map(|decl_mod| match decl_mod {
+                DeclMod::External { src, .. } => Some(src.as_str()),
+            })
+            .next()
     }
 }
 

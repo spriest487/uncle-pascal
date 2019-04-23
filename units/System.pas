@@ -3,12 +3,12 @@ type String = class
     len: Integer;
 end;
 
-function GetMem(count: Integer): ^Byte;
-function FreeMem(mem: ^Byte);
+function GetMem(count: Integer): ^Byte; external 'rt';
+function FreeMem(mem: ^Byte); external 'rt';
 
-function WriteLn(line: String);
+function WriteLn(line: String); external 'rt';
 
-function IntToStr(i: Integer): String;
+function IntToStr(i: Integer): String; external 'rt';
 
 type Disposable = interface
     function Dispose(self: Self);
