@@ -754,7 +754,6 @@ impl fmt::Display for Module {
         writeln!(f, "* Functions")?;
         for (id, func) in &self.functions {
             writeln!(f, "{} ({}):", id, self.metadata.func_desc(*id))?;
-            writeln!(f, ":")?;
 
             for instruction in &func.body {
                 writeln!(f, "{}", instruction)?;

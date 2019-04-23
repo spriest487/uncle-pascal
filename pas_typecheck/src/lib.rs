@@ -361,12 +361,19 @@ pub mod ty {
 
         pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
             match (self, op, rhs) {
+                // pointer arithmetic
                 (Type::Pointer(_), Operator::Plus, Type::Pointer(_))
                 | (Type::Pointer(_), Operator::Minus, Type::Pointer(_))
                 | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32))
                 | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
 
-                _ => *self == *rhs,
+                // all maths ops are valid for primitives of the same type
+                | (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
+                | (Type::Primitive(a), Operator::Minus, Type::Primitive(b))
+                | (Type::Primitive(a), Operator::Divide, Type::Primitive(b))
+                | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
+
+                _ => false,
             }
         }
 

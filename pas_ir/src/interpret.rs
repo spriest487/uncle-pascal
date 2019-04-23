@@ -510,9 +510,11 @@ impl Interpreter {
         match cell {
             MemCell::Structure(StructCell { fields, id }) => {
                 let struct_def = &self.metadata.structs()[id];
-                let dispose_impl_id =
-                    self.metadata
-                        .find_impl(&Type::Struct(*id), DISPOSABLE_ID, "Dispose");
+                let dispose_impl_id = self.metadata.find_impl(
+                    &Type::Struct(*id),
+                    DISPOSABLE_ID,
+                    "Dispose"
+                );
 
                 if let Some(dispose_func) = dispose_impl_id {
                     let dispose_ref = GlobalRef::Function(dispose_func);
@@ -520,6 +522,10 @@ impl Interpreter {
                         Some(MemCell::Function(func)) => func.clone(),
                         _ => panic!("missing {} for {}", dispose_ref, struct_def.name),
                     };
+
+                    if self.trace_rc {
+                        eprintln!("rc: automatically invoking dispose impl of {}", struct_def.name);
+                    }
 
                     self.call(&func, &[cell.clone()], None);
                 }
@@ -989,13 +995,14 @@ impl Interpreter {
         self.pop_stack();
     }
 
-    fn get_rc_val(&self, rc_cell: &MemCell) -> &MemCell {
-        let rc_struct = rc_cell.as_struct(RC_ID).unwrap();
+    fn deref_rc(&self, rc_cell: &MemCell) -> &MemCell {
+        let rc_struct = rc_cell.as_struct(RC_ID)
+            .unwrap_or_else(|| panic!("trying to dereference RC pointer with an invalid value"));
 
         let val_ptr = rc_struct.fields[RC_VALUE_FIELD]
             .as_pointer()
             .and_then(|ptr| ptr.as_heap_addr())
-            .unwrap();
+            .unwrap_or_else(|| panic!("trying to dereference RC cell with an invalid value pointer"));
 
         self.heap.get(val_ptr).unwrap()
     }
@@ -1024,7 +1031,7 @@ impl Interpreter {
 
     fn read_string(&self, str_ref: &Ref) -> String {
         let str_cell = self
-            .get_rc_val(self.load(str_ref))
+            .deref_rc(self.load(str_ref))
             .as_struct(STRING_ID)
             .unwrap();
 

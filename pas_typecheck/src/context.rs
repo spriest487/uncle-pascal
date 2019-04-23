@@ -502,6 +502,24 @@ impl Context {
         }
     }
 
+    pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
+        match self.resolve(name) {
+            Some(MemberRef::Value { value: Decl::Function(sig), key, ref parent_path, .. }) => {
+                let func_path = Path::new(key.clone(), parent_path.keys().cloned());
+                Ok((func_path, sig.clone()))
+            }
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedFunction(
+                name.clone(),
+                other.clone().into(),
+            )),
+            Some(MemberRef::Namespace { path }) => {
+                let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
+                Err(NameError::ExpectedFunction(name.clone(), unexpected))
+            },
+            None => Err(NameError::NotFound(name.last().clone())),
+        }
+    }
+
     /// an instance method is an interface impl method for `ty` that takes Self as the first argument
     /// TODO: or any function taking `ty` as its first argument
     fn instance_methods_of(&self, ty: &Type) -> Vec<(&Type, &FunctionDecl)> {

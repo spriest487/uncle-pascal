@@ -115,6 +115,17 @@ impl<Part> Path<Part> {
     }
 }
 
+impl<Part: Clone> Path<Part> {
+    pub fn parent(&self) -> Option<Self> {
+        if self.parts.len() == 1 {
+            None
+        } else {
+            let parent_parts = self.parts[0..self.parts.len() - 1].to_vec();
+            Some(Self { parts: parent_parts })
+        }
+    }
+}
+
 impl<Part: fmt::Display> Path<Part> {
     pub fn join(&self, sep: impl fmt::Display) -> String {
         let mut joined = String::new();

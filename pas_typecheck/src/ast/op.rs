@@ -3,7 +3,10 @@ use pas_syn::Operator;
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
-pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> TypecheckResult<ExpressionNode> {
+pub fn typecheck_bin_op(
+    bin_op: &ast::BinOp<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<ExpressionNode> {
     let span = bin_op.annotation.clone();
 
     match &bin_op.op {
@@ -24,12 +27,15 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
                 span,
             };
 
-            Ok(ExpressionNode::new(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation: annotation.clone(),
-            }, annotation))
+            Ok(ExpressionNode::new(
+                BinOp {
+                    lhs,
+                    rhs,
+                    op: bin_op.op,
+                    annotation: annotation.clone(),
+                },
+                annotation,
+            ))
         }
 
         Operator::Equals | Operator::NotEquals => {
@@ -53,12 +59,15 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
                 span,
             };
 
-            Ok(ExpressionNode::new(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation: annotation.clone(),
-            }, annotation))
+            Ok(ExpressionNode::new(
+                BinOp {
+                    lhs,
+                    rhs,
+                    op: bin_op.op,
+                    annotation: annotation.clone(),
+                },
+                annotation,
+            ))
         }
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
@@ -82,23 +91,36 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
                 span,
             };
 
-            Ok(ExpressionNode::new(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation: annotation.clone(),
-            }, annotation))
+            Ok(ExpressionNode::new(
+                BinOp {
+                    lhs,
+                    rhs,
+                    op: bin_op.op,
+                    annotation: annotation.clone(),
+                },
+                annotation,
+            ))
         }
 
         Operator::Plus | Operator::Minus | Operator::Multiply | Operator::Divide => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation.value_ty(), ctx)?;
 
-            if !lhs
+            let string_ty = ctx.string_type()?;
+            let string_concat = bin_op.op == Operator::Plus
+                && *lhs.annotation.value_ty() == string_ty
+                && *rhs.annotation.value_ty() == string_ty;
+
+            if string_concat {
+                return desugar_string_concat(lhs, rhs, &string_ty, ctx);
+            }
+
+            let valid_math = lhs
                 .annotation
                 .value_ty()
-                .valid_math_op(bin_op.op, rhs.annotation.value_ty())
-            {
+                .valid_math_op(bin_op.op, rhs.annotation.value_ty());
+
+            if !valid_math {
                 return Err(TypecheckError::InvalidBinOp {
                     lhs: lhs.annotation.value_ty().clone(),
                     rhs: rhs.annotation.value_ty().clone(),
@@ -119,12 +141,15 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
                 },
             };
 
-            Ok(ExpressionNode::new(ast::BinOp {
-                lhs,
-                op: bin_op.op,
-                rhs,
-                annotation: annotation.clone(),
-            }, annotation))
+            Ok(ExpressionNode::new(
+                ast::BinOp {
+                    lhs,
+                    op: bin_op.op,
+                    rhs,
+                    annotation: annotation.clone(),
+                },
+                annotation,
+            ))
         }
 
         _ => unimplemented!(
@@ -132,6 +157,53 @@ pub fn typecheck_bin_op(bin_op: &ast::BinOp<Span>, ctx: &mut Context) -> Typeche
             bin_op.op
         ),
     }
+}
+
+fn desugar_string_concat(
+    lhs: ExpressionNode,
+    rhs: ExpressionNode,
+    string_ty: &Type,
+    ctx: &Context,
+) -> TypecheckResult<ExpressionNode> {
+    let span = lhs.annotation.span().to(rhs.annotation.span());
+    let annotation = TypeAnnotation::TypedValue {
+        ty: string_ty.clone(),
+        span: span.clone(),
+        value_kind: ValueKind::Temporary,
+    };
+
+    // if LHS and RHS are both string literals, we can concat them ahead of time
+    let result = match (lhs.expr.as_ref(), rhs.expr.as_ref()) {
+        (
+            ast::Expression::Literal(ast::Literal::String(a)),
+            ast::Expression::Literal(ast::Literal::String(b)),
+        ) => {
+            ast::Expression::Literal(ast::Literal::String(a.clone() + b))
+        }
+
+        _ => {
+            let system_path = IdentPath::from(Ident::new("System", span.clone()));
+            let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
+            let (concat_path, concat_sig) = ctx.find_function(&concat_path)?;
+
+            let concat_func = ast::Expression::Ident(concat_path.last().clone());
+
+            let concat_call = ast::Call::Function(ast::FunctionCall {
+                annotation: annotation.clone(),
+                args: vec![lhs, rhs],
+                target: ast::ExpressionNode::new(concat_func, TypeAnnotation::Function {
+                    ns: concat_path.parent().unwrap(),
+                    name: concat_path.last().clone(),
+                    span: span.clone(),
+                    ty: Type::Function(concat_sig)
+                }),
+            });
+
+            ast::Expression::Call(concat_call)
+        }
+    };
+
+    Ok(ExpressionNode::new(result, annotation))
 }
 
 fn typecheck_member_of(
@@ -222,12 +294,15 @@ fn typecheck_member_of(
 
             let rhs = ast::Expression::Ident(member_ident);
 
-            Ok(ExpressionNode::new(BinOp {
-                lhs,
-                op: Operator::Member,
-                rhs: ExpressionNode::new(rhs, annotation.clone()),
-                annotation: annotation.clone(),
-            }, annotation))
+            Ok(ExpressionNode::new(
+                BinOp {
+                    lhs,
+                    op: Operator::Member,
+                    rhs: ExpressionNode::new(rhs, annotation.clone()),
+                    annotation: annotation.clone(),
+                },
+                annotation,
+            ))
         }
 
         // a.B(x: x)

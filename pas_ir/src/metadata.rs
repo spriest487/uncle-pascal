@@ -417,7 +417,8 @@ impl Metadata {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
                         iface_impl.methods.iter().find_map(|(method, impl_id)| {
                             if *impl_id == id {
-                                Some(format!("impl of {}.{} for {}", iface.name, method, impl_ty))
+                                let impl_ty_name = self.pretty_ty_name(impl_ty);
+                                Some(format!("impl of {}.{} for {}", iface.name, method, impl_ty_name))
                             } else {
                                 None
                             }
@@ -426,6 +427,30 @@ impl Metadata {
                 })
             })
             .unwrap()
+    }
+
+    pub fn pretty_ty_name(&self, ty: &Type) -> String {
+        match ty {
+            Type::Struct(id) => {
+                self.structs.get(id)
+                    .map(|def| def.name.to_string())
+                    .unwrap_or_else(|| id.to_string())
+            }
+
+            Type::InterfaceRef(id) => {
+                self.ifaces.get(id)
+                    .map(|def| def.name.to_string())
+                    .unwrap_or_else(|| id.to_string())
+            }
+
+            Type::Rc(ty) => self.pretty_ty_name(ty),
+
+            Type::Pointer(ty) => {
+                format!("^{}", self.pretty_ty_name(ty))
+            }
+
+            ty => ty.to_string(),
+        }
     }
 
     pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
