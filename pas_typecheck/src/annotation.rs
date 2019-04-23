@@ -1,7 +1,7 @@
 use std::{fmt, rc::Rc};
 
 use pas_common::span::*;
-use pas_syn::{ast::Annotation, ident::IdentPath, Ident};
+use pas_syn::{ast::{ Annotation, TypeDeclName, DeclNamed }, ident::IdentPath, Ident};
 
 use crate::{
     ast::{Expression, FunctionDecl, Variant},
@@ -222,4 +222,29 @@ impl Spanned for TypeAnnotation {
 impl Annotation for TypeAnnotation {
     type Type = Type;
     type Pattern = TypePattern;
+    type DeclName = QualifiedDeclName;
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub struct QualifiedDeclName {
+    pub decl_name: TypeDeclName,
+    pub qualified: IdentPath,
+}
+
+impl DeclNamed for QualifiedDeclName {
+    fn as_local(&self) -> &TypeDeclName {
+        &self.decl_name
+    }
+}
+
+impl Spanned for QualifiedDeclName {
+    fn span(&self) -> &Span {
+        self.decl_name.span()
+    }
+}
+
+impl fmt::Display for QualifiedDeclName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.decl_name)
+    }
 }

@@ -2,6 +2,7 @@ pub mod ns;
 pub mod result;
 
 use crate::{
+    QualifiedDeclName,
     ast::{FunctionDecl, FunctionDef, Interface},
     context::NamespaceStack,
     FunctionSig, Primitive, Type,
@@ -241,14 +242,24 @@ impl Context {
 
         if no_stdlib {
             let system_ident = Ident::new("System", builtin_span.clone());
+            let disposable_ident = Ident::new("Disposable", builtin_span.clone());
+
+            let disposable_name = QualifiedDeclName {
+                decl_name: ast::TypeDeclName {
+                    ident: disposable_ident.clone(),
+                    span: builtin_span.clone(),
+                    type_params: Vec::new(),
+                },
+                qualified: IdentPath::from_parts(vec![
+                    system_ident.clone(),
+                    disposable_ident.clone(),
+                ]),
+            };
 
             // the declaration of Disposable needs to be present even for --no-stdlib builds
             // or destructors won't work
             let disposable_iface = Interface {
-                ident: IdentPath::from_parts(vec![
-                    system_ident.clone(),
-                    Ident::new("Disposable", builtin_span.clone()),
-                ]),
+                ident: disposable_name,
                 methods: vec![
                     FunctionDecl {
                         ident: Ident::new("Dispose", builtin_span.clone()),
@@ -272,7 +283,7 @@ impl Context {
             let system_scope = root_ctx.push_scope(Some(system_ident));
 
             root_ctx.declare_type(
-                disposable_iface.ident.last().clone(),
+                disposable_ident,
                 Type::Interface(Rc::new(disposable_iface))
             ).unwrap();
 
@@ -478,6 +489,15 @@ impl Context {
             IdentPath::from(name)
         } else {
             IdentPath::from_parts(parts).child(name)
+        }
+    }
+
+    pub fn qualify_type_name(&self, name: ast::TypeDeclName) -> QualifiedDeclName {
+        let qualified = self.qualify_name(name.ident.clone());
+
+        QualifiedDeclName {
+            decl_name: name,
+            qualified,
         }
     }
 

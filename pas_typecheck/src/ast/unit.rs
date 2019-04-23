@@ -59,7 +59,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         ast::UnitDecl::Type(type_decl) => {
             let type_decl = typecheck_type_decl(type_decl, ctx)?;
             let decl_ty = Type::of_decl(&type_decl);
-            ctx.declare_type(type_decl.ident().last().clone(), decl_ty)?;
+            ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty)?;
             Ok(ast::UnitDecl::Type(type_decl))
         }
     }

@@ -261,9 +261,9 @@ pub mod ty {
                 Type::Any => Some(builtin_path("Any")),
                 Type::GenericSelf => Some(builtin_path("Self")),
                 Type::Primitive(p) => Some(builtin_path(p.name())),
-                Type::Interface(iface) => Some(iface.ident.clone()),
-                Type::Record(class) | Type::Class(class) => Some(class.ident.clone()),
-                Type::Variant(variant) => Some(variant.ident.clone()),
+                Type::Interface(iface) => Some(iface.ident.qualified.clone()),
+                Type::Record(class) | Type::Class(class) => Some(class.ident.qualified.clone()),
+                Type::Variant(variant) => Some(variant.ident.qualified.clone()),
                 _ => None,
             }
         }
@@ -274,9 +274,9 @@ pub mod ty {
                 Type::Any => Some("Any".to_string()),
                 Type::GenericSelf => Some("Self".to_string()),
                 Type::Primitive(p) => Some(p.name().to_string()),
-                Type::Interface(iface) => Some(iface.ident.to_string()),
-                Type::Record(class) | Type::Class(class) => Some(class.ident.to_string()),
-                Type::Variant(variant) => Some(variant.ident.to_string()),
+                Type::Interface(iface) => Some(iface.ident.qualified.to_string()),
+                Type::Record(class) | Type::Class(class) => Some(class.ident.qualified.to_string()),
+                Type::Variant(variant) => Some(variant.ident.qualified.to_string()),
                 _ => None,
             }
         }
@@ -390,7 +390,7 @@ pub mod ty {
                 Type::Pointer(_) => *self == *from || *from == Type::Nil,
                 Type::Function(_) => false,
                 Type::Interface(iface) => match from {
-                    Type::Class(..) => ctx.is_iface_impl(from, &iface.ident),
+                    Type::Class(..) => ctx.is_iface_impl(from, &iface.ident.qualified),
                     Type::Interface(from_iface) => iface.ident == from_iface.ident,
                     _ => false,
                 },

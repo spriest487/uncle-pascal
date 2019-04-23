@@ -39,12 +39,7 @@ pub fn typecheck_class(class: &ast::Class<Span>, ctx: &mut Context) -> Typecheck
         });
     }
 
-    assert_eq!(
-        1,
-        class.ident.as_slice().len(),
-        "parsed class def name must be unqualified"
-    );
-    let ident = ctx.qualify_name(class.ident.last().clone());
+    let ident = ctx.qualify_type_name(class.ident.clone());
 
     Ok(Class {
         kind: class.kind,
@@ -58,6 +53,8 @@ pub fn typecheck_iface(
     iface: &ast::Interface<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Interface> {
+    let ident = ctx.qualify_type_name(iface.ident.clone());
+
     let iface_scope = ctx.push_scope(None);
 
     let self_ident = Ident::new("Self", iface.span().clone());
@@ -66,7 +63,7 @@ pub fn typecheck_iface(
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
-            let method_path = iface.ident.clone().child(method.ident.clone());
+            let method_path = ident.qualified.clone().child(method.ident.clone());
 
             return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
                 ident: method_path,
@@ -79,13 +76,6 @@ pub fn typecheck_iface(
     }
 
     ctx.pop_scope(iface_scope);
-
-    assert_eq!(
-        1,
-        iface.ident.as_slice().len(),
-        "parsed class def name must be unqualified"
-    );
-    let ident = ctx.qualify_name(iface.ident.last().clone());
 
     Ok(Interface {
         ident,
@@ -117,7 +107,7 @@ pub fn typecheck_variant(
     }
 
     Ok(Variant {
-        ident: ctx.qualify_name(variant.ident.last().clone()),
+        ident: ctx.qualify_type_name(variant.ident.clone()),
         cases,
         span: variant.span().clone(),
     })

@@ -23,7 +23,7 @@ pub enum ClassKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Class<A: Annotation> {
     pub kind: ClassKind,
-    pub ident: IdentPath,
+    pub ident: A::DeclName,
     pub members: Vec<Member<A>>,
     pub span: Span,
 }
@@ -39,7 +39,7 @@ impl Class<Span> {
         Keyword::Class.or(Keyword::Record)
     }
 
-    fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+    fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw_token = tokens.match_one(Self::match_kw())?;
 
         let members = tokens.match_separated(Separator::Semicolon, |_, tokens| {
@@ -75,7 +75,7 @@ impl Class<Span> {
 
         Ok(Class {
             kind,
-            ident: ident.into(),
+            ident: name,
             members,
             span: kw_token.span().to(end_token.span()),
         })
@@ -107,7 +107,7 @@ impl<A: Annotation> fmt::Display for Class<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Interface<A: Annotation> {
-    pub ident: IdentPath,
+    pub ident: A::DeclName,
     pub methods: Vec<FunctionDecl<A>>,
     pub span: Span,
 }
@@ -119,7 +119,7 @@ impl<A: Annotation> Interface<A> {
 }
 
 impl Interface<Span> {
-    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, ident: TypeDeclName) -> ParseResult<Self> {
         let iface_kw = tokens.match_one(Keyword::Interface)?;
         let methods = tokens.match_separated(Separator::Semicolon, |_, tokens| {
             if tokens.look_ahead().match_one(Keyword::End).is_some() {
@@ -158,7 +158,7 @@ impl<A: Annotation> fmt::Display for Interface<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Variant<A: Annotation> {
-    pub ident: IdentPath,
+    pub ident: A::DeclName,
     pub cases: Vec<VariantCase<A>>,
 
     pub span: Span,
@@ -180,7 +180,7 @@ impl<A: Annotation> Variant<A> {
 }
 
 impl Variant<Span> {
-    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;
         let cases = tokens.match_separated(Separator::Semicolon, |_, tokens| {
             if tokens.look_ahead().match_one(Keyword::End).is_some() {
@@ -193,10 +193,10 @@ impl Variant<Span> {
                 Some(..) => {
                     tokens.advance(1);
                     let ty = TypeName::parse(tokens)?;
-                    let span = ident.span().to(ty.span());
+                    let span = ident_tt.span().to(ty.span());
                     (Some(ty), span)
                 }
-                None => (None, ident.span().clone()),
+                None => (None, ident_tt.span().clone()),
             };
 
             let ident = ident_tt.into_ident().unwrap();
@@ -213,7 +213,7 @@ impl Variant<Span> {
         let span = kw.span().to(end_kw.span());
 
         Ok(Variant {
-            ident: IdentPath::from(ident),
+            ident: name,
             cases,
 
             span,
@@ -249,12 +249,84 @@ pub enum TypeDecl<A: Annotation> {
 }
 
 impl<A: Annotation> TypeDecl<A> {
-    pub fn ident(&self) -> &IdentPath {
+    pub fn ident(&self) -> &A::DeclName {
         match self {
             TypeDecl::Class(class) => &class.ident,
             TypeDecl::Interface(iface) => &iface.ident,
             TypeDecl::Variant(variant) => &variant.ident,
         }
+    }
+}
+
+/// the common part of a typedecl before the `=`, eg in `type X<Y> = class...`, `X<Y>` is the decl
+/// name. we parse it first and pass it into the parse functions for specific decl kinds.
+/// this isn't quite the same thing as a TypeName, which can be a full qualified path - a decl
+/// name is a single unqualified ident + maybe a type parameter list
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypeDeclName {
+    pub ident: Ident,
+    pub type_params: Vec<Ident>,
+    pub span: Span,
+}
+
+impl DeclNamed for TypeDeclName {
+    fn as_local(&self) -> &Self {
+        self
+    }
+}
+
+impl fmt::Display for TypeDeclName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.ident)?;
+        if !self.type_params.is_empty() {
+            write!(f, "<")?;
+            for (i, param) in self.type_params.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", param)?;
+            }
+            write!(f, ">")?;
+        }
+
+        Ok(())
+    }
+}
+
+impl Spanned for TypeDeclName {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl TypeDeclName {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+
+        let (type_params, span) = match tokens.look_ahead().match_one(Operator::Lt) {
+            Some(_open_bracket) => {
+                tokens.advance(1);
+
+                let type_params = tokens.match_separated(Separator::Comma, |_, tokens| {
+                    let param = tokens.match_one(Matcher::AnyIdent)?;
+                    Ok(Generate::Yield(param.into_ident().unwrap()))
+                })?;
+
+                let close_bracket = tokens.match_one(Operator::Gt)?;
+
+                (type_params, ident_tt.span().to(close_bracket.span()))
+            }
+
+            None => {
+                (Vec::new(), ident_tt.span().clone())
+            }
+        };
+
+        Ok(Self {
+            ident: ident_tt.into_ident().unwrap(),
+            type_params,
+            span,
+        })
     }
 }
 
@@ -285,7 +357,7 @@ impl TypeDecl<Span> {
     }
 
     fn parse_decl(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
+        let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
         let class_matcher = Class::match_kw();
@@ -293,7 +365,7 @@ impl TypeDecl<Span> {
 
         match tokens.look_ahead().next() {
             Some(ref tt) if class_matcher.is_match(tt) => {
-                let class_decl = Class::parse(tokens, ident.clone())?;
+                let class_decl = Class::parse(tokens, name)?;
                 Ok(TypeDecl::Class(class_decl))
             },
 
@@ -301,7 +373,7 @@ impl TypeDecl<Span> {
                 kw: Keyword::Interface,
                 ..
             }) => {
-                let iface_decl = Interface::parse(tokens, ident.clone())?;
+                let iface_decl = Interface::parse(tokens, name)?;
                 Ok(TypeDecl::Interface(iface_decl))
             },
 
@@ -309,7 +381,7 @@ impl TypeDecl<Span> {
                 kw: Keyword::Variant,
                 ..
                  }) => {
-                let variant_decl = Variant::parse(tokens, ident.clone())?;
+                let variant_decl = Variant::parse(tokens, name)?;
                 Ok(TypeDecl::Variant(variant_decl))
             }
 
@@ -338,7 +410,7 @@ impl<A: Annotation> Spanned for TypeDecl<A> {
 
 impl<A: Annotation> fmt::Display for TypeDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "type {} = ", self.ident().last())?;
+        write!(f, "type {} = ", self.ident().as_local())?;
 
         match self {
             TypeDecl::Class(class) => write!(f, "{}", class),

@@ -583,7 +583,7 @@ impl Metadata {
             fields.insert(FieldID(id), StructField { name, ty, rc });
         }
 
-        let struct_name = NamePath::from_ident(struct_def.ident.clone());
+        let struct_name = NamePath::from_ident(struct_def.ident.qualified.clone());
 
         // System.String is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
@@ -607,7 +607,7 @@ impl Metadata {
     }
 
     pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
-        let name_path = NamePath::from_ident(variant_def.ident.clone());
+        let name_path = NamePath::from_ident(variant_def.ident.qualified.clone());
 
         let variant_id = self.next_struct_id();
 
@@ -649,7 +649,7 @@ impl Metadata {
     pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
         // System.Disposable is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
-        let name = NamePath::from_ident(iface_def.ident.clone());
+        let name = NamePath::from_ident(iface_def.ident.qualified.clone());
         let disposable_name = NamePath::from(vec!["System".to_string(), "Disposable".to_string()]);
 
         let id = if name == disposable_name {
@@ -738,7 +738,7 @@ impl Metadata {
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                let ty_name = NamePath::from_ident(iface.ident.clone());
+                let ty_name = NamePath::from_ident(iface.ident.qualified.clone());
                 let id = self
                     .ifaces
                     .iter()
@@ -756,7 +756,7 @@ impl Metadata {
             pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
 
             pas_typecheck::Type::Record(class) => {
-                let ty_name = NamePath::from_ident(class.ident.clone());
+                let ty_name = NamePath::from_ident(class.ident.qualified.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty_name));
@@ -764,7 +764,7 @@ impl Metadata {
             }
 
             pas_typecheck::Type::Class(class) => {
-                let ty_name = NamePath::from_ident(class.ident.clone());
+                let ty_name = NamePath::from_ident(class.ident.qualified.clone());
                 let (id, _) = self
                     .find_struct(&ty_name)
                     .unwrap_or_else(|| panic!("structure {} must exist in metadata", ty_name));
@@ -781,7 +781,7 @@ impl Metadata {
             }
 
             pas_ty::Type::Variant(variant) => {
-                let ty_name = NamePath::from_ident(variant.ident.clone());
+                let ty_name = NamePath::from_ident(variant.ident.qualified.clone());
                 let (id, _) = self.find_variant(&ty_name)
                     .unwrap_or_else(|| panic!("variant {} must exist in metadata", ty_name));
                 Type::Variant(id)

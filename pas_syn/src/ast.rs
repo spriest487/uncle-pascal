@@ -37,13 +37,19 @@ pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
 }
 
+pub trait DeclNamed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
+    fn as_local(&self) -> &TypeDeclName;
+}
+
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
+    type DeclName: DeclNamed;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
     type Type = TypeName;
+    type DeclName = TypeDeclName;
     type Pattern = TypeNamePattern;
 }
 
@@ -65,7 +71,7 @@ pub enum TypeName {
 impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
-            TypeName::Ident { ident, .. } => ident.span(),
+            TypeName::Ident { ident, .. } => Spanned::span(ident),
             TypeName::Array { span, .. } => span,
             TypeName::Unknown(span) => span,
         }

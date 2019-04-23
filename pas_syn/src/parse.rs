@@ -5,6 +5,7 @@ pub mod prelude {
     pub use crate::{
         ast::{
             Annotation,
+            DeclNamed,
             TypeName,
             TypeNamePattern,
         },
