@@ -23,6 +23,12 @@ RefHello(s);
 OutHello(s);
 }
 
+
+// error: in-ref not initialized
+var s: String;
+RefHello(s);
+
+
 {
 var x := ['Salutations'];
 // error: not a referencable expression (yet?)

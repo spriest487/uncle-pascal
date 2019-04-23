@@ -62,7 +62,11 @@ fn typecheck_args(
 
         if is_in_ref || is_out_ref {
             match arg_expr.annotation().value_kind() {
-                Some(ValueKind::Mutable) | Some(ValueKind::Ref) => {}
+                /* in-refs shouldn't really allow uninitialized values here but we do init checking
+                in a separate pass */
+                Some(ValueKind::Mutable)
+                | Some(ValueKind::Ref)
+                | Some(ValueKind::Uninitialized) => {}
                 _ => {
                     return Err(TypecheckError::NotMutable {
                         expr: Box::new(arg_expr),
