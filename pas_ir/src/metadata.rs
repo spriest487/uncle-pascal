@@ -42,10 +42,6 @@ impl fmt::Display for InterfaceID {
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 
-pub const RC_ID: StructID = StructID(0);
-pub const RC_REF_COUNT_FIELD: FieldID = FieldID(0);
-pub const RC_VALUE_FIELD: FieldID = FieldID(1);
-
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
@@ -176,12 +172,20 @@ impl Struct {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
+    /// no type or unknown type (used for raw pointers like void*)
     Nothing,
+
     Pointer(Box<Type>),
     Struct(StructID),
-    Array { element: Box<Type>, dim: usize },
+    Array {
+        element: Box<Type>,
+        dim: usize,
+    },
     InterfaceRef(InterfaceID),
-    Rc(Box<Type>),
+
+    /// pointer to an RC object somewhere on the heap, which can be dereferenced to yield a value
+    /// of the inner type
+    RcPointer(Box<Type>),
     Bool,
     U8,
     I32,
@@ -194,7 +198,7 @@ impl Type {
     }
 
     pub fn rc(self) -> Self {
-        Type::Rc(Box::new(self))
+        Type::RcPointer(Box::new(self))
     }
 
     pub fn array(self, dim: usize) -> Self {
@@ -217,6 +221,13 @@ impl Type {
             _ => false,
         }
     }
+
+    pub fn rc_resource_type_id(&self) -> Option<StructID> {
+        match self {
+            Type::RcPointer(res_ty) => res_ty.as_struct(),
+            _ => None,
+        }
+    }
 }
 
 impl fmt::Display for Type {
@@ -230,7 +241,7 @@ impl fmt::Display for Type {
             Type::InterfaceRef(id) => write!(f, "<{}>", id),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{{}}}", id),
-            Type::Rc(id) => write!(f, "rc {{{}}}", id),
+            Type::RcPointer(id) => write!(f, "rc {{{}}}", id),
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
         }
     }
@@ -290,19 +301,6 @@ pub struct Metadata {
 }
 
 impl Metadata {
-    pub fn system() -> Self {
-        let mut metadata = Metadata::new();
-
-        metadata.structs.insert(
-            RC_ID,
-            Struct::new(vec!["Rc".to_string()])
-                .with_field("rc", Type::I32, false)
-                .with_field("value", Type::Nothing.ptr(), false),
-        );
-
-        metadata
-    }
-
     pub fn new() -> Self {
         Self {
             structs: HashMap::new(),
@@ -464,7 +462,7 @@ impl Metadata {
                 .map(|def| def.name.to_string())
                 .unwrap_or_else(|| id.to_string()),
 
-            Type::Rc(ty) => format!("rc {}", self.pretty_ty_name(ty)),
+            Type::RcPointer(ty) => format!("rc {}", self.pretty_ty_name(ty)),
 
             Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
 

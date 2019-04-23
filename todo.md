@@ -1,10 +1,11 @@
 # critical
 
-* variable initialization tracking checks in Context
 * add `NativeUInt` type
 * `exit` statement
 * while loop
 * unique compiler error codes
+* any-references
+* string comparison
 
 # big features
 
@@ -20,6 +21,3 @@
 * Binding.def used? 
 * make temporary its own kind of TypeAnnotation?
 * ref params should be able to refer to record fields and array elements
-
-
-always parse if as a stmt then convert to expr??

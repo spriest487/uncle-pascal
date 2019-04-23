@@ -155,7 +155,10 @@ fn translate_branch(
     as_stmt: bool,
 ) {
     if as_stmt {
-        assert!(out_val.is_none(), "branch translated as statement should not have an out location");
+        assert!(
+            out_val.is_none(),
+            "branch translated as statement should not have an out location"
+        );
 
         let stmt = pas_ty::ast::Statement::try_from_expr(expr.clone())
             .unwrap_or_else(|_| panic!("branch expression `{}` is not valid as a statement", expr));
@@ -209,7 +212,13 @@ pub fn translate_if_cond(
     builder.append(Instruction::Label(then_label));
 
     builder.begin_scope();
-    translate_branch(&if_cond.then_branch, out_val.as_ref(), &out_ty, builder, as_stmt);
+    translate_branch(
+        &if_cond.then_branch,
+        out_val.as_ref(),
+        &out_ty,
+        builder,
+        as_stmt,
+    );
     builder.end_scope();
 
     builder.append(Instruction::Jump { dest: end_label });
@@ -621,7 +630,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let out_ptr = builder.local_new(struct_ty.clone(), None);
 
     match &struct_ty {
-        Type::Rc(struct_ty) => {
+        Type::RcPointer(struct_ty) => {
             let struct_id = match struct_ty.as_ref() {
                 Type::Struct(id) => *id,
                 _ => panic!(

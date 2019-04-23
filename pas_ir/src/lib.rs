@@ -9,7 +9,7 @@ mod stmt;
 
 pub mod prelude {
     pub use crate::{
-        metadata::{Metadata, StringId, GlobalName, NamePath, Type, STRING_ID},
+        metadata::{GlobalName, Metadata, NamePath, StringId, Type, STRING_ID},
         Builder, GlobalRef, Instruction, Interpreter, Label, Ref, Value,
     };
 }
@@ -189,8 +189,16 @@ pub enum Instruction {
         struct_id: StructID,
     },
 
-    Release(Ref),
-    Retain(Ref),
+    Release {
+        at: Ref,
+
+        /// release instruction needs to know the resource type to correctly dispose it when
+        /// the count becomes zero. this is the type ID of the reference-counted resource
+        struct_id: StructID,
+    },
+    Retain {
+        at: Ref,
+    },
 }
 
 impl fmt::Display for Instruction {
@@ -309,7 +317,12 @@ impl fmt::Display for Instruction {
                 width = IX_WIDTH
             ),
 
-            Instruction::Element { out, a, element, index } => write!(
+            Instruction::Element {
+                out,
+                a,
+                element,
+                index,
+            } => write!(
                 f,
                 "{:>width$} {} := @({} as array of {})[{}]",
                 "el",
@@ -320,7 +333,12 @@ impl fmt::Display for Instruction {
                 width = IX_WIDTH
             ),
 
-            Instruction::Field { out, a, of_ty, field } => write!(
+            Instruction::Field {
+                out,
+                a,
+                of_ty,
+                field,
+            } => write!(
                 f,
                 "{:>width$} {} := @({} as {}).{}",
                 "fld",
@@ -355,9 +373,18 @@ impl fmt::Display for Instruction {
                 width = IX_WIDTH
             ),
 
-            Instruction::Release(at) => write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH),
+            Instruction::Release { at, struct_id } => write!(
+                f,
+                "{:>width$} {} as {}",
+                "release",
+                at,
+                struct_id,
+                width = IX_WIDTH
+            ),
 
-            Instruction::Retain(at) => write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH),
+            Instruction::Retain { at } => {
+                write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
+            }
         }
     }
 }
@@ -477,10 +504,13 @@ impl<'metadata> Builder<'metadata> {
         );
 
         if by_ref {
-            assert!(match &ty {
-                Type::Pointer(..) => true,
-                _ => false,
-            }, "by-ref parameters must have pointer type")
+            assert!(
+                match &ty {
+                    Type::Pointer(..) => true,
+                    _ => false,
+                },
+                "by-ref parameters must have pointer type"
+            )
         }
 
         if let Some(name) = name.as_ref() {
@@ -491,9 +521,12 @@ impl<'metadata> Builder<'metadata> {
                 .any(|l| l.name() == Some(&name) || l.id() == id));
         }
 
-        self.current_scope_mut()
-            .locals
-            .push(Local::Bound { id, name, ty, by_ref });
+        self.current_scope_mut().locals.push(Local::Bound {
+            id,
+            name,
+            ty,
+            by_ref,
+        });
     }
 
     fn find_next_local_id(&self) -> LocalID {
@@ -563,7 +596,12 @@ impl<'metadata> Builder<'metadata> {
             .next()
     }
 
-    fn visit_struct_deep(&mut self, at: Ref, struct_id: StructID, f: &impl Fn(&mut Builder, Ref)) {
+    fn visit_struct_deep(
+        &mut self,
+        at: Ref,
+        struct_id: StructID,
+        f: &impl Fn(&mut Builder, &Type, Ref),
+    ) {
         let fields: Vec<_> = self.metadata.structs()[&struct_id]
             .fields
             .iter()
@@ -571,22 +609,21 @@ impl<'metadata> Builder<'metadata> {
             .collect();
 
         for (field, field_ty, field_rc) in fields {
-            // todo: would be more efficient if we didn't have to copy each member
-            // of the struct every time and instead knew which members contained deep
-            // rc refs. also if we could address the fields by offsets instead of copying
             if field_rc || field_ty.as_struct().is_some() {
+                // store the field in a temp slot
                 let field_val = self.local_temp(field_ty.clone().ptr());
                 self.append(Instruction::Field {
                     out: field_val.clone(),
                     a: at.clone(),
-                    of_ty: field_ty.clone(),
+                    of_ty: Type::Struct(struct_id),
                     field,
                 });
 
+                // if it's a struct, visit its fields now
                 if let Type::Struct(field_struct_id) = &field_ty {
                     self.visit_struct_deep(field_val.deref(), *field_struct_id, f);
                 } else {
-                    f(self, field_val.deref());
+                    f(self, &field_ty, field_val.deref());
                 }
             }
         }
@@ -594,14 +631,14 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
         match ty {
-            Type::Rc(_) => {
-                self.append(Instruction::Retain(at.clone()));
+            Type::RcPointer(_resource_ty) => {
+                self.append(Instruction::Retain { at: at.clone() });
             }
 
             Type::Struct(id) => {
                 self.begin_scope();
-                self.visit_struct_deep(at, *id, &mut |builder, field_ref| {
-                    builder.append(Instruction::Retain(field_ref));
+                self.visit_struct_deep(at, *id, &mut |builder, _field_ty, field_ref| {
+                    builder.append(Instruction::Retain { at: field_ref });
                 });
                 self.end_scope();
             }
@@ -614,14 +651,25 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
         match ty {
-            Type::Rc(_) => {
-                self.append(Instruction::Release(at.clone()));
-            }
+            Type::RcPointer(resource_ty) => match resource_ty.as_ref() {
+                Type::Struct(struct_id) => {
+                    self.append(Instruction::Release {
+                        at: at.clone(),
+                        struct_id: *struct_id,
+                    });
+                }
+                _ => panic!("type {} cannot be managed by a rc pointer", resource_ty),
+            },
 
-            Type::Struct(id) => {
+            Type::Struct(struct_id) => {
                 self.begin_scope();
-                self.visit_struct_deep(at, *id, &mut |builder, field_ref| {
-                    builder.append(Instruction::Release(field_ref));
+                self.visit_struct_deep(at, *struct_id, &mut |builder, field_ty, field_ref| {
+                    if let Some(field_resource_id) = field_ty.rc_resource_type_id() {
+                        builder.append(Instruction::Release {
+                            at: field_ref,
+                            struct_id: field_resource_id,
+                        });
+                    }
                 });
                 self.end_scope();
             }
@@ -705,9 +753,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
                 (body_builder.metadata.translate_type(&param.ty).ptr(), true)
             }
 
-            None => {
-                (body_builder.metadata.translate_type(&param.ty), false)
-            }
+            None => (body_builder.metadata.translate_type(&param.ty), false),
         };
 
         body_builder.comment(&format!(
@@ -799,9 +845,6 @@ impl fmt::Display for Module {
 
 pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
     let mut metadata = Metadata::new();
-    // add refs
-    metadata.extend(&Metadata::system());
-
     let mut functions = HashMap::new();
 
     for unit in units.iter() {
