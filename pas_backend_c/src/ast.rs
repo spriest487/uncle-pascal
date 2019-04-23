@@ -183,6 +183,10 @@ impl fmt::Display for Module {
             writeln!(f, "#define TRACE_RC 1")?;
         }
 
+        if self.opts.no_stdlib {
+            writeln!(f, "#define NO_STDLIB 1")?;
+        }
+
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
         for def in &self.type_defs {

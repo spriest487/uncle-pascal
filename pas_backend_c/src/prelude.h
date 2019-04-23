@@ -169,6 +169,8 @@ static void RcRelease(struct Rc* rc) {
     }
 }
 
+#if !NO_STDLIB
+
 // implementations of System.pas builtins
 
 static int32_t System_StrToInt(struct Rc* str_rc);
@@ -185,6 +187,8 @@ struct Struct_1 {
     unsigned char* field_0;
     int32_t field_1;
 };
+
+#endif
 
 // runtime start/stop
 

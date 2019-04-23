@@ -860,8 +860,27 @@ impl fmt::Display for Module {
     }
 }
 
-pub fn translate_units(units: &[pas_ty::ast::Unit]) -> Module {
+pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
     let mut metadata = Metadata::new();
+    if no_stdlib {
+        // the System.Disposable interface isn't defined in System.pas but it's required
+        // for destructors to function with --no-stdlib
+        let dispose_iface = Interface {
+            name: NamePath::from(vec!["System".to_string(), "Disposable".to_string()]),
+            methods: vec![
+                Method {
+                    name: "Dispose".to_string(),
+                    return_ty: Type::Nothing,
+                    params: vec![Type::RcPointer(None)],
+                }
+            ],
+            impls: HashMap::new(),
+        };
+
+        metadata.insert_iface(DISPOSABLE_ID, dispose_iface);
+    }
+
+
     let mut functions = HashMap::new();
 
     for unit in units.iter() {

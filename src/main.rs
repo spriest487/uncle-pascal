@@ -343,7 +343,7 @@ fn compile(
         return Ok(());
     }
 
-    let mut root_ctx = ty::Context::root();
+    let mut root_ctx = ty::Context::root(args.no_stdlib);
     let mut typed_units = Vec::new();
 
     for unit in parsed_units {
@@ -357,7 +357,7 @@ fn compile(
         return Ok(());
     }
 
-    let module = ir::translate_units(&typed_units);
+    let module = ir::translate_units(&typed_units, args.no_stdlib);
     if args.stage == Stage::Intermediate {
         println!("{}", module);
         return Ok(());
@@ -371,6 +371,7 @@ fn compile(
                     trace_heap: args.trace_heap,
                     trace_rc: args.trace_rc,
                     trace_ir: args.trace_ir,
+                    no_stdlib: args.no_stdlib,
                 };
                 let module = backend_c::translate(&module, opts);
                 write_output_file(&out_path, &module)?;
@@ -382,10 +383,11 @@ fn compile(
             trace_rc: args.trace_rc,
             trace_heap: args.trace_heap,
             trace_ir: args.trace_ir,
+            no_stdlib: args.no_stdlib,
         };
 
         let mut interpreter = Interpreter::new(&interpret_opts);
-        interpreter.load_module(&module);
+        interpreter.load_module(&module, !args.no_stdlib);
         interpreter.shutdown();
     }
 

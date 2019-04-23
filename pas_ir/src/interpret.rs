@@ -357,6 +357,8 @@ pub struct InterpreterOpts {
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
+
+    pub no_stdlib: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1249,7 +1251,7 @@ impl Interpreter {
         Pointer::Heap(addr)
     }
 
-    fn init_globals(&mut self) {
+    fn init_stdlib_globals(&mut self) {
         let inttostr_name = GlobalName::new("IntToStr", vec!["System"]);
         if let Some(inttostr_id) = self.metadata.find_function(&inttostr_name) {
             self.globals.insert(
@@ -1307,7 +1309,7 @@ impl Interpreter {
         }
     }
 
-    pub fn load_module(&mut self, module: &Module) {
+    pub fn load_module(&mut self, module: &Module, init_stdlib: bool) {
         self.metadata.extend(&module.metadata);
 
         for (func_name, func) in &module.functions {
@@ -1336,7 +1338,9 @@ impl Interpreter {
             );
         }
 
-        self.init_globals();
+        if init_stdlib {
+            self.init_stdlib_globals();
+        }
 
         self.push_stack();
         self.execute(&module.init);

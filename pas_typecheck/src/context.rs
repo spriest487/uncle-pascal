@@ -201,7 +201,7 @@ pub fn builtin_span() -> Span {
 }
 
 impl Context {
-    pub fn root() -> Self {
+    pub fn root(no_stdlib: bool) -> Self {
         let builtin_span = builtin_span();
 
         let mut root_ctx = Self {
@@ -238,6 +238,47 @@ impl Context {
 
         // builtins are in scope 0, unit is scope 1
         root_ctx.push_scope(None);
+
+        if no_stdlib {
+            let system_ident = Ident::new("System", builtin_span.clone());
+
+            // the declaration of Disposable needs to be present even for --no-stdlib builds
+            // or destructors won't work
+            let disposable_iface = Interface {
+                ident: IdentPath::from_parts(vec![
+                    system_ident.clone(),
+                    Ident::new("Disposable", builtin_span.clone()),
+                ]),
+                methods: vec![
+                    FunctionDecl {
+                        ident: Ident::new("Dispose", builtin_span.clone()),
+                        return_ty: None,
+                        impl_iface: None,
+                        mods: Vec::new(),
+                        params: vec![
+                            ast::FunctionParam {
+                                ident: Ident::new("self", builtin_span.clone()),
+                                ty: Type::GenericSelf,
+                                modifier: None,
+                                span: builtin_span.clone(),
+                            }
+                        ],
+                        span: builtin_span.clone(),
+                    }
+                ],
+                span: builtin_span,
+            };
+
+            let system_scope = root_ctx.push_scope(Some(system_ident));
+
+            root_ctx.declare_type(
+                disposable_iface.ident.last().clone(),
+                Type::Interface(Rc::new(disposable_iface))
+            ).unwrap();
+
+            root_ctx.pop_scope(system_scope);
+        }
+
         root_ctx
     }
 
@@ -579,15 +620,22 @@ impl Context {
                 let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((parent_path, iface.as_ref()))
             }
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedInterface(
-                name.clone(),
-                other.clone().into(),
-            )),
+
+            Some(MemberRef::Value { value: other, .. }) => {
+                Err(NameError::ExpectedInterface(
+                    name.clone(),
+                    other.clone().into(),
+                ))
+            },
+
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedInterface(name.clone(), unexpected))
             }
-            None => Err(NameError::NotFound(name.last().clone())),
+
+            None => {
+                Err(NameError::NotFound(name.last().clone()))
+            },
         }
     }
 

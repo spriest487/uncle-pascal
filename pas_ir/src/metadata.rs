@@ -405,7 +405,7 @@ impl Metadata {
             if self.ifaces.contains_key(id) {
                 let existing = &self.ifaces[id];
                 panic!(
-                    "duplicate struct ID {} in metadata (new: {}, existing: {})",
+                    "duplicate iface ID {} in metadata (new: {}, existing: {})",
                     id, iface_def.name, existing.name
                 );
             }
@@ -640,6 +640,10 @@ impl Metadata {
 
     pub fn ifaces(&self) -> &HashMap<InterfaceID, Interface> {
         &self.ifaces
+    }
+
+    pub(crate) fn insert_iface(&mut self, id: InterfaceID, iface: Interface) {
+        self.ifaces.insert(id, iface);
     }
 
     pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {

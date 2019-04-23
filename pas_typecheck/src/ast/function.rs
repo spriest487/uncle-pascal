@@ -74,9 +74,9 @@ fn find_iface_impl(
     sig: &FunctionSig,
     ctx: &Context,
 ) -> TypecheckResult<InterfaceImpl> {
-    let (iface_path, iface) = ctx.find_iface(iface)?;
+    let (iface_path, iface_decl) = ctx.find_iface(iface)?;
 
-    let impl_for_types: Vec<_> = iface
+    let impl_for_types: Vec<_> = iface_decl
         .methods
         .iter()
         .filter(|method| method.ident == *method_ident)
@@ -86,7 +86,7 @@ fn find_iface_impl(
     match impl_for_types.len() {
         0 => {
             return Err(NameError::MemberNotFound {
-                base: Type::Interface(iface.clone().into()),
+                base: Type::Interface(iface_decl.clone().into()),
                 span: method_ident.span().clone(),
                 member: method_ident.clone(),
             }

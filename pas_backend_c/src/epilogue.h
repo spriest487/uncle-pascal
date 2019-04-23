@@ -1,3 +1,5 @@
+#if !NO_STDLIB
+
 #define STRING_STRUCT struct Struct_1
 #define STRING_CLASS Class_1
 #define STRING_PTR(s_rc) ((STRING_STRUCT*) s_rc->resource)
@@ -51,3 +53,5 @@ static void System_WriteLn(struct Rc* str_rc) {
     System_Write(str_rc);
     putchar('\n');
 }
+
+#endif
