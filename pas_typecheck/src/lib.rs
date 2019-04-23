@@ -425,6 +425,13 @@ pub mod ty {
                 _ => None,
             }
         }
+
+        pub fn is_matchable(&self) -> bool {
+            match self {
+                Type::Class(..) | Type::Interface(..) => true,
+                _ => false,
+            }
+        }
     }
 
     impl fmt::Display for Type {

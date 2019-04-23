@@ -42,6 +42,10 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    NotMatchable {
+        ty: Type,
+        span: Span,
+    },
     InvalidUnaryOp {
         op: Operator,
         operand: Type,
@@ -106,6 +110,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotMutable { expr, .. } => expr.annotation().span(),
             TypecheckError::NotAddressable { span, .. } => span,
             TypecheckError::NotDerefable { span, .. } => span,
+            TypecheckError::NotMatchable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
@@ -135,6 +140,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NotMutable { .. } => "Value not mutable".to_string(),
             TypecheckError::NotAddressable { .. } => "Value not addressable".to_string(),
             TypecheckError::NotDerefable { .. } => "Value cannot be dereferenced".to_string(),
+            TypecheckError::NotMatchable { .. } => "Type is not matchable".to_string(),
             TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
             TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
@@ -270,7 +276,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::NotDerefable { ty, .. } => {
-                write!(f, "value of type {} cannot be dereferenced", ty, )
+                write!(f, "value of type {} cannot be dereferenced", ty)
+            }
+
+            TypecheckError::NotMatchable { ty, .. } => {
+                write!(f, "type {} cannot be used in matching constructs", ty)
             }
 
             TypecheckError::InvalidBinOp { lhs, rhs, op, .. } => {

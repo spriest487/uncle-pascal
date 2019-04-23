@@ -20,7 +20,7 @@ fn try_parse_expr(src: &str) -> ParseResult<Expression<Span>> {
         })
 }
 
-fn parse_expr(src: &str) -> Expression<Span> {
+pub fn parse_expr(src: &str) -> Expression<Span> {
     try_parse_expr(src).unwrap()
 }
 

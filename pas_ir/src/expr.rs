@@ -201,7 +201,35 @@ pub fn translate_if_cond(
     let end_label = builder.alloc_label();
     let else_label = if_cond.else_branch.as_ref().map(|_| builder.alloc_label());
 
-    let test_val = translate_expr(&if_cond.cond, builder);
+    let cond_val = translate_expr(&if_cond.cond, builder);
+
+    let (test_val, binding) = match &if_cond.is_pattern {
+        None => {
+            (cond_val, None)
+        }
+
+        Some(ast::CondPattern::Positive { binding, is_ty, .. }) => {
+            let cond_val = translate_expr(&if_cond.cond, builder);
+            let test_val = builder.local_temp(Type::Bool);
+            builder.append(Instruction::IsClass {
+
+            });
+
+            let binding = binding.map(|binding| {
+                let binding_ty = builder.metadata.translate_type(is_ty);
+                let binding_name = binding.name.to_string();
+
+                (binding_name, binding_ty)
+            });
+
+            (test_val, binding)
+        }
+
+        Some(ast::CondPattern::Negative { is_not_ty, .. }) => {
+
+        }
+    };
+
     builder.append(Instruction::JumpIf {
         test: test_val.into(),
         dest: then_label,
@@ -291,7 +319,8 @@ fn translate_call_with_args(
             let rest_args = arg_vals[1..].to_vec();
 
             let method_index = builder.metadata.ifaces()[&iface_id]
-                .methods.iter()
+                .methods
+                .iter()
                 .position(|m| m.name == method)
                 .unwrap();
 
@@ -349,8 +378,11 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             };
 
             let method_name = method_call.ident.to_string();
-            let method_index = builder.metadata.ifaces()[&iface_id].method_index(&method_name)
-                .unwrap_or_else(|| panic!("missing method {} for interface {}", method_name, iface_id));
+            let method_index = builder.metadata.ifaces()[&iface_id]
+                .method_index(&method_name)
+                .unwrap_or_else(|| {
+                    panic!("missing method {} for interface {}", method_name, iface_id)
+                });
 
             let self_ty = builder.metadata.translate_type(&method_call.self_type);
             let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
@@ -709,7 +741,10 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
         let field_def = struct_def.get_field(field_id).unwrap();
 
-        builder.comment(&format!("{}: {} ({})", member.ident, member.value, field_def.ty));
+        builder.comment(&format!(
+            "{}: {} ({})",
+            member.ident, member.value, field_def.ty
+        ));
 
         builder.retain(member_val.clone(), &field_def.ty);
 

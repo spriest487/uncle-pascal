@@ -194,6 +194,7 @@ impl<A: Annotation> Statement<A> {
 
                 Ok(Statement::If(IfCond {
                     cond: if_cond.cond,
+                    is_pattern: if_cond.is_pattern,
                     then_branch,
                     else_branch,
                     annotation: if_cond.annotation,
