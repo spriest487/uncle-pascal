@@ -1,11 +1,14 @@
+use std::{collections::HashMap, fmt};
+
+use pas_syn::{ast, IdentPath};
+use pas_typecheck as pas_ty;
+
+use crate::{expr::*, metadata::*, stmt::*};
+
 pub use self::{
     formatter::*,
     interpret::{Interpreter, InterpreterOpts},
 };
-use crate::{expr::*, metadata::*, stmt::*};
-use pas_syn::{ast, IdentPath};
-use pas_typecheck as pas_ty;
-use std::{collections::HashMap, fmt};
 
 mod expr;
 mod formatter;
@@ -16,8 +19,8 @@ mod test;
 
 pub mod prelude {
     pub use crate::{
-        metadata::*,
-        Builder, GlobalRef, Instruction, Interpreter, Label, Ref, Value,
+        Builder,
+        GlobalRef, Instruction, Interpreter, Label, metadata::*, Ref, Value,
     };
 }
 
@@ -258,49 +261,57 @@ enum Local {
         ty: Type,
     },
 
-    // the builder didn't create this local allocation but we know it exists e.g. we know where
-    // function params are found due to the calling convention. we never need to drop these,
-    // but we do need to release them at the end of scope
-    Bound {
+    // function parameter slots as established by the calling convention - %1.. if the function
+    // has a return value, otherwise $0..
+
+    // by-value parameter. value is copied into the local by the caller
+    Param {
         id: LocalID,
-        name: Option<String>,
+        name: String,
         ty: Type,
 
-        // values bound in one scope can be references to an outer scope, in which case they
-        // must always be dereferenced to access the value
+        // by-ref parameter?
+        // if so pointer to the value is copied into the local by the caller, and must
+        // be dereferenced every time it is used
         by_ref: bool,
+    },
+
+    // return value: always occupies local %0 if present.
+    // the return value is not named and is not cleaned up on scope exit (if it's a
+    // rc type, the reference is owned by the caller after the function exits)
+    Return {
+        ty: Type,
     },
 }
 
 impl Local {
     fn id(&self) -> LocalID {
         match self {
-            Local::New { id, .. } => *id,
-            Local::Temp { id, .. } => *id,
-            Local::Bound { id, .. } => *id,
+            Local::New { id, .. } |
+            Local::Temp { id, .. } |
+            Local::Param { id, .. } => *id,
+            Local::Return { .. } => LocalID(0),
         }
     }
 
     fn name(&self) -> Option<&String> {
         match self {
             Local::New { name, .. } => name.as_ref(),
-            Local::Temp { .. } => None,
-            Local::Bound { name, .. } => name.as_ref(),
+            Local::Param { name, .. } => Some(&name),
+            Local::Temp { .. } | Local::Return { .. } => None,
         }
     }
 
-    /// if a lcoal is by-ref, it's treated in pascal syntax like a value of this type but in the IR
+    /// if a local is by-ref, it's treated in pascal syntax like a value of this type but in the IR
     /// it's actually a pointer. if this returns true, it's necessary to wrap Ref::Local values
     /// that reference this local in a Ref::Deref to achieve the same effect as the pascal syntax
     fn by_ref(&self) -> bool {
         match self {
-            Local::New { .. } => false,
-            Local::Temp { .. } => false,
-            Local::Bound { by_ref, .. } => *by_ref,
+            Local::Param { by_ref, .. } => *by_ref,
+            _ => false,
         }
     }
 }
-
 
 #[derive(Debug)]
 struct Scope {
@@ -360,42 +371,48 @@ impl<'metadata> Builder<'metadata> {
         });
     }
 
-    pub fn bind_local(&mut self, id: LocalID, ty: Type, name: Option<String>, by_ref: bool) {
+    fn bind_local(&mut self, id: LocalID, ty: Type, name: String, by_ref: bool) {
+        let slot_free = !self
+            .current_scope_mut()
+            .locals
+            .iter()
+            .any(|local| local.id() == id);
         assert!(
-            !self
-                .current_scope_mut()
-                .locals
-                .iter()
-                .any(|local| local.id() == id),
+            slot_free,
             "scope must not already have a binding for {}: {:?}",
             Ref::Local(id),
             self.current_scope_mut()
         );
+        assert!(!self
+            .current_scope_mut()
+            .locals
+            .iter()
+            .any(|l| l.name() == Some(&name) || l.id() == id));
 
         if by_ref {
-            assert!(
-                match &ty {
-                    Type::Pointer(..) => true,
-                    _ => false,
-                },
-                "by-ref parameters must have pointer type"
-            )
+            let is_ptr = match &ty {
+                Type::Pointer(..) => true,
+                _ => false,
+            };
+            assert!(is_ptr, "by-ref parameters must have pointer type");
         }
 
-        if let Some(name) = name.as_ref() {
-            assert!(!self
-                .current_scope_mut()
-                .locals
-                .iter()
-                .any(|l| l.name() == Some(&name) || l.id() == id));
-        }
-
-        self.current_scope_mut().locals.push(Local::Bound {
+        self.current_scope_mut().locals.push(Local::Param {
             id,
             name,
             ty,
             by_ref,
         });
+    }
+
+    // binds a return local in %0 with the indicated type
+    fn bind_return(&mut self, ty: Type) {
+        let scope = self.current_scope_mut();
+
+        let slot_free = !scope.locals.iter().any(|l| l.id() == LocalID(0));
+        assert!(slot_free, "%0 must not already be bound in bind_return");
+
+        scope.locals.push(Local::Return { ty });
     }
 
     fn find_next_local_id(&self) -> LocalID {
@@ -650,15 +667,22 @@ impl<'metadata> Builder<'metadata> {
         // that none of those will need cleanup themselves, because they should never
         for local in locals {
             match local {
-                Local::Bound { id, ty, .. } | Local::New { id, ty, .. } => {
+                Local::Param { id, ty, .. } | Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
                 }
 
-                Local::Temp { .. } => {
+                Local::Return { .. }| Local::Temp { .. } => {
                     // no cleanup required
                 }
             }
         }
+    }
+
+    pub fn end_scope(&mut self) {
+        self.cleanup_scope(self.scopes.len() - 1);
+
+        self.scopes.pop().unwrap();
+        self.instructions.push(Instruction::LocalEnd);
     }
 
     pub fn break_loop(&mut self) {
@@ -676,11 +700,16 @@ impl<'metadata> Builder<'metadata> {
         self.append(Instruction::Jump { dest: break_label })
     }
 
-    pub fn end_scope(&mut self) {
-        self.cleanup_scope(self.scopes.len() - 1);
+    pub fn continue_loop(&mut self) {
+        let (continue_label, continue_scope) = {
+            let current_loop = self.current_loop()
+                .expect("continue statement must appear in a loop");
 
-        self.scopes.pop().unwrap();
-        self.instructions.push(Instruction::LocalEnd);
+            (current_loop.continue_label, current_loop.block_level)
+        };
+
+        self.cleanup_scope(continue_scope);
+        self.append(Instruction::Jump { dest: continue_label });
     }
 }
 
@@ -710,8 +739,8 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
                 LocalID(0),
                 body_builder.metadata.pretty_ty_name(&return_ty),
             ));
-            body_builder.bind_local(LocalID(0), return_ty.clone(), None, false);
 
+            body_builder.bind_return(return_ty.clone());
             return_ty
         }
     };
@@ -743,7 +772,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             id,
             body_builder.metadata.pretty_ty_name(&param_ty)
         ));
-        body_builder.bind_local(id, param_ty.clone(), Some(param.ident.to_string()), by_ref);
+        body_builder.bind_local(id, param_ty.clone(), param.ident.to_string(), by_ref);
 
         bound_params.push((id, param_ty));
     }
@@ -760,10 +789,10 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
             out: return_at.clone(),
             new_val: Value::Ref(return_val),
         });
-        body_builder.retain(return_at.clone(), &return_ty);
 
-        // the return val needs to end the function with +1 reference - if we only retain it once
-        // it'll be released at the end of the function's scope
+        // the value we just moved in came from the block output in this function's scope,
+        // so that ref is about to be released at the end of the function - we need to retain
+        // the return value so it outlives the functino
         body_builder.retain(return_at, &return_ty);
     }
 

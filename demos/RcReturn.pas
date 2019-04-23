@@ -1,5 +1,3 @@
-uses System;
-
 type Box = class
     val: Integer;
 end;
@@ -7,11 +5,6 @@ end;
 function Id(box: Box): Box
 begin
     box
-end;
-
-function StringId(s: String): String
-begin
-    s
 end;
 
 function New(): Box
@@ -26,5 +19,3 @@ Id(box);
 
 var box2 := Box(val: 1);
 box2 := New();
-
-StringId('hello');

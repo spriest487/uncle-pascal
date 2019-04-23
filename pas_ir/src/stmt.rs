@@ -47,7 +47,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::Continue(_) => {
-            translate_continue(builder)
+            builder.continue_loop();
         }
     }
 }
@@ -161,15 +161,5 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.append(Instruction::Move {
         out: lhs,
         new_val: rhs.into(),
-    });
-}
-
-fn translate_continue(builder: &mut Builder) {
-    let continue_label = builder.current_loop()
-        .expect("continue statement must appear in a loop")
-        .continue_label;
-
-    builder.append(Instruction::Jump {
-        dest: continue_label,
     });
 }

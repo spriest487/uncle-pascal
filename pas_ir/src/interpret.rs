@@ -338,8 +338,31 @@ struct Block {
 }
 
 #[derive(Debug)]
+struct LocalCell {
+    // local cells are allocated on the fly as the interpreter passes LocalAlloc
+    // instructions. we want to prevent IR code from alloc-ing two locals with the same
+    // ID, but we might also legally run the same alloc instruction more than once if flow control
+    // takes us back over it.
+    // therefore we need to remember where a local allocation was made,
+    // so the duplicate check can tell whether it's two allocations with the same ID
+    // function param allocs don't have an alloc locatoin
+    alloc_pc: Option<usize>,
+
+    value: MemCell,
+}
+
+impl LocalCell {
+    fn is_alloc_pc(&self, pc: usize) -> bool {
+        match self.alloc_pc {
+            None => false,
+            Some(alloc_pc) => alloc_pc == pc,
+        }
+    }
+}
+
+#[derive(Debug)]
 struct StackFrame {
-    locals: Vec<Option<MemCell>>,
+    locals: Vec<Option<LocalCell>>,
     block_stack: Vec<Block>,
 }
 
@@ -457,6 +480,7 @@ impl Interpreter {
                 let locals = &self.stack[*frame].locals;
                 locals[*id]
                     .as_ref()
+                    .map(|cell| &cell.value)
                     .unwrap_or_else(|| panic!("local cell {}.{} is not allocated", frame, id))
             }
 
@@ -519,6 +543,7 @@ impl Interpreter {
                 let locals = &mut self.stack[*frame].locals;
                 locals[*id]
                     .as_mut()
+                    .map(|cell| &mut cell.value)
                     .unwrap_or_else(|| panic!("local cell {}.{} is not allocated", frame, id))
             }
 
@@ -572,7 +597,7 @@ impl Interpreter {
         match at {
             Ref::Local(LocalID(id)) => match self.current_frame_mut().locals.get_mut(*id) {
                 Some(Some(cell)) => {
-                    *cell = val;
+                    cell.value = val;
                 }
                 None | Some(None) => panic!("local cell {} is not allocated", id),
             },
@@ -604,7 +629,7 @@ impl Interpreter {
     fn load(&self, at: &Ref) -> &MemCell {
         match at {
             Ref::Local(LocalID(id)) => match self.current_frame().locals.get(*id) {
-                Some(Some(cell)) => cell,
+                Some(Some(cell)) => &cell.value,
                 None | Some(None) => {
                     panic!("local cell {} is not allocated", id);
                 }
@@ -676,14 +701,20 @@ impl Interpreter {
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
-            let result_cell = self.default_init_cell(return_ty);
+            let result_cell = LocalCell {
+                alloc_pc: None,
+                value: self.default_init_cell(return_ty),
+            };
             self.current_frame_mut().locals.push(Some(result_cell));
         }
 
         // store params in either $0.. or $1..
         self.current_frame_mut()
             .locals
-            .extend(args.iter().cloned().map(Some));
+            .extend(args.iter().cloned().map(|arg| Some(LocalCell {
+                value: arg,
+                alloc_pc: None,
+            })));
 
         match func {
             Function::Builtin { func, .. } => func(self),
@@ -921,9 +952,19 @@ impl Interpreter {
                         frame.locals.push(None);
                     }
 
-                    match frame.locals[id.0] {
-                        None => frame.locals[id.0] = Some(uninit_cell),
-                        _ => panic!("local cell {} is already allocated", id),
+                    match &mut frame.locals[id.0] {
+                        None => frame.locals[id.0] = Some(LocalCell {
+                            value: uninit_cell,
+                            alloc_pc: Some(pc),
+                        }),
+                        Some(already_allocated) => {
+                            // the same ID can only be reused if this is the same instruction that
+                            // allocated it in the first place
+                            if !already_allocated.is_alloc_pc(pc) {
+                                panic!("local cell {} is already allocated", id)
+                            }
+                            already_allocated.value = uninit_cell;
+                        },
                     }
 
                     frame.block_stack.last_mut()
