@@ -20,6 +20,18 @@ pub struct Block<A: Annotation> {
     pub end: Span,
 }
 
+impl<A: Annotation> Block<A> {
+    pub fn single_stmt(stmt: Statement<A>) -> Self {
+        Self {
+            annotation: stmt.annotation().clone(),
+            begin: stmt.annotation().span().clone(),
+            end: stmt.annotation().span().clone(),
+            statements: vec![stmt],
+            output: None,
+        }
+    }
+}
+
 impl Block<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let body_tt = tokens.match_one(DelimiterPair::BeginEnd)?;
@@ -53,16 +65,6 @@ impl Block<Span> {
                 },
             }
         })?;
-
-        println!("statements in block @ {}: {}",
-             span,
-            statements.iter().map(|s| s.to_string())
-                .collect::<Vec<_>>()
-                .join(";\n"));
-
-        if let Some(output_expr) = &output_expr {
-            println!("output expr: {}", output_expr);
-        }
 
         body_tokens.finish()?;
 

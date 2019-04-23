@@ -1,5 +1,5 @@
 uses System;
-{
+
 if true then begin
     let a := 'true';
 
@@ -17,12 +17,12 @@ end;
 // error: not defined
 // WriteLn(a);
 // WriteLn(b);
-}
+
 if true then
     let a := 'true'
 else
     let b := 'false';
 
 // error: not defined
-WriteLn(a);
-WriteLn(b);
+// WriteLn(a);
+// WriteLn(b);

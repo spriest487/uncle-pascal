@@ -1,4 +1,4 @@
-use crate::{prelude::*, translate_block, translate_call, translate_expr};
+use crate::{prelude::*, translate_block, translate_call, translate_expr, translate_if_cond};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
@@ -29,7 +29,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::If(if_stmt) => {
-            translate_if_stmt(if_stmt, builder);
+            translate_if_cond(if_stmt, builder, true);
         }
     }
 }
@@ -62,10 +62,16 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         unimplemented!("non-i32 counters");
     }
 
-    let counter_init = for_loop.init_binding.val.as_ref()
+    let counter_init = for_loop
+        .init_binding
+        .val
+        .as_ref()
         .expect("for loop counter binding must have an init expr");
 
-    assert!(!for_loop.init_binding.val_ty.is_rc(), "counter type must not be ref counted");
+    assert!(
+        !for_loop.init_binding.val_ty.is_rc(),
+        "counter type must not be ref counted"
+    );
 
     let inc_val = Value::LiteralI32(1);
     let loop_val = builder.local_temp(Type::Bool);
@@ -129,39 +135,4 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
         out: lhs,
         new_val: rhs.into(),
     });
-}
-
-fn translate_if_stmt(if_stmt: &pas_ty::ast::IfStatement, builder: &mut Builder) {
-    builder.begin_scope();
-    let then_label = builder.alloc_label();
-    let end_label = builder.alloc_label();
-    let else_label = if_stmt.else_branch.as_ref().map(|_| builder.alloc_label());
-
-    let test_val = translate_expr(&if_stmt.cond, builder);
-    builder.append(Instruction::JumpIf {
-        test: test_val.into(),
-        dest: then_label,
-    });
-    if let Some(else_label) = else_label {
-        builder.append(Instruction::Jump { dest: else_label });
-    } else {
-        builder.append(Instruction::Jump { dest: end_label });
-    }
-
-    builder.append(Instruction::Label(then_label));
-    builder.begin_scope();
-    translate_stmt(&if_stmt.then_branch, builder);
-    builder.end_scope();
-    builder.append(Instruction::Jump { dest: end_label });
-
-    if let Some(else_branch) = &if_stmt.else_branch {
-        builder.append(Instruction::Label(else_label.unwrap()));
-        builder.begin_scope();
-        translate_stmt(else_branch, builder);
-        builder.end_scope();
-    }
-
-    builder.append(Instruction::Label(end_label));
-
-    builder.end_scope();
 }

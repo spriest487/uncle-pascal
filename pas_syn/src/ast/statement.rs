@@ -1,5 +1,5 @@
 use crate::{
-    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, IfStatement, Typed},
+    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, Typed},
     parse::prelude::*,
 };
 
@@ -47,8 +47,6 @@ impl LocalBinding<Span> {
             }
             None => (None, let_kw.span().to(val_ty.span())),
         };
-
-        println!("token after let: {:#?}", tokens.look_ahead().next());
 
         Ok(LocalBinding {
             name: name_token.as_ident().cloned().unwrap(),
@@ -111,7 +109,7 @@ pub enum Statement<A: Annotation> {
     Block(Block<A>),
     ForLoop(ForLoop<A>),
     Assignment(Assignment<A>),
-    If(IfStatement<A>),
+    If(IfCond<A>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -182,22 +180,22 @@ impl<A: Annotation> Statement<A> {
 
             Expression::IfCond(if_cond) => {
                 let then_branch = match Self::try_from_expr(if_cond.then_branch) {
-                    Ok(then_stmt) => then_stmt,
+                    Ok(then_stmt) => Expression::from(Block::single_stmt(then_stmt)),
                     Err(_) => return Err(expr),
                 };
 
                 let else_branch = match if_cond.else_branch {
                     Some(else_expr) => match Self::try_from_expr(else_expr) {
-                        Ok(else_stmt) => Some(else_stmt),
+                        Ok(else_stmt) => Some(Expression::from(Block::single_stmt(else_stmt))),
                         Err(_) => return Err(expr),
                     },
                     None => None,
                 };
 
-                Ok(Statement::If(IfStatement {
+                Ok(Statement::If(IfCond {
                     cond: if_cond.cond,
-                    then_branch: Box::new(then_branch),
-                    else_branch: else_branch.map(Box::new),
+                    then_branch,
+                    else_branch,
                     annotation: if_cond.annotation,
                 }))
             }
@@ -235,13 +233,6 @@ impl Statement<Span> {
             }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(for_loop))
-            }
-
-            Some(TokenTree::Keyword {
-                kw: Keyword::If, ..
-            }) => {
-                let if_stmt = IfStatement::parse(tokens)?;
-                Ok(Statement::If(if_stmt))
             }
 
             Some(..) => {

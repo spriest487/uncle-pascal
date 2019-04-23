@@ -94,7 +94,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::IfCond(if_cond) => {
-            let result_ref = translate_if_cond(if_cond, builder)
+            let result_ref = translate_if_cond(if_cond, builder, false)
                 .expect("conditional used in expression must have a type");
             result_ref
         }
@@ -147,7 +147,38 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
     ptr_into.deref()
 }
 
-pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -> Option<Ref> {
+fn translate_branch(
+    expr: &pas_ty::ast::Expression,
+    out_val: Option<&Ref>,
+    out_ty: &Type,
+    builder: &mut Builder,
+    as_stmt: bool,
+) {
+    if as_stmt {
+        assert!(out_val.is_none(), "branch translated as statement should not have an out location");
+
+        let stmt = pas_ty::ast::Statement::try_from_expr(expr.clone())
+            .unwrap_or_else(|_| panic!("branch expression `{}` is not valid as a statement", expr));
+
+        translate_stmt(&stmt, builder);
+    } else {
+        let val = translate_expr(expr, builder);
+
+        if let Some(out_val) = out_val.clone() {
+            builder.append(Instruction::Move {
+                out: out_val.clone(),
+                new_val: val.into(),
+            });
+            builder.retain(out_val.clone(), &out_ty);
+        }
+    }
+}
+
+pub fn translate_if_cond(
+    if_cond: &pas_ty::ast::IfCond,
+    builder: &mut Builder,
+    as_stmt: bool,
+) -> Option<Ref> {
     let (out_val, out_ty) = match if_cond.annotation.ty() {
         pas_ty::Type::Nothing => (None, Type::Nothing),
         out_ty => {
@@ -178,31 +209,16 @@ pub fn translate_if_cond(if_cond: &pas_ty::ast::IfCond, builder: &mut Builder) -
     builder.append(Instruction::Label(then_label));
 
     builder.begin_scope();
-    let then_val = translate_expr(&if_cond.then_branch, builder);
-
-    if let Some(out_val) = out_val.clone() {
-        builder.append(Instruction::Move {
-            out: out_val.clone(),
-            new_val: then_val.into(),
-        });
-        builder.retain(out_val.clone(), &out_ty);
-    }
+    translate_branch(&if_cond.then_branch, out_val.as_ref(), &out_ty, builder, as_stmt);
     builder.end_scope();
+
     builder.append(Instruction::Jump { dest: end_label });
 
     if let Some(else_branch) = &if_cond.else_branch {
         builder.append(Instruction::Label(else_label.unwrap()));
 
         builder.begin_scope();
-        let else_val = translate_expr(else_branch, builder);
-
-        if let Some(out_val) = out_val.clone() {
-            builder.append(Instruction::Move {
-                out: out_val.clone(),
-                new_val: else_val.into(),
-            });
-            builder.retain(out_val.clone(), &out_ty);
-        }
+        translate_branch(else_branch, out_val.as_ref(), &out_ty, builder, as_stmt);
         builder.end_scope();
     }
 
@@ -237,7 +253,10 @@ fn translate_call_with_args(
             let arg_ty = builder.metadata.translate_type(arg.annotation().ty());
             let arg_ptr = builder.local_temp(arg_ty.ptr());
 
-            builder.append(Instruction::AddrOf { out: arg_ptr.clone(), a: arg_ref });
+            builder.append(Instruction::AddrOf {
+                out: arg_ptr.clone(),
+                a: arg_ref,
+            });
 
             arg_ptr
         } else {

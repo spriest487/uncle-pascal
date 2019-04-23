@@ -134,40 +134,6 @@ pub fn typecheck_assignment(
     })
 }
 
-pub type IfStatement = ast::IfStatement<TypeAnnotation>;
-
-fn typecheck_if_stmt(
-    if_stmt: &ast::IfStatement<Span>,
-    ctx: &mut Context,
-) -> TypecheckResult<IfStatement> {
-    let cond = typecheck_expr(&if_stmt.cond, &Type::Nothing, ctx)?;
-
-    let mut then_ctx = ctx.clone();
-    let then_branch = typecheck_stmt(&if_stmt.then_branch, &mut then_ctx)?;
-
-    let else_branch = match &if_stmt.else_branch {
-        Some(else_branch) => {
-            let mut else_ctx = ctx.clone();
-            let else_stmt = typecheck_stmt(&else_branch, &mut else_ctx)?;
-            ctx.consolidate_branches(&[then_ctx, else_ctx]);
-            Some(else_stmt)
-        },
-        None => {
-            ctx.consolidate_branches(&[then_ctx]);
-            None
-        },
-    };
-
-    let annotation = TypeAnnotation::Untyped(if_stmt.span().clone());
-
-    Ok(IfStatement {
-        cond,
-        then_branch: Box::new(then_branch),
-        else_branch: else_branch.map(Box::new),
-        annotation,
-    })
-}
-
 pub fn typecheck_stmt(
     stmt: &ast::Statement<Span>,
     ctx: &mut Context,
@@ -197,6 +163,9 @@ pub fn typecheck_stmt(
 
         ast::Statement::Exit(_exit) => unimplemented!(),
 
-        ast::Statement::If(if_stmt) => typecheck_if_stmt(if_stmt, ctx).map(ast::Statement::If),
+        ast::Statement::If(if_cond) => {
+            let if_cond = typecheck_if_cond(if_cond, &Type::Nothing, ctx)?;
+            Ok(ast::Statement::If(if_cond))
+        },
     }
 }
