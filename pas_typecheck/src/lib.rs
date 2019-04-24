@@ -40,6 +40,7 @@ pub mod ast {
             ast::{
                 self,
                 FunctionParamMod,
+                Visibility,
             },
             ident::*,
             parse::InvalidStatement,

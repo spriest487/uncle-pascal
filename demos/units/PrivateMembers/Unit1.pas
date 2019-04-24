@@ -9,4 +9,5 @@ let vL := Unit2.V.Left();
 let vR := Unit2.V.Right();
 
 // error: record is not exported
-let r2 := Unit2.R2(value: 456);
+//let r2 := Unit2.R2(value: 456);
+

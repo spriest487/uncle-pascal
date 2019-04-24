@@ -92,16 +92,14 @@ impl TypeName {
         let mut indirection = 0;
         let mut indirection_span = None;
 
-        while let Some(deref_tt) = tokens.look_ahead().match_one(Operator::Deref) {
+        while let Some(deref_tt) = tokens.match_one_maybe(Operator::Deref) {
             if indirection_span.is_none() {
                 indirection_span = Some(deref_tt.span().clone());
             }
             indirection += 1;
-            tokens.advance(1);
         }
 
-        if let Some(array_kw) = tokens.look_ahead().match_one(Keyword::Array) {
-            tokens.advance(1);
+        if let Some(array_kw) = tokens.match_one_maybe(Keyword::Array) {
             let dim = match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
                 TokenTree::Delimited { inner, open, .. } => {
                     let mut dim_tokens = TokenStream::new(inner, open);
@@ -136,11 +134,9 @@ impl TypeName {
             let ident = IdentPath::parse(tokens)?;
 
             // parse type args
-            let (type_args, name_span) = match tokens.look_ahead().match_one(Operator::Lt) {
+            let (type_args, name_span) = match tokens.match_one_maybe(Operator::Lt) {
                 None => (Vec::new(), Spanned::span(&ident).clone()),
                 Some(_open_bracket_tt) => {
-                    tokens.advance(1);
-
                     let type_args = tokens.match_separated(Separator::Comma, |_, tokens| {
                         let arg_name = TypeName::parse(tokens)?;
                         Ok(Generate::Yield(arg_name))
@@ -217,14 +213,7 @@ pub enum TypeNamePattern {
 
 impl TypeNamePattern {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let not_kw = match tokens.look_ahead().match_one(Operator::Not) {
-            Some(kw) => {
-                tokens.advance(1);
-                Some(kw)
-            },
-            None => None,
-        };
-
+        let not_kw = tokens.match_one_maybe(Operator::Not);
         let name = IdentPath::parse(tokens)?;
 
         match not_kw {
@@ -234,9 +223,8 @@ impl TypeNamePattern {
             }),
 
             None => {
-                let (span, binding) = match tokens.look_ahead().match_one(Matcher::AnyIdent) {
+                let (span, binding) = match tokens.match_one_maybe(Matcher::AnyIdent) {
                     Some(binding) => {
-                        tokens.advance(1);
                         let binding_ident = binding.into_ident().unwrap();
                         let span = name.span().to(binding_ident.span());
 

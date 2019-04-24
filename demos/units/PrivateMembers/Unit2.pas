@@ -1,8 +1,8 @@
-type R = record
+export type R = record
     value: Integer;
 end;
 
-type C = class
+export type C = class
     value: Integer;
 end;
 

@@ -36,10 +36,8 @@ impl IfCond<Span> {
         let if_token = tokens.match_one(Keyword::If)?;
         let cond = Expression::parse(tokens)?;
 
-        let is_pattern = match tokens.look_ahead().match_one(Keyword::Is) {
+        let is_pattern = match tokens.match_one_maybe(Keyword::Is) {
             Some(_is_kw) => {
-                tokens.advance(1);
-
                 let pattern = TypeNamePattern::parse(tokens)?;
                 Some(pattern)
             },
@@ -50,9 +48,8 @@ impl IfCond<Span> {
         tokens.match_one(Keyword::Then)?;
         let then_branch = parse_branch_expr(tokens)?;
 
-        let (else_branch, span) = match tokens.look_ahead().match_one(Keyword::Else) {
+        let (else_branch, span) = match tokens.match_one_maybe(Keyword::Else) {
             Some(_else_token) => {
-                tokens.advance(1);
                 let else_branch = parse_branch_expr(tokens)?;
                 let span = if_token.span().to(else_branch.annotation());
 

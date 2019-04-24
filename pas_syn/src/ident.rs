@@ -183,12 +183,8 @@ pub type IdentPath = Path<Ident>;
 impl IdentPath {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let path = tokens.match_repeating(|i, tokens| {
-            if i > 0 {
-                if tokens.look_ahead().match_one(Operator::Member).is_none() {
-                    return Ok(Generate::Break);
-                } else {
-                    tokens.advance(1);
-                }
+            if i > 0 && tokens.match_one_maybe(Operator::Member).is_none() {
+                return Ok(Generate::Break);
             }
 
             let ident_tt = tokens.match_one(Matcher::AnyIdent)?;

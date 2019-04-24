@@ -38,17 +38,13 @@ impl LocalBinding<Span> {
 
         let name_token = tokens.match_one(Matcher::AnyIdent)?;
 
-        let val_ty = match tokens.look_ahead().match_one(Separator::Colon) {
-            Some(_) => {
-                tokens.advance(1);
-                TypeName::parse(tokens)?
-            },
+        let val_ty = match tokens.match_one_maybe(Separator::Colon) {
+            Some(_) => TypeName::parse(tokens)?,
             None => TypeName::Unknown(name_token.span().clone()),
         };
 
-        let (val, span) = match tokens.look_ahead().match_one(Operator::Assignment) {
+        let (val, span) = match tokens.match_one_maybe(Operator::Assignment) {
             Some(_) => {
-                tokens.advance(1);
                 let val = Expression::parse(tokens)?;
                 let span = let_kw.span().to(val.annotation());
                 (Some(val), span)

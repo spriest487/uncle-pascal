@@ -188,9 +188,8 @@ impl Variant<Span> {
 
             let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
 
-            let (data_ty, span) = match tokens.look_ahead().match_one(Separator::Colon) {
+            let (data_ty, span) = match tokens.match_one_maybe(Separator::Colon) {
                 Some(..) => {
-                    tokens.advance(1);
                     let ty = TypeName::parse(tokens)?;
                     let span = ident_tt.span().to(ty.span());
                     (Some(ty), span)
@@ -307,10 +306,8 @@ impl TypeDeclName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
 
-        let (type_params, span) = match tokens.look_ahead().match_one(Operator::Lt) {
+        let (type_params, span) = match tokens.match_one_maybe(Operator::Lt) {
             Some(_open_bracket) => {
-                tokens.advance(1);
-
                 let type_params = tokens.match_separated(Separator::Comma, |_, tokens| {
                     let param = tokens.match_one(Matcher::AnyIdent)?;
                     Ok(Generate::Yield(param.into_ident().unwrap()))

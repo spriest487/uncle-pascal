@@ -15,7 +15,7 @@ use crate::{
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast,
+    ast::{self, Visibility},
     ident::*,
 };
 use std::{
@@ -95,12 +95,6 @@ pub enum InstanceMember<'a> {
 #[derive(Copy, Clone, Debug)]
 pub enum TypeMember<'a> {
     Method { decl: &'a FunctionDecl },
-}
-
-#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
-pub enum Visibility {
-    Private,
-    Exported,
 }
 
 #[derive(Clone, Debug, PartialEq)]

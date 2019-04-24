@@ -75,9 +75,8 @@ impl FunctionDecl<Span> {
         let mut impl_iface = None;
         let mut ident_token = tokens.match_one(Matcher::AnyIdent)?;
 
-        if tokens.look_ahead().match_one(Operator::Member).is_some() {
+        if tokens.match_one_maybe(Operator::Member).is_some() {
             impl_iface = Some(ident_token);
-            tokens.advance(1);
             ident_token = tokens.match_one(Matcher::AnyIdent)?;
         }
 
@@ -85,9 +84,8 @@ impl FunctionDecl<Span> {
 
         let args_span = args_tt.span().clone();
 
-        let return_ty = match tokens.look_ahead().match_one(Separator::Colon) {
+        let return_ty = match tokens.match_one_maybe(Separator::Colon) {
             Some(_) => {
-                tokens.advance(1);
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
             },
