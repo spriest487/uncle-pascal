@@ -404,6 +404,18 @@ impl fmt::Display for GlobalName {
             }
             write!(f, "{}", part)?;
         }
+
+        if self.type_args.len() > 0 {
+            write!(f, "<")?;
+            for (i, arg) in self.type_args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+            write!(f, ">")?;
+        }
+
         Ok(())
     }
 }
