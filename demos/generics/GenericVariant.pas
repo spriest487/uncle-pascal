@@ -1,10 +1,5 @@
 uses System;
 
-type Option of T = variant
-    Some: T;
-    None;
-end;
-
 let some: Option of String := Option.Some('thing');
 
 if some is Option.Some val then

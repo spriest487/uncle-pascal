@@ -3,6 +3,11 @@ export type String = class
     len: Integer;
 end;
 
+export type Option of T = variant
+    Some: T;
+    None;
+end;
+
 export function GetMem(count: Integer): ^Byte; external 'rt';
 export function FreeMem(mem: ^Byte); external 'rt';
 
