@@ -933,6 +933,8 @@ impl Module {
                         assert!(def.decl.return_ty.as_ref().map(|p| !p.is_generic()).unwrap_or(true));
 
                         let func = self.translate_func_def(&def, &type_args, debug_name);
+
+                        let global_name = &self.metadata.get_function(cached_func.id).unwrap().global_name;
                         self.functions.insert(id, func);
 
                         cached_func
@@ -978,6 +980,7 @@ impl Module {
             type_args,
         };
 
+        // methods must always be present so make sure they're immediately instantiated
         self.translate_func_usage(key, debug_name)
     }
 
@@ -986,8 +989,13 @@ impl Module {
         func_name: IdentPath,
         type_args: Vec<pas_ty::Type>,
     ) -> CachedFunction {
-        let debug_name = NamePath::from_ident_path(&func_name, &type_args, &mut self.metadata)
-            .to_string();
+        let debug_name = {
+            let type_args = type_args.iter()
+                .map(|arg| self.metadata.translate_type(arg))
+                .collect();
+
+            NamePath::from_ident_path(&func_name, type_args).to_string()
+        };
 
         let key = FunctionCacheKey {
             type_args,
@@ -1007,11 +1015,7 @@ impl Module {
     ) -> Function {
         let mut body_builder = Builder::new(self);
 
-        let type_args = type_args.iter()
-            .map(|arg| body_builder.module.metadata.translate_type(arg))
-            .collect();
-
-        body_builder.module.metadata.push_type_args(type_args);
+        body_builder.module.metadata.push_type_args(type_args.to_vec());
 
         let return_ty = match func.decl.return_ty.as_ref() {
             None | Some(pas_ty::Type::Nothing) => Type::Nothing,

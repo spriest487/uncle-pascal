@@ -459,7 +459,19 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 _ => panic!("type of function target expr must be a function"),
             };
 
-            let func = builder.module.translate_func(full_name, func_call.type_args.clone());
+            let type_args = match builder.module.metadata.current_ctx_type_args() {
+                Some(ctx_ty_args) => {
+                    func_call.type_args.iter()
+                        .map(|arg| arg.specialize_generic(ctx_ty_args, func_call.span()).unwrap())
+                        .collect()
+                }
+
+                None => {
+                    func_call.type_args.clone()
+                }
+            };
+
+            let func = builder.module.translate_func(full_name, type_args);
 
 //            println!("calling func {:#?}", func);
 

@@ -471,13 +471,13 @@ impl Type {
         }
     }
 
-    pub fn specialize_generic(ty: &Self, args: &[Self], span: &Span) -> TypecheckResult<Self> {
-        match ty {
+    pub fn specialize_generic(&self, args: &[Self], span: &Span) -> TypecheckResult<Self> {
+        match self {
             Type::GenericParam(TypeParam { pos, .. }) => {
                 let arg = args.get(*pos).unwrap_or_else(|| {
                     panic!(
                         "missing arg {} in type arg list {:?} for type {}",
-                        pos, args, ty
+                        pos, args, self
                     )
                 });
 

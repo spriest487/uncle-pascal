@@ -92,15 +92,10 @@ impl NamePath {
 
     pub fn from_ident_path(
         ident: &syn::IdentPath,
-        type_args: &[pas_ty::Type],
-        metadata: &mut Metadata
+        type_args: Vec<Type>,
     ) -> Self {
         let path = Path::from_parts(ident.iter()
             .map(|ident| ident.to_string()));
-
-        let type_args = type_args.iter()
-            .map(|arg| metadata.translate_type(arg))
-            .collect();
 
         NamePath {
             path,
@@ -449,7 +444,13 @@ pub struct Metadata {
     // now implemented as a stack as a hack for function defs which get generated
     // while another def is already being generated - this should definitely not be
     // here
-    type_args: Vec<Vec<Type>>,
+    type_args: Vec<GenericContext>,
+}
+
+#[derive(Debug, Clone)]
+struct GenericContext {
+    src_args: Vec<pas_ty::Type>,
+    translated_args: Vec<Type>,
 }
 
 impl Metadata {
@@ -515,8 +516,21 @@ impl Metadata {
         }
     }
 
-    pub fn push_type_args(&mut self, args: Vec<Type>) {
-        self.type_args.push(args);
+    pub fn push_type_args(&mut self, args: Vec<pas_ty::Type>) {
+        let translated_args = args.iter()
+            .map(|arg| self.translate_type(arg))
+            .collect();
+
+        self.type_args.push(GenericContext {
+            src_args: args,
+            translated_args,
+        });
+    }
+
+    pub fn current_ctx_type_args(&self) -> Option<&[pas_ty::Type]> {
+        let ctx = self.type_args.last()?;
+
+        Some(&ctx.src_args)
     }
 
     pub fn pop_type_args(&mut self) {
@@ -884,7 +898,10 @@ impl Metadata {
             pas_ty::Type::MethodSelf => unreachable!("Self is not a real type in this context"),
 
             pas_ty::Type::GenericParam(param) => {
-                match self.type_args.last().and_then(|args| args.get(param.pos)) {
+                let args = self.type_args.last()
+                    .map(|ctx| &ctx.translated_args);
+
+                match args.and_then(|args| args.get(param.pos)) {
                     Some(ty) => ty.clone(),
                     None => panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new()),
                 }
