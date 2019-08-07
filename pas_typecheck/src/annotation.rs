@@ -128,6 +128,7 @@ pub enum TypeAnnotation {
         name: Ident,
         ns: IdentPath,
         ty: Type,
+        type_args: Vec<Type>,
     },
     Type(Type, Span),
     Namespace(IdentPath, Span),
@@ -275,6 +276,20 @@ impl Spanned for QualifiedDeclName {
 
 impl fmt::Display for QualifiedDeclName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.decl_name)
+        if !self.type_args.is_empty() {
+            write!(f, "{} of ", self.qualified)?;
+
+            for (arg_pos, arg_ty) in self.type_args.iter().enumerate() {
+                if arg_pos > 0 {
+                    write!(f, ", ")?;
+                }
+
+                write!(f, "{}", arg_ty)?;
+            }
+        } else {
+            write!(f, "{}", self.decl_name)?;
+        }
+
+        Ok(())
     }
 }

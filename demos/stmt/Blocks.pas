@@ -1,3 +1,5 @@
+uses System;
+
 function DoNothing()
 begin
 end;

@@ -59,101 +59,50 @@ pub mod ast {
 pub mod ty;
 
 #[cfg(test)]
-mod test {
-    use crate::FunctionParamSig;
+mod test;
 
-    use super::*;
+use ast::{Class, Interface, typecheck_unit};
+use pas_common::span::*;
+use std::rc::Rc;
 
-    const INT32: Type = Type::Primitive(Primitive::Int32);
-    const BOOL: Type = Type::Primitive(Primitive::Boolean);
+#[derive(Debug, Clone)]
+pub struct Module {
+    pub units: Vec<ast::Unit>,
+    pub root_ctx: Context,
 
-    #[test]
-    fn sig_without_self_is_invalid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: BOOL,
-            params: vec![],
-        };
+    // language builtins
+    pub string_class: Rc<Class>,
+    pub disposable_iface: Rc<Interface>,
+}
 
-        let impl_sig = FunctionSig {
-            return_ty: INT32,
-            params: vec![],
-        };
+impl Module {
+    pub fn typecheck(units: &[pas_syn::ast::Unit<Span>], no_stdlib: bool) -> TypecheckResult<Self> {
+        let mut root_ctx = Context::root(no_stdlib);
+        let mut typed_units = Vec::new();
 
-        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
-    }
+        for unit in units {
+            typed_units.push(typecheck_unit(&unit, &mut root_ctx)?);
+        }
 
-    #[test]
-    fn sig_with_self_return_is_valid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: Type::GenericSelf,
-            params: vec![],
-        };
+        let string_name = context::builtin_string_name();
+        let (_, string_ty) = root_ctx.find_type(&string_name.qualified)
+            .expect("string class must exist");
+        let string_class = string_ty.clone().as_class()
+            .expect("string class must be a class");
 
-        let impl_sig = FunctionSig {
-            return_ty: INT32,
-            params: vec![],
-        };
+        let disposable_name = context::builtin_disposable_name();
+        let (_, disposable_iface) = root_ctx.find_iface(&disposable_name.qualified)
+            .expect("disposable interface must exist");
 
-        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
-    }
-
-    #[test]
-    fn sig_with_no_params_is_invalid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: Type::Nothing,
-            params: vec![],
-        };
-
-        let impl_sig = FunctionSig {
-            return_ty: Type::Nothing,
-            params: vec![],
-        };
-
-        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
-    }
-
-    #[test]
-    fn sig_with_self_param_is_valid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: Type::Nothing,
-            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
-        };
-
-        let impl_sig = FunctionSig {
-            return_ty: Type::Nothing,
-            params: vec![FunctionParamSig::by_val(INT32)],
-        };
-
-        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
-    }
-
-    #[test]
-    fn sig_with_self_param_and_return_is_valid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: Type::GenericSelf,
-            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
-        };
-
-        let impl_sig = FunctionSig {
-            return_ty: INT32,
-            params: vec![FunctionParamSig::by_val(INT32)],
-        };
-
-        assert_eq!(Some(&INT32), iface_sig.impl_ty(&impl_sig));
-    }
-
-    #[test]
-    fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
-        let iface_sig = FunctionSig {
-            return_ty: Type::GenericSelf,
-            params: vec![FunctionParamSig::by_val(Type::GenericSelf)],
-        };
-
-        let impl_sig = FunctionSig {
-            return_ty: INT32,
-            params: vec![FunctionParamSig::by_val(BOOL)],
-        };
-
-        assert_eq!(None, iface_sig.impl_ty(&impl_sig));
+        Ok(Module {
+            units: typed_units,
+            root_ctx,
+            string_class,
+            disposable_iface,
+        })
     }
 }
+
+
+
+

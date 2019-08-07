@@ -74,6 +74,7 @@ pub enum ParseError {
     UnexpectedOperator { operator: Span },
     InvalidStatement(InvalidStatement<Span>),
     DuplicateModifier { new: DeclMod, existing: DeclMod },
+    CtorWithTypeArgs { span: Span },
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -87,6 +88,7 @@ impl Spanned for ParseError {
             ParseError::UnexpectedOperator { operator } => operator.span(),
             ParseError::InvalidStatement(invalid) => invalid.0.annotation().span(),
             ParseError::DuplicateModifier { new, .. } => new.span(),
+            ParseError::CtorWithTypeArgs { span } => span,
         }
     }
 }
@@ -100,6 +102,7 @@ impl fmt::Display for ParseError {
             ParseError::UnexpectedOperator { .. } => write!(f, "Unexpected operator"),
             ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),
             ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
+            ParseError::CtorWithTypeArgs { .. } => write!(f, "Constructor with type args"),
         }
     }
 }
@@ -130,6 +133,10 @@ impl DiagnosticOutput for ParseError {
                 "the modifier `{}` is already present on this declaration",
                 new.keyword(),
             ),
+
+            ParseError::CtorWithTypeArgs { .. } => {
+                "Object constructor expression cannot explicitly specify type args".to_string()
+            }
         };
 
         Some(DiagnosticLabel {

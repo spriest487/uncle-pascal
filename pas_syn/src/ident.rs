@@ -1,13 +1,7 @@
 use crate::parse::prelude::*;
 use std::{
-    fmt::{
-        self,
-        Write,
-    },
-    hash::{
-        Hash,
-        Hasher,
-    },
+    fmt::{self, Write},
+    hash::{Hash, Hasher},
 };
 
 #[derive(Eq, Clone)]
@@ -53,6 +47,12 @@ impl Ident {
             span: span.into(),
         }
     }
+
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        tokens
+            .match_one(Matcher::AnyIdent)
+            .map(|tt| tt.into_ident().unwrap())
+    }
 }
 
 impl Spanned for Ident {
@@ -68,11 +68,11 @@ impl fmt::Display for Ident {
 }
 
 #[derive(Clone, Eq, Hash, Debug)]
-pub struct Path<Part> {
+pub struct Path<Part: fmt::Debug> {
     parts: Vec<Part>,
 }
 
-impl<Part> Path<Part> {
+impl<Part: fmt::Debug> Path<Part> {
     pub fn new(name: Part, namespace: impl IntoIterator<Item = Part>) -> Self {
         let mut path: Vec<_> = namespace.into_iter().collect();
         path.push(name);
@@ -93,7 +93,7 @@ impl<Part> Path<Part> {
         self.parts
     }
 
-    pub fn map<IntoPart>(self, f: impl FnMut(Part) -> IntoPart) -> Path<IntoPart> {
+    pub fn map<IntoPart: fmt::Debug>(self, f: impl FnMut(Part) -> IntoPart) -> Path<IntoPart> {
         Path {
             parts: self.parts.into_iter().map(f).collect(),
         }
@@ -113,7 +113,10 @@ impl<Part> Path<Part> {
 
     pub fn single(&self) -> &Part {
         if self.parts.len() > 1 {
-            panic!("single() expects ident path to have only 1 part");
+            panic!(
+                "single() expects ident path to have only 1 part (path: {:?})",
+                self
+            );
         }
         self.last()
     }
@@ -128,14 +131,14 @@ impl<Part> Path<Part> {
     }
 }
 
-impl<Part: PartialEq> Path<Part> {
+impl<Part: fmt::Debug + PartialEq> Path<Part> {
     pub fn is_parent_of(self, other: &Self) -> bool {
         self.parts.len() < other.parts.len()
             && &other.parts[0..self.parts.len()] == self.parts.as_slice()
     }
 }
 
-impl<Part: Clone> Path<Part> {
+impl<Part: fmt::Debug + Clone> Path<Part> {
     pub fn parent(&self) -> Option<Self> {
         if self.parts.len() == 1 {
             None
@@ -148,7 +151,7 @@ impl<Part: Clone> Path<Part> {
     }
 }
 
-impl<Part: fmt::Display> Path<Part> {
+impl<Part: fmt::Debug + fmt::Display> Path<Part> {
     pub fn join(&self, sep: impl fmt::Display) -> String {
         let mut joined = String::new();
         for (i, part) in self.iter().enumerate() {
@@ -161,13 +164,17 @@ impl<Part: fmt::Display> Path<Part> {
     }
 }
 
-impl<Part> From<Part> for Path<Part> {
+impl<Part: fmt::Debug> From<Part> for Path<Part> {
     fn from(part: Part) -> Self {
         Self { parts: vec![part] }
     }
 }
 
-impl<OtherPart, Part: PartialEq<OtherPart>> PartialEq<Path<OtherPart>> for Path<Part> {
+impl<OtherPart, Part> PartialEq<Path<OtherPart>> for Path<Part>
+where
+    Part: fmt::Debug + PartialEq<OtherPart>,
+    OtherPart: fmt::Debug,
+{
     fn eq(&self, other: &Path<OtherPart>) -> bool {
         self.parts.len() == other.parts.len()
             && self

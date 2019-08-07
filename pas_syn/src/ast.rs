@@ -88,6 +88,10 @@ impl Typed for TypeName {
 }
 
 impl TypeName {
+    fn match_next() -> Matcher {
+        Keyword::Array.or(Matcher::AnyIdent)
+    }
+
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut indirection = 0;
         let mut indirection_span = None;
@@ -98,6 +102,8 @@ impl TypeName {
             }
             indirection += 1;
         }
+
+        tokens.look_ahead().expect_one(Self::match_next())?;
 
         if let Some(array_kw) = tokens.match_one_maybe(Keyword::Array) {
             let dim = match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
@@ -133,19 +139,11 @@ impl TypeName {
         } else {
             let ident = IdentPath::parse(tokens)?;
 
-            // parse type args
-            let (type_args, name_span) = match tokens.match_one_maybe(Operator::Lt) {
+            let of_clause = OfClause::parse(tokens, TypeName::parse, Self::match_next())?;
+
+            let (type_args, name_span) = match of_clause {
                 None => (Vec::new(), Spanned::span(&ident).clone()),
-                Some(_open_bracket_tt) => {
-                    let type_args = tokens.match_separated(Separator::Comma, |_, tokens| {
-                        let arg_name = TypeName::parse(tokens)?;
-                        Ok(Generate::Yield(arg_name))
-                    })?;
-
-                    let close_bracket_tt = tokens.match_one(Operator::Gt)?;
-
-                    (type_args, Spanned::span(&ident).to(close_bracket_tt.span()))
-                },
+                Some(of) => (of.items, ident.span().to(&of.span)),
             };
 
             let span = match indirection_span {
@@ -194,6 +192,49 @@ impl fmt::Display for TypeName {
             TypeName::Array { element, dim, .. } => write!(f, "array[{}] of {}", dim, element),
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
+        }
+    }
+}
+
+pub struct OfClause<Item> {
+    pub items: Vec<Item>,
+    pub span: Span,
+}
+
+impl<Item: Spanned> OfClause<Item> {
+    fn parse<ItemParser, ItemMatcher>(
+        tokens: &mut TokenStream,
+        mut item_parser: ItemParser,
+        item_next_matcher: ItemMatcher
+    ) -> ParseResult<Option<Self>>
+        where ItemParser: FnMut(&mut TokenStream) -> ParseResult<Item>,
+              ItemMatcher: Into<Matcher>,
+    {
+        let item_next_matcher = item_next_matcher.into();
+
+        match tokens.match_one_maybe(Keyword::Of) {
+            Some(of_kw) => {
+                let items = tokens.match_separated(Separator::Comma, |i, tokens| {
+                    // expect at least one item after `of`
+                    if i > 0 && tokens.look_ahead().match_one(item_next_matcher.clone()).is_none() {
+                        Ok(Generate::Break)
+                    } else {
+                        let item = item_parser(tokens)?;
+                        Ok(Generate::Yield(item))
+                    }
+                })?;
+
+                let span = items.last()
+                    .map(|item| of_kw.span().to(item.span()))
+                    .expect("must have at least one item following the `of` keyword");
+
+                Ok(Some(OfClause {
+                    items,
+                    span,
+                }))
+            }
+
+            None => Ok(None),
         }
     }
 }

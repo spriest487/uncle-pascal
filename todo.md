@@ -24,3 +24,5 @@
 * make temporary its own kind of TypeAnnotation?
 * ref params should be able to refer to record fields and array elements
 * defining a function needs to check visibility is the same as previous decl
+* functiondecl.ident should be an enum of { FullName, MethodName }
+* QualifiedDeclName should be an enum of { Raw, Specialized }

@@ -2,8 +2,8 @@ use super::*;
 
 #[test]
 fn end_loop_scope_ends_at_right_scope_level() {
-    let mut metadata = Metadata::new();
-    let mut builder = Builder::new(&mut metadata);
+    let mut module = Module::new(Metadata::new());
+    let mut builder = Builder::new(&mut module);
 
     let initial_scope = builder.scopes.len();
 
@@ -17,8 +17,8 @@ fn end_loop_scope_ends_at_right_scope_level() {
 
 #[test]
 fn break_cleans_up_loop_locals() {
-    let mut metadata = Metadata::new();
-    let mut builder = Builder::new(&mut metadata);
+    let mut module = Module::new(Metadata::new());
+    let mut builder = Builder::new(&mut module);
 
     let continue_label = builder.alloc_label();
     let break_label = builder.alloc_label();

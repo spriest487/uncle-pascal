@@ -6,6 +6,7 @@ use crate::{
         FunctionDecl,
         FunctionDef,
         Interface,
+        Class,
     },
     context::NamespaceStack,
     FunctionSig,
@@ -209,8 +210,6 @@ pub struct Context {
     defs: HashMap<IdentPath, Span>,
 
     loop_stack: Vec<Span>,
-    /* /// current type decl, if we're inside one
-     * decl_scope: Option<TypeDeclName>, */
 }
 
 pub fn builtin_span() -> Span {
@@ -218,6 +217,85 @@ pub fn builtin_span() -> Span {
         file: Rc::new("<builtin>".into()),
         start: Location { line: 0, col: 0 },
         end: Location { line: 0, col: 0 },
+    }
+}
+
+pub fn builtin_string_name() -> QualifiedDeclName {
+    let builtin_span = builtin_span();
+
+    let system_ident = Ident::new("System", builtin_span.clone());
+    let string_ident = Ident::new("String", builtin_span.clone());
+
+    QualifiedDeclName {
+        decl_name: ast::TypeDeclName {
+            ident: string_ident.clone(),
+            span: builtin_span,
+            type_params: Vec::new(),
+        },
+        qualified: Path::from(system_ident).child(string_ident),
+        type_args: Vec::new(),
+    }
+}
+
+fn builtin_string_class() -> Class {
+    let builtin_span = builtin_span();
+
+    Class {
+        name: builtin_string_name(),
+        members: vec![
+            ast::Member {
+                ident: Ident::new("chars", builtin_span.clone()),
+                ty: Type::from(Primitive::Byte).ptr(),
+                span: builtin_span.clone(),
+            },
+            ast::Member {
+                ident: Ident::new("len", builtin_span.clone()),
+                ty: Type::from(Primitive::Int32),
+                span: builtin_span.clone(),
+            },
+        ],
+        kind: ast::ClassKind::Object,
+        span: builtin_span,
+    }
+}
+
+pub fn builtin_disposable_name() -> QualifiedDeclName {
+    let builtin_span = builtin_span();
+
+    let system_ident = Ident::new("System", builtin_span.clone());
+    let disposable_ident = Ident::new("Disposable", builtin_span.clone());
+
+    QualifiedDeclName {
+        decl_name: ast::TypeDeclName {
+            ident: disposable_ident.clone(),
+            span: builtin_span.clone(),
+            type_params: Vec::new(),
+        },
+        qualified: Path::from(system_ident).child(disposable_ident),
+        type_args: Vec::new(),
+    }
+}
+
+fn builtin_disposable_iface() -> Interface {
+    let builtin_span = builtin_span();
+
+    Interface {
+        name: builtin_disposable_name(),
+        methods: vec![FunctionDecl {
+            ident: Ident::new("Dispose", builtin_span.clone()).into(),
+            return_ty: None,
+            impl_iface: None,
+            mods: Vec::new(),
+            type_params: Vec::new(),
+            params: vec![ast::FunctionParam {
+                ident: Ident::new("self", builtin_span.clone()),
+                ty: Type::MethodSelf,
+                modifier: None,
+                span: builtin_span.clone(),
+            }],
+            span: builtin_span.clone(),
+        }],
+        span: builtin_span,
     }
 }
 
@@ -233,7 +311,6 @@ impl Context {
             iface_impls: HashMap::new(),
 
             loop_stack: Vec::new(),
-            //            decl_scope: None,
         };
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
@@ -259,46 +336,22 @@ impl Context {
         root_ctx.push_scope(None);
 
         if no_stdlib {
-            // the declaration of Disposable needs to be present even for --no-stdlib builds
-            // or destructors won't work
+            // declare things normally declared in System.pas that the compiler needs to function
+            let disposable_ty = Type::Interface(Rc::new(builtin_disposable_iface()));
+            let disposable_name = disposable_ty.full_path().unwrap();
 
-            let system_ident = Ident::new("System", builtin_span.clone());
-            let disposable_ident = Ident::new("Disposable", builtin_span.clone());
+            let string_ty = Type::Class(Rc::new(builtin_string_class()));
+            let string_name = string_ty.full_path().unwrap();
 
-            let disposable_name = QualifiedDeclName {
-                qualified: root_ctx.qualify_name(disposable_ident.clone()),
-                decl_name: ast::TypeDeclName {
-                    ident: disposable_ident.clone(),
-                    span: builtin_span.clone(),
-                    type_params: Vec::new(),
-                },
-                type_args: Vec::new(),
-            };
-
-            let disposable_iface = Interface {
-                name: disposable_name,
-                methods: vec![FunctionDecl {
-                    ident: Ident::new("Dispose", builtin_span.clone()).into(),
-                    return_ty: None,
-                    impl_iface: None,
-                    mods: Vec::new(),
-                    params: vec![ast::FunctionParam {
-                        ident: Ident::new("self", builtin_span.clone()),
-                        ty: Type::GenericSelf,
-                        modifier: None,
-                        span: builtin_span.clone(),
-                    }],
-                    span: builtin_span.clone(),
-                }],
-                span: builtin_span,
-            };
-            let disposable_ty = Type::Interface(Rc::new(disposable_iface));
-
-            let system_scope = root_ctx.push_scope(Some(system_ident));
+            let system_scope = root_ctx.push_scope(Some(Ident::new("System", builtin_span)));
 
             root_ctx
-                .declare_type(disposable_ident, disposable_ty, Visibility::Exported)
+                .declare_type(disposable_name.last().clone(), disposable_ty, Visibility::Exported)
                 .expect("builtin System.Disposable type decl must not fail");
+
+            root_ctx
+                .declare_type(string_name.last().clone(), string_ty, Visibility::Exported)
+                .expect("builtin System.String type decl must not fail");
 
             root_ctx.pop_scope(system_scope);
         }
@@ -342,7 +395,7 @@ impl Context {
         self.loop_stack.last()
     }
 
-    pub fn find<'a>(&'a self, name: &Ident) -> Option<MemberRef<'a, Scope>> {
+    pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
         match self.scopes.current_path().find(name) {
             Some(MemberRef::Value {
                 value: Decl::Alias(aliased),
@@ -359,7 +412,7 @@ impl Context {
         }
     }
 
-    pub fn resolve<'a>(&'a self, path: &IdentPath) -> Option<MemberRef<'a, Scope>> {
+    pub fn resolve(&self, path: &IdentPath) -> Option<MemberRef<Scope>> {
         match self.scopes.resolve(path.as_slice()) {
             Some(MemberRef::Value {
                 value: Decl::Alias(aliased),
@@ -451,7 +504,7 @@ impl Context {
         if iface.get_method(&method).is_none() {
             return Err(NameError::MemberNotFound {
                 span: method.span.clone(),
-                base: Type::Interface(Rc::new(iface.clone())),
+                base: Type::Interface(iface.clone()),
                 member: method,
             });
         }
@@ -612,7 +665,33 @@ impl Context {
         }
     }
 
-    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Interface)> {
+    pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
+        match self.resolve(name) {
+            Some(MemberRef::Value {
+                value: Decl::Type { ty, .. },
+                key,
+                ref parent_path,
+                ..
+            }) => {
+                let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
+                Ok((parent_path, ty))
+            },
+
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedType(
+                name.clone(),
+                other.clone().into(),
+            )),
+
+            Some(MemberRef::Namespace { path }) => {
+                let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
+                Err(NameError::ExpectedType(name.clone(), unexpected))
+            },
+
+            None => Err(NameError::NotFound(name.last().clone())),
+        }
+    }
+
+    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<Interface>)> {
         match self.resolve(name) {
             Some(MemberRef::Value {
                 value: Decl::Type { ty: Type::Interface(iface), .. },
@@ -621,7 +700,7 @@ impl Context {
                 ..
             }) => {
                 let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
-                Ok((parent_path, iface.as_ref()))
+                Ok((parent_path, iface.clone()))
             },
 
             Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedInterface(
@@ -704,7 +783,7 @@ impl Context {
                             method_decl
                                 .params
                                 .get(0)
-                                .map(|arg_0| arg_0.ty == Type::GenericSelf)
+                                .map(|arg_0| arg_0.ty == Type::MethodSelf)
                                 .unwrap_or(false)
                         });
 

@@ -9,7 +9,6 @@ use crate::formatter::{
 };
 use pas_syn as syn;
 use pas_syn::{
-    Ident,
     Path,
 };
 use pas_typecheck as pas_ty;
@@ -91,15 +90,21 @@ impl NamePath {
         }
     }
 
-    pub fn from_ident_path(ident: syn::IdentPath) -> Self {
-        let path_parts = ident
-            .into_parts()
-            .into_iter()
-            .map(|ident| ident.to_string());
+    pub fn from_ident_path(
+        ident: &syn::IdentPath,
+        type_args: &[pas_ty::Type],
+        metadata: &mut Metadata
+    ) -> Self {
+        let path = Path::from_parts(ident.iter()
+            .map(|ident| ident.to_string()));
+
+        let type_args = type_args.iter()
+            .map(|arg| metadata.translate_type(arg))
+            .collect();
 
         NamePath {
-            path: Path::from_parts(path_parts),
-            type_args: Vec::new(),
+            path,
+            type_args,
         }
     }
 
@@ -183,7 +188,11 @@ impl Struct {
     pub fn find_field(&self, name: &str) -> Option<FieldID> {
         self.fields
             .iter()
-            .find_map(|(id, field)| if field.name == name { Some(*id) } else { None })
+            .find_map(|(id, field)| if field.name.as_str() == name {
+                Some(*id)
+            } else {
+                None
+            })
     }
 
     pub fn get_field(&self, id: FieldID) -> Option<&StructField> {
@@ -362,6 +371,7 @@ impl fmt::Display for Type {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct GlobalName {
     path: Vec<String>,
+    type_args: Vec<pas_ty::Type>,
 }
 
 impl GlobalName {
@@ -369,11 +379,20 @@ impl GlobalName {
         let mut path: Vec<String> = ns.into_iter().map(Into::into).collect();
         path.push(name.into());
 
-        Self { path }
+        Self { path, type_args: Vec::new() }
     }
 
     pub fn path(&self) -> impl Iterator<Item = &String> {
         self.path.iter()
+    }
+
+    pub fn with_ty_args(self, args: Vec<pas_ty::Type>) -> Self {
+        assert_eq!(0, self.type_args.len(), "shouldn't already have type args when building a specialized GlobalName");
+
+        Self {
+            type_args: args,
+            ..self
+        }
     }
 }
 
@@ -410,6 +429,12 @@ pub struct Metadata {
     ifaces: HashMap<InterfaceID, Interface>,
 
     functions: HashMap<FunctionID, FunctionDecl>,
+
+    // current set of type args for the current translation context - should be empty
+    // when we're not in a generic function
+    // todo: can this be refactored into Module somewhere so Metadata doesn't need to know anything
+    // about generics
+    type_args: Vec<Type>,
 }
 
 impl Metadata {
@@ -475,6 +500,11 @@ impl Metadata {
         }
     }
 
+    pub fn set_type_args(&mut self, params: Vec<Type>) {
+        assert!(self.type_args.is_empty() || params.is_empty());
+        self.type_args = params;
+    }
+
     pub fn type_defs(&self) -> &HashMap<StructID, TypeDef> {
         &self.type_defs
     }
@@ -516,18 +546,23 @@ impl Metadata {
 
     pub fn declare_func(
         &mut self,
-        ns: &[Ident],
         func_decl: &pas_ty::ast::FunctionDecl,
+        type_args: Vec<pas_ty::Type>,
     ) -> FunctionID {
         let id = self.next_function_id();
 
         let global_name = match &func_decl.impl_iface {
             Some(_) => None,
             None => {
-                let name = func_decl.ident.to_string();
-                let ns = ns.iter().map(syn::Ident::to_string);
+                let ns: Vec<_> = func_decl.ident.parent()
+                    .expect("func always declared in ns")
+                    .iter()
+                    .map(syn::Ident::to_string)
+                    .collect();
+                let name = func_decl.ident.last().to_string();
 
-                Some(GlobalName::new(name, ns))
+                Some(GlobalName::new(name, ns)
+                    .with_ty_args(type_args))
             },
         };
 
@@ -685,10 +720,6 @@ impl Metadata {
         &self.ifaces
     }
 
-    pub(crate) fn insert_iface(&mut self, id: InterfaceID, iface: Interface) {
-        self.ifaces.insert(id, iface);
-    }
-
     fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
         // System.Disposable is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
@@ -711,7 +742,7 @@ impl Metadata {
                 Method {
                     name: method.ident.to_string(),
                     return_ty: match &method.return_ty {
-                        Some(pas_ty::Type::GenericSelf) => self_ty.clone(),
+                        Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
                         Some(return_ty) => self.translate_type(return_ty),
                         None => Type::Nothing,
                     },
@@ -719,7 +750,7 @@ impl Metadata {
                         .params
                         .iter()
                         .map(|param| match &param.ty {
-                            pas_ty::Type::GenericSelf => self_ty.clone(),
+                            pas_ty::Type::MethodSelf => self_ty.clone(),
                             param_ty => self.translate_type(param_ty),
                         })
                         .collect(),
@@ -762,11 +793,12 @@ impl Metadata {
     }
 
     pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: usize) -> Option<FunctionID> {
-        let impls = &self.ifaces[&iface_id].impls;
-        impls
-            .get(ty)
-            .and_then(|ty_impl| ty_impl.methods.get(&method))
-            .cloned()
+        let iface = self.ifaces.get(&iface_id)
+            .unwrap_or_else(|| panic!("missing metadata definition of iface {} - defined: {:#?}", iface_id, self.ifaces));
+
+        let ty_impl = iface.impls.get(ty)?;
+
+        ty_impl.methods.get(&method).cloned()
     }
 
     pub fn is_impl(&self, ty: &Type, iface_id: InterfaceID) -> bool {
@@ -831,10 +863,13 @@ impl Metadata {
                 Type::Variant(id)
             },
 
-            pas_ty::Type::GenericSelf => unreachable!("Self is not a real type in this context"),
+            pas_ty::Type::MethodSelf => unreachable!("Self is not a real type in this context"),
 
-            pas_ty::Type::GenericParam(ident) => {
-                unreachable!("{} is not a real type in this context", ident);
+            pas_ty::Type::GenericParam(param) => {
+                match self.type_args.get(param.pos) {
+                    Some(ty) => ty.clone(),
+                    None => panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new()),
+                }
             },
 
             pas_ty::Type::Function(sig) => {

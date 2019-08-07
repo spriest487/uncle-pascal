@@ -1,20 +1,20 @@
-type String = class
+export type String = class
     chars: ^Byte;
     len: Integer;
 end;
 
-function GetMem(count: Integer): ^Byte; external 'rt';
-function FreeMem(mem: ^Byte); external 'rt';
+export function GetMem(count: Integer): ^Byte; external 'rt';
+export function FreeMem(mem: ^Byte); external 'rt';
 
-function WriteLn(line: String); external 'rt';
+export function WriteLn(line: String); external 'rt';
 
-function IntToStr(i: Integer): String; external 'rt';
+export function IntToStr(i: Integer): String; external 'rt';
 
-type Disposable = interface
+export type Disposable = interface
     function Dispose(self: Self);
 end;
 
-function Disposable.Dispose(self: String)
+export function Disposable.Dispose(self: String)
 begin
     if self.len > 0 then FreeMem(self.chars);
 
@@ -22,7 +22,7 @@ begin
     self.len := 0;
 end;
 
-function StringConcat(a, b: String): String
+export function StringConcat(a, b: String): String
 begin
     if a.len = 0 and b.len = 0 then
         String(chars: nil; len: 0)
@@ -44,7 +44,7 @@ begin
 end;
 
 {
-function StringCompare(a, b: String): Boolean
+export function StringCompare(a, b: String): Boolean
 begin
     if a.len = b.len then
         false
@@ -60,7 +60,7 @@ begin
 end;
 }
 
-function StringFromBytes(bytes: ^Byte; len: Integer): String
+export function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
     let strBytes: ^Byte := GetMem(len);
 

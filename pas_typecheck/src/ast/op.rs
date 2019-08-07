@@ -192,6 +192,7 @@ fn desugar_string_concat(
                 name: concat_path.last().clone(),
                 span: span.clone(),
                 ty: Type::Function(concat_sig),
+                type_args: Vec::new(),
             };
 
             let concat_func = ast::Expression::Ident(concat_path.last().clone(), concat_annotation);
@@ -199,6 +200,7 @@ fn desugar_string_concat(
             let concat_call = ast::Call::Function(ast::FunctionCall {
                 annotation: annotation.clone(),
                 args: vec![lhs, rhs],
+                type_args: Vec::new(),
                 target: concat_func,
                 args_brackets: (span.clone(), span.clone()),
             });

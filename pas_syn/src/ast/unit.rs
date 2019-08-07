@@ -31,7 +31,7 @@ impl<A: Annotation> Unit<A> {
         })
     }
 
-    pub fn type_decls(&self) -> impl Iterator<Item = &TypeDecl<A>> {
+    pub fn type_decls<'a>(&self) -> impl Iterator<Item = &TypeDecl<A>> {
         self.decls.iter().filter_map(|decl| match decl {
             UnitDecl::Type{ decl: ty, .. } => Some(ty),
             _ => None,

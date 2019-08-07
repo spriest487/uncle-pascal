@@ -1,5 +1,8 @@
 use crate::{
-    ast::FunctionDecl,
+    ast::{
+        FunctionDecl,
+        OfClause,
+    },
     parse::prelude::*,
 };
 
@@ -272,14 +275,13 @@ impl fmt::Display for TypeDeclName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.ident)?;
         if !self.type_params.is_empty() {
-            write!(f, "<")?;
+            write!(f, " of ")?;
             for (i, param) in self.type_params.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
                 write!(f, "{}", param)?;
             }
-            write!(f, ">")?;
         }
 
         Ok(())
@@ -306,19 +308,11 @@ impl TypeDeclName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
 
-        let (type_params, span) = match tokens.match_one_maybe(Operator::Lt) {
-            Some(_open_bracket) => {
-                let type_params = tokens.match_separated(Separator::Comma, |_, tokens| {
-                    let param = tokens.match_one(Matcher::AnyIdent)?;
-                    Ok(Generate::Yield(param.into_ident().unwrap()))
-                })?;
+        let of_clause = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?;
 
-                let close_bracket = tokens.match_one(Operator::Gt)?;
-
-                (type_params, ident_tt.span().to(close_bracket.span()))
-            },
-
+        let (type_params, span) = match of_clause {
             None => (Vec::new(), ident_tt.span().clone()),
+            Some(of) => (of.items, ident_tt.span().to(&of.span)),
         };
 
         Ok(Self {

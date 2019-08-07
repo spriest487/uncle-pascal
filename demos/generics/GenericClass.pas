@@ -1,11 +1,11 @@
 uses System;
 
-type Box<Val> = class
+type Box of Val = class
     val: Val;
 end;
 
-let y: Box<String> := Box(val: 'test');
+let y: Box of String := Box(val: 'test');
 WriteLn('y contains ' + y.val);
 
-let z: Box<Integer> := Box(val: 123);
+let z: Box of Integer := Box(val: 123);
 WriteLn('z contains ' + IntToStr(z.val));

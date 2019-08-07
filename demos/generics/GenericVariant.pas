@@ -1,16 +1,16 @@
 uses System;
 
-type Option<T> = variant
+type Option of T = variant
     Some: T;
     None;
 end;
 
-let some: Option<String> := Option.Some('thing');
+let some: Option of String := Option.Some('thing');
 
 if some is Option.Some val then
     WriteLn('some is ' + val);
 
-let none: Option<String> := Option.None();
+let none: Option of String := Option.None();
 
 if none is Option.Some val then
     WriteLn('oops, none had a value: ' + val)

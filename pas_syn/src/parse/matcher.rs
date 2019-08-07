@@ -1,8 +1,4 @@
-use crate::{
-    keyword::*,
-    operators::*,
-    token_tree::*,
-};
+use crate::{keyword::*, operators::*, token_tree::*};
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -128,7 +124,7 @@ impl Matcher {
             Matcher::AnyLiteralString => token.as_literal_string().is_some(),
             Matcher::AnyLiteralBoolean => {
                 token.is_keyword(Keyword::True) || token.is_keyword(Keyword::False)
-            },
+            }
             Matcher::Exact(exact_token) => *token == *exact_token,
             Matcher::OneOf(matchers) => matchers.iter().any(|matcher| matcher.is_match(token)),
         }
@@ -139,17 +135,17 @@ impl Matcher {
             (Matcher::OneOf(mut options), Matcher::OneOf(others)) => {
                 options.extend(others);
                 Matcher::OneOf(options)
-            },
+            }
 
             (Matcher::OneOf(mut options), other) => {
                 options.push(other);
                 Matcher::OneOf(options)
-            },
+            }
 
             (this, Matcher::OneOf(mut others)) => {
                 others.insert(0, this);
                 Matcher::OneOf(others)
-            },
+            }
 
             (this, other) => Matcher::OneOf(vec![this, other]),
         }

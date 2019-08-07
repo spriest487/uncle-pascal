@@ -230,6 +230,21 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
             .and_then(|t| if matcher.is_match(&t) { Some(t) } else { None })
     }
 
+    /// check that the next token in the stream matches `matcher` without consuming it, and throw
+    /// a ParseError if it doesn't
+    pub fn expect_one(&mut self, matcher: impl Into<Matcher>) -> ParseResult<()> {
+        let matcher = matcher.into();
+        match self.next() {
+            Some(ref tt) if matcher.is_match(&tt) =>Ok(()),
+            Some(unexpected) => Err(TracedError::trace(
+                ParseError::UnexpectedToken(Box::new(unexpected), Some(matcher)),
+            )),
+            None => Err(TracedError::trace(
+                ParseError::UnexpectedEOF(matcher, self.context().clone())
+            )),
+        }
+    }
+
     pub fn match_sequence(
         &mut self,
         sequence: impl Into<SequenceMatcher>,

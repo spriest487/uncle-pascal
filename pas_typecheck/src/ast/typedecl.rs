@@ -60,7 +60,7 @@ pub fn typecheck_iface(
     // declare Self type - type decls are always in their own scope so we don't need to push
     // another one
     let self_ident = Ident::new("Self", iface.span().clone());
-    ctx.declare_type(self_ident, Type::GenericSelf, Visibility::Private)?;
+    ctx.declare_type(self_ident, Type::MethodSelf, Visibility::Private)?;
 
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {
@@ -73,8 +73,12 @@ pub fn typecheck_iface(
             }));
         }
 
-        let method = typecheck_func_decl(method, ctx)?;
-        methods.push(method);
+        let mut method_decl = typecheck_func_decl(method, ctx)?;
+        // todo: better type so we don't have to do this
+        // methods don't have qualified names
+        method_decl.ident = method.ident.clone();
+
+        methods.push(method_decl);
     }
 
     Ok(Interface {

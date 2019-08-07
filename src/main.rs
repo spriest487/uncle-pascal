@@ -28,7 +28,6 @@ use pas_syn::{
 };
 use pas_typecheck::{
     self as ty,
-    ast as ty_ast,
     TypecheckError,
 };
 use std::{
@@ -380,21 +379,16 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
         return Ok(());
     }
 
-    let mut root_ctx = ty::Context::root(args.no_stdlib);
-    let mut typed_units = Vec::new();
-
-    for unit in parsed_units {
-        typed_units.push(ty_ast::typecheck_unit(&unit, &mut root_ctx)?);
-    }
+    let typed_module = ty::Module::typecheck(&parsed_units, args.no_stdlib)?;
 
     if args.stage == Stage::TypecheckAst {
-        for unit in typed_units {
+        for unit in &typed_module.units {
             println!("{}", unit);
         }
         return Ok(());
     }
 
-    let module = ir::translate_units(&typed_units, args.no_stdlib);
+    let module = ir::translate(&typed_module);
     if args.stage == Stage::Intermediate {
         println!("{}", module);
         return Ok(());

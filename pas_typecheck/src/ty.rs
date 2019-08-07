@@ -1,41 +1,24 @@
-use std::{
-    fmt,
-    rc::Rc,
-};
+use std::{fmt, rc::Rc};
 
 use pas_common::span::*;
 use pas_syn::{
-    ast::{
-        self,
-        ClassKind,
-        FunctionParamMod,
-        Typed,
-    },
+    ast::{self, ClassKind, FunctionParamMod, Typed},
     ident::*,
     Operator,
 };
 
 use crate::{
-    ast::{
-        Class,
-        FunctionDecl,
-        Interface,
-        Variant,
-    },
+    ast::{Class, FunctionDecl, Interface, Variant},
     context::{
         self,
-        ns::{
-            self,
-            Namespace as _,
-        },
+        ns::{self, Namespace as _},
     },
     result::*,
-    Context,
-    Decl,
-    NameError,
-    QualifiedDeclName,
-    TypeAnnotation,
+    Context, Decl, NameError, QualifiedDeclName, TypeAnnotation,
 };
+
+#[cfg(test)]
+mod test;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
@@ -74,6 +57,7 @@ impl FunctionParamSig {
 pub struct FunctionSig {
     pub return_ty: Type,
     pub params: Vec<FunctionParamSig>,
+    pub type_params_len: usize,
 }
 
 impl FunctionSig {
@@ -88,14 +72,46 @@ impl FunctionSig {
                 })
                 .collect(),
             return_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
+            type_params_len: decl.type_params.len(),
         }
+    }
+
+    pub fn specialize_generic(&self, type_args: Vec<Type>, span: &Span) -> TypecheckResult<Self> {
+        if type_args.len() != self.type_params_len {
+            return Err(TypecheckError::InvalidTypeArgs {
+                expected: self.type_params_len,
+                actual: type_args.len(),
+                ty: Type::Function(Rc::new(self.clone())),
+                span: span.clone(),
+            });
+        }
+
+        let specialized_params = self
+            .params
+            .iter()
+            .map(|sig_param| {
+                let ty = Type::specialize_generic(&sig_param.ty, &type_args, span)?;
+                Ok(FunctionParamSig {
+                    ty,
+                    ..sig_param.clone()
+                })
+            })
+            .collect::<TypecheckResult<_>>()?;
+
+        let specialized_sig = FunctionSig {
+            return_ty: Type::specialize_generic(&self.return_ty, &type_args, span)?,
+            params: specialized_params,
+            type_params_len: self.type_params_len,
+        };
+
+        Ok(specialized_sig)
     }
 
     /// replace all `Self`-typed args with `self_ty`
     pub fn with_self(&self, self_ty: &Type) -> Self {
         let mut result = self.clone();
         for param in &mut result.params {
-            if param.ty == Type::GenericSelf {
+            if param.ty == Type::MethodSelf {
                 param.ty = self_ty.clone();
             }
         }
@@ -113,7 +129,7 @@ impl FunctionSig {
         let self_arg_pos = self
             .params
             .iter()
-            .position(|arg| arg.ty == Type::GenericSelf)?;
+            .position(|arg| arg.ty == Type::MethodSelf)?;
 
         Some(&args[self_arg_pos])
     }
@@ -125,12 +141,12 @@ impl FunctionSig {
             return None;
         }
 
-        let self_type = if self.return_ty == Type::GenericSelf {
+        let self_type = if self.return_ty == Type::MethodSelf {
             &impl_func.return_ty
         } else {
             self.params
                 .iter()
-                .position(|param| param.ty == Type::GenericSelf)
+                .position(|param| param.ty == Type::MethodSelf)
                 .map(|pos| &impl_func.params[pos].ty)?
         };
 
@@ -144,7 +160,7 @@ impl FunctionSig {
             .iter()
             .enumerate()
             .filter_map(|(pos, param)| {
-                if param.ty == Type::GenericSelf {
+                if param.ty == Type::MethodSelf {
                     Some(pos)
                 } else {
                     None
@@ -212,6 +228,18 @@ impl Primitive {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub struct TypeParam {
+    pub name: Ident,
+    pub pos: usize,
+}
+
+impl fmt::Display for TypeParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name)
+    }
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum Type {
     Nothing,
     Nil,
@@ -223,8 +251,8 @@ pub enum Type {
     Interface(Rc<Interface>),
     Variant(Rc<Variant>),
     Array { element: Box<Type>, dim: usize },
-    GenericSelf,
-    GenericParam(Ident),
+    MethodSelf,
+    GenericParam(TypeParam),
     Any,
 }
 
@@ -244,24 +272,11 @@ impl Type {
         match self {
             Type::Nothing => Some(builtin_path("Nothing")),
             Type::Any => Some(builtin_path("Any")),
-            Type::GenericSelf => Some(builtin_path("Self")),
+            Type::MethodSelf => Some(builtin_path("Self")),
             Type::Primitive(p) => Some(builtin_path(p.name())),
             Type::Interface(iface) => Some(iface.name.qualified.clone()),
             Type::Record(class) | Type::Class(class) => Some(class.name.qualified.clone()),
             Type::Variant(variant) => Some(variant.name.qualified.clone()),
-            _ => None,
-        }
-    }
-
-    pub fn full_name(&self) -> Option<String> {
-        match self {
-            Type::Nothing => Some("Nothing".to_string()),
-            Type::Any => Some("Any".to_string()),
-            Type::GenericSelf => Some("Self".to_string()),
-            Type::Primitive(p) => Some(p.name().to_string()),
-            Type::Interface(iface) => Some(iface.name.qualified.to_string()),
-            Type::Record(class) | Type::Class(class) => Some(class.name.qualified.to_string()),
-            Type::Variant(variant) => Some(variant.name.qualified.to_string()),
             _ => None,
         }
     }
@@ -295,7 +310,7 @@ impl Type {
                     ident: &m.ident,
                     ty: &m.ty,
                 })
-            },
+            }
 
             _ => None,
         }
@@ -308,7 +323,7 @@ impl Type {
                     ty: &m.ty,
                     ident: &m.ident,
                 })
-            },
+            }
             _ => None,
         }
     }
@@ -357,7 +372,7 @@ impl Type {
             | Type::Record(..)
             | Type::Function(..)
             | Type::GenericParam(..)
-            | Type::GenericSelf => false,
+            | Type::MethodSelf => false,
 
             _ => true,
         }
@@ -435,28 +450,85 @@ impl Type {
         }
     }
 
-    pub fn into_iface(self) -> Result<Rc<Interface>, Self> {
+    pub fn as_iface(&self) -> Result<Rc<Interface>, &Self> {
         match self {
-            Type::Interface(iface) => Ok(iface),
+            Type::Interface(iface) => Ok(iface.clone()),
             other => Err(other),
+        }
+    }
+
+    pub fn as_record(&self) -> Result<Rc<Class>, &Self> {
+        match self {
+            Type::Record(class) => Ok(class.clone()),
+            other => Err(other),
+        }
+    }
+
+    pub fn as_class(&self) -> Result<Rc<Class>, &Self> {
+        match self {
+            Type::Class(class) => Ok(class.clone()),
+            other => Err(other),
+        }
+    }
+
+    pub fn specialize_generic(ty: &Self, args: &[Self], span: &Span) -> TypecheckResult<Self> {
+        match ty {
+            Type::GenericParam(TypeParam { pos, .. }) => {
+                let arg = args.get(*pos).unwrap_or_else(|| {
+                    panic!(
+                        "missing arg {} in type arg list {:?} for type {}",
+                        pos, args, ty
+                    )
+                });
+
+                Ok(arg.clone())
+            }
+
+            Type::Record(class) => specialize_generic_class(&class, args.to_vec(), span)
+                .map(Rc::new)
+                .map(Type::Record),
+
+            Type::Class(class) => specialize_generic_class(&class, args.to_vec(), span)
+                .map(Rc::new)
+                .map(Type::Class),
+
+            Type::Variant(variant) => specialize_generic_variant(&variant, args.to_vec(), span)
+                .map(Rc::new)
+                .map(Type::Variant),
+
+            Type::Array { element, dim } => Self::specialize_generic(element, args, span)
+                .map(Box::new)
+                .map(|element| Type::Array { element, dim: *dim }),
+
+            not_generic => Ok(not_generic.clone()),
+        }
+    }
+
+    pub fn type_args(&self) -> &[Self] {
+        match self {
+            Type::Variant(variant) => &variant.name.type_args,
+            Type::Record(class) | Type::Class(class) => &class.name.type_args,
+            Type::Interface(iface) => &iface.name.type_args,
+            _ => &[],
         }
     }
 }
 
 impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.full_name() {
-            Some(name) => write!(f, "{}", name),
-            None => match self {
-                Type::Nil => write!(f, "nil"),
-                Type::Class(class) => write!(f, "{}", class.name),
-                Type::Record(class) => write!(f, "{}", class.name),
-                Type::Interface(iface) => write!(f, "{}", iface.name),
-                Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
-                Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
-                Type::GenericParam(ident) => write!(f, "{}", ident),
-                _ => unimplemented!("type with no Display impl: {:?}", self),
-            },
+        match self {
+            Type::Nil => write!(f, "nil"),
+            Type::Class(class) | Type::Record(class) => write!(f, "{}", class.name),
+            Type::Interface(iface) => write!(f, "{}", iface.name),
+            Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
+            Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
+            Type::GenericParam(ident) => write!(f, "{}", ident),
+            Type::Nothing => write!(f, "Nothing"),
+            Type::Primitive(p) => write!(f, "{}", p.name()),
+            Type::Variant(variant) => write!(f, "{}", variant.name),
+            Type::MethodSelf => write!(f, "Self"),
+            Type::Any => write!(f, "Any"),
+            Type::Function(_) => unimplemented!("function types cannot be represented"),
         }
     }
 }
@@ -473,49 +545,15 @@ pub struct MemberRef<'ty> {
     pub ty: &'ty Type,
 }
 
-fn parameterize_type(
-    ty: Type,
-    args: &[ast::TypeName],
+fn specialize_generic_type_args(
+    type_args: &[Type],
+    outer_args: &[Type],
     span: &Span,
-    ctx: &Context,
-) -> TypecheckResult<Type> {
-    let wrong_args = |expected| TypecheckError::InvalidTypeArgs {
-        expected,
-        actual: args.len(),
-        ty: ty.clone(),
-        span: span.clone(),
-    };
-
-    let args: Vec<_> = args
+) -> TypecheckResult<Vec<Type>> {
+    type_args
         .iter()
-        .map(|arg| typecheck_type(arg, ctx))
-        .collect::<TypecheckResult<_>>()?;
-
-    match &ty {
-        Type::Record(class) => {
-            parameterize_class(class, args, span).map(Rc::new).map(Type::Record)
-        }
-        Type::Class(class) => {
-            parameterize_class(class, args, span).map(Rc::new).map(Type::Class)
-        }
-
-        //todo: should be parameterizable
-        Type::Variant(variant) => {
-            parameterize_variant(variant, args, span).map(Rc::new).map(Type::Variant)
-        }
-        Type::Interface(_) |
-        Type::GenericParam(_) |
-
-        // will never be parameterizable
-        Type::GenericSelf | Type::Primitive(_) | Type::Any | Type::Nothing | Type::Pointer(_)
-        | Type::Function(_) | Type::Nil | Type::Array { .. } => {
-            if !args.is_empty() {
-                Err(wrong_args(0))
-            } else {
-                Ok(ty.clone())
-            }
-        }
-    }
+        .map(|arg| Type::specialize_generic(arg, outer_args, span))
+        .collect()
 }
 
 pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResult<&'c Type> {
@@ -536,7 +574,7 @@ pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResul
             let ns_ident = path.top().key().unwrap().clone();
             let unexpected = context::UnexpectedValue::Namespace(ns_ident);
             Err(NameError::ExpectedType(name.clone(), unexpected))
-        },
+        }
 
         None => Err(NameError::NotFound(name.last().clone())),
     }
@@ -550,11 +588,21 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
             type_args,
             span,
         } => {
-            let raw_ty = find_type(ident, ctx)?.clone();
-            let base_ty = parameterize_type(raw_ty, type_args, span, ctx)?;
+            let raw_ty = find_type(ident, ctx)?;
 
-            Ok(base_ty.indirect_by(*indirection))
-        },
+            let ty = if !type_args.is_empty() {
+                let type_args: Vec<_> = type_args
+                    .iter()
+                    .map(|arg| typecheck_type(arg, ctx))
+                    .collect::<TypecheckResult<_>>()?;
+
+                Type::specialize_generic(raw_ty, &type_args, span)?
+            } else {
+                raw_ty.clone()
+            };
+
+            Ok(ty.indirect_by(*indirection))
+        }
 
         ast::TypeName::Array { element, dim, .. } => {
             let element = typecheck_type(element.as_ref(), ctx)?;
@@ -563,28 +611,61 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
                 element: Box::new(element),
                 dim: *dim,
             })
-        },
+        }
 
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
     }
 }
 
-fn substitute_type_param<'a, 't: 'a>(ty: &'t Type, params: &[Ident], args: &'a [Type]) -> &'a Type {
-    match ty {
-        Type::GenericParam(ident) => {
-            let index = params
-                .iter()
-                .position(|arg| *arg == *ident)
-                .expect("member with generic param type must match one of the generic params");
+fn specialize_member(
+    member_ty: &Type,
+    args: &[Type],
+    span: &Span
+) -> TypecheckResult<Type> {
+    match member_ty {
+        Type::GenericParam(class_param) => {
+            let ty = args.get(class_param.pos).unwrap_or_else(|| {
+                panic!(
+                    "missing type arg {} in arg list {:?} for {}",
+                    class_param.pos, args, member_ty,
+                )
+            });
 
-            &args[index]
+            Ok(ty.clone())
+        }
+
+        Type::Class(class) => {
+            let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
+            let class = specialize_generic_class(&class, class_args, span)?;
+            Ok(Type::Class(Rc::new(class)))
         },
 
-        not_generic => not_generic,
+        Type::Record(class) => {
+            let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
+            let class = specialize_generic_class(&class, class_args, span)?;
+            Ok(Type::Record(Rc::new(class)))
+        },
+
+        Type::Variant(variant) => {
+            let variant_args = specialize_generic_type_args(&variant.name.type_args, &args, span)?;
+            let variant = specialize_generic_variant(variant, variant_args, span)?;
+            Ok(Type::Variant(Rc::new(variant)))
+        }
+
+        Type::Array { element, dim } => {
+            let ty = specialize_member(element, args, span)?;
+            Ok(Type::Array { element: Box::new(ty), dim: *dim })
+        }
+
+        _ => Ok(member_ty.clone()),
     }
 }
 
-pub fn parameterize_class(class: &Class, args: Vec<Type>, span: &Span) -> TypecheckResult<Class> {
+pub fn specialize_generic_class(
+    class: &Class,
+    args: Vec<Type>,
+    span: &Span,
+) -> TypecheckResult<Class> {
     let type_params: &[Ident] = &class.name.decl_name.type_params.as_slice();
     if args.len() != type_params.len() {
         return Err(TypecheckError::InvalidTypeArgs {
@@ -598,11 +679,14 @@ pub fn parameterize_class(class: &Class, args: Vec<Type>, span: &Span) -> Typech
     let members: Vec<_> = class
         .members
         .iter()
-        .map(|member| ast::Member {
-            ty: substitute_type_param(&member.ty, type_params, &args).clone(),
-            ..member.clone()
+        .map(|member| {
+            let ty = specialize_member(&member.ty, &args, span)?;
+            Ok(ast::Member {
+                ty,
+                ..member.clone()
+            })
         })
-        .collect();
+        .collect::<TypecheckResult<_>>()?;
 
     let parameterized_name = QualifiedDeclName {
         type_args: args,
@@ -617,7 +701,7 @@ pub fn parameterize_class(class: &Class, args: Vec<Type>, span: &Span) -> Typech
     })
 }
 
-pub fn parameterize_variant(
+pub fn specialize_generic_variant(
     variant: &Variant,
     args: Vec<Type>,
     span: &Span,
@@ -635,15 +719,21 @@ pub fn parameterize_variant(
     let cases: Vec<_> = variant
         .cases
         .iter()
-        .map(|case| ast::VariantCase {
-            data_ty: case
-                .data_ty
-                .as_ref()
-                .map(|ty| substitute_type_param(ty, type_params, &args))
-                .cloned(),
-            ..case.clone()
+        .map(|case| {
+            let data_ty = match &case.data_ty {
+                None => None,
+                Some(ty) => {
+                    let ty = specialize_member(ty, &args, span)?;
+                    Some(ty)
+                },
+            };
+
+            Ok(ast::VariantCase {
+                data_ty,
+                ..case.clone()
+            })
         })
-        .collect();
+        .collect::<TypecheckResult<_>>()?;
 
     let parameterized_name = QualifiedDeclName {
         type_args: args,
@@ -766,7 +856,11 @@ impl TypePattern {
 
         match ctx.resolve(&stem_name) {
             Some(ns::MemberRef::Value {
-                value: Decl::Type { ty: Type::Variant(variant), .. },
+                value:
+                    Decl::Type {
+                        ty: Type::Variant(variant),
+                        ..
+                    },
                 ..
             }) => {
                 let case_ident = path.last();
@@ -783,7 +877,7 @@ impl TypePattern {
 
                 let case = (variant.clone(), case_index);
                 Ok(Some(case))
-            },
+            }
 
             _ => Ok(None),
         }
@@ -831,7 +925,7 @@ impl TypePattern {
                         ty: var_ty.clone(),
                         span: span.clone(),
                     })
-            },
+            }
 
             _ => {
                 // can never match on raw variants
@@ -846,7 +940,7 @@ impl TypePattern {
                     // todo: make sure we get a type mismatch later
                     Ok(variant)
                 }
-            },
+            }
         }
     }
 
@@ -870,7 +964,7 @@ impl TypePattern {
                         data_binding: binding.clone(),
                         span: span.clone(),
                     })
-                },
+                }
 
                 None => {
                     let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
@@ -880,7 +974,7 @@ impl TypePattern {
                         binding: binding.clone(),
                         span: span.clone(),
                     })
-                },
+                }
             },
 
             ast::TypeNamePattern::NegatedTypeName { name, span } if name.as_slice().len() > 1 => {
@@ -893,7 +987,7 @@ impl TypePattern {
                             case_index,
                             span: span.clone(),
                         })
-                    },
+                    }
 
                     None => {
                         let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
@@ -901,9 +995,9 @@ impl TypePattern {
                             ty,
                             span: span.clone(),
                         })
-                    },
+                    }
                 }
-            },
+            }
 
             ast::TypeNamePattern::TypeName {
                 name,
@@ -916,7 +1010,7 @@ impl TypePattern {
                     binding: binding.clone(),
                     span: span.clone(),
                 })
-            },
+            }
 
             ast::TypeNamePattern::NegatedTypeName { name, span } => {
                 let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
@@ -924,7 +1018,7 @@ impl TypePattern {
                     ty,
                     span: span.clone(),
                 })
-            },
+            }
         }
     }
 
@@ -945,7 +1039,7 @@ impl TypePattern {
                 let case_ty = variant.cases[*case_index].data_ty.as_ref()
                     .expect("variant case pattern with a binding must always reference a case which has a data member");
                 vec![PatternBinding { ty: case_ty, ident }]
-            },
+            }
 
             _ => Vec::new(),
         }
@@ -961,7 +1055,7 @@ impl fmt::Display for TypePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            },
+            }
 
             TypePattern::NegatedType { ty, .. } => write!(f, "not {}", ty),
 
@@ -977,7 +1071,7 @@ impl fmt::Display for TypePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            },
+            }
 
             TypePattern::NegatedVariantCase {
                 variant,
@@ -986,7 +1080,7 @@ impl fmt::Display for TypePattern {
             } => {
                 let case_ident = &variant.cases[*case_index].ident;
                 write!(f, "not {}.{}", variant.name, case_ident)
-            },
+            }
         }
     }
 }

@@ -17,9 +17,11 @@ pub fn typecheck_object_ctor(
     // the generic type the constructor expression refers to, use that instead
     let ty = raw_ty
         .infer_specialized_from_hint(expect_ty)
-        .ok_or_else(|| TypecheckError::InvalidCtorType {
-            ty: raw_ty.clone(),
-            span: span.clone(),
+        .ok_or_else(|| {
+            TypecheckError::InvalidCtorType {
+                ty: raw_ty.clone(),
+                span: span.clone(),
+            }
         })?
         .clone();
 

@@ -78,7 +78,7 @@ impl FunctionDecl {
             .map(|param| Type::from_metadata(param, module))
             .collect();
 
-        let mut comment = func.name.to_string();
+        let mut comment = func.debug_name.to_string();
         comment.push_str(": (");
         for (i, arg) in func.params.iter().enumerate() {
             if i > 0 {

@@ -1,3 +1,5 @@
+mod generic;
+
 use crate::ast::prelude::*;
 use pas_syn::Operator;
 

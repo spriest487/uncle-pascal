@@ -38,8 +38,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             if let Some(impl_iface) = &func_def.decl.impl_iface {
                 let iface_decl = impl_iface
                     .iface
-                    .clone()
-                    .into_iface()
+                    .as_iface()
                     .expect("implemented type must be an interface");
 
                 ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), name)?;
@@ -74,8 +73,9 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 type_args: Vec::new(),
             };
 
-            for param in &full_name.decl_name.type_params {
-                ctx.declare_type(param.clone(), Type::GenericParam(param.clone()), Visibility::Private)?;
+            for (pos, name) in full_name.decl_name.type_params.iter().enumerate() {
+                let param_ty = TypeParam { pos, name: name.clone() };
+                ctx.declare_type(name.clone(), Type::GenericParam(param_ty), Visibility::Private)?;
             }
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;

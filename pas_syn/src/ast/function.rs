@@ -2,6 +2,7 @@ use crate::{
     ast::{
         Block,
         DeclMod,
+        OfClause,
     },
     parse::prelude::*,
 };
@@ -60,6 +61,7 @@ pub struct FunctionDecl<A: Annotation> {
     pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
+    pub type_params: Vec<Ident>,
 
     pub return_ty: Option<A::Type>,
 
@@ -79,6 +81,10 @@ impl FunctionDecl<Span> {
             impl_iface = Some(ident_token);
             ident_token = tokens.match_one(Matcher::AnyIdent)?;
         }
+
+        let type_params = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?
+            .map(|of| of.items)
+            .unwrap_or_else(Vec::new);
 
         let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
 
@@ -175,6 +181,7 @@ impl FunctionDecl<Span> {
             span,
             return_ty,
             params: params.into_iter().flat_map(|params| params).collect(),
+            type_params,
             mods,
         })
     }

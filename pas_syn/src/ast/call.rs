@@ -1,15 +1,8 @@
 use crate::{
-    ast::{
-        Annotation,
-        Expression,
-        Variant,
-    },
+    ast::{Annotation, Expression, Variant},
     parse::prelude::*,
 };
-use std::{
-    fmt,
-    rc::Rc,
-};
+use std::{fmt, rc::Rc};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -21,6 +14,8 @@ pub struct MethodCall<A: Annotation> {
     pub ident: Ident,
 
     pub args: Vec<Expression<A>>,
+    pub type_args: Vec<A::Type>,
+
     pub annotation: A,
 
     pub args_brackets: (Span, Span),
@@ -49,6 +44,7 @@ impl<A: Annotation> fmt::Display for MethodCall<A> {
 pub struct FunctionCall<A: Annotation> {
     pub target: Expression<A>,
     pub args: Vec<Expression<A>>,
+    pub type_args: Vec<A::Type>,
 
     pub annotation: A,
     pub args_brackets: (Span, Span),
@@ -136,31 +132,52 @@ impl<A: Annotation> Call<A> {
             Call::VariantCtor(call) => &call.annotation,
         }
     }
+
+    pub fn annotation_mut(&mut self) -> &mut A {
+        match self {
+            Call::Function(call) => &mut call.annotation,
+            Call::Method(call) => &mut call.annotation,
+            Call::VariantCtor(call) => &mut call.annotation,
+        }
+    }
 }
 
-impl Call<Span> {
-    pub fn parse_arg_list(tokens: &mut TokenStream) -> ParseResult<Vec<Expression<Span>>> {
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct ArgList<A: Annotation> {
+    pub open: Span,
+    pub close: Span,
+    pub args: Vec<Expression<A>>,
+}
+
+impl ArgList<Span> {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let brackets = tokens.match_one(Matcher::Delimited(DelimiterPair::Bracket))?;
-        match brackets {
+
+        let (inner, span, open, close) = match brackets {
             TokenTree::Delimited {
                 delim: DelimiterPair::Bracket,
                 inner,
                 span,
-                ..
-            } => {
-                let mut args_tokens = TokenStream::new(inner, span);
-
-                let args = args_tokens.match_separated(Separator::Comma, |_, tokens| {
-                    let arg_expr = Expression::parse(tokens)?;
-                    Ok(Generate::Yield(arg_expr))
-                })?;
-
-                args_tokens.finish()?;
-
-                Ok(args)
-            },
+                open,
+                close,
+            } => (inner, span, open, close),
 
             _ => unreachable!(),
-        }
+        };
+
+        let mut args_tokens = TokenStream::new(inner, span);
+
+        let args = args_tokens.match_separated(Separator::Comma, |_, tokens| {
+            let arg_expr = Expression::parse(tokens)?;
+            Ok(Generate::Yield(arg_expr))
+        })?;
+
+        args_tokens.finish()?;
+
+        Ok(ArgList { args, open, close })
+    }
+
+    pub fn list_span(&self) -> Span {
+        self.open.to(&self.close)
     }
 }
