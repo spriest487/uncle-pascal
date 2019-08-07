@@ -128,6 +128,13 @@ impl<Part> Path<Part> {
     }
 }
 
+impl<Part: PartialEq> Path<Part> {
+    pub fn is_parent_of(self, other: &Self) -> bool {
+        self.parts.len() < other.parts.len()
+            && &other.parts[0..self.parts.len()] == self.parts.as_slice()
+    }
+}
+
 impl<Part: Clone> Path<Part> {
     pub fn parent(&self) -> Option<Self> {
         if self.parts.len() == 1 {

@@ -291,7 +291,9 @@ fn typecheck_member_of(
                     full_path.push(member_ident.clone());
 
                     match ctx.resolve(&full_path) {
-                        Some(member) => ns_member_ref_to_annotation(member, span, ctx),
+                        Some(member) => {
+                            ns_member_ref_to_annotation(member, span, ctx)
+                        },
                         None => {
                             return Err(NameError::MemberNotFound {
                                 member: member_ident,
@@ -341,7 +343,9 @@ fn typecheck_member_of(
                         ..(**ctor).clone()
                     };
 
-                    let ctor = typecheck_object_ctor(&qualified_ctor, expect_ty, ctx)?;
+                    let span = lhs.annotation().span().to(qualified_ctor.annotation.span());
+
+                    let ctor = typecheck_object_ctor(&qualified_ctor, span, expect_ty, ctx)?;
                     Ok(Expression::from(ctor))
                 },
 

@@ -44,10 +44,13 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 
                 ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), name)?;
             } else {
+                let visibility = Visibility::Private; // todo
+
                 ctx.define_function(
                     name,
                     FunctionSig::of_decl(&func_def.decl).clone(),
                     &func_def,
+                    visibility,
                 )?;
             }
 
@@ -57,7 +60,10 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         ast::UnitDecl::FunctionDecl(func_decl) => {
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
-            ctx.declare_function(name, &func_decl)?;
+
+            let visibility = Visibility::Private; // todo
+
+            ctx.declare_function(name, &func_decl, visibility)?;
             Ok(ast::UnitDecl::FunctionDecl(func_decl))
         },
 
@@ -72,8 +78,10 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 type_args: Vec::new(),
             };
 
+            let visibility = Visibility::Private; // todo
+
             for param in &full_name.decl_name.type_params {
-                ctx.declare_type(param.clone(), Type::GenericParam(param.clone()))?;
+                ctx.declare_type(param.clone(), Type::GenericParam(param.clone()), Visibility::Private)?;
             }
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
@@ -81,7 +89,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             ctx.pop_scope(ty_scope);
 
             let decl_ty = Type::of_decl(&type_decl);
-            ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty)?;
+            ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty, visibility)?;
 
             Ok(ast::UnitDecl::Type(type_decl))
         },

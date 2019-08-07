@@ -185,7 +185,9 @@ pub fn typecheck_call(
                 },
             };
 
-            typecheck_object_ctor(&ctor, expect_ty, ctx)
+            let span = ctor.annotation.span().clone();
+
+            typecheck_object_ctor(&ctor, span, expect_ty, ctx)
                 .map(Box::new)
                 .map(CallOrCtor::Ctor)?
         },
@@ -507,7 +509,8 @@ pub fn typecheck_expr(
         },
 
         ast::Expression::ObjectCtor(ctor) => {
-            let ctor = typecheck_object_ctor(ctor, expect_ty, ctx)?;
+            let span = ctor.annotation.span().clone();
+            let ctor = typecheck_object_ctor(ctor, span, expect_ty, ctx)?;
             Ok(ast::Expression::from(ctor))
         },
 
@@ -561,7 +564,7 @@ pub fn ns_member_ref_to_annotation(
         },
 
         MemberRef::Value {
-            value: Decl::Function(sig),
+            value: Decl::Function { sig, .. },
             ref parent_path,
             key,
         } => {
@@ -578,7 +581,7 @@ pub fn ns_member_ref_to_annotation(
         },
 
         MemberRef::Value {
-            value: Decl::Type(ty),
+            value: Decl::Type { ty, .. },
             ..
         } => TypeAnnotation::Type(ty.clone(), span),
 

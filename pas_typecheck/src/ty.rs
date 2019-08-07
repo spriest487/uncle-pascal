@@ -521,7 +521,7 @@ fn parameterize_type(
 pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResult<&'c Type> {
     match ctx.resolve(name) {
         Some(context::MemberRef::Value {
-            value: Decl::Type(ty),
+            value: Decl::Type { ty, .. },
             ..
         }) => Ok(ty),
 
@@ -766,7 +766,7 @@ impl TypePattern {
 
         match ctx.resolve(&stem_name) {
             Some(ns::MemberRef::Value {
-                value: Decl::Type(Type::Variant(variant)),
+                value: Decl::Type { ty: Type::Variant(variant), .. },
                 ..
             }) => {
                 let case_ident = path.last();

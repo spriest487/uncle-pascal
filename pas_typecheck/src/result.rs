@@ -20,6 +20,7 @@ use pas_syn::{
     ast,
     parse::InvalidStatement,
     Ident,
+    IdentPath,
     Operator,
 };
 use std::fmt;
@@ -123,6 +124,15 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+
+    Private {
+        name: IdentPath,
+        span: Span,
+    },
+    PrivateConstructor {
+        ty: Type,
+        span: Span,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -163,6 +173,8 @@ impl Spanned for TypecheckError {
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::InvalidTypeArgs { span, .. } => span,
             TypecheckError::InvalidMethodInterface { span, .. } => span,
+            TypecheckError::Private { span, .. } => span,
+            TypecheckError::PrivateConstructor { span, .. } => span,
         }
     }
 }
@@ -214,6 +226,14 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
             },
+
+            TypecheckError::Private { .. } => {
+                "Name is private".to_string()
+            }
+
+            TypecheckError::PrivateConstructor { .. } => {
+                "Type has private constructor".to_string()
+            }
         }
     }
 
@@ -400,6 +420,14 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {
                 write!(f, "`{}` is not an interface type and cannot have methods", ty)
+            }
+
+            TypecheckError::Private { name, .. } => {
+                write!(f, "`{}` is private and can only be referenced in the unit where it is declared", name)
+            }
+
+            TypecheckError::PrivateConstructor { ty, .. } => {
+                write!(f, "`{}` is a private type constructor and can only be constructed in the unit where it is declared", ty)
             }
         }
     }

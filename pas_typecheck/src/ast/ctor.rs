@@ -7,6 +7,7 @@ pub type ObjectCtorArgs = ast::ObjectCtorArgs<TypeAnnotation>;
 
 pub fn typecheck_object_ctor(
     ctor: &ast::ObjectCtor<Span>,
+    span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
@@ -18,7 +19,7 @@ pub fn typecheck_object_ctor(
         .infer_specialized_from_hint(expect_ty)
         .ok_or_else(|| TypecheckError::InvalidCtorType {
             ty: raw_ty.clone(),
-            span: ctor.annotation.span().clone(),
+            span: span.clone(),
         })?
         .clone();
 
@@ -26,8 +27,22 @@ pub fn typecheck_object_ctor(
         .full_path()
         .ok_or_else(|| TypecheckError::InvalidCtorType {
             ty: ty.clone(),
-            span: ctor.annotation.span().clone(),
+            span: span.clone(),
         })?;
+
+    if !ctx.is_accessible(&ty_name) {
+        return Err(TypecheckError::Private {
+            name: ty_name,
+            span,
+        });
+    }
+
+    if !ctx.is_constructor_accessible(&ty) {
+        return Err(TypecheckError::PrivateConstructor {
+            ty,
+            span,
+        });
+    }
 
     let ty_members: Vec<_> = ty.members().map(|m| m.ty).cloned().collect();
     let mut members = Vec::new();
@@ -79,7 +94,6 @@ pub fn typecheck_object_ctor(
         members,
     };
 
-    let span = ctor.annotation.clone();
     let annotation = TypeAnnotation::TypedValue {
         ty,
         value_kind: ValueKind::Temporary,

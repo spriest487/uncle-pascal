@@ -1,6 +1,1 @@
-uses System;
-
-let x: Integer := 1;
-let y: Integer := x + 2;
-
-WriteLn(IntToStr(y))
+System.WriteLn('Hello, world!');

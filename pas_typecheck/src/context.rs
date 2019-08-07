@@ -97,20 +97,32 @@ pub enum TypeMember<'a> {
     Method { decl: &'a FunctionDecl },
 }
 
+#[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
+pub enum Visibility {
+    Private,
+    Exported,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Decl {
-    Type(Type),
+    Type {
+        ty: Type,
+        visibility: Visibility,
+    },
     BoundValue(Binding),
-    Function(Rc<FunctionSig>),
+    Function {
+        sig: Rc<FunctionSig>,
+        visibility: Visibility,
+    },
     Alias(IdentPath),
 }
 
 impl fmt::Display for Decl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Decl::Type(ty) => write!(f, "type `{}`", ty),
+            Decl::Type { ty, .. } => write!(f, "type `{}`", ty),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
-            Decl::Function(sig) => write!(f, "{}", sig),
+            Decl::Function { sig, .. } => write!(f, "{}", sig),
             Decl::Alias(aliased) => write!(f, "{}", aliased),
         }
     }
@@ -232,7 +244,7 @@ impl Context {
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
             let ident = Ident::new(name, builtin_span.clone());
-            ctx.declare_type(ident, ty)
+            ctx.declare_type(ident, ty, Visibility::Exported)
                 .expect("builtin type decl must not fail");
         };
 
@@ -286,11 +298,12 @@ impl Context {
                 }],
                 span: builtin_span,
             };
+            let disposable_ty = Type::Interface(Rc::new(disposable_iface));
 
             let system_scope = root_ctx.push_scope(Some(system_ident));
 
             root_ctx
-                .declare_type(disposable_ident, Type::Interface(Rc::new(disposable_iface)))
+                .declare_type(disposable_ident, disposable_ty, Visibility::Exported)
                 .expect("builtin System.Disposable type decl must not fail");
 
             root_ctx.pop_scope(system_scope);
@@ -392,19 +405,28 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_type(&mut self, name: Ident, ty: Type) -> NamingResult<()> {
-        self.declare(name, Decl::Type(ty))?;
+    pub fn declare_type(
+        &mut self,
+        name: Ident,
+        ty: Type,
+        visibility: Visibility
+    ) -> NamingResult<()> {
+        self.declare(name, Decl::Type { ty, visibility })?;
         Ok(())
     }
 
-    pub fn declare_function(&mut self, name: Ident, decl: &FunctionDecl) -> NamingResult<()> {
+    pub fn declare_function(
+        &mut self,name: Ident,
+        decl: &FunctionDecl,
+        visibility: Visibility
+    ) -> NamingResult<()> {
         let def = if decl.external_src().is_some() {
             Some(decl.span().clone())
         } else {
             None
         };
 
-        self.declare_function_and_def(name, FunctionSig::of_decl(decl), def)
+        self.declare_function_and_def(name, FunctionSig::of_decl(decl), def, visibility)
     }
 
     pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
@@ -492,14 +514,12 @@ impl Context {
         Ok(())
     }
 
-    pub fn qualify_name(&self, name: Ident) -> IdentPath {
-        let parts: Vec<_> = self.scopes.current_path().keys().cloned().collect();
+    pub fn namespace(&self) -> IdentPath {
+        IdentPath::from_parts(self.scopes.current_path().keys().cloned())
+    }
 
-        if parts.is_empty() {
-            IdentPath::from(name)
-        } else {
-            IdentPath::from_parts(parts).child(name)
-        }
+    pub fn qualify_name(&self, name: Ident) -> IdentPath {
+        self.namespace().child(name)
     }
 
     fn declare_function_and_def(
@@ -507,8 +527,12 @@ impl Context {
         name: Ident,
         sig: FunctionSig,
         def: Option<Span>,
+        visibility: Visibility,
     ) -> NamingResult<()> {
-        self.declare(name.clone(), Decl::Function(Rc::new(sig)))?;
+        self.declare(name.clone(), Decl::Function {
+            sig: Rc::new(sig),
+            visibility,
+        })?;
 
         if let Some(def) = def {
             let decl_ident = self.qualify_name(name);
@@ -523,6 +547,7 @@ impl Context {
         name: Ident,
         sig: FunctionSig,
         def: &FunctionDef,
+        visibility: Visibility,
     ) -> NamingResult<()> {
         let decl = self.scopes.current_path().find(&name);
 
@@ -537,7 +562,7 @@ impl Context {
                 match value {
                     // a function with this name was declared but not yet defined, so we need to update
                     // the existing declaration
-                    Decl::Function(old_sig) => {
+                    Decl::Function { sig: old_sig, .. } => {
                         // sig must match
                         if sig != *old_sig.as_ref() {
                             return Err(NameError::AlreadyDeclared {
@@ -582,7 +607,12 @@ impl Context {
                         ident: def.decl.ident.clone(),
                     })
                 } else {
-                    self.declare_function_and_def(name, sig, Some(def.decl.span().clone()))
+                    self.declare_function_and_def(
+                        name,
+                        sig,
+                        Some(def.decl.span().clone()),
+                        visibility
+                    )
                 }
             },
         }
@@ -591,7 +621,7 @@ impl Context {
     pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Interface)> {
         match self.resolve(name) {
             Some(MemberRef::Value {
-                value: Decl::Type(Type::Interface(iface)),
+                value: Decl::Type { ty: Type::Interface(iface), .. },
                 key,
                 ref parent_path,
                 ..
@@ -624,7 +654,7 @@ impl Context {
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.resolve(name) {
             Some(MemberRef::Value {
-                value: Decl::Function(sig),
+                value: Decl::Function { sig, .. },
                 key,
                 ref parent_path,
                 ..
@@ -667,7 +697,7 @@ impl Context {
                         .unwrap();
 
                     let (iface_ty, iface) = match iface_decl {
-                        Decl::Type(iface_ty @ Type::Interface(_)) => match iface_ty {
+                        Decl::Type { ty: iface_ty @ Type::Interface(..), .. } => match iface_ty {
                             Type::Interface(iface) => (iface_ty, iface),
                             _ => unreachable!(),
                         },
@@ -798,7 +828,7 @@ impl Context {
         for scope in self.scopes.current_path().as_slice().iter().rev() {
             for (ident, decl) in scope.decls.iter() {
                 // only functions can possibly be undefined
-                if let Member::Value(Decl::Function(_)) = decl {
+                if let Member::Value(Decl::Function { .. }) = decl {
                     let decl_path = IdentPath::from_parts(scope.key().cloned())
                         .clone()
                         .child(ident.clone());
@@ -882,6 +912,35 @@ impl Context {
 
         for name in all_init {
             self.initialize(&name);
+        }
+    }
+
+    pub fn is_accessible(&self, name: &IdentPath) -> bool {
+        match self.resolve(name) {
+            Some(MemberRef::Value { parent_path, value, .. }) => {
+                match value {
+                    Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
+                        match visibility {
+                            Visibility::Exported => true,
+                            Visibility::Private => {
+                                let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                                self.namespace().is_parent_of(&decl_unit_ns)
+                            },
+                        }
+                    },
+
+                    _ => true,
+                }
+            },
+
+            _ => true,
+        }
+    }
+
+    pub fn is_constructor_accessible(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Class(class) => self.namespace().is_parent_of(&class.name.qualified),
+            _ => true,
         }
     }
 }
