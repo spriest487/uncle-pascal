@@ -755,38 +755,92 @@ impl TypePattern {
         }
     }
 
+    // patterns referring to a typename can use a generic typename as the pattern, in which
+    // case we infer the specialized type (or throw NotMatchable for generics we can't infer a
+    // proper specialization for)
     fn find_pattern_ty(
         name: &IdentPath,
         span: &Span,
+        expect_ty: &Type,
         ctx: &Context,
     ) -> TypecheckResult<Type> {
         let raw_ty = find_type(name, ctx)?;
-        if raw_ty.is_matchable() {
-            Ok(raw_ty.clone())
+
+        let matchable_ty = if raw_ty.is_matchable() {
+            raw_ty.infer_specialized_from_hint(expect_ty).cloned()
         } else {
-            Err(TypecheckError::NotMatchable {
-                ty: raw_ty.clone(),
-                span: span.clone(),
-            })
+            None
+        };
+
+        matchable_ty.ok_or_else(|| TypecheckError::NotMatchable {
+            ty: raw_ty.clone(),
+            span: span.clone(),
+        })
+    }
+
+    // find_pattern_ty, but for variant type patterns
+    fn find_pattern_variant(
+        variant: Rc<Variant>,
+        span: &Span,
+        expect_ty: &Type
+    ) -> TypecheckResult<Rc<Variant>> {
+        match expect_ty {
+            expect_var @ Type::Variant(..) => {
+                let var_ty = Type::Variant(variant);
+
+                var_ty.infer_specialized_from_hint(expect_var)
+                    .map(|ty| match ty {
+                        Type::Variant(v) => v.clone(),
+                        _ => unreachable!("should never infer a non-variant specialized type for a generic variant"),
+                    })
+                    .ok_or_else(|| TypecheckError::NotMatchable {
+                        ty: var_ty.clone(),
+                        span: span.clone(),
+                    })
+            }
+
+            _ => {
+                // can never match on raw variants
+                if variant.name.is_generic() {
+                    Err(TypecheckError::NotMatchable {
+                        ty: Type::Variant(variant),
+                        span: span.clone(),
+                    })
+                } else {
+                    // expect_ty is probably Nothing and we have to assume the type we find from
+                    // just the typename is right (if not, we'll get a type mismatch later)
+                    // todo: make sure we get a type mismatch later
+                    Ok(variant)
+                }
+            },
         }
     }
 
-    pub fn find(pattern: &ast::TypeNamePattern, ctx: &Context) -> TypecheckResult<TypePattern> {
+    pub fn find(
+        pattern: &ast::TypeNamePattern,
+        expect_ty: &Type,
+        ctx: &Context
+    ) -> TypecheckResult<TypePattern> {
         match pattern {
             ast::TypeNamePattern::TypeName {
                 name,
                 binding,
                 span,
             } if name.as_slice().len() > 1 => match Self::find_variant_case(name, ctx)? {
-                Some((variant, case_index)) => Ok(TypePattern::VariantCase {
-                    variant: variant.clone(),
-                    case_index,
-                    data_binding: binding.clone(),
-                    span: span.clone(),
-                }),
+                Some((variant, case_index)) => {
+                    let variant = Self::find_pattern_variant(variant, span, expect_ty)?;
+
+                    Ok(TypePattern::VariantCase {
+                        variant: variant.clone(),
+                        case_index,
+                        data_binding: binding.clone(),
+                        span: span.clone(),
+                    })
+                },
 
                 None => {
-                    let ty = Self::find_pattern_ty(name, pattern.span(), ctx)?;
+                    let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
+
                     Ok(TypePattern::Type {
                         ty,
                         binding: binding.clone(),
@@ -799,20 +853,24 @@ impl TypePattern {
                 name,
                 span,
             } if name.as_slice().len() > 1 => match Self::find_variant_case(name, ctx)? {
-                Some((variant, case_index)) => Ok(TypePattern::NegatedVariantCase {
-                    variant: variant.clone(),
-                    case_index,
-                    span: span.clone(),
-                }),
+                Some((variant, case_index)) => {
+                    let variant = Self::find_pattern_variant(variant, span, expect_ty)?;
+
+                    Ok(TypePattern::NegatedVariantCase {
+                        variant: variant.clone(),
+                        case_index,
+                        span: span.clone(),
+                    })
+                },
 
                 None => {
-                    let ty = Self::find_pattern_ty(name, pattern.span(), ctx)?;
+                    let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
                     Ok(TypePattern::NegatedType { ty, span: span.clone(), })
                 }
             },
 
             ast::TypeNamePattern::TypeName { name, binding, span, } => {
-                let ty = Self::find_pattern_ty(name, pattern.span(), ctx)?;
+                let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
                 Ok(TypePattern::Type {
                     ty,
                     binding: binding.clone(),
@@ -821,7 +879,7 @@ impl TypePattern {
             }
 
             ast::TypeNamePattern::NegatedTypeName { name, span } => {
-                let ty = Self::find_pattern_ty(name, pattern.span(), ctx)?;
+                let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
                 Ok(TypePattern::NegatedType { ty, span: span.clone(), })
             }
         }

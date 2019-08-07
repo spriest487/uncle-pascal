@@ -22,7 +22,7 @@ pub fn typecheck_if_cond(
     }
 
     let is_pattern = match &if_cond.is_pattern {
-        Some(pattern) => Some(TypePattern::find(pattern, ctx)?),
+        Some(pattern) => Some(TypePattern::find(pattern, cond.annotation().ty(), ctx)?),
         None => None,
     };
 
