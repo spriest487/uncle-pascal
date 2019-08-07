@@ -918,7 +918,9 @@ impl Context {
                             Visibility::Exported => true,
                             Visibility::Private => {
                                 let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
-                                self.namespace().is_parent_of(&decl_unit_ns)
+                                let current_ns = self.namespace();
+
+                                current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
                             },
                         }
                     },
