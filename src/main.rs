@@ -2,47 +2,19 @@ mod reporting;
 
 use pas_backend_c as backend_c;
 use pas_common::{
-    span::*,
-    Backtrace,
-    BuildOptions,
-    DiagnosticLabel,
-    DiagnosticMessage,
-    DiagnosticOutput,
+    span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
     TracedError,
 };
-use pas_ir::{
-    self as ir,
-    Interpreter,
-    InterpreterOpts,
-};
-use pas_pp::{
-    self as pp,
-    PreprocessedUnit,
-    PreprocessorError,
-};
-use pas_syn::{
-    ast as syn,
-    parse::*,
-    TokenTree,
-    TokenizeError,
-};
-use pas_typecheck::{
-    self as ty,
-    TypecheckError,
-};
+use pas_ir::{self as ir, Interpreter, InterpreterOpts};
+use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
+use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
+use pas_typecheck::{self as ty, TypecheckError};
 use std::{
     env,
     ffi::OsStr,
     fmt,
-    fs::{
-        self,
-        File,
-    },
-    io::{
-        self,
-        Read as _,
-        Write as _,
-    },
+    fs::{self, File},
+    io::{self, Read as _, Write as _},
     path::PathBuf,
     process,
     str::FromStr,
@@ -158,7 +130,7 @@ impl fmt::Display for CompileError {
             ),
             CompileError::OutputFailed(span, err) => {
                 write!(f, "writing to file {} failed: {}", span.file.display(), err,)
-            },
+            }
         }
     }
 }
@@ -266,7 +238,7 @@ fn preprocess(
         Err(err) => {
             eprintln!("failed to open {}: {}", filename.display(), err);
             process::exit(1);
-        },
+        }
         Ok(file) => file,
     };
 
@@ -406,7 +378,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
                 };
                 let module = backend_c::translate(&module, opts);
                 write_output_file(&out_path, &module)?;
-            },
+            }
             _ => unimplemented!("backend supporting output file {}", out_path.display()),
         }
     } else {
@@ -451,13 +423,13 @@ fn main() {
             match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
-                },
+                }
 
                 CompileError::ParseError(err) => {
                     println!("{:?}", err.bt);
-                },
+                }
 
-                _ => {},
+                _ => {}
             }
         }
 

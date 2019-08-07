@@ -17,11 +17,9 @@ pub fn typecheck_object_ctor(
     // the generic type the constructor expression refers to, use that instead
     let ty = raw_ty
         .infer_specialized_from_hint(expect_ty)
-        .ok_or_else(|| {
-            TypecheckError::InvalidCtorType {
-                ty: raw_ty.clone(),
-                span: span.clone(),
-            }
+        .ok_or_else(|| TypecheckError::InvalidCtorType {
+            ty: raw_ty.clone(),
+            span: span.clone(),
         })?
         .clone();
 
@@ -40,10 +38,7 @@ pub fn typecheck_object_ctor(
     }
 
     if !ctx.is_constructor_accessible(&ty) {
-        return Err(TypecheckError::PrivateConstructor {
-            ty,
-            span,
-        });
+        return Err(TypecheckError::PrivateConstructor { ty, span });
     }
 
     let ty_members: Vec<_> = ty.members().map(|m| m.ty).cloned().collect();
@@ -60,7 +55,7 @@ pub fn typecheck_object_ctor(
                     span: ctor_member.ident.span.clone(),
                 }
                 .into());
-            },
+            }
 
             Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
                 return Err(TypecheckError::InvalidBinOp {
@@ -69,7 +64,7 @@ pub fn typecheck_object_ctor(
                     op: Operator::Assignment,
                     span: ctor_member.value.annotation().span().clone(),
                 });
-            },
+            }
 
             Some(_) => members.push(ObjectCtorMember {
                 ident: ctor_member.ident.clone(),
@@ -141,7 +136,7 @@ pub fn typecheck_collection_ctor(
             }
 
             elem_ty
-        },
+        }
 
         Some(elem_ty) => {
             for e in &ctor.elements {
@@ -152,7 +147,7 @@ pub fn typecheck_collection_ctor(
             }
 
             elem_ty.clone()
-        },
+        }
     };
 
     let collection_ty = match expect_ty {

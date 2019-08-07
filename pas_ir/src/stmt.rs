@@ -59,7 +59,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 }
 
 fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
-    let bound_ty = builder.module.metadata.translate_type(&binding.val_ty);
+    let bound_ty = builder.translate_type(&binding.val_ty);
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
 
@@ -80,9 +80,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
     builder.scope(|builder| {
         // counter
-        let counter_ty = builder
-            .module.metadata
-            .translate_type(&for_loop.init_binding.val_ty);
+        let counter_ty = builder.translate_type(&for_loop.init_binding.val_ty);
         if counter_ty != Type::I32 {
             unimplemented!("non-i32 counters");
         }
@@ -147,9 +145,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     let rhs = translate_expr(&assignment.rhs, builder);
 
     // the new value is being stored in a new location, retain it
-    let rhs_ty = builder
-        .module.metadata
-        .translate_type(assignment.rhs.annotation().ty());
+    let rhs_ty = builder.translate_type(assignment.rhs.annotation().ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it. local variables can be uninitialized,
@@ -160,9 +156,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     // handle that in the backend's release mechanism.
     //
     // the alternative would be to store an initialization flag alongside each rc variable
-    let lhs_ty = builder
-        .module.metadata
-        .translate_type(assignment.lhs.annotation().ty());
+    let lhs_ty = builder.translate_type(assignment.lhs.annotation().ty());
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move {

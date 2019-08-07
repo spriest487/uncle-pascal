@@ -1,21 +1,7 @@
-use crate::{
-    context::*,
-    Type,
-};
-use pas_common::{
-    span::*,
-    DiagnosticLabel,
-    DiagnosticMessage,
-    DiagnosticOutput,
-};
-use pas_syn::{
-    Ident,
-    IdentPath,
-};
-use std::{
-    fmt,
-    path::PathBuf,
-};
+use crate::{context::*, Type};
+use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
+use pas_syn::{Ident, IdentPath};
+use std::{fmt, path::PathBuf};
 
 #[derive(Debug)]
 pub enum UnexpectedValue {
@@ -129,7 +115,7 @@ impl DiagnosticOutput for NameError {
                         }),
                     }]
                 }
-            },
+            }
 
             NameError::AlreadyDefined { ident, existing } => vec![DiagnosticMessage {
                 title: format!("`{}` previously defined here", ident),
@@ -165,7 +151,7 @@ impl DiagnosticOutput for NameError {
                     .collect();
                 see_also.sort();
                 see_also
-            },
+            }
 
             _ => Vec::new(),
         }
@@ -178,7 +164,7 @@ impl fmt::Display for NameError {
             NameError::NotFound(ident) => write!(f, "`{}` was not found in this scope", ident),
             NameError::MemberNotFound { base, member, .. } => {
                 write!(f, "type {} does not have a member named `{}`", base, member)
-            },
+            }
             NameError::ExpectedType(ident, unexpected) => write!(
                 f,
                 "`{}` did not refer to a type in this scope (found: {})",
@@ -206,11 +192,11 @@ impl fmt::Display for NameError {
             ),
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "`{}` was already declared in this scope", new)
-            },
+            }
             NameError::AlreadyDefined { ident, .. } => write!(f, "`{}` was already defined", ident),
             NameError::Ambiguous { ident, .. } => {
                 write!(f, "`{}` is ambiguous in this context", ident)
-            },
+            }
 
             NameError::AlreadyImplemented {
                 iface,

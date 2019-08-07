@@ -1,7 +1,4 @@
-use crate::{
-    ast::Expression,
-    parse::prelude::*,
-};
+use crate::{ast::Expression, parse::prelude::*};
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {

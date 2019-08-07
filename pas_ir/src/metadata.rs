@@ -436,21 +436,6 @@ pub struct Metadata {
     ifaces: HashMap<InterfaceID, Interface>,
 
     functions: HashMap<FunctionID, FunctionDecl>,
-
-    // current set of type args for the current translation context - should be empty
-    // when we're not in a generic function
-    // todo: can this be refactored into Module somewhere so Metadata doesn't need to know anything
-    // about generics
-    // now implemented as a stack as a hack for function defs which get generated
-    // while another def is already being generated - this should definitely not be
-    // here
-    type_args: Vec<GenericContext>,
-}
-
-#[derive(Debug, Clone)]
-struct GenericContext {
-    src_args: Vec<pas_ty::Type>,
-    translated_args: Vec<Type>,
 }
 
 impl Metadata {
@@ -514,27 +499,6 @@ impl Metadata {
             }
             self.functions.insert(*id, func_decl.clone());
         }
-    }
-
-    pub fn push_type_args(&mut self, args: Vec<pas_ty::Type>) {
-        let translated_args = args.iter()
-            .map(|arg| self.translate_type(arg))
-            .collect();
-
-        self.type_args.push(GenericContext {
-            src_args: args,
-            translated_args,
-        });
-    }
-
-    pub fn current_ctx_type_args(&self) -> Option<&[pas_ty::Type]> {
-        let ctx = self.type_args.last()?;
-
-        Some(&ctx.src_args)
-    }
-
-    pub fn pop_type_args(&mut self) {
-        self.type_args.pop().expect("called pop_type_args with no contextual type args");
     }
 
     pub fn type_defs(&self) -> &HashMap<StructID, TypeDef> {
@@ -895,16 +859,12 @@ impl Metadata {
                 Type::Variant(id)
             },
 
-            pas_ty::Type::MethodSelf => unreachable!("Self is not a real type in this context"),
+            pas_ty::Type::MethodSelf => {
+                panic!("Self is not a real type in this context")
+            },
 
             pas_ty::Type::GenericParam(param) => {
-                let args = self.type_args.last()
-                    .map(|ctx| &ctx.translated_args);
-
-                match args.and_then(|args| args.get(param.pos)) {
-                    Some(ty) => ty.clone(),
-                    None => panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new()),
-                }
+                panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new())
             },
 
             pas_ty::Type::Function(sig) => {

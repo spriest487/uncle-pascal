@@ -34,10 +34,9 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                     ..
                 } => panic!("temporaries cannot be referenced by ident"),
 
-                TypeAnnotation::Function { name, ns, type_args, .. } => {
-                    let func = builder
-                        .module
-                        .translate_func(ns.clone().child(name.clone()), type_args.clone());
+                TypeAnnotation::Function { name, ns, type_args, span, .. } => {
+                    let func_name = ns.clone().child(name.clone());
+                    let func = builder.translate_func(func_name, type_args.clone(), span);
                     let func_ref = GlobalRef::Function(func.id);
 
                     Ref::Global(func_ref)
@@ -76,7 +75,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                             )
                         });
 
-                    let ref_ty = builder.module.metadata.translate_type(annotation.ty()).clone();
+                    let ref_ty = builder.translate_type(annotation.ty()).clone();
                     let ref_temp = builder.local_temp(ref_ty.clone().ptr());
 
                     builder.append(Instruction::AddrOf {
@@ -110,7 +109,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
 }
 
 fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> Ref {
-    let ty = builder.module.metadata.translate_type(&indexer.annotation.ty());
+    let ty = builder.translate_type(&indexer.annotation.ty());
     let ptr_into = builder.local_temp(ty.clone().ptr());
 
     builder.begin_scope();
@@ -182,7 +181,7 @@ pub fn translate_if_cond(
     let (out_val, out_ty) = match if_cond.annotation.ty() {
         pas_ty::Type::Nothing => (None, Type::Nothing),
         out_ty => {
-            let out_ty = builder.module.metadata.translate_type(out_ty);
+            let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
             (Some(out_val), out_ty)
         }
@@ -200,7 +199,7 @@ pub fn translate_if_cond(
         None => (cond_val, Vec::new()),
 
         Some(TypePattern::Type { binding, ty, .. }) => {
-            let is_ty = builder.module.metadata.translate_type(ty);
+            let is_ty = builder.translate_type(ty);
             let is = translate_is_ty(cond_val.clone(), &is_ty, builder);
 
             let bindings = match binding {
@@ -217,7 +216,7 @@ pub fn translate_if_cond(
         }
 
         Some(TypePattern::NegatedType { ty, .. }) => {
-            let is_not_ty = builder.module.metadata.translate_type(ty);
+            let is_not_ty = builder.translate_type(ty);
             let is = translate_is_ty(cond_val, &is_not_ty, builder);
 
             let is_not = builder.local_temp(Type::Bool);
@@ -240,9 +239,8 @@ pub fn translate_if_cond(
                     let case_ty = variant.cases[*case_index].data_ty.as_ref()
                         .expect("variant case pattern with a binding must reference a variant case which has a data member");
 
-                    let variant_ty = builder.module.metadata
-                        .translate_type(&pas_ty::Type::Variant(variant.clone()));
-                    let binding_ty = builder.module.metadata.translate_type(&case_ty);
+                    let variant_ty = builder.translate_type(&pas_ty::Type::Variant(variant.clone()));
+                    let binding_ty = builder.translate_type(&case_ty);
                     let data_ptr = builder.local_temp(binding_ty.clone().ptr());
 
                     builder.append(Instruction::VariantData {
@@ -334,7 +332,7 @@ fn translate_is_variant(
 ) -> Ref {
     let variant_ty = pas_ty::Type::Variant(variant);
 
-    let ty = builder.module.metadata.translate_type(&variant_ty);
+    let ty = builder.translate_type(&variant_ty);
 
     let tag_ptr = builder.local_temp(Type::I32.ptr());
     builder.append(Instruction::VariantTag {
@@ -378,7 +376,7 @@ fn translate_call_with_args(
     let out_val = match &sig.return_ty {
         pas_ty::Type::Nothing => None,
         return_ty => {
-            let out_ty = builder.module.metadata.translate_type(return_ty).clone();
+            let out_ty = builder.translate_type(return_ty).clone();
             let out_val = builder.local_new(out_ty, None);
             Some(out_val)
         }
@@ -391,7 +389,7 @@ fn translate_call_with_args(
     for (arg, param) in args.iter().zip(sig.params.iter()) {
         let arg_expr = if param.is_by_ref() {
             let arg_ref = translate_expr(arg, builder);
-            let arg_ty = builder.module.metadata.translate_type(arg.annotation().ty());
+            let arg_ty = builder.translate_type(arg.annotation().ty());
             let arg_ptr = builder.local_temp(arg_ty.ptr());
 
             builder.append(Instruction::AddrOf {
@@ -418,8 +416,9 @@ fn translate_call_with_args(
             let self_arg = arg_vals[0].clone();
             let rest_args = arg_vals[1..].to_vec();
 
-            let method_index = builder.module.metadata.ifaces()[&iface_id]
-                .methods
+            let methods = &builder.get_iface(iface_id).unwrap().methods;
+
+            let method_index = methods
                 .iter()
                 .position(|m| m.name == method)
                 .unwrap();
@@ -459,24 +458,10 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 _ => panic!("type of function target expr must be a function"),
             };
 
-            let type_args = match builder.module.metadata.current_ctx_type_args() {
-                Some(ctx_ty_args) => {
-                    func_call.type_args.iter()
-                        .map(|arg| arg.specialize_generic(ctx_ty_args, func_call.span()).unwrap())
-                        .collect()
-                }
-
-                None => {
-                    func_call.type_args.clone()
-                }
-            };
-
-            let func = builder.module.translate_func(full_name, type_args);
-
-//            println!("calling func {:#?}", func);
+            let type_args = func_call.type_args.clone();
+            let func = builder.translate_func(full_name, type_args, func_call.span());
 
             let func_ref = Ref::Global(GlobalRef::Function(func.id));
-
             let call_target = CallTarget::Function(Value::Ref(func_ref));
 
             translate_call_with_args(call_target, &func_call.args, &func.sig, builder)
@@ -493,7 +478,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 .get_method(&method_call.ident)
                 .expect("method referenced in method call must exist");
 
-            let iface_id = match builder.module.metadata.translate_type(of_ty) {
+            let iface_id = match builder.translate_type(of_ty) {
                 Type::RcPointer(Some(ClassID::Interface(iface_id))) => iface_id,
 
                 // UFCS "methods" that aren't interface impls are treated as function calls
@@ -501,13 +486,14 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             };
 
             let method_name = method_call.ident.to_string();
-            let method_index = builder.module.metadata.ifaces()[&iface_id]
+            let method_index = builder.get_iface(iface_id)
+                .unwrap()
                 .method_index(&method_name)
                 .unwrap_or_else(|| {
                     panic!("missing method {} for interface {}", method_name, iface_id)
                 });
 
-            let self_ty = builder.module.metadata.translate_type(&method_call.self_type);
+            let self_ty = builder.translate_type(&method_call.self_type);
             let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
 
             let call_target = match &self_ty {
@@ -519,7 +505,6 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 _ => {
                     // todo: needs to call translate_method somewhere
                     let impl_func = builder
-                        .module.metadata
                         .find_impl(&self_ty, iface_id, method_index)
                         .expect("referenced impl func must be declared");
 
@@ -534,7 +519,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
 
         ast::Call::VariantCtor(variant_ctor) => {
             let variant_ty = pas_ty::Type::Variant(variant_ctor.variant.clone());
-            let out_ty = builder.module.metadata.translate_type(&variant_ty);
+            let out_ty = builder.translate_type(&variant_ty);
             let out = builder.local_temp(out_ty.clone());
 
             builder.begin_scope();
@@ -555,7 +540,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             if let Some(arg) = &variant_ctor.arg {
                 let arg_ref = translate_expr(arg, builder);
 
-                let arg_ty = builder.module.metadata.translate_type(arg.annotation().ty());
+                let arg_ty = builder.translate_type(arg.annotation().ty());
                 let field_ptr = builder.local_temp(arg_ty.ptr());
                 builder.append(Instruction::VariantData {
                     out: field_ptr.clone(),
@@ -578,7 +563,7 @@ fn is_string_class(class: &pas_ty::ast::Class) -> bool {
 }
 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Ref {
-    let out_ty = builder.module.metadata.translate_type(ty);
+    let out_ty = builder.translate_type(ty);
     let out = builder.local_temp(out_ty);
 
     match lit {
@@ -612,7 +597,7 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
 
         ast::Literal::String(s) => match ty {
             pas_ty::Type::Class(class) if is_string_class(class) => {
-                let lit_id = builder.module.metadata.find_or_insert_string(s);
+                let lit_id = builder.find_or_insert_string(s);
                 let lit_ref = GlobalRef::StringLiteral(lit_id);
 
                 builder.mov(out.clone(), Value::Ref(Ref::Global(lit_ref)));
@@ -634,7 +619,7 @@ fn translate_bin_op(
         return translate_expr(&bin_op.rhs, builder);
     }
 
-    let out_ty = builder.module.metadata.translate_type(out_ty);
+    let out_ty = builder.translate_type(out_ty);
 
     let (out_val, by_ref) = if bin_op.op == syn::Operator::Member {
         (builder.local_new(out_ty.clone().ptr(), None), true)
@@ -649,9 +634,7 @@ fn translate_bin_op(
         syn::Operator::Member => {
             // auto-deref for rc types
 
-            let of_ty = builder
-                .module.metadata
-                .translate_type(bin_op.lhs.annotation().ty());
+            let of_ty = builder.translate_type(bin_op.lhs.annotation().ty());
 
             let struct_id = match &of_ty {
                 Type::Struct(id) => *id,
@@ -663,7 +646,6 @@ fn translate_bin_op(
             };
 
             let struct_def = builder
-                .module.metadata
                 .get_struct(struct_id)
                 .expect("referenced struct must exist");
 
@@ -849,7 +831,7 @@ fn translate_unary_op(
 
     match unary_op.op {
         syn::Operator::AddressOf => {
-            let out_ty = builder.module.metadata.translate_type(out_ty);
+            let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
 
             builder.append(Instruction::AddrOf {
@@ -868,7 +850,7 @@ fn translate_unary_op(
 }
 
 fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) -> Ref {
-    let object_ty = builder.module.metadata.translate_type(ctor.annotation.ty());
+    let object_ty = builder.translate_type(ctor.annotation.ty());
 
     let struct_id = match &object_ty {
         Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
@@ -880,7 +862,6 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     };
 
     let struct_def = builder
-        .module.metadata
         .get_struct(struct_id)
         .unwrap_or_else(|| panic!("struct {} referenced in object ctor must exist", ctor.ident))
         .clone();
@@ -935,7 +916,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut Builder) -> Ref {
     match &ctor.annotation.ty() {
         pas_ty::Type::Array { element, dim } => {
-            let el_ty = builder.module.metadata.translate_type(element.as_ref());
+            let el_ty = builder.translate_type(element.as_ref());
 
             let array_ty = el_ty.clone().array(*dim);
             let arr = builder.local_temp(array_ty.clone());
@@ -972,7 +953,7 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
 pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Ref> {
     let (out_val, out_ty) = match &block.output {
         Some(out_expr) => {
-            let out_ty = builder.module.metadata.translate_type(out_expr.annotation().ty());
+            let out_ty = builder.translate_type(out_expr.annotation().ty());
             let out_val = builder.local_new(out_ty.clone(), None);
 
             (Some(out_val), out_ty)

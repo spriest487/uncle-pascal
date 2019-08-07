@@ -11,25 +11,13 @@ pub mod typedecl;
 pub mod unit;
 
 pub use self::{
-    block::*,
-    call::*,
-    cond::*,
-    ctor::*,
-    expression::*,
-    function::*,
-    iter::*,
-    op::*,
-    statement::*,
-    typedecl::*,
-    unit::*,
+    block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
+    typedecl::*, unit::*,
 };
 
 use crate::parse::prelude::*;
 use pas_common::TracedError;
-use std::{
-    fmt,
-    hash::Hash,
-};
+use std::{fmt, hash::Hash};
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
@@ -117,7 +105,7 @@ impl TypeName {
                     dim_tokens.finish()?;
 
                     dim
-                },
+                }
                 _ => unreachable!("match failed"),
             };
 
@@ -187,7 +175,7 @@ impl fmt::Display for TypeName {
                 }
 
                 Ok(())
-            },
+            }
 
             TypeName::Array { element, dim, .. } => write!(f, "array[{}] of {}", dim, element),
 
@@ -205,10 +193,11 @@ impl<Item: Spanned> OfClause<Item> {
     fn parse<ItemParser, ItemMatcher>(
         tokens: &mut TokenStream,
         mut item_parser: ItemParser,
-        item_next_matcher: ItemMatcher
+        item_next_matcher: ItemMatcher,
     ) -> ParseResult<Option<Self>>
-        where ItemParser: FnMut(&mut TokenStream) -> ParseResult<Item>,
-              ItemMatcher: Into<Matcher>,
+    where
+        ItemParser: FnMut(&mut TokenStream) -> ParseResult<Item>,
+        ItemMatcher: Into<Matcher>,
     {
         let item_next_matcher = item_next_matcher.into();
 
@@ -216,7 +205,12 @@ impl<Item: Spanned> OfClause<Item> {
             Some(of_kw) => {
                 let items = tokens.match_separated(Separator::Comma, |i, tokens| {
                     // expect at least one item after `of`
-                    if i > 0 && tokens.look_ahead().match_one(item_next_matcher.clone()).is_none() {
+                    if i > 0
+                        && tokens
+                            .look_ahead()
+                            .match_one(item_next_matcher.clone())
+                            .is_none()
+                    {
                         Ok(Generate::Break)
                     } else {
                         let item = item_parser(tokens)?;
@@ -224,14 +218,12 @@ impl<Item: Spanned> OfClause<Item> {
                     }
                 })?;
 
-                let span = items.last()
+                let span = items
+                    .last()
                     .map(|item| of_kw.span().to(item.span()))
                     .expect("must have at least one item following the `of` keyword");
 
-                Ok(Some(OfClause {
-                    items,
-                    span,
-                }))
+                Ok(Some(OfClause { items, span }))
             }
 
             None => Ok(None),
@@ -270,7 +262,7 @@ impl TypeNamePattern {
                         let span = name.span().to(binding_ident.span());
 
                         (span, Some(binding_ident))
-                    },
+                    }
 
                     None => (name.span().clone(), None),
                 };
@@ -280,7 +272,7 @@ impl TypeNamePattern {
                     binding,
                     span,
                 })
-            },
+            }
         }
     }
 }
@@ -294,7 +286,7 @@ impl fmt::Display for TypeNamePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            },
+            }
             TypeNamePattern::NegatedTypeName { name, .. } => write!(f, "not {}", name),
         }
     }

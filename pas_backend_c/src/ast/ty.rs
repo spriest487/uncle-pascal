@@ -1,21 +1,8 @@
-use std::{
-    collections::HashMap,
-    fmt,
-};
+use std::{collections::HashMap, fmt};
 
-use pas_ir::metadata::{
-    self,
-    ClassID,
-    FieldID,
-    InterfaceID,
-    StructID,
-};
+use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, StructID};
 
-use crate::ast::{
-    FunctionDecl,
-    FunctionName,
-    Module,
-};
+use crate::ast::{FunctionDecl, FunctionName, Module};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -50,7 +37,7 @@ impl Type {
             metadata::Type::Array { element, dim } => {
                 let element = Type::from_metadata(element, module);
                 module.make_array_type(element, *dim)
-            },
+            }
         }
     }
 
@@ -67,37 +54,37 @@ impl Type {
             Type::Pointer(ty) => {
                 ty.build_decl_string(left, right);
                 left.push('*');
-            },
+            }
             Type::Void => {
                 left.push_str("void");
-            },
+            }
             Type::Int => {
                 left.push_str("int");
-            },
+            }
             Type::Int32 => {
                 left.push_str("int32_t");
-            },
+            }
             Type::Bool => {
                 left.push_str("bool");
-            },
+            }
             Type::Float => {
                 left.push_str("float");
-            },
+            }
             Type::UChar => {
                 left.push_str("unsigned char");
-            },
+            }
 
             Type::Struct(name) => {
                 left.push_str("struct ");
                 left.push_str(&name.to_string());
-            },
+            }
 
             Type::SizedArray(el, size) => {
                 el.build_decl_string(left, right);
                 right.push('[');
                 right.push_str(&size.to_string());
                 right.push(']');
-            },
+            }
 
             Type::FunctionPointer { return_ty, params } => {
                 left.push_str(&return_ty.typename());
@@ -111,7 +98,7 @@ impl Type {
                     right.push_str(&param.typename());
                 }
                 right.push(')');
-            },
+            }
         }
     }
 
@@ -147,7 +134,7 @@ impl Type {
                 }
                 name.push(')');
                 name
-            },
+            }
         }
     }
 }
@@ -424,7 +411,7 @@ impl Class {
                 match impls.get(i + 1) {
                     Some((_, (next_impl_id, _))) => {
                         def.push_str(&format!("ImplTable_{}_{}", self.struct_id, next_impl_id));
-                    },
+                    }
                     None => def.push_str("NULL"),
                 }
 

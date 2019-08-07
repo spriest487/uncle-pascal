@@ -3,47 +3,23 @@ mod token_stream;
 
 pub mod prelude {
     pub use crate::{
-        ast::{
-            Annotation,
-            DeclNamed,
-            TypeName,
-            TypeNamePattern,
-        },
+        ast::{Annotation, DeclNamed, TypeName, TypeNamePattern},
         consts::*,
         ident::*,
         keyword::*,
         operators::*,
         parse::*,
-        token_tree::{
-            DelimiterPair,
-            Separator,
-            TokenTree,
-        },
+        token_tree::{DelimiterPair, Separator, TokenTree},
     };
-    pub use pas_common::{
-        span::*,
-        TracedError,
-    };
+    pub use pas_common::{span::*, TracedError};
     pub use std::fmt;
 }
 
-use crate::{
-    ast::*,
-    token_tree::*,
-};
-use pas_common::{
-    span::*,
-    DiagnosticLabel,
-    DiagnosticMessage,
-    DiagnosticOutput,
-    TracedError,
-};
+use crate::{ast::*, token_tree::*};
+use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use std::fmt;
 
-pub use self::{
-    matcher::*,
-    token_stream::*,
-};
+pub use self::{matcher::*, token_stream::*};
 
 #[derive(Debug)]
 pub struct InvalidStatement<A: Annotation>(pub Box<Expression<A>>);
@@ -112,18 +88,18 @@ impl DiagnosticOutput for ParseError {
         let text = match self {
             ParseError::UnexpectedToken(tt, Some(expected)) => {
                 format!("expected {}, found {}", expected, tt)
-            },
+            }
 
             ParseError::UnexpectedToken(tt, None) => format!("unexpected {}", tt),
 
             ParseError::UnexpectedEOF(expected, _tt) => {
                 format!("expected {} but reached end of sequence", expected)
-            },
+            }
 
             ParseError::EmptyOperand { operator, before } => {
                 let pos_name = if *before { "before" } else { "after" };
                 format!("expected operand {} {}", pos_name, operator)
-            },
+            }
 
             ParseError::UnexpectedOperator { .. } => "expected operand, found operator".to_string(),
 

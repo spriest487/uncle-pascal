@@ -3,12 +3,8 @@ pub mod span;
 use crate::span::*;
 use std::{
     cmp::Ordering,
-    collections::{
-        hash_map::HashMap,
-        HashSet,
-    },
-    env,
-    fmt,
+    collections::{hash_map::HashMap, HashSet},
+    env, fmt,
     ops::Deref,
     path::Path,
 };

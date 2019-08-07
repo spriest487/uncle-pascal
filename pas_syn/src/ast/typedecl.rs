@@ -1,8 +1,5 @@
 use crate::{
-    ast::{
-        FunctionDecl,
-        OfClause,
-    },
+    ast::{FunctionDecl, OfClause},
     parse::prelude::*,
 };
 
@@ -196,7 +193,7 @@ impl Variant<Span> {
                     let ty = TypeName::parse(tokens)?;
                     let span = ident_tt.span().to(ty.span());
                     (Some(ty), span)
-                },
+                }
                 None => (None, ident_tt.span().clone()),
             };
 
@@ -360,7 +357,7 @@ impl TypeDecl<Span> {
             Some(ref tt) if class_matcher.is_match(tt) => {
                 let class_decl = Class::parse(tokens, name)?;
                 Ok(TypeDecl::Class(class_decl))
-            },
+            }
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Interface,
@@ -368,7 +365,7 @@ impl TypeDecl<Span> {
             }) => {
                 let iface_decl = Interface::parse(tokens, name)?;
                 Ok(TypeDecl::Interface(iface_decl))
-            },
+            }
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Variant,
@@ -376,7 +373,7 @@ impl TypeDecl<Span> {
             }) => {
                 let variant_decl = Variant::parse(tokens, name)?;
                 Ok(TypeDecl::Variant(variant_decl))
-            },
+            }
 
             Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
                 Box::new(unexpected),

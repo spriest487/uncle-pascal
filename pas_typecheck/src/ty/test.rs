@@ -105,22 +105,23 @@ fn specialized_fn_has_right_sig() {
             begin
                 t
             end;
-        ");
+        ",
+    );
 
     let a_func = unit.func_defs().next().unwrap();
     let a_sig = FunctionSig::of_decl(&a_func.decl);
 
-    let a_int_sig = a_sig.specialize_generic(vec![INT32.clone()], &span).unwrap();
+    let a_int_sig = a_sig
+        .specialize_generic(vec![INT32.clone()], &span)
+        .unwrap();
 
     let expect_sig = FunctionSig {
         type_params_len: 1,
         return_ty: INT32.clone(),
-        params: vec![
-            FunctionParamSig {
-                ty: INT32.clone(),
-                modifier: None,
-            }
-        ]
+        params: vec![FunctionParamSig {
+            ty: INT32.clone(),
+            modifier: None,
+        }],
     };
 
     assert_eq!(expect_sig, a_int_sig);
@@ -139,7 +140,8 @@ fn specialized_fn_with_specialized_params_has_right_params() {
             begin
                 a
             end;
-        ");
+        ",
+    );
 
     let int_params = vec![INT32.clone()];
 
@@ -157,12 +159,10 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let expect_sig = FunctionSig {
         type_params_len: 1,
         return_ty: a_int.clone(),
-        params: vec![
-            FunctionParamSig {
-                ty: a_int,
-                modifier: None,
-            }
-        ]
+        params: vec![FunctionParamSig {
+            ty: a_int,
+            modifier: None,
+        }],
     };
 
     assert_eq!(expect_sig, b_int_sig);

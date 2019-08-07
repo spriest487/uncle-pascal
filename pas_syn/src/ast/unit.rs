@@ -18,22 +18,22 @@ pub struct Unit<A: Annotation> {
 impl<A: Annotation> Unit<A> {
     pub fn func_decls(&self) -> impl Iterator<Item = &FunctionDecl<A>> {
         self.decls.iter().filter_map(|decl| match decl {
-            UnitDecl::FunctionDecl{ decl: func, .. } => Some(func),
-            UnitDecl::FunctionDef{ decl: func_def, .. } => Some(&func_def.decl),
+            UnitDecl::FunctionDecl { decl: func, .. } => Some(func),
+            UnitDecl::FunctionDef { decl: func_def, .. } => Some(&func_def.decl),
             _ => None,
         })
     }
 
     pub fn func_defs(&self) -> impl Iterator<Item = &FunctionDef<A>> {
         self.decls.iter().filter_map(|decl| match decl {
-            UnitDecl::FunctionDef{ decl: func_def, .. } => Some(func_def),
+            UnitDecl::FunctionDef { decl: func_def, .. } => Some(func_def),
             _ => None,
         })
     }
 
     pub fn type_decls<'a>(&self) -> impl Iterator<Item = &TypeDecl<A>> {
         self.decls.iter().filter_map(|decl| match decl {
-            UnitDecl::Type{ decl: ty, .. } => Some(ty),
+            UnitDecl::Type { decl: ty, .. } => Some(ty),
             _ => None,
         })
     }
@@ -52,8 +52,7 @@ impl Unit<Span> {
                 None => Visibility::Private,
             };
 
-            let exportable_decl_kw = Keyword::Function
-                .or(Keyword::Type);
+            let exportable_decl_kw = Keyword::Function.or(Keyword::Type);
 
             let decl_start = match export_kw {
                 Some(..) => exportable_decl_kw,
@@ -85,7 +84,7 @@ impl Unit<Span> {
                     } else {
                         decls.push(UnitDecl::FunctionDecl {
                             decl: func_decl,
-                            visibility
+                            visibility,
                         });
                     }
                 }
@@ -94,7 +93,10 @@ impl Unit<Span> {
                     kw: Keyword::Type, ..
                 }) => {
                     let ty_decl = TypeDecl::parse(tokens)?;
-                    decls.push(UnitDecl::Type { decl: ty_decl, visibility });
+                    decls.push(UnitDecl::Type {
+                        decl: ty_decl,
+                        visibility,
+                    });
                 }
 
                 Some(TokenTree::Keyword {
@@ -104,9 +106,7 @@ impl Unit<Span> {
                     decls.push(UnitDecl::Uses { decl: uses_decl });
                 }
 
-                _ => {
-                    break
-                },
+                _ => break,
             }
 
             if !tokens.match_one_maybe(Separator::Semicolon).is_some() {
@@ -169,9 +169,13 @@ pub enum UnitDecl<A: Annotation> {
 impl<A: Annotation> Spanned for UnitDecl<A> {
     fn span(&self) -> &Span {
         match self {
-            UnitDecl::FunctionDecl { decl: func_decl, .. } => func_decl.span(),
+            UnitDecl::FunctionDecl {
+                decl: func_decl, ..
+            } => func_decl.span(),
             UnitDecl::FunctionDef { decl: func_def, .. } => func_def.span(),
-            UnitDecl::Type { decl: type_decl, .. } => type_decl.span(),
+            UnitDecl::Type {
+                decl: type_decl, ..
+            } => type_decl.span(),
             UnitDecl::Uses { decl: use_decl } => use_decl.span(),
         }
     }
@@ -180,7 +184,9 @@ impl<A: Annotation> Spanned for UnitDecl<A> {
 impl<A: Annotation> fmt::Display for UnitDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            UnitDecl::FunctionDecl { decl: func_decl, .. } => write!(f, "{}", func_decl),
+            UnitDecl::FunctionDecl {
+                decl: func_decl, ..
+            } => write!(f, "{}", func_decl),
             UnitDecl::FunctionDef { decl: func_def, .. } => write!(f, "{}", func_def),
             UnitDecl::Type { decl: ty_decl, .. } => write!(f, "{}", ty_decl),
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),

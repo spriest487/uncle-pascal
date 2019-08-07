@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        Annotation,
-        Expression,
-        Statement,
-    },
+    ast::{Annotation, Expression, Statement},
     parse::*,
     token_tree::*,
 };
@@ -59,7 +55,7 @@ impl Block<Span> {
                     ParseError::InvalidStatement(InvalidStatement(expr)) => {
                         output_expr = Some((**expr).clone());
                         Ok(Generate::Break)
-                    },
+                    }
 
                     _ => Err(traced_err),
                 },

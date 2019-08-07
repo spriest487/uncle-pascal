@@ -136,10 +136,7 @@ fn typecheck_args(
     Ok(checked_args)
 }
 
-fn typecheck_type_args(
-    type_args: &[ast::TypeName],
-    ctx: &Context,
-) -> TypecheckResult<Vec<Type>> {
+fn typecheck_type_args(type_args: &[ast::TypeName], ctx: &Context) -> TypecheckResult<Vec<Type>> {
     type_args
         .iter()
         .map(|arg_ty| typecheck_type(arg_ty, ctx))
@@ -224,7 +221,10 @@ fn typecheck_method_call(
     let span = func_call.span().clone();
 
     let type_args = typecheck_type_args(&func_call.type_args, ctx)?;
-    let call_sig = method_annotation.decl_sig().clone().specialize_generic(type_args.clone(), &span)?;
+    let call_sig = method_annotation
+        .decl_sig()
+        .clone()
+        .specialize_generic(type_args.clone(), &span)?;
 
     let (self_type, impl_sig, args) = match &method_annotation.self_arg {
         None => {

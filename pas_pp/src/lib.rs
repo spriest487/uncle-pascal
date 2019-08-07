@@ -1,14 +1,6 @@
-use pas_common::{
-    span::*,
-    BuildOptions,
-    DiagnosticOutput,
-    Mode,
-};
+use pas_common::{span::*, BuildOptions, DiagnosticOutput, Mode};
 use regex::*;
-use std::{
-    fmt,
-    path::PathBuf,
-};
+use std::{fmt, path::PathBuf};
 
 #[derive(Debug)]
 pub enum PreprocessorError {
@@ -23,19 +15,19 @@ impl fmt::Display for PreprocessorError {
         match self {
             PreprocessorError::SymbolNotDefined { name, .. } => {
                 write!(f, "symbol `{}` was not defined", name)
-            },
+            }
 
             PreprocessorError::IllegalDirective { directive, .. } => {
                 write!(f, "unrecognized directive `{}`", directive)
-            },
+            }
 
             PreprocessorError::UnexpectedEndIf(_) => {
                 write!(f, "else or endif without matching ifdef or ifndef")
-            },
+            }
 
             PreprocessorError::UnterminatedCondition(_) => {
                 write!(f, "unterminated conditional block")
-            },
+            }
         }
     }
 }
@@ -51,8 +43,7 @@ impl Spanned for PreprocessorError {
     }
 }
 
-impl DiagnosticOutput for PreprocessorError {
-}
+impl DiagnosticOutput for PreprocessorError {}
 
 enum Directive {
     Define(String),
@@ -155,7 +146,7 @@ impl DirectiveParser {
                 unrecognized => {
                     eprintln!("unrecognized mode: {}", unrecognized);
                     return None;
-                },
+                }
             };
 
             Some(Directive::Mode(mode))
@@ -358,7 +349,7 @@ impl Preprocessor {
                 }
 
                 Ok(())
-            },
+            }
 
             Some(Directive::Undef(symbol)) => {
                 if !self.condition_active() || self.opts.undef(&symbol) {
@@ -369,7 +360,7 @@ impl Preprocessor {
                         at: self.current_span(),
                     })
                 }
-            },
+            }
 
             Some(Directive::IfDef(symbol)) => self.push_condition(&symbol, true),
 
@@ -380,13 +371,13 @@ impl Preprocessor {
                 Some(condition) => {
                     condition.value = !condition.value;
                     Ok(())
-                },
+                }
             },
 
             Some(Directive::ElseIf(symbol)) => {
                 self.pop_condition()?;
                 self.push_condition(&symbol, true)
-            },
+            }
 
             Some(Directive::EndIf) => self.pop_condition(),
 
@@ -397,21 +388,21 @@ impl Preprocessor {
                     }
                 }
                 Ok(())
-            },
+            }
 
             Some(Directive::LinkLib(lib_name)) => {
                 if self.condition_active() {
                     self.opts.link_lib(lib_name.clone());
                 }
                 Ok(())
-            },
+            }
 
             Some(Directive::Mode(mode)) => {
                 if self.condition_active() {
                     self.opts.mode = mode;
                 }
                 Ok(())
-            },
+            }
 
             None => {
                 if !self.condition_active() {
@@ -427,7 +418,7 @@ impl Preprocessor {
                         at: self.current_span(),
                     })
                 }
-            },
+            }
         }
     }
 }

@@ -32,7 +32,7 @@ fn parse_assignment_then_call_in_order() {
                 )
             });
             assert_eq!("x", lhs_ident.name);
-        },
+        }
 
         invalid => panic!("expected binary op, got `{:#?}`", invalid),
     }
@@ -49,7 +49,7 @@ fn parse_assignment_then_call_in_order_explicit() {
                 )
             });
             assert_eq!("x", lhs_ident.name);
-        },
+        }
 
         invalid => panic!("expected binary op, got `{:#?}`", invalid),
     }

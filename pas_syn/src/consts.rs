@@ -1,19 +1,10 @@
 use crate::ident::Ident;
-use bigdecimal::{
-    BigDecimal,
-    ToPrimitive,
-};
+use bigdecimal::{BigDecimal, ToPrimitive};
 use cast;
 use std::{
-    fmt::{
-        self,
-        Write,
-    },
+    fmt::{self, Write},
     i32,
-    ops::{
-        Add,
-        Sub,
-    },
+    ops::{Add, Sub},
 };
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
@@ -56,7 +47,7 @@ impl IntConstant {
             '#' => {
                 let val: u8 = s[1..].parse().ok()?;
                 Some(IntConstant::from(val))
-            },
+            }
 
             '$' => {
                 let val = u64::from_str_radix(&s[1..], 16).ok()?;
@@ -67,19 +58,19 @@ impl IntConstant {
                 } else {
                     Some(IntConstant::U64(val))
                 }
-            },
+            }
 
             // negative numbers produce int32, or uint32 if they're too large
             '-' => {
                 let val: i64 = s.parse().ok()?;
                 Some(IntConstant::from(val))
-            },
+            }
 
             // positive numbers produce int32, or i64/u64 if they're too large
             _ => {
                 let val: u64 = s.parse().ok()?;
                 Some(IntConstant::from(val))
-            },
+            }
         }
     }
 

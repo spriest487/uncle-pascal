@@ -235,13 +235,15 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
     pub fn expect_one(&mut self, matcher: impl Into<Matcher>) -> ParseResult<()> {
         let matcher = matcher.into();
         match self.next() {
-            Some(ref tt) if matcher.is_match(&tt) =>Ok(()),
-            Some(unexpected) => Err(TracedError::trace(
-                ParseError::UnexpectedToken(Box::new(unexpected), Some(matcher)),
-            )),
-            None => Err(TracedError::trace(
-                ParseError::UnexpectedEOF(matcher, self.context().clone())
-            )),
+            Some(ref tt) if matcher.is_match(&tt) => Ok(()),
+            Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
+                Box::new(unexpected),
+                Some(matcher),
+            ))),
+            None => Err(TracedError::trace(ParseError::UnexpectedEOF(
+                matcher,
+                self.context().clone(),
+            ))),
         }
     }
 

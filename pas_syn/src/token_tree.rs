@@ -1,26 +1,14 @@
 mod lex;
 
 use crate::{
-    consts::{
-        IntConstant,
-        RealConstant,
-    },
+    consts::{IntConstant, RealConstant},
     ident::Ident,
     keyword::Keyword,
     operators::Operator,
 };
-use pas_common::{
-    span::*,
-    BuildOptions,
-    DiagnosticLabel,
-    DiagnosticOutput,
-    TracedError,
-};
+use pas_common::{span::*, BuildOptions, DiagnosticLabel, DiagnosticOutput, TracedError};
 use std::{
-    fmt::{
-        self,
-        Write as _,
-    },
+    fmt::{self, Write as _},
     path::PathBuf,
 };
 
@@ -242,7 +230,7 @@ impl TokenTree {
                 }
                 write_indent(f, indent)?;
                 write!(f, "{}", close)?;
-            },
+            }
         }
 
         Ok(())
@@ -278,7 +266,7 @@ impl fmt::Display for TokenizeError {
 
             TokenizeError::UnexpectedCloseDelimited { .. } => {
                 write!(f, "unexpected close delimiter")
-            },
+            }
         }
     }
 }
@@ -353,7 +341,7 @@ mod test {
             Ok(result) => result,
             Err(err) => {
                 panic!("{} @ {:#?}", err.err, err.bt);
-            },
+            }
         }
     }
 
@@ -427,7 +415,7 @@ mod test {
                     TokenTree::Ident(ident) => assert_eq!("a", ident.name),
                     _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                 }
-            },
+            }
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -455,7 +443,7 @@ mod test {
                     },
                     _ => panic!("expected begin/end delimited tree, found {:#?}", inner[0]),
                 }
-            },
+            }
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -495,7 +483,7 @@ end",
                 assert_eq!(&test_span((2, 0), (2, 2)), close, "span of close token");
                 assert_eq!(&test_span((0, 0), (2, 2)), span, "total span");
                 assert_eq!(3, inner.len());
-            },
+            }
 
             _ => panic!("expectefd begin/end delim group, got {:?}", result[0]),
         }

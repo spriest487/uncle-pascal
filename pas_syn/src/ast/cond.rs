@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        Block,
-        Expression,
-        Statement,
-    },
+    ast::{Block, Expression, Statement},
     parse::prelude::*,
 };
 
@@ -40,7 +36,7 @@ impl IfCond<Span> {
             Some(_is_kw) => {
                 let pattern = TypeNamePattern::parse(tokens)?;
                 Some(pattern)
-            },
+            }
 
             None => None,
         };
@@ -54,7 +50,7 @@ impl IfCond<Span> {
                 let span = if_token.span().to(else_branch.annotation());
 
                 (Some(else_branch), span)
-            },
+            }
 
             None => (None, if_token.span().to(then_branch.annotation())),
         };
@@ -120,7 +116,7 @@ mod test {
             TypeNamePattern::TypeName { name, binding, .. } => {
                 assert_eq!("String", name.to_string());
                 assert!(binding.is_none());
-            },
+            }
 
             _ => panic!("expected positive binding"),
         }
@@ -134,7 +130,7 @@ mod test {
         match cond.is_pattern.as_ref().unwrap() {
             TypeNamePattern::NegatedTypeName { name, .. } => {
                 assert_eq!("String", name.to_string());
-            },
+            }
 
             _ => panic!("expected negative binding"),
         }
@@ -152,7 +148,7 @@ mod test {
                     Some("s".to_string()),
                     binding.as_ref().map(|b| b.to_string())
                 );
-            },
+            }
 
             _ => panic!("expected positive binding"),
         }

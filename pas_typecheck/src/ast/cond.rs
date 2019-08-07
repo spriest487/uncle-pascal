@@ -50,11 +50,11 @@ pub fn typecheck_if_cond(
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_expr)
-        },
+        }
         None => {
             ctx.consolidate_branches(&[then_ctx]);
             None
-        },
+        }
     };
 
     let span = if_cond.span().clone();
@@ -77,7 +77,7 @@ pub fn typecheck_if_cond(
                     decl: None,
                 }
             }
-        },
+        }
     };
 
     Ok(IfCond {

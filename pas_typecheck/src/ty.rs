@@ -617,11 +617,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
     }
 }
 
-fn specialize_member(
-    member_ty: &Type,
-    args: &[Type],
-    span: &Span
-) -> TypecheckResult<Type> {
+fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> TypecheckResult<Type> {
     match member_ty {
         Type::GenericParam(class_param) => {
             let ty = args.get(class_param.pos).unwrap_or_else(|| {
@@ -638,13 +634,13 @@ fn specialize_member(
             let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
             let class = specialize_generic_class(&class, class_args, span)?;
             Ok(Type::Class(Rc::new(class)))
-        },
+        }
 
         Type::Record(class) => {
             let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
             let class = specialize_generic_class(&class, class_args, span)?;
             Ok(Type::Record(Rc::new(class)))
-        },
+        }
 
         Type::Variant(variant) => {
             let variant_args = specialize_generic_type_args(&variant.name.type_args, &args, span)?;
@@ -654,7 +650,10 @@ fn specialize_member(
 
         Type::Array { element, dim } => {
             let ty = specialize_member(element, args, span)?;
-            Ok(Type::Array { element: Box::new(ty), dim: *dim })
+            Ok(Type::Array {
+                element: Box::new(ty),
+                dim: *dim,
+            })
         }
 
         _ => Ok(member_ty.clone()),
@@ -725,7 +724,7 @@ pub fn specialize_generic_variant(
                 Some(ty) => {
                     let ty = specialize_member(ty, &args, span)?;
                     Some(ty)
-                },
+                }
             };
 
             Ok(ast::VariantCase {

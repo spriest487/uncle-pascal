@@ -14,24 +14,27 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                             let aliased = aliased_unit.clone().child(decl_key.clone());
                             ctx.declare_alias(decl_key, aliased)?;
                         }
-                    },
+                    }
 
                     Some(MemberRef::Value { value, .. }) => {
                         let unexpected = UnexpectedValue::Decl(value.clone());
                         let err = NameError::ExpectedNamespace(unit.clone().into(), unexpected);
                         return Err(TypecheckError::from(err));
-                    },
+                    }
 
                     None => {
                         return Err(TypecheckError::from(NameError::NotFound(unit.clone())));
-                    },
+                    }
                 }
             }
 
             Ok(ast::UnitDecl::Uses { decl: uses.clone() })
-        },
+        }
 
-        ast::UnitDecl::FunctionDef { decl: func_def, visibility } => {
+        ast::UnitDecl::FunctionDef {
+            decl: func_def,
+            visibility,
+        } => {
             let name = func_def.decl.ident.single().clone();
 
             let func_def = typecheck_func_def(func_def, ctx)?;
@@ -51,18 +54,30 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 )?;
             }
 
-            Ok(ast::UnitDecl::FunctionDef { decl: func_def, visibility: *visibility })
-        },
+            Ok(ast::UnitDecl::FunctionDef {
+                decl: func_def,
+                visibility: *visibility,
+            })
+        }
 
-        ast::UnitDecl::FunctionDecl { decl: func_decl, visibility } => {
+        ast::UnitDecl::FunctionDecl {
+            decl: func_decl,
+            visibility,
+        } => {
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
             ctx.declare_function(name, &func_decl, *visibility)?;
-            Ok(ast::UnitDecl::FunctionDecl { decl: func_decl, visibility: *visibility })
-        },
+            Ok(ast::UnitDecl::FunctionDecl {
+                decl: func_decl,
+                visibility: *visibility,
+            })
+        }
 
-        ast::UnitDecl::Type { decl: type_decl, visibility } => {
+        ast::UnitDecl::Type {
+            decl: type_decl,
+            visibility,
+        } => {
             // type decls have an inner scope
             let ty_scope = ctx.push_scope(None);
 
@@ -74,8 +89,15 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             };
 
             for (pos, name) in full_name.decl_name.type_params.iter().enumerate() {
-                let param_ty = TypeParam { pos, name: name.clone() };
-                ctx.declare_type(name.clone(), Type::GenericParam(param_ty), Visibility::Private)?;
+                let param_ty = TypeParam {
+                    pos,
+                    name: name.clone(),
+                };
+                ctx.declare_type(
+                    name.clone(),
+                    Type::GenericParam(param_ty),
+                    Visibility::Private,
+                )?;
             }
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
@@ -83,10 +105,17 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             ctx.pop_scope(ty_scope);
 
             let decl_ty = Type::of_decl(&type_decl);
-            ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty, *visibility)?;
+            ctx.declare_type(
+                type_decl.ident().decl_name.ident.clone(),
+                decl_ty,
+                *visibility,
+            )?;
 
-            Ok(ast::UnitDecl::Type { decl: type_decl, visibility: *visibility })
-        },
+            Ok(ast::UnitDecl::Type {
+                decl: type_decl,
+                visibility: *visibility,
+            })
+        }
     }
 }
 

@@ -1,15 +1,7 @@
-use crate::ast::{
-    Builder,
-    Module,
-    Statement,
-    Type,
-};
+use crate::ast::{Builder, Module, Statement, Type};
 use pas_ir::{
     self as ir,
-    metadata::{
-        FunctionID,
-        InterfaceID,
-    },
+    metadata::{FunctionID, InterfaceID},
 };
 use std::fmt;
 

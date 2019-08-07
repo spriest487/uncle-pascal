@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        Block,
-        DeclMod,
-        OfClause,
-    },
+    ast::{Block, DeclMod, OfClause},
     parse::prelude::*,
 };
 
@@ -94,7 +90,7 @@ impl FunctionDecl<Span> {
             Some(_) => {
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
-            },
+            }
             None => None,
         };
 

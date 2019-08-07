@@ -1,9 +1,5 @@
 use crate::{
-    ast::{
-        Expression,
-        LocalBinding,
-        Statement,
-    },
+    ast::{Expression, LocalBinding, Statement},
     parse::prelude::*,
 };
 

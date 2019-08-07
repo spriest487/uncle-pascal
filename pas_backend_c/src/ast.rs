@@ -1,26 +1,15 @@
 use std::{
-    collections::hash_map::{
-        Entry,
-        HashMap,
-    },
+    collections::hash_map::{Entry, HashMap},
     fmt,
 };
 
 use crate::Options;
 use pas_ir::{
     self as ir,
-    metadata::{
-        FunctionID,
-        GlobalName,
-        StringID,
-    },
+    metadata::{FunctionID, GlobalName, StringID},
 };
 
-pub use self::{
-    function::*,
-    stmt::*,
-    ty::*,
-};
+pub use self::{function::*, stmt::*, ty::*};
 
 mod function;
 mod stmt;
@@ -88,7 +77,7 @@ impl Module {
             .filter_map(|(id, def)| match def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
                     Some(Class::translate(*id, struct_def, metadata))
-                },
+                }
                 _ => None,
             })
             .collect();
@@ -151,7 +140,7 @@ impl Module {
                 entry.insert(array_struct_ty.clone());
 
                 array_struct_ty
-            },
+            }
         }
     }
 
@@ -167,11 +156,11 @@ impl Module {
             let c_type_def = match type_def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
                     TypeDef::Struct(StructDef::translate(*id, struct_def, self))
-                },
+                }
 
                 ir::metadata::TypeDef::Variant(variant_def) => {
                     TypeDef::Variant(VariantDef::translate(*id, variant_def, self))
-                },
+                }
             };
             self.type_defs.push(c_type_def);
         }

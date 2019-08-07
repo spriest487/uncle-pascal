@@ -1,7 +1,4 @@
-use crate::ast::{
-    expect_stmt_initialized,
-    prelude::*,
-};
+use crate::ast::{expect_stmt_initialized, prelude::*};
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -34,7 +31,7 @@ pub fn typecheck_block(
             } else {
                 Some(out_expr)
             }
-        },
+        }
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example
@@ -49,7 +46,7 @@ pub fn typecheck_block(
             } else {
                 None
             }
-        },
+        }
 
         None => None,
     };
@@ -83,7 +80,7 @@ pub fn typecheck_block(
                     decl: None,
                 }
             }
-        },
+        }
         None => TypeAnnotation::Untyped(span),
     };
 

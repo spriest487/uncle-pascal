@@ -1,8 +1,4 @@
-use std::{
-    borrow::Borrow,
-    fmt,
-    hash::Hash,
-};
+use std::{borrow::Borrow, fmt, hash::Hash};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Member<NS: Namespace> {
@@ -81,7 +77,7 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
                             MemberRef::Namespace {
                                 path: PathRef { namespaces: path },
                             }
-                        },
+                        }
 
                         Member::Value(value) => MemberRef::Value {
                             key,
@@ -201,7 +197,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
             Some(_) => {
                 top.replace_member(member_key, Member::Value(member));
                 Ok(())
-            },
+            }
 
             None => Err(NotDefinedHere(member_key)),
         }
@@ -245,7 +241,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
                     } else {
                         None
                     };
-                },
+                }
             }
         }
 
@@ -277,7 +273,7 @@ where
         match v {
             Member::Namespace(child) => {
                 print_ns(child, member_indent, f)?;
-            },
+            }
 
             Member::Value(val) => {
                 for _ in 0..member_indent {
@@ -285,7 +281,7 @@ where
                 }
 
                 writeln!(f, "{}: {}", k, val)?;
-            },
+            }
         }
     }
 
@@ -314,10 +310,7 @@ where
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::collections::hash_map::{
-        Entry,
-        HashMap,
-    };
+    use std::collections::hash_map::{Entry, HashMap};
 
     #[derive(Debug)]
     struct TestNamespace {
@@ -352,7 +345,7 @@ mod test {
                 Entry::Vacant(entry) => {
                     entry.insert(member);
                     Ok(())
-                },
+                }
                 Entry::Occupied(entry) => Err(entry.key().clone()),
             }
         }
@@ -390,7 +383,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -410,7 +403,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
 
@@ -433,7 +426,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
 
@@ -453,7 +446,7 @@ mod test {
             }) => {
                 assert_eq!(None, parent_path.as_slice().last().unwrap().key);
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
 
@@ -477,7 +470,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
 
@@ -507,7 +500,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -529,7 +522,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -549,7 +542,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -569,7 +562,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -590,7 +583,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -611,7 +604,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 123);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -631,7 +624,7 @@ mod test {
                     parent_path.as_slice().last().unwrap().key
                 );
                 assert_eq!(*value, 321);
-            },
+            }
             _ => panic!("x should be a value"),
         }
     }
@@ -657,7 +650,7 @@ mod test {
             Some(MemberRef::Namespace { path }) => {
                 let path_keys: Vec<_> = path.keys().cloned().collect();
                 assert_eq!(&["A".to_string(), "B".to_string()], path_keys.as_slice());
-            },
+            }
             _ => panic!("B should be a namespace"),
         }
     }

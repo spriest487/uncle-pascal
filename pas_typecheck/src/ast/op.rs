@@ -1,7 +1,4 @@
-use crate::{
-    annotation::VariantCtorAnnotation,
-    ast::prelude::*,
-};
+use crate::{annotation::VariantCtorAnnotation, ast::prelude::*};
 use pas_syn::Operator;
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
@@ -38,7 +35,7 @@ pub fn typecheck_bin_op(
                 op: bin_op.op,
                 annotation: annotation.clone(),
             }))
-        },
+        }
 
         Operator::Equals | Operator::NotEquals => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
@@ -68,7 +65,7 @@ pub fn typecheck_bin_op(
                 op: bin_op.op,
                 annotation: annotation.clone(),
             }))
-        },
+        }
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
@@ -98,7 +95,7 @@ pub fn typecheck_bin_op(
                 op: bin_op.op,
                 annotation: annotation.clone(),
             }))
-        },
+        }
 
         Operator::Plus | Operator::Minus | Operator::Multiply | Operator::Divide => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
@@ -148,7 +145,7 @@ pub fn typecheck_bin_op(
                 rhs,
                 annotation,
             }))
-        },
+        }
 
         _ => unimplemented!(
             "typechecking for expression containing binary operator {} @ {}",
@@ -206,7 +203,7 @@ fn desugar_string_concat(
             });
 
             Ok(ast::Expression::from(concat_call))
-        },
+        }
     }
 }
 
@@ -241,7 +238,7 @@ fn typecheck_member_of(
                         case_index,
                         member_ident.span().clone(),
                     ))
-                },
+                }
 
                 TypeAnnotation::TypedValue {
                     value_kind: base_value_kind,
@@ -259,7 +256,7 @@ fn typecheck_member_of(
                                 decl.clone(),
                             );
                             TypeAnnotation::Method(method)
-                        },
+                        }
 
                         InstanceMember::Data { ty: member_ty } => {
                             /* class members are always mutable because a mutable class ref is only
@@ -276,16 +273,16 @@ fn typecheck_member_of(
                                 value_kind,
                                 decl: None,
                             }
-                        },
+                        }
                     }
-                },
+                }
 
                 TypeAnnotation::Type(ty, _) => match ctx.find_type_member(ty, &member_ident)? {
                     TypeMember::Method { decl } => {
                         let method =
                             MethodAnnotation::explicit(span.clone(), ty.clone(), decl.clone());
                         TypeAnnotation::Method(method)
-                    },
+                    }
                 },
 
                 TypeAnnotation::Namespace(path, _) => {
@@ -293,9 +290,7 @@ fn typecheck_member_of(
                     full_path.push(member_ident.clone());
 
                     match ctx.resolve(&full_path) {
-                        Some(member) => {
-                            ns_member_ref_to_annotation(member, span, ctx)
-                        },
+                        Some(member) => ns_member_ref_to_annotation(member, span, ctx),
                         None => {
                             return Err(NameError::MemberNotFound {
                                 member: member_ident,
@@ -303,9 +298,9 @@ fn typecheck_member_of(
                                 base: lhs.annotation().ty().clone(),
                             }
                             .into());
-                        },
+                        }
                     }
-                },
+                }
 
                 _ => {
                     return Err(NameError::MemberNotFound {
@@ -314,7 +309,7 @@ fn typecheck_member_of(
                         base: lhs.annotation().ty().clone(),
                     }
                     .into());
-                },
+                }
             };
 
             let rhs = ast::Expression::Ident(member_ident, annotation.clone());
@@ -325,7 +320,7 @@ fn typecheck_member_of(
                 rhs,
                 annotation,
             }))
-        },
+        }
 
         // a.B(x: x)
         ast::Expression::ObjectCtor(ctor) => {
@@ -349,14 +344,14 @@ fn typecheck_member_of(
 
                     let ctor = typecheck_object_ctor(&qualified_ctor, span, expect_ty, ctx)?;
                     Ok(Expression::from(ctor))
-                },
+                }
 
                 _ => Err(TypecheckError::InvalidCtorType {
                     ty: lhs.annotation().ty().clone(),
                     span,
                 }),
             }
-        },
+        }
 
         _ => {
             let rhs = typecheck_expr(rhs, &Type::Nothing, ctx)?;
@@ -367,7 +362,7 @@ fn typecheck_member_of(
                 span,
                 op: Operator::Member,
             })
-        },
+        }
     }
 }
 
@@ -387,7 +382,7 @@ pub fn typecheck_unary_op(
                 | (Type::Record(_), Some(ValueKind::Mutable))
                 | (Type::Primitive(_), Some(ValueKind::Mutable)) => {
                     operand.annotation().ty().clone().ptr()
-                },
+                }
 
                 (ty, kind) => {
                     return Err(TypecheckError::NotAddressable {
@@ -395,7 +390,7 @@ pub fn typecheck_unary_op(
                         value_kind: kind,
                         span,
                     });
-                },
+                }
             };
 
             TypeAnnotation::TypedValue {
@@ -404,7 +399,7 @@ pub fn typecheck_unary_op(
                 span,
                 decl: None,
             }
-        },
+        }
 
         Operator::Deref => {
             let deref_ty = operand
@@ -425,7 +420,7 @@ pub fn typecheck_unary_op(
                 span,
                 decl: operand.annotation().decl().cloned(),
             }
-        },
+        }
 
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
@@ -433,7 +428,7 @@ pub fn typecheck_unary_op(
                 operand: operand.annotation().ty().clone(),
                 span: unary_op.annotation.clone(),
             });
-        },
+        }
     };
 
     Ok(UnaryOp {

@@ -1,28 +1,11 @@
 use crate::{
     annotation::TypeAnnotation,
-    ast::{
-        Call,
-        Expression,
-        Variant,
-    },
+    ast::{Call, Expression, Variant},
     context::NameError,
-    Type,
-    ValueKind,
+    Type, ValueKind,
 };
-use pas_common::{
-    span::*,
-    Backtrace,
-    DiagnosticLabel,
-    DiagnosticMessage,
-    DiagnosticOutput,
-};
-use pas_syn::{
-    ast,
-    parse::InvalidStatement,
-    Ident,
-    IdentPath,
-    Operator,
-};
+use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
+use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
 use std::fmt;
 
 #[derive(Debug)]
@@ -132,7 +115,7 @@ pub enum TypecheckError {
     PrivateConstructor {
         ty: Type,
         span: Span,
-    }
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -198,26 +181,26 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
                 "Invalid constructor expression type".to_string()
-            },
+            }
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
                 "Unable to infer type of expression".to_string()
-            },
+            }
             TypecheckError::UninitBindingWithNoType { .. } => {
                 "Uninitialized binding must have an explicit type".to_string()
-            },
+            }
             TypecheckError::BindingWithNoType { .. } => {
                 "Value bound to name must have a type".to_string()
-            },
+            }
             TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
             TypecheckError::InvalidRefExpression { .. } => {
                 "Invalid reference expression".to_string()
-            },
+            }
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
             TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
             TypecheckError::EmptyVariantCaseBinding { .. } => {
                 "Empty variant case binding".to_string()
-            },
+            }
 
             TypecheckError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
 
@@ -225,15 +208,11 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
-            },
-
-            TypecheckError::Private { .. } => {
-                "Name is private".to_string()
             }
 
-            TypecheckError::PrivateConstructor { .. } => {
-                "Type has private constructor".to_string()
-            }
+            TypecheckError::Private { .. } => "Name is private".to_string(),
+
+            TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
         }
     }
 

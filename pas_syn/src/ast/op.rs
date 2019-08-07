@@ -1,7 +1,4 @@
-use crate::{
-    ast::Expression,
-    parse::prelude::*,
-};
+use crate::{ast::Expression, parse::prelude::*};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct UnaryOp<A: Annotation> {
@@ -40,7 +37,7 @@ impl<A: Annotation> fmt::Display for BinOp<A> {
         match self.op {
             Operator::RangeInclusive | Operator::Member => {
                 write!(f, "{}{}{}", self.lhs, self.op, self.rhs)
-            },
+            }
 
             _ => write!(f, "{} {} {}", self.lhs, self.op, self.rhs),
         }

@@ -16,16 +16,16 @@ pub fn typecheck_type_decl(
         ast::TypeDecl::Class(class) => {
             let class = typecheck_class(name, class, ctx)?;
             Ok(ast::TypeDecl::Class(class))
-        },
+        }
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(name, iface, ctx)?;
             Ok(ast::TypeDecl::Interface(iface))
-        },
+        }
 
         ast::TypeDecl::Variant(variant) => {
             let variant = typecheck_variant(name, variant, ctx)?;
             Ok(ast::TypeDecl::Variant(variant))
-        },
+        }
     }
 }
 
