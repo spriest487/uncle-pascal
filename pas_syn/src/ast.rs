@@ -24,9 +24,7 @@ pub use self::{
     unit::*,
 };
 
-use crate::{
-    parse::prelude::*,
-};
+use crate::parse::prelude::*;
 use pas_common::TracedError;
 use std::{
     fmt,
@@ -67,7 +65,7 @@ pub enum TypeName {
         element: Box<TypeName>,
         dim: usize,
         span: Span,
-    }
+    },
 }
 
 impl Spanned for TypeName {
@@ -107,14 +105,15 @@ impl TypeName {
             let dim = match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
                 TokenTree::Delimited { inner, open, .. } => {
                     let mut dim_tokens = TokenStream::new(inner, open);
-                    let dim = dim_tokens.match_one(Matcher::AnyLiteralInteger)?
+                    let dim = dim_tokens
+                        .match_one(Matcher::AnyLiteralInteger)?
                         .as_literal_int()
-                        .and_then(|i| i.as_usize())
+                        .and_then(IntConstant::as_usize)
                         .unwrap();
                     dim_tokens.finish()?;
 
                     dim
-                }
+                },
                 _ => unreachable!("match failed"),
             };
 
@@ -123,7 +122,7 @@ impl TypeName {
             let element = Self::parse(tokens)?;
 
             let array_span = array_kw.span().to(element.span());
-            let span  = match indirection_span {
+            let span = match indirection_span {
                 Some(indir_span) => indir_span.to(&array_span),
                 None => array_span,
             };
@@ -138,9 +137,7 @@ impl TypeName {
 
             // parse type args
             let (type_args, name_span) = match tokens.look_ahead().match_one(Operator::Lt) {
-                None => {
-                    (Vec::new(), Spanned::span(&ident).clone())
-                }
+                None => (Vec::new(), Spanned::span(&ident).clone()),
                 Some(_open_bracket_tt) => {
                     tokens.advance(1);
 
@@ -152,15 +149,20 @@ impl TypeName {
                     let close_bracket_tt = tokens.match_one(Operator::Gt)?;
 
                     (type_args, Spanned::span(&ident).to(close_bracket_tt.span()))
-                }
+                },
             };
 
-            let span  = match indirection_span {
+            let span = match indirection_span {
                 Some(indir_span) => indir_span.to(&name_span),
                 None => name_span,
             };
 
-            Ok(TypeName::Ident { ident, indirection, type_args, span })
+            Ok(TypeName::Ident {
+                ident,
+                indirection,
+                type_args,
+                span,
+            })
         }
     }
 }
@@ -168,7 +170,12 @@ impl TypeName {
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeName::Ident { ident, indirection, type_args, .. } => {
+            TypeName::Ident {
+                ident,
+                indirection,
+                type_args,
+                ..
+            } => {
                 for _ in 0..*indirection {
                     write!(f, "^")?;
                 }
@@ -188,9 +195,7 @@ impl fmt::Display for TypeName {
                 Ok(())
             },
 
-            TypeName::Array { element, dim, .. } => {
-                write!(f, "array[{}] of {}", dim, element)
-            }
+            TypeName::Array { element, dim, .. } => write!(f, "array[{}] of {}", dim, element),
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }
@@ -199,8 +204,15 @@ impl fmt::Display for TypeName {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeNamePattern {
-    TypeName { name: IdentPath, binding: Option<Ident>, span: Span, },
-    NegatedTypeName { name: IdentPath, span: Span, },
+    TypeName {
+        name: IdentPath,
+        binding: Option<Ident>,
+        span: Span,
+    },
+    NegatedTypeName {
+        name: IdentPath,
+        span: Span,
+    },
 }
 
 impl TypeNamePattern {
@@ -211,7 +223,7 @@ impl TypeNamePattern {
                 Some(kw)
             },
             None => None,
-        } ;
+        };
 
         let name = IdentPath::parse(tokens)?;
 
@@ -229,9 +241,9 @@ impl TypeNamePattern {
                         let span = name.span().to(binding_ident.span());
 
                         (span, Some(binding_ident))
-                    }
+                    },
 
-                    None => (name.span().clone() , None)
+                    None => (name.span().clone(), None),
                 };
 
                 Ok(TypeNamePattern::TypeName {
@@ -239,7 +251,7 @@ impl TypeNamePattern {
                     binding,
                     span,
                 })
-            }
+            },
         }
     }
 }
@@ -253,7 +265,7 @@ impl fmt::Display for TypeNamePattern {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
-            }
+            },
             TypeNamePattern::NegatedTypeName { name, .. } => write!(f, "not {}", name),
         }
     }

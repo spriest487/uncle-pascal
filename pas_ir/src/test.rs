@@ -30,10 +30,12 @@ fn break_cleans_up_loop_locals() {
     builder.comment("before_break");
     builder.break_loop();
 
-    let from = builder.instructions.iter()
+    let from = builder
+        .instructions
+        .iter()
         .position(|i| match i {
             Instruction::Comment(c) => c == "before_break",
-            _ => false
+            _ => false,
         })
         .unwrap();
 
@@ -42,15 +44,23 @@ fn break_cleans_up_loop_locals() {
     // `visit_deep` it'll create a block around each one too.
     let expect = &[
         Instruction::LocalBegin,
-        Instruction::Release { at: Ref::Local(LocalID(1))},
-        Instruction::Move { out: Ref::Local(LocalID(1)), new_val: Value::LiteralNull, },
+        Instruction::Release {
+            at: Ref::Local(LocalID(1)),
+        },
+        Instruction::Move {
+            out: Ref::Local(LocalID(1)),
+            new_val: Value::LiteralNull,
+        },
         Instruction::LocalEnd,
-
         Instruction::LocalBegin,
-        Instruction::Release { at: Ref::Local(LocalID(0)) },
-        Instruction::Move { out: Ref::Local(LocalID(0)), new_val: Value::LiteralNull, },
+        Instruction::Release {
+            at: Ref::Local(LocalID(0)),
+        },
+        Instruction::Move {
+            out: Ref::Local(LocalID(0)),
+            new_val: Value::LiteralNull,
+        },
         Instruction::LocalEnd,
-
         // and the final jmp for the break
         Instruction::Jump { dest: break_label },
     ];

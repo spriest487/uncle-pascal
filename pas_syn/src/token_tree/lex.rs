@@ -1,12 +1,28 @@
 use crate::{
-    consts::{IntConstant, RealConstant},
+    consts::{
+        IntConstant,
+        RealConstant,
+    },
     ident::Ident,
     keyword::Keyword,
     operators::Operator,
-    token_tree::{DelimiterPair, Separator, TokenTree, TokenizeError, TokenizeResult},
+    token_tree::{
+        DelimiterPair,
+        Separator,
+        TokenTree,
+        TokenizeError,
+        TokenizeResult,
+    },
 };
-use pas_common::{span::*, BuildOptions, TracedError};
-use std::{path::PathBuf, rc::Rc};
+use pas_common::{
+    span::*,
+    BuildOptions,
+    TracedError,
+};
+use std::{
+    path::PathBuf,
+    rc::Rc,
+};
 
 pub fn lex(
     file_name: impl Into<PathBuf>,
@@ -41,7 +57,7 @@ pub fn lex(
 
     if let Some(unmatched) = lexer.delim_stack.pop() {
         return Err(TracedError::trace(TokenizeError::UnmatchedDelimiter {
-            span: lexer.span_to_current(unmatched.open.start.clone()),
+            span: lexer.span_to_current(unmatched.open.start),
             to_match: unmatched.open,
             delim: unmatched.delim,
         }));
@@ -159,7 +175,7 @@ impl Lexer {
 
         // this needs to include the $ because IntConstant::parse expects it
         let int_str = match next_non_hex {
-            Some(end) => &self.line[self.location.col..self.location.col + end + 1],
+            Some(end) => &self.line[self.location.col..=self.location.col + end],
             None => &self.line[self.location.col..],
         };
 
@@ -170,7 +186,7 @@ impl Lexer {
             Some(value) => {
                 let int_token = TokenTree::IntNumber { value, span };
                 Ok(int_token)
-            }
+            },
             None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
@@ -218,7 +234,7 @@ impl Lexer {
             Some(value) => {
                 let int_token = TokenTree::IntNumber { value, span };
                 Ok(int_token)
-            }
+            },
             None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
         }
     }
@@ -238,7 +254,7 @@ impl Lexer {
                         start: start_loc,
                         end: self.location,
                     })));
-                }
+                },
 
                 // depends on the token after this one
                 Some('\'') => match self.line.get(next_col + 1) {
@@ -246,7 +262,7 @@ impl Lexer {
                     Some('\'') => {
                         contents.push('\'');
                         next_col += 1;
-                    }
+                    },
 
                     // it's something else, this string ends here
                     _ => break,
@@ -288,11 +304,11 @@ impl Lexer {
                             end: self.location,
                         })));
                     }
-                }
+                },
 
                 'a'...'z' | 'A'...'Z' | '_' => {
                     token_str.push(*c);
-                }
+                },
 
                 _ => break,
             }
@@ -414,12 +430,12 @@ impl Lexer {
             '(' => {
                 self.begin_delim_group(DelimiterPair::Bracket, 1);
                 None
-            }
+            },
             ')' => Some(self.end_delim_group(DelimiterPair::Bracket, 1)?),
             '[' => {
                 self.begin_delim_group(DelimiterPair::SquareBracket, 1);
                 None
-            }
+            },
             ']' => Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?),
 
             '+' => Some(self.operator_token(Operator::Plus, 1)),
@@ -463,25 +479,25 @@ impl Lexer {
                     } => {
                         self.begin_delim_group(DelimiterPair::BeginEnd, 0);
                         None
-                    }
+                    },
 
                     // keyword "end" can appear on its own in other contexts
                     TokenTree::Keyword {
                         kw: Keyword::End, ..
                     } if self.in_begin_end() => {
                         Some(self.end_delim_group(DelimiterPair::BeginEnd, 0)?)
-                    }
+                    },
 
                     tt => Some(tt),
                 }
-            }
+            },
 
             _ => {
                 let err_start = self.location;
                 self.location.col += 1;
                 let err_span = self.span_to_current(err_start);
                 return Err(TracedError::trace(TokenizeError::IllegalToken(err_span)));
-            }
+            },
         };
 
         if let Some(tt) = token {

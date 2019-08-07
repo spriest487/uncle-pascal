@@ -1,4 +1,7 @@
-use crate::{ast::*, parse::prelude::*};
+use crate::{
+    ast::*,
+    parse::prelude::*,
+};
 use std::fmt;
 
 #[derive(Clone, Debug)]
@@ -61,21 +64,21 @@ impl Unit<Span> {
                     } else {
                         decls.push(UnitDecl::FunctionDecl(func_decl));
                     }
-                }
+                },
 
                 Some(TokenTree::Keyword {
                     kw: Keyword::Type, ..
                 }) => {
                     let ty_decl = TypeDecl::parse(tokens)?;
                     decls.push(UnitDecl::Type(ty_decl));
-                }
+                },
 
                 Some(TokenTree::Keyword {
                     kw: Keyword::Uses, ..
                 }) => {
                     let uses_decl = UseDecl::parse(tokens)?;
                     decls.push(UnitDecl::Uses(uses_decl));
-                }
+                },
 
                 _ => break,
             }
@@ -185,7 +188,7 @@ impl UseDecl {
         if units.is_empty() {
             return Err(TracedError::trace(match tokens.look_ahead().next() {
                 None => ParseError::UnexpectedEOF(Matcher::AnyIdent, kw.span().clone()),
-                Some(x) => ParseError::UnexpectedToken(x, Some(Matcher::AnyIdent)),
+                Some(x) => ParseError::UnexpectedToken(Box::new(x), Some(Matcher::AnyIdent)),
             }));
         }
 

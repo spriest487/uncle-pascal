@@ -3,7 +3,11 @@ use std::{
     collections::HashMap,
     fmt,
     mem::size_of,
-    ops::{Add, Index, IndexMut},
+    ops::{
+        Add,
+        Index,
+        IndexMut,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -58,7 +62,7 @@ impl Heap {
             .windows(count)
             .enumerate()
             .find_map(|(addr, window)| {
-                if window.iter().all(|cell| cell.is_none()) {
+                if window.iter().all(Option::is_none) {
                     Some(addr)
                 } else {
                     None
@@ -103,11 +107,11 @@ impl Heap {
     }
 
     pub fn get(&self, addr: HeapAddress) -> Option<&MemCell> {
-        self.slots.get(addr.0).and_then(|slot| slot.as_ref())
+        self.slots.get(addr.0).and_then(Option::as_ref)
     }
 
     pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut MemCell> {
-        self.slots.get_mut(addr.0).and_then(|slot| slot.as_mut())
+        self.slots.get_mut(addr.0).and_then(Option::as_mut)
     }
 
     fn expect_empty(&mut self) {

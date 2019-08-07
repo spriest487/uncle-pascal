@@ -57,7 +57,7 @@ impl Block<Span> {
                     // always valid as statements regardless of type, so in some cases the block
                     // output can't be determined until typechecking
                     ParseError::InvalidStatement(InvalidStatement(expr)) => {
-                        output_expr = Some(expr.clone());
+                        output_expr = Some((**expr).clone());
                         Ok(Generate::Break)
                     },
 

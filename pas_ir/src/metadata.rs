@@ -1,9 +1,18 @@
-use std::{collections::hash_map::HashMap, fmt};
+use std::{
+    collections::hash_map::HashMap,
+    fmt,
+};
 
+use crate::formatter::{
+    InstructionFormatter,
+    RawInstructionFormatter,
+};
 use pas_syn as syn;
-use pas_syn::{Ident, Path};
+use pas_syn::{
+    Ident,
+    Path,
+};
 use pas_typecheck as pas_ty;
-use crate::formatter::{RawInstructionFormatter, InstructionFormatter};
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -64,12 +73,16 @@ impl fmt::Display for NamePath {
 
 impl NamePath {
     pub fn from_decl(name: pas_ty::QualifiedDeclName, metadata: &mut Metadata) -> Self {
-        let path_parts = name.qualified
+        let path_parts = name
+            .qualified
             .into_parts()
             .into_iter()
             .map(|ident| ident.to_string());
 
-        let type_args = name.type_args.iter().map(|arg| metadata.translate_type(arg))
+        let type_args = name
+            .type_args
+            .iter()
+            .map(|arg| metadata.translate_type(arg))
             .collect();
 
         NamePath {
@@ -90,7 +103,7 @@ impl NamePath {
         }
     }
 
-    pub fn from_parts<Iter: IntoIterator<Item=String>>(iter: Iter) -> Self {
+    pub fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self {
         NamePath {
             path: Path::from_parts(iter),
             type_args: Vec::new(),
@@ -135,8 +148,7 @@ impl Interface {
     }
 
     pub fn method_index(&self, name: &str) -> Option<usize> {
-        self.methods.iter()
-            .position(|m| m.name.as_str() == name)
+        self.methods.iter().position(|m| m.name.as_str() == name)
     }
 }
 
@@ -353,14 +365,14 @@ pub struct GlobalName {
 }
 
 impl GlobalName {
-    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item=impl Into<String>>) -> Self {
-        let mut path: Vec<String> = ns.into_iter().map(|p| p.into()).collect();
+    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        let mut path: Vec<String> = ns.into_iter().map(Into::into).collect();
         path.push(name.into());
 
         Self { path }
     }
 
-    pub fn path(&self) -> impl Iterator<Item=&String> {
+    pub fn path(&self) -> impl Iterator<Item = &String> {
         self.path.iter()
     }
 }
@@ -391,7 +403,7 @@ pub struct FunctionDecl {
     pub global_name: Option<GlobalName>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Metadata {
     type_defs: HashMap<StructID, TypeDef>,
     string_literals: HashMap<StringID, String>,
@@ -402,21 +414,18 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new() -> Self {
-        Self {
-            type_defs: HashMap::new(),
-            string_literals: HashMap::new(),
-            ifaces: HashMap::new(),
-            functions: HashMap::new(),
-        }
+        Self::default()
     }
 
     pub fn extend(&mut self, other: &Metadata) {
         for (id, def) in other.type_defs() {
             if self.type_defs.contains_key(id) {
-                let existing = self.type_defs.get(id).unwrap();
+                let existing = &self.type_defs[id];
                 panic!(
                     "duplicate struct ID {} in metadata (new: {}, existing: {})",
-                    id, def.name(), existing.name()
+                    id,
+                    def.name(),
+                    existing.name()
                 );
             }
 
@@ -449,13 +458,13 @@ impl Metadata {
                 let name = func_decl
                     .global_name
                     .as_ref()
-                    .map(|n| n.to_string())
-                    .unwrap_or("<unnamed>".to_string());
+                    .map(GlobalName::to_string)
+                    .unwrap_or_else(|| "<unnamed>".to_string());
                 let existing_name = existing
                     .global_name
                     .as_ref()
-                    .map(|n| n.to_string())
-                    .unwrap_or("<unnamed>".to_string());
+                    .map(GlobalName::to_string)
+                    .unwrap_or_else(|| "<unnamed>".to_string());
 
                 panic!(
                     "duplicate function ID {} in metadata (new: {}, existing: {})",
@@ -487,24 +496,21 @@ impl Metadata {
     fn next_struct_id(&mut self) -> StructID {
         (0..)
             .map(StructID)
-            .filter(|id| !self.type_defs.contains_key(id))
-            .next()
+            .find(|id| !self.type_defs.contains_key(id))
             .unwrap()
     }
 
     fn next_iface_id(&mut self) -> InterfaceID {
         (0..)
             .map(InterfaceID)
-            .filter(|id| !self.ifaces.contains_key(id))
-            .next()
+            .find(|id| !self.ifaces.contains_key(id))
             .unwrap()
     }
 
     fn next_function_id(&mut self) -> FunctionID {
         (0..)
             .map(FunctionID)
-            .filter(|id| !self.functions.contains_key(id))
-            .next()
+            .find(|id| !self.functions.contains_key(id))
             .unwrap()
     }
 
@@ -519,10 +525,10 @@ impl Metadata {
             Some(_) => None,
             None => {
                 let name = func_decl.ident.to_string();
-                let ns = ns.iter().map(|i| i.to_string());
+                let ns = ns.iter().map(syn::Ident::to_string);
 
                 Some(GlobalName::new(name, ns))
-            }
+            },
         };
 
         self.functions.insert(id, FunctionDecl { global_name });
@@ -545,7 +551,7 @@ impl Metadata {
         self.functions
             .get(&id)
             .and_then(|decl| decl.global_name.as_ref())
-            .map(|global_name| global_name.to_string())
+            .map(GlobalName::to_string)
             .or_else(|| {
                 self.ifaces.values().find_map(|iface| {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
@@ -577,7 +583,7 @@ impl Metadata {
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
                 format!("array [{}] of {}", dim, elem_name)
-            }
+            },
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
@@ -586,16 +592,17 @@ impl Metadata {
                     Some(ClassID::Interface(iface_id)) => {
                         let iface = self.ifaces.get(iface_id);
 
-                        iface.map(|def| def.name.to_string())
+                        iface
+                            .map(|def| def.name.to_string())
                             .unwrap_or_else(|| format!("<interface {}>", iface_id))
-                    }
+                    },
 
                     Some(ClassID::Class(struct_id)) => {
                         self.pretty_ty_name(&Type::Struct(*struct_id))
-                    }
+                    },
                 };
                 format!("rc {}", resource_name)
-            }
+            },
 
             Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
 
@@ -625,7 +632,10 @@ impl Metadata {
         };
 
         assert!(
-            !self.type_defs.values().any(|def| *def.name() == struct_name),
+            !self
+                .type_defs
+                .values()
+                .any(|def| *def.name() == struct_name),
             "duplicate type def: {}",
             struct_name
         );
@@ -645,7 +655,7 @@ impl Metadata {
         for case in &variant_def.cases {
             let (case_ty, case_rc) = match &case.data_ty {
                 Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
-                None => (None, false)
+                None => (None, false),
             };
             cases.push(VariantCase {
                 name: case.ident.to_string(),
@@ -660,10 +670,13 @@ impl Metadata {
             name_path
         );
 
-        self.type_defs.insert(variant_id, TypeDef::Variant(Variant {
-            name: name_path,
-            cases,
-        }));
+        self.type_defs.insert(
+            variant_id,
+            TypeDef::Variant(Variant {
+                name: name_path,
+                cases,
+            }),
+        );
 
         variant_id
     }
@@ -681,7 +694,8 @@ impl Metadata {
         // any units, so it has a fixed IR struct ID
         let name = NamePath::from_decl(iface_def.name.clone(), self);
 
-        let disposable_name = NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]);
+        let disposable_name =
+            NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]);
         let id = if name == disposable_name {
             DISPOSABLE_ID
         } else {
@@ -736,15 +750,12 @@ impl Metadata {
     ) {
         let method_name = method_name.into();
 
-        let iface = self.ifaces
-            .get_mut(&iface_id)
-            .unwrap_or_else(|| {
-                panic!(
-                    "trying to impl method {} for interface {} which doesn't exist",
-                    method_name,
-                    iface_id
-                )
-            });
+        let iface = self.ifaces.get_mut(&iface_id).unwrap_or_else(|| {
+            panic!(
+                "trying to impl method {} for interface {} which doesn't exist",
+                method_name, iface_id
+            )
+        });
 
         let index = iface.method_index(&method_name).unwrap();
         iface.add_impl(for_ty, index, func_id);
@@ -752,7 +763,8 @@ impl Metadata {
 
     pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: usize) -> Option<FunctionID> {
         let impls = &self.ifaces[&iface_id].impls;
-        impls.get(ty)
+        impls
+            .get(ty)
             .and_then(|ty_impl| ty_impl.methods.get(&method))
             .cloned()
     }
@@ -769,17 +781,15 @@ impl Metadata {
 
             pas_ty::Type::Interface(iface) => {
                 // todo: ifaces should use NamePaths
-                //let ty_name = NamePath::from_decl(iface.name.clone(), self);
+                // let ty_name = NamePath::from_decl(iface.name.clone(), self);
 
                 let id = match self.find_iface(&iface) {
                     Some(iface_id) => iface_id,
-                    None => {
-                        self.define_iface(iface)
-                    }
+                    None => self.define_iface(iface),
                 };
 
                 Type::RcPointer(Some(ClassID::Interface(id)))
-            }
+            },
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
@@ -800,7 +810,7 @@ impl Metadata {
                     syn::ast::ClassKind::Record => Type::Struct(id),
                     syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
                 }
-            }
+            },
 
             pas_ty::Type::Array { element, dim } => {
                 let element = self.translate_type(element.as_ref());
@@ -808,7 +818,7 @@ impl Metadata {
                     element: Box::new(element),
                     dim: *dim,
                 }
-            }
+            },
 
             pas_ty::Type::Variant(variant) => {
                 let ty_name = NamePath::from_decl(variant.name.clone(), self);
@@ -819,51 +829,47 @@ impl Metadata {
                 };
 
                 Type::Variant(id)
-            }
+            },
 
-            pas_ty::Type::GenericSelf => {
-                unreachable!("Self is not a real type in this context")
-            }
+            pas_ty::Type::GenericSelf => unreachable!("Self is not a real type in this context"),
 
             pas_ty::Type::GenericParam(ident) => {
                 unreachable!("{} is not a real type in this context", ident);
-            }
+            },
 
             pas_ty::Type::Function(sig) => {
                 unimplemented!("No IR type exists to represent function: {}", sig)
-            }
+            },
 
-            pas_ty::Type::Any => {
-                Type::RcPointer(None)
-            }
+            pas_ty::Type::Any => Type::RcPointer(None),
         }
     }
 
     pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, &Struct)> {
-        self.type_defs.iter().find_map(|(id, def)| {
-            match def {
-                TypeDef::Struct(struct_def) => if struct_def.name == *name {
+        self.type_defs.iter().find_map(|(id, def)| match def {
+            TypeDef::Struct(struct_def) => {
+                if struct_def.name == *name {
                     Some((*id, struct_def))
                 } else {
                     None
-                },
+                }
+            },
 
-                _ => None,
-            }
+            _ => None,
         })
     }
 
     pub fn find_variant(&self, name: &NamePath) -> Option<(StructID, &Variant)> {
-        self.type_defs.iter().find_map(|(id, def)| {
-            match def {
-                TypeDef::Variant(variant_def) => if variant_def.name == *name {
+        self.type_defs.iter().find_map(|(id, def)| match def {
+            TypeDef::Variant(variant_def) => {
+                if variant_def.name == *name {
                     Some((*id, variant_def))
                 } else {
                     None
-                },
+                }
+            },
 
-                _ => None,
-            }
+            _ => None,
         })
     }
 
@@ -884,7 +890,7 @@ impl Metadata {
                     .unwrap_or(StringID(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
-            }
+            },
         }
     }
 
@@ -902,7 +908,7 @@ impl Metadata {
         self.string_literals.get(&id)
     }
 
-    pub fn strings(&self) -> impl Iterator<Item=(StringID, &str)> + '_ {
+    pub fn strings(&self) -> impl Iterator<Item = (StringID, &str)> + '_ {
         self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
     }
 }

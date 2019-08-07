@@ -1,6 +1,11 @@
 use crate::{
-    interpret::{Interpreter, MemCell, Pointer},
-    LocalID, Ref,
+    interpret::{
+        Interpreter,
+        MemCell,
+        Pointer,
+    },
+    LocalID,
+    Ref,
 };
 
 /// $1: Integer -> $0: String
@@ -48,7 +53,7 @@ pub(super) fn free_mem(state: &mut Interpreter) {
     let ptr = state
         .load(&arg_0)
         .as_pointer()
-        .and_then(|ptr| ptr.as_heap_addr())
+        .and_then(Pointer::as_heap_addr)
         .unwrap_or_else(|| panic!("FreeMem expected heap pointer argument"));
 
     state.heap.free(ptr);

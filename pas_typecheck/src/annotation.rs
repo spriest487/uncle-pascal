@@ -1,10 +1,25 @@
-use std::{fmt, rc::Rc};
+use std::{
+    fmt,
+    rc::Rc,
+};
 
 use pas_common::span::*;
-use pas_syn::{ast::{ Annotation, TypeDeclName, DeclNamed }, ident::IdentPath, Ident};
+use pas_syn::{
+    ast::{
+        Annotation,
+        DeclNamed,
+        TypeDeclName,
+    },
+    ident::IdentPath,
+    Ident,
+};
 
 use crate::{
-    ast::{Expression, FunctionDecl, Variant},
+    ast::{
+        Expression,
+        FunctionDecl,
+        Variant,
+    },
     result::*,
     ty::*,
     ValueKind,
@@ -129,7 +144,7 @@ impl TypeAnnotation {
                 if ty == expect_ty =>
             {
                 Ok(())
-            }
+            },
 
             TypeAnnotation::Method(method_annotation) => Err(TypecheckError::TypeMismatch {
                 span: method_annotation.span.clone(),
@@ -176,7 +191,7 @@ impl TypeAnnotation {
         match self {
             TypeAnnotation::Type(..) => None,
             TypeAnnotation::Method(method) => Some(method.method.span()),
-            TypeAnnotation::Function { .. } => None, //TODO
+            TypeAnnotation::Function { .. } => None, // TODO
             TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),

@@ -115,10 +115,10 @@ impl DirectiveParser {
             })
             .collect();
 
-        if switches.iter().any(|switch| switch.is_none()) {
+        if switches.iter().any(Option::is_none) {
             None
         } else {
-            Some(switches.into_iter().map(|switch| switch.unwrap()).collect())
+            Some(switches.into_iter().map(Option::unwrap).collect())
         }
     }
 

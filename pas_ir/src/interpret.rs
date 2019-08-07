@@ -1,15 +1,33 @@
 use std::{
     collections::HashMap,
-    f32, fmt,
-    ops::{Add, Index, IndexMut, Sub},
+    f32,
+    fmt,
+    ops::{
+        Add,
+        Index,
+        IndexMut,
+        Sub,
+    },
     rc::Rc,
 };
 
 use crate::{
-    Function as FunctionIR, GlobalRef, Instruction, Label, LocalID, metadata::*, Module, Ref, Type, Value,
+    metadata::*,
+    Function as FunctionIR,
+    GlobalRef,
+    Instruction,
+    Label,
+    LocalID,
+    Module,
+    Ref,
+    Type,
+    Value,
 };
 
-use self::heap::{Heap, HeapAddress};
+use self::heap::{
+    Heap,
+    HeapAddress,
+};
 
 mod builtin;
 mod heap;
@@ -96,7 +114,7 @@ impl Add<usize> for Pointer {
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            }
+            },
         }
     }
 }
@@ -121,7 +139,7 @@ impl Sub<usize> for Pointer {
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            }
+            },
         }
     }
 }
@@ -247,11 +265,11 @@ impl MemCell {
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
                 Some(MemCell::Pointer(ptr.clone() + *offset as usize))
-            }
+            },
 
             (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
                 Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0))))
-            }
+            },
 
             _ => None,
         }
@@ -265,11 +283,11 @@ impl MemCell {
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
                 Some(MemCell::Pointer(ptr.clone() - *offset as usize))
-            }
+            },
 
             (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
                 Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
-            }
+            },
 
             _ => None,
         }
@@ -455,15 +473,13 @@ impl Interpreter {
                     el_ty: (**element).clone(),
                     elements,
                 })
-            }
+            },
 
-            Type::Variant(id) => {
-                MemCell::Variant(VariantCell {
-                    id: *id,
-                    tag: Box::new(MemCell::I32(0)),
-                    data: Box::new(MemCell::Pointer(Pointer::Null)),
-                })
-            }
+            Type::Variant(id) => MemCell::Variant(VariantCell {
+                id: *id,
+                tag: Box::new(MemCell::I32(0)),
+                data: Box::new(MemCell::Pointer(Pointer::Null)),
+            }),
 
             _ => panic!("can't initialize default cell of type `{:?}`", ty),
         }
@@ -598,7 +614,7 @@ impl Interpreter {
             Ref::Local(LocalID(id)) => match self.current_frame_mut().locals.get_mut(*id) {
                 Some(Some(cell)) => {
                     cell.value = val;
-                }
+                },
                 None | Some(None) => panic!("local cell {} is not allocated", id),
             },
 
@@ -610,16 +626,16 @@ impl Interpreter {
                     name.clone(),
                     GlobalCell {
                         value: val,
-                        //todo: for the moment this means no RC for global cells stored after init
+                        // todo: for the moment this means no RC for global cells stored after init
                         ty: Type::Nothing,
                     },
                 );
-            }
+            },
 
             Ref::Deref(inner) => match self.evaluate(inner) {
                 MemCell::Pointer(ptr) => {
                     *self.deref_ptr_mut(&ptr) = val;
-                }
+                },
 
                 x => panic!("can't dereference non-pointer cell with value {:?}", x),
             },
@@ -632,14 +648,14 @@ impl Interpreter {
                 Some(Some(cell)) => &cell.value,
                 None | Some(None) => {
                     panic!("local cell {} is not allocated", id);
-                }
+                },
             },
 
             Ref::Global(name) => match self.globals.get(name) {
                 Some(cell) => &cell.value,
                 None => {
                     panic!("global cell `{}` is not allocated", name);
-                }
+                },
             },
 
             Ref::Deref(inner) => match self.evaluate(inner) {
@@ -680,19 +696,36 @@ impl Interpreter {
             .expect("called current_frame without no stackframes")
     }
 
-    fn vcall_lookup(&self, self_cell: &MemCell, iface_id: InterfaceID, method: usize) -> FunctionID {
-        let self_rc = self_cell.as_pointer()
+    fn vcall_lookup(
+        &self,
+        self_cell: &MemCell,
+        iface_id: InterfaceID,
+        method: usize,
+    ) -> FunctionID {
+        let self_rc = self_cell
+            .as_pointer()
             .and_then(|rc_ptr| {
                 let rc_addr = rc_ptr.as_heap_addr()?;
                 let rc_cell = self.heap.get(rc_addr)?;
                 rc_cell.as_rc()
             })
-            .unwrap_or_else(|| panic!("expected target of virtual call {}.{} to be an rc cell, but found {:?}", iface_id, method, self_cell));
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected target of virtual call {}.{} to be an rc cell, but found {:?}",
+                    iface_id, method, self_cell
+                )
+            });
 
         let instance_ty = Type::RcPointer(Some(ClassID::Class(self_rc.struct_id)));
 
-        self.metadata.find_impl(&instance_ty, iface_id, method)
-            .unwrap_or_else(|| panic!("virtual call {}.{} missing implementation for {}", iface_id, method, instance_ty))
+        self.metadata
+            .find_impl(&instance_ty, iface_id, method)
+            .unwrap_or_else(|| {
+                panic!(
+                    "virtual call {}.{} missing implementation for {}",
+                    iface_id, method, instance_ty
+                )
+            })
     }
 
     fn call(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) {
@@ -711,10 +744,12 @@ impl Interpreter {
         // store params in either $0.. or $1..
         self.current_frame_mut()
             .locals
-            .extend(args.iter().cloned().map(|arg| Some(LocalCell {
-                value: arg,
-                alloc_pc: None,
-            })));
+            .extend(args.iter().cloned().map(|arg| {
+                Some(LocalCell {
+                    value: arg,
+                    alloc_pc: None,
+                })
+            }));
 
         match func {
             Function::Builtin { func, .. } => func(self),
@@ -726,7 +761,7 @@ impl Interpreter {
             _ => {
                 let return_val = self.evaluate(&Value::Ref(Ref::Local(LocalID(0))));
                 Some(return_val)
-            }
+            },
         };
 
         self.pop_stack();
@@ -734,19 +769,21 @@ impl Interpreter {
         match (result_cell, out) {
             (Some(result_cell), Some(out_at)) => {
                 self.store(&out_at, result_cell);
-            }
+            },
 
             (None, Some(_)) => {
                 panic!("called function which has no return type in a context where a return value was expected");
-            }
+            },
 
             // ok, no output expected, ignore result if there is one
-            (_, None) => {}
+            (_, None) => {},
         }
     }
 
     fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) {
-        let dispose_impl_id = self.metadata.find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
+        let dispose_impl_id = self
+            .metadata
+            .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
 
         if let Some(dispose_func) = dispose_impl_id {
             let dispose_desc = self.metadata.func_desc(dispose_func);
@@ -763,10 +800,8 @@ impl Interpreter {
             }
 
             self.call(&func, &[cell.clone()], None);
-        } else {
-            if self.trace_rc {
-                eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
-            }
+        } else if self.trace_rc {
+            eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
     }
 
@@ -787,19 +822,21 @@ impl Interpreter {
                         self.release_cell(field_cell, field_release_target);
                     }
                 }
-            }
+            },
 
             ReleaseTarget::RcPointer => {
-                let ptr = cell.as_pointer()
-                    .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
+                let ptr = cell.as_pointer().unwrap_or_else(|| {
+                    panic!("released cell was not a pointer, found: {:?}", cell)
+                });
                 // NULL is a valid release target because we release uninitialized local RC pointers
                 // just do nothing
                 if *ptr == Pointer::Null {
                     return;
                 }
 
-                let rc_addr = ptr.as_heap_addr()
-                    .unwrap_or_else(|| panic!("released cell was not a heap pointer, found: {:?}", cell));
+                let rc_addr = ptr.as_heap_addr().unwrap_or_else(|| {
+                    panic!("released cell was not a heap pointer, found: {:?}", cell)
+                });
 
                 let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
                 let resource_ty = Type::Struct(rc_cell.struct_id);
@@ -851,7 +888,7 @@ impl Interpreter {
                         ..rc_cell
                     });
                 }
-            }
+            },
         }
     }
 
@@ -859,7 +896,7 @@ impl Interpreter {
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
-                let rc_cell = self.heap.get_mut(*addr).and_then(|cell| cell.as_rc_mut());
+                let rc_cell = self.heap.get_mut(*addr).and_then(MemCell::as_rc_mut);
 
                 if let Some(rc_cell) = rc_cell {
                     if self.trace_rc {
@@ -868,16 +905,16 @@ impl Interpreter {
 
                     rc_cell.ref_count += 1;
                 }
-            }
+            },
 
             MemCell::Structure(StructCell { fields, .. }) => {
                 for field_cell in fields {
                     self.retain_cell(field_cell);
                 }
-            }
+            },
 
             // can't contain rc pointers
-            _ => {}
+            _ => {},
         }
     }
 
@@ -899,7 +936,7 @@ impl Interpreter {
                         _ => panic!("deref of non-pointer value @ {}", val),
                     },
                 }
-            }
+            },
 
             // let int := 1;
             // @int -> stack address of int cell
@@ -924,7 +961,7 @@ impl Interpreter {
                     frame: frame_id,
                     id: id.0,
                 }
-            }
+            },
 
             Ref::Global(global) => panic!("can't take address of global ref {:?}", global),
         }
@@ -942,7 +979,7 @@ impl Interpreter {
             match &instructions[pc] {
                 Instruction::Comment(_) => {
                     // noop
-                }
+                },
 
                 Instruction::LocalAlloc(id, ty) => {
                     let uninit_cell = self.default_init_cell(ty);
@@ -953,10 +990,12 @@ impl Interpreter {
                     }
 
                     match &mut frame.locals[id.0] {
-                        None => frame.locals[id.0] = Some(LocalCell {
-                            value: uninit_cell,
-                            alloc_pc: Some(pc),
-                        }),
+                        None => {
+                            frame.locals[id.0] = Some(LocalCell {
+                                value: uninit_cell,
+                                alloc_pc: Some(pc),
+                            })
+                        },
                         Some(already_allocated) => {
                             // the same ID can only be reused if this is the same instruction that
                             // allocated it in the first place
@@ -967,20 +1006,24 @@ impl Interpreter {
                         },
                     }
 
-                    frame.block_stack.last_mut()
+                    frame
+                        .block_stack
+                        .last_mut()
                         .expect("block stack must never be empty")
-                        .decls.push(*id);
-                }
+                        .decls
+                        .push(*id);
+                },
 
-                Instruction::LocalBegin => {
-                    self.current_frame_mut().block_stack.push(Block {
-                        decls: Vec::new()
-                    })
-                }
+                Instruction::LocalBegin => self
+                    .current_frame_mut()
+                    .block_stack
+                    .push(Block { decls: Vec::new() }),
 
                 Instruction::LocalEnd => {
                     let frame = self.current_frame_mut();
-                    let popped_block = frame.block_stack.pop()
+                    let popped_block = frame
+                        .block_stack
+                        .pop()
                         .expect("block stack must never be empty");
 
                     for LocalID(id) in popped_block.decls {
@@ -989,7 +1032,7 @@ impl Interpreter {
                         }
                         frame.locals[id] = None;
                     }
-                }
+                },
 
                 Instruction::RcNew { out, struct_id } => {
                     let struct_ty = Type::Struct(*struct_id);
@@ -998,7 +1041,7 @@ impl Interpreter {
                     let rc_ptr = self.rc_alloc(init_cells, *struct_id);
 
                     self.store(out, MemCell::Pointer(rc_ptr));
-                }
+                },
 
                 Instruction::Add { out, a, b } => {
                     match self.evaluate(a).try_add(&self.evaluate(b)) {
@@ -1009,7 +1052,7 @@ impl Interpreter {
                             self.evaluate(b)
                         ),
                     }
-                }
+                },
 
                 Instruction::Sub { out, a, b } => {
                     match self.evaluate(a).try_sub(&self.evaluate(b)) {
@@ -1020,7 +1063,7 @@ impl Interpreter {
                             self.evaluate(b)
                         ),
                     }
-                }
+                },
 
                 Instruction::Eq { out, a, b } => {
                     let eq = match self.evaluate(a).try_eq(&self.evaluate(b)) {
@@ -1033,7 +1076,7 @@ impl Interpreter {
                     };
 
                     self.store(out, MemCell::Bool(eq))
-                }
+                },
 
                 Instruction::Gt { out, a, b } => {
                     let gt = match (self.evaluate(a), self.evaluate(b)) {
@@ -1047,7 +1090,7 @@ impl Interpreter {
                     };
 
                     self.store(out, MemCell::Bool(gt));
-                }
+                },
 
                 Instruction::Not { out, a } => {
                     let val = self
@@ -1056,7 +1099,7 @@ impl Interpreter {
                         .unwrap_or_else(|| panic!("Not instruction is not valid for {:?}", a));
 
                     self.store(out, MemCell::Bool(!val));
-                }
+                },
 
                 Instruction::And { out, a, b } => {
                     let a_val = self.evaluate(a).as_bool().unwrap_or_else(|| {
@@ -1068,7 +1111,7 @@ impl Interpreter {
                     });
 
                     self.store(out, MemCell::Bool(a_val && b_val));
-                }
+                },
 
                 Instruction::Or { out, a, b } => {
                     let a_val = self.evaluate(a).as_bool().unwrap_or_else(|| {
@@ -1080,11 +1123,11 @@ impl Interpreter {
                     });
 
                     self.store(out, MemCell::Bool(a_val || b_val));
-                }
+                },
 
                 Instruction::Move { out, new_val } => {
                     self.store(out, self.evaluate(new_val));
-                }
+                },
 
                 Instruction::Call {
                     out,
@@ -1097,11 +1140,11 @@ impl Interpreter {
                     match self.evaluate(function) {
                         MemCell::Function(function) => {
                             self.call(&function, &arg_cells, out.as_ref())
-                        }
+                        },
 
-                        _ => panic!("{} does not reference a function"),
+                        _ => panic!("{} does not reference a function", function),
                     }
-                }
+                },
 
                 Instruction::VirtualCall {
                     out,
@@ -1123,15 +1166,19 @@ impl Interpreter {
                     };
 
                     self.call(&func, &arg_cells, out.as_ref())
-                }
+                },
 
                 Instruction::ClassIs { out, a, class_id } => {
-                    let rc_addr = self.evaluate(a)
-                        .as_pointer().and_then(|p| p.as_heap_addr())
-                        .expect("argument a of ClassIs instruction must evaluate to a heap pointer");
-                    let rc_cell = self.heap.get(rc_addr)
-                        .and_then(|cell| cell.as_rc())
-                        .expect("rc pointer target of ClassIs instruction must point to an rc cell");
+                    let rc_addr = self
+                        .evaluate(a)
+                        .as_pointer()
+                        .and_then(Pointer::as_heap_addr)
+                        .expect(
+                            "argument a of ClassIs instruction must evaluate to a heap pointer",
+                        );
+                    let rc_cell = self.heap.get(rc_addr).and_then(MemCell::as_rc).expect(
+                        "rc pointer target of ClassIs instruction must point to an rc cell",
+                    );
 
                     let is = match class_id {
                         ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
@@ -1140,16 +1187,16 @@ impl Interpreter {
                             let actual_ty = Type::RcPointer(Some(resource_id));
 
                             self.metadata.is_impl(&actual_ty, *iface_id)
-                        }
+                        },
                     };
 
                     self.store(out, MemCell::Bool(is));
-                }
+                },
 
                 Instruction::AddrOf { out, a } => {
                     let a_ptr = self.addr_of_ref(a);
                     self.store(out, MemCell::Pointer(a_ptr));
-                }
+                },
 
                 Instruction::Field {
                     out,
@@ -1165,7 +1212,7 @@ impl Interpreter {
                                 field: *field,
                                 structure: Box::new(struct_ptr),
                             }
-                        }
+                        },
 
                         Type::RcPointer(..) => {
                             let struct_ptr = self
@@ -1180,7 +1227,7 @@ impl Interpreter {
                                 field: *field,
                                 structure: Box::new(struct_ptr),
                             }
-                        }
+                        },
 
                         _ => panic!(
                             "invalid base type referenced in Field instruction: {}.{}",
@@ -1189,7 +1236,7 @@ impl Interpreter {
                     };
 
                     self.store(out, MemCell::Pointer(field_ptr));
-                }
+                },
 
                 Instruction::Element {
                     out,
@@ -1211,50 +1258,56 @@ impl Interpreter {
                             array: Box::new(array),
                         }),
                     );
-                }
+                },
 
                 Instruction::VariantTag { out, a, .. } => {
                     let a_ptr = self.addr_of_ref(a);
-                    self.store(out, MemCell::Pointer(Pointer::VariantTag {
-                        variant: Box::new(a_ptr),
-                    }));
-                }
+                    self.store(
+                        out,
+                        MemCell::Pointer(Pointer::VariantTag {
+                            variant: Box::new(a_ptr),
+                        }),
+                    );
+                },
 
                 Instruction::VariantData { out, a, tag, .. } => {
                     let a_ptr = self.addr_of_ref(a);
-                    self.store(out, MemCell::Pointer(Pointer::VariantData {
-                        variant: Box::new(a_ptr),
-                        tag: *tag,
-                    }));
-                }
+                    self.store(
+                        out,
+                        MemCell::Pointer(Pointer::VariantData {
+                            variant: Box::new(a_ptr),
+                            tag: *tag,
+                        }),
+                    );
+                },
 
                 Instruction::Label(_) => {
                     // noop
-                }
+                },
 
                 Instruction::Jump { dest } => {
                     self.jump(&mut pc, &labels[dest]);
                     continue;
-                }
+                },
 
                 Instruction::JumpIf { dest, test } => match self.evaluate(test) {
                     MemCell::Bool(true) => {
                         self.jump(&mut pc, &labels[dest]);
                         continue;
-                    }
-                    MemCell::Bool(false) => {}
+                    },
+                    MemCell::Bool(false) => {},
                     _ => panic!("JumpIf instruction testing non-boolean cell"),
                 },
 
                 Instruction::Release { at } => {
                     let cell = self.load(at).clone();
                     self.release_cell(&cell, ReleaseTarget::RcPointer);
-                }
+                },
 
                 Instruction::Retain { at } => {
                     let cell = self.load(at).clone();
                     self.retain_cell(&cell);
-                }
+                },
             }
 
             pc += 1;
@@ -1268,10 +1321,12 @@ impl Interpreter {
         let frame = self.current_frame_mut();
         let current_block = frame.block_stack.len() - 1;
 
-        assert!(current_block >= label.block_depth,
+        assert!(
+            current_block >= label.block_depth,
             "jmp from block level {} to {} is invalid, can only jmp upwards in the block stack",
             current_block,
-            label.block_depth);
+            label.block_depth
+        );
 
         let pop_blocks = current_block - label.block_depth;
         for _ in 0..pop_blocks {
@@ -1355,7 +1410,7 @@ impl Interpreter {
 
         for (func_name, func) in &module.functions {
             let func_cell = MemCell::Function(Function::IR(Rc::new(func.clone())));
-            let func_ref = GlobalRef::Function(func_name.clone());
+            let func_ref = GlobalRef::Function(*func_name);
 
             self.globals.insert(
                 func_ref,
@@ -1437,7 +1492,7 @@ impl Interpreter {
 
         let chars_addr = &str_cell[STRING_CHARS_FIELD]
             .as_pointer()
-            .and_then(|ptr| ptr.as_heap_addr())
+            .and_then(Pointer::as_heap_addr)
             .unwrap_or_else(|| {
                 panic!(
                     "string contained non-heap-alloced `chars` pointer: {:?}",
@@ -1485,17 +1540,16 @@ fn find_labels(instructions: &[Instruction]) -> HashMap<Label, LabelLocation> {
 
     for (pc_offset, instruction) in instructions.iter().enumerate() {
         match instruction {
-            Instruction::LocalBegin => {
-                block_depth += 1
-            },
-            Instruction::LocalEnd => {
-                block_depth -= 1
-            },
+            Instruction::LocalBegin => block_depth += 1,
+            Instruction::LocalEnd => block_depth -= 1,
             Instruction::Label(label) => {
-                locations.insert(label.clone(), LabelLocation {
-                    block_depth,
-                    pc_offset,
-                });
+                locations.insert(
+                    label.clone(),
+                    LabelLocation {
+                        block_depth,
+                        pc_offset,
+                    },
+                );
             },
             _ => continue,
         }

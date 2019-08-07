@@ -14,36 +14,35 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                             let aliased = aliased_unit.clone().child(decl_key.clone());
                             ctx.declare_alias(decl_key, aliased)?;
                         }
-                    }
+                    },
 
                     Some(MemberRef::Value { value, .. }) => {
                         let unexpected = UnexpectedValue::Decl(value.clone());
                         let err = NameError::ExpectedNamespace(unit.clone().into(), unexpected);
                         return Err(TypecheckError::from(err));
-                    }
+                    },
 
                     None => {
                         return Err(TypecheckError::from(NameError::NotFound(unit.clone())));
-                    }
+                    },
                 }
             }
 
             Ok(ast::UnitDecl::Uses(uses.clone()))
-        }
+        },
 
         ast::UnitDecl::FunctionDef(func_def) => {
             let name = func_def.decl.ident.single().clone();
 
             let func_def = typecheck_func_def(func_def, ctx)?;
             if let Some(impl_iface) = &func_def.decl.impl_iface {
-                let iface_decl = impl_iface.iface.clone().into_iface()
+                let iface_decl = impl_iface
+                    .iface
+                    .clone()
+                    .into_iface()
                     .expect("implemented type must be an interface");
 
-                ctx.define_method_impl(
-                    iface_decl,
-                    impl_iface.for_ty.clone(),
-                    name,
-                )?;
+                ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), name)?;
             } else {
                 ctx.define_function(
                     name,
@@ -53,14 +52,14 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             }
 
             Ok(ast::UnitDecl::FunctionDef(func_def))
-        }
+        },
 
         ast::UnitDecl::FunctionDecl(func_decl) => {
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
             ctx.declare_function(name, &func_decl)?;
             Ok(ast::UnitDecl::FunctionDecl(func_decl))
-        }
+        },
 
         ast::UnitDecl::Type(type_decl) => {
             // type decls have an inner scope
@@ -85,7 +84,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             ctx.declare_type(type_decl.ident().decl_name.ident.clone(), decl_ty)?;
 
             Ok(ast::UnitDecl::Type(type_decl))
-        }
+        },
     }
 }
 

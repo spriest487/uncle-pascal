@@ -1,4 +1,10 @@
-use crate::{prelude::*, translate_block, translate_call, translate_expr, translate_if_cond};
+use crate::{
+    prelude::*,
+    translate_block,
+    translate_call,
+    translate_expr,
+    translate_if_cond,
+};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
@@ -18,37 +24,37 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);
-        }
+        },
 
         ast::Statement::Call(call) => {
             translate_call(call, builder);
-        }
+        },
 
         ast::Statement::Block(block) => {
             translate_block(block, builder);
-        }
+        },
 
         ast::Statement::Exit(_) => unimplemented!(),
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
-        }
+        },
 
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
-        }
+        },
 
         ast::Statement::If(if_stmt) => {
             translate_if_cond(if_stmt, builder, true);
-        }
+        },
 
         ast::Statement::Break(_) => {
             builder.break_loop();
-        }
+        },
 
         ast::Statement::Continue(_) => {
             builder.continue_loop();
-        }
+        },
     }
 }
 
@@ -95,7 +101,8 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         let inc_val = Value::LiteralI32(1);
         let loop_val = builder.local_temp(Type::Bool);
 
-        let counter_val = builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
+        let counter_val =
+            builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
         let init_val = translate_expr(&counter_init, builder);
 
         let to_val = translate_expr(&for_loop.to_expr, builder);

@@ -141,7 +141,7 @@ impl Matcher {
                 Matcher::OneOf(options)
             },
 
-            (Matcher::OneOf(mut options), other @ _) => {
+            (Matcher::OneOf(mut options), other) => {
                 options.push(other);
                 Matcher::OneOf(options)
             },

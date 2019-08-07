@@ -1,10 +1,10 @@
+use crate::path_relative_to_cwd;
 use std::{
     cmp::Ordering,
     fmt,
     path::PathBuf,
     rc::Rc,
 };
-use crate::path_relative_to_cwd;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct Location {

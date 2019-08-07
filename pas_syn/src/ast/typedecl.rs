@@ -75,7 +75,7 @@ impl Class<Span> {
 
         Ok(Class {
             kind,
-            name: name,
+            name,
             members,
             span: kw_token.span().to(end_token.span()),
         })
@@ -133,7 +133,7 @@ impl Interface<Span> {
         let end = tokens.match_one(Keyword::End)?;
 
         Ok(Interface {
-            name: name.into(),
+            name,
             span: iface_kw.span().to(end.span()),
             methods,
         })
@@ -174,8 +174,7 @@ pub struct VariantCase<A: Annotation> {
 
 impl<A: Annotation> Variant<A> {
     pub fn case_position(&self, case_ident: &Ident) -> Option<usize> {
-        self.cases.iter()
-            .position(|c| c.ident == *case_ident)
+        self.cases.iter().position(|c| c.ident == *case_ident)
     }
 }
 
@@ -195,7 +194,7 @@ impl Variant<Span> {
                     let ty = TypeName::parse(tokens)?;
                     let span = ident_tt.span().to(ty.span());
                     (Some(ty), span)
-                }
+                },
                 None => (None, ident_tt.span().clone()),
             };
 
@@ -212,12 +211,7 @@ impl Variant<Span> {
 
         let span = kw.span().to(end_kw.span());
 
-        Ok(Variant {
-            name: name,
-            cases,
-
-            span,
-        })
+        Ok(Variant { name, cases, span })
     }
 }
 
@@ -325,11 +319,9 @@ impl TypeDeclName {
                 let close_bracket = tokens.match_one(Operator::Gt)?;
 
                 (type_params, ident_tt.span().to(close_bracket.span()))
-            }
+            },
 
-            None => {
-                (Vec::new(), ident_tt.span().clone())
-            }
+            None => (Vec::new(), ident_tt.span().clone()),
         };
 
         Ok(Self {
@@ -390,13 +382,13 @@ impl TypeDecl<Span> {
             Some(TokenTree::Keyword {
                 kw: Keyword::Variant,
                 ..
-                 }) => {
+            }) => {
                 let variant_decl = Variant::parse(tokens, name)?;
                 Ok(TypeDecl::Variant(variant_decl))
-            }
+            },
 
             Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
-                unexpected,
+                Box::new(unexpected),
                 Some(decl_start_matcher.clone()),
             ))),
 

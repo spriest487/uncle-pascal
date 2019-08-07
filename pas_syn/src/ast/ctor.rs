@@ -1,4 +1,7 @@
-use crate::{ast::Expression, parse::prelude::*};
+use crate::{
+    ast::Expression,
+    parse::prelude::*,
+};
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {
@@ -100,7 +103,7 @@ impl CollectionCtor<Span> {
                     span, inner, open, ..
                 } => (span, TokenStream::new(inner, open)),
 
-                _ => unreachable!()
+                _ => unreachable!(),
             };
 
         let elements = elems_tokens.match_separated(Separator::Comma, |_, elem_tokens| {
@@ -110,7 +113,7 @@ impl CollectionCtor<Span> {
 
         Ok(Self {
             elements,
-            annotation: span
+            annotation: span,
         })
     }
 }

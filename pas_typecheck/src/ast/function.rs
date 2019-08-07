@@ -1,4 +1,4 @@
-use pas_syn::{Ident};
+use pas_syn::Ident;
 
 use crate::ast::prelude::*;
 
@@ -53,14 +53,16 @@ pub fn typecheck_func_decl(
 
             let iface = match typecheck_type(&iface_impl.iface, ctx)? {
                 Type::Interface(iface) => iface,
-                not_iface => return Err(TypecheckError::InvalidMethodInterface {
-                    ty: not_iface,
-                    span: iface_impl.iface.span().clone(),
-                }),
+                not_iface => {
+                    return Err(TypecheckError::InvalidMethodInterface {
+                        ty: not_iface,
+                        span: iface_impl.iface.span().clone(),
+                    })
+                },
             };
 
             Some(find_iface_impl(iface, decl.ident.single(), &method_sig)?)
-        }
+        },
         None => None,
     };
 
@@ -87,14 +89,12 @@ fn find_iface_impl(
         .collect();
 
     match impl_for_types.len() {
-        0 => {
-            return Err(NameError::MemberNotFound {
-                base: Type::Interface(iface_decl.clone().into()),
-                span: method_ident.span().clone(),
-                member: method_ident.clone(),
-            }
-            .into());
+        0 => Err(NameError::MemberNotFound {
+            base: Type::Interface(iface_decl.clone()),
+            span: method_ident.span().clone(),
+            member: method_ident.clone(),
         }
+        .into()),
 
         1 => Ok(InterfaceImpl {
             iface: Type::Interface(iface_decl),

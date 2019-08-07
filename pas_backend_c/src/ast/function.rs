@@ -1,14 +1,17 @@
-use std::fmt;
-use pas_ir::{
-    metadata::{FunctionID, InterfaceID},
-    self as ir,
-};
 use crate::ast::{
-    Type,
+    Builder,
     Module,
     Statement,
-    Builder,
+    Type,
 };
+use pas_ir::{
+    self as ir,
+    metadata::{
+        FunctionID,
+        InterfaceID,
+    },
+};
+use std::fmt;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {

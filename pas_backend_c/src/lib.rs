@@ -1,4 +1,4 @@
-use pas_ir::{self as ir};
+use pas_ir as ir;
 
 mod ast;
 

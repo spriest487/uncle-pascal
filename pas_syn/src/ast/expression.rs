@@ -7,13 +7,13 @@ use crate::{
         BinOp,
         Block,
         Call,
+        CollectionCtor,
         FunctionCall,
         IfCond,
+        Indexer,
         ObjectCtor,
-        CollectionCtor,
         ObjectCtorArgs,
         UnaryOp,
-        Indexer,
     },
     consts::*,
     ident::*,
@@ -211,9 +211,7 @@ pub fn match_operand_start() -> Matcher {
         .or(Matcher::any_operator_in_position(Position::Prefix))
 }
 
-fn resolve_ops_by_precedence(
-    parts: Vec<CompoundExpressionPart>,
-) -> ParseResult<Expression<Span>> {
+fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<Expression<Span>> {
     assert!(!parts.is_empty(), "expression must not be empty");
 
     if parts.len() == 1 {
@@ -224,7 +222,7 @@ fn resolve_ops_by_precedence(
                     operator: match op_part {
                         OperatorPart::Call { args_open, .. } => args_open,
                         OperatorPart::Symbol(op_symbol) => op_symbol.token.span().clone(),
-                    }
+                    },
                 };
                 return Err(TracedError::trace(err));
             },
@@ -244,7 +242,11 @@ fn resolve_ops_by_precedence(
         .unwrap();
 
     match lo_op {
-        OperatorPart::Call { args, args_open, args_close } => {
+        OperatorPart::Call {
+            args,
+            args_open,
+            args_close,
+        } => {
             let (before_op, after_op) = parts.split_at(lo_op_index);
 
             if before_op.is_empty() {
@@ -258,14 +260,12 @@ fn resolve_ops_by_precedence(
             let target = resolve_ops_by_precedence(before_op.to_vec())?;
             let span = target.annotation().span().to(&args_close);
 
-            let op_expr = Expression::from(
-                Call::Function(FunctionCall {
-                    target,
-                    annotation: span.clone(),
-                    args,
-                    args_brackets: (args_open, args_close),
-                }),
-            );
+            let op_expr = Expression::from(Call::Function(FunctionCall {
+                target,
+                annotation: span.clone(),
+                args,
+                args_brackets: (args_open, args_close),
+            }));
 
             let merged_parts: Vec<_> = vec![CompoundExpressionPart::Operand(op_expr)]
                 .into_iter()
@@ -274,7 +274,7 @@ fn resolve_ops_by_precedence(
 
             assert!(!merged_parts.is_empty());
             resolve_ops_by_precedence(merged_parts)
-        }
+        },
 
         OperatorPart::Symbol(op_token) => match op_token.pos {
             // merge prefix operator with the operand that follows it
@@ -309,7 +309,7 @@ fn resolve_ops_by_precedence(
                 };
 
                 Ok(Expression::from(bin_op))
-            }
+            },
 
             Position::Prefix => {
                 let (before_op, after_op) = parts.split_at(lo_op_index);
@@ -344,7 +344,7 @@ fn resolve_ops_by_precedence(
 
                 assert!(!merged_parts.is_empty());
                 resolve_ops_by_precedence(merged_parts)
-            }
+            },
 
             Position::Postfix => {
                 let (before_op, after_op) = parts.split_at(lo_op_index);
@@ -373,7 +373,7 @@ fn resolve_ops_by_precedence(
 
                 assert!(!merged_parts.is_empty());
                 resolve_ops_by_precedence(merged_parts)
-            }
+            },
         },
     }
 }
@@ -385,7 +385,7 @@ fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
         TokenTree::Ident(ident) => {
             let span = ident.span.clone();
             Ok(Expression::Ident(ident, span))
-        }
+        },
         _ => unreachable!(),
     }
 }
@@ -395,7 +395,7 @@ fn parse_literal_string(tokens: &mut TokenStream) -> ParseResult<Expression<Span
         TokenTree::String { value, span } => {
             let str_lit = Literal::String(value);
             Ok(Expression::Literal(str_lit, span))
-        }
+        },
         _ => unreachable!(),
     }
 }
@@ -405,7 +405,7 @@ fn parse_literal_integer(tokens: &mut TokenStream) -> ParseResult<Expression<Spa
         TokenTree::IntNumber { value, span } => {
             let int_lit = Literal::Integer(value);
             Ok(Expression::Literal(int_lit, span))
-        }
+        },
         _ => unreachable!(),
     }
 }
@@ -415,7 +415,7 @@ fn parse_literal_real(tokens: &mut TokenStream) -> ParseResult<Expression<Span>>
         TokenTree::RealNumber { value, span } => {
             let real_lit = Literal::Real(value);
             Ok(Expression::Literal(real_lit, span))
-        }
+        },
 
         _ => unreachable!(),
     }
@@ -445,7 +445,7 @@ enum OperatorPart {
         args: Vec<Expression<Span>>,
         args_open: Span,
         args_close: Span,
-    }
+    },
 }
 
 impl OperatorPart {
@@ -457,24 +457,15 @@ impl OperatorPart {
                 Operator::Call,
                 Position::Postfix,
             ),
-            (OperatorPart::Call { .. }, OperatorPart::Symbol(sym_op)) => (
-                Operator::Call,
-                Position::Postfix,
-                sym_op.op,
-                sym_op.pos,
-            ),
-            (OperatorPart::Symbol(sym_op), OperatorPart::Call { .. }) => (
-                sym_op.op,
-                sym_op.pos,
-                Operator::Call,
-                Position::Postfix,
-            ),
-            (OperatorPart::Symbol(sym_op_a), OperatorPart::Symbol(sym_op_b)) => (
-                sym_op_a.op,
-                sym_op_a.pos,
-                sym_op_b.op,
-                sym_op_b.pos,
-            )
+            (OperatorPart::Call { .. }, OperatorPart::Symbol(sym_op)) => {
+                (Operator::Call, Position::Postfix, sym_op.op, sym_op.pos)
+            },
+            (OperatorPart::Symbol(sym_op), OperatorPart::Call { .. }) => {
+                (sym_op.op, sym_op.pos, Operator::Call, Position::Postfix)
+            },
+            (OperatorPart::Symbol(sym_op_a), OperatorPart::Symbol(sym_op_b)) => {
+                (sym_op_a.op, sym_op_a.pos, sym_op_b.op, sym_op_b.pos)
+            },
         };
 
         let prec_a = op_a.precedence(pos_a);
@@ -531,12 +522,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                         let expected = match_operand_start();
                         return Err(TracedError::trace(match self.tokens.look_ahead().next() {
                             Some(unexpected) => {
-                                ParseError::UnexpectedToken(unexpected, Some(expected))
-                            }
+                                ParseError::UnexpectedToken(Box::new(unexpected), Some(expected))
+                            },
                             None => {
                                 let after = self.tokens.context().clone();
                                 ParseError::UnexpectedEOF(expected, after)
-                            }
+                            },
                         }));
                     }
 
@@ -551,8 +542,8 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
         match self.tokens.look_ahead().match_one(match_operand_start()) {
             Some(TokenTree::Delimited {
-                     delim, inner, open, ..
-                 }) => {
+                delim, inner, open, ..
+            }) => {
                 let mut group_tokens = TokenStream::new(inner.clone(), open);
 
                 match delim {
@@ -561,21 +552,21 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                         group_tokens.finish()?;
                         self.tokens.advance(1);
                         self.add_operand(subexpr);
-                    }
+                    },
 
                     DelimiterPair::SquareBracket => {
                         let ctor = CollectionCtor::parse(self.tokens)?;
                         let expr = Expression::from(ctor);
                         self.add_operand(expr);
-                    }
+                    },
 
                     DelimiterPair::BeginEnd => {
                         let block = Block::parse(self.tokens)?;
                         let expr = Expression::from(block);
                         self.add_operand(expr);
-                    }
+                    },
                 }
-            }
+            },
 
             // it's an operator, but thanks to the match we know this operator
             // is valid in prefix position, so it's part of this expression
@@ -584,53 +575,53 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 self.last_was_operand = false;
                 let op = self.tokens.match_one(Matcher::AnyOperator)?;
                 self.add_operator_token(op, Position::Prefix);
-            }
+            },
 
             // the simple values
             Some(TokenTree::Ident(_)) => {
                 let expr = parse_identifier(self.tokens)?;
                 self.add_operand(expr);
-            }
+            },
 
             Some(TokenTree::String { .. }) => {
                 let expr = parse_literal_string(self.tokens)?;
                 self.add_operand(expr);
-            }
+            },
 
             Some(TokenTree::IntNumber { .. }) => {
                 let expr = parse_literal_integer(self.tokens)?;
                 self.add_operand(expr);
-            }
+            },
 
             Some(TokenTree::Keyword {
-                     kw: Keyword::Nil, ..
-                 }) => {
+                kw: Keyword::Nil, ..
+            }) => {
                 let nil_token = self.tokens.next().unwrap();
                 self.add_operand(Expression::Literal(Literal::Nil, nil_token.span().clone()));
-            }
+            },
 
             Some(TokenTree::Keyword {
-                     kw: Keyword::If, ..
-                 }) => {
+                kw: Keyword::If, ..
+            }) => {
                 let cond = IfCond::parse(self.tokens)?;
                 let expr = Expression::from(cond);
                 self.add_operand(expr);
-            }
+            },
 
             Some(TokenTree::Keyword {
-                     kw: Keyword::False, ..
-                 })
+                kw: Keyword::False, ..
+            })
             | Some(TokenTree::Keyword {
-                       kw: Keyword::True, ..
-                   }) => {
+                kw: Keyword::True, ..
+            }) => {
                 let expr = parse_literal_bool(self.tokens)?;
                 self.add_operand(expr);
-            }
+            },
 
             Some(TokenTree::RealNumber { .. }) => {
                 let expr = parse_literal_real(self.tokens)?;
                 self.add_operand(expr);
-            }
+            },
 
             Some(x) => unreachable!("got {:?} which is excluded by pattern", x),
 
@@ -665,12 +656,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
         match self.tokens.look_ahead().match_one(match_after_operand) {
             Some(TokenTree::Delimited {
-                     delim: DelimiterPair::Bracket,
-                     open,
-                     close,
-                     inner,
-                     ..
-                 }) => {
+                delim: DelimiterPair::Bracket,
+                open,
+                close,
+                inner,
+                ..
+            }) => {
                 // if the next two tokens are in the form `a:` AND the last operand is
                 // an ident then it has to be an object constructor list instead of a call
                 let mut inner_tokens = TokenStream::new(inner, open.clone());
@@ -702,15 +693,15 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     let args = Call::parse_arg_list(&mut self.tokens)?;
                     self.add_operator_call(args, open, close);
                 }
-            }
+            },
 
             Some(TokenTree::Delimited {
-                     delim: DelimiterPair::SquareBracket,
-                     open,
-                     inner,
-                     close,
-                     ..
-                 }) => {
+                delim: DelimiterPair::SquareBracket,
+                open,
+                inner,
+                close,
+                ..
+            }) => {
                 let base = self.pop_operand();
 
                 let mut index_tokens = TokenStream::new(inner, open);
@@ -729,7 +720,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 };
 
                 self.add_operand(Expression::from(indexer));
-            }
+            },
 
             Some(TokenTree::Operator { .. }) => {
                 // expect another operand afterwards
@@ -745,7 +736,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     self.last_was_operand = false;
                     self.add_operator_token(op, Position::Binary);
                 }
-            }
+            },
 
             Some(_) => unreachable!("pattern excludes anything else"),
 
@@ -756,8 +747,17 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(true)
     }
 
-    fn add_operator_call(&mut self, args: Vec<Expression<Span>>, args_open: Span, args_close: Span) {
-        let op_call = OperatorPart::Call { args, args_open, args_close };
+    fn add_operator_call(
+        &mut self,
+        args: Vec<Expression<Span>>,
+        args_open: Span,
+        args_close: Span,
+    ) {
+        let op_call = OperatorPart::Call {
+            args,
+            args_open,
+            args_close,
+        };
         self.parts.push(CompoundExpressionPart::Operator(op_call));
     }
 

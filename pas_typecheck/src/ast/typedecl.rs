@@ -16,23 +16,23 @@ pub fn typecheck_type_decl(
         ast::TypeDecl::Class(class) => {
             let class = typecheck_class(name, class, ctx)?;
             Ok(ast::TypeDecl::Class(class))
-        }
+        },
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(name, iface, ctx)?;
             Ok(ast::TypeDecl::Interface(iface))
-        }
+        },
 
         ast::TypeDecl::Variant(variant) => {
             let variant = typecheck_variant(name, variant, ctx)?;
             Ok(ast::TypeDecl::Variant(variant))
-        }
+        },
     }
 }
 
 pub fn typecheck_class(
     name: QualifiedDeclName,
     class: &ast::Class<Span>,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Class> {
     let mut members = Vec::new();
     for member in &class.members {
@@ -46,7 +46,7 @@ pub fn typecheck_class(
 
     Ok(Class {
         kind: class.kind,
-        name: name,
+        name,
         span: class.span.clone(),
         members,
     })
@@ -78,7 +78,7 @@ pub fn typecheck_iface(
     }
 
     Ok(Interface {
-        name: name,
+        name,
         span: iface.span.clone(),
         methods,
     })
@@ -89,7 +89,7 @@ pub fn typecheck_variant(
     variant: &ast::Variant<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Variant> {
-    if variant.cases.len() == 0 {
+    if variant.cases.is_empty() {
         return Err(TypecheckError::EmptyVariant(Box::new(variant.clone())));
     }
 
@@ -108,7 +108,7 @@ pub fn typecheck_variant(
     }
 
     Ok(Variant {
-        name: name,
+        name,
         cases,
         span: variant.span().clone(),
     })

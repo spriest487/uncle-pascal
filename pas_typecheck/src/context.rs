@@ -2,25 +2,37 @@ pub mod ns;
 pub mod result;
 
 use crate::{
-    ast::{FunctionDecl, FunctionDef, Interface},
+    ast::{
+        FunctionDecl,
+        FunctionDef,
+        Interface,
+    },
     context::NamespaceStack,
-    FunctionSig, Primitive, Type,
-    QualifiedDeclName
+    FunctionSig,
+    Primitive,
+    QualifiedDeclName,
+    Type,
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self},
+    ast,
     ident::*,
 };
 use std::{
     borrow::Borrow,
-    collections::hash_map::{Entry, HashMap},
+    collections::hash_map::{
+        Entry,
+        HashMap,
+    },
     fmt,
     hash::Hash,
     rc::Rc,
 };
 
-pub use self::{ns::*, result::*};
+pub use self::{
+    ns::*,
+    result::*,
+};
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
 pub enum ValueKind {
@@ -54,7 +66,7 @@ impl fmt::Display for ValueKind {
 }
 
 impl ValueKind {
-    pub fn mutable(&self) -> bool {
+    pub fn mutable(self) -> bool {
         match self {
             ValueKind::Mutable | ValueKind::Uninitialized => true,
             _ => false,
@@ -170,7 +182,7 @@ impl Namespace for Scope {
             Entry::Vacant(entry) => {
                 entry.insert(member_val);
                 Ok(())
-            }
+            },
         }
     }
 
@@ -191,9 +203,8 @@ pub struct Context {
     defs: HashMap<IdentPath, Span>,
 
     loop_stack: Vec<Span>,
-
-    // /// current type decl, if we're inside one
-    //decl_scope: Option<TypeDeclName>,
+    /* /// current type decl, if we're inside one
+     * decl_scope: Option<TypeDeclName>, */
 }
 
 pub fn builtin_span() -> Span {
@@ -216,13 +227,13 @@ impl Context {
             iface_impls: HashMap::new(),
 
             loop_stack: Vec::new(),
-
-//            decl_scope: None,
+            //            decl_scope: None,
         };
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
             let ident = Ident::new(name, builtin_span.clone());
-            ctx.declare_type(ident, ty).expect("builtin type decl must not fail");
+            ctx.declare_type(ident, ty)
+                .expect("builtin type decl must not fail");
         };
 
         declare_builtin(&mut root_ctx, "Nothing", Type::Nothing);
@@ -260,29 +271,26 @@ impl Context {
 
             let disposable_iface = Interface {
                 name: disposable_name,
-                methods: vec![
-                    FunctionDecl {
-                        ident: Ident::new("Dispose", builtin_span.clone()).into(),
-                        return_ty: None,
-                        impl_iface: None,
-                        mods: Vec::new(),
-                        params: vec![
-                            ast::FunctionParam {
-                                ident: Ident::new("self", builtin_span.clone()),
-                                ty: Type::GenericSelf,
-                                modifier: None,
-                                span: builtin_span.clone(),
-                            }
-                        ],
+                methods: vec![FunctionDecl {
+                    ident: Ident::new("Dispose", builtin_span.clone()).into(),
+                    return_ty: None,
+                    impl_iface: None,
+                    mods: Vec::new(),
+                    params: vec![ast::FunctionParam {
+                        ident: Ident::new("self", builtin_span.clone()),
+                        ty: Type::GenericSelf,
+                        modifier: None,
                         span: builtin_span.clone(),
-                    }
-                ],
+                    }],
+                    span: builtin_span.clone(),
+                }],
                 span: builtin_span,
             };
 
             let system_scope = root_ctx.push_scope(Some(system_ident));
 
-            root_ctx.declare_type(disposable_ident, Type::Interface(Rc::new(disposable_iface)))
+            root_ctx
+                .declare_type(disposable_ident, Type::Interface(Rc::new(disposable_iface)))
                 .expect("builtin System.Disposable type decl must not fail");
 
             root_ctx.pop_scope(system_scope);
@@ -318,7 +326,8 @@ impl Context {
     }
 
     pub fn pop_loop(&mut self) -> Span {
-        self.loop_stack.pop()
+        self.loop_stack
+            .pop()
             .expect("can't pop loop stack when not in a loop")
     }
 
@@ -366,7 +375,7 @@ impl Context {
                     new: name.clone(),
                     existing: old_ident,
                 })
-            }
+            },
 
             None => self
                 .scopes
@@ -409,7 +418,7 @@ impl Context {
             Some(MemberRef::Value { value: decl, .. }) => {
                 let unexpected = UnexpectedValue::Decl(decl.clone());
                 Err(NameError::ExpectedNamespace(ns_path.clone(), unexpected))
-            }
+            },
 
             None => Err(NameError::NotFound(ns_path.last().clone())),
         }
@@ -434,10 +443,8 @@ impl Context {
         let ty_impls = self
             .iface_impls
             .entry(iface_ident)
-            .or_insert_with(|| HashMap::new());
-        let impl_for_ty = ty_impls
-            .entry(self_ty)
-            .or_insert_with(|| InterfaceImpl::new());
+            .or_insert_with(HashMap::new);
+        let impl_for_ty = ty_impls.entry(self_ty).or_insert_with(InterfaceImpl::new);
 
         Ok(impl_for_ty.methods.entry(method))
     }
@@ -459,7 +466,11 @@ impl Context {
         self_ty: Type,
         method: Ident,
     ) -> NamingResult<()> {
-        match self.method_impl_entry(iface.name.qualified.clone(), self_ty.clone(), method.clone())? {
+        match self.method_impl_entry(
+            iface.name.qualified.clone(),
+            self_ty.clone(),
+            method.clone(),
+        )? {
             Entry::Occupied(mut entry) => {
                 if entry.get().def {
                     return Err(NameError::AlreadyImplemented {
@@ -471,11 +482,11 @@ impl Context {
                 } else {
                     entry.get_mut().def = true;
                 }
-            }
+            },
 
             Entry::Vacant(entry) => {
                 entry.insert(MethodImpl { def: true });
-            }
+            },
         }
 
         Ok(())
@@ -546,36 +557,34 @@ impl Context {
                             Entry::Vacant(entry) => {
                                 entry.insert(def.decl.span().clone());
                                 Ok(())
-                            }
+                            },
                         }
-                    }
+                    },
 
                     other => {
                         let path = Path::new(key.clone(), parent_path.keys().cloned());
-                        return Err(NameError::ExpectedFunction(path, other.clone().into()));
-                    }
+                        Err(NameError::ExpectedFunction(path, other.clone().into()))
+                    },
                 }
-            }
+            },
 
-            Some(MemberRef::Namespace { path }) => {
-                return Err(NameError::AlreadyDeclared {
-                    new: name,
-                    existing: IdentPath::from_parts(path.keys().cloned()),
-                });
-            }
+            Some(MemberRef::Namespace { path }) => Err(NameError::AlreadyDeclared {
+                new: name,
+                existing: IdentPath::from_parts(path.keys().cloned()),
+            }),
 
             None => {
                 // it wasn't already declared, so we need to declare AND define it. if it
                 // has an external modifier, it's defined externally and so it has two definitions
                 if def.decl.external_src().is_some() {
-                    return Err(NameError::AlreadyDefined {
+                    Err(NameError::AlreadyDefined {
                         existing: def.decl.span().clone(),
                         ident: def.decl.ident.clone(),
-                    });
+                    })
+                } else {
+                    self.declare_function_and_def(name, sig, Some(def.decl.span().clone()))
                 }
-
-                self.declare_function_and_def(name, sig, Some(def.decl.span().clone()))
-            }
+            },
         }
     }
 
@@ -589,23 +598,19 @@ impl Context {
             }) => {
                 let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((parent_path, iface.as_ref()))
-            }
-
-            Some(MemberRef::Value { value: other, .. }) => {
-                Err(NameError::ExpectedInterface(
-                    name.clone(),
-                    other.clone().into(),
-                ))
             },
+
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedInterface(
+                name.clone(),
+                other.clone().into(),
+            )),
 
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedInterface(name.clone(), unexpected))
-            }
-
-            None => {
-                Err(NameError::NotFound(name.last().clone()))
             },
+
+            None => Err(NameError::NotFound(name.last().clone())),
         }
     }
 
@@ -626,7 +631,7 @@ impl Context {
             }) => {
                 let func_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((func_path, sig.clone()))
-            }
+            },
             Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedFunction(
                 name.clone(),
                 other.clone().into(),
@@ -634,7 +639,7 @@ impl Context {
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
                 Err(NameError::ExpectedFunction(name.clone(), unexpected))
-            }
+            },
             None => Err(NameError::NotFound(name.last().clone())),
         }
     }
@@ -688,7 +693,7 @@ impl Context {
                 }
 
                 methods
-            }
+            },
         }
     }
 
@@ -731,7 +736,7 @@ impl Context {
                     iface_ty,
                     decl: method,
                 })
-            }
+            },
 
             (None, 0) => Err(NameError::MemberNotFound {
                 span: member.span.clone(),
@@ -778,7 +783,7 @@ impl Context {
                         })?;
 
                 Ok(TypeMember::Method { decl: method_decl })
-            }
+            },
 
             _ => Err(NameError::MemberNotFound {
                 base: ty.clone(),
@@ -822,7 +827,7 @@ impl Context {
                 } else {
                     panic!("{} does not refer to a mutable binding", local_id);
                 }
-            }
+            },
             _ => panic!("{} does not refer to a mutable binding", local_id),
         }
     }
@@ -862,7 +867,7 @@ impl Context {
                             Decl::BoundValue(binding) => {
                                 parent_path.as_slice().len() == this_depth
                                     && binding.kind == ValueKind::Mutable
-                            }
+                            },
 
                             _ => false,
                         },
@@ -891,14 +896,14 @@ fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
                         ident, kind
                     );
                 }
-            }
+            },
 
             other => {
                 panic!(
                     "`{}` cannot be initialized: not a binding (was: {:?})",
                     ident, other
                 );
-            }
+            },
         },
 
         Some(other) => {
@@ -906,10 +911,10 @@ fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
                 "`{}` cannot be initialized: not a decl (was: {:?})",
                 ident, other
             );
-        }
+        },
 
         None => {
             panic!("`{}` cannot be initialized: not found in this scope", ident);
-        }
+        },
     }
 }

@@ -12,12 +12,15 @@ use crate::{
 use pas_common::{
     span::*,
     BuildOptions,
-    DiagnosticOutput,
     DiagnosticLabel,
+    DiagnosticOutput,
     TracedError,
 };
 use std::{
-    fmt::{self, Write as _},
+    fmt::{
+        self,
+        Write as _,
+    },
     path::PathBuf,
 };
 
@@ -29,7 +32,7 @@ pub enum DelimiterPair {
 }
 
 impl DelimiterPair {
-    pub fn tokens(&self) -> (&str, &str) {
+    pub fn tokens(self) -> (&'static str, &'static str) {
         match self {
             DelimiterPair::BeginEnd => ("begin", "end"),
             DelimiterPair::Bracket => ("(", ")"),
@@ -269,13 +272,9 @@ pub enum TokenizeError {
 impl fmt::Display for TokenizeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TokenizeError::IllegalToken(..) => {
-                write!(f, "Illegal token")
-            },
+            TokenizeError::IllegalToken(..) => write!(f, "Illegal token"),
 
-            TokenizeError::UnmatchedDelimiter { .. } => {
-                write!(f, "unmatched delimiter")
-            },
+            TokenizeError::UnmatchedDelimiter { .. } => write!(f, "unmatched delimiter"),
 
             TokenizeError::UnexpectedCloseDelimited { .. } => {
                 write!(f, "unexpected close delimiter")
@@ -302,11 +301,16 @@ impl DiagnosticOutput for TokenizeError {
                 text: None,
             }),
 
-            TokenizeError::UnmatchedDelimiter { delim, to_match, .. } => Some(DiagnosticLabel {
+            TokenizeError::UnmatchedDelimiter {
+                delim, to_match, ..
+            } => Some(DiagnosticLabel {
                 span: to_match.clone(),
                 text: {
                     let (open, close) = delim.tokens();
-                    Some(format!("opening `{}` is not followed by a closing `{}`", open, close))
+                    Some(format!(
+                        "opening `{}` is not followed by a closing `{}`",
+                        open, close
+                    ))
                 },
             }),
 
@@ -314,7 +318,10 @@ impl DiagnosticOutput for TokenizeError {
                 span: span.clone(),
                 text: {
                     let (open, close) = delim.tokens();
-                    Some(format!("closing `{}` was not expected here (no opening `{}`)", close, open))
+                    Some(format!(
+                        "closing `{}` was not expected here (no opening `{}`)",
+                        close, open
+                    ))
                 },
             }),
         }

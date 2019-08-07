@@ -134,7 +134,9 @@ impl<Part: Clone> Path<Part> {
             None
         } else {
             let parent_parts = self.parts[0..self.parts.len() - 1].to_vec();
-            Some(Self { parts: parent_parts })
+            Some(Self {
+                parts: parent_parts,
+            })
         }
     }
 }
@@ -161,7 +163,10 @@ impl<Part> From<Part> for Path<Part> {
 impl<OtherPart, Part: PartialEq<OtherPart>> PartialEq<Path<OtherPart>> for Path<Part> {
     fn eq(&self, other: &Path<OtherPart>) -> bool {
         self.parts.len() == other.parts.len()
-            && self.parts.iter().zip(other.parts.iter())
+            && self
+                .parts
+                .iter()
+                .zip(other.parts.iter())
                 .all(|(a, b)| *a == *b)
     }
 }
@@ -184,7 +189,10 @@ impl IdentPath {
             Ok(Generate::Yield(ident))
         })?;
 
-        assert!(!path.is_empty(), "parsed ident path must always have 1+ parts");
+        assert!(
+            !path.is_empty(),
+            "parsed ident path must always have 1+ parts"
+        );
 
         Ok(IdentPath::from_parts(path))
     }

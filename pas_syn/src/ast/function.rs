@@ -1,9 +1,9 @@
 use crate::{
-    parse::prelude::*,
     ast::{
-        DeclMod,
         Block,
-    }
+        DeclMod,
+    },
+    parse::prelude::*,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -14,10 +14,14 @@ pub enum FunctionParamMod {
 
 impl fmt::Display for FunctionParamMod {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            FunctionParamMod::Var => "var",
-            FunctionParamMod::Out => "out",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                FunctionParamMod::Var => "var",
+                FunctionParamMod::Out => "out",
+            }
+        )
     }
 }
 
@@ -86,7 +90,7 @@ impl FunctionDecl<Span> {
                 tokens.advance(1);
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
-            }
+            },
             None => None,
         };
 
@@ -99,10 +103,14 @@ impl FunctionDecl<Span> {
             let match_mod = Keyword::Var.or(Keyword::Out);
             let modifier = match tokens.look_ahead().match_one(match_mod.clone()) {
                 Some(_) => match tokens.match_one(match_mod)? {
-                    TokenTree::Keyword { kw: Keyword:: Var, .. } => Some(FunctionParamMod::Var),
-                    TokenTree::Keyword { kw: Keyword:: Out, .. } => Some(FunctionParamMod::Out),
+                    TokenTree::Keyword {
+                        kw: Keyword::Var, ..
+                    } => Some(FunctionParamMod::Var),
+                    TokenTree::Keyword {
+                        kw: Keyword::Out, ..
+                    } => Some(FunctionParamMod::Out),
                     tt => unreachable!("bad token parsing function param modifier: {:?}", tt),
-                }
+                },
                 None => None,
             };
 
@@ -176,9 +184,10 @@ impl FunctionDecl<Span> {
 
 impl<A: Annotation> FunctionDecl<A> {
     pub fn external_src(&self) -> Option<&str> {
-        self.mods.iter()
-            .filter_map(|decl_mod| match decl_mod {
-                DeclMod::External { src, .. } => Some(src.as_str()),
+        self.mods
+            .iter()
+            .map(|decl_mod| match decl_mod {
+                DeclMod::External { src, .. } => src.as_str(),
             })
             .next()
     }

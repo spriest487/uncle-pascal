@@ -1,15 +1,53 @@
 mod reporting;
 
+use pas_backend_c as backend_c;
 use pas_common::{
-    span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
+    span::*,
+    Backtrace,
+    BuildOptions,
+    DiagnosticLabel,
+    DiagnosticMessage,
+    DiagnosticOutput,
     TracedError,
 };
-use pas_ir::{self as ir, Interpreter, InterpreterOpts};
-use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
-use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
-use pas_typecheck::{self as ty, ast as ty_ast, TypecheckError};
-use pas_backend_c as backend_c;
-use std::{env, fmt, fs::{self, File}, io::{self, Read as _, Write as _}, path::PathBuf, process, str::FromStr};
+use pas_ir::{
+    self as ir,
+    Interpreter,
+    InterpreterOpts,
+};
+use pas_pp::{
+    self as pp,
+    PreprocessedUnit,
+    PreprocessorError,
+};
+use pas_syn::{
+    ast as syn,
+    parse::*,
+    TokenTree,
+    TokenizeError,
+};
+use pas_typecheck::{
+    self as ty,
+    ast as ty_ast,
+    TypecheckError,
+};
+use std::{
+    env,
+    ffi::OsStr,
+    fmt,
+    fs::{
+        self,
+        File,
+    },
+    io::{
+        self,
+        Read as _,
+        Write as _,
+    },
+    path::PathBuf,
+    process,
+    str::FromStr,
+};
 use structopt::StructOpt;
 
 #[derive(Debug)]
@@ -54,7 +92,11 @@ impl DiagnosticOutput for CompileError {
             CompileError::TypecheckError(err) => err.main(),
             CompileError::PreprocessorError(err) => err.main(),
             CompileError::OutputFailed(span, err) => DiagnosticMessage {
-                title: format!("Writing output file `{}` failed: {}", span.file.display(), err),
+                title: format!(
+                    "Writing output file `{}` failed: {}",
+                    span.file.display(),
+                    err
+                ),
                 label: None,
             },
             CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
@@ -115,12 +157,9 @@ impl fmt::Display for CompileError {
                 "invalid unit identifier in filename: {}",
                 span.file.display()
             ),
-            CompileError::OutputFailed(span, err) => write!(
-                f,
-                "writing to file {} failed: {}",
-                span.file.display(),
-                err,
-            )
+            CompileError::OutputFailed(span, err) => {
+                write!(f, "writing to file {} failed: {}", span.file.display(), err,)
+            },
         }
     }
 }
@@ -228,7 +267,7 @@ fn preprocess(
         Err(err) => {
             eprintln!("failed to open {}: {}", filename.display(), err);
             process::exit(1);
-        }
+        },
         Ok(file) => file,
     };
 
@@ -274,7 +313,8 @@ fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(
         None => Ok(()),
     };
 
-    create_dirs.and_then(|_| File::create(out_path))
+    create_dirs
+        .and_then(|_| File::create(out_path))
         .and_then(|mut file| write!(file, "{}", output))
         .map_err(|io_err| {
             let span = Span::zero(out_path);
@@ -282,10 +322,7 @@ fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(
         })
 }
 
-fn compile(
-    units: impl IntoIterator<Item = PathBuf>,
-    args: &Args,
-) -> Result<(), CompileError> {
+fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), CompileError> {
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
 
@@ -364,8 +401,8 @@ fn compile(
     }
 
     if let Some(out_path) = &args.output {
-        let ext = out_path.extension().map(|ext| ext.to_string_lossy());
-        match ext.as_ref().map(|ext| ext.as_ref()) {
+        let ext = out_path.extension().map(OsStr::to_string_lossy);
+        match ext.as_ref().map(AsRef::as_ref) {
             Some("c") => {
                 let opts = backend_c::Options {
                     trace_heap: args.trace_heap,
@@ -420,13 +457,13 @@ fn main() {
             match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
                 CompileError::ParseError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
-                _ => {}
+                _ => {},
             }
         }
 

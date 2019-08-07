@@ -1,13 +1,20 @@
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashMap,
+    fmt,
+};
 
-use pas_ir::{
-    metadata::{self, FieldID, StructID, InterfaceID, ClassID},
+use pas_ir::metadata::{
+    self,
+    ClassID,
+    FieldID,
+    InterfaceID,
+    StructID,
 };
 
 use crate::ast::{
-    Module,
-    FunctionName,
     FunctionDecl,
+    FunctionName,
+    Module,
 };
 
 #[allow(unused)]
@@ -43,7 +50,7 @@ impl Type {
             metadata::Type::Array { element, dim } => {
                 let element = Type::from_metadata(element, module);
                 module.make_array_type(element, *dim)
-            }
+            },
         }
     }
 
@@ -60,37 +67,37 @@ impl Type {
             Type::Pointer(ty) => {
                 ty.build_decl_string(left, right);
                 left.push('*');
-            }
+            },
             Type::Void => {
                 left.push_str("void");
-            }
+            },
             Type::Int => {
                 left.push_str("int");
-            }
+            },
             Type::Int32 => {
                 left.push_str("int32_t");
-            }
+            },
             Type::Bool => {
                 left.push_str("bool");
-            }
+            },
             Type::Float => {
                 left.push_str("float");
-            }
+            },
             Type::UChar => {
                 left.push_str("unsigned char");
-            }
+            },
 
             Type::Struct(name) => {
                 left.push_str("struct ");
                 left.push_str(&name.to_string());
-            }
+            },
 
             Type::SizedArray(el, size) => {
                 el.build_decl_string(left, right);
                 right.push('[');
                 right.push_str(&size.to_string());
                 right.push(']');
-            }
+            },
 
             Type::FunctionPointer { return_ty, params } => {
                 left.push_str(&return_ty.typename());
@@ -104,12 +111,13 @@ impl Type {
                     right.push_str(&param.typename());
                 }
                 right.push(')');
-            }
+            },
         }
     }
 
     pub fn to_decl_string<Name>(&self, name: &Name) -> String
-        where Name: ?Sized + fmt::Display
+    where
+        Name: ?Sized + fmt::Display,
     {
         let mut left = String::new();
         let mut right = String::new();
@@ -139,7 +147,7 @@ impl Type {
                 }
                 name.push(')');
                 name
-            }
+            },
         }
     }
 }
@@ -267,10 +275,15 @@ pub struct VariantDef {
 
 impl VariantDef {
     pub fn translate(id: StructID, variant: &metadata::Variant, module: &mut Module) -> Self {
-        let cases = variant.cases.iter()
+        let cases = variant
+            .cases
+            .iter()
             .map(|case| {
-                let ty = case.ty.as_ref().map(|data_ty| Type::from_metadata(data_ty, module));
-                VariantCaseDef { ty, }
+                let ty = case
+                    .ty
+                    .as_ref()
+                    .map(|data_ty| Type::from_metadata(data_ty, module));
+                VariantCaseDef { ty }
             })
             .collect();
 
@@ -287,7 +300,11 @@ impl fmt::Display for VariantDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{} {{", self.decl)?;
 
-        writeln!(f, "  {};", Type::Int32.to_decl_string(&FieldName::VariantTag))?;
+        writeln!(
+            f,
+            "  {};",
+            Type::Int32.to_decl_string(&FieldName::VariantTag)
+        )?;
 
         if self.cases.iter().any(|c| c.ty.is_some()) {
             writeln!(f, "  union Data {{")?;
@@ -331,7 +348,7 @@ impl fmt::Display for TypeDef {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: HashMap<usize, FunctionName>
+    method_impls: HashMap<usize, FunctionName>,
 }
 
 #[derive(Clone, Debug)]
@@ -352,7 +369,9 @@ impl Class {
         let mut impls = HashMap::new();
 
         for (iface_id, iface) in metadata.ifaces() {
-            let method_impls: HashMap<_, _> = iface.methods.iter()
+            let method_impls: HashMap<_, _> = iface
+                .methods
+                .iter()
                 .enumerate()
                 .filter_map(|(method_index, _method)| {
                     let method_impl = metadata.find_impl(&class_ty, *iface_id, method_index)?;
@@ -361,18 +380,19 @@ impl Class {
                 })
                 .collect();
 
-            if method_impls.len() == 0 {
+            if method_impls.is_empty() {
                 continue;
             }
 
-            impls.insert(*iface_id, InterfaceImpl {
-                method_impls,
-            });
+            impls.insert(*iface_id, InterfaceImpl { method_impls });
         }
 
-        let disposer = impls.get(&metadata::DISPOSABLE_ID)
+        let disposer = impls
+            .get(&metadata::DISPOSABLE_ID)
             .and_then(|disposable_impl| {
-                disposable_impl.method_impls.get(&metadata::DISPOSABLE_DISPOSE_INDEX)
+                disposable_impl
+                    .method_impls
+                    .get(&metadata::DISPOSABLE_DISPOSE_INDEX)
                     .cloned()
             });
 
@@ -389,7 +409,10 @@ impl Class {
         // impl method tables
         let impls: Vec<_> = self.impls.iter().enumerate().collect();
         for (i, (iface_id, iface_impl)) in &impls {
-            def.push_str(&format!("struct MethodTable_{} ImplTable_{}_{} = {{\n", iface_id.0, self.struct_id.0, iface_id.0));
+            def.push_str(&format!(
+                "struct MethodTable_{} ImplTable_{}_{} = {{\n",
+                iface_id.0, self.struct_id.0, iface_id.0
+            ));
             for (method_index, method_name) in &iface_impl.method_impls {
                 def.push_str("  .base = {\n");
 
@@ -402,7 +425,7 @@ impl Class {
                     Some((_, (next_impl_id, _))) => {
                         def.push_str(&format!("ImplTable_{}_{}", self.struct_id, next_impl_id));
                     },
-                    None => def.push_str("NULL")
+                    None => def.push_str("NULL"),
                 }
 
                 def.push_str(",\n");
@@ -436,7 +459,10 @@ impl Class {
 
         def.push_str("  .iface_methods = ");
         if let Some((_, (first_iface_id, _))) = impls.get(0) {
-            def.push_str(&format!("(struct MethodTable*) &ImplTable_{}_{}", self.struct_id, first_iface_id));
+            def.push_str(&format!(
+                "(struct MethodTable*) &ImplTable_{}_{}",
+                self.struct_id, first_iface_id
+            ));
         } else {
             def.push_str("NULL");
         }
@@ -454,18 +480,29 @@ pub struct Interface {
 }
 
 impl Interface {
-    pub fn translate(iface_id: InterfaceID, iface: &metadata::Interface, module: &mut Module) -> Self {
+    pub fn translate(
+        iface_id: InterfaceID,
+        iface: &metadata::Interface,
+        module: &mut Module,
+    ) -> Self {
         Self {
             id: iface_id,
-            methods: iface.methods.iter()
+            methods: iface
+                .methods
+                .iter()
                 .enumerate()
                 .map(|(method_index, method)| FunctionDecl {
                     return_ty: Type::from_metadata(&method.return_ty, module),
-                    params: method.params.iter()
+                    params: method
+                        .params
+                        .iter()
                         .map(|param| Type::from_metadata(param, module))
                         .collect(),
                     name: FunctionName::Method(iface_id, method_index),
-                    comment: Some(format!("Method {} of interface {}", method.name, iface.name)),
+                    comment: Some(format!(
+                        "Method {} of interface {}",
+                        method.name, iface.name
+                    )),
                 })
                 .collect(),
         }
@@ -495,10 +532,16 @@ impl Interface {
             };
 
             // find the matching table
-            table.push_str(&format!("  struct MethodTable* table = {}->class->iface_methods;\n", self_arg_local));
+            table.push_str(&format!(
+                "  struct MethodTable* table = {}->class->iface_methods;\n",
+                self_arg_local
+            ));
             table.push_str("  while (table) {\n");
             table.push_str(&format!("    if (table->iface == {}) {{\n", self.id.0));
-            table.push_str(&format!("      struct MethodTable_{}* my_table = (struct MethodTable_{}*) table;\n", self.id.0, self.id.0));
+            table.push_str(&format!(
+                "      struct MethodTable_{}* my_table = (struct MethodTable_{}*) table;\n",
+                self.id.0, self.id.0
+            ));
 
             // get the pointer from the table
             table.push_str("      ");
@@ -541,4 +584,3 @@ impl Interface {
         table
     }
 }
-

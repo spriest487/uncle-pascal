@@ -1,13 +1,23 @@
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::HashMap,
+    fmt,
+};
 
-use pas_syn::{ast};
+use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
-use crate::{expr::*, metadata::*, stmt::*};
+use crate::{
+    expr::*,
+    metadata::*,
+    stmt::*,
+};
 
 pub use self::{
     formatter::*,
-    interpret::{Interpreter, InterpreterOpts},
+    interpret::{
+        Interpreter,
+        InterpreterOpts,
+    },
 };
 
 mod expr;
@@ -19,8 +29,14 @@ mod test;
 
 pub mod prelude {
     pub use crate::{
+        metadata::*,
         Builder,
-        GlobalRef, Instruction, Interpreter, Label, metadata::*, Ref, Value,
+        GlobalRef,
+        Instruction,
+        Interpreter,
+        Label,
+        Ref,
+        Value,
     };
 }
 
@@ -239,7 +255,8 @@ pub enum Instruction {
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut buf = String::new();
-        RawInstructionFormatter.format_instruction(self, &mut buf)
+        RawInstructionFormatter
+            .format_instruction(self, &mut buf)
             .map_err(|_| fmt::Error)?;
 
         f.write_str(&buf)
@@ -287,9 +304,7 @@ enum Local {
 impl Local {
     fn id(&self) -> LocalID {
         match self {
-            Local::New { id, .. } |
-            Local::Temp { id, .. } |
-            Local::Param { id, .. } => *id,
+            Local::New { id, .. } | Local::Temp { id, .. } | Local::Param { id, .. } => *id,
             Local::Return { .. } => LocalID(0),
         }
     }
@@ -419,7 +434,7 @@ impl<'metadata> Builder<'metadata> {
         self.scopes
             .iter()
             .flat_map(|scope| scope.locals.iter())
-            .map(|l| l.id())
+            .map(Local::id)
             .max_by_key(|id| id.0)
             .map(|id| LocalID(id.0 + 1))
             .unwrap_or(LocalID(0))
@@ -482,13 +497,16 @@ impl<'metadata> Builder<'metadata> {
             .next()
     }
 
-    fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: &Visitor)
-        where
-            Visitor: Fn(&mut Builder, &Type, Ref),
+    fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor)
+    where
+        Visitor: Fn(&mut Builder, &Type, Ref) + Copy,
     {
         match ty {
             Type::Struct(struct_id) => {
-                let fields: Vec<_> = self.metadata.get_struct(*struct_id).unwrap()
+                let fields: Vec<_> = self
+                    .metadata
+                    .get_struct(*struct_id)
+                    .unwrap()
                     .fields
                     .iter()
                     .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
@@ -508,11 +526,10 @@ impl<'metadata> Builder<'metadata> {
                         self.visit_deep(field_val.deref(), &field_ty, f);
                     }
                 }
-            }
+            },
 
             Type::Variant(id) => {
-                let cases = &self.metadata.get_variant(*id).unwrap()
-                    .cases.to_vec();
+                let cases = &self.metadata.get_variant(*id).unwrap().cases.to_vec();
 
                 // get the tag
                 let tag_ptr = self.local_temp(Type::I32.ptr());
@@ -535,7 +552,7 @@ impl<'metadata> Builder<'metadata> {
                         self.append(Instruction::Eq {
                             out: is_not_case.clone(),
                             a: Value::Ref(tag_ptr.clone().deref()),
-                            b: Value::LiteralI32(tag as i32), //todo proper size type
+                            b: Value::LiteralI32(tag as i32), // todo proper size type
                         });
                         self.append(Instruction::Not {
                             out: is_not_case.clone(),
@@ -567,7 +584,7 @@ impl<'metadata> Builder<'metadata> {
                 }
 
                 self.append(Instruction::Label(break_label));
-            }
+            },
 
             Type::Array { element, dim } => {
                 let element_ptr = self.local_temp(element.clone().ptr());
@@ -576,12 +593,12 @@ impl<'metadata> Builder<'metadata> {
                         out: element_ptr.clone(),
                         a: at.clone(),
                         element: *element.clone(),
-                        index: Value::LiteralI32(i as i32), //todo: real usize type,
+                        index: Value::LiteralI32(i as i32), // todo: real usize type,
                     });
 
                     self.visit_deep(element_ptr.clone().deref(), element, f);
                 }
-            }
+            },
 
             // field or element
             _ => f(self, ty, at),
@@ -590,7 +607,7 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
         self.scope(|builder| {
-            builder.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+            builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
                 if let Type::RcPointer(..) = element_ty {
                     builder.append(Instruction::Retain { at: element_ref });
                 }
@@ -600,9 +617,11 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
         self.scope(|builder| {
-            builder.visit_deep(at, ty, &mut |builder, element_ty, element_ref| {
+            builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
                 if let Type::RcPointer(..) = element_ty {
-                    builder.append(Instruction::Release { at: element_ref.clone() });
+                    builder.append(Instruction::Release {
+                        at: element_ref.clone(),
+                    });
 
                     // a local might be reused within the same scope, for example in a second
                     // loop iteration and we rely on RC pointers being null when they're uninitialized
@@ -625,7 +644,8 @@ impl<'metadata> Builder<'metadata> {
     pub fn end_loop_body_scope(&mut self) {
         self.end_scope();
 
-        self.loop_stack.pop()
+        self.loop_stack
+            .pop()
             .expect("end_loop called without an active loop");
     }
 
@@ -639,7 +659,8 @@ impl<'metadata> Builder<'metadata> {
     }
 
     pub fn scope<F>(&mut self, f: F)
-        where F: FnOnce(&mut Self),
+    where
+        F: FnOnce(&mut Self),
     {
         self.begin_scope();
         f(self);
@@ -650,11 +671,17 @@ impl<'metadata> Builder<'metadata> {
     /// `to_scope` in the scope stack
     /// this should be used when jumping out a scope, or before popping one
     fn cleanup_scope(&mut self, to_scope: usize) {
-        assert!(self.scopes.len() > to_scope, "reset_scope index out of range: {}", to_scope);
+        assert!(
+            self.scopes.len() > to_scope,
+            "reset_scope index out of range: {}",
+            to_scope
+        );
 
         // locals from all scopes up to the target scope, in order of deepest->shallowest,
         // then in reverse allocation order
-        let locals: Vec<_> = self.scopes[to_scope..].iter().rev()
+        let locals: Vec<_> = self.scopes[to_scope..]
+            .iter()
+            .rev()
             .flat_map(|scope| {
                 let mut locals = scope.locals.to_vec();
                 locals.reverse();
@@ -669,11 +696,11 @@ impl<'metadata> Builder<'metadata> {
             match local {
                 Local::Param { id, ty, .. } | Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
-                }
+                },
 
-                Local::Return { .. }| Local::Temp { .. } => {
+                Local::Return { .. } | Local::Temp { .. } => {
                     // no cleanup required
-                }
+                },
             }
         }
     }
@@ -687,7 +714,8 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn break_loop(&mut self) {
         let (break_label, break_scope) = {
-            let current_loop = self.current_loop()
+            let current_loop = self
+                .current_loop()
                 .expect("break statement must appear in a loop");
 
             (current_loop.break_label, current_loop.block_level)
@@ -702,14 +730,17 @@ impl<'metadata> Builder<'metadata> {
 
     pub fn continue_loop(&mut self) {
         let (continue_label, continue_scope) = {
-            let current_loop = self.current_loop()
+            let current_loop = self
+                .current_loop()
                 .expect("continue statement must appear in a loop");
 
             (current_loop.continue_label, current_loop.block_level)
         };
 
         self.cleanup_scope(continue_scope);
-        self.append(Instruction::Jump { dest: continue_label });
+        self.append(Instruction::Jump {
+            dest: continue_label,
+        });
     }
 }
 
@@ -742,7 +773,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 
             body_builder.bind_return(return_ty.clone());
             return_ty
-        }
+        },
     };
 
     let param_id_offset = match return_ty {
@@ -750,7 +781,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         _ => {
             assert!(func.decl.return_ty.is_some());
             1
-        }
+        },
     };
 
     let mut bound_params = Vec::with_capacity(func.decl.params.len());
@@ -762,7 +793,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
         let (param_ty, by_ref) = match &param.modifier {
             Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
                 (body_builder.metadata.translate_type(&param.ty).ptr(), true)
-            }
+            },
 
             None => (body_builder.metadata.translate_type(&param.ty), false),
         };
@@ -800,9 +831,7 @@ pub fn translate_func(func: &pas_ty::ast::FunctionDef, metadata: &mut Metadata) 
 
     Function {
         body: body_builder.instructions,
-        params: bound_params.into_iter()
-            .map(|(_id, ty)| ty)
-            .collect(),
+        params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
         return_ty,
         name,
     }
@@ -829,33 +858,23 @@ impl fmt::Display for Module {
                     writeln!(f)?;
 
                     for (id, field) in &s.fields {
-                        write!(
-                            f,
-                            "{:8>} {}: ",
-                            format!("  .{}", id),
-                            field.name,
-                        )?;
+                        write!(f, "{:8>} {}: ", format!("  .{}", id), field.name,)?;
                         self.metadata.format_type(&field.ty, f)?;
                         writeln!(f)?;
                     }
-                }
+                },
 
                 TypeDef::Variant(v) => {
                     writeln!(f, "{}: {}", id, v.name)?;
                     for (i, case) in v.cases.iter().enumerate() {
-                        write!(
-                            f,
-                            "{:8>} ({})",
-                            format!("  .{}", i),
-                            case.name,
-                        )?;
+                        write!(f, "{:8>} ({})", format!("  .{}", i), case.name,)?;
 
                         if let Some(ty) = &case.ty {
                             write!(f, ": {}", ty)?;
                         }
                         writeln!(f)?;
                     }
-                }
+                },
             }
 
             writeln!(f)?;
@@ -900,19 +919,16 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
         // for destructors to function with --no-stdlib
         let dispose_iface = Interface {
             name: NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]),
-            methods: vec![
-                Method {
-                    name: "Dispose".to_string(),
-                    return_ty: Type::Nothing,
-                    params: vec![Type::RcPointer(None)],
-                }
-            ],
+            methods: vec![Method {
+                name: "Dispose".to_string(),
+                return_ty: Type::Nothing,
+                params: vec![Type::RcPointer(None)],
+            }],
             impls: HashMap::new(),
         };
 
         metadata.insert_iface(DISPOSABLE_ID, dispose_iface);
     }
-
 
     let mut functions = HashMap::new();
 
@@ -925,7 +941,8 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
             let id = metadata.declare_func(&[unit.ident.clone()], func_decl);
 
             if let Some(impl_iface) = &func_decl.impl_iface {
-                let iface_id = metadata.translate_type(&impl_iface.iface)
+                let iface_id = metadata
+                    .translate_type(&impl_iface.iface)
                     .as_iface()
                     .expect("implemented type must be an interface");
 
@@ -944,24 +961,28 @@ pub fn translate_units(units: &[pas_ty::ast::Unit], no_stdlib: bool) -> Module {
                     metadata
                         .find_function(&global_name)
                         .expect("all defined functions must be declared first")
-                }
+                },
 
                 Some(impl_iface) => {
                     let method_name = func_def.decl.ident.to_string();
 
-                    let iface_id = metadata.translate_type(&impl_iface.iface)
+                    let iface_id = metadata
+                        .translate_type(&impl_iface.iface)
                         .as_iface()
                         .expect("implemented type must be an interface");
 
-                    let method_index = metadata.ifaces()[&iface_id].method_index(&method_name)
-                        .unwrap_or_else(|| panic!("method {} not found in interface {}", method_name, iface_id));
+                    let method_index = metadata.ifaces()[&iface_id]
+                        .method_index(&method_name)
+                        .unwrap_or_else(|| {
+                            panic!("method {} not found in interface {}", method_name, iface_id)
+                        });
 
                     let self_ty = metadata.translate_type(&impl_iface.for_ty);
 
                     metadata
                         .find_impl(&self_ty, iface_id, method_index)
                         .expect("all defined method impls must be declared first")
-                }
+                },
             };
 
             functions.insert(func_id, func);

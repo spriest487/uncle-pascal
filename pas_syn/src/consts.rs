@@ -349,7 +349,7 @@ impl SetConstant {
         included_values: impl IntoIterator<Item = impl Into<Ident>>,
         set: impl Into<Ident>,
     ) -> Self {
-        let vals = included_values.into_iter().map(|val| val.into());
+        let vals = included_values.into_iter().map(Into::into);
 
         let mut unique_vals = Vec::new();
         for val in vals {

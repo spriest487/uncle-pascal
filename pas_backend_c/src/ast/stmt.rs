@@ -2,12 +2,23 @@ use std::fmt;
 
 use pas_ir::{
     self as ir,
-    metadata::{self, ClassID, StringID, StructID},
-    Label, LocalID,
+    metadata::{
+        self,
+        ClassID,
+        StringID,
+        StructID,
+    },
+    Label,
+    LocalID,
 };
 
-use crate::ast::ty::FieldName;
-use crate::ast::{FunctionName, Module, StructName, Type};
+use crate::ast::{
+    ty::FieldName,
+    FunctionName,
+    Module,
+    StructName,
+    Type,
+};
 
 pub enum InfixOp {
     Eq,
@@ -91,8 +102,8 @@ impl Expr {
         match v {
             ir::Value::LiteralBool(b) => Expr::LitBool(*b),
             ir::Value::LiteralNull => Expr::Null,
-            ir::Value::LiteralI32(i) => Expr::LitInt(*i as i64),
-            ir::Value::LiteralF32(f) => Expr::LitFloat(*f as f64),
+            ir::Value::LiteralI32(i) => Expr::LitInt(i64::from(*i)),
+            ir::Value::LiteralF32(f) => Expr::LitFloat(f64::from(*f)),
             ir::Value::Ref(r) => Expr::translate_ref(r, module),
         }
     }
@@ -104,7 +115,7 @@ impl Expr {
             ir::Ref::Global(ir::GlobalRef::Function(id)) => {
                 let name = module.function_name(*id);
                 Expr::Function(name)
-            }
+            },
             ir::Ref::Global(ir::GlobalRef::StringLiteral(id)) => Expr::LitString(*id),
         }
     }
@@ -193,7 +204,7 @@ impl Expr {
                     field: FieldName::ID(field_id),
                 };
                 field_ref.addr_of()
-            }
+            },
 
             _ => {
                 // local struct
@@ -203,7 +214,7 @@ impl Expr {
                 };
 
                 field.addr_of()
-            }
+            },
         }
     }
 }
@@ -231,7 +242,7 @@ impl fmt::Display for Expr {
                     write!(f, "{}", arg)?;
                 }
                 write!(f, ")")
-            }
+            },
             Expr::Element { base, index } => write!(f, "({})[{}]", base, index),
             Expr::Field { base, field } => write!(f, "({}).{}", base, field),
             Expr::Arrow { base, field } => write!(f, "({})->{}", base, field),
@@ -272,7 +283,7 @@ impl fmt::Display for Statement {
                 }
 
                 write!(f, ";")
-            }
+            },
 
             Statement::Expr(expr) => write!(f, "{};", expr),
 
@@ -288,7 +299,7 @@ impl fmt::Display for Statement {
                 writeln!(f, "if ({}) {{", cond)?;
                 writeln!(f, "{}", then)?;
                 writeln!(f, "}}")
-            }
+            },
         }
     }
 }
@@ -326,7 +337,7 @@ impl<'a> Builder<'a> {
                     id: *id,
                     null_init,
                 });
-            }
+            },
 
             ir::Instruction::LocalBegin => self.stmts.push(Statement::BeginBlock),
             ir::Instruction::LocalEnd => self.stmts.push(Statement::EndBlock),
@@ -346,11 +357,11 @@ impl<'a> Builder<'a> {
                     cond: cond_expr,
                     then: Box::new(Statement::Goto(*dest)),
                 });
-            }
+            },
             ir::Instruction::Comment(text) => {
                 let safe_text = text.replace("/*", "").replace("*/", "");
                 self.stmts.push(Statement::Comment(safe_text));
-            }
+            },
 
             ir::Instruction::AddrOf { out, a } => {
                 let addr = Expr::translate_ref(a, self.module).addr_of();
@@ -359,7 +370,7 @@ impl<'a> Builder<'a> {
                     addr,
                     self.module,
                 )));
-            }
+            },
 
             ir::Instruction::Move { out, new_val } => {
                 let val = Expr::translate_val(new_val, self.module);
@@ -368,7 +379,7 @@ impl<'a> Builder<'a> {
                     val,
                     self.module,
                 )));
-            }
+            },
 
             ir::Instruction::Eq { out, a, b } => {
                 let cmp = Expr::translate_infix_op(a, InfixOp::Eq, b, self.module);
@@ -377,7 +388,7 @@ impl<'a> Builder<'a> {
                     cmp,
                     self.module,
                 )));
-            }
+            },
 
             ir::Instruction::Add { out, a, b } => {
                 let add = Expr::translate_infix_op(a, InfixOp::Add, b, self.module);
@@ -386,7 +397,7 @@ impl<'a> Builder<'a> {
                     add,
                     self.module,
                 )));
-            }
+            },
 
             ir::Instruction::Sub { out, a, b } => {
                 let sub = Expr::translate_infix_op(a, InfixOp::Sub, b, self.module);
@@ -395,21 +406,16 @@ impl<'a> Builder<'a> {
                     sub,
                     self.module,
                 )));
-            }
+            },
 
-            ir::Instruction::Element {
-                out,
-                a,
-                index,
-                element: _,
-            } => {
+            ir::Instruction::Element { out, a, index, .. } => {
                 let element = Expr::translate_element(a, index, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
                     element,
                     self.module,
                 )));
-            }
+            },
 
             ir::Instruction::Field {
                 out,
@@ -423,7 +429,7 @@ impl<'a> Builder<'a> {
                     field,
                     self.module,
                 )))
-            }
+            },
 
             ir::Instruction::VariantTag { out, a, .. } => {
                 let tag_field = Expr::Field {
@@ -462,11 +468,11 @@ impl<'a> Builder<'a> {
                 args,
             } => {
                 self.translate_call(out.as_ref(), function, args);
-            }
+            },
 
             ir::Instruction::RcNew { out, struct_id } => {
                 self.translate_rc_new(out, *struct_id);
-            }
+            },
 
             ir::Instruction::Gt { out, a, b } => {
                 let gt = Expr::translate_infix_op(a, InfixOp::Gt, b, self.module);
@@ -475,7 +481,7 @@ impl<'a> Builder<'a> {
                     gt,
                     self.module,
                 )))
-            }
+            },
 
             ir::Instruction::And { out, a, b } => {
                 let and = Expr::translate_infix_op(a, InfixOp::And, b, self.module);
@@ -484,7 +490,7 @@ impl<'a> Builder<'a> {
                     and,
                     self.module,
                 )))
-            }
+            },
 
             ir::Instruction::Or { out, a, b } => {
                 let or = Expr::translate_infix_op(a, InfixOp::Or, b, self.module);
@@ -493,7 +499,7 @@ impl<'a> Builder<'a> {
                     or,
                     self.module,
                 )))
-            }
+            },
 
             ir::Instruction::Not { out, a } => {
                 let a_expr = Expr::translate_val(a, self.module);
@@ -506,21 +512,21 @@ impl<'a> Builder<'a> {
                     not,
                     self.module,
                 )))
-            }
+            },
 
             ir::Instruction::Retain { at } => {
                 let release = Expr::Function(FunctionName::RcRetain);
                 let rc_ptr = Expr::translate_ref(at, self.module);
                 self.stmts
                     .push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
-            }
+            },
 
             ir::Instruction::Release { at } => {
                 let release = Expr::Function(FunctionName::RcRelease);
                 let rc_ptr = Expr::translate_ref(at, self.module);
                 self.stmts
                     .push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
-            }
+            },
 
             ir::Instruction::VirtualCall {
                 out,
@@ -544,11 +550,11 @@ impl<'a> Builder<'a> {
                     Some(out) => Expr::translate_assign(out, call, self.module),
                     None => call,
                 }));
-            }
+            },
 
             ir::Instruction::ClassIs { out, a, class_id } => {
                 self.translate_is(out, a, *class_id);
-            }
+            },
         }
     }
 
@@ -565,18 +571,22 @@ impl<'a> Builder<'a> {
             metadata::ClassID::Class(struct_id) => {
                 let is_class_ptr = Expr::Class(struct_id).addr_of();
                 Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
-            }
+            },
 
             metadata::ClassID::Interface(iface_id) => {
                 let is_impl_func = Expr::Function(FunctionName::IsImpl);
 
-                Expr::call(is_impl_func, vec![
-                    actual_class_ptr,
-                    Expr::LitInt(iface_id.0 as i64),
-                ])
+                Expr::call(
+                    is_impl_func,
+                    vec![actual_class_ptr, Expr::LitInt(iface_id.0 as i64)],
+                )
             },
         };
-        self.stmts.push(Statement::Expr(Expr::translate_assign(out, is, self.module)));
+        self.stmts.push(Statement::Expr(Expr::translate_assign(
+            out,
+            is,
+            self.module,
+        )));
     }
 
     fn translate_call(&mut self, out: Option<&ir::Ref>, function: &ir::Value, args: &[ir::Value]) {

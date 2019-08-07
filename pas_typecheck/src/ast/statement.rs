@@ -1,5 +1,5 @@
 use crate::ast::prelude::*;
-use pas_syn::{Operator};
+use pas_syn::Operator;
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
@@ -12,15 +12,15 @@ pub fn typecheck_local_binding(
         ast::TypeName::Unknown(_) => match &binding.val {
             None => {
                 return Err(TypecheckError::UninitBindingWithNoType {
-                    binding: binding.clone(),
+                    binding: Box::new(binding.clone()),
                 });
-            }
+            },
 
             Some(val) => {
                 let val = typecheck_expr(val, &Type::Nothing, ctx)?;
                 let val_ty = val.annotation().ty().clone();
                 (Some(val), val_ty)
-            }
+            },
         },
 
         val_ty => {
@@ -39,17 +39,17 @@ pub fn typecheck_local_binding(
                     }
 
                     Some(val)
-                }
+                },
                 None => None,
             };
 
             (val, explicit_ty)
-        }
+        },
     };
 
     if binding_ty == Type::Nothing {
         return Err(TypecheckError::BindingWithNoType {
-            binding: binding.clone(),
+            binding: Box::new(binding.clone()),
         });
     }
 
@@ -100,13 +100,13 @@ pub fn typecheck_assignment(
                     decl: Some(span),
                 });
             }
-        }
+        },
         _ => {
             return Err(TypecheckError::NotMutable {
                 expr: Box::new(lhs),
                 decl: None,
             });
-        }
+        },
     }
 
     let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
@@ -144,15 +144,15 @@ pub fn typecheck_stmt(
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
-        }
+        },
 
         ast::Statement::Call(call) => match typecheck_call(call, &Type::Nothing, ctx)? {
-            CallOrCtor::Call(call) => Ok(ast::Statement::Call(call)),
+            CallOrCtor::Call(call) => Ok(ast::Statement::Call(*call)),
             CallOrCtor::Ctor(ctor) => {
-                let ctor_expr = Expression::from(ctor);
-                let invalid_stmt = InvalidStatement(ctor_expr);
+                let ctor_expr = Expression::from(*ctor);
+                let invalid_stmt = InvalidStatement::from(ctor_expr);
                 Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))
-            }
+            },
         },
 
         ast::Statement::Block(block) => {
@@ -160,15 +160,15 @@ pub fn typecheck_stmt(
             assert_eq!(Type::Nothing, *block.annotation.ty());
 
             Ok(ast::Statement::Block(block))
-        }
+        },
 
         ast::Statement::ForLoop(for_loop) => {
             typecheck_for_loop(for_loop, ctx).map(ast::Statement::ForLoop)
-        }
+        },
 
         ast::Statement::Assignment(assignment) => {
             typecheck_assignment(assignment, ctx).map(ast::Statement::Assignment)
-        }
+        },
 
         ast::Statement::Exit(_exit) => unimplemented!(),
 
@@ -176,18 +176,18 @@ pub fn typecheck_stmt(
             expect_in_loop(stmt, ctx)?;
             let annotation = TypeAnnotation::Untyped(span.clone());
             Ok(ast::Statement::Break(annotation))
-        }
+        },
 
         ast::Statement::Continue(span) => {
             expect_in_loop(stmt, ctx)?;
             let annotation = TypeAnnotation::Untyped(span.clone());
             Ok(ast::Statement::Continue(annotation))
-        }
+        },
 
         ast::Statement::If(if_cond) => {
             let if_cond = typecheck_if_cond(if_cond, &Type::Nothing, ctx)?;
             Ok(ast::Statement::If(if_cond))
-        }
+        },
     }
 }
 
@@ -197,6 +197,6 @@ fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult
 
         None => Err(TypecheckError::NoLoopContext {
             stmt: Box::new(stmt.clone()),
-        })
+        }),
     }
 }

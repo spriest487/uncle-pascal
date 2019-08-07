@@ -1,4 +1,9 @@
-pub use self::{annotation::*, context::*, result::*, ty::*};
+pub use self::{
+    annotation::*,
+    context::*,
+    result::*,
+    ty::*,
+};
 
 mod annotation;
 mod context;
@@ -6,8 +11,16 @@ mod result;
 
 pub mod ast {
     pub use self::{
-        block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-        typedecl::*, unit::*,
+        block::*,
+        cond::*,
+        ctor::*,
+        expression::*,
+        function::*,
+        iter::*,
+        op::*,
+        statement::*,
+        typedecl::*,
+        unit::*,
     };
 
     mod block;
@@ -24,13 +37,20 @@ pub mod ast {
     mod prelude {
         pub use pas_common::span::*;
         pub use pas_syn::{
-            ast::{self, FunctionParamMod},
+            ast::{
+                self,
+                FunctionParamMod,
+            },
             ident::*,
             parse::InvalidStatement,
         };
 
         pub use crate::{
-            annotation::*, ast::*, context::*, result::*, ty::*,
+            annotation::*,
+            ast::*,
+            context::*,
+            result::*,
+            ty::*,
         };
     }
 }

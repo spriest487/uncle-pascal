@@ -14,7 +14,8 @@ pub fn typecheck_object_ctor(
 
     // generic types can't be constructed, but if the type hint is a parameterized instance of
     // the generic type the constructor expression refers to, use that instead
-    let ty = raw_ty.infer_specialized_from_hint(expect_ty)
+    let ty = raw_ty
+        .infer_specialized_from_hint(expect_ty)
         .ok_or_else(|| TypecheckError::InvalidCtorType {
             ty: raw_ty.clone(),
             span: ctor.annotation.span().clone(),
@@ -42,7 +43,7 @@ pub fn typecheck_object_ctor(
                     span: ctor_member.ident.span.clone(),
                 }
                 .into());
-            }
+            },
 
             Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
                 return Err(TypecheckError::InvalidBinOp {
@@ -51,7 +52,7 @@ pub fn typecheck_object_ctor(
                     op: Operator::Assignment,
                     span: ctor_member.value.annotation().span().clone(),
                 });
-            }
+            },
 
             Some(_) => members.push(ObjectCtorMember {
                 ident: ctor_member.ident.clone(),
@@ -107,7 +108,7 @@ pub fn typecheck_collection_ctor(
             // must have at at least one element to infer types
             if ctor.elements.is_empty() {
                 return Err(TypecheckError::UnableToInferType {
-                    expr: ast::Expression::from(ctor.clone()),
+                    expr: Box::new(ast::Expression::from(ctor.clone())),
                 });
             }
 
@@ -124,7 +125,7 @@ pub fn typecheck_collection_ctor(
             }
 
             elem_ty
-        }
+        },
 
         Some(elem_ty) => {
             for e in &ctor.elements {
@@ -135,7 +136,7 @@ pub fn typecheck_collection_ctor(
             }
 
             elem_ty.clone()
-        }
+        },
     };
 
     let collection_ty = match expect_ty {

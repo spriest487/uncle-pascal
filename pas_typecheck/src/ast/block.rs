@@ -1,4 +1,7 @@
-use crate::ast::{expect_stmt_initialized, prelude::*};
+use crate::ast::{
+    expect_stmt_initialized,
+    prelude::*,
+};
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -31,7 +34,7 @@ pub fn typecheck_block(
             } else {
                 Some(out_expr)
             }
-        }
+        },
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example
@@ -42,11 +45,11 @@ pub fn typecheck_block(
             let last_stmt_type = statements.last().map(|s: &Statement| s.annotation().ty());
 
             if last_stmt_type == Some(expect_ty) {
-                Some(statements.pop().and_then(|s| s.try_into_expr()).unwrap())
+                Some(statements.pop().and_then(Statement::try_into_expr).unwrap())
             } else {
                 None
             }
-        }
+        },
 
         None => None,
     };
@@ -80,7 +83,7 @@ pub fn typecheck_block(
                     decl: None,
                 }
             }
-        }
+        },
         None => TypeAnnotation::Untyped(span),
     };
 

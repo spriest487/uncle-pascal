@@ -1,11 +1,27 @@
 use crate::{
     annotation::TypeAnnotation,
-    ast::{Call, Expression, Variant},
+    ast::{
+        Call,
+        Expression,
+        Variant,
+    },
     context::NameError,
-    Type, ValueKind,
+    Type,
+    ValueKind,
 };
-use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
-use pas_syn::{parse::InvalidStatement, ast, Ident, Operator};
+use pas_common::{
+    span::*,
+    Backtrace,
+    DiagnosticLabel,
+    DiagnosticMessage,
+    DiagnosticOutput,
+};
+use pas_syn::{
+    ast,
+    parse::InvalidStatement,
+    Ident,
+    Operator,
+};
 use std::fmt;
 
 #[derive(Debug)]
@@ -17,7 +33,7 @@ pub enum TypecheckError {
         actual: Vec<Type>,
         span: Span,
     },
-    InvalidCallInExpression(Call),
+    InvalidCallInExpression(Box<Call>),
     InvalidIndexer {
         base: Box<Expression>,
         index_ty: Type,
@@ -70,13 +86,13 @@ pub enum TypecheckError {
         syms: Vec<Ident>,
     },
     UnableToInferType {
-        expr: ast::Expression<Span>,
+        expr: Box<ast::Expression<Span>>,
     },
     UninitBindingWithNoType {
-        binding: ast::LocalBinding<Span>,
+        binding: Box<ast::LocalBinding<Span>>,
     },
     BindingWithNoType {
-        binding: ast::LocalBinding<Span>,
+        binding: Box<ast::LocalBinding<Span>>,
     },
     NotInitialized {
         ident: Ident,
@@ -170,36 +186,34 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
                 "Invalid constructor expression type".to_string()
-            }
+            },
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
                 "Unable to infer type of expression".to_string()
-            }
+            },
             TypecheckError::UninitBindingWithNoType { .. } => {
                 "Uninitialized binding must have an explicit type".to_string()
-            }
+            },
             TypecheckError::BindingWithNoType { .. } => {
                 "Value bound to name must have a type".to_string()
-            }
+            },
             TypecheckError::NotInitialized { .. } => "Use of uninitialized value".to_string(),
             TypecheckError::InvalidRefExpression { .. } => {
                 "Invalid reference expression".to_string()
-            }
+            },
             TypecheckError::InvalidStatement(invalid_stmt) => invalid_stmt.title(),
             TypecheckError::EmptyVariant(..) => "Empty variant".to_string(),
             TypecheckError::EmptyVariantCaseBinding { .. } => {
                 "Empty variant case binding".to_string()
-            }
-
-            TypecheckError::NoLoopContext { .. } => {
-                "Statement requires loop context".to_string()
             },
+
+            TypecheckError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
 
             TypecheckError::InvalidTypeArgs { .. } => "Invalid type arguments".to_string(),
 
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
-            }
+            },
         }
     }
 
@@ -241,7 +255,7 @@ impl DiagnosticOutput for TypecheckError {
                 decl: Some(decl_span),
                 ..
             } => vec![DiagnosticMessage {
-                title: format!("modifying immutable value"),
+                title: "modifying immutable value".to_string(),
                 label: Some(DiagnosticLabel {
                     text: Some("declared as immutable here".to_string()),
                     span: decl_span.clone(),
@@ -257,7 +271,7 @@ impl DiagnosticOutput for TypecheckError {
     }
 }
 
-fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item=&'a Type>) -> fmt::Result {
+fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item = &'a Type>) -> fmt::Result {
     for (i, arg) in args.into_iter().enumerate() {
         if i > 0 {
             write!(f, ", ")?;

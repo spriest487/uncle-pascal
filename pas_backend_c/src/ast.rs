@@ -1,5 +1,12 @@
-use std::{collections::HashMap, fmt};
+use std::{
+    collections::hash_map::{
+        Entry,
+        HashMap,
+    },
+    fmt,
+};
 
+use crate::Options;
 use pas_ir::{
     self as ir,
     metadata::{
@@ -8,7 +15,6 @@ use pas_ir::{
         StringID,
     },
 };
-use crate::Options;
 
 pub use self::{
     function::*,
@@ -16,8 +22,8 @@ pub use self::{
     ty::*,
 };
 
-mod stmt;
 mod function;
+mod stmt;
 mod ty;
 
 pub struct Module {
@@ -50,23 +56,45 @@ impl Module {
             }
         }
 
-        lookup_sys_builtin(metadata, &mut builtin_funcs, "IntToStr", FunctionName::IntToStr);
-        lookup_sys_builtin(metadata, &mut builtin_funcs, "StrToInt", FunctionName::StrToInt);
+        lookup_sys_builtin(
+            metadata,
+            &mut builtin_funcs,
+            "IntToStr",
+            FunctionName::IntToStr,
+        );
+        lookup_sys_builtin(
+            metadata,
+            &mut builtin_funcs,
+            "StrToInt",
+            FunctionName::StrToInt,
+        );
         lookup_sys_builtin(metadata, &mut builtin_funcs, "GetMem", FunctionName::GetMem);
-        lookup_sys_builtin(metadata, &mut builtin_funcs, "FreeMem", FunctionName::FreeMem);
-        lookup_sys_builtin(metadata, &mut builtin_funcs, "WriteLn", FunctionName::WriteLn);
+        lookup_sys_builtin(
+            metadata,
+            &mut builtin_funcs,
+            "FreeMem",
+            FunctionName::FreeMem,
+        );
+        lookup_sys_builtin(
+            metadata,
+            &mut builtin_funcs,
+            "WriteLn",
+            FunctionName::WriteLn,
+        );
 
-        let classes = metadata.type_defs()
+        let classes = metadata
+            .type_defs()
             .iter()
             .filter_map(|(id, def)| match def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
                     Some(Class::translate(*id, struct_def, metadata))
-                }
+                },
                 _ => None,
             })
             .collect();
 
-        let string_literals = metadata.strings()
+        let string_literals = metadata
+            .strings()
             .map(|(id, str)| (id, str.to_string()))
             .collect();
 
@@ -85,7 +113,8 @@ impl Module {
             opts,
         };
 
-        module.ifaces = metadata.ifaces()
+        module.ifaces = metadata
+            .ifaces()
             .iter()
             .map(|(iface_id, iface_def)| Interface::translate(*iface_id, iface_def, &mut module))
             .collect();
@@ -99,25 +128,30 @@ impl Module {
             dim,
         };
 
-        if self.static_array_types.contains_key(&sig) {
-            self.static_array_types[&sig].clone()
-        } else {
-            let next_id = self.static_array_types.len();
+        let next_id = self.static_array_types.len();
 
-            let mut array_members = HashMap::new();
-            array_members.insert(FieldName::StaticArrayElements, element.clone().sized_array(dim));
+        match self.static_array_types.entry(sig) {
+            Entry::Occupied(entry) => entry.get().clone(),
 
-            let name = StructName::StaticArray(next_id);
-            let array_struct = StructDef {
-                decl: StructDecl { name: name.clone() },
-                members: array_members,
-            };
+            Entry::Vacant(entry) => {
+                let mut array_members = HashMap::new();
+                array_members.insert(
+                    FieldName::StaticArrayElements,
+                    element.clone().sized_array(dim),
+                );
 
-            self.type_defs.push(TypeDef::Struct(array_struct));
-            let array_struct_ty = Type::Struct(name);
-            self.static_array_types.insert(sig, array_struct_ty.clone());
+                let name = StructName::StaticArray(next_id);
+                let array_struct = StructDef {
+                    decl: StructDecl { name: name.clone() },
+                    members: array_members,
+                };
 
-            array_struct_ty
+                self.type_defs.push(TypeDef::Struct(array_struct));
+                let array_struct_ty = Type::Struct(name);
+                entry.insert(array_struct_ty.clone());
+
+                array_struct_ty
+            },
         }
     }
 
@@ -226,7 +260,12 @@ impl fmt::Display for Module {
             writeln!(f, "  .field_1 = {},", lit.len())?;
             writeln!(f, "}};")?;
 
-            writeln!(f, "static struct {} StringRc_{} = {{", StructName::Rc, str_id.0)?;
+            writeln!(
+                f,
+                "static struct {} StringRc_{} = {{",
+                StructName::Rc,
+                str_id.0
+            )?;
             writeln!(f, "  .resource = &String_{},", str_id.0)?;
             writeln!(f, "  .class = &Class_{},", ir::metadata::STRING_ID.0)?;
             writeln!(f, "  .count = -1,")?;
