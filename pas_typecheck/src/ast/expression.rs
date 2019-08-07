@@ -1,5 +1,3 @@
-mod generic;
-
 use pas_common::span::*;
 use pas_syn::ast;
 

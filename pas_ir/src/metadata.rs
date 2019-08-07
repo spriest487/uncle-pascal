@@ -434,7 +434,10 @@ pub struct Metadata {
     // when we're not in a generic function
     // todo: can this be refactored into Module somewhere so Metadata doesn't need to know anything
     // about generics
-    type_args: Vec<Type>,
+    // now implemented as a stack as a hack for function defs which get generated
+    // while another def is already being generated - this should definitely not be
+    // here
+    type_args: Vec<Vec<Type>>,
 }
 
 impl Metadata {
@@ -500,9 +503,12 @@ impl Metadata {
         }
     }
 
-    pub fn set_type_args(&mut self, params: Vec<Type>) {
-        assert!(self.type_args.is_empty() || params.is_empty());
-        self.type_args = params;
+    pub fn push_type_args(&mut self, args: Vec<Type>) {
+        self.type_args.push(args);
+    }
+
+    pub fn pop_type_args(&mut self) {
+        self.type_args.pop().expect("called pop_type_args with no contextual type args");
     }
 
     pub fn type_defs(&self) -> &HashMap<StructID, TypeDef> {
@@ -866,7 +872,7 @@ impl Metadata {
             pas_ty::Type::MethodSelf => unreachable!("Self is not a real type in this context"),
 
             pas_ty::Type::GenericParam(param) => {
-                match self.type_args.get(param.pos) {
+                match self.type_args.last().and_then(|args| args.get(param.pos)) {
                     Some(ty) => ty.clone(),
                     None => panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new()),
                 }

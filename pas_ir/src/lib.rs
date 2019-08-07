@@ -1011,7 +1011,7 @@ impl Module {
             .map(|arg| body_builder.module.metadata.translate_type(arg))
             .collect();
 
-        body_builder.module.metadata.set_type_args(type_args);
+        body_builder.module.metadata.push_type_args(type_args);
 
         let return_ty = match func.decl.return_ty.as_ref() {
             None | Some(pas_ty::Type::Nothing) => Type::Nothing,
@@ -1081,7 +1081,7 @@ impl Module {
             body_builder.retain(return_at, &return_ty);
         }
 
-        body_builder.module.metadata.set_type_args(Vec::new());
+        body_builder.module.metadata.pop_type_args();
 
         body_builder.finish();
 
