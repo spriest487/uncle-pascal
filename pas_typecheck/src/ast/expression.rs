@@ -627,6 +627,12 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
             Ok(())
         }
 
+        ast::Statement::WhileLoop(while_loop) => {
+            expect_expr_initialized(&while_loop.condition, ctx)?;
+            expect_stmt_initialized(&while_loop.body, ctx)?;
+            Ok(())
+        }
+
         ast::Statement::Exit(exit) => match exit {
             ast::Exit::WithoutValue(_) => Ok(()),
             ast::Exit::WithValue(exit_val) => expect_expr_initialized(exit_val, ctx),

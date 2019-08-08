@@ -1,5 +1,5 @@
 use crate::{
-    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, Typed},
+    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, WhileLoop, IfCond, Typed},
     parse::prelude::*,
 };
 
@@ -104,6 +104,7 @@ pub enum Statement<A: Annotation> {
     Exit(Exit<A>),
     Block(Block<A>),
     ForLoop(ForLoop<A>),
+    WhileLoop(WhileLoop<A>),
     Assignment(Assignment<A>),
     If(IfCond<A>),
     Break(A),
@@ -121,6 +122,7 @@ impl<A: Annotation> Statement<A> {
             },
             Statement::Block(block) => &block.annotation,
             Statement::ForLoop(for_loop) => &for_loop.annotation,
+            Statement::WhileLoop(while_loop) => &while_loop.annotation,
             Statement::Assignment(assignment) => &assignment.annotation,
             Statement::If(if_stmt) => &if_stmt.annotation,
             Statement::Break(a) => a,
@@ -204,12 +206,20 @@ impl<A: Annotation> Statement<A> {
             invalid => Err(invalid),
         }
     }
+
+    pub fn as_block(&self) -> Option<&Block<A>> {
+        match self {
+            Statement::Block(block) => Some(block),
+            _ => None,
+        }
+    }
 }
 
 pub fn statement_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
         .or(Keyword::Var)
         .or(Keyword::For)
+        .or(Keyword::While)
         .or(Keyword::Break)
         .or(Keyword::Continue)
         .or(Keyword::Exit)
@@ -236,6 +246,11 @@ impl Statement<Span> {
             }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(for_loop))
+            }
+
+            Some(TokenTree::Keyword { kw: Keyword::While, .. }) => {
+                let while_loop = WhileLoop::parse(tokens)?;
+                Ok(Statement::WhileLoop(while_loop))
             }
 
             Some(TokenTree::Keyword {
@@ -284,6 +299,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::Exit(exit) => write!(f, "{}", exit),
             Statement::Block(block) => write!(f, "{}", block),
             Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
+            Statement::WhileLoop(while_loop) => write!(f, "{}", while_loop),
             Statement::Assignment(assignment) => write!(f, "{}", assignment),
             Statement::If(if_stmt) => write!(f, "{}", if_stmt),
             Statement::Break(..) => write!(f, "{}", Keyword::Break),

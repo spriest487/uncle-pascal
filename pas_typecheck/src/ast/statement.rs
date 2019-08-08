@@ -166,6 +166,10 @@ pub fn typecheck_stmt(
             typecheck_for_loop(for_loop, ctx).map(ast::Statement::ForLoop)
         }
 
+        ast::Statement::WhileLoop(while_loop) => {
+            typecheck_while_loop(while_loop, ctx).map(ast::Statement::WhileLoop)
+        }
+
         ast::Statement::Assignment(assignment) => {
             typecheck_assignment(assignment, ctx).map(ast::Statement::Assignment)
         }

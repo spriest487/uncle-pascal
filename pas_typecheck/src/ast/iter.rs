@@ -1,6 +1,7 @@
 use crate::ast::prelude::*;
 
 pub type ForLoop = ast::ForLoop<TypeAnnotation>;
+pub type WhileLoop = ast::WhileLoop<TypeAnnotation>;
 
 pub fn typecheck_for_loop(
     for_loop: &ast::ForLoop<Span>,
@@ -33,6 +34,28 @@ pub fn typecheck_for_loop(
     Ok(ForLoop {
         init_binding,
         to_expr,
+        body,
+        annotation,
+    })
+}
+
+pub fn typecheck_while_loop(
+    while_loop: &ast::WhileLoop<Span>,
+    ctx: &mut Context,
+) -> TypecheckResult<WhileLoop> {
+    let annotation = TypeAnnotation::Untyped(while_loop.span().clone());
+
+    let bool_ty = Type::Primitive(Primitive::Boolean);
+    let condition = typecheck_expr(&while_loop.condition, &bool_ty, ctx)?;
+
+    condition.annotation().expect_value(&bool_ty)?;
+
+    ctx.push_loop(while_loop.span().clone());
+    let body = typecheck_stmt(&while_loop.body, ctx).map(Box::new)?;
+    ctx.pop_loop();
+
+    Ok(WhileLoop {
+        condition,
         body,
         annotation,
     })

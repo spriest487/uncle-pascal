@@ -9,17 +9,20 @@ use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
-    // write the first line of the statement as a comment
-    let stmt_str = stmt.to_string();
-    let mut comment = String::new();
-    for (line_num, line) in stmt_str.lines().enumerate() {
-        if line_num > 0 {
-            comment.push_str("...");
-            break;
+    if stmt.as_block().is_none() {
+        // write the first line of the statement as a comment
+        let stmt_str = stmt.to_string();
+        let mut comment = String::new();
+        for (line_num, line) in stmt_str.lines().enumerate() {
+            if line_num > 0 {
+                comment.push_str("...");
+                break;
+            }
+            comment.push_str(line);
         }
-        comment.push_str(line);
+
+        builder.comment(&comment);
     }
-    builder.comment(&comment);
 
     match stmt {
         ast::Statement::LocalBinding(binding) => {
@@ -38,6 +41,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
+        },
+
+        ast::Statement::WhileLoop(while_loop) => {
+            translate_while_loop(while_loop, builder);
         },
 
         ast::Statement::Assignment(assignment) => {
@@ -136,6 +143,44 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
             dest: top_label,
         });
 
+        builder.append(Instruction::Label(break_label));
+    });
+}
+
+pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut Builder) {
+    let top_label = builder.alloc_label();
+    let continue_label = builder.alloc_label();
+    let break_label = builder.alloc_label();
+
+    builder.scope(|builder| {
+        let not_cond = builder.local_temp(Type::Bool);
+
+        builder.append(Instruction::Label(top_label));
+
+        // evaluate condition
+//        builder.scope(|builder| {
+            let cond_val = translate_expr(&while_loop.condition, builder);
+            builder.append(Instruction::Not {
+                a: Value::Ref(cond_val),
+                out: not_cond.clone()
+            });
+//        });
+
+        // break now if condition is false
+        builder.append(Instruction::JumpIf {
+            test: Value::Ref(not_cond),
+            dest: break_label
+        });
+
+        // run loop body
+        builder.begin_loop_body_scope(continue_label, break_label);
+        translate_stmt(&while_loop.body, builder);
+        builder.end_loop_body_scope();
+
+        builder.append(Instruction::Label(continue_label));
+
+        // start next iteration
+        builder.append(Instruction::Jump { dest: top_label });
         builder.append(Instruction::Label(break_label));
     });
 }

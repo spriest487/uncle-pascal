@@ -48,3 +48,47 @@ impl ForLoop<Span> {
         })
     }
 }
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct WhileLoop<A: Annotation> {
+    pub condition: Expression<A>,
+    pub body: Box<Statement<A>>,
+
+    pub annotation: A,
+}
+
+impl<A: Annotation> Spanned for WhileLoop<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
+impl<A: Annotation> fmt::Display for WhileLoop<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "while {} do {}",
+            self.condition, self.body
+        )
+    }
+}
+
+impl WhileLoop<Span> {
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let kw = tokens.match_one(Keyword::While)?;
+
+        let condition = Expression::parse(tokens)?;
+
+        let _do = tokens.match_one(Keyword::Do)?;
+
+        let body = Statement::parse(tokens)?;
+
+        let span = kw.span().to(body.annotation().span());
+
+        Ok(WhileLoop {
+            condition,
+            body: Box::new(body),
+            annotation: span,
+        })
+    }
+}

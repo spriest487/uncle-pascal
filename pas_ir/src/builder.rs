@@ -490,6 +490,7 @@ impl<'m> Builder<'m> {
     pub fn begin_scope(&mut self) {
         self.instructions.push(Instruction::LocalBegin);
         self.scopes.push(Scope { locals: Vec::new() });
+        self.comment(&format!("begin scope {}", self.scopes.len()));
     }
 
     pub fn scope<F>(&mut self, f: F)
@@ -511,10 +512,17 @@ impl<'m> Builder<'m> {
             to_scope
         );
 
+        let cleaned_scopes = to_scope..self.scopes.len() - 1;
+        if cleaned_scopes.start == cleaned_scopes.end {
+            self.comment(&format!("cleanup scope {}", to_scope + 1));
+        } else {
+            self.comment(&format!("cleanup scopes {}..{}", to_scope + 1, self.scopes.len()));
+        }
+
         // locals from all scopes up to the target scope, in order of deepest->shallowest,
         // then in reverse allocation order
-        let locals: Vec<_> = self.scopes[to_scope..]
-            .iter()
+        let locals: Vec<_> = cleaned_scopes
+            .map(|i| &self.scopes[i])
             .rev()
             .flat_map(|scope| {
                 let mut locals = scope.locals.to_vec();
@@ -532,8 +540,13 @@ impl<'m> Builder<'m> {
                     self.release(Ref::Local(id), &ty);
                 }
 
-                Local::Return { .. } | Local::Temp { .. } => {
+                Local::Temp { id, .. } => {
                     // no cleanup required
+                    self.comment(&format!("expire {}", id));
+                }
+
+                Local::Return { .. } => {
+                    self.comment("expire return slot");
                 }
             }
         }
@@ -541,6 +554,8 @@ impl<'m> Builder<'m> {
 
     pub fn end_scope(&mut self) {
         self.cleanup_scope(self.scopes.len() - 1);
+
+        self.comment(&format!("end scope {}", self.scopes.len()));
 
         self.scopes.pop().unwrap();
         self.instructions.push(Instruction::LocalEnd);
