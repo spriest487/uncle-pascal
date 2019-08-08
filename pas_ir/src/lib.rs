@@ -606,7 +606,14 @@ impl fmt::Display for Module {
                     self.metadata.format_name(&s.name, f)?;
                     writeln!(f)?;
 
-                    for (id, field) in &s.fields {
+                    let max_field_id = s.fields.keys().max().cloned().unwrap_or(FieldID(0));
+                    let fields = (0..=max_field_id.0)
+                        .filter_map(|id| {
+                            let field = s.fields.get(&FieldID(id))?;
+                            Some((id, field))
+                        });
+
+                    for (id, field) in fields {
                         write!(f, "{:8>} {}: ", format!("  .{}", id), field.name, )?;
                         self.metadata.format_type(&field.ty, f)?;
                         writeln!(f)?;
