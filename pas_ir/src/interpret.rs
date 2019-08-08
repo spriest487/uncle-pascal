@@ -1014,13 +1014,14 @@ impl Interpreter {
                         .push(*id);
                 },
 
-                Instruction::LocalBegin => self
-                    .current_frame_mut()
-                    .block_stack
-                    .push(Block { decls: Vec::new() }),
+                Instruction::LocalBegin => {
+                    let frame = self.current_frame_mut();
+                    frame.block_stack.push(Block { decls: Vec::new() });
+                },
 
                 Instruction::LocalEnd => {
                     let frame = self.current_frame_mut();
+
                     let popped_block = frame
                         .block_stack
                         .pop()
@@ -1329,8 +1330,12 @@ impl Interpreter {
         );
 
         let pop_blocks = current_block - label.block_depth;
+
         for _ in 0..pop_blocks {
-            frame.block_stack.pop().unwrap();
+            let popped_block = frame.block_stack.pop().unwrap();
+            for decl in popped_block.decls {
+                frame.locals[decl.0] = None;
+            }
         }
     }
 
