@@ -75,3 +75,37 @@ begin
 
     String(chars: strBytes; len: len)
 end;
+
+export function Max(a, b: Integer): Integer
+begin
+    if a > b then a else b
+end;
+
+export function Min(a, b: Integer): Integer
+begin
+    if a < b then a else b
+end;
+
+// NYI: missing dynamic arrays
+{
+export function SetLength of T(var arr: array of T; len: Integer); external 'rt';
+}
+
+// NYI:
+// missing dynamic arrays
+// missing traits/type constraints for Default
+// missing NewArray RT support
+{
+function NewArray of T(el: T; len: Integer): array of T; external 'rt';
+function Length of T(arr: array of T): Integer; external 'rt';
+
+function SetLength of T(var arr: array of T; len: Integer)
+    where T is Default
+begin
+    var newArr := NewArray(T.Default(), len);
+    var oldLen := Length of T(arr);
+
+    for let i := 0 to Max(len, oldLen) do
+        newArr[i] := arr[i];
+end;
+}
