@@ -1,6 +1,7 @@
 use crate::{
     prelude::*,
     translate_stmt,
+    Builder,
 };
 use pas_common::span::*;
 use pas_syn::{
@@ -14,6 +15,7 @@ use pas_typecheck::{
     ValueKind,
 };
 use std::rc::Rc;
+use std::convert::TryFrom;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     match expr {
@@ -124,6 +126,25 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
                 a: base_ref,
                 index: Value::Ref(index_ref),
                 element: ty,
+            });
+        }
+
+        pas_ty::Type::DynArray { .. } => {
+            let arr_field = builder.local_temp(ty.clone().ptr().ptr());
+            let array_struct = builder.dyn_array_struct(ty.clone());
+            let array_class = ClassID::Class(array_struct);
+
+            builder.append(Instruction::Field {
+                out: arr_field.clone(),
+                of_ty: Type::RcPointer(Some(array_class)),
+                a: base_ref,
+                field: DYNARRAY_PTR_FIELD,
+            });
+
+            builder.append(Instruction::Add {
+                out: ptr_into.clone(),
+                a: Value::Ref(arr_field.deref()),
+                b: Value::Ref(index_ref),
             });
         }
 
@@ -876,40 +897,39 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
         });
     }
 
-    builder.begin_scope();
+    builder.scope(|builder| {
+        for member in &ctor.args.members {
+            let member_val = translate_expr(&member.value, builder);
+            let field_id = struct_def
+                .find_field(&member.ident.name)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "field {} referenced in object ctor must exist",
+                        member.ident
+                    )
+                });
 
-    for member in &ctor.args.members {
-        let member_val = translate_expr(&member.value, builder);
-        let field_id = struct_def
-            .find_field(&member.ident.name)
-            .unwrap_or_else(|| {
-                panic!(
-                    "field {} referenced in object ctor must exist",
-                    member.ident
-                )
+            let field_def = struct_def.get_field(field_id).unwrap();
+
+            builder.comment(&format!(
+                "{}: {} ({})",
+                member.ident, member.value, field_def.ty
+            ));
+
+            builder.retain(member_val.clone(), &field_def.ty);
+
+            let field_ptr = builder.local_temp(field_def.ty.clone().ptr());
+            builder.append(Instruction::Field {
+                out: field_ptr.clone(),
+                a: out_ptr.clone(),
+                of_ty: object_ty.clone(),
+                field: field_id,
             });
 
-        let field_def = struct_def.get_field(field_id).unwrap();
+            builder.mov(field_ptr.deref(), member_val);
+        }
+    });
 
-        builder.comment(&format!(
-            "{}: {} ({})",
-            member.ident, member.value, field_def.ty
-        ));
-
-        builder.retain(member_val.clone(), &field_def.ty);
-
-        let field_ptr = builder.local_temp(field_def.ty.clone().ptr());
-        builder.append(Instruction::Field {
-            out: field_ptr.clone(),
-            a: out_ptr.clone(),
-            of_ty: object_ty.clone(),
-            field: field_id,
-        });
-
-        builder.mov(field_ptr.deref(), member_val);
-    }
-
-    builder.end_scope();
     out_ptr
 }
 
@@ -928,10 +948,12 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
             for (i, el) in ctor.elements.iter().enumerate() {
                 builder.begin_scope();
 
+                let index = i32::try_from(i).expect("invalid array index in array ctor");
+
                 builder.append(Instruction::Element {
                     out: el_ptr.clone(),
                     a: arr.clone(),
-                    index: Value::LiteralI32(i as i32),
+                    index: Value::LiteralI32(index),
                     element: el_ty.clone(),
                 });
 
@@ -942,6 +964,76 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
             }
 
             builder.end_scope();
+
+            arr
+        }
+
+        pas_ty::Type::DynArray { element } => {
+            let elem_ty = builder.translate_type(element);
+
+            // should be a class rc-ptr to the unique class for this dyn array element type
+            let array_ty = builder.translate_type(&ctor.annotation.ty());
+            let struct_id = match &array_ty {
+                Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
+                _ => unreachable!("dynamic array must have an rc class type"),
+            };
+
+            let arr = builder.local_new(array_ty.clone(), None);
+
+            // allocate the array object itself
+            builder.scope(|builder| {
+                builder.append(Instruction::RcNew { out: arr.clone(), struct_id });
+
+                // get pointer to the length
+                let len_ref = builder.local_temp(Type::I32.ptr());
+                builder.append(Instruction::Field {
+                    out: len_ref.clone(),
+                    of_ty: array_ty.clone(),
+                    field: DYNARRAY_LEN_FIELD,
+                    a: arr.clone(),
+                });
+
+                // set length
+                let len = i32::try_from(ctor.elements.len())
+                    .expect("invalid dynamic array ctor length");
+                builder.mov(len_ref.clone().deref(), Value::LiteralI32(len));
+
+                // get pointer to storage pointer
+                let arr_ptr = builder.local_temp(elem_ty.clone().ptr().ptr());
+                builder.append(Instruction::Field {
+                    out: arr_ptr.clone(),
+                    of_ty: array_ty,
+                    field: DYNARRAY_PTR_FIELD,
+                    a: arr.clone(),
+                });
+
+                // allocate array storage
+                builder.append(Instruction::DynAlloc {
+                    out: arr_ptr.clone().deref(),
+                    len: Value::LiteralI32(len),
+                    element_ty: elem_ty.clone(),
+                });
+
+                let el_ptr = builder.local_temp(elem_ty.ptr());
+
+                for (i, el) in ctor.elements.iter().enumerate() {
+                    builder.scope(|builder| {
+                        // we know this cast is OK because we check the length is in range of i32 previously
+                        let index = Value::LiteralI32(i as i32);
+
+                        // el_ptr := arr_ptr^ + i
+                        builder.append(Instruction::Add {
+                            a: Value::Ref(arr_ptr.clone().deref()),
+                            b: index,
+                            out: el_ptr.clone(),
+                        });
+
+                        // el_ptr^ := el
+                        let el = translate_expr(el, builder);
+                        builder.mov(el_ptr.clone().deref(), el);
+                    });
+                }
+            });
 
             arr
         }

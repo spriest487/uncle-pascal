@@ -249,6 +249,14 @@ pub trait InstructionFormatter {
             Instruction::Retain { at } => {
                 write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
             },
+
+            Instruction::DynAlloc { out, element_ty, len } => {
+                write!(f, "{:>width$} {} := {}[{}]", "dynalloc", out, element_ty, len, width = IX_WIDTH)
+            }
+
+            Instruction::DynFree { at } => {
+                write!(f, "{:>width$} {}", "dynfree", at, width = IX_WIDTH)
+            }
         }
     }
 

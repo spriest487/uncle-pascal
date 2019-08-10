@@ -1,4 +1,22 @@
-use super::*;
+use pas_typecheck as pas_ty;
+
+use crate::{
+    LocalID,
+    Instruction,
+    FunctionDeclKey,
+    FunctionCacheKey,
+    CachedFunction,
+    Ref,
+    Value,
+    Module,
+    Label,
+    IROptions,
+    IdentPath,
+    metadata::*,
+};
+
+use std::fmt;
+
 use pas_common::span::Span;
 
 #[derive(Clone, Debug)]
@@ -108,6 +126,10 @@ impl<'m> Builder<'m> {
         }
     }
 
+    pub fn opts(&self) -> &IROptions {
+        &self.module.opts
+    }
+
     pub fn with_type_args(self, type_args: Vec<pas_ty::Type>) -> Self {
         Self { type_args, ..self }
     }
@@ -119,6 +141,10 @@ impl<'m> Builder<'m> {
         };
 
         self.module.metadata.translate_type(real_ty)
+    }
+
+    pub fn dyn_array_struct(&mut self, element_ty: Type) -> StructID {
+        self.module.dyn_array_struct(element_ty)
     }
 
     pub fn translate_func(
@@ -164,6 +190,11 @@ impl<'m> Builder<'m> {
 
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
         self.module.metadata.ifaces().get(&id)
+    }
+
+    #[allow(unused)]
+    pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
+        self.module.metadata.find_function(name)
     }
 
     pub fn find_impl(
@@ -215,7 +246,15 @@ impl<'m> Builder<'m> {
         });
     }
 
-    pub fn bind_local(&mut self, id: LocalID, ty: Type, name: String, by_ref: bool) {
+    pub fn bind_local(
+        &mut self,
+        id: LocalID,
+        ty: Type,
+        name: impl Into<String>,
+        by_ref: bool
+    ) {
+        let name = name.into();
+
         let slot_free = !self
             .current_scope_mut()
             .locals
@@ -326,7 +365,7 @@ impl<'m> Builder<'m> {
             .next()
     }
 
-    fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor)
+    pub fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor)
     where
         Visitor: Fn(&mut Builder, &Type, Ref) + Copy,
     {
@@ -490,7 +529,10 @@ impl<'m> Builder<'m> {
     pub fn begin_scope(&mut self) {
         self.instructions.push(Instruction::LocalBegin);
         self.scopes.push(Scope { locals: Vec::new() });
-        self.comment(&format!("begin scope {}", self.scopes.len()));
+
+        if self.opts().annotate_scopes {
+            self.comment(&format!("begin scope {}", self.scopes.len()));
+        }
     }
 
     pub fn scope<F>(&mut self, f: F)
@@ -512,16 +554,19 @@ impl<'m> Builder<'m> {
             to_scope
         );
 
-        let cleaned_scopes = to_scope..self.scopes.len() - 1;
-        if cleaned_scopes.start == cleaned_scopes.end {
-            self.comment(&format!("cleanup scope {}", to_scope + 1));
-        } else {
-            self.comment(&format!("cleanup scopes {}..{}", to_scope + 1, self.scopes.len()));
+        let last_scope = self.scopes.len() - 1;
+
+        if self.opts().annotate_scopes {
+            if to_scope == last_scope {
+                self.comment(&format!("cleanup scope {}", to_scope + 1));
+            } else {
+                self.comment(&format!("cleanup scopes {}..{}", to_scope + 1, self.scopes.len()));
+            }
         }
 
         // locals from all scopes up to the target scope, in order of deepest->shallowest,
         // then in reverse allocation order
-        let locals: Vec<_> = cleaned_scopes
+        let locals: Vec<_> = (to_scope..=last_scope)
             .map(|i| &self.scopes[i])
             .rev()
             .flat_map(|scope| {
@@ -555,7 +600,9 @@ impl<'m> Builder<'m> {
     pub fn end_scope(&mut self) {
         self.cleanup_scope(self.scopes.len() - 1);
 
-        self.comment(&format!("end scope {}", self.scopes.len()));
+        if self.opts().annotate_scopes {
+            self.comment(&format!("end scope {}", self.scopes.len()));
+        }
 
         self.scopes.pop().unwrap();
         self.instructions.push(Instruction::LocalEnd);
@@ -599,7 +646,7 @@ mod test {
 
     #[test]
     fn end_loop_scope_ends_at_right_scope_level() {
-        let mut module = Module::new(Metadata::new());
+        let mut module = Module::new(Metadata::new(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
         let initial_scope = builder.scopes.len();
@@ -614,7 +661,7 @@ mod test {
 
     #[test]
     fn break_cleans_up_loop_locals() {
-        let mut module = Module::new(Metadata::new());
+        let mut module = Module::new(Metadata::new(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
         let continue_label = builder.alloc_label();

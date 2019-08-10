@@ -151,11 +151,14 @@ pub fn typecheck_collection_ctor(
     };
 
     let collection_ty = match expect_ty {
-        Type::Nothing => Type::Array {
-            element: Box::new(elem_ty.clone()),
+        Type::DynArray { .. } => {
+            Type::DynArray { element: Box::new(elem_ty) }
+        }
+
+        _ => Type::Array {
+            element: Box::new(elem_ty),
             dim: elements.len(),
         },
-        _ => expect_ty.clone(),
     };
 
     let annotation = TypeAnnotation::TypedValue {

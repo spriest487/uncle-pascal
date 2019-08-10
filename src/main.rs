@@ -5,7 +5,7 @@ use pas_common::{
     span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
     TracedError,
 };
-use pas_ir::{self as ir, Interpreter, InterpreterOpts};
+use pas_ir::{self as ir, Interpreter, InterpreterOpts, IROptions};
 use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
 use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
 use pas_typecheck::{self as ty, TypecheckError};
@@ -203,6 +203,12 @@ struct Args {
 
     #[structopt(long = "verbose", short = "v")]
     verbose: bool,
+
+    #[structopt(long = "ir-stmts")]
+    annotate_ir_stmts: bool,
+
+    #[structopt(long = "ir-scopes")]
+    annotate_ir_scopes: bool,
 }
 
 fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
@@ -360,7 +366,12 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
         return Ok(());
     }
 
-    let module = ir::translate(&typed_module);
+    let ir_opts = IROptions {
+        annotate_scopes: args.annotate_ir_scopes,
+        annotate_stmts: args.annotate_ir_stmts,
+    };
+
+    let module = ir::translate(&typed_module, ir_opts);
     if args.stage == Stage::Intermediate {
         println!("{}", module);
         return Ok(());

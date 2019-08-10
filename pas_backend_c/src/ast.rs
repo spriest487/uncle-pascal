@@ -17,7 +17,9 @@ mod ty;
 
 pub struct Module {
     functions: Vec<FunctionDef>,
+
     static_array_types: HashMap<ArraySig, Type>,
+
     type_defs: Vec<TypeDef>,
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
@@ -90,6 +92,7 @@ impl Module {
         let mut module = Module {
             functions: Vec::new(),
             type_defs: Vec::new(),
+
             static_array_types: HashMap::new(),
 
             string_literals,

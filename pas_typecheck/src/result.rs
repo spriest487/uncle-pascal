@@ -305,7 +305,8 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidIndexer { base, index_ty, .. } => {
-                write!(f, "expression `{}` cannot be indexed with an index of type `{}`", base, index_ty)
+                let base_ty = base.annotation().ty();
+                write!(f, "`{}` cannot be used as an index for `{}` of type `{}`", index_ty, base, base_ty)
             }
 
             TypecheckError::TypeMismatch { expected, actual, .. } => {

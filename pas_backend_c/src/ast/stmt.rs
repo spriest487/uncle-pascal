@@ -8,6 +8,7 @@ use pas_ir::{
 
 use crate::ast::{ty::FieldName, FunctionName, Module, StructName, Type};
 
+#[allow(unused)]
 pub enum InfixOp {
     Eq,
     Assign,
@@ -16,6 +17,9 @@ pub enum InfixOp {
     Gt,
     And,
     Or,
+    Mul,
+    Div,
+    Rem,
 }
 
 impl fmt::Display for InfixOp {
@@ -28,6 +32,9 @@ impl fmt::Display for InfixOp {
             InfixOp::Gt => write!(f, ">"),
             InfixOp::And => write!(f, "&&"),
             InfixOp::Or => write!(f, "||"),
+            InfixOp::Mul => write!(f, "*"),
+            InfixOp::Div => write!(f, "/"),
+            InfixOp::Rem => write!(f, "%"),
         }
     }
 }
@@ -503,17 +510,43 @@ impl<'a> Builder<'a> {
             }
 
             ir::Instruction::Retain { at } => {
-                let release = Expr::Function(FunctionName::RcRetain);
+                let retain = Expr::Function(FunctionName::RcRetain);
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                self.stmts
-                    .push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
+                let call_retain = Expr::call(retain, vec![rc_ptr]);
+
+                self.stmts.push(Statement::Expr(call_retain));
             }
 
             ir::Instruction::Release { at } => {
                 let release = Expr::Function(FunctionName::RcRelease);
                 let rc_ptr = Expr::translate_ref(at, self.module);
-                self.stmts
-                    .push(Statement::Expr(Expr::call(release, vec![rc_ptr])))
+                let call_release = Expr::call(release, vec![rc_ptr]);
+
+                self.stmts.push(Statement::Expr(call_release));
+            }
+
+            ir::Instruction::DynAlloc { out, element_ty, len } => {
+                let get_mem = Expr::Function(FunctionName::GetMem);
+
+                let el_ty = Type::from_metadata(&element_ty, self.module);
+                let sizeof_el = Expr::SizeOf(el_ty);
+
+                let el_count = Expr::translate_val(len, self.module);
+                let total_len = Expr::infix_op(sizeof_el, InfixOp::Mul, el_count);
+
+                let call_get_mem = Expr::call(get_mem, vec![total_len]);
+                let assign_result = Expr::translate_assign(out, call_get_mem, self.module);
+
+                self.stmts.push(Statement::Expr(assign_result));
+            }
+
+            ir::Instruction::DynFree { at } => {
+                let free_mem = Expr::Function(FunctionName::FreeMem);
+                let at_ptr = Expr::translate_ref(at, self.module);
+                let as_u8 = Expr::Cast(Box::new(at_ptr), Type::UChar.ptr());
+                let call_free_mem = Expr::call(free_mem, vec![as_u8]);
+
+                self.stmts.push(Statement::Expr(call_free_mem));
             }
 
             ir::Instruction::VirtualCall {

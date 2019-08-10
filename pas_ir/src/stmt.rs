@@ -4,12 +4,13 @@ use crate::{
     translate_call,
     translate_expr,
     translate_if_cond,
+    Builder,
 };
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
-    if stmt.as_block().is_none() {
+    if stmt.as_block().is_none() && builder.opts().annotate_stmts {
         // write the first line of the statement as a comment
         let stmt_str = stmt.to_string();
         let mut comment = String::new();

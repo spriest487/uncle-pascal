@@ -251,6 +251,7 @@ pub enum Type {
     Interface(Rc<Interface>),
     Variant(Rc<Variant>),
     Array { element: Box<Type>, dim: usize },
+    DynArray { element: Box<Type>, },
     MethodSelf,
     GenericParam(TypeParam),
     Any,
@@ -344,6 +345,7 @@ impl Type {
             Type::Class(..) => true,
             Type::Interface(..) => true,
             Type::Any => true,
+            Type::DynArray { .. } => true,
 
             _ => false,
         }
@@ -439,6 +441,7 @@ impl Type {
     pub fn collection_element_ty(&self) -> Option<&Type> {
         match self {
             Type::Array { element, .. } => Some(element.as_ref()),
+            Type::DynArray { element } => Some(element.as_ref()),
             _ => None,
         }
     }
@@ -522,6 +525,7 @@ impl fmt::Display for Type {
             Type::Interface(iface) => write!(f, "{}", iface.name),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
             Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
+            Type::DynArray { element } => write!(f, "array of {}", element),
             Type::GenericParam(ident) => write!(f, "{}", ident),
             Type::Nothing => write!(f, "Nothing"),
             Type::Primitive(p) => write!(f, "{}", p.name()),
@@ -607,10 +611,16 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
         ast::TypeName::Array { element, dim, .. } => {
             let element = typecheck_type(element.as_ref(), ctx)?;
 
-            Ok(Type::Array {
-                element: Box::new(element),
-                dim: *dim,
-            })
+            match dim {
+                Some(dim) => Ok(Type::Array {
+                    element: Box::new(element),
+                    dim: *dim,
+                }),
+
+                None => Ok(Type::DynArray {
+                    element: Box::new(element),
+                })
+            }
         }
 
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
@@ -653,6 +663,13 @@ fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> TypecheckR
             Ok(Type::Array {
                 element: Box::new(ty),
                 dim: *dim,
+            })
+        }
+
+        Type::DynArray { element } => {
+            let ty = specialize_member(element, args, span)?;
+            Ok(Type::DynArray {
+                element: Box::new(ty),
             })
         }
 

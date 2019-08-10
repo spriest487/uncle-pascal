@@ -18,12 +18,18 @@ pub struct Heap {
     pub trace: bool,
 }
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct HeapAddress(pub usize);
 
 impl fmt::Display for HeapAddress {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "0x{:0width$x}", self.0, width = (size_of::<usize>() * 2))
+    }
+}
+
+impl fmt::Debug for HeapAddress {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "HeapAddress({})", self)
     }
 }
 

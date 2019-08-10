@@ -17,7 +17,7 @@ use crate::{
     expr::*,
     metadata::*,
     stmt::*,
-    builder::*,
+    builder::Builder,
 };
 
 pub use self::{
@@ -37,7 +37,6 @@ mod stmt;
 pub mod prelude {
     pub use crate::{
         metadata::*,
-        builder::Builder,
         GlobalRef,
         Instruction,
         Interpreter,
@@ -49,6 +48,21 @@ pub mod prelude {
 
 pub mod interpret;
 pub mod metadata;
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct IROptions {
+    pub annotate_scopes: bool,
+    pub annotate_stmts: bool,
+}
+
+impl Default for IROptions {
+    fn default() -> Self {
+        Self {
+            annotate_scopes: false,
+            annotate_stmts: false,
+        }
+    }
+}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct LocalID(pub usize);
@@ -121,6 +135,12 @@ impl fmt::Display for Value {
 impl From<Ref> for Value {
     fn from(r: Ref) -> Self {
         Value::Ref(r)
+    }
+}
+
+impl Value {
+    pub fn deref(self) -> Ref {
+        Ref::Deref(Box::new(self))
     }
 }
 
@@ -257,6 +277,15 @@ pub enum Instruction {
     Retain {
         at: Ref,
     },
+
+    DynAlloc {
+        out: Ref,
+        element_ty: Type,
+        len: Value,
+    },
+    DynFree {
+        at: Ref,
+    },
 }
 
 impl fmt::Display for Instruction {
@@ -296,6 +325,8 @@ pub struct CachedFunction {
 
 #[derive(Clone, Debug)]
 pub struct Module {
+    pub opts: IROptions,
+
     pub metadata: Metadata,
 
     pub functions: HashMap<FunctionID, Function>,
@@ -343,9 +374,11 @@ struct FunctionCacheKey {
 }
 
 impl Module {
-    pub fn new(metadata: Metadata) -> Self {
+    pub fn new(metadata: Metadata, opts: IROptions) -> Self {
         Self {
             init: Vec::new(),
+
+            opts,
 
             functions: HashMap::new(),
             translated_funcs: HashMap::new(),
@@ -385,6 +418,25 @@ impl Module {
         let unit_init = init_builder.finish();
 
         self.init.extend(unit_init);
+    }
+
+    pub fn insert_func(&mut self, id: FunctionID, function: Function) {
+        assert!(
+            self.metadata.get_function(id).is_some(),
+            "function passed to insert_func must have been previously registered in metadata"
+        );
+
+        self.functions.insert(id, function);
+    }
+
+    pub fn impl_iface(
+        &mut self,
+        iface_id: InterfaceID,
+        for_ty: Type,
+        method_name: impl Into<String>,
+        func_id: FunctionID)
+    {
+        self.metadata.impl_method(iface_id, for_ty, method_name, func_id)
     }
 
     fn translate_func_usage(
@@ -578,7 +630,7 @@ impl Module {
 
             // the value we just moved in came from the block output in this function's scope,
             // so that ref is about to be released at the end of the function - we need to retain
-            // the return value so it outlives the functino
+            // the return value so it outlives the function
             body_builder.retain(return_at, &return_ty);
         }
 
@@ -590,6 +642,10 @@ impl Module {
             return_ty,
             debug_name,
         }
+    }
+
+    pub fn dyn_array_struct(&mut self, elem_ty: Type) -> StructID {
+        self.metadata.dyn_array_struct(elem_ty)
     }
 }
 
@@ -668,16 +724,112 @@ impl fmt::Display for Module {
     }
 }
 
-pub fn translate(module: &pas_ty::Module) -> Module {
+// dynamic arrays are given an ID for their dispose impl when the type is
+// added to the metadata. here's where we generate the code for those disposers
+fn gen_dyn_array_disposers(module: &mut Module) {
+    for (elem_ty, struct_id) in module.metadata.dyn_array_structs().clone() {
+        let array_class = ClassID::Class(struct_id);
+        let array_ref_ty = Type::RcPointer(Some(array_class));
+
+        let disposer_id = module.metadata.find_impl(
+            &array_ref_ty,
+            DISPOSABLE_ID,
+            DISPOSABLE_DISPOSE_INDEX
+        ).expect("dynamic array class must have disposer impl registered");
+
+        // build a disposer func for it
+        let mut body_builder = Builder::new(module);
+
+        // %0 is first arg, and the builder expects us to retain it
+        body_builder.bind_local(LocalID(0), array_ref_ty.clone(), "self", false);
+        let self_arg = Ref::Local(LocalID(0));
+        body_builder.retain(self_arg.clone(), &array_ref_ty);
+
+        let len_field_ptr = body_builder.local_temp(Type::I32.ptr());
+        body_builder.append(Instruction::Field {
+            out: len_field_ptr.clone(),
+            of_ty: array_ref_ty.clone(),
+            field: DYNARRAY_LEN_FIELD,
+            a: self_arg.clone(),
+        });
+
+        let arr_field_ptr = body_builder.local_temp(elem_ty.clone().ptr().ptr());
+        body_builder.append(Instruction::Field {
+            out: arr_field_ptr.clone(),
+            of_ty: array_ref_ty.clone(),
+            field: DYNARRAY_PTR_FIELD,
+            a: self_arg,
+        });
+
+        // release every element
+        let counter = body_builder.local_temp(Type::I32);
+        body_builder.mov(counter.clone(), Value::LiteralI32(0));
+
+        // jump to loop end if counter == array len
+        let start_loop_label = body_builder.alloc_label();
+        let end_loop_label = body_builder.alloc_label();
+
+        body_builder.append(Instruction::Label(start_loop_label));
+
+        let at_end = body_builder.local_temp(Type::Bool);
+        body_builder.append(Instruction::Eq {
+            out: at_end.clone(),
+            a: Value::Ref(len_field_ptr.clone().deref()),
+            b: Value::Ref(counter.clone()),
+        });
+        body_builder.append(Instruction::JumpIf {
+            dest: end_loop_label,
+            test: Value::Ref(at_end),
+        });
+
+        // release arr[counter]
+        let el_ptr = body_builder.local_temp(elem_ty.clone().ptr());
+        body_builder.append(Instruction::Add {
+            out: el_ptr.clone(),
+            a: Value::Ref(arr_field_ptr.clone().deref()),
+            b: Value::Ref(counter.clone()),
+        });
+        body_builder.release(el_ptr, &elem_ty);
+
+        // counter := counter + 1
+        body_builder.append(Instruction::Add {
+            out: counter.clone(),
+            a: Value::Ref(counter),
+            b: Value::LiteralI32(1),
+        });
+
+        body_builder.append(Instruction::Jump { dest: start_loop_label });
+        body_builder.append(Instruction::Label(end_loop_label));
+
+        // free the dynamic-allocated buffer
+        body_builder.append(Instruction::DynFree { at: arr_field_ptr.clone().deref() });
+
+        body_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
+        body_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
+
+        let body = body_builder.finish();
+
+        module.insert_func(disposer_id, Function {
+            debug_name: format!("<generated disposer for {}>", array_ref_ty),
+            return_ty: Type::Nothing,
+            params: vec![array_ref_ty.clone()],
+            body,
+        });
+    }
+}
+
+pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let mut metadata = Metadata::new();
     metadata.translate_type(&pas_ty::Type::Interface(module.disposable_iface.clone()));
     metadata.translate_type(&pas_ty::Type::Class(module.string_class.clone()));
 
-    let mut ir_module = Module::new(metadata);
+    let mut ir_module = Module::new(metadata, opts);
 
     for unit in &module.units {
         ir_module.translate_unit(unit);
     }
+
+    gen_dyn_array_disposers(&mut ir_module);
 
     ir_module
 }

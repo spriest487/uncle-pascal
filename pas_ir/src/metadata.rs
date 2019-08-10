@@ -8,9 +8,7 @@ use crate::formatter::{
     RawInstructionFormatter,
 };
 use pas_syn as syn;
-use pas_syn::{
-    Path,
-};
+use pas_syn::{Path};
 use pas_typecheck as pas_ty;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
@@ -57,6 +55,9 @@ pub const DISPOSABLE_DISPOSE_INDEX: usize = 0;
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
+
+pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(0);
+pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(1);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {
@@ -435,6 +436,8 @@ pub struct Metadata {
     string_literals: HashMap<StringID, String>,
     ifaces: HashMap<InterfaceID, Interface>,
 
+    dyn_array_structs: HashMap<Type, StructID>,
+
     functions: HashMap<FunctionID, FunctionDecl>,
 }
 
@@ -545,8 +548,6 @@ impl Metadata {
         func_decl: &pas_ty::ast::FunctionDecl,
         type_args: Vec<pas_ty::Type>,
     ) -> FunctionID {
-        let id = self.next_function_id();
-
         let global_name = match &func_decl.impl_iface {
             Some(_) => None,
             None => {
@@ -562,6 +563,11 @@ impl Metadata {
             },
         };
 
+        self.insert_func(global_name)
+    }
+
+    pub fn insert_func(&mut self, global_name: Option<GlobalName>) -> FunctionID {
+        let id = self.next_function_id();
         self.functions.insert(id, FunctionDecl { global_name });
 
         id
@@ -848,6 +854,14 @@ impl Metadata {
                 }
             },
 
+            pas_ty::Type::DynArray { element } => {
+                let element = self.translate_type(element.as_ref());
+
+                let array_struct = self.dyn_array_struct(element);
+
+                Type::RcPointer(Some(ClassID::Class(array_struct)))
+            },
+
             pas_ty::Type::Variant(variant) => {
                 let ty_name = NamePath::from_decl(variant.name.clone(), self);
 
@@ -873,6 +887,45 @@ impl Metadata {
 
             pas_ty::Type::Any => Type::RcPointer(None),
         }
+    }
+
+    pub fn dyn_array_struct(&mut self, element: Type) -> StructID {
+        if let Some(struct_id) = self.dyn_array_structs.get(&element) {
+            return *struct_id;
+        }
+
+        let name = NamePath::from_parts(vec![format!("{}[]", element)]);
+
+        let mut fields = HashMap::new();
+        fields.insert(DYNARRAY_PTR_FIELD, StructField {
+            name: "ptr".to_string(),
+            ty: element.clone().ptr(),
+            rc: false,
+        });
+        fields.insert(DYNARRAY_LEN_FIELD, StructField {
+            name: "len".to_string(),
+            ty: Type::I32,
+            rc: false,
+        });
+
+        let struct_id = self.next_struct_id();
+        self.type_defs.insert(struct_id, TypeDef::Struct(Struct { name, fields, }));
+
+        self.dyn_array_structs.insert(element, struct_id);
+
+        // we know it will have a disposer impl (and trust that the module
+        // will generate the code for it if we give it an ID here)
+        let disposer_id = self.next_function_id();
+        self.functions.insert(disposer_id, FunctionDecl { global_name: None });
+
+        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
+        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
+
+        struct_id
+    }
+
+    pub fn dyn_array_structs(&self) -> &HashMap<Type, StructID> {
+        &self.dyn_array_structs
     }
 
     pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, &Struct)> {

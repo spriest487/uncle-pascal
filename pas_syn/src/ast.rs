@@ -51,7 +51,7 @@ pub enum TypeName {
     },
     Array {
         element: Box<TypeName>,
-        dim: usize,
+        dim: Option<usize>,
         span: Span,
     },
 }
@@ -94,19 +94,24 @@ impl TypeName {
         tokens.look_ahead().expect_one(Self::match_next())?;
 
         if let Some(array_kw) = tokens.match_one_maybe(Keyword::Array) {
-            let dim = match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
-                TokenTree::Delimited { inner, open, .. } => {
-                    let mut dim_tokens = TokenStream::new(inner, open);
-                    let dim = dim_tokens
-                        .match_one(Matcher::AnyLiteralInteger)?
-                        .as_literal_int()
-                        .and_then(IntConstant::as_usize)
-                        .unwrap();
-                    dim_tokens.finish()?;
+            // `array of` means the array is dynamic (no dimension)
+            let dim = match tokens.look_ahead().match_one(Keyword::Of) {
+                Some(_) => None,
 
-                    dim
+                None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
+                    TokenTree::Delimited { inner, open, .. } => {
+                        let mut dim_tokens = TokenStream::new(inner, open);
+                        let dim = dim_tokens
+                            .match_one(Matcher::AnyLiteralInteger)?
+                            .as_literal_int()
+                            .and_then(IntConstant::as_usize)
+                            .unwrap();
+                        dim_tokens.finish()?;
+
+                        Some(dim)
+                    }
+                    _ => unreachable!("match failed"),
                 }
-                _ => unreachable!("match failed"),
             };
 
             tokens.match_one(Keyword::Of)?;
@@ -177,7 +182,13 @@ impl fmt::Display for TypeName {
                 Ok(())
             }
 
-            TypeName::Array { element, dim, .. } => write!(f, "array[{}] of {}", dim, element),
+            TypeName::Array { element, dim: Some(dim), .. } => {
+                write!(f, "array[{}] of {}", dim, element)
+            },
+
+            TypeName::Array { element, dim: None, .. } => {
+                write!(f, "array of {}", element)
+            },
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }

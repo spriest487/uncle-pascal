@@ -68,7 +68,7 @@ static void* Alloc(size_t len) {
     new_alloc->at = mem;
     alloc_traces = new_alloc;
 
-    fprintf(stderr, "heap: allocated %4zu bytes at 0x%p\n", len, mem);
+    fprintf(stderr, "heap: alloc %4zu bytes at 0x%p\n", len, mem);
 #endif
 
     return mem;
@@ -83,7 +83,7 @@ static void Free(void* mem) {
             struct AllocTrace* removed = *alloc;
             *alloc = removed->next;
 
-            fprintf(stderr, "heap: freed %4zu bytes at 0x%p\n", removed->len, removed->at);
+            fprintf(stderr, "heap:  free %4zu bytes at 0x%p\n", removed->len, removed->at);
             free(removed);
             break;
         } else {
