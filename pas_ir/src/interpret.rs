@@ -1337,7 +1337,8 @@ impl Interpreter {
             Instruction::DynFree { at } => {
                 match self.load(at) {
                     MemCell::Pointer(Pointer::Heap(addr)) => {
-                        self.heap.free(*addr);
+                        let addr = *addr;
+                        self.heap.free(addr);
                     }
 
                     x => {
