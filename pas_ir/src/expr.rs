@@ -1014,7 +1014,7 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
                     element_ty: elem_ty.clone(),
                 });
 
-                let el_ptr = builder.local_temp(elem_ty.ptr());
+                let el_ptr = builder.local_temp(elem_ty.clone().ptr());
 
                 for (i, el) in ctor.elements.iter().enumerate() {
                     builder.scope(|builder| {
@@ -1031,6 +1031,11 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
                         // el_ptr^ := el
                         let el = translate_expr(el, builder);
                         builder.mov(el_ptr.clone().deref(), el);
+
+                        // retain each element. we don't do this for static arrays because retaining
+                        // a static array retains all its elements - for dynamic arrays, retaining
+                        // the array object itself does not retain the elements
+                        builder.retain(el_ptr.clone().deref(), &elem_ty);
                     });
                 }
             });
