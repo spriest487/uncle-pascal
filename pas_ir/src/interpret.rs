@@ -838,7 +838,11 @@ impl Interpreter {
                     panic!("released cell was not a heap pointer, found: {:?}", cell)
                 });
 
-                let rc_cell = self.heap[rc_addr].as_rc().unwrap().clone();
+                let rc_cell = match &self.heap[rc_addr] {
+                    MemCell::RcCell(rc_cell) => rc_cell.clone(),
+                    other => panic!("released cell was not an rc value, found: {:?}", other),
+                };
+
                 let resource_ty = Type::Struct(rc_cell.struct_id);
 
                 if rc_cell.ref_count == 1 {
