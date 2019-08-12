@@ -789,7 +789,7 @@ fn gen_dyn_array_disposers(module: &mut Module) {
             a: Value::Ref(arr_field_ptr.clone().deref()),
             b: Value::Ref(counter.clone()),
         });
-        body_builder.release(el_ptr, &elem_ty);
+        body_builder.release(el_ptr.deref(), &elem_ty);
 
         // counter := counter + 1
         body_builder.append(Instruction::Add {
