@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, StructID};
+use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, StructID, MethodID};
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
 
@@ -335,7 +335,7 @@ impl fmt::Display for TypeDef {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: HashMap<usize, FunctionName>,
+    method_impls: HashMap<MethodID, FunctionName>,
 }
 
 #[derive(Clone, Debug)]
@@ -361,9 +361,10 @@ impl Class {
                 .iter()
                 .enumerate()
                 .filter_map(|(method_index, _method)| {
-                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method_index)?;
+                    let method_id = MethodID(method_index);
+                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method_id)?;
 
-                    Some((method_index, FunctionName::ID(method_impl)))
+                    Some((method_id, FunctionName::ID(method_impl)))
                 })
                 .collect();
 
@@ -400,7 +401,7 @@ impl Class {
                 "struct MethodTable_{} ImplTable_{}_{} = {{\n",
                 iface_id.0, self.struct_id.0, iface_id.0
             ));
-            for (method_index, method_name) in &iface_impl.method_impls {
+            for (method_id, method_name) in &iface_impl.method_impls {
                 def.push_str("  .base = {\n");
 
                 def.push_str("    .iface = ");
@@ -419,7 +420,7 @@ impl Class {
                 def.push_str("  },\n");
 
                 def.push_str("  .method_");
-                def.push_str(&method_index.to_string());
+                def.push_str(&method_id.0.to_string());
                 def.push_str(" = &");
                 def.push_str(&method_name.to_string());
                 def.push_str(",\n");
@@ -472,26 +473,38 @@ impl Interface {
         iface: &metadata::Interface,
         module: &mut Module,
     ) -> Self {
+        let methods = iface
+            .methods
+            .iter()
+            .enumerate()
+            .map(|(method_index, method)| {
+                let return_ty = Type::from_metadata(&method.return_ty, module);
+                let method_id = MethodID(method_index);
+                let params = method
+                    .params
+                    .iter()
+                    .map(|param| Type::from_metadata(param, module))
+                    .collect();
+
+                let name = FunctionName::Method(iface_id, method_id);
+
+                let comment = Some(format!(
+                    "Method {} of interface {}",
+                    method.name, iface.name
+                ));
+
+                FunctionDecl {
+                    return_ty,
+                    params,
+                    name,
+                    comment,
+                }
+            })
+            .collect();
+
         Self {
             id: iface_id,
-            methods: iface
-                .methods
-                .iter()
-                .enumerate()
-                .map(|(method_index, method)| FunctionDecl {
-                    return_ty: Type::from_metadata(&method.return_ty, module),
-                    params: method
-                        .params
-                        .iter()
-                        .map(|param| Type::from_metadata(param, module))
-                        .collect(),
-                    name: FunctionName::Method(iface_id, method_index),
-                    comment: Some(format!(
-                        "Method {} of interface {}",
-                        method.name, iface.name
-                    )),
-                })
-                .collect(),
+            methods,
         }
     }
 

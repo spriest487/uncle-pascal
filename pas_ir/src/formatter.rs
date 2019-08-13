@@ -141,7 +141,7 @@ pub trait InstructionFormatter {
                 self.format_val(self_arg, f)?;
                 write!(f, " as ")?;
                 self.format_type(&Type::RcPointer(Some(ClassID::Interface(*iface_id))), f)?;
-                write!(f, ").{}(", method)?;
+                write!(f, ").{}(", method.0)?;
                 for (i, arg) in rest_args.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
@@ -336,12 +336,17 @@ impl InstructionFormatter for Metadata {
                     None => {
                         let find_iface_impl = self.ifaces().iter().find_map(|(_id, iface)| {
                             iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
-                                let (name, _id) = iface_impl
-                                    .methods
-                                    .iter()
-                                    .find(|(_name, method_id)| **method_id == *id)?;
+                                let method_id = iface_impl.methods.iter().find_map(|(method_id, func_id)| {
+                                    if *func_id == *id {
+                                        Some(method_id)
+                                    } else {
+                                        None
+                                    }
+                                })?;
 
-                                Some((&iface.name, impl_ty, name))
+                                let method = iface.get_method(*method_id).unwrap();
+
+                                Some((&iface.name, impl_ty, &method.name))
                             })
                         });
 

@@ -41,6 +41,9 @@ impl fmt::Display for FieldID {
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct InterfaceID(pub usize);
 
+#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
+pub struct MethodID(pub usize);
+
 impl fmt::Display for InterfaceID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
@@ -50,7 +53,7 @@ impl fmt::Display for InterfaceID {
 // builtin fixed IDs
 pub const DISPOSABLE_ID: InterfaceID = InterfaceID(0);
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
-pub const DISPOSABLE_DISPOSE_INDEX: usize = 0;
+pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
 
 pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
@@ -135,8 +138,8 @@ impl Interface {
         }
     }
 
-    pub fn add_impl(&mut self, implementor: Type, method: usize, func_id: FunctionID) {
-        assert!(method < self.methods.len());
+    pub fn add_impl(&mut self, implementor: Type, method: MethodID, func_id: FunctionID) {
+        assert!(method.0 < self.methods.len());
 
         let methods_len = self.methods.len();
         let impl_entry = self
@@ -148,15 +151,19 @@ impl Interface {
         impl_entry.methods.insert(method, func_id);
     }
 
-    pub fn method_index(&self, name: &str) -> Option<usize> {
-        self.methods.iter().position(|m| m.name.as_str() == name)
+    pub fn method_index(&self, name: &str) -> Option<MethodID> {
+        self.methods.iter().position(|m| m.name.as_str() == name).map(MethodID)
+    }
+
+    pub fn get_method(&self, id: MethodID) -> Option<&Method> {
+        self.methods.get(id.0)
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
     // method index -> method impl
-    pub methods: HashMap<usize, FunctionID>,
+    pub methods: HashMap<MethodID, FunctionID>,
 }
 
 impl InterfaceImpl {
@@ -597,7 +604,7 @@ impl Metadata {
                                 let impl_ty_name = self.pretty_ty_name(impl_ty);
                                 Some(format!(
                                     "impl of {}.{} for {}",
-                                    iface.name, method, impl_ty_name
+                                    iface.name, method.0, impl_ty_name
                                 ))
                             } else {
                                 None
@@ -794,7 +801,7 @@ impl Metadata {
         iface.add_impl(for_ty, index, func_id);
     }
 
-    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: usize) -> Option<FunctionID> {
+    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: MethodID) -> Option<FunctionID> {
         let iface = self.ifaces.get(&iface_id)
             .unwrap_or_else(|| panic!("missing metadata definition of iface {} - defined: {:#?}", iface_id, self.ifaces));
 
@@ -806,6 +813,15 @@ impl Metadata {
     pub fn is_impl(&self, ty: &Type, iface_id: InterfaceID) -> bool {
         let impls = &self.ifaces[&iface_id].impls;
         impls.contains_key(ty)
+    }
+
+    pub fn find_impls(&self, ty: &Type) -> Vec<(InterfaceID, &InterfaceImpl)> {
+        self.ifaces.iter()
+            .filter_map(|(id, iface)| {
+                let impl_for_ty = iface.impls.get(ty)?;
+                Some((*id, impl_for_ty))
+            })
+            .collect()
     }
 
     pub fn translate_type(&mut self, ty: &pas_ty::Type) -> Type {

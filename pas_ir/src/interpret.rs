@@ -700,7 +700,7 @@ impl Interpreter {
         &self,
         self_cell: &MemCell,
         iface_id: InterfaceID,
-        method: usize,
+        method: MethodID,
     ) -> FunctionID {
         let self_rc = self_cell
             .as_pointer()
@@ -712,7 +712,7 @@ impl Interpreter {
             .unwrap_or_else(|| {
                 panic!(
                     "expected target of virtual call {}.{} to be an rc cell, but found {:?}",
-                    iface_id, method, self_cell
+                    iface_id, method.0, self_cell
                 )
             });
 
@@ -723,7 +723,7 @@ impl Interpreter {
             .unwrap_or_else(|| {
                 panic!(
                     "virtual call {}.{} missing implementation for {}",
-                    iface_id, method, instance_ty
+                    iface_id, method.0, instance_ty
                 )
             })
     }

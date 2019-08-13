@@ -247,7 +247,7 @@ pub enum Instruction {
     VirtualCall {
         out: Option<Ref>,
         iface_id: InterfaceID,
-        method: usize,
+        method: MethodID,
         self_arg: Value,
         rest_args: Vec<Value>,
     },
@@ -314,6 +314,15 @@ pub enum FunctionSrc {
     External {
         decl: pas_ty::ast::FunctionDecl,
         src: String,
+    }
+}
+
+impl FunctionSrc {
+    pub fn decl(&self) -> &pas_ty::ast::FunctionDecl {
+        match self {
+            FunctionSrc::Defined(def) => &def.decl,
+            FunctionSrc::External { decl, .. } => decl,
+        }
     }
 }
 

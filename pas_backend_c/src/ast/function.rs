@@ -1,7 +1,7 @@
 use crate::ast::{Builder, Module, Statement, Type};
 use pas_ir::{
     self as ir,
-    metadata::{FunctionID, InterfaceID},
+    metadata::{FunctionID, InterfaceID, MethodID},
 };
 use std::fmt;
 
@@ -14,7 +14,7 @@ pub enum FunctionName {
     Init,
 
     ID(FunctionID),
-    Method(InterfaceID, usize),
+    Method(InterfaceID, MethodID),
 
     // runtime functions
     RcAlloc,
@@ -36,7 +36,7 @@ impl fmt::Display for FunctionName {
             FunctionName::Main => write!(f, "main"),
             FunctionName::Init => write!(f, "ModuleInit"),
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
-            FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method),
+            FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),

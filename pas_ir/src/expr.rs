@@ -442,6 +442,7 @@ fn translate_call_with_args(
             let method_index = methods
                 .iter()
                 .position(|m| m.name == method)
+                .map(MethodID)
                 .unwrap();
 
             Instruction::VirtualCall {

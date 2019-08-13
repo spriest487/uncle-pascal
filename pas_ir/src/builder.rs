@@ -140,7 +140,34 @@ impl<'m> Builder<'m> {
             _ => src_ty,
         };
 
-        self.module.metadata.translate_type(real_ty)
+        let ty = self.module.metadata.translate_type(real_ty);
+
+        /* when we encounter a type, make sure we generate code for all of its
+        interface implementations */
+        let instantiate_methods: Vec<_> = self.module.func_src.keys()
+            .filter_map(|key| {
+                match key {
+                    FunctionDeclKey::Method { self_ty, iface ,method } if self_ty == src_ty => {
+                        let cache_key = FunctionCacheKey {
+                            decl_key: key.clone(),
+                            type_args: self.type_args.clone(),
+                        };
+
+                        let debug_name = format!("impl of {}.{} for {}", iface, method, src_ty);
+
+                        Some((cache_key, debug_name))
+                    }
+
+                    _ => None,
+                }
+            })
+            .collect();
+
+        for (method_key, debug_name) in instantiate_methods {
+            self.module.translate_func_usage(method_key, debug_name);
+        }
+
+        ty
     }
 
     pub fn dyn_array_struct(&mut self, element_ty: Type) -> StructID {
@@ -201,9 +228,9 @@ impl<'m> Builder<'m> {
         &self,
         ty: &Type,
         iface_id: InterfaceID,
-        method_index: usize,
+        method_id: MethodID,
     ) -> Option<FunctionID> {
-        self.module.metadata.find_impl(ty, iface_id, method_index)
+        self.module.metadata.find_impl(ty, iface_id, method_id)
     }
 
     pub fn finish(mut self) -> Vec<Instruction> {
