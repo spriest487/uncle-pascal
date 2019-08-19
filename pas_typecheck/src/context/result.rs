@@ -32,6 +32,11 @@ pub enum NameError {
         member: Ident,
         span: Span,
     },
+    DefDeclMismatch {
+        ident: IdentPath,
+        decl: Span,
+        def: Span,
+    },
     ExpectedType(IdentPath, UnexpectedValue),
     ExpectedInterface(IdentPath, UnexpectedValue),
     ExpectedBinding(IdentPath, UnexpectedValue),
@@ -71,6 +76,7 @@ impl Spanned for NameError {
             NameError::AlreadyDefined { ident, .. } => &ident.span(),
             NameError::Ambiguous { ident, .. } => &ident.span,
             NameError::AlreadyImplemented { method, .. } => method.span(),
+            NameError::DefDeclMismatch { ident, .. } => ident.span(),
         }
     }
 }
@@ -89,6 +95,7 @@ impl DiagnosticOutput for NameError {
             NameError::AlreadyDefined { .. } => "Name already defined",
             NameError::Ambiguous { .. } => "Name is ambiguous",
             NameError::AlreadyImplemented { .. } => "Method already implemented",
+            NameError::DefDeclMismatch { .. } => "Definition does not match previous declaration",
         }
         .to_string()
     }
@@ -153,6 +160,26 @@ impl DiagnosticOutput for NameError {
                 see_also
             }
 
+            NameError::DefDeclMismatch { def, decl, ident } => {
+                vec![
+                    DiagnosticMessage {
+                        title: format!("Previous declaration of `{}`", ident),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: decl.clone(),
+                        }),
+                    },
+
+                    DiagnosticMessage {
+                        title: format!("Conflicting definition of `{}`", ident),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: def.clone(),
+                        }),
+                    },
+                ]
+            }
+
             _ => Vec::new(),
         }
     }
@@ -208,6 +235,10 @@ impl fmt::Display for NameError {
                 "`{}.{}` already implemented for `{}`",
                 iface.name, method, for_ty
             ),
+
+            NameError::DefDeclMismatch { ident, .. } => {
+                write!(f, "definition of `{}` does not match previous declaration", ident)
+            }
         }
     }
 }

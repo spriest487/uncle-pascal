@@ -1,16 +1,14 @@
+pub mod builtin;
 pub mod ns;
 pub mod result;
 
 use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface},
+    ast::{Class, FunctionDecl, FunctionDef, Interface, Variant},
     context::NamespaceStack,
     FunctionSig, Primitive, QualifiedDeclName, Type,
 };
 use pas_common::span::*;
-use pas_syn::{
-    ast::{self, Visibility},
-    ident::*,
-};
+use pas_syn::{ast::Visibility, ident::*};
 use std::{
     borrow::Borrow,
     collections::hash_map::{Entry, HashMap},
@@ -19,7 +17,7 @@ use std::{
     rc::Rc,
 };
 
-pub use self::{ns::*, result::*};
+pub use self::{builtin::*, ns::*, result::*};
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
 pub enum ValueKind {
@@ -185,6 +183,39 @@ impl Namespace for Scope {
 }
 
 #[derive(Clone, Debug)]
+enum Def {
+    External(Ident),
+    Function(FunctionDef),
+    Class(Rc<Class>),
+    Interface(Rc<Interface>),
+    Variant(Rc<Variant>),
+}
+
+impl Def {
+    fn ident(&self) -> &Ident {
+        match self {
+            Def::External(ident) => ident,
+            Def::Function(func_def) => func_def.decl.ident.last(),
+            Def::Class(class) => &class.name.decl_name.ident,
+            Def::Interface(iface) => &iface.name.decl_name.ident,
+            Def::Variant(variant) => &variant.name.decl_name.ident,
+        }
+    }
+}
+
+// result of comparing a defined name with its previous decl
+enum DefDeclMatch {
+    // the def matches the decl
+    Match,
+
+    // the def is the right kind but doesn't match, e.g. function with wrong signature
+    Mismatch,
+
+    // the decl with the same name as this def is the wrong kind
+    WrongKind,
+}
+
+#[derive(Clone, Debug)]
 pub struct Context {
     next_id: ScopeID,
     scopes: NamespaceStack<Scope>,
@@ -193,96 +224,10 @@ pub struct Context {
     iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
 
     /// decl ident -> definition location
-    defs: HashMap<IdentPath, Span>,
+    defs: HashMap<IdentPath, Def>,
+    instantiations: HashMap<QualifiedDeclName, Def>,
 
     loop_stack: Vec<Span>,
-}
-
-pub fn builtin_span() -> Span {
-    Span {
-        file: Rc::new("<builtin>".into()),
-        start: Location { line: 0, col: 0 },
-        end: Location { line: 0, col: 0 },
-    }
-}
-
-pub fn builtin_string_name() -> QualifiedDeclName {
-    let builtin_span = builtin_span();
-
-    let system_ident = Ident::new("System", builtin_span.clone());
-    let string_ident = Ident::new("String", builtin_span.clone());
-
-    QualifiedDeclName {
-        decl_name: ast::TypeDeclName {
-            ident: string_ident.clone(),
-            span: builtin_span,
-            type_params: Vec::new(),
-        },
-        qualified: Path::from(system_ident).child(string_ident),
-        type_args: Vec::new(),
-    }
-}
-
-fn builtin_string_class() -> Class {
-    let builtin_span = builtin_span();
-
-    Class {
-        name: builtin_string_name(),
-        members: vec![
-            ast::Member {
-                ident: Ident::new("chars", builtin_span.clone()),
-                ty: Type::from(Primitive::Byte).ptr(),
-                span: builtin_span.clone(),
-            },
-            ast::Member {
-                ident: Ident::new("len", builtin_span.clone()),
-                ty: Type::from(Primitive::Int32),
-                span: builtin_span.clone(),
-            },
-        ],
-        kind: ast::ClassKind::Object,
-        span: builtin_span,
-    }
-}
-
-pub fn builtin_disposable_name() -> QualifiedDeclName {
-    let builtin_span = builtin_span();
-
-    let system_ident = Ident::new("System", builtin_span.clone());
-    let disposable_ident = Ident::new("Disposable", builtin_span.clone());
-
-    QualifiedDeclName {
-        decl_name: ast::TypeDeclName {
-            ident: disposable_ident.clone(),
-            span: builtin_span.clone(),
-            type_params: Vec::new(),
-        },
-        qualified: Path::from(system_ident).child(disposable_ident),
-        type_args: Vec::new(),
-    }
-}
-
-fn builtin_disposable_iface() -> Interface {
-    let builtin_span = builtin_span();
-
-    Interface {
-        name: builtin_disposable_name(),
-        methods: vec![FunctionDecl {
-            ident: Ident::new("Dispose", builtin_span.clone()).into(),
-            return_ty: None,
-            impl_iface: None,
-            mods: Vec::new(),
-            type_params: Vec::new(),
-            params: vec![ast::FunctionParam {
-                ident: Ident::new("self", builtin_span.clone()),
-                ty: Type::MethodSelf,
-                modifier: None,
-                span: builtin_span.clone(),
-            }],
-            span: builtin_span.clone(),
-        }],
-        span: builtin_span,
-    }
 }
 
 impl Context {
@@ -294,6 +239,8 @@ impl Context {
             next_id: ScopeID(1),
 
             defs: HashMap::new(),
+            instantiations: HashMap::new(),
+
             iface_impls: HashMap::new(),
 
             loop_stack: Vec::new(),
@@ -455,16 +402,22 @@ impl Context {
     pub fn declare_function(
         &mut self,
         name: Ident,
-        decl: &FunctionDecl,
+        func_decl: &FunctionDecl,
         visibility: Visibility,
     ) -> NamingResult<()> {
-        let def = if decl.external_src().is_some() {
-            Some(decl.span().clone())
-        } else {
-            None
+        let decl = Decl::Function {
+            sig: FunctionSig::of_decl(func_decl).into(),
+            visibility,
         };
 
-        self.declare_function_and_def(name, FunctionSig::of_decl(decl), def, visibility)
+        self.declare(name.clone(), decl)?;
+
+        if func_decl.external_src().is_some() {
+            let def = Def::External(name.clone());
+            self.define(name, def, |_| DefDeclMatch::Match, |_, _| unreachable!())?;
+        }
+
+        Ok(())
     }
 
     pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
@@ -560,25 +513,59 @@ impl Context {
         self.namespace().child(name)
     }
 
-    fn declare_function_and_def(
+    fn define<DeclPred, MapUnexpected>(
         &mut self,
         name: Ident,
-        sig: FunctionSig,
-        def: Option<Span>,
-        visibility: Visibility,
-    ) -> NamingResult<()> {
-        self.declare(
-            name.clone(),
-            Decl::Function {
-                sig: Rc::new(sig),
-                visibility,
-            },
-        )?;
+        def: Def,
+        decl_predicate: DeclPred,
+        map_unexpected: MapUnexpected,
+    ) -> NamingResult<()>
+    where
+        DeclPred: Fn(&Decl) -> DefDeclMatch,
+        MapUnexpected: Fn(IdentPath, UnexpectedValue) -> NameError,
+    {
+        let full_name = IdentPath::new(name.clone(), self.scopes.current_path().keys().cloned());
 
-        if let Some(def) = def {
-            let decl_ident = self.qualify_name(name);
-            self.defs.insert(decl_ident, def);
+        if let Some(existing) = self.defs.get(&full_name) {
+            return Err(NameError::AlreadyDefined {
+                ident: full_name,
+                existing: existing.ident().span().clone(),
+            });
         }
+
+        match self.scopes.current_path().find(&name) {
+            None => {
+                return Err(NameError::NotFound(name.clone()));
+            }
+
+            Some(MemberRef::Value { value, parent_path: _, key }) => {
+                match decl_predicate(value) {
+                    DefDeclMatch::Match => {
+                        // ok
+                    },
+
+                    DefDeclMatch::Mismatch => {
+                        return Err(NameError::DefDeclMismatch {
+                            decl: key.span().clone(),
+                            def: def.ident().span().clone(),
+                            ident: full_name,
+                        });
+                    }
+
+                    DefDeclMatch::WrongKind => {
+                        let unexpected = UnexpectedValue::Decl(value.clone());
+                        return Err(map_unexpected(full_name, unexpected));
+                    }
+                }
+            }
+
+            Some(MemberRef::Namespace { path }) => {
+                let name = path.keys().last().unwrap().clone();
+                return Err(map_unexpected(full_name, UnexpectedValue::Namespace(name)));
+            }
+        }
+
+        self.defs.insert(full_name, def);
 
         Ok(())
     }
@@ -586,77 +573,23 @@ impl Context {
     pub fn define_function(
         &mut self,
         name: Ident,
-        sig: FunctionSig,
-        def: &FunctionDef,
+        def: FunctionDef,
         visibility: Visibility,
     ) -> NamingResult<()> {
-        let decl = self.scopes.current_path().find(&name);
+        let sig = FunctionSig::of_decl(&def.decl);
 
-        match decl {
-            Some(MemberRef::Value {
-                value,
-                key,
-                parent_path,
-            }) => {
-                let path = Path::new(key.clone(), parent_path.keys().cloned());
-
-                match value {
-                    // a function with this name was declared but not yet defined, so we need to update
-                    // the existing declaration
-                    Decl::Function { sig: old_sig, .. } => {
-                        // sig must match
-                        if sig != *old_sig.as_ref() {
-                            return Err(NameError::AlreadyDeclared {
-                                new: name.clone(),
-                                existing: path,
-                            });
-                        }
-
-                        match self.defs.entry(path.clone()) {
-                            // a function with this name was already declared, and it has a definition,
-                            // so it's an error to redefine it
-                            Entry::Occupied(entry) => Err(NameError::AlreadyDefined {
-                                ident: path,
-                                existing: entry.get().clone(),
-                            }),
-
-                            Entry::Vacant(entry) => {
-                                entry.insert(def.decl.span().clone());
-                                Ok(())
-                            }
-                        }
-                    }
-
-                    other => {
-                        let path = Path::new(key.clone(), parent_path.keys().cloned());
-                        Err(NameError::ExpectedFunction(path, other.clone().into()))
-                    }
-                }
-            }
-
-            Some(MemberRef::Namespace { path }) => Err(NameError::AlreadyDeclared {
-                new: name,
-                existing: IdentPath::from_parts(path.keys().cloned()),
-            }),
-
-            None => {
-                // it wasn't already declared, so we need to declare AND define it. if it
-                // has an external modifier, it's defined externally and so it has two definitions
-                if def.decl.external_src().is_some() {
-                    Err(NameError::AlreadyDefined {
-                        existing: def.decl.span().clone(),
-                        ident: def.decl.ident.clone(),
-                    })
+        let is_func_decl = |decl: &Decl| match decl {
+            Decl::Function { sig: existing_sig, visibility: existing_vis } => {
+                if sig == **existing_sig && visibility == *existing_vis {
+                    DefDeclMatch::Match
                 } else {
-                    self.declare_function_and_def(
-                        name,
-                        sig,
-                        Some(def.decl.span().clone()),
-                        visibility,
-                    )
+                    DefDeclMatch::Mismatch
                 }
-            }
-        }
+            },
+            _ => DefDeclMatch::WrongKind,
+        };
+
+        self.define(name, Def::Function(def), is_func_decl, NameError::ExpectedFunction)
     }
 
     pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {

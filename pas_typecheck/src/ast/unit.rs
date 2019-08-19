@@ -46,12 +46,12 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 
                 ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), name)?;
             } else {
-                ctx.define_function(
-                    name,
-                    FunctionSig::of_decl(&func_def.decl).clone(),
-                    &func_def,
-                    *visibility,
-                )?;
+                if let Err(NameError::NotFound(..)) = ctx.find_function(&func_def.decl.ident) {
+                    let func_decl = &func_def.decl;
+                    ctx.declare_function(func_def.decl.ident.last().clone(), func_decl, *visibility)?;
+                }
+
+                ctx.define_function(name, func_def.clone(), *visibility)?;
             }
 
             Ok(ast::UnitDecl::FunctionDef {
@@ -67,7 +67,8 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
-            ctx.declare_function(name, &func_decl, *visibility)?;
+            ctx.declare_function(name.clone(), &func_decl, *visibility)?;
+
             Ok(ast::UnitDecl::FunctionDecl {
                 decl: func_decl,
                 visibility: *visibility,

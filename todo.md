@@ -26,3 +26,12 @@
 * defining a function needs to check visibility is the same as previous decl
 * functiondecl.ident should be an enum of { FullName, MethodName }
 * QualifiedDeclName should be an enum of { Raw, Specialized }
+
+# types refactor
+
+* Store defs in Context
+* Store type/func instantiations in Context instead of generating them on the fly in IR generation
+* patterns and other variant exprs should use ident instead of index to identify the case
+* iface_impls should use qualified names
+* remove class refs from types
+* recursive types!
