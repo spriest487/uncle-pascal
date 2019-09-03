@@ -75,7 +75,7 @@ impl fmt::Display for NamePath {
 }
 
 impl NamePath {
-    pub fn from_decl(name: pas_ty::QualifiedDeclName, metadata: &mut Metadata) -> Self {
+    pub fn from_decl(name: pas_ty::QualifiedDeclName, metadata: &Metadata) -> Self {
         let path_parts = name
             .qualified
             .into_parts()
@@ -450,7 +450,9 @@ pub struct Metadata {
 
 impl Metadata {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            ..Default::default()
+        }
     }
 
     pub fn extend(&mut self, other: &Metadata) {
@@ -654,7 +656,9 @@ impl Metadata {
         }
     }
 
-    fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
+    pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
+        let name_path = NamePath::from_decl(struct_def.name.clone(), &self);
+
         let mut fields = HashMap::new();
         for (id, member) in struct_def.members.iter().enumerate() {
             let name = member.ident.to_string();
@@ -664,12 +668,10 @@ impl Metadata {
             fields.insert(FieldID(id), StructField { name, ty, rc });
         }
 
-        let struct_name = NamePath::from_decl(struct_def.name.clone(), self);
-
         // System.String is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
         let string_name = NamePath::from_parts(vec!["System".to_string(), "String".to_string()]);
-        let id = if struct_name == string_name {
+        let id = if name_path == string_name {
             STRING_ID
         } else {
             self.next_struct_id()
@@ -679,19 +681,19 @@ impl Metadata {
             !self
                 .type_defs
                 .values()
-                .any(|def| *def.name() == struct_name),
+                .any(|def| *def.name() == name_path),
             "duplicate type def: {}",
-            struct_name
+            name_path
         );
 
-        let struct_def = Struct::new(struct_name).with_fields(fields);
+        let struct_def = Struct::new(name_path).with_fields(fields);
 
         self.type_defs.insert(id, TypeDef::Struct(struct_def));
         id
     }
 
-    fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
-        let name_path = NamePath::from_decl(variant_def.name.clone(), self);
+    pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
+        let name_path = NamePath::from_decl(variant_def.name.clone(), &self);
 
         let variant_id = self.next_struct_id();
 
@@ -729,7 +731,7 @@ impl Metadata {
         &self.ifaces
     }
 
-    fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
+    pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
         // System.Disposable is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
         let name = NamePath::from_decl(iface_def.name.clone(), self);
@@ -772,8 +774,8 @@ impl Metadata {
         id
     }
 
-    pub fn find_iface(&mut self, iface_ident: &pas_ty::ast::Interface) -> Option<InterfaceID> {
-        let name = NamePath::from_decl(iface_ident.name.clone(), self);
+    pub fn find_iface(&self, iface_ident: &pas_ty::QualifiedDeclName) -> Option<InterfaceID> {
+        let name = NamePath::from_decl(iface_ident.clone(), self);
 
         self.ifaces
             .iter()
@@ -824,21 +826,18 @@ impl Metadata {
             .collect()
     }
 
-    pub fn translate_type(&mut self, ty: &pas_ty::Type) -> Type {
+    pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
             pas_ty::Type::Nothing => Type::Nothing,
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                // todo: ifaces should use NamePaths
-                // let ty_name = NamePath::from_decl(iface.name.clone(), self);
-
-                let id = match self.find_iface(&iface) {
-                    Some(iface_id) => iface_id,
-                    None => self.define_iface(iface),
+                let iface_id = match self.find_iface(&iface.name) {
+                    Some(id) => id,
+                    None => panic!("missing IR definition for interface {}", iface.name),
                 };
 
-                Type::RcPointer(Some(ClassID::Interface(id)))
+                Type::RcPointer(Some(ClassID::Interface(iface_id)))
             },
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
@@ -850,15 +849,17 @@ impl Metadata {
 
             pas_typecheck::Type::Record(class) | pas_typecheck::Type::Class(class) => {
                 let ty_name = NamePath::from_decl(class.name.clone(), self);
-
-                let id = match self.find_struct(&ty_name) {
-                    Some((struct_id, _struct_def)) => struct_id,
-                    None => self.define_struct(class),
+                let struct_id = match self.find_struct(&ty_name) {
+                    Some((id, _def)) => id,
+                    None => panic!("{} was not found in metadata (not instantiated)", class.name),
                 };
 
                 match class.kind {
-                    syn::ast::ClassKind::Record => Type::Struct(id),
-                    syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
+                    pas_syn::ast::ClassKind::Record => Type::Struct(struct_id),
+                    pas_syn::ast::ClassKind::Object => {
+                        let class_id = ClassID::Class(struct_id);
+                        Type::RcPointer(Some(class_id))
+                    },
                 }
             },
 
@@ -873,7 +874,10 @@ impl Metadata {
             pas_ty::Type::DynArray { element } => {
                 let element = self.translate_type(element.as_ref());
 
-                let array_struct = self.dyn_array_struct(element);
+                let array_struct = match self.find_dyn_array_struct(&element) {
+                    Some(id) => id,
+                    None => panic!("missing dyn array IR struct definition for element type {}", element),
+                };
 
                 Type::RcPointer(Some(ClassID::Class(array_struct)))
             },
@@ -881,12 +885,10 @@ impl Metadata {
             pas_ty::Type::Variant(variant) => {
                 let ty_name = NamePath::from_decl(variant.name.clone(), self);
 
-                let id = match self.find_variant(&ty_name) {
-                    Some((id, _)) => id,
-                    None => self.define_variant(variant),
-                };
-
-                Type::Variant(id)
+                match self.find_variant(&ty_name) {
+                    Some((id, _)) => Type::Variant(id),
+                    None => panic!("missing IR struct metadata for variant {}", variant.name),
+                }
             },
 
             pas_ty::Type::MethodSelf => {
@@ -905,10 +907,16 @@ impl Metadata {
         }
     }
 
-    pub fn dyn_array_struct(&mut self, element: Type) -> StructID {
-        if let Some(struct_id) = self.dyn_array_structs.get(&element) {
-            return *struct_id;
-        }
+    pub fn find_dyn_array_struct(&self, element: &Type) -> Option<StructID> {
+        self.dyn_array_structs.get(element).cloned()
+    }
+
+    pub fn define_dyn_array_struct(&mut self, element: Type) -> StructID {
+        assert!(
+            !self.dyn_array_structs.contains_key(&element),
+            "duplicate IR struct definition for dynamic array with element {}",
+            element
+        );
 
         let name = NamePath::from_parts(vec![format!("{}[]", element)]);
 

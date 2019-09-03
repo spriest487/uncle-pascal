@@ -1,9 +1,4 @@
-use crate::{
-    annotation::TypeAnnotation,
-    ast::{Call, Expression, Variant},
-    context::NameError,
-    Type, ValueKind,
-};
+use crate::{annotation::TypeAnnotation, ast::{Call, Expression, Variant}, context::NameError, Type, ValueKind, GenericError};
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
 use std::fmt;
@@ -96,12 +91,7 @@ pub enum TypecheckError {
         stmt: Box<ast::Statement<Span>>,
     },
 
-    InvalidTypeArgs {
-        ty: Type,
-        expected: usize,
-        actual: usize,
-        span: Span,
-    },
+    GenericError(GenericError),
 
     InvalidMethodInterface {
         ty: Type,
@@ -122,7 +112,16 @@ pub type TypecheckResult<T> = Result<T, TypecheckError>;
 
 impl From<NameError> for TypecheckError {
     fn from(err: NameError) -> Self {
-        TypecheckError::ScopeError(err)
+        match err {
+            NameError::GenericError(err) => TypecheckError::from(err),
+            err => TypecheckError::ScopeError(err),
+        }
+    }
+}
+
+impl From<GenericError> for TypecheckError {
+    fn from(err: GenericError) -> Self {
+        TypecheckError::GenericError(err)
     }
 }
 
@@ -154,7 +153,7 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
-            TypecheckError::InvalidTypeArgs { span, .. } => span,
+            TypecheckError::GenericError(err) => err.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
@@ -204,7 +203,7 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
 
-            TypecheckError::InvalidTypeArgs { .. } => "Invalid type arguments".to_string(),
+            TypecheckError::GenericError(err) => err.title(),
 
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
@@ -219,6 +218,7 @@ impl DiagnosticOutput for TypecheckError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
             TypecheckError::ScopeError(err) => err.label(),
+            TypecheckError::GenericError(err) => err.label(),
             TypecheckError::UndefinedSymbols { .. } => None,
             _ => Some(DiagnosticLabel {
                 text: Some(self.to_string()),
@@ -230,6 +230,7 @@ impl DiagnosticOutput for TypecheckError {
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
             TypecheckError::ScopeError(err) => err.see_also(),
+            TypecheckError::GenericError(err) => err.see_also(),
 
             TypecheckError::UndefinedSymbols { syms, .. } => syms
                 .iter()
@@ -394,8 +395,8 @@ impl fmt::Display for TypecheckError {
                 write!(f, "the statement `{}` can only appear inside a loop", stmt)
             }
 
-            TypecheckError::InvalidTypeArgs { ty, expected, actual, .. } => {
-                write!(f, "wrong number of type arguments for type `{}`: expected {}, found {}", ty, expected, actual)
+            TypecheckError::GenericError(err) => {
+                write!(f, "{}", err)
             }
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {

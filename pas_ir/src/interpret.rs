@@ -427,7 +427,7 @@ impl Interpreter {
         heap.trace = opts.trace_heap;
 
         Self {
-            metadata: Metadata::new(),
+            metadata: Metadata::default(),
             globals,
             stack: Vec::new(),
             heap,

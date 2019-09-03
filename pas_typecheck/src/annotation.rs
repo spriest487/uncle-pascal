@@ -275,8 +275,18 @@ impl fmt::Display for QualifiedDeclName {
 
                 write!(f, "{}", arg_ty)?;
             }
+        } else if self.decl_name.type_params.len() > 0 {
+            write!(f, "{} of ", self.qualified)?;
+
+            for (arg_pos, arg_name) in self.decl_name.type_params.iter().enumerate() {
+                if arg_pos > 0 {
+                    write!(f, ", ")?;
+                }
+
+                write!(f, "{}", arg_name)?;
+            }
         } else {
-            write!(f, "{}", self.decl_name)?;
+            write!(f, "{}", self.qualified)?;
         }
 
         Ok(())

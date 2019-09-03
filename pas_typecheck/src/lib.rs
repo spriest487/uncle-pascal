@@ -30,6 +30,7 @@ pub mod ast {
         };
 
         pub use crate::{annotation::*, ast::*, context::*, result::*, ty::*};
+        pub use std::rc::Rc;
     }
 }
 

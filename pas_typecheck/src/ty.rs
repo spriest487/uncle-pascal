@@ -9,12 +9,9 @@ use pas_syn::{
 
 use crate::{
     ast::{Class, FunctionDecl, Interface, Variant},
-    context::{
-        self,
-        ns::{self, Namespace as _},
-    },
+    context::{self, ns::Namespace as _},
     result::*,
-    Context, Decl, NameError, QualifiedDeclName, TypeAnnotation,
+    Context, Decl, GenericError, GenericResult, NameError, QualifiedDeclName, TypeAnnotation,
 };
 
 #[cfg(test)]
@@ -76,9 +73,9 @@ impl FunctionSig {
         }
     }
 
-    pub fn specialize_generic(&self, type_args: Vec<Type>, span: &Span) -> TypecheckResult<Self> {
+    pub fn specialize_generic(&self, type_args: Vec<Type>, span: &Span) -> GenericResult<Self> {
         if type_args.len() != self.type_params_len {
-            return Err(TypecheckError::InvalidTypeArgs {
+            return Err(GenericError::ArgsLenMismatch {
                 expected: self.type_params_len,
                 actual: type_args.len(),
                 ty: Type::Function(Rc::new(self.clone())),
@@ -96,7 +93,7 @@ impl FunctionSig {
                     ..sig_param.clone()
                 })
             })
-            .collect::<TypecheckResult<_>>()?;
+            .collect::<GenericResult<_>>()?;
 
         let specialized_sig = FunctionSig {
             return_ty: Type::specialize_generic(&self.return_ty, &type_args, span)?,
@@ -251,7 +248,7 @@ pub enum Type {
     Interface(Rc<Interface>),
     Variant(Rc<Variant>),
     Array { element: Box<Type>, dim: usize },
-    DynArray { element: Box<Type>, },
+    DynArray { element: Box<Type> },
     MethodSelf,
     GenericParam(TypeParam),
     Any,
@@ -284,23 +281,17 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDecl::Class(
-                class @ ast::Class {
-                    kind: ClassKind::Record,
-                    ..
-                },
-            ) => Type::Record(Rc::new(class.clone())),
+            ast::TypeDecl::Class(class) if class.kind == ClassKind::Record => {
+                Type::Record(class.clone())
+            },
 
-            ast::TypeDecl::Class(
-                class @ ast::Class {
-                    kind: ClassKind::Object,
-                    ..
-                },
-            ) => Type::Class(Rc::new(class.clone())),
+            ast::TypeDecl::Class(class) => {
+                Type::Class(class.clone())
+            },
 
-            ast::TypeDecl::Variant(variant) => Type::Variant(Rc::new(variant.clone())),
+            ast::TypeDecl::Variant(variant) => Type::Variant(variant.clone()),
 
-            ast::TypeDecl::Interface(iface) => Type::Interface(Rc::new(iface.clone())),
+            ast::TypeDecl::Interface(iface) => Type::Interface(iface.clone()),
         }
     }
 
@@ -474,7 +465,7 @@ impl Type {
         }
     }
 
-    pub fn specialize_generic(&self, args: &[Self], span: &Span) -> TypecheckResult<Self> {
+    pub fn specialize_generic(&self, args: &[Self], span: &Span) -> GenericResult<Self> {
         match self {
             Type::GenericParam(TypeParam { pos, .. }) => {
                 let arg = args.get(*pos).unwrap_or_else(|| {
@@ -553,7 +544,7 @@ fn specialize_generic_type_args(
     type_args: &[Type],
     outer_args: &[Type],
     span: &Span,
-) -> TypecheckResult<Vec<Type>> {
+) -> GenericResult<Vec<Type>> {
     type_args
         .iter()
         .map(|arg| Type::specialize_generic(arg, outer_args, span))
@@ -584,7 +575,7 @@ pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResul
     }
 }
 
-pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type> {
+pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
     match ty {
         ast::TypeName::Ident {
             ident,
@@ -592,15 +583,16 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
             type_args,
             span,
         } => {
-            let raw_ty = find_type(ident, ctx)?;
+            let raw_ty = find_type(ident, ctx)?.clone();
 
             let ty = if !type_args.is_empty() {
-                let type_args: Vec<_> = type_args
-                    .iter()
-                    .map(|arg| typecheck_type(arg, ctx))
-                    .collect::<TypecheckResult<_>>()?;
+                let mut checked_type_args = Vec::new();
+                for arg in type_args {
+                    let arg_ty = typecheck_type(&arg, ctx)?;
+                    checked_type_args.push(arg_ty);
+                }
 
-                Type::specialize_generic(raw_ty, &type_args, span)?
+                Type::specialize_generic(&raw_ty, &checked_type_args, span)?
             } else {
                 raw_ty.clone()
             };
@@ -617,9 +609,9 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
                     dim: *dim,
                 }),
 
-                None => Ok(Type::DynArray {
-                    element: Box::new(element),
-                })
+                None => {
+                    Ok(Type::DynArray { element: Box::new(element) })
+                },
             }
         }
 
@@ -627,7 +619,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
     }
 }
 
-fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> TypecheckResult<Type> {
+fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> GenericResult<Type> {
     match member_ty {
         Type::GenericParam(class_param) => {
             let ty = args.get(class_param.pos).unwrap_or_else(|| {
@@ -681,10 +673,10 @@ pub fn specialize_generic_class(
     class: &Class,
     args: Vec<Type>,
     span: &Span,
-) -> TypecheckResult<Class> {
+) -> GenericResult<Class> {
     let type_params: &[Ident] = &class.name.decl_name.type_params.as_slice();
     if args.len() != type_params.len() {
-        return Err(TypecheckError::InvalidTypeArgs {
+        return Err(GenericError::ArgsLenMismatch {
             ty: Type::Class(class.clone().into()),
             expected: type_params.len(),
             actual: args.len(),
@@ -702,7 +694,7 @@ pub fn specialize_generic_class(
                 ..member.clone()
             })
         })
-        .collect::<TypecheckResult<_>>()?;
+        .collect::<GenericResult<_>>()?;
 
     let parameterized_name = QualifiedDeclName {
         type_args: args,
@@ -721,10 +713,10 @@ pub fn specialize_generic_variant(
     variant: &Variant,
     args: Vec<Type>,
     span: &Span,
-) -> TypecheckResult<Variant> {
+) -> GenericResult<Variant> {
     let type_params: &[Ident] = &variant.name.decl_name.type_params.as_slice();
     if args.len() != type_params.len() {
-        return Err(TypecheckError::InvalidTypeArgs {
+        return Err(GenericError::ArgsLenMismatch {
             ty: Type::Variant(variant.clone().into()),
             expected: type_params.len(),
             actual: args.len(),
@@ -749,7 +741,7 @@ pub fn specialize_generic_variant(
                 ..case.clone()
             })
         })
-        .collect::<TypecheckResult<_>>()?;
+        .collect::<GenericResult<_>>()?;
 
     let parameterized_name = QualifiedDeclName {
         type_args: args,
@@ -808,7 +800,7 @@ impl Specializable for Type {
     }
 }
 
-pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
+pub fn string_type(ctx: &mut Context) -> TypecheckResult<Type> {
     let span = context::builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
     let str_class_name = ast::TypeName::Ident {
@@ -824,14 +816,14 @@ pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {
     VariantCase {
-        variant: Rc<Variant>,
-        case_index: usize,
+        variant: QualifiedDeclName,
+        case: Ident,
         data_binding: Option<Ident>,
         span: Span,
     },
     NegatedVariantCase {
-        variant: Rc<Variant>,
-        case_index: usize,
+        variant: QualifiedDeclName,
+        case: Ident,
         span: Span,
     },
     Type {
@@ -857,41 +849,37 @@ impl Spanned for TypePattern {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct PatternBinding<'pat> {
-    pub ident: &'pat Ident,
-    pub ty: &'pat Type,
+pub struct PatternBinding {
+    pub ident: Ident,
+    pub ty: Type,
 }
 
 impl TypePattern {
+    // for an identPath (eg System.Option.Some) check if the last part is a declared variant
+    // case and return the separate variant ident (eg System.Option) and case ident (eg Some)
     fn find_variant_case(
         path: &IdentPath,
         ctx: &Context,
-    ) -> TypecheckResult<Option<(Rc<Variant>, usize)>> {
+    ) -> TypecheckResult<Option<(IdentPath, Ident)>> {
         let variant_parts = path.iter().cloned().take(path.as_slice().len() - 1);
         let stem_name = IdentPath::from_parts(variant_parts);
 
-        match ctx.resolve(&stem_name) {
-            Some(ns::MemberRef::Value {
-                value:
-                    Decl::Type {
-                        ty: Type::Variant(variant),
-                        ..
-                    },
-                ..
-            }) => {
+        match ctx.find_type(&stem_name) {
+            Ok((ref decl_name, Type::Variant(variant))) => {
                 let case_ident = path.last();
 
-                let case_index = variant.case_position(case_ident).ok_or_else(|| {
+                // check case with this ident exists
+                if variant.case_position(case_ident).is_none() {
                     let err_span = path.first().span.to(&case_ident.span);
 
-                    TypecheckError::from(NameError::MemberNotFound {
+                    return Err(NameError::MemberNotFound {
                         base: Type::Variant(variant.clone()),
                         member: case_ident.clone(),
                         span: err_span,
-                    })
-                })?;
+                    }.into())
+                }
 
-                let case = (variant.clone(), case_index);
+                let case = (decl_name.clone(), case_ident.clone());
                 Ok(Some(case))
             }
 
@@ -924,17 +912,21 @@ impl TypePattern {
 
     // find_pattern_ty, but for variant type patterns
     fn find_pattern_variant(
-        variant: Rc<Variant>,
+        variant: &IdentPath,
         span: &Span,
         expect_ty: &Type,
-    ) -> TypecheckResult<Rc<Variant>> {
+        ctx: &mut Context,
+    ) -> TypecheckResult<QualifiedDeclName> {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
-                let var_ty = Type::Variant(variant);
+                let variant_def = ctx.find_variant_def(variant)?;
+                let var_ty = Type::Variant(variant_def);
 
                 var_ty.infer_specialized_from_hint(expect_var)
                     .map(|ty| match ty {
-                        Type::Variant(v) => v.clone(),
+                        Type::Variant(v) => {
+                            v.name.clone()
+                        },
                         _ => unreachable!("should never infer a non-variant specialized type for a generic variant"),
                     })
                     .ok_or_else(|| TypecheckError::NotMatchable {
@@ -944,39 +936,35 @@ impl TypePattern {
             }
 
             _ => {
-                // can never match on raw variants
-                if variant.name.is_generic() {
-                    Err(TypecheckError::NotMatchable {
-                        ty: Type::Variant(variant),
-                        span: span.clone(),
-                    })
-                } else {
-                    // expect_ty is probably Nothing and we have to assume the type we find from
-                    // just the typename is right (if not, we'll get a type mismatch later)
-                    // todo: make sure we get a type mismatch later
-                    Ok(variant)
-                }
+                let variant_def = ctx.find_variant_def(variant)?;
+                // expect_ty is probably Nothing and we have to assume the type we find from
+                // just the typename is right (if not, we'll get a type mismatch later)
+                // todo: make sure we get a type mismatch later
+                Ok(variant_def.name.clone())
             }
         }
     }
 
-    pub fn find(
+    pub fn typecheck(
         pattern: &ast::TypeNamePattern,
         expect_ty: &Type,
-        ctx: &Context,
+        ctx: &mut Context,
     ) -> TypecheckResult<TypePattern> {
         match pattern {
+            // this pattern typename will never contain generic args (we can't parse those here),
+            // so either this is a non-generic type or we'll infer a specialization from the
+            // expression's expected type
             ast::TypeNamePattern::TypeName {
                 name,
                 binding,
                 span,
             } if name.as_slice().len() > 1 => match Self::find_variant_case(name, ctx)? {
-                Some((variant, case_index)) => {
-                    let variant = Self::find_pattern_variant(variant, span, expect_ty)?;
+                Some((variant, case_ident)) => {
+                    let variant = Self::find_pattern_variant(&variant, span, expect_ty, ctx)?;
 
                     Ok(TypePattern::VariantCase {
                         variant: variant.clone(),
-                        case_index,
+                        case: case_ident,
                         data_binding: binding.clone(),
                         span: span.clone(),
                     })
@@ -995,12 +983,12 @@ impl TypePattern {
 
             ast::TypeNamePattern::NegatedTypeName { name, span } if name.as_slice().len() > 1 => {
                 match Self::find_variant_case(name, ctx)? {
-                    Some((variant, case_index)) => {
-                        let variant = Self::find_pattern_variant(variant, span, expect_ty)?;
+                    Some((variant, case_ident)) => {
+                        let variant = Self::find_pattern_variant(&variant, span, expect_ty, ctx)?;
 
                         Ok(TypePattern::NegatedVariantCase {
                             variant: variant.clone(),
-                            case_index,
+                            case: case_ident,
                             span: span.clone(),
                         })
                     }
@@ -1038,26 +1026,37 @@ impl TypePattern {
         }
     }
 
-    pub fn bindings(&self) -> Vec<PatternBinding> {
+    pub fn bindings(&self, ctx: &mut Context) -> TypecheckResult<Vec<PatternBinding>> {
         match self {
             TypePattern::Type {
                 ty,
                 binding: Some(ident),
                 ..
-            } => vec![PatternBinding { ident: ident, ty }],
+            } => {
+                let binding = PatternBinding { ident: ident.clone(), ty: ty.clone() };
+                Ok(vec![binding])
+            },
 
             TypePattern::VariantCase {
                 variant,
-                case_index,
+                case,
                 data_binding: Some(ident),
                 ..
             } => {
-                let case_ty = variant.cases[*case_index].data_ty.as_ref()
+                let variant_def = ctx.instantiate_variant(variant)?;
+                let case_ty = variant_def.cases.iter()
+                    .find_map(|c| if c.ident == *case {
+                        c.data_ty.clone()
+                    } else {
+                        None
+                    })
                     .expect("variant case pattern with a binding must always reference a case which has a data member");
-                vec![PatternBinding { ty: case_ty, ident }]
+
+                let binding = PatternBinding { ty: case_ty, ident: ident.clone() };
+                Ok(vec![binding])
             }
 
-            _ => Vec::new(),
+            _ => Ok(Vec::new()),
         }
     }
 }
@@ -1077,12 +1076,11 @@ impl fmt::Display for TypePattern {
 
             TypePattern::VariantCase {
                 variant,
-                case_index,
+                case,
                 data_binding,
                 ..
             } => {
-                let case_ident = &variant.cases[*case_index].ident;
-                write!(f, "{}.{}", variant.name, case_ident)?;
+                write!(f, "{}.{}", variant.qualified, case)?;
                 if let Some(binding) = data_binding {
                     write!(f, " {}", binding)?;
                 }
@@ -1091,11 +1089,10 @@ impl fmt::Display for TypePattern {
 
             TypePattern::NegatedVariantCase {
                 variant,
-                case_index,
+                case,
                 ..
             } => {
-                let case_ident = &variant.cases[*case_index].ident;
-                write!(f, "not {}.{}", variant.name, case_ident)
+                write!(f, "not {}.{}", variant.qualified, case)
             }
         }
     }

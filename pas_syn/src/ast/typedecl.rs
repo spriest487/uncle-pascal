@@ -2,6 +2,7 @@ use crate::{
     ast::{FunctionDecl, OfClause},
     parse::prelude::*,
 };
+use std::rc::Rc;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Member<A: Annotation> {
@@ -236,9 +237,9 @@ impl<A: Annotation> Spanned for Variant<A> {
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
-    Class(Class<A>),
-    Interface(Interface<A>),
-    Variant(Variant<A>),
+    Class(Rc<Class<A>>),
+    Interface(Rc<Interface<A>>),
+    Variant(Rc<Variant<A>>),
 }
 
 impl<A: Annotation> TypeDecl<A> {
@@ -356,7 +357,7 @@ impl TypeDecl<Span> {
         match tokens.look_ahead().next() {
             Some(ref tt) if class_matcher.is_match(tt) => {
                 let class_decl = Class::parse(tokens, name)?;
-                Ok(TypeDecl::Class(class_decl))
+                Ok(TypeDecl::Class(Rc::new(class_decl)))
             }
 
             Some(TokenTree::Keyword {
@@ -364,7 +365,7 @@ impl TypeDecl<Span> {
                 ..
             }) => {
                 let iface_decl = Interface::parse(tokens, name)?;
-                Ok(TypeDecl::Interface(iface_decl))
+                Ok(TypeDecl::Interface(Rc::new(iface_decl)))
             }
 
             Some(TokenTree::Keyword {
@@ -372,7 +373,7 @@ impl TypeDecl<Span> {
                 ..
             }) => {
                 let variant_decl = Variant::parse(tokens, name)?;
-                Ok(TypeDecl::Variant(variant_decl))
+                Ok(TypeDecl::Variant(Rc::new(variant_decl)))
             }
 
             Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(

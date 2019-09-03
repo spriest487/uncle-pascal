@@ -23,31 +23,13 @@ fn typecheck_param(
     })
 }
 
-fn decl_type_params<A: ast::Annotation>(
-    decl: &ast::FunctionDecl<A>,
-    ctx: &mut Context,
-) -> TypecheckResult<()> {
-    for (pos, name) in decl.type_params.iter().enumerate() {
-        ctx.declare_type(
-            name.clone(),
-            Type::GenericParam(TypeParam {
-                name: name.clone(),
-                pos,
-            }),
-            Visibility::Private,
-        )?;
-    }
-
-    Ok(())
-}
-
 pub fn typecheck_func_decl(
     decl: &ast::FunctionDecl<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
     let decl_scope = ctx.push_scope(None);
 
-    decl_type_params(decl, ctx)?;
+    ctx.declare_type_params(&decl.type_params)?;
 
     let return_ty = match &decl.return_ty {
         Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
@@ -143,7 +125,7 @@ pub fn typecheck_func_def(
 
     let body_scope = ctx.push_scope(None);
 
-    decl_type_params(&def.decl, ctx)?;
+    ctx.declare_type_params(&def.decl.type_params)?;
 
     for param in &decl.params {
         let (kind, init) = match param.modifier {
@@ -202,23 +184,5 @@ pub fn specialize_func_decl(decl: &FunctionDecl, args: &[Type]) -> TypecheckResu
         params,
         return_ty,
         ..decl.clone()
-    })
-}
-
-pub fn specialize_func_def(def: &FunctionDef, args: &[Type]) -> TypecheckResult<FunctionDef> {
-    let decl = specialize_func_decl(&def.decl, args)?;
-
-    //    let statements: Vec<_> = def.body.statements.iter()
-    //        .map(|stmt| specialize_stmt(stmt, args))
-    //        .collect::<TypecheckResult<_>>()?;
-    //
-    //    let body = Block {
-    //        statements,
-    //        annotation:
-    //    };
-
-    Ok(FunctionDef {
-        decl,
-        ..def.clone()
     })
 }

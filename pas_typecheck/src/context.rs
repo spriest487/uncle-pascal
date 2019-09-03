@@ -2,11 +2,7 @@ pub mod builtin;
 pub mod ns;
 pub mod result;
 
-use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface, Variant},
-    context::NamespaceStack,
-    FunctionSig, Primitive, QualifiedDeclName, Type,
-};
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, FunctionSig, Primitive, QualifiedDeclName, Type, specialize_generic_variant, TypeParam};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -108,13 +104,8 @@ impl fmt::Display for Decl {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct MethodImpl {
-    def: bool,
-}
-
-#[derive(Clone, Debug, PartialEq)]
 struct InterfaceImpl {
-    methods: HashMap<Ident, MethodImpl>,
+    methods: HashMap<Ident, Option<FunctionDef>>,
 }
 
 impl InterfaceImpl {
@@ -183,8 +174,8 @@ impl Namespace for Scope {
 }
 
 #[derive(Clone, Debug)]
-enum Def {
-    External(Ident),
+pub enum Def {
+    External(FunctionDecl),
     Function(FunctionDef),
     Class(Rc<Class>),
     Interface(Rc<Interface>),
@@ -194,7 +185,7 @@ enum Def {
 impl Def {
     fn ident(&self) -> &Ident {
         match self {
-            Def::External(ident) => ident,
+            Def::External(func_decl) => func_decl.ident.last(),
             Def::Function(func_def) => func_def.decl.ident.last(),
             Def::Class(class) => &class.name.decl_name.ident,
             Def::Interface(iface) => &iface.name.decl_name.ident,
@@ -215,6 +206,12 @@ enum DefDeclMatch {
     WrongKind,
 }
 
+impl DefDeclMatch {
+    pub fn always_match(_: &Decl) -> DefDeclMatch {
+        DefDeclMatch::Match
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Context {
     next_id: ScopeID,
@@ -225,7 +222,6 @@ pub struct Context {
 
     /// decl ident -> definition location
     defs: HashMap<IdentPath, Def>,
-    instantiations: HashMap<QualifiedDeclName, Def>,
 
     loop_stack: Vec<Span>,
 }
@@ -238,12 +234,11 @@ impl Context {
             scopes: NamespaceStack::new(Scope::new(ScopeID(0), None)),
             next_id: ScopeID(1),
 
-            defs: HashMap::new(),
-            instantiations: HashMap::new(),
+            defs: Default::default(),
 
-            iface_impls: HashMap::new(),
+            iface_impls: Default::default(),
 
-            loop_stack: Vec::new(),
+            loop_stack: Default::default(),
         };
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
@@ -389,7 +384,61 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_type(
+    pub fn declare_iface(&mut self, iface: Rc<Interface>, visibility: Visibility) -> NamingResult<()> {
+        let name = iface.name.decl_name.ident.clone();
+        let iface_ty = Type::Interface(iface.clone());
+        self.declare_type(name.clone(), iface_ty, visibility)?;
+
+        let map_unexpected = |_, _| unreachable!();
+        self.define(name, Def::Interface(iface.clone()), DefDeclMatch::always_match, map_unexpected)?;
+
+        Ok(())
+    }
+
+    pub fn declare_variant(&mut self, variant: Rc<Variant>, visibility: Visibility) -> NamingResult<()>  {
+        let name = variant.name.decl_name.ident.clone();
+        let variant_ty = Type::Variant(variant.clone());
+        self.declare_type(name.clone(), variant_ty, visibility)?;
+
+        let map_unexpected = |_, _| unreachable!();
+        self.define(name, Def::Variant(variant.clone()), DefDeclMatch::always_match, map_unexpected)?;
+
+        Ok(())
+    }
+
+    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()>  {
+        let name = class.name.decl_name.ident.clone();
+        let class_ty = Type::Class(class.clone());
+        self.declare_type(name.clone(), class_ty, visibility)?;
+
+        let map_unexpected = |_, _| unreachable!();
+        self.define(name, Def::Class(class.clone()), DefDeclMatch::always_match, map_unexpected)?;
+
+        Ok(())
+    }
+
+    /// declare the type params of a function in the local scope
+    pub fn declare_type_params(&mut self, names: &[Ident]) -> NamingResult<()> {
+        for (pos, name) in names.iter().enumerate() {
+            self.declare_type(
+                name.clone(),
+                Type::GenericParam(TypeParam {
+                    name: name.clone(),
+                    pos,
+                }),
+                Visibility::Private,
+            )?;
+        }
+
+        Ok(())
+    }
+
+    pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> NamingResult<()> {
+        let self_ident = Ident::new("Self", span);
+        self.declare_type(self_ident, ty, Visibility::Private)
+    }
+
+    fn declare_type(
         &mut self,
         name: Ident,
         ty: Type,
@@ -413,7 +462,7 @@ impl Context {
         self.declare(name.clone(), decl)?;
 
         if func_decl.external_src().is_some() {
-            let def = Def::External(name.clone());
+            let def = Def::External(func_decl.clone());
             self.define(name, def, |_| DefDeclMatch::Match, |_, _| unreachable!())?;
         }
 
@@ -442,7 +491,7 @@ impl Context {
         iface_ident: IdentPath,
         self_ty: Type,
         method: Ident,
-    ) -> NamingResult<Entry<Ident, MethodImpl>> {
+    ) -> NamingResult<Entry<Ident, Option<FunctionDef>>> {
         // check the method exists
         let (_iface_path, iface) = self.find_iface(&iface_ident)?;
         if iface.get_method(&method).is_none() {
@@ -469,7 +518,7 @@ impl Context {
         method: Ident,
     ) -> NamingResult<()> {
         self.method_impl_entry(iface_ident, self_ty, method)?
-            .or_insert_with(|| MethodImpl { def: false });
+            .or_insert_with(|| None);
         Ok(())
     }
 
@@ -477,32 +526,46 @@ impl Context {
         &mut self,
         iface: Rc<Interface>,
         self_ty: Type,
-        method: Ident,
+        method_def: FunctionDef,
     ) -> NamingResult<()> {
         match self.method_impl_entry(
             iface.name.qualified.clone(),
             self_ty.clone(),
-            method.clone(),
+            method_def.decl.ident.last().clone(),
         )? {
             Entry::Occupied(mut entry) => {
-                if entry.get().def {
+                if entry.get().is_some() {
                     return Err(NameError::AlreadyImplemented {
-                        method,
+                        method: method_def.decl.ident.last().clone(),
                         for_ty: self_ty,
                         iface: Box::new(iface.as_ref().clone()),
                         existing: entry.key().span.clone(),
                     });
                 } else {
-                    entry.get_mut().def = true;
+                    *entry.get_mut() = Some(method_def);
                 }
             }
 
             Entry::Vacant(entry) => {
-                entry.insert(MethodImpl { def: true });
+                entry.insert(Some(method_def));
             }
         }
 
         Ok(())
+    }
+
+    pub fn find_method_def(&self,
+        iface: &IdentPath,
+        for_ty: &Type,
+        method: &Ident
+    ) -> Option<&FunctionDef> {
+        let impls = self.iface_impls.get(iface)?;
+
+        let impls_for_ty = impls.get(for_ty)?;
+
+        let method = impls_for_ty.methods.get(method)?.as_ref()?;
+
+        Some(method)
     }
 
     pub fn namespace(&self) -> IdentPath {
@@ -615,6 +678,43 @@ impl Context {
 
             None => Err(NameError::NotFound(name.last().clone())),
         }
+    }
+
+    pub fn find_def(&self, name: &IdentPath) -> Option<&Def> {
+        self.defs.get(name)
+    }
+
+    pub fn find_variant_def(&self, name: &IdentPath) -> NamingResult<Rc<Variant>> {
+        match self.defs.get(name) {
+            Some(Def::Variant(variant_def)) => {
+                Ok(variant_def.clone())
+            }
+
+            Some(..) => {
+                let decl = self.resolve(&name);
+                let unexpected = UnexpectedValue::Decl(decl
+                    .expect("found def so decl must exist")
+                    .as_value()
+                    .expect("if def exists it must be a value not a namespace")
+                    .clone());
+
+                return Err(NameError::ExpectedVariant(name.clone(), unexpected))
+            }
+
+            None => {
+                return Err(NameError::NotFound(name.last().clone()));
+            }
+        }
+    }
+
+    pub fn instantiate_variant(&mut self, name: &QualifiedDeclName) -> NamingResult<Rc<Variant>> {
+        let base_def = self.find_variant_def(&name.qualified)?;
+
+        let ty_args = name.type_args.clone();
+        let instance_def = specialize_generic_variant(base_def.as_ref(), ty_args, name.span())
+            .map(Rc::new)?;
+
+        Ok(instance_def)
     }
 
     pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<Interface>)> {

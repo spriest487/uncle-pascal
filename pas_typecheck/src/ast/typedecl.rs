@@ -1,5 +1,4 @@
 use crate::ast::prelude::*;
-use pas_syn::Ident;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Class = ast::Class<TypeAnnotation>;
@@ -15,16 +14,16 @@ pub fn typecheck_type_decl(
     match type_decl {
         ast::TypeDecl::Class(class) => {
             let class = typecheck_class(name, class, ctx)?;
-            Ok(ast::TypeDecl::Class(class))
+            Ok(ast::TypeDecl::Class(Rc::new(class)))
         }
         ast::TypeDecl::Interface(iface) => {
             let iface = typecheck_iface(name, iface, ctx)?;
-            Ok(ast::TypeDecl::Interface(iface))
+            Ok(ast::TypeDecl::Interface(Rc::new(iface)))
         }
 
         ast::TypeDecl::Variant(variant) => {
             let variant = typecheck_variant(name, variant, ctx)?;
-            Ok(ast::TypeDecl::Variant(variant))
+            Ok(ast::TypeDecl::Variant(Rc::new(variant)))
         }
     }
 }
@@ -59,8 +58,7 @@ pub fn typecheck_iface(
 ) -> TypecheckResult<Interface> {
     // declare Self type - type decls are always in their own scope so we don't need to push
     // another one
-    let self_ident = Ident::new("Self", iface.span().clone());
-    ctx.declare_type(self_ident, Type::MethodSelf, Visibility::Private)?;
+    ctx.declare_self_ty(Type::MethodSelf, iface.name.span().clone())?;
 
     let mut methods: Vec<FunctionDecl> = Vec::new();
     for method in &iface.methods {

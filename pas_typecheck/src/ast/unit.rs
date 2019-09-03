@@ -1,4 +1,6 @@
-use crate::ast::prelude::*;
+use crate::ast::{
+    prelude::*,
+};
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
@@ -44,7 +46,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                     .as_iface()
                     .expect("implemented type must be an interface");
 
-                ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), name)?;
+                ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
             } else {
                 if let Err(NameError::NotFound(..)) = ctx.find_function(&func_def.decl.ident) {
                     let func_decl = &func_def.decl;
@@ -66,6 +68,8 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         } => {
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
+
+            assert!(func_decl.impl_iface.is_none(), "not yet implemented: can't forward-declare method impls");
 
             ctx.declare_function(name.clone(), &func_decl, *visibility)?;
 
@@ -89,28 +93,25 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 type_args: Vec::new(),
             };
 
-            for (pos, name) in full_name.decl_name.type_params.iter().enumerate() {
-                let param_ty = TypeParam {
-                    pos,
-                    name: name.clone(),
-                };
-                ctx.declare_type(
-                    name.clone(),
-                    Type::GenericParam(param_ty),
-                    Visibility::Private,
-                )?;
-            }
+            ctx.declare_type_params(&full_name.decl_name.type_params)?;
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
 
             ctx.pop_scope(ty_scope);
 
-            let decl_ty = Type::of_decl(&type_decl);
-            ctx.declare_type(
-                type_decl.ident().decl_name.ident.clone(),
-                decl_ty,
-                *visibility,
-            )?;
+            match &type_decl {
+                ast::TypeDecl::Interface(iface) => {
+                    ctx.declare_iface(iface.clone(), *visibility)?;
+                }
+
+                ast::TypeDecl::Variant(variant) => {
+                    ctx.declare_variant(variant.clone(), *visibility)?;
+                }
+
+                ast::TypeDecl::Class(class) => {
+                    ctx.declare_class(class.clone(), *visibility)?;
+                }
+            }
 
             Ok(ast::UnitDecl::Type {
                 decl: type_decl,

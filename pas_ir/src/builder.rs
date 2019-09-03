@@ -134,44 +134,129 @@ impl<'m> Builder<'m> {
         Self { type_args, ..self }
     }
 
-    pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let real_ty = match src_ty {
-            pas_ty::Type::GenericParam(param) => &self.type_args[param.pos],
-            _ => src_ty,
+    pub fn translate_variant_case<'ty>(
+        &'ty mut self,
+        variant: &pas_ty::QualifiedDeclName,
+        case: &pas_syn::Ident
+    ) -> (StructID, usize, Option<&'ty Type>) {
+        let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
+
+        let (id, variant_struct) = match self.module.metadata.find_variant(&name_path) {
+            Some((id, variant_struct)) => (id, variant_struct),
+            None => panic!("missing IR metadata for variant {}", variant),
         };
 
-        let ty = self.module.metadata.translate_type(real_ty);
+        let case_index = variant_struct.cases.iter()
+            .position(|c| c.name == case.name);
+
+        match case_index {
+            Some(index) => (id, index, variant_struct.cases[index].ty.as_ref()),
+            None => panic!("missing case {} for {} in IR metadata", case, variant),
+        }
+    }
+
+    fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
+        let path_parts = name
+            .qualified
+            .clone()
+            .into_parts()
+            .into_iter()
+            .map(|ident| ident.to_string());
+
+        let type_args = name
+            .type_args
+            .iter()
+            .map(|arg| self.translate_type(arg))
+            .collect();
+
+        NamePath {
+            path: pas_syn::Path::from_parts(path_parts),
+            type_args,
+        }
+    }
+
+    pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
+        let real_ty = match src_ty {
+            pas_ty::Type::GenericParam(param) => self.type_args[param.pos].clone(),
+            _ => src_ty.clone(),
+        };
+
+        // instantiate types which may contain generic params
+        match &real_ty {
+            pas_ty::Type::Variant(variant_def) => {
+                let name_path = self.translate_name(&variant_def.name);
+
+                if self.module.metadata.find_variant(&name_path).is_none() {
+                    self.module.metadata.define_variant(&variant_def);
+                }
+            }
+
+            pas_ty::Type::Record(class_def)
+            | pas_ty::Type::Class(class_def) => {
+                let name_path = self.translate_name(&class_def.name);
+
+                if self.module.metadata.find_struct(&name_path).is_none() {
+                    self.module.metadata.define_struct(&class_def);
+                }
+            }
+
+            pas_ty::Type::Interface(iface_def) => {
+                if self.module.metadata.find_iface(&iface_def.name).is_none() {
+                    self.module.metadata.define_iface(&iface_def);
+                }
+            }
+
+            pas_ty::Type::DynArray { element } => {
+                self.translate_dyn_array_struct(&element);
+            }
+
+            _ => {
+                // nothing to be instantiated
+            },
+        }
+
+        let ty = self.module.metadata.translate_type(&real_ty);
 
         /* when we encounter a type, make sure we generate code for all of its
         interface implementations */
-        let instantiate_methods: Vec<_> = self.module.func_src.keys()
-            .filter_map(|key| {
-                match key {
-                    FunctionDeclKey::Method { self_ty, iface ,method } if self_ty == src_ty => {
-                        let cache_key = FunctionCacheKey {
-                            decl_key: key.clone(),
-                            type_args: self.type_args.clone(),
-                        };
+        eprintln!("unimplemented: iface impl instantation ({})", ty);
+//        for iface_impl in self.module.src.root_ctx.iface_impls(src_ty) {
+//
+//        }
 
-                        let debug_name = format!("impl of {}.{} for {}", iface, method, src_ty);
+//        let instantiate_methods: Vec<_> = self.module.metadata.functions()
+//            .filter_map(|key| {
+//                match key {
+//                    FunctionDeclKey::Method { self_ty, iface ,method } if self_ty == src_ty => {
+//                        let cache_key = FunctionCacheKey {
+//                            decl_key: key.clone(),
+//                            type_args: self.type_args.clone(),
+//                        };
+//
+//                        let debug_name = format!("impl of {}.{} for {}", iface, method, src_ty);
+//
+//                        Some((cache_key, debug_name))
+//                    }
+//
+//                    _ => None,
+//                }
+//            })
+//            .collect();
 
-                        Some((cache_key, debug_name))
-                    }
-
-                    _ => None,
-                }
-            })
-            .collect();
-
-        for (method_key, debug_name) in instantiate_methods {
-            self.module.translate_func_usage(method_key, debug_name);
-        }
+//        for (method_key, debug_name) in instantiate_methods {
+//            self.module.translate_func_usage(method_key, debug_name);
+//        }
 
         ty
     }
 
-    pub fn dyn_array_struct(&mut self, element_ty: Type) -> StructID {
-        self.module.dyn_array_struct(element_ty)
+    pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
+        let element_ty = self.translate_type(element_ty);
+
+        match self.module.metadata.find_dyn_array_struct(&element_ty) {
+            Some(id) => id,
+            None => self.module.metadata.define_dyn_array_struct(element_ty),
+        }
     }
 
     pub fn translate_func(
@@ -186,21 +271,12 @@ impl<'m> Builder<'m> {
             .map(|arg| arg.specialize_generic(&self.type_args, span).unwrap())
             .collect();
 
-        let debug_name = {
-            let type_args = type_args
-                .iter()
-                .map(|arg| self.module.metadata.translate_type(arg))
-                .collect();
-
-            NamePath::from_ident_path(&func_name, type_args).to_string()
-        };
-
         let key = FunctionCacheKey {
             type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 
-        self.module.translate_func_usage(key, debug_name)
+        self.module.translate_func_usage(key)
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
@@ -673,7 +749,8 @@ mod test {
 
     #[test]
     fn end_loop_scope_ends_at_right_scope_level() {
-        let mut module = Module::new(Metadata::new(), IROptions::default());
+        let ctx = pas_ty::Context::root(true);
+        let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
         let initial_scope = builder.scopes.len();
@@ -688,7 +765,8 @@ mod test {
 
     #[test]
     fn break_cleans_up_loop_locals() {
-        let mut module = Module::new(Metadata::new(), IROptions::default());
+        let ctx = pas_ty::Context::root(true);
+        let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
         let continue_label = builder.alloc_label();

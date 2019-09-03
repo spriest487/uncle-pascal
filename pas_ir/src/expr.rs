@@ -14,7 +14,6 @@ use pas_typecheck::{
     TypePattern,
     ValueKind,
 };
-use std::rc::Rc;
 use std::convert::TryFrom;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
@@ -120,18 +119,19 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
     let base_ref = translate_expr(&indexer.base, builder);
 
     match indexer.base.annotation().ty() {
-        pas_ty::Type::Array { .. } => {
+        pas_ty::Type::Array { element, .. } => {
+            let element = builder.translate_type(element);
             builder.append(Instruction::Element {
                 out: ptr_into.clone(),
                 a: base_ref,
                 index: Value::Ref(index_ref),
-                element: ty,
+                element,
             });
         }
 
-        pas_ty::Type::DynArray { .. } => {
+        pas_ty::Type::DynArray { element } => {
             let arr_field = builder.local_temp(ty.clone().ptr().ptr());
-            let array_struct = builder.dyn_array_struct(ty.clone());
+            let array_struct = builder.translate_dyn_array_struct(&element);
             let array_class = ClassID::Class(array_struct);
 
             builder.append(Instruction::Field {
@@ -250,42 +250,48 @@ pub fn translate_if_cond(
 
         Some(TypePattern::VariantCase {
                  variant,
-                 case_index,
+                 case,
                  data_binding,
                  ..
              }) => {
+            let (struct_id, case_index, case_ty) = builder.translate_variant_case(variant, case);
+            let variant_ty = Type::Variant(struct_id);
+
             let bindings = match data_binding {
                 Some(binding) => {
                     let binding_name = binding.name.to_string();
-                    let case_ty = variant.cases[*case_index].data_ty.as_ref()
-                        .expect("variant case pattern with a binding must reference a variant case which has a data member");
 
-                    let variant_ty = builder.translate_type(&pas_ty::Type::Variant(variant.clone()));
-                    let binding_ty = builder.translate_type(&case_ty);
-                    let data_ptr = builder.local_temp(binding_ty.clone().ptr());
+                    let case_ty = case_ty.cloned()
+                        .expect("variant pattern with binding must refer to a case with data");
+
+                    let data_ptr = builder.local_temp(case_ty.clone().ptr());
 
                     builder.append(Instruction::VariantData {
                         out: data_ptr.clone(),
                         a: cond_val.clone(),
-                        of_ty: variant_ty,
-                        tag: *case_index,
+                        of_ty: variant_ty.clone(),
+                        tag: case_index,
                     });
 
-                    vec![(binding_name, binding_ty, data_ptr.deref())]
+                    vec![(binding_name, case_ty, data_ptr.deref())]
                 }
+
                 None => Vec::new(),
             };
 
-            let is = translate_is_variant(cond_val, variant.clone(), *case_index, builder);
+            let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
             (is, bindings)
         }
 
         Some(TypePattern::NegatedVariantCase {
                  variant,
-                 case_index,
+                 case,
                  ..
              }) => {
-            let is = translate_is_variant(cond_val, variant.clone(), *case_index, builder);
+            let (struct_id, case_index, _case_ty) = builder.translate_variant_case(variant, case);
+
+            let variant_ty = Type::Variant(struct_id);
+            let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
 
             let is_not = builder.local_temp(Type::Bool);
             builder.append(Instruction::Not {
@@ -347,19 +353,15 @@ pub fn translate_if_cond(
 
 fn translate_is_variant(
     val: Ref,
-    variant: Rc<pas_ty::ast::Variant>,
+    variant_ty: Type,
     case_index: usize,
     builder: &mut Builder,
 ) -> Ref {
-    let variant_ty = pas_ty::Type::Variant(variant);
-
-    let ty = builder.translate_type(&variant_ty);
-
     let tag_ptr = builder.local_temp(Type::I32.ptr());
     builder.append(Instruction::VariantTag {
         out: tag_ptr.clone(),
         a: val,
-        of_ty: ty,
+        of_ty: variant_ty,
     });
 
     let is = builder.local_temp(Type::Bool);

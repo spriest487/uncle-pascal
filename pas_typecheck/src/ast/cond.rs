@@ -22,7 +22,7 @@ pub fn typecheck_if_cond(
     }
 
     let is_pattern = match &if_cond.is_pattern {
-        Some(pattern) => Some(TypePattern::find(pattern, cond.annotation().ty(), ctx)?),
+        Some(pattern) => Some(TypePattern::typecheck(pattern, cond.annotation().ty(), ctx)?),
         None => None,
     };
 
@@ -30,7 +30,7 @@ pub fn typecheck_if_cond(
 
     // is-pattern binding only exists in the "then" branch, if present
     if let Some(pattern) = &is_pattern {
-        for binding in pattern.bindings() {
+        for binding in pattern.bindings(ctx)? {
             then_ctx.declare_binding(
                 binding.ident.clone(),
                 Binding {
