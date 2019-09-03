@@ -191,10 +191,12 @@ impl<'m> Builder<'m> {
                 }
             }
 
-            pas_ty::Type::Record(class_def) | pas_ty::Type::Class(class_def) => {
-                let name_path = self.translate_name(&class_def.name);
+            pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
+                let name_path = self.translate_name(&name);
 
                 if self.module.metadata.find_struct(&name_path).is_none() {
+                    let class_def = self.module.src_metadata.instantiate_class(name)
+                        .unwrap();
                     self.module.metadata.define_struct(&class_def);
                 }
             }

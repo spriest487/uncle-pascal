@@ -1,5 +1,5 @@
 use crate::{
-    ast::{typecheck_unit, Unit},
+    ast::{typecheck_unit, Class, Unit},
     context::*,
     ty::*,
 };
@@ -20,26 +20,28 @@ fn unit_from_src(src: &str) -> Unit {
     typecheck_unit(&unit, &mut ctx).unwrap()
 }
 
-fn types_from_src(src: &str) -> Vec<Type> {
+fn classes_from_src(src: &str) -> Vec<Rc<Class>> {
     let unit = unit_from_src(src);
-    let decls = unit.type_decls().map(Type::of_decl).collect();
+    let decls = unit.type_decls().cloned().map(|t| match t {
+        ast::TypeDecl::Class(class) => class,
+        _ => unreachable!(),
+    });
 
-    decls
+    decls.collect()
 }
 
 #[test]
 fn specialize_class_has_correct_member_types() {
-    let tys = types_from_src(
+    let tys = classes_from_src(
         r"  type A of T = class
                 t: T;
                 x: Byte;
             end;
         ",
     );
-    let class = tys[0].as_class().unwrap();
 
     let type_args = vec![INT32.clone()];
-    let result = specialize_generic_class(&class, type_args, &builtin_span()).unwrap();
+    let result = specialize_class_def(&tys[0], type_args, &builtin_span()).unwrap();
 
     assert_eq!(1, result.name.type_args.len());
     assert_eq!(INT32, result.name.type_args[0]);
@@ -50,17 +52,16 @@ fn specialize_class_has_correct_member_types() {
 
 #[test]
 fn specialize_class_has_multi_correct_member_types() {
-    let tys = types_from_src(
+    let tys = classes_from_src(
         r"  type A of T1, T2 = class
                 t1: T1;
                 t2: T2;
             end;
         ",
     );
-    let class = tys[0].as_class().unwrap();
 
     let type_args = vec![INT32.clone(), BYTE.clone()];
-    let result = specialize_generic_class(&class, type_args, &builtin_span()).unwrap();
+    let result = specialize_class_def(&tys[0], type_args, &builtin_span()).unwrap();
 
     assert_eq!(2, result.name.type_args.len());
     assert_eq!(INT32, result.name.type_args[0]);
@@ -72,7 +73,7 @@ fn specialize_class_has_multi_correct_member_types() {
 
 #[test]
 fn specialize_class_with_deep_params() {
-    let tys = types_from_src(
+    let tys = classes_from_src(
         r"  type A of T1, T2 = record
                 t1: T1;
                 t2: T2;
@@ -87,13 +88,16 @@ fn specialize_class_with_deep_params() {
 
     let span = builtin_span();
 
-    let a_class = tys[0].as_record().unwrap();
-    let b_class = tys[1].as_class().unwrap();
+    let a_class = &tys[0];
+    let b_class = &tys[1];
 
-    let expected_a_ty = specialize_generic_class(&a_class, vec![INT32, INT32], &span).unwrap();
-    let result = specialize_generic_class(&b_class, vec![INT32], &span).unwrap();
+    let expected_a_ty = specialize_class_def(a_class, vec![INT32, INT32], &span).unwrap();
+    let result = specialize_class_def(b_class, vec![INT32], &span).unwrap();
 
-    assert_eq!(Type::Record(Rc::new(expected_a_ty)), result.members[0].ty);
+    assert_eq!(
+        Type::Record(expected_a_ty.name.clone()),
+        result.members[0].ty
+    );
     assert_eq!(INT32, result.members[1].ty);
 }
 
@@ -145,10 +149,17 @@ fn specialized_fn_with_specialized_params_has_right_params() {
 
     let int_params = vec![INT32.clone()];
 
-    let a_ty = Type::of_decl(unit.type_decls().next().unwrap());
-    let a_class = a_ty.as_record().unwrap();
-    let a_int = specialize_generic_class(&a_class, int_params.clone(), &span)
-        .map(|class| Type::Record(Rc::new(class)))
+    let a_class = unit
+        .type_decls()
+        .filter_map(|d| match d {
+            ast::TypeDecl::Class(class) => Some(class.clone()),
+            _ => unreachable!(),
+        })
+        .next()
+        .unwrap();
+
+    let a_int = specialize_class_def(&a_class, int_params.clone(), &span)
+        .map(|class| Type::Record(class.name))
         .unwrap();
 
     let b_func = unit.func_defs().next().unwrap();

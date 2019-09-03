@@ -41,13 +41,13 @@ pub fn typecheck_object_ctor(
         return Err(TypecheckError::PrivateConstructor { ty, span });
     }
 
-    let ty_members: Vec<_> = ty.members().map(|m| m.ty).cloned().collect();
+    let ty_members: Vec<_> = ty.members(ctx)?.into_iter().map(|m| m.ty).collect();
     let mut members = Vec::new();
 
     for (member_ty, ctor_member) in ty_members.iter().zip(ctor.args.members.iter()) {
         let value = typecheck_expr(&ctor_member.value, member_ty, ctx)?;
 
-        match ty.find_member(&ctor_member.ident) {
+        match ty.find_data_member(&ctor_member.ident, ctx)? {
             None => {
                 return Err(NameError::MemberNotFound {
                     base: ty,
@@ -57,7 +57,7 @@ pub fn typecheck_object_ctor(
                 .into());
             }
 
-            Some(member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
+            Some(ref member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
                 return Err(TypecheckError::InvalidBinOp {
                     rhs: value.annotation().ty().clone(),
                     lhs: member_ref.ty.clone(),
@@ -73,7 +73,7 @@ pub fn typecheck_object_ctor(
         }
     }
 
-    if members.len() != ty.members_len() {
+    if members.len() != ty.members_len(ctx)? {
         let actual = members
             .into_iter()
             .map(|m| m.value.annotation().ty().clone())

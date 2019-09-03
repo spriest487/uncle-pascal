@@ -18,7 +18,7 @@ use crate::{
 pub struct MethodAnnotation {
     pub span: Span,
     pub iface_ty: Type,
-    pub method: Box<FunctionDecl>,
+    pub method_name: Ident,
 
     //    pub self_ty: Type,
     pub self_arg: Option<Box<Expression>>,
@@ -31,13 +31,14 @@ impl MethodAnnotation {
         span: Span,
         iface_ty: Type,
         self_arg: Expression,
-        method_decl: FunctionDecl,
+        method_sig: Rc<FunctionSig>,
+        method_name: Ident,
     ) -> Self {
         Self {
             span,
             iface_ty,
-            method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
-            method: Box::new(method_decl),
+            method_ty: Type::Function(method_sig),
+            method_name,
 
             self_arg: Some(Box::new(self_arg)),
         }
@@ -48,9 +49,8 @@ impl MethodAnnotation {
             span,
             iface_ty,
             method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
-            method: Box::new(method_decl),
+            method_name: method_decl.ident.single().clone(),
 
-            //            self_ty: Type::GenericSelf,
             self_arg: None,
         }
     }
@@ -180,7 +180,7 @@ impl TypeAnnotation {
     pub fn decl(&self) -> Option<&Span> {
         match self {
             TypeAnnotation::Type(..) => None,
-            TypeAnnotation::Method(method) => Some(method.method.span()),
+            TypeAnnotation::Method(method) => Some(&method.span),
             TypeAnnotation::Function { .. } => None, // TODO
             TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,

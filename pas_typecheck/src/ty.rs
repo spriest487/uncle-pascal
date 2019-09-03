@@ -7,13 +7,8 @@ use pas_syn::{
     Operator,
 };
 
-use crate::{
-    ast::{Class, FunctionDecl, Interface, Variant},
-    context::{self, ns::Namespace as _},
-    result::*,
-    Context, Decl, ExpectedKind, GenericError, GenericResult, NameError, QualifiedDeclName,
-    TypeAnnotation,
-};
+use crate::{ast::{Class, FunctionDecl, Interface, Variant}, context::{self, ns::Namespace as _}, result::*, Context, Decl, ExpectedKind, GenericError, GenericResult, NameError, QualifiedDeclName, TypeAnnotation, NamingResult, GenericTarget};
+use crate::ast::Member;
 
 #[cfg(test)]
 mod test;
@@ -79,7 +74,7 @@ impl FunctionSig {
             return Err(GenericError::ArgsLenMismatch {
                 expected: self.type_params_len,
                 actual: type_args.len(),
-                ty: Type::Function(Rc::new(self.clone())),
+                target: GenericTarget::FunctionSig(self.clone()),
                 span: span.clone(),
             });
         }
@@ -244,8 +239,8 @@ pub enum Type {
     Primitive(Primitive),
     Pointer(Box<Type>),
     Function(Rc<FunctionSig>),
-    Record(Rc<Class>),
-    Class(Rc<Class>),
+    Record(QualifiedDeclName),
+    Class(QualifiedDeclName),
     Interface(Rc<Interface>),
     Variant(Rc<Variant>),
     Array { element: Box<Type>, dim: usize },
@@ -274,7 +269,7 @@ impl Type {
             Type::MethodSelf => Some(builtin_path("Self")),
             Type::Primitive(p) => Some(builtin_path(p.name())),
             Type::Interface(iface) => Some(iface.name.qualified.clone()),
-            Type::Record(class) | Type::Class(class) => Some(class.name.qualified.clone()),
+            Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.name.qualified.clone()),
             _ => None,
         }
@@ -283,10 +278,10 @@ impl Type {
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
         match type_decl {
             ast::TypeDecl::Class(class) if class.kind == ClassKind::Record => {
-                Type::Record(class.clone())
+                Type::Record(class.name.clone())
             }
 
-            ast::TypeDecl::Class(class) => Type::Class(class.clone()),
+            ast::TypeDecl::Class(class) => Type::Class(class.name.clone()),
 
             ast::TypeDecl::Variant(variant) => Type::Variant(variant.clone()),
 
@@ -294,40 +289,51 @@ impl Type {
         }
     }
 
-    pub fn find_member(&self, ident: &Ident) -> Option<MemberRef> {
+    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NamingResult<Option<Member>> {
         match self {
-            Type::Record(class) | Type::Class(class) => {
-                class.find_member(ident).map(|m| MemberRef {
-                    ident: &m.ident,
-                    ty: &m.ty,
-                })
+            Type::Class(class_name) | Type::Record(class_name) => {
+                let def = ctx.instantiate_class(class_name)?;
+
+                Ok(def.find_member(member).cloned())
             }
 
-            _ => None,
+            _ => Ok(None),
         }
     }
 
-    pub fn get_member(&self, index: usize) -> Option<MemberRef> {
+    pub fn get_member(&self, index: usize, ctx: &Context) -> NamingResult<Option<Member>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                class.members.get(index).map(|m| MemberRef {
-                    ty: &m.ty,
-                    ident: &m.ident,
-                })
+                let class = ctx.instantiate_class(class)?;
+
+                Ok(class.members.get(index).cloned())
             }
-            _ => None,
+            _ => Ok(None),
         }
     }
 
-    pub fn members_len(&self) -> usize {
+    pub fn members_len(&self, ctx: &Context) -> NamingResult<usize> {
         match self {
-            Type::Record(class) | Type::Class(class) => class.members.len(),
-            _ => 0,
+            Type::Record(class) | Type::Class(class) => {
+                let class = ctx.instantiate_class(class)?;
+                Ok(class.members.len())
+            },
+
+            _ => {
+                Ok(0)
+            },
         }
     }
 
-    pub fn members(&self) -> impl Iterator<Item = MemberRef> {
-        (0..self.members_len()).map(move |m| self.get_member(m).unwrap())
+    pub fn members(&self, ctx: &Context) -> NamingResult<Vec<Member>> {
+        let mut members = Vec::new();
+        for i in 0..self.members_len(ctx)? {
+            let member = self.get_member(i, ctx)?.unwrap();
+
+            members.push(member);
+        }
+
+        Ok(members)
     }
 
     pub fn is_generic_param(&self) -> bool {
@@ -457,14 +463,14 @@ impl Type {
         }
     }
 
-    pub fn as_record(&self) -> Result<Rc<Class>, &Self> {
+    pub fn as_record(&self) -> Result<QualifiedDeclName, &Self> {
         match self {
             Type::Record(class) => Ok(class.clone()),
             other => Err(other),
         }
     }
 
-    pub fn as_class(&self) -> Result<Rc<Class>, &Self> {
+    pub fn as_class(&self) -> Result<QualifiedDeclName, &Self> {
         match self {
             Type::Class(class) => Ok(class.clone()),
             other => Err(other),
@@ -477,27 +483,31 @@ impl Type {
             return self;
         }
 
+        fn new_class_name(
+            name: &QualifiedDeclName,
+            args: &[Type],
+            ctx: &Context
+        ) -> QualifiedDeclName {
+            let new_args = name.type_args.iter()
+                .cloned()
+                .map(|arg| arg.substitute_type_args(args, ctx))
+                .collect();
+
+            QualifiedDeclName {
+                type_args: new_args,
+                ..name.clone()
+            }
+        }
+
         match self {
             Type::GenericParam(param) => args[param.pos].clone(),
 
-            Type::Class(class) | Type::Record(class) => {
-                let new_args = class.name.type_args.iter()
-                    .cloned()
-                    .map(|arg| arg.substitute_type_args(args, ctx))
-                    .collect();
+            Type::Class(name) => {
+                Type::Class(new_class_name(&name, args, ctx))
+            }
 
-                let new_name = QualifiedDeclName {
-                    type_args: new_args,
-                    ..class.name.clone()
-                };
-
-                let new_class = ctx.instantiate_class(&new_name)
-                    .unwrap();
-
-                match new_class.kind {
-                    ClassKind::Object => Type::Class(new_class),
-                    ClassKind::Record => Type::Record(new_class),
-                }
+            Type::Record(name) => {
+                Type::Record(new_class_name(&name, args, ctx))
             }
 
             Type::Variant(variant) => {
@@ -542,13 +552,13 @@ impl Type {
                 Ok(arg.clone())
             }
 
-            Type::Record(class) => specialize_generic_class(&class, args.to_vec(), span)
-                .map(Rc::new)
-                .map(Type::Record),
+            Type::Record(class) => {
+                specialize_generic_name(&class, args, span).map(Type::Record)
+            },
 
-            Type::Class(class) => specialize_generic_class(&class, args.to_vec(), span)
-                .map(Rc::new)
-                .map(Type::Class),
+            Type::Class(class) => {
+                specialize_generic_name(&class, args, span).map(Type::Class)
+            }
 
             Type::Variant(variant) => specialize_generic_variant(&variant, args.to_vec(), span)
                 .map(Rc::new)
@@ -571,7 +581,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nil => write!(f, "nil"),
-            Type::Class(class) | Type::Record(class) => write!(f, "{}", class.name),
+            Type::Class(name) | Type::Record(name) => write!(f, "{}", name),
             Type::Interface(iface) => write!(f, "{}", iface.name),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
             Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
@@ -696,16 +706,16 @@ fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> GenericRes
             Ok(ty.clone())
         }
 
-        Type::Class(class) => {
-            let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
-            let class = specialize_generic_class(&class, class_args, span)?;
-            Ok(Type::Class(Rc::new(class)))
+        Type::Class(name) => {
+            let class_args = specialize_generic_type_args(&name.type_args, &args, span)?;
+            let class = specialize_generic_name(&name, &class_args, span)?;
+            Ok(Type::Class(class))
         }
 
-        Type::Record(class) => {
-            let class_args = specialize_generic_type_args(&class.name.type_args, &args, span)?;
-            let class = specialize_generic_class(&class, class_args, span)?;
-            Ok(Type::Record(Rc::new(class)))
+        Type::Record(name) => {
+            let class_args = specialize_generic_type_args(&name.type_args, &args, span)?;
+            let class = specialize_generic_name(&name, &class_args, span)?;
+            Ok(Type::Record(class))
         }
 
         Type::Variant(variant) => {
@@ -733,20 +743,36 @@ fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> GenericRes
     }
 }
 
-pub fn specialize_generic_class(
-    class: &Class,
-    args: Vec<Type>,
+pub fn specialize_generic_name(
+    name: &QualifiedDeclName,
+    args: &[Type],
     span: &Span,
-) -> GenericResult<Class> {
-    let type_params: &[Ident] = &class.name.decl_name.type_params.as_slice();
+) -> GenericResult<QualifiedDeclName> {
+    let type_params: &[Ident] = &name.decl_name.type_params.as_slice();
+
     if args.len() != type_params.len() {
         return Err(GenericError::ArgsLenMismatch {
-            ty: Type::Class(class.clone().into()),
+            target: GenericTarget::Name(name.qualified.clone()),
             expected: type_params.len(),
             actual: args.len(),
             span: span.clone(),
         });
     }
+
+    let name = QualifiedDeclName {
+        type_args: args.to_vec(),
+        ..name.clone()
+    };
+
+    Ok(name)
+}
+
+pub fn specialize_class_def(
+    class: &Class,
+    args: Vec<Type>,
+    span: &Span,
+) -> GenericResult<Class> {
+    let parameterized_name = specialize_generic_name(&class.name, &args, span)?;
 
     let members: Vec<_> = class
         .members
@@ -759,11 +785,6 @@ pub fn specialize_generic_class(
             })
         })
         .collect::<GenericResult<_>>()?;
-
-    let parameterized_name = QualifiedDeclName {
-        type_args: args,
-        ..class.name.clone()
-    };
 
     Ok(Class {
         name: parameterized_name,
@@ -778,15 +799,7 @@ pub fn specialize_generic_variant(
     args: Vec<Type>,
     span: &Span,
 ) -> GenericResult<Variant> {
-    let type_params: &[Ident] = &variant.name.decl_name.type_params.as_slice();
-    if args.len() != type_params.len() {
-        return Err(GenericError::ArgsLenMismatch {
-            ty: Type::Variant(variant.clone().into()),
-            expected: type_params.len(),
-            actual: args.len(),
-            span: span.clone(),
-        });
-    }
+    let parameterized_name = specialize_generic_name(&variant.name, &args, span)?;
 
     let cases: Vec<_> = variant
         .cases
@@ -806,11 +819,6 @@ pub fn specialize_generic_variant(
             })
         })
         .collect::<GenericResult<_>>()?;
-
-    let parameterized_name = QualifiedDeclName {
-        type_args: args,
-        ..variant.name.clone()
-    };
 
     Ok(Variant {
         name: parameterized_name,
@@ -850,7 +858,7 @@ impl Specializable for Type {
 
     fn is_generic(&self) -> bool {
         match self {
-            Type::Class(class) | Type::Record(class) => class.name.is_generic(),
+            Type::Class(class) | Type::Record(class) => class.is_generic(),
 
             Type::Variant(variant) => variant.name.is_generic(),
 

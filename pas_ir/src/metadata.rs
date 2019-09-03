@@ -862,31 +862,33 @@ impl Metadata {
 
             pas_typecheck::Type::Record(class) | pas_typecheck::Type::Class(class) => {
                 let any_generic_args = class
-                    .name
                     .type_args
                     .iter()
                     .any(|arg| arg.is_generic_param());
                 assert!(
                     !any_generic_args,
                     "name of translated class must not contain unspecialized generics: {}",
-                    class.name
+                    class
                 );
 
-                let ty_name = NamePath::from_decl(class.name.clone(), self);
+                let ty_name = NamePath::from_decl(class.clone(), self);
                 let struct_id = match self.find_struct(&ty_name) {
                     Some((id, _def)) => id,
                     None => panic!(
                         "{} was not found in metadata (not instantiated)",
-                        class.name
+                        class
                     ),
                 };
 
-                match class.kind {
-                    pas_syn::ast::ClassKind::Record => Type::Struct(struct_id),
-                    pas_syn::ast::ClassKind::Object => {
+                match ty {
+                    pas_ty::Type::Class(..) => {
                         let class_id = ClassID::Class(struct_id);
                         Type::RcPointer(Some(class_id))
                     }
+
+                    pas_ty::Type::Record(..) => Type::Struct(struct_id),
+
+                    _ => unreachable!(),
                 }
             }
 

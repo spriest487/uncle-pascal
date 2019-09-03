@@ -39,7 +39,7 @@ pub mod ty;
 #[cfg(test)]
 mod test;
 
-use ast::{typecheck_unit, Class, Interface};
+use ast::{typecheck_unit, Interface};
 use pas_common::span::*;
 use std::rc::Rc;
 
@@ -49,7 +49,7 @@ pub struct Module {
     pub root_ctx: Context,
 
     // language builtins
-    pub string_class: Rc<Class>,
+    pub string_class: QualifiedDeclName,
     pub disposable_iface: Rc<Interface>,
 }
 

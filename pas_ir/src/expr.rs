@@ -576,9 +576,9 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
     }
 }
 
-fn is_string_class(class: &pas_ty::ast::Class) -> bool {
-    let str_path = syn::Path::from_parts(vec!["System".to_string(), "String".to_string()]);
-    class.name.qualified == str_path
+fn is_string_class(class: &pas_ty::QualifiedDeclName) -> bool {
+    class.qualified.first().name.as_str() == "System"
+        && class.qualified.last().name.as_str() == "String"
 }
 
 fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Ref {

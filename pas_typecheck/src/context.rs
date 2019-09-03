@@ -2,7 +2,7 @@ pub mod builtin;
 pub mod ns;
 pub mod result;
 
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam, specialize_generic_class};
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam, specialize_class_def};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -62,14 +62,14 @@ pub struct Binding {
     pub def: Option<Span>,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum InstanceMember<'a> {
+#[derive(Clone, Debug)]
+pub enum InstanceMember {
     Data {
-        ty: &'a Type,
+        ty: Type,
     },
     Method {
-        iface_ty: &'a Type,
-        decl: &'a FunctionDecl,
+        iface_ty: Type,
+        func: IdentPath,
     },
 }
 
@@ -268,7 +268,7 @@ impl Context {
             let disposable_ty = Type::Interface(Rc::new(builtin_disposable_iface()));
             let disposable_name = disposable_ty.full_path().unwrap();
 
-            let string_ty = Type::Class(Rc::new(builtin_string_class()));
+            let string_ty = Type::Class(builtin_string_name());
             let string_name = string_ty.full_path().unwrap();
 
             let system_scope = root_ctx.push_scope(Some(Ident::new("System", builtin_span)));
@@ -426,7 +426,7 @@ impl Context {
 
     pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()> {
         let name = class.name.decl_name.ident.clone();
-        let class_ty = Type::Class(class.clone());
+        let class_ty = Type::Class(class.name.clone());
         self.declare_type(name.clone(), class_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -754,7 +754,7 @@ impl Context {
 
         let ty_args = name.type_args.clone();
         let instance_def =
-            specialize_generic_class(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
+            specialize_class_def(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
 
         Ok(instance_def)
     }
@@ -939,8 +939,8 @@ impl Context {
         &'ctx self,
         of_ty: &'ty Type,
         member: &Ident,
-    ) -> NamingResult<InstanceMember<'ty>> {
-        let data_member = of_ty.find_member(member);
+    ) -> NamingResult<InstanceMember> {
+        let data_member = of_ty.find_data_member(member, self)?;
 
         let methods = self.instance_methods_of(of_ty);
         let matching_methods: Vec<_> = methods
@@ -963,7 +963,7 @@ impl Context {
 
         match (data_member, matching_methods.len()) {
             (Some(data_member), 0) => Ok(InstanceMember::Data {
-                ty: &data_member.ty,
+                ty: data_member.ty,
             }),
 
             // unambiguous method
@@ -971,8 +971,8 @@ impl Context {
                 let (iface_ty, method) = matching_methods[0];
 
                 Ok(InstanceMember::Method {
-                    iface_ty,
-                    decl: method,
+                    iface_ty: iface_ty.clone(),
+                    func: method.ident.clone(),
                 })
             }
 
@@ -989,7 +989,7 @@ impl Context {
                     matching_methods
                         .into_iter()
                         .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single()))
-                        .chain(vec![(of_ty, data_member.ident)]),
+                        .chain(vec![(of_ty, &data_member.ident)]),
                 ),
             }),
 
@@ -1149,7 +1149,7 @@ impl Context {
 
     pub fn is_constructor_accessible(&self, ty: &Type) -> bool {
         match ty {
-            Type::Class(class) => self.namespace().is_parent_of(&class.name.qualified),
+            Type::Class(class) => self.namespace().is_parent_of(&class.qualified),
             _ => true,
         }
     }

@@ -1,12 +1,27 @@
-use crate::{ast::Interface, context::Decl, Type};
+use crate::{ast::Interface, context::Decl, Type, FunctionSig};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt, path::PathBuf};
 
 #[derive(Debug)]
+pub enum GenericTarget {
+    Name(IdentPath),
+    FunctionSig(FunctionSig)
+}
+
+impl fmt::Display for GenericTarget {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GenericTarget::Name(name) => write!(f, "name `{}`", name),
+            GenericTarget::FunctionSig(sig) => write!(f, "function signature `{}`", sig),
+        }
+    }
+}
+
+#[derive(Debug)]
 pub enum GenericError {
     ArgsLenMismatch {
-        ty: Type,
+        target: GenericTarget,
         expected: usize,
         actual: usize,
         span: Span,
@@ -42,14 +57,14 @@ impl fmt::Display for GenericError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericError::ArgsLenMismatch {
-                ty,
+                target,
                 expected,
                 actual,
                 ..
             } => write!(
                 f,
-                "type `{}` expects {} type arguments, found {}",
-                ty, expected, actual
+                "`{}` expects {} type arguments, found {}",
+                target, expected, actual
             ),
         }
     }

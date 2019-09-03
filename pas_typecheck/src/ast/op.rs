@@ -248,12 +248,15 @@ fn typecheck_member_of(
                     let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
 
                     match member {
-                        InstanceMember::Method { iface_ty, decl } => {
+                        InstanceMember::Method { iface_ty, func } => {
+                            let (_, func_sig) = ctx.find_function(&func)?;
+
                             let method = MethodAnnotation::ufcs(
                                 span.clone(),
                                 iface_ty.clone(),
                                 lhs.clone(),
-                                decl.clone(),
+                                func_sig,
+                                func.single().clone(),
                             );
                             TypeAnnotation::Method(method)
                         }
