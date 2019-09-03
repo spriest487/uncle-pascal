@@ -490,30 +490,19 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 unimplemented!("method call with type args")
             }
 
-            let of_ty: &pas_ty::Type = &method_call.of_type;
-
-            let method_decl = of_ty
-                .get_method(&method_call.ident)
-                .expect("method referenced in method call must exist");
-
-            let iface_id = match builder.translate_type(of_ty) {
-                Type::RcPointer(Some(ClassID::Interface(iface_id))) => iface_id,
-
-                // UFCS "methods" that aren't interface impls are treated as function calls
-                _ => unimplemented!("non-interface method call"),
+            let iface = match method_call.of_type.as_iface() {
+                Ok(iface) => iface.clone(),
+                Err(..) => unreachable!("can't have non-interface interface types in method calls"),
             };
 
-            let method_name = method_call.ident.to_string();
-            let method_index = builder
-                .get_iface(iface_id)
-                .unwrap()
-                .method_index(&method_name)
-                .unwrap_or_else(|| {
-                    panic!("missing method {} for interface {}", method_name, iface_id)
-                });
+            let method_decl = builder.translate_method(
+                iface,
+                method_call.ident.clone(),
+                method_call.self_type.clone()
+            );
 
             let self_ty = builder.translate_type(&method_call.self_type);
-            let method_sig = pas_ty::FunctionSig::of_decl(method_decl);
+            let method_sig = method_call.func_type.as_func().unwrap();
 
             let call_target = match &self_ty {
                 Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
@@ -522,12 +511,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 },
 
                 _ => {
-                    // todo: needs to call translate_method somewhere
-                    let impl_func = builder
-                        .find_impl(&self_ty, iface_id, method_index)
-                        .expect("referenced impl func must be declared");
-
-                    let func_val = Ref::Global(GlobalRef::Function(impl_func));
+                    let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
 
                     CallTarget::Function(func_val.into())
                 }

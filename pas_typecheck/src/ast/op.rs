@@ -263,15 +263,28 @@ fn typecheck_member_of(
                     let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
 
                     match member {
-                        InstanceMember::Method { iface_ty, func } => {
-                            let (_, func_sig) = ctx.find_function(&func)?;
+                        InstanceMember::Method { iface_ty, method } => {
+                            let iface_id = match &iface_ty {
+                                Type::Interface(iface_id) => iface_id,
+                                _ => unimplemented!("non-interface interface types"),
+                            };
+
+                            let method_def = match ctx.find_method_def(iface_id, base_ty, &method) {
+                                Some(method_def) => method_def,
+
+                                None => return Err(NameError::MemberNotFound {
+                                    span: span,
+                                    base: base_ty.clone(),
+                                    member: method,
+                                }.into())
+                            };
 
                             let method = MethodAnnotation::ufcs(
                                 span.clone(),
                                 iface_ty.clone(),
                                 lhs.clone(),
-                                func_sig,
-                                func.single().clone(),
+                                Rc::new(FunctionSig::of_decl(&method_def.decl)),
+                                method,
                             );
                             TypeAnnotation::Method(method)
                         }

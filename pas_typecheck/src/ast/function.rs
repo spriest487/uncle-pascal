@@ -56,8 +56,11 @@ pub fn typecheck_func_decl(
                     .collect(),
             };
 
-            let iface = match typecheck_type(&iface_impl.iface, ctx)? {
-                Type::Interface(iface) => iface,
+            let iface_def = match typecheck_type(&iface_impl.iface, ctx)? {
+                Type::Interface(iface) => {
+                    ctx.find_iface_def(&iface)?
+                },
+
                 not_iface => {
                     return Err(TypecheckError::InvalidMethodInterface {
                         ty: not_iface,
@@ -66,7 +69,7 @@ pub fn typecheck_func_decl(
                 }
             };
 
-            let iface_impl = find_iface_impl(iface, decl.ident.single(), &method_sig)?;
+            let iface_impl = find_iface_impl(iface_def, decl.ident.single(), &method_sig)?;
             (decl.ident.clone(), Some(iface_impl))
         }
         None => {
@@ -89,11 +92,11 @@ pub fn typecheck_func_decl(
 }
 
 fn find_iface_impl(
-    iface_decl: Rc<Interface>,
+    iface_def: Rc<Interface>,
     method_ident: &Ident,
     sig: &FunctionSig,
 ) -> TypecheckResult<InterfaceImpl> {
-    let impl_for_types: Vec<_> = iface_decl
+    let impl_for_types: Vec<_> = iface_def
         .methods
         .iter()
         .filter(|method| *method.ident.single() == *method_ident)
@@ -102,14 +105,14 @@ fn find_iface_impl(
 
     match impl_for_types.len() {
         0 => Err(NameError::MemberNotFound {
-            base: Type::Interface(iface_decl.clone()),
+            base: Type::Interface(iface_def.name.qualified.clone()),
             span: method_ident.span().clone(),
             member: method_ident.clone(),
         }
         .into()),
 
         1 => Ok(InterfaceImpl {
-            iface: Type::Interface(iface_decl),
+            iface: Type::Interface(iface_def.name.qualified.clone()),
             for_ty: impl_for_types[0].clone(),
         }),
 

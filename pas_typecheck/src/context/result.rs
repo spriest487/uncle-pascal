@@ -1,4 +1,4 @@
-use crate::{ast::Interface, context::Decl, Type, FunctionSig};
+use crate::{context::Decl, Type, FunctionSig};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt, path::PathBuf};
@@ -147,7 +147,7 @@ pub enum NameError {
         existing: Span,
     },
     AlreadyImplemented {
-        iface: Box<Interface>,
+        iface: IdentPath,
         for_ty: Type,
         method: Ident,
         existing: Span,
@@ -330,7 +330,7 @@ impl fmt::Display for NameError {
             } => write!(
                 f,
                 "`{}.{}` already implemented for `{}`",
-                iface.name, method, for_ty
+                iface, method, for_ty
             ),
 
             NameError::DefDeclMismatch { ident, .. } => write!(

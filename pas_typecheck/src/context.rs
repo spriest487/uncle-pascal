@@ -2,7 +2,12 @@ pub mod builtin;
 pub mod ns;
 pub mod result;
 
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam, specialize_class_def};
+use crate::{
+    ast::{Class, FunctionDecl, FunctionDef, Interface, Variant},
+    context::NamespaceStack,
+    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName,
+    Type, TypeParam,
+};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -64,18 +69,16 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub enum InstanceMember {
-    Data {
-        ty: Type,
-    },
+    Data { ty: Type },
     Method {
         iface_ty: Type,
-        func: IdentPath,
+        method: Ident,
     },
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum TypeMember<'a> {
-    Method { decl: &'a FunctionDecl },
+#[derive(Clone, Debug)]
+pub enum TypeMember {
+    Method { decl: FunctionDecl },
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -265,7 +268,7 @@ impl Context {
 
         if no_stdlib {
             // declare things normally declared in System.pas that the compiler needs to function
-            let disposable_ty = Type::Interface(Rc::new(builtin_disposable_iface()));
+            let disposable_ty = Type::Interface(builtin_disposable_name().qualified);
             let disposable_name = disposable_ty.full_path().unwrap();
 
             let string_ty = Type::Class(Box::new(builtin_string_name()));
@@ -390,7 +393,7 @@ impl Context {
         visibility: Visibility,
     ) -> NamingResult<()> {
         let name = iface.name.decl_name.ident.clone();
-        let iface_ty = Type::Interface(iface.clone());
+        let iface_ty = Type::Interface(iface.name.qualified.clone());
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -516,11 +519,11 @@ impl Context {
         method: Ident,
     ) -> NamingResult<Entry<Ident, Option<FunctionDef>>> {
         // check the method exists
-        let (_iface_path, iface) = self.find_iface(&iface_ident)?;
+        let iface = self.find_iface_def(&iface_ident)?;
         if iface.get_method(&method).is_none() {
             return Err(NameError::MemberNotFound {
                 span: method.span.clone(),
-                base: Type::Interface(iface.clone()),
+                base: Type::Interface(iface.name.qualified.clone()),
                 member: method,
             });
         }
@@ -547,12 +550,12 @@ impl Context {
 
     pub fn define_method_impl(
         &mut self,
-        iface: Rc<Interface>,
+        iface: &IdentPath,
         self_ty: Type,
         method_def: FunctionDef,
     ) -> NamingResult<()> {
         match self.method_impl_entry(
-            iface.name.qualified.clone(),
+            iface.clone(),
             self_ty.clone(),
             method_def.decl.ident.last().clone(),
         )? {
@@ -561,7 +564,7 @@ impl Context {
                     return Err(NameError::AlreadyImplemented {
                         method: method_def.decl.ident.last().clone(),
                         for_ty: self_ty,
-                        iface: Box::new(iface.as_ref().clone()),
+                        iface: iface.clone(),
                         existing: entry.key().span.clone(),
                     });
                 } else {
@@ -796,12 +799,12 @@ impl Context {
         Ok(instance_def)
     }
 
-    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<Interface>)> {
+    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<IdentPath> {
         match self.resolve(name) {
             Some(MemberRef::Value {
                 value:
                     Decl::Type {
-                        ty: Type::Interface(iface),
+                        ty: Type::Interface(..),
                         ..
                     },
                 key,
@@ -809,7 +812,8 @@ impl Context {
                 ..
             }) => {
                 let parent_path = Path::new(key.clone(), parent_path.keys().cloned());
-                Ok((parent_path, iface.clone()))
+
+                Ok(parent_path)
             }
 
             Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
@@ -828,6 +832,32 @@ impl Context {
             }
 
             None => Err(NameError::NotFound(name.last().clone())),
+        }
+    }
+
+    pub fn find_iface_def(&self, name: &IdentPath) -> NamingResult<Rc<Interface>> {
+        match self.defs.get(name) {
+            Some(Def::Interface(iface_def)) => Ok(iface_def.clone()),
+
+            Some(..) => {
+                let decl = self.resolve(&name);
+                let unexpected = UnexpectedValue::Decl(
+                    decl.expect("found def so decl must exist")
+                        .as_value()
+                        .expect("if def exists it must be a value not a namespace")
+                        .clone(),
+                );
+
+                return Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: unexpected,
+                    expected: ExpectedKind::Interface,
+                });
+            }
+
+            None => {
+                return Err(NameError::NotFound(name.last().clone()));
+            }
         }
     }
 
@@ -882,16 +912,18 @@ impl Context {
 
     /// an instance method is an interface impl method for `ty` that takes Self as the first argument
     /// TODO: or any function taking `ty` as its first argument
-    fn instance_methods_of<'ctx>(
-        &'ctx self,
-        ty: &'ctx Type,
-    ) -> Vec<(&'ctx Type, &'ctx FunctionDecl)> {
+    fn instance_methods_of(&self, ty: &Type) -> NamingResult<Vec<(Type, FunctionDecl)>> {
         match ty {
-            Type::Interface(iface) => iface
-                .methods
-                .iter()
-                .map(|method_decl| (ty, method_decl))
-                .collect(),
+            Type::Interface(iface) => {
+                let iface_def = self.find_iface_def(iface)?;
+                let methods = iface_def
+                    .methods
+                    .iter()
+                    .map(|method_decl| (ty.clone(), method_decl.clone()))
+                    .collect();
+
+                Ok(methods)
+            }
 
             _ => {
                 let mut methods = Vec::new();
@@ -915,23 +947,25 @@ impl Context {
                     };
 
                     if iface_impls.contains_key(ty) {
-                        let iface_instance_methods = iface.methods.iter().filter(|method_decl| {
-                            method_decl
-                                .params
-                                .get(0)
-                                .map(|arg_0| arg_0.ty == Type::MethodSelf)
-                                .unwrap_or(false)
-                        });
+                        let iface_def = self.find_iface_def(iface)?;
+                        let iface_instance_methods =
+                            iface_def.methods.iter().filter(|method_decl| {
+                                method_decl
+                                    .params
+                                    .get(0)
+                                    .map(|arg_0| arg_0.ty == Type::MethodSelf)
+                                    .unwrap_or(false)
+                            });
 
                         // add all the methods, we don't need to check if they're actually defined
                         // or implemented - we should check that elsewhere
                         for method in iface_instance_methods {
-                            methods.push((iface_ty, method))
+                            methods.push((iface_ty.clone(), method.clone()))
                         }
                     }
                 }
 
-                methods
+                Ok(methods)
             }
         }
     }
@@ -943,15 +977,15 @@ impl Context {
     ) -> NamingResult<InstanceMember> {
         let data_member = of_ty.find_data_member(member, self)?;
 
-        let methods = self.instance_methods_of(of_ty);
+        let methods = self.instance_methods_of(of_ty)?;
         let matching_methods: Vec<_> = methods
             .iter()
             .filter(|(_of_ty, m)| *m.ident.single() == *member)
-            .map(|(of_ty, m)| (*of_ty, *m))
+            .map(|(of_ty, m)| (of_ty.clone(), m.clone()))
             .collect();
 
         fn ambig_paths<'a>(
-            options: impl IntoIterator<Item = (&'a Type, &'a Ident)>,
+            options: impl IntoIterator<Item = (Type, Ident)>,
         ) -> Vec<IdentPath> {
             options
                 .into_iter()
@@ -963,17 +997,15 @@ impl Context {
         }
 
         match (data_member, matching_methods.len()) {
-            (Some(data_member), 0) => Ok(InstanceMember::Data {
-                ty: data_member.ty,
-            }),
+            (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
 
             // unambiguous method
             (None, 1) => {
-                let (iface_ty, method) = matching_methods[0];
+                let (iface_ty, method) = &matching_methods[0];
 
                 Ok(InstanceMember::Method {
                     iface_ty: iface_ty.clone(),
-                    func: method.ident.clone(),
+                    method: method.ident.single().clone(),
                 })
             }
 
@@ -989,8 +1021,8 @@ impl Context {
                 options: ambig_paths(
                     matching_methods
                         .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single()))
-                        .chain(vec![(of_ty, &data_member.ident)]),
+                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single().clone()))
+                        .chain(vec![(of_ty.clone(), data_member.ident)]),
                 ),
             }),
 
@@ -999,29 +1031,29 @@ impl Context {
                 options: ambig_paths(
                     matching_methods
                         .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single())),
+                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single().clone())),
                 ),
             }),
         }
     }
 
-    pub fn find_type_member<'ty>(
+    pub fn find_type_member(
         &self,
-        ty: &'ty Type,
+        ty: &Type,
         member_ident: &Ident,
-    ) -> NamingResult<TypeMember<'ty>> {
+    ) -> NamingResult<TypeMember> {
         match ty {
             Type::Interface(iface) => {
-                let method_decl =
-                    iface
-                        .get_method(member_ident)
-                        .ok_or_else(|| NameError::MemberNotFound {
-                            member: member_ident.clone(),
-                            base: ty.clone(),
-                            span: member_ident.span.clone(),
-                        })?;
+                let iface_def = self.find_iface_def(iface)?;
+                let method_decl = iface_def.get_method(member_ident).ok_or_else(|| {
+                    NameError::MemberNotFound {
+                        member: member_ident.clone(),
+                        base: ty.clone(),
+                        span: member_ident.span.clone(),
+                    }
+                })?;
 
-                Ok(TypeMember::Method { decl: method_decl })
+                Ok(TypeMember::Method { decl: method_decl.clone() })
             }
 
             _ => Err(NameError::MemberNotFound {

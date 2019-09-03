@@ -7,8 +7,14 @@ use pas_syn::{
     Operator,
 };
 
-use crate::{ast::{Class, FunctionDecl, Interface, Variant}, context::{self, ns::Namespace as _}, result::*, Context, Decl, ExpectedKind, GenericError, GenericResult, NameError, QualifiedDeclName, TypeAnnotation, NamingResult, GenericTarget};
 use crate::ast::Member;
+use crate::{
+    ast::{Class, FunctionDecl, Variant},
+    context::{self, ns::Namespace as _},
+    result::*,
+    Context, Decl, ExpectedKind, GenericError, GenericResult, GenericTarget, NameError,
+    NamingResult, QualifiedDeclName, TypeAnnotation,
+};
 
 #[cfg(test)]
 mod test;
@@ -241,7 +247,7 @@ pub enum Type {
     Function(Rc<FunctionSig>),
     Record(Box<QualifiedDeclName>),
     Class(Box<QualifiedDeclName>),
-    Interface(Rc<Interface>),
+    Interface(IdentPath),
     Variant(Box<QualifiedDeclName>),
     Array { element: Box<Type>, dim: usize },
     DynArray { element: Box<Type> },
@@ -268,7 +274,7 @@ impl Type {
             Type::Any => Some(builtin_path("Any")),
             Type::MethodSelf => Some(builtin_path("Self")),
             Type::Primitive(p) => Some(builtin_path(p.name())),
-            Type::Interface(iface) => Some(iface.name.qualified.clone()),
+            Type::Interface(iface) => Some(iface.clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.qualified.clone()),
             _ => None,
@@ -285,7 +291,7 @@ impl Type {
 
             ast::TypeDecl::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 
-            ast::TypeDecl::Interface(iface) => Type::Interface(iface.clone()),
+            ast::TypeDecl::Interface(iface) => Type::Interface(iface.name.qualified.clone()),
         }
     }
 
@@ -317,11 +323,9 @@ impl Type {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_class(class)?;
                 Ok(class.members.len())
-            },
+            }
 
-            _ => {
-                Ok(0)
-            },
+            _ => Ok(0),
         }
     }
 
@@ -397,8 +401,8 @@ impl Type {
             Type::Pointer(_) => *self == *from || *from == Type::Nil,
             Type::Function(_) => false,
             Type::Interface(iface) => match from {
-                Type::Class(..) => ctx.is_iface_impl(from, &iface.name.qualified),
-                Type::Interface(from_iface) => iface.name == from_iface.name,
+                Type::Class(..) => ctx.is_iface_impl(from, &iface),
+                Type::Interface(from_iface) => iface == from_iface,
                 _ => false,
             },
             Type::Any => match from {
@@ -427,10 +431,20 @@ impl Type {
         }
     }
 
-    pub fn get_method(&self, method: &Ident) -> Option<&FunctionDecl> {
+    pub fn get_method(&self, method: &Ident, ctx: &Context) -> NamingResult<Option<FunctionDecl>> {
         match self {
-            Type::Interface(iface) => iface.methods.iter().find(|m| *m.ident.single() == *method),
-            _ => None,
+            Type::Interface(iface) => {
+                let iface_def = ctx.find_iface_def(iface)?;
+                let method_decl = iface_def
+                    .methods
+                    .iter()
+                    .find(|m| *m.ident.single() == *method)
+                    .cloned();
+
+                Ok(method_decl)
+            }
+
+            _ => Ok(None),
         }
     }
 
@@ -456,9 +470,9 @@ impl Type {
         }
     }
 
-    pub fn as_iface(&self) -> Result<Rc<Interface>, &Self> {
+    pub fn as_iface(&self) -> Result<&IdentPath, &Self> {
         match self {
-            Type::Interface(iface) => Ok(iface.clone()),
+            Type::Interface(iface) => Ok(iface),
             other => Err(other),
         }
     }
@@ -484,6 +498,13 @@ impl Type {
         }
     }
 
+    pub fn as_func(&self) -> Result<Rc<FunctionSig>, &Self> {
+        match self {
+            Type::Function(sig) => Ok(sig.clone()),
+            other => Err(other),
+        }
+    }
+
     // todo: error handling
     pub fn substitute_type_args(self, args: &[Self], ctx: &Context) -> Self {
         if args.len() == 0 {
@@ -493,9 +514,11 @@ impl Type {
         fn new_class_name(
             name: &QualifiedDeclName,
             args: &[Type],
-            ctx: &Context
+            ctx: &Context,
         ) -> QualifiedDeclName {
-            let new_args = name.type_args.iter()
+            let new_args = name
+                .type_args
+                .iter()
                 .cloned()
                 .map(|arg| arg.substitute_type_args(args, ctx))
                 .collect();
@@ -509,16 +532,14 @@ impl Type {
         match self {
             Type::GenericParam(param) => args[param.pos].clone(),
 
-            Type::Class(name) => {
-                Type::Class(Box::new(new_class_name(&name, args, ctx)))
-            }
+            Type::Class(name) => Type::Class(Box::new(new_class_name(&name, args, ctx))),
 
-            Type::Record(name) => {
-                Type::Record(Box::new(new_class_name(&name, args, ctx)))
-            }
+            Type::Record(name) => Type::Record(Box::new(new_class_name(&name, args, ctx))),
 
             Type::Variant(variant) => {
-                let new_args = variant.type_args.iter()
+                let new_args = variant
+                    .type_args
+                    .iter()
                     .cloned()
                     .map(|arg| arg.substitute_type_args(args, ctx))
                     .collect();
@@ -531,13 +552,14 @@ impl Type {
                 Type::Variant(Box::new(new_name))
             }
 
-            Type::DynArray { element } => {
-                Type::DynArray { element: element.substitute_type_args(args, ctx).into() }
-            }
+            Type::DynArray { element } => Type::DynArray {
+                element: element.substitute_type_args(args, ctx).into(),
+            },
 
-            Type::Array { element, dim } => {
-                Type::Array { element: element.substitute_type_args(args, ctx).into(), dim }
-            }
+            Type::Array { element, dim } => Type::Array {
+                element: element.substitute_type_args(args, ctx).into(),
+                dim,
+            },
 
             other => other,
         }
@@ -556,29 +578,25 @@ impl Type {
                 Ok(arg.clone())
             }
 
-            Type::Record(class) => {
-                specialize_generic_name(&class, args, span)
-                    .map(Box::new)
-                    .map(Type::Record)
-            },
+            Type::Record(class) => specialize_generic_name(&class, args, span)
+                .map(Box::new)
+                .map(Type::Record),
 
-            Type::Class(class) => {
-                specialize_generic_name(&class, args, span)
-                    .map(Box::new)
-                    .map(Type::Class)
-            }
+            Type::Class(class) => specialize_generic_name(&class, args, span)
+                .map(Box::new)
+                .map(Type::Class),
 
-            Type::Variant(variant) => {
-                specialize_generic_name(&variant, args, span)
-                    .map(Box::new)
-                    .map(Type::Variant)
-            },
+            Type::Variant(variant) => specialize_generic_name(&variant, args, span)
+                .map(Box::new)
+                .map(Type::Variant),
 
-            Type::Array { element, dim } => element.specialize_generic(args, span)
+            Type::Array { element, dim } => element
+                .specialize_generic(args, span)
                 .map(Box::new)
                 .map(|element| Type::Array { element, dim: *dim }),
 
-            Type::DynArray { element } => element.specialize_generic(args, span)
+            Type::DynArray { element } => element
+                .specialize_generic(args, span)
                 .map(Box::new)
                 .map(|element| Type::DynArray { element }),
 
@@ -592,7 +610,7 @@ impl fmt::Display for Type {
         match self {
             Type::Nil => write!(f, "nil"),
             Type::Class(name) | Type::Record(name) => write!(f, "{}", name),
-            Type::Interface(iface) => write!(f, "{}", iface.name),
+            Type::Interface(iface) => write!(f, "{}", iface),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
             Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
             Type::DynArray { element } => write!(f, "array of {}", element),
@@ -777,11 +795,7 @@ pub fn specialize_generic_name(
     Ok(name)
 }
 
-pub fn specialize_class_def(
-    class: &Class,
-    args: Vec<Type>,
-    span: &Span,
-) -> GenericResult<Class> {
+pub fn specialize_class_def(class: &Class, args: Vec<Type>, span: &Span) -> GenericResult<Class> {
     let parameterized_name = specialize_generic_name(&class.name, &args, span)?;
 
     let members: Vec<_> = class
@@ -952,7 +966,10 @@ impl TypePattern {
         let case_ident = path.last();
 
         match ctx.resolve(&stem_name) {
-            Some(context::MemberRef::Value { value: Decl::Type { ty, .. }, ..}) if ty.as_variant().is_ok() => {
+            Some(context::MemberRef::Value {
+                value: Decl::Type { ty, .. },
+                ..
+            }) if ty.as_variant().is_ok() => {
                 let variant = ty.as_variant().unwrap();
                 let variant_def = ctx.find_variant_def(&variant.qualified).unwrap();
 
@@ -964,10 +981,14 @@ impl TypePattern {
                         base: Type::Variant(Box::new(variant_def.name.clone())),
                         member: case_ident.clone(),
                         span: err_span,
-                    }.into());
+                    }
+                    .into());
                 }
 
-                Ok(Some((variant_def.name.qualified.clone(), case_ident.clone())))
+                Ok(Some((
+                    variant_def.name.qualified.clone(),
+                    case_ident.clone(),
+                )))
             }
 
             _ => Ok(None),

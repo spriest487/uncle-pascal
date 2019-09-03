@@ -313,7 +313,7 @@ enum FunctionDeclKey {
         name: IdentPath,
     },
     Method {
-        iface: pas_ty::QualifiedDeclName,
+        iface: IdentPath,
         self_ty: pas_ty::Type,
         method: pas_syn::Ident,
     },
@@ -421,15 +421,12 @@ impl Module {
             } => {
                 let method_name = method.to_string();
 
-                let (_, iface_def) = self.src_metadata.find_iface(&iface.qualified).unwrap();
-
-                let iface_decl_name: &IdentPath = &iface_def.name.qualified;
-                let iface_def = match self.src_metadata.find_iface(iface_decl_name) {
-                    Ok((_, def)) => def,
-                    Err(..) => panic!("missing interface def {}", iface_decl_name),
+                let iface_def = match self.src_metadata.find_iface_def(iface) {
+                    Ok(def) => def,
+                    Err(..) => panic!("missing interface def {}", iface),
                 };
 
-                let iface_id = match self.metadata.find_iface(&iface_def.name) {
+                let iface_id = match self.metadata.find_iface(&iface_def.name.qualified) {
                     Some(iface_id) => iface_id,
                     None => self.metadata.define_iface(&iface_def),
                 };
@@ -468,24 +465,24 @@ impl Module {
         }
     }
 
+    // statically reference a method and get a function ID. interface methods are all translated
+    // at the end of compilation for a module anyway, but for methods that are referenced statically
+    // this call reserves us a function ID
     pub fn translate_method(
         &mut self,
-        iface_ty: &pas_ty::Type,
-        self_ty: &pas_ty::Type,
+        iface: IdentPath,
         method: pas_syn::Ident,
-        type_args: Vec<pas_ty::Type>,
+        self_ty: pas_ty::Type,
     ) -> CachedFunction {
-        let iface_ty = iface_ty
-            .as_iface()
-            .expect("iface ty must always be an interface");
-
         let key = FunctionCacheKey {
             decl_key: FunctionDeclKey::Method {
-                iface: iface_ty.name.clone(),
-                self_ty: self_ty.clone(),
+                iface,
                 method,
+                self_ty,
             },
-            type_args,
+
+            // dynamic method calls can't have type args
+            type_args: Vec::new(),
         };
 
         // methods must always be present so make sure they're immediately instantiated
@@ -770,34 +767,39 @@ fn gen_dyn_array_disposers(module: &mut Module) {
     }
 }
 
-// disposers are never explicitly referenced, so for every encountered type at the end of codegen
-// we check if it's disposable and add a reference to its disposer
-fn gen_class_disposers(module: &mut Module) {
-    // generating a disposer might actually reference new types in the body of the
-    // disposer, so just keep doing this until the type cache is a stable size
+// interface methods may not be statically referenced for every type that implements them due to
+// dynamic dispatch, so we need to cover all possible combinations and generate function bodies for
+// every interface method implemented by a class at the end of codegen
+fn gen_iface_impls(module: &mut Module) {
     let mut last_instance_count = module.src_types.len();
 
+    // generating an impl might actually reference new types in the body of the
+    // function, so just keep doing this until the type cache is a stable size
     loop {
         for real_ty in module.src_types.clone() {
-            let disposable_id = pas_ty::builtin::builtin_disposable_name();
-            let dispose_method = pas_ty::builtin::builtin_disposable_dispose_name();
-            let disposer = module.src_metadata.find_method_def(
-                &disposable_id.qualified,
-                &real_ty,
-                &dispose_method,
-            );
+            let ifaces = module.src_metadata.implemented_ifaces(&real_ty);
 
-            if disposer.is_some() {
-                let cache_key = FunctionCacheKey {
-                    decl_key: FunctionDeclKey::Method {
-                        self_ty: real_ty.clone(),
-                        method: dispose_method,
-                        iface: disposable_id,
-                    },
-                    type_args: Vec::new(),
-                };
+            for iface in &ifaces {
+                let iface_def = module.src_metadata.find_iface_def(iface).unwrap();
 
-                module.translate_func_usage(cache_key);
+                for method in &iface_def.methods {
+                    let method_def = module.src_metadata.find_method_def(
+                        iface,
+                        &real_ty,
+                        method.ident.single()
+                    ).unwrap();
+
+                    let cache_key = FunctionCacheKey {
+                        decl_key: FunctionDeclKey::Method {
+                            self_ty: real_ty.clone(),
+                            method: method.ident.single().clone(),
+                            iface: iface.clone(),
+                        },
+                        type_args: Vec::new(),
+                    };
+
+                    module.translate_func_usage(cache_key);
+                }
             }
         }
 
@@ -818,7 +820,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         ir_module.translate_unit(unit);
     }
 
-    gen_class_disposers(&mut ir_module);
+    gen_iface_impls(&mut ir_module);
     gen_dyn_array_disposers(&mut ir_module);
 
     ir_module

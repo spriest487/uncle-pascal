@@ -9,6 +9,7 @@ use std::fmt;
 
 use pas_common::span::Span;
 use pas_typecheck::Specializable;
+use pas_syn::Ident;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -135,6 +136,11 @@ impl<'m> Builder<'m> {
         Self { type_args, ..self }
     }
 
+    #[allow(unused)]
+    pub fn get_method_decl(&self, ty: &pas_ty::Type, method_ident: &Ident) -> Option<pas_ty::ast::FunctionDecl> {
+        ty.get_method(method_ident, &self.module.src_metadata).unwrap()
+    }
+
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
         variant: &pas_ty::QualifiedDeclName,
@@ -205,7 +211,10 @@ impl<'m> Builder<'m> {
             }
 
             pas_ty::Type::Interface(iface_def) => {
-                if self.module.metadata.find_iface(&iface_def.name).is_none() {
+                if self.module.metadata.find_iface(&iface_def).is_none() {
+                    let iface_def = self.module.src_metadata.find_iface_def(iface_def)
+                        .unwrap();
+
                     self.module.metadata.define_iface(&iface_def);
                 }
             }
@@ -231,6 +240,15 @@ impl<'m> Builder<'m> {
             Some(id) => id,
             None => self.module.metadata.define_dyn_array_struct(element_ty),
         }
+    }
+
+    pub fn translate_method(
+        &mut self,
+        iface: IdentPath,
+        method: Ident,
+        self_ty: pas_ty::Type
+    ) -> CachedFunction {
+        self.module.translate_method(iface, method, self_ty)
     }
 
     pub fn translate_func(
@@ -274,6 +292,7 @@ impl<'m> Builder<'m> {
         self.module.metadata.find_function(name)
     }
 
+    #[allow(unused)]
     pub fn find_impl(
         &self,
         ty: &Type,

@@ -39,9 +39,9 @@ pub mod ty;
 #[cfg(test)]
 mod test;
 
-use ast::{typecheck_unit, Interface};
+use ast::typecheck_unit;
 use pas_common::span::*;
-use std::rc::Rc;
+use pas_syn::IdentPath;
 
 #[derive(Debug, Clone)]
 pub struct Module {
@@ -50,7 +50,7 @@ pub struct Module {
 
     // language builtins
     pub string_class: QualifiedDeclName,
-    pub disposable_iface: Rc<Interface>,
+    pub disposable_iface: IdentPath,
 }
 
 impl Module {
@@ -73,7 +73,7 @@ impl Module {
             .clone();
 
         let disposable_name = context::builtin_disposable_name();
-        let (_, disposable_iface) = root_ctx
+        let disposable_iface = root_ctx
             .find_iface(&disposable_name.qualified)
             .expect("disposable interface must exist");
 

@@ -2,7 +2,7 @@ use std::{collections::hash_map::HashMap, fmt};
 
 use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
 use pas_syn as syn;
-use pas_syn::Path;
+use pas_syn::{Path, Ident, IdentPath};
 use pas_typecheck as pas_ty;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
@@ -777,8 +777,8 @@ impl Metadata {
         id
     }
 
-    pub fn find_iface(&self, iface_ident: &pas_ty::QualifiedDeclName) -> Option<InterfaceID> {
-        let name = NamePath::from_decl(iface_ident.clone(), self);
+    pub fn find_iface(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
+        let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
 
         self.ifaces
             .iter()
@@ -845,9 +845,9 @@ impl Metadata {
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                let iface_id = match self.find_iface(&iface.name) {
+                let iface_id = match self.find_iface(iface) {
                     Some(id) => id,
-                    None => panic!("missing IR definition for interface {}", iface.name),
+                    None => panic!("missing IR definition for interface {}", iface),
                 };
 
                 Type::RcPointer(Some(ClassID::Interface(iface_id)))
