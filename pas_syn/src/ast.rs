@@ -111,7 +111,7 @@ impl TypeName {
                         Some(dim)
                     }
                     _ => unreachable!("match failed"),
-                }
+                },
             };
 
             tokens.match_one(Keyword::Of)?;
@@ -182,13 +182,15 @@ impl fmt::Display for TypeName {
                 Ok(())
             }
 
-            TypeName::Array { element, dim: Some(dim), .. } => {
-                write!(f, "array[{}] of {}", dim, element)
-            },
+            TypeName::Array {
+                element,
+                dim: Some(dim),
+                ..
+            } => write!(f, "array[{}] of {}", dim, element),
 
-            TypeName::Array { element, dim: None, .. } => {
-                write!(f, "array of {}", element)
-            },
+            TypeName::Array {
+                element, dim: None, ..
+            } => write!(f, "array of {}", element),
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }

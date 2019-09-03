@@ -525,7 +525,11 @@ impl<'a> Builder<'a> {
                 self.stmts.push(Statement::Expr(call_release));
             }
 
-            ir::Instruction::DynAlloc { out, element_ty, len } => {
+            ir::Instruction::DynAlloc {
+                out,
+                element_ty,
+                len,
+            } => {
                 let get_mem = Expr::Function(FunctionName::GetMem);
 
                 let el_ty = Type::from_metadata(&element_ty, self.module);

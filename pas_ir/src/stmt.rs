@@ -1,10 +1,5 @@
 use crate::{
-    prelude::*,
-    translate_block,
-    translate_call,
-    translate_expr,
-    translate_if_cond,
-    Builder,
+    prelude::*, translate_block, translate_call, translate_expr, translate_if_cond, Builder,
 };
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
@@ -28,41 +23,41 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);
-        },
+        }
 
         ast::Statement::Call(call) => {
             translate_call(call, builder);
-        },
+        }
 
         ast::Statement::Block(block) => {
             translate_block(block, builder);
-        },
+        }
 
         ast::Statement::Exit(_) => unimplemented!(),
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
-        },
+        }
 
         ast::Statement::WhileLoop(while_loop) => {
             translate_while_loop(while_loop, builder);
-        },
+        }
 
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
-        },
+        }
 
         ast::Statement::If(if_stmt) => {
             translate_if_cond(if_stmt, builder, true);
-        },
+        }
 
         ast::Statement::Break(_) => {
             builder.break_loop();
-        },
+        }
 
         ast::Statement::Continue(_) => {
             builder.continue_loop();
-        },
+        }
     }
 }
 
@@ -159,18 +154,18 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         builder.append(Instruction::Label(top_label));
 
         // evaluate condition
-//        builder.scope(|builder| {
-            let cond_val = translate_expr(&while_loop.condition, builder);
-            builder.append(Instruction::Not {
-                a: Value::Ref(cond_val),
-                out: not_cond.clone()
-            });
-//        });
+        //        builder.scope(|builder| {
+        let cond_val = translate_expr(&while_loop.condition, builder);
+        builder.append(Instruction::Not {
+            a: Value::Ref(cond_val),
+            out: not_cond.clone(),
+        });
+        //        });
 
         // break now if condition is false
         builder.append(Instruction::JumpIf {
             test: Value::Ref(not_cond),
-            dest: break_label
+            dest: break_label,
         });
 
         // run loop body

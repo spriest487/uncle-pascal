@@ -10,7 +10,7 @@ pub enum GenericError {
         expected: usize,
         actual: usize,
         span: Span,
-    }
+    },
 }
 
 pub type GenericResult<T> = Result<T, GenericError>;
@@ -41,11 +41,29 @@ impl DiagnosticOutput for GenericError {
 impl fmt::Display for GenericError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GenericError::ArgsLenMismatch { ty, expected, actual, .. } => {
-                write!(f, "type `{}` expects {} type arguments, found {}", ty, expected, actual)
-            },
+            GenericError::ArgsLenMismatch {
+                ty,
+                expected,
+                actual,
+                ..
+            } => write!(
+                f,
+                "type `{}` expects {} type arguments, found {}",
+                ty, expected, actual
+            ),
         }
     }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
+pub enum ExpectedKind {
+    AnyType,
+    Class,
+    Variant,
+    Interface,
+    AnyBinding,
+    Function,
+    Namespace,
 }
 
 #[derive(Debug)]
@@ -82,12 +100,11 @@ pub enum NameError {
         decl: Span,
         def: Span,
     },
-    ExpectedType(IdentPath, UnexpectedValue),
-    ExpectedVariant(IdentPath, UnexpectedValue),
-    ExpectedInterface(IdentPath, UnexpectedValue),
-    ExpectedBinding(IdentPath, UnexpectedValue),
-    ExpectedFunction(IdentPath, UnexpectedValue),
-    ExpectedNamespace(IdentPath, UnexpectedValue),
+    Unexpected {
+        ident: IdentPath,
+        expected: ExpectedKind,
+        actual: UnexpectedValue,
+    },
     AlreadyDeclared {
         new: Ident,
         existing: IdentPath,
@@ -106,7 +123,7 @@ pub enum NameError {
         ident: Ident,
         options: Vec<IdentPath>,
     },
-    GenericError(GenericError)
+    GenericError(GenericError),
 }
 
 impl From<GenericError> for NameError {
@@ -120,12 +137,7 @@ impl Spanned for NameError {
         match self {
             NameError::NotFound(ident) => &ident.span,
             NameError::MemberNotFound { span, .. } => span,
-            NameError::ExpectedType(ident, _) => ident.span(),
-            NameError::ExpectedInterface(ident, _) => ident.span(),
-            NameError::ExpectedVariant(ident, ..) => ident.span(),
-            NameError::ExpectedBinding(ident, _) => ident.span(),
-            NameError::ExpectedFunction(ident, _) => ident.span(),
-            NameError::ExpectedNamespace(ident, _) => ident.span(),
+            NameError::Unexpected { ident, .. } => ident.span(),
             NameError::AlreadyDeclared { new, .. } => &new.span,
             NameError::AlreadyDefined { ident, .. } => &ident.span(),
             NameError::Ambiguous { ident, .. } => &ident.span,
@@ -141,17 +153,14 @@ impl DiagnosticOutput for NameError {
         match self {
             NameError::NotFound(_) => "Name not found".to_string(),
             NameError::MemberNotFound { .. } => "Named member not found".to_string(),
-            NameError::ExpectedType(_, _) => "Expected name to refer to type".to_string(),
-            NameError::ExpectedInterface(_, _) => "Expected name to refer to interface".to_string(),
-            NameError::ExpectedVariant(_, _) => "Expected name to refer to variant type".to_string(),
-            NameError::ExpectedBinding(_, _) => "Expected name to refer to binding".to_string(),
-            NameError::ExpectedFunction(_, _) => "Expected name to refer to function".to_string(),
-            NameError::ExpectedNamespace(_, _) => "Expected name to refer to namespace".to_string(),
+            NameError::Unexpected { .. } => "Name had unexpected type".to_string(),
             NameError::AlreadyDeclared { .. } => "Name already declared".to_string(),
             NameError::AlreadyDefined { .. } => "Name already defined".to_string(),
             NameError::Ambiguous { .. } => "Name is ambiguous".to_string(),
             NameError::AlreadyImplemented { .. } => "Method already implemented".to_string(),
-            NameError::DefDeclMismatch { .. } => "Definition does not match previous declaration".to_string(),
+            NameError::DefDeclMismatch { .. } => {
+                "Definition does not match previous declaration".to_string()
+            }
             NameError::GenericError(err) => err.title(),
         }
     }
@@ -163,7 +172,7 @@ impl DiagnosticOutput for NameError {
             _ => Some(DiagnosticLabel {
                 text: Some(self.to_string()),
                 span: self.span().clone(),
-            })
+            }),
         }
     }
 
@@ -251,36 +260,27 @@ impl fmt::Display for NameError {
             NameError::MemberNotFound { base, member, .. } => {
                 write!(f, "type {} does not have a member named `{}`", base, member)
             }
-            NameError::ExpectedVariant(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to a variant type in this scope (found: {})",
-                ident, unexpected,
-            ),
-            NameError::ExpectedType(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to a type in this scope (found: {})",
-                ident, unexpected
-            ),
-            NameError::ExpectedInterface(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to an interface in this scope (found: {})",
-                ident, unexpected
-            ),
-            NameError::ExpectedBinding(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to a value in this scope (found: {})",
-                ident, unexpected
-            ),
-            NameError::ExpectedFunction(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to a function in this scope (found: {})",
-                ident, unexpected
-            ),
-            NameError::ExpectedNamespace(ident, unexpected) => write!(
-                f,
-                "`{}` did not refer to a namespace in this scope (found: {})",
-                ident, unexpected
-            ),
+            NameError::Unexpected {
+                ident,
+                expected,
+                actual,
+            } => {
+                let expected_desc = match expected {
+                    ExpectedKind::Class => "class",
+                    ExpectedKind::Variant => "variant",
+                    ExpectedKind::Interface => "interface",
+                    ExpectedKind::Function => "function",
+                    ExpectedKind::AnyBinding => "value",
+                    ExpectedKind::Namespace => "namespace",
+                    ExpectedKind::AnyType => "type",
+                };
+
+                write!(
+                    f,
+                    "`{}` did not refer to a {} in this scope (found: {})",
+                    ident, expected_desc, actual,
+                )
+            }
             NameError::AlreadyDeclared { new, .. } => {
                 write!(f, "`{}` was already declared in this scope", new)
             }

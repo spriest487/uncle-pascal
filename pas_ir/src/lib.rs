@@ -1,10 +1,7 @@
-use std::{
-    collections::hash_map::{HashMap},
-    fmt,
-};
+use std::{collections::hash_map::HashMap, fmt};
 
 use pas_syn::{ast, IdentPath};
-use pas_ty::{ast::specialize_func_decl};
+use pas_ty::ast::specialize_func_decl;
 use pas_typecheck as pas_ty;
 
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
@@ -13,6 +10,7 @@ pub use self::{
     formatter::*,
     interpret::{Interpreter, InterpreterOpts},
 };
+use std::collections::HashSet;
 
 mod builder;
 
@@ -296,6 +294,9 @@ pub struct CachedFunction {
 pub struct Module {
     src_metadata: pas_ty::Context,
 
+    // set of all encountered type instances, used to generate unreferenced disposers
+    src_types: HashSet<pas_ty::Type>,
+
     pub opts: IROptions,
 
     pub metadata: Metadata,
@@ -328,6 +329,7 @@ impl Module {
     pub fn new(src_metadata: pas_ty::Context, metadata: Metadata, opts: IROptions) -> Self {
         Self {
             src_metadata,
+            src_types: Default::default(),
 
             init: Vec::new(),
 
@@ -359,65 +361,58 @@ impl Module {
         self.functions.insert(id, function);
     }
 
-    pub fn impl_iface(
-        &mut self,
-        iface_id: InterfaceID,
-        for_ty: Type,
-        method_name: impl Into<String>,
-        func_id: FunctionID,
-    ) {
-        self.metadata
-            .impl_method(iface_id, for_ty, method_name, func_id)
+    pub fn add_type_instance(&mut self, ty: pas_ty::Type) {
+        self.src_types.insert(ty);
     }
 
-    fn translate_func_usage(
-        &mut self,
-        key: FunctionCacheKey,
-    ) -> CachedFunction {
+    fn translate_func_usage(&mut self, key: FunctionCacheKey) -> CachedFunction {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
 
         match &key.decl_key {
-            FunctionDeclKey::Function { name } => match self.src_metadata.find_def(&name).cloned() {
-                Some(pas_ty::Def::Function(func_def)) => {
-                    let specialized_decl = specialize_func_decl(&func_def.decl, &key.type_args)
-                        .expect("function specialization must be valid after typechecking");
-                    let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
+            FunctionDeclKey::Function { name } => {
+                match self.src_metadata.find_def(&name).cloned() {
+                    Some(pas_ty::Def::Function(func_def)) => {
+                        let specialized_decl = specialize_func_decl(&func_def.decl, &key.type_args)
+                            .expect("function specialization must be valid after typechecking");
+                        let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
 
-                    let id = self.metadata.declare_func(&func_def.decl, key.type_args.clone());
+                        let id = self
+                            .metadata
+                            .declare_func(&func_def.decl, key.type_args.clone());
 
-                    let debug_name = specialized_decl.to_string();
-                    let ir_func = self.translate_func_def(
-                        &func_def,
-                        key.type_args.clone(),
-                        debug_name,
-                    );
+                        let debug_name = specialized_decl.to_string();
+                        let ir_func =
+                            self.translate_func_def(&func_def, key.type_args.clone(), debug_name);
 
-                    self.functions.insert(id, ir_func);
+                        self.functions.insert(id, ir_func);
 
-                    let cached_func = CachedFunction { id, sig };
-                    self.translated_funcs.insert(key, cached_func.clone());
+                        let cached_func = CachedFunction { id, sig };
+                        self.translated_funcs.insert(key, cached_func.clone());
 
-                    cached_func
+                        cached_func
+                    }
+
+                    Some(pas_ty::Def::External(extern_decl)) => {
+                        assert!(
+                            key.type_args.is_empty(),
+                            "external function must not be generic"
+                        );
+
+                        let id = self
+                            .metadata
+                            .declare_func(&extern_decl, key.type_args.clone());
+                        let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
+                        let cached_func = CachedFunction { id, sig };
+                        self.translated_funcs.insert(key, cached_func.clone());
+
+                        cached_func
+                    }
+
+                    _ => panic!("missing source def for function {}", name),
                 }
-
-                Some(pas_ty::Def::External(extern_decl)) => {
-                    assert!(
-                        key.type_args.is_empty(),
-                        "external function must not be generic"
-                    );
-
-                    let id = self.metadata.declare_func(&extern_decl, key.type_args.clone());
-                    let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
-                    let cached_func = CachedFunction { id, sig };
-                    self.translated_funcs.insert(key, cached_func.clone());
-
-                    cached_func
-                }
-
-                _ => panic!("missing source def for function {}", name),
-            },
+            }
 
             FunctionDeclKey::Method {
                 iface,
@@ -426,9 +421,9 @@ impl Module {
             } => {
                 let method_name = method.to_string();
 
-                let (_, pas_iface) = self.src_metadata.find_iface(&iface.qualified).unwrap();
+                let (_, iface_def) = self.src_metadata.find_iface(&iface.qualified).unwrap();
 
-                let iface_decl_name: &IdentPath = &pas_iface.name.qualified;
+                let iface_decl_name: &IdentPath = &iface_def.name.qualified;
                 let iface_def = match self.src_metadata.find_iface(iface_decl_name) {
                     Ok((_, def)) => def,
                     Err(..) => panic!("missing interface def {}", iface_decl_name),
@@ -436,22 +431,35 @@ impl Module {
 
                 let iface_id = match self.metadata.find_iface(&iface_def.name) {
                     Some(iface_id) => iface_id,
-                    None => self.metadata.define_iface(&pas_iface),
+                    None => self.metadata.define_iface(&iface_def),
                 };
 
-                let method_def = self.src_metadata
-                    .find_method_def(&pas_iface.name.qualified, self_ty, method)
+                let method_def = self
+                    .src_metadata
+                    .find_method_def(&iface_def.name.qualified, self_ty, method)
+                    .cloned()
                     .expect("missing method def");
 
-                let id = self.metadata.declare_func(&method_def.decl, key.type_args.clone());
+                let specialized_decl = specialize_func_decl(&method_def.decl, &key.type_args)
+                    .expect("method specialization failed in codegen");
+
+                let id = self
+                    .metadata
+                    .declare_func(&specialized_decl, key.type_args.clone());
 
                 let self_ty = self.metadata.translate_type(self_ty);
 
-                self.metadata.impl_method(iface_id, self_ty, method_name, id);
+                self.metadata
+                    .impl_method(iface_id, self_ty, method_name, id);
+
+                let debug_name = specialized_decl.to_string();
+                let ir_func =
+                    self.translate_func_def(&method_def, key.type_args.clone(), debug_name);
+                self.functions.insert(id, ir_func);
 
                 let cached_func = CachedFunction {
                     id,
-                    sig: pas_ty::FunctionSig::of_decl(&method_def.decl),
+                    sig: pas_ty::FunctionSig::of_decl(&specialized_decl),
                 };
                 self.translated_funcs.insert(key, cached_func.clone());
 
@@ -762,6 +770,45 @@ fn gen_dyn_array_disposers(module: &mut Module) {
     }
 }
 
+// disposers are never explicitly referenced, so for every encountered type at the end of codegen
+// we check if it's disposable and add a reference to its disposer
+fn gen_class_disposers(module: &mut Module) {
+    // generating a disposer might actually reference new types in the body of the
+    // disposer, so just keep doing this until the type cache is a stable size
+    let mut last_instance_count = module.src_types.len();
+
+    loop {
+        for real_ty in module.src_types.clone() {
+            let disposable_id = pas_ty::builtin::builtin_disposable_name();
+            let dispose_method = pas_ty::builtin::builtin_disposable_dispose_name();
+            let disposer = module.src_metadata.find_method_def(
+                &disposable_id.qualified,
+                &real_ty,
+                &dispose_method,
+            );
+
+            if disposer.is_some() {
+                let cache_key = FunctionCacheKey {
+                    decl_key: FunctionDeclKey::Method {
+                        self_ty: real_ty.clone(),
+                        method: dispose_method,
+                        iface: disposable_id,
+                    },
+                    type_args: Vec::new(),
+                };
+
+                module.translate_func_usage(cache_key);
+            }
+        }
+
+        if module.src_types.len() == last_instance_count {
+            break;
+        } else {
+            last_instance_count = module.src_types.len();
+        }
+    }
+}
+
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let metadata = Metadata::new();
 
@@ -771,6 +818,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         ir_module.translate_unit(unit);
     }
 
+    gen_class_disposers(&mut ir_module);
     gen_dyn_array_disposers(&mut ir_module);
 
     ir_module

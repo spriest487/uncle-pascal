@@ -10,4 +10,6 @@ end;
 let i := 1;
 let iBox := BoxUp of Integer(i);
 
-System.WriteLn(System.IntToStr(iBox.val));
+let i2: Integer := iBox.val;
+
+System.WriteLn(System.IntToStr(i2));

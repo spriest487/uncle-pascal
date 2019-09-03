@@ -1,19 +1,7 @@
-use crate::{
-    prelude::*,
-    translate_stmt,
-    Builder,
-};
+use crate::{prelude::*, translate_stmt, Builder};
 use pas_common::span::*;
-use pas_syn::{
-    self as syn,
-    ast,
-};
-use pas_typecheck::{
-    self as pas_ty,
-    TypeAnnotation,
-    TypePattern,
-    ValueKind,
-};
+use pas_syn::{self as syn, ast};
+use pas_typecheck::{self as pas_ty, TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
@@ -35,7 +23,13 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                     ..
                 } => panic!("temporaries cannot be referenced by ident"),
 
-                TypeAnnotation::Function { name, ns, type_args, span, .. } => {
+                TypeAnnotation::Function {
+                    name,
+                    ns,
+                    type_args,
+                    span,
+                    ..
+                } => {
                     let func_name = ns.clone().child(name.clone());
                     let func = builder.translate_func(func_name, type_args.clone(), span);
                     let func_ref = GlobalRef::Function(func.id);
@@ -249,11 +243,11 @@ pub fn translate_if_cond(
         }
 
         Some(TypePattern::VariantCase {
-                 variant,
-                 case,
-                 data_binding,
-                 ..
-             }) => {
+            variant,
+            case,
+            data_binding,
+            ..
+        }) => {
             let (struct_id, case_index, case_ty) = builder.translate_variant_case(variant, case);
             let variant_ty = Type::Variant(struct_id);
 
@@ -261,7 +255,8 @@ pub fn translate_if_cond(
                 Some(binding) => {
                     let binding_name = binding.name.to_string();
 
-                    let case_ty = case_ty.cloned()
+                    let case_ty = case_ty
+                        .cloned()
                         .expect("variant pattern with binding must refer to a case with data");
 
                     let data_ptr = builder.local_temp(case_ty.clone().ptr());
@@ -283,11 +278,7 @@ pub fn translate_if_cond(
             (is, bindings)
         }
 
-        Some(TypePattern::NegatedVariantCase {
-                 variant,
-                 case,
-                 ..
-             }) => {
+        Some(TypePattern::NegatedVariantCase { variant, case, .. }) => {
             let (struct_id, case_index, _case_ty) = builder.translate_variant_case(variant, case);
 
             let variant_ty = Type::Variant(struct_id);
@@ -476,9 +467,12 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
     match call {
         ast::Call::Function(func_call) => {
             let (_, full_name) = match func_call.target.annotation() {
-                pas_ty::TypeAnnotation::Function { ty: pas_ty::Type::Function(sig), ns, name, .. } => {
-                    (sig.as_ref(), ns.clone().child(name.clone()))
-                },
+                pas_ty::TypeAnnotation::Function {
+                    ty: pas_ty::Type::Function(sig),
+                    ns,
+                    name,
+                    ..
+                } => (sig.as_ref(), ns.clone().child(name.clone())),
                 _ => panic!("type of function target expr must be a function"),
             };
 
@@ -510,7 +504,8 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
             };
 
             let method_name = method_call.ident.to_string();
-            let method_index = builder.get_iface(iface_id)
+            let method_index = builder
+                .get_iface(iface_id)
                 .unwrap()
                 .method_index(&method_name)
                 .unwrap_or_else(|| {
@@ -985,7 +980,10 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
 
             // allocate the array object itself
             builder.scope(|builder| {
-                builder.append(Instruction::RcNew { out: arr.clone(), struct_id });
+                builder.append(Instruction::RcNew {
+                    out: arr.clone(),
+                    struct_id,
+                });
 
                 // get pointer to the length
                 let len_ref = builder.local_temp(Type::I32.ptr());
@@ -997,8 +995,8 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
                 });
 
                 // set length
-                let len = i32::try_from(ctor.elements.len())
-                    .expect("invalid dynamic array ctor length");
+                let len =
+                    i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
                 builder.mov(len_ref.clone().deref(), Value::LiteralI32(len));
 
                 // get pointer to storage pointer

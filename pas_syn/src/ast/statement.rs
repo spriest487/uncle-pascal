@@ -1,5 +1,7 @@
 use crate::{
-    ast::{expression::match_operand_start, Block, Call, Expression, ForLoop, WhileLoop, IfCond, Typed},
+    ast::{
+        expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, Typed, WhileLoop,
+    },
     parse::prelude::*,
 };
 
@@ -248,7 +250,9 @@ impl Statement<Span> {
                 Ok(Statement::ForLoop(for_loop))
             }
 
-            Some(TokenTree::Keyword { kw: Keyword::While, .. }) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::While, ..
+            }) => {
                 let while_loop = WhileLoop::parse(tokens)?;
                 Ok(Statement::WhileLoop(while_loop))
             }

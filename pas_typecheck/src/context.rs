@@ -2,7 +2,7 @@ pub mod builtin;
 pub mod ns;
 pub mod result;
 
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, FunctionSig, Primitive, QualifiedDeclName, Type, specialize_generic_variant, TypeParam};
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam, specialize_generic_class};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -384,35 +384,58 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_iface(&mut self, iface: Rc<Interface>, visibility: Visibility) -> NamingResult<()> {
+    pub fn declare_iface(
+        &mut self,
+        iface: Rc<Interface>,
+        visibility: Visibility,
+    ) -> NamingResult<()> {
         let name = iface.name.decl_name.ident.clone();
         let iface_ty = Type::Interface(iface.clone());
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
-        self.define(name, Def::Interface(iface.clone()), DefDeclMatch::always_match, map_unexpected)?;
+        self.define(
+            name,
+            Def::Interface(iface.clone()),
+            DefDeclMatch::always_match,
+            map_unexpected,
+        )?;
 
         Ok(())
     }
 
-    pub fn declare_variant(&mut self, variant: Rc<Variant>, visibility: Visibility) -> NamingResult<()>  {
+    pub fn declare_variant(
+        &mut self,
+        variant: Rc<Variant>,
+        visibility: Visibility,
+    ) -> NamingResult<()> {
         let name = variant.name.decl_name.ident.clone();
         let variant_ty = Type::Variant(variant.clone());
         self.declare_type(name.clone(), variant_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
-        self.define(name, Def::Variant(variant.clone()), DefDeclMatch::always_match, map_unexpected)?;
+        self.define(
+            name,
+            Def::Variant(variant.clone()),
+            DefDeclMatch::always_match,
+            map_unexpected,
+        )?;
 
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()>  {
+    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()> {
         let name = class.name.decl_name.ident.clone();
         let class_ty = Type::Class(class.clone());
         self.declare_type(name.clone(), class_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
-        self.define(name, Def::Class(class.clone()), DefDeclMatch::always_match, map_unexpected)?;
+        self.define(
+            name,
+            Def::Class(class.clone()),
+            DefDeclMatch::always_match,
+            map_unexpected,
+        )?;
 
         Ok(())
     }
@@ -438,12 +461,7 @@ impl Context {
         self.declare_type(self_ident, ty, Visibility::Private)
     }
 
-    fn declare_type(
-        &mut self,
-        name: Ident,
-        ty: Type,
-        visibility: Visibility,
-    ) -> NamingResult<()> {
+    fn declare_type(&mut self, name: Ident, ty: Type, visibility: Visibility) -> NamingResult<()> {
         self.declare(name, Decl::Type { ty, visibility })?;
         Ok(())
     }
@@ -479,7 +497,11 @@ impl Context {
 
             Some(MemberRef::Value { value: decl, .. }) => {
                 let unexpected = UnexpectedValue::Decl(decl.clone());
-                Err(NameError::ExpectedNamespace(ns_path.clone(), unexpected))
+                Err(NameError::Unexpected {
+                    ident: ns_path.clone(),
+                    expected: ExpectedKind::Namespace,
+                    actual: unexpected,
+                })
             }
 
             None => Err(NameError::NotFound(ns_path.last().clone())),
@@ -554,10 +576,11 @@ impl Context {
         Ok(())
     }
 
-    pub fn find_method_def(&self,
+    pub fn find_method_def(
+        &self,
         iface: &IdentPath,
         for_ty: &Type,
-        method: &Ident
+        method: &Ident,
     ) -> Option<&FunctionDef> {
         let impls = self.iface_impls.get(iface)?;
 
@@ -601,11 +624,15 @@ impl Context {
                 return Err(NameError::NotFound(name.clone()));
             }
 
-            Some(MemberRef::Value { value, parent_path: _, key }) => {
+            Some(MemberRef::Value {
+                value,
+                parent_path: _,
+                key,
+            }) => {
                 match decl_predicate(value) {
                     DefDeclMatch::Match => {
                         // ok
-                    },
+                    }
 
                     DefDeclMatch::Mismatch => {
                         return Err(NameError::DefDeclMismatch {
@@ -642,17 +669,26 @@ impl Context {
         let sig = FunctionSig::of_decl(&def.decl);
 
         let is_func_decl = |decl: &Decl| match decl {
-            Decl::Function { sig: existing_sig, visibility: existing_vis } => {
+            Decl::Function {
+                sig: existing_sig,
+                visibility: existing_vis,
+            } => {
                 if sig == **existing_sig && visibility == *existing_vis {
                     DefDeclMatch::Match
                 } else {
                     DefDeclMatch::Mismatch
                 }
-            },
+            }
             _ => DefDeclMatch::WrongKind,
         };
 
-        self.define(name, Def::Function(def), is_func_decl, NameError::ExpectedFunction)
+        let expected_func_err = |ident, unexpected| NameError::Unexpected {
+            ident,
+            expected: ExpectedKind::Function,
+            actual: unexpected,
+        };
+
+        self.define(name, Def::Function(def), is_func_decl, expected_func_err)
     }
 
     pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
@@ -667,14 +703,17 @@ impl Context {
                 Ok((parent_path, ty))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => {
-                Err(NameError::ExpectedType(name.clone(), other.clone().into()))
-            }
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+                ident: name.clone(),
+                expected: ExpectedKind::AnyType,
+                actual: other.clone().into(),
+            }),
 
-            Some(MemberRef::Namespace { path }) => {
-                let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
-                Err(NameError::ExpectedType(name.clone(), unexpected))
-            }
+            Some(MemberRef::Namespace { path }) => Err(NameError::Unexpected {
+                ident: name.clone(),
+                actual: UnexpectedValue::Namespace(path.top().ident.clone().unwrap()),
+                expected: ExpectedKind::AnyType,
+            }),
 
             None => Err(NameError::NotFound(name.last().clone())),
         }
@@ -684,21 +723,24 @@ impl Context {
         self.defs.get(name)
     }
 
-    pub fn find_variant_def(&self, name: &IdentPath) -> NamingResult<Rc<Variant>> {
+    pub fn find_class_def(&self, name: &IdentPath) -> NamingResult<Rc<Class>> {
         match self.defs.get(name) {
-            Some(Def::Variant(variant_def)) => {
-                Ok(variant_def.clone())
-            }
+            Some(Def::Class(class_def)) => Ok(class_def.clone()),
 
             Some(..) => {
                 let decl = self.resolve(&name);
-                let unexpected = UnexpectedValue::Decl(decl
-                    .expect("found def so decl must exist")
-                    .as_value()
-                    .expect("if def exists it must be a value not a namespace")
-                    .clone());
+                let unexpected = UnexpectedValue::Decl(
+                    decl.expect("found def so decl must exist")
+                        .as_value()
+                        .expect("if def exists it must be a value not a namespace")
+                        .clone(),
+                );
 
-                return Err(NameError::ExpectedVariant(name.clone(), unexpected))
+                return Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: unexpected,
+                    expected: ExpectedKind::Class,
+                });
             }
 
             None => {
@@ -707,12 +749,48 @@ impl Context {
         }
     }
 
-    pub fn instantiate_variant(&mut self, name: &QualifiedDeclName) -> NamingResult<Rc<Variant>> {
+    pub fn instantiate_class(&self, name: &QualifiedDeclName) -> NamingResult<Rc<Class>> {
+        let base_def = self.find_class_def(&name.qualified)?;
+
+        let ty_args = name.type_args.clone();
+        let instance_def =
+            specialize_generic_class(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
+
+        Ok(instance_def)
+    }
+
+    pub fn find_variant_def(&self, name: &IdentPath) -> NamingResult<Rc<Variant>> {
+        match self.defs.get(name) {
+            Some(Def::Variant(variant_def)) => Ok(variant_def.clone()),
+
+            Some(..) => {
+                let decl = self.resolve(&name);
+                let unexpected = UnexpectedValue::Decl(
+                    decl.expect("found def so decl must exist")
+                        .as_value()
+                        .expect("if def exists it must be a value not a namespace")
+                        .clone(),
+                );
+
+                return Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: unexpected,
+                    expected: ExpectedKind::Variant,
+                });
+            }
+
+            None => {
+                return Err(NameError::NotFound(name.last().clone()));
+            }
+        }
+    }
+
+    pub fn instantiate_variant(&self, name: &QualifiedDeclName) -> NamingResult<Rc<Variant>> {
         let base_def = self.find_variant_def(&name.qualified)?;
 
         let ty_args = name.type_args.clone();
-        let instance_def = specialize_generic_variant(base_def.as_ref(), ty_args, name.span())
-            .map(Rc::new)?;
+        let instance_def =
+            specialize_generic_variant(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
 
         Ok(instance_def)
     }
@@ -733,14 +811,19 @@ impl Context {
                 Ok((parent_path, iface.clone()))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedInterface(
-                name.clone(),
-                other.clone().into(),
-            )),
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+                ident: name.clone(),
+                actual: other.clone().into(),
+                expected: ExpectedKind::Interface,
+            }),
 
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
-                Err(NameError::ExpectedInterface(name.clone(), unexpected))
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: unexpected,
+                    expected: ExpectedKind::Interface,
+                })
             }
 
             None => Err(NameError::NotFound(name.last().clone())),
@@ -754,6 +837,17 @@ impl Context {
         }
     }
 
+    pub fn implemented_ifaces(&self, self_ty: &Type) -> Vec<IdentPath> {
+        let mut result = Vec::new();
+        for (iface_id, iface_impl) in &self.iface_impls {
+            if iface_impl.contains_key(self_ty) {
+                result.push(iface_id.clone());
+            }
+        }
+
+        result
+    }
+
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.resolve(name) {
             Some(MemberRef::Value {
@@ -765,14 +859,22 @@ impl Context {
                 let func_path = Path::new(key.clone(), parent_path.keys().cloned());
                 Ok((func_path, sig.clone()))
             }
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::ExpectedFunction(
-                name.clone(),
-                other.clone().into(),
-            )),
+
+            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+                ident: name.clone(),
+                actual: other.clone().into(),
+                expected: ExpectedKind::Function,
+            }),
+
             Some(MemberRef::Namespace { path }) => {
                 let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
-                Err(NameError::ExpectedFunction(name.clone(), unexpected))
+                Err(NameError::Unexpected {
+                    ident: name.clone(),
+                    actual: unexpected,
+                    expected: ExpectedKind::Function,
+                })
             }
+
             None => Err(NameError::NotFound(name.last().clone())),
         }
     }

@@ -52,6 +52,14 @@ pub fn builtin_string_class() -> ast::Class {
     }
 }
 
+// builtin name of the dispose method of the builtin disposable interface
+pub fn builtin_disposable_dispose_name() -> Ident {
+    Ident {
+        name: "Dispose".to_string(),
+        span: builtin_span(),
+    }
+}
+
 pub fn builtin_disposable_name() -> QualifiedDeclName {
     let builtin_span = builtin_span();
 
@@ -75,7 +83,7 @@ pub fn builtin_disposable_iface() -> ast::Interface {
     ast::Interface {
         name: builtin_disposable_name(),
         methods: vec![ast::FunctionDecl {
-            ident: Ident::new("Dispose", builtin_span.clone()).into(),
+            ident: IdentPath::from(builtin_disposable_dispose_name()),
             return_ty: None,
             impl_iface: None,
             mods: Vec::new(),

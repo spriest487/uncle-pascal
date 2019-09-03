@@ -3,11 +3,7 @@ use std::{
     collections::HashMap,
     fmt,
     mem::size_of,
-    ops::{
-        Add,
-        Index,
-        IndexMut,
-    },
+    ops::{Add, Index, IndexMut},
 };
 
 #[derive(Debug, Clone)]

@@ -65,11 +65,7 @@ impl<A: Annotation> Spanned for WhileLoop<A> {
 
 impl<A: Annotation> fmt::Display for WhileLoop<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "while {} do {}",
-            self.condition, self.body
-        )
+        write!(f, "while {} do {}", self.condition, self.body)
     }
 }
 

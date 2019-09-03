@@ -11,7 +11,8 @@ use crate::{
     ast::{Class, FunctionDecl, Interface, Variant},
     context::{self, ns::Namespace as _},
     result::*,
-    Context, Decl, GenericError, GenericResult, NameError, QualifiedDeclName, TypeAnnotation,
+    Context, Decl, ExpectedKind, GenericError, GenericResult, NameError, QualifiedDeclName,
+    TypeAnnotation,
 };
 
 #[cfg(test)]
@@ -283,11 +284,9 @@ impl Type {
         match type_decl {
             ast::TypeDecl::Class(class) if class.kind == ClassKind::Record => {
                 Type::Record(class.clone())
-            },
+            }
 
-            ast::TypeDecl::Class(class) => {
-                Type::Class(class.clone())
-            },
+            ast::TypeDecl::Class(class) => Type::Class(class.clone()),
 
             ast::TypeDecl::Variant(variant) => Type::Variant(variant.clone()),
 
@@ -329,6 +328,13 @@ impl Type {
 
     pub fn members(&self) -> impl Iterator<Item = MemberRef> {
         (0..self.members_len()).map(move |m| self.get_member(m).unwrap())
+    }
+
+    pub fn is_generic_param(&self) -> bool {
+        match self {
+            Type::GenericParam(..) => true,
+            _ => false,
+        }
     }
 
     pub fn is_rc(&self) -> bool {
@@ -465,6 +471,64 @@ impl Type {
         }
     }
 
+    // todo: error handling
+    pub fn substitute_type_args(self, args: &[Self], ctx: &Context) -> Self {
+        if args.len() == 0 {
+            return self;
+        }
+
+        match self {
+            Type::GenericParam(param) => args[param.pos].clone(),
+
+            Type::Class(class) | Type::Record(class) => {
+                let new_args = class.name.type_args.iter()
+                    .cloned()
+                    .map(|arg| arg.substitute_type_args(args, ctx))
+                    .collect();
+
+                let new_name = QualifiedDeclName {
+                    type_args: new_args,
+                    ..class.name.clone()
+                };
+
+                let new_class = ctx.instantiate_class(&new_name)
+                    .unwrap();
+
+                match new_class.kind {
+                    ClassKind::Object => Type::Class(new_class),
+                    ClassKind::Record => Type::Record(new_class),
+                }
+            }
+
+            Type::Variant(variant) => {
+                let new_args = variant.name.type_args.iter()
+                    .cloned()
+                    .map(|arg| arg.substitute_type_args(args, ctx))
+                    .collect();
+
+                let new_name = QualifiedDeclName {
+                    type_args: new_args,
+                    ..variant.name.clone()
+                };
+
+                let new_variant = ctx.instantiate_variant(&new_name)
+                    .unwrap();
+
+                Type::Variant(new_variant)
+            }
+
+            Type::DynArray { element } => {
+                Type::DynArray { element: element.substitute_type_args(args, ctx).into() }
+            }
+
+            Type::Array { element, dim } => {
+                Type::Array { element: element.substitute_type_args(args, ctx).into(), dim }
+            }
+
+            other => other,
+        }
+    }
+
     pub fn specialize_generic(&self, args: &[Self], span: &Span) -> GenericResult<Self> {
         match self {
             Type::GenericParam(TypeParam { pos, .. }) => {
@@ -490,20 +554,15 @@ impl Type {
                 .map(Rc::new)
                 .map(Type::Variant),
 
-            Type::Array { element, dim } => Self::specialize_generic(element, args, span)
+            Type::Array { element, dim } => element.specialize_generic(args, span)
                 .map(Box::new)
                 .map(|element| Type::Array { element, dim: *dim }),
 
-            not_generic => Ok(not_generic.clone()),
-        }
-    }
+            Type::DynArray { element } => element.specialize_generic(args, span)
+                .map(Box::new)
+                .map(|element| Type::DynArray { element }),
 
-    pub fn type_args(&self) -> &[Self] {
-        match self {
-            Type::Variant(variant) => &variant.name.type_args,
-            Type::Record(class) | Type::Class(class) => &class.name.type_args,
-            Type::Interface(iface) => &iface.name.type_args,
-            _ => &[],
+            not_generic => Ok(not_generic.clone()),
         }
     }
 }
@@ -560,15 +619,20 @@ pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResul
 
         Some(context::MemberRef::Value {
             value: unexpected, ..
-        }) => Err(NameError::ExpectedType(
-            name.clone(),
-            unexpected.clone().into(),
-        )),
+        }) => Err(NameError::Unexpected {
+            ident: name.clone(),
+            actual: unexpected.clone().into(),
+            expected: ExpectedKind::AnyType,
+        }),
 
         Some(context::MemberRef::Namespace { path }) => {
             let ns_ident = path.top().key().unwrap().clone();
             let unexpected = context::UnexpectedValue::Namespace(ns_ident);
-            Err(NameError::ExpectedType(name.clone(), unexpected))
+            Err(NameError::Unexpected {
+                ident: name.clone(),
+                actual: unexpected,
+                expected: ExpectedKind::AnyType,
+            })
         }
 
         None => Err(NameError::NotFound(name.last().clone())),
@@ -609,9 +673,9 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                     dim: *dim,
                 }),
 
-                None => {
-                    Ok(Type::DynArray { element: Box::new(element) })
-                },
+                None => Ok(Type::DynArray {
+                    element: Box::new(element),
+                }),
             }
         }
 
@@ -790,6 +854,10 @@ impl Specializable for Type {
 
             Type::Variant(variant) => variant.name.is_generic(),
 
+            Type::Array { element, .. } => element.is_generic(),
+
+            Type::DynArray { element } => element.is_generic(),
+
             _ => false,
         }
     }
@@ -876,7 +944,8 @@ impl TypePattern {
                         base: Type::Variant(variant.clone()),
                         member: case_ident.clone(),
                         span: err_span,
-                    }.into())
+                    }
+                    .into());
                 }
 
                 let case = (decl_name.clone(), case_ident.clone());
@@ -1033,9 +1102,12 @@ impl TypePattern {
                 binding: Some(ident),
                 ..
             } => {
-                let binding = PatternBinding { ident: ident.clone(), ty: ty.clone() };
+                let binding = PatternBinding {
+                    ident: ident.clone(),
+                    ty: ty.clone(),
+                };
                 Ok(vec![binding])
-            },
+            }
 
             TypePattern::VariantCase {
                 variant,
@@ -1052,7 +1124,10 @@ impl TypePattern {
                     })
                     .expect("variant case pattern with a binding must always reference a case which has a data member");
 
-                let binding = PatternBinding { ty: case_ty, ident: ident.clone() };
+                let binding = PatternBinding {
+                    ty: case_ty,
+                    ident: ident.clone(),
+                };
                 Ok(vec![binding])
             }
 
@@ -1087,11 +1162,7 @@ impl fmt::Display for TypePattern {
                 Ok(())
             }
 
-            TypePattern::NegatedVariantCase {
-                variant,
-                case,
-                ..
-            } => {
+            TypePattern::NegatedVariantCase { variant, case, .. } => {
                 write!(f, "not {}.{}", variant.qualified, case)
             }
         }

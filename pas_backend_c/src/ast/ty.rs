@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, StructID, MethodID};
+use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID};
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
 

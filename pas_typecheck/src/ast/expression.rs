@@ -136,7 +136,10 @@ fn typecheck_args(
     Ok(checked_args)
 }
 
-fn typecheck_type_args(type_args: &[ast::TypeName], ctx: &mut Context) -> TypecheckResult<Vec<Type>> {
+fn typecheck_type_args(
+    type_args: &[ast::TypeName],
+    ctx: &mut Context,
+) -> TypecheckResult<Vec<Type>> {
     type_args
         .iter()
         .map(|arg_ty| typecheck_type(arg_ty, ctx))

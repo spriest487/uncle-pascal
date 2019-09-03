@@ -1,23 +1,14 @@
 use pas_typecheck as pas_ty;
 
 use crate::{
-    LocalID,
-    Instruction,
-    FunctionDeclKey,
-    FunctionCacheKey,
-    CachedFunction,
-    Ref,
-    Value,
-    Module,
-    Label,
-    IROptions,
-    IdentPath,
-    metadata::*,
+    metadata::*, CachedFunction, FunctionCacheKey, FunctionDeclKey, IROptions, IdentPath,
+    Instruction, Label, LocalID, Module, Ref, Value,
 };
 
 use std::fmt;
 
 use pas_common::span::Span;
+use pas_typecheck::Specializable;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -131,13 +122,23 @@ impl<'m> Builder<'m> {
     }
 
     pub fn with_type_args(self, type_args: Vec<pas_ty::Type>) -> Self {
+        let any_generic = type_args
+            .iter()
+            .any(|a| a.is_generic_param() || a.is_generic());
+        if any_generic {
+            panic!(
+                "type args in a builder scope must be real types, got: [{}]",
+                type_args_to_string(&type_args)
+            );
+        }
+
         Self { type_args, ..self }
     }
 
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
         variant: &pas_ty::QualifiedDeclName,
-        case: &pas_syn::Ident
+        case: &pas_syn::Ident,
     ) -> (StructID, usize, Option<&'ty Type>) {
         let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
 
@@ -146,7 +147,9 @@ impl<'m> Builder<'m> {
             None => panic!("missing IR metadata for variant {}", variant),
         };
 
-        let case_index = variant_struct.cases.iter()
+        let case_index = variant_struct
+            .cases
+            .iter()
             .position(|c| c.name == case.name);
 
         match case_index {
@@ -176,10 +179,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let real_ty = match src_ty {
-            pas_ty::Type::GenericParam(param) => self.type_args[param.pos].clone(),
-            _ => src_ty.clone(),
-        };
+        let real_ty = src_ty.clone().substitute_type_args(&self.type_args, &self.module.src_metadata);
 
         // instantiate types which may contain generic params
         match &real_ty {
@@ -191,8 +191,7 @@ impl<'m> Builder<'m> {
                 }
             }
 
-            pas_ty::Type::Record(class_def)
-            | pas_ty::Type::Class(class_def) => {
+            pas_ty::Type::Record(class_def) | pas_ty::Type::Class(class_def) => {
                 let name_path = self.translate_name(&class_def.name);
 
                 if self.module.metadata.find_struct(&name_path).is_none() {
@@ -212,42 +211,12 @@ impl<'m> Builder<'m> {
 
             _ => {
                 // nothing to be instantiated
-            },
+            }
         }
 
-        let ty = self.module.metadata.translate_type(&real_ty);
+        self.module.add_type_instance(real_ty.clone());
 
-        /* when we encounter a type, make sure we generate code for all of its
-        interface implementations */
-        eprintln!("unimplemented: iface impl instantation ({})", ty);
-//        for iface_impl in self.module.src.root_ctx.iface_impls(src_ty) {
-//
-//        }
-
-//        let instantiate_methods: Vec<_> = self.module.metadata.functions()
-//            .filter_map(|key| {
-//                match key {
-//                    FunctionDeclKey::Method { self_ty, iface ,method } if self_ty == src_ty => {
-//                        let cache_key = FunctionCacheKey {
-//                            decl_key: key.clone(),
-//                            type_args: self.type_args.clone(),
-//                        };
-//
-//                        let debug_name = format!("impl of {}.{} for {}", iface, method, src_ty);
-//
-//                        Some((cache_key, debug_name))
-//                    }
-//
-//                    _ => None,
-//                }
-//            })
-//            .collect();
-
-//        for (method_key, debug_name) in instantiate_methods {
-//            self.module.translate_func_usage(method_key, debug_name);
-//        }
-
-        ty
+        self.module.metadata.translate_type(&real_ty)
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
@@ -349,13 +318,7 @@ impl<'m> Builder<'m> {
         });
     }
 
-    pub fn bind_local(
-        &mut self,
-        id: LocalID,
-        ty: Type,
-        name: impl Into<String>,
-        by_ref: bool
-    ) {
+    pub fn bind_local(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
         let name = name.into();
 
         let slot_free = !self
@@ -663,7 +626,11 @@ impl<'m> Builder<'m> {
             if to_scope == last_scope {
                 self.comment(&format!("cleanup scope {}", to_scope + 1));
             } else {
-                self.comment(&format!("cleanup scopes {}..{}", to_scope + 1, self.scopes.len()));
+                self.comment(&format!(
+                    "cleanup scopes {}..{}",
+                    to_scope + 1,
+                    self.scopes.len()
+                ));
             }
         }
 
@@ -816,4 +783,11 @@ mod test {
 
         assert_eq!(expect, &builder.instructions[from + 1..]);
     }
+}
+
+fn type_args_to_string(args: &[pas_ty::Type]) -> String {
+    args.iter()
+        .map(|a| a.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }

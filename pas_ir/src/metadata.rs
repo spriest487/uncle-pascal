@@ -1,14 +1,8 @@
-use std::{
-    collections::hash_map::HashMap,
-    fmt,
-};
+use std::{collections::hash_map::HashMap, fmt};
 
-use crate::formatter::{
-    InstructionFormatter,
-    RawInstructionFormatter,
-};
+use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
 use pas_syn as syn;
-use pas_syn::{Path};
+use pas_syn::Path;
 use pas_typecheck as pas_ty;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
@@ -94,17 +88,10 @@ impl NamePath {
         }
     }
 
-    pub fn from_ident_path(
-        ident: &syn::IdentPath,
-        type_args: Vec<Type>,
-    ) -> Self {
-        let path = Path::from_parts(ident.iter()
-            .map(|ident| ident.to_string()));
+    pub fn from_ident_path(ident: &syn::IdentPath, type_args: Vec<Type>) -> Self {
+        let path = Path::from_parts(ident.iter().map(|ident| ident.to_string()));
 
-        NamePath {
-            path,
-            type_args,
-        }
+        NamePath { path, type_args }
     }
 
     pub fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self {
@@ -144,15 +131,26 @@ impl Interface {
         let methods_len = self.methods.len();
         let impl_entry = self
             .impls
-            .entry(implementor)
+            .entry(implementor.clone())
             .or_insert_with(|| InterfaceImpl::new(methods_len));
-        assert!(!impl_entry.methods.contains_key(&method));
+        assert!(
+            !impl_entry.methods.contains_key(&method),
+            "adding duplicate impl (func {}) of method {}.{} for {}, already defined as {}",
+            func_id,
+            self.name,
+            method.0,
+            implementor,
+            impl_entry.methods[&method],
+        );
 
         impl_entry.methods.insert(method, func_id);
     }
 
     pub fn method_index(&self, name: &str) -> Option<MethodID> {
-        self.methods.iter().position(|m| m.name.as_str() == name).map(MethodID)
+        self.methods
+            .iter()
+            .position(|m| m.name.as_str() == name)
+            .map(MethodID)
     }
 
     pub fn get_method(&self, id: MethodID) -> Option<&Method> {
@@ -189,13 +187,13 @@ pub struct Struct {
 
 impl Struct {
     pub fn find_field(&self, name: &str) -> Option<FieldID> {
-        self.fields
-            .iter()
-            .find_map(|(id, field)| if field.name.as_str() == name {
+        self.fields.iter().find_map(|(id, field)| {
+            if field.name.as_str() == name {
                 Some(*id)
             } else {
                 None
-            })
+            }
+        })
     }
 
     pub fn get_field(&self, id: FieldID) -> Option<&StructField> {
@@ -382,7 +380,10 @@ impl GlobalName {
         let mut path: Vec<String> = ns.into_iter().map(Into::into).collect();
         path.push(name.into());
 
-        Self { path, type_args: Vec::new() }
+        Self {
+            path,
+            type_args: Vec::new(),
+        }
     }
 
     pub fn path(&self) -> impl Iterator<Item = &String> {
@@ -390,7 +391,11 @@ impl GlobalName {
     }
 
     pub fn with_ty_args(self, args: Vec<pas_ty::Type>) -> Self {
-        assert_eq!(0, self.type_args.len(), "shouldn't already have type args when building a specialized GlobalName");
+        assert_eq!(
+            0,
+            self.type_args.len(),
+            "shouldn't already have type args when building a specialized GlobalName"
+        );
 
         Self {
             type_args: args,
@@ -560,16 +565,17 @@ impl Metadata {
         let global_name = match &func_decl.impl_iface {
             Some(_) => None,
             None => {
-                let ns: Vec<_> = func_decl.ident.parent()
+                let ns: Vec<_> = func_decl
+                    .ident
+                    .parent()
                     .expect("func always declared in ns")
                     .iter()
                     .map(syn::Ident::to_string)
                     .collect();
                 let name = func_decl.ident.last().to_string();
 
-                Some(GlobalName::new(name, ns)
-                    .with_ty_args(type_args))
-            },
+                Some(GlobalName::new(name, ns).with_ty_args(type_args))
+            }
         };
 
         self.insert_func(global_name)
@@ -629,7 +635,7 @@ impl Metadata {
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
                 format!("array [{}] of {}", dim, elem_name)
-            },
+            }
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
@@ -641,14 +647,14 @@ impl Metadata {
                         iface
                             .map(|def| def.name.to_string())
                             .unwrap_or_else(|| format!("<interface {}>", iface_id))
-                    },
+                    }
 
                     Some(ClassID::Class(struct_id)) => {
                         self.pretty_ty_name(&Type::Struct(*struct_id))
-                    },
+                    }
                 };
                 format!("rc {}", resource_name)
-            },
+            }
 
             Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
 
@@ -678,10 +684,7 @@ impl Metadata {
         };
 
         assert!(
-            !self
-                .type_defs
-                .values()
-                .any(|def| *def.name() == name_path),
+            !self.type_defs.values().any(|def| *def.name() == name_path),
             "duplicate type def: {}",
             name_path
         );
@@ -803,9 +806,18 @@ impl Metadata {
         iface.add_impl(for_ty, index, func_id);
     }
 
-    pub fn find_impl(&self, ty: &Type, iface_id: InterfaceID, method: MethodID) -> Option<FunctionID> {
-        let iface = self.ifaces.get(&iface_id)
-            .unwrap_or_else(|| panic!("missing metadata definition of iface {} - defined: {:#?}", iface_id, self.ifaces));
+    pub fn find_impl(
+        &self,
+        ty: &Type,
+        iface_id: InterfaceID,
+        method: MethodID,
+    ) -> Option<FunctionID> {
+        let iface = self.ifaces.get(&iface_id).unwrap_or_else(|| {
+            panic!(
+                "missing metadata definition of iface {} - defined: {:#?}",
+                iface_id, self.ifaces
+            )
+        });
 
         let ty_impl = iface.impls.get(ty)?;
 
@@ -818,7 +830,8 @@ impl Metadata {
     }
 
     pub fn find_impls(&self, ty: &Type) -> Vec<(InterfaceID, &InterfaceImpl)> {
-        self.ifaces.iter()
+        self.ifaces
+            .iter()
             .filter_map(|(id, iface)| {
                 let impl_for_ty = iface.impls.get(ty)?;
                 Some((*id, impl_for_ty))
@@ -838,7 +851,7 @@ impl Metadata {
                 };
 
                 Type::RcPointer(Some(ClassID::Interface(iface_id)))
-            },
+            }
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
@@ -848,10 +861,24 @@ impl Metadata {
             pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
 
             pas_typecheck::Type::Record(class) | pas_typecheck::Type::Class(class) => {
+                let any_generic_args = class
+                    .name
+                    .type_args
+                    .iter()
+                    .any(|arg| arg.is_generic_param());
+                assert!(
+                    !any_generic_args,
+                    "name of translated class must not contain unspecialized generics: {}",
+                    class.name
+                );
+
                 let ty_name = NamePath::from_decl(class.name.clone(), self);
                 let struct_id = match self.find_struct(&ty_name) {
                     Some((id, _def)) => id,
-                    None => panic!("{} was not found in metadata (not instantiated)", class.name),
+                    None => panic!(
+                        "{} was not found in metadata (not instantiated)",
+                        class.name
+                    ),
                 };
 
                 match class.kind {
@@ -859,9 +886,9 @@ impl Metadata {
                     pas_syn::ast::ClassKind::Object => {
                         let class_id = ClassID::Class(struct_id);
                         Type::RcPointer(Some(class_id))
-                    },
+                    }
                 }
-            },
+            }
 
             pas_ty::Type::Array { element, dim } => {
                 let element = self.translate_type(element.as_ref());
@@ -869,39 +896,53 @@ impl Metadata {
                     element: Box::new(element),
                     dim: *dim,
                 }
-            },
+            }
 
             pas_ty::Type::DynArray { element } => {
                 let element = self.translate_type(element.as_ref());
 
                 let array_struct = match self.find_dyn_array_struct(&element) {
                     Some(id) => id,
-                    None => panic!("missing dyn array IR struct definition for element type {}", element),
+                    None => panic!(
+                        "missing dyn array IR struct definition for element type {}",
+                        element
+                    ),
                 };
 
                 Type::RcPointer(Some(ClassID::Class(array_struct)))
-            },
+            }
 
             pas_ty::Type::Variant(variant) => {
+                let any_generic_args = variant
+                    .name
+                    .type_args
+                    .iter()
+                    .any(|arg| arg.is_generic_param());
+                assert!(
+                    !any_generic_args,
+                    "name of translated variant must not contain unspecialized generics: {}",
+                    variant.name
+                );
+
                 let ty_name = NamePath::from_decl(variant.name.clone(), self);
 
                 match self.find_variant(&ty_name) {
                     Some((id, _)) => Type::Variant(id),
                     None => panic!("missing IR struct metadata for variant {}", variant.name),
                 }
-            },
+            }
 
-            pas_ty::Type::MethodSelf => {
-                panic!("Self is not a real type in this context")
-            },
+            pas_ty::Type::MethodSelf => panic!("Self is not a real type in this context"),
 
-            pas_ty::Type::GenericParam(param) => {
-                panic!("{} is not a real type in this context: {:?}", param, pas_common::Backtrace::new())
-            },
+            pas_ty::Type::GenericParam(param) => panic!(
+                "{} is not a real type in this context: {:?}",
+                param,
+                pas_common::Backtrace::new()
+            ),
 
             pas_ty::Type::Function(sig) => {
                 unimplemented!("No IR type exists to represent function: {}", sig)
-            },
+            }
 
             pas_ty::Type::Any => Type::RcPointer(None),
         }
@@ -921,26 +962,34 @@ impl Metadata {
         let name = NamePath::from_parts(vec![format!("{}[]", element)]);
 
         let mut fields = HashMap::new();
-        fields.insert(DYNARRAY_PTR_FIELD, StructField {
-            name: "ptr".to_string(),
-            ty: element.clone().ptr(),
-            rc: false,
-        });
-        fields.insert(DYNARRAY_LEN_FIELD, StructField {
-            name: "len".to_string(),
-            ty: Type::I32,
-            rc: false,
-        });
+        fields.insert(
+            DYNARRAY_PTR_FIELD,
+            StructField {
+                name: "ptr".to_string(),
+                ty: element.clone().ptr(),
+                rc: false,
+            },
+        );
+        fields.insert(
+            DYNARRAY_LEN_FIELD,
+            StructField {
+                name: "len".to_string(),
+                ty: Type::I32,
+                rc: false,
+            },
+        );
 
         let struct_id = self.next_struct_id();
-        self.type_defs.insert(struct_id, TypeDef::Struct(Struct { name, fields, }));
+        self.type_defs
+            .insert(struct_id, TypeDef::Struct(Struct { name, fields }));
 
         self.dyn_array_structs.insert(element, struct_id);
 
         // we know it will have a disposer impl (and trust that the module
         // will generate the code for it if we give it an ID here)
         let disposer_id = self.next_function_id();
-        self.functions.insert(disposer_id, FunctionDecl { global_name: None });
+        self.functions
+            .insert(disposer_id, FunctionDecl { global_name: None });
 
         let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
         self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
@@ -960,7 +1009,7 @@ impl Metadata {
                 } else {
                     None
                 }
-            },
+            }
 
             _ => None,
         })
@@ -974,7 +1023,7 @@ impl Metadata {
                 } else {
                     None
                 }
-            },
+            }
 
             _ => None,
         })
@@ -997,7 +1046,7 @@ impl Metadata {
                     .unwrap_or(StringID(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
-            },
+            }
         }
     }
 

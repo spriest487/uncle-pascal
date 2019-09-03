@@ -1,4 +1,9 @@
-use crate::{annotation::TypeAnnotation, ast::{Call, Expression, Variant}, context::NameError, Type, ValueKind, GenericError};
+use crate::{
+    annotation::TypeAnnotation,
+    ast::{Call, Expression, Variant},
+    context::NameError,
+    GenericError, Type, ValueKind,
+};
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
 use std::fmt;
@@ -334,7 +339,14 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidBinOp { lhs, rhs, op, .. } => {
-                write!(f, "operator {} cannot be applied to the operand types {} and {}", op, lhs, rhs)
+                match op {
+                    Operator::Assignment => {
+                        write!(f, "{} is not assignable to {}", rhs, lhs)
+                    },
+                    _ => {
+                        write!(f, "operator {} cannot be applied to the operand types {} and {}", op, lhs, rhs)
+                    }
+                }
             }
 
             TypecheckError::InvalidUnaryOp { operand, op, .. } => {

@@ -1,6 +1,4 @@
-use crate::ast::{
-    prelude::*,
-};
+use crate::ast::prelude::*;
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
@@ -20,7 +18,11 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 
                     Some(MemberRef::Value { value, .. }) => {
                         let unexpected = UnexpectedValue::Decl(value.clone());
-                        let err = NameError::ExpectedNamespace(unit.clone().into(), unexpected);
+                        let err = NameError::Unexpected {
+                            ident: unit.clone().into(),
+                            actual: unexpected,
+                            expected: ExpectedKind::Namespace,
+                        };
                         return Err(TypecheckError::from(err));
                     }
 
@@ -50,7 +52,11 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             } else {
                 if let Err(NameError::NotFound(..)) = ctx.find_function(&func_def.decl.ident) {
                     let func_decl = &func_def.decl;
-                    ctx.declare_function(func_def.decl.ident.last().clone(), func_decl, *visibility)?;
+                    ctx.declare_function(
+                        func_def.decl.ident.last().clone(),
+                        func_decl,
+                        *visibility,
+                    )?;
                 }
 
                 ctx.define_function(name, func_def.clone(), *visibility)?;
@@ -69,7 +75,10 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             let name = func_decl.ident.single().clone();
             let func_decl = typecheck_func_decl(func_decl, ctx)?;
 
-            assert!(func_decl.impl_iface.is_none(), "not yet implemented: can't forward-declare method impls");
+            assert!(
+                func_decl.impl_iface.is_none(),
+                "not yet implemented: can't forward-declare method impls"
+            );
 
             ctx.declare_function(name.clone(), &func_decl, *visibility)?;
 

@@ -1,15 +1,6 @@
-use std::{
-    cell::Cell,
-    fmt,
-};
+use std::{cell::Cell, fmt};
 
-use crate::{
-    metadata::*,
-    GlobalRef,
-    Instruction,
-    Ref,
-    Value,
-};
+use crate::{metadata::*, GlobalRef, Instruction, Ref, Value};
 
 pub trait InstructionFormatter {
     fn format_instruction<W: fmt::Write>(
@@ -26,7 +17,7 @@ pub trait InstructionFormatter {
                 self.format_ref(&Ref::Local(*id), f)?;
                 write!(f, " of ")?;
                 self.format_type(ty, f)
-            },
+            }
             Instruction::LocalBegin => write!(f, "{:>width$} ", "begin", width = IX_WIDTH),
             Instruction::LocalEnd => write!(f, "{:>width$} ", "end", width = IX_WIDTH),
 
@@ -36,7 +27,7 @@ pub trait InstructionFormatter {
                 self.format_ref(out, f)?;
                 write!(f, " := ")?;
                 self.format_val(new_val, f)
-            },
+            }
             Instruction::Add { out, a, b } => {
                 write!(f, "{:>width$} ", "add", width = IX_WIDTH)?;
 
@@ -45,7 +36,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " + ")?;
                 self.format_val(b, f)
-            },
+            }
             Instruction::Sub { out, a, b } => {
                 write!(f, "{:>width$} ", "sub", width = IX_WIDTH)?;
 
@@ -54,7 +45,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " - ")?;
                 self.format_val(b, f)
-            },
+            }
 
             Instruction::Eq { out, a, b } => {
                 write!(f, "{:>width$} ", "eq", width = IX_WIDTH)?;
@@ -64,7 +55,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " = ")?;
                 self.format_val(b, f)
-            },
+            }
             Instruction::Gt { out, a, b } => {
                 write!(f, "{:>width$} ", "gt", width = IX_WIDTH)?;
 
@@ -73,14 +64,14 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " > ")?;
                 self.format_val(b, f)
-            },
+            }
             Instruction::Not { out, a } => {
                 write!(f, "{:>width$} ", "not", width = IX_WIDTH)?;
 
                 self.format_ref(out, f)?;
                 write!(f, " := ~")?;
                 self.format_val(a, f)
-            },
+            }
             Instruction::And { out, a, b } => {
                 write!(f, "{:>width$} ", "and", width = IX_WIDTH)?;
 
@@ -89,7 +80,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " and ")?;
                 self.format_val(b, f)
-            },
+            }
             Instruction::Or { out, a, b } => {
                 write!(f, "{:>width$} ", "or", width = IX_WIDTH)?;
 
@@ -98,7 +89,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " or ")?;
                 self.format_val(b, f)
-            },
+            }
 
             Instruction::Call {
                 out,
@@ -121,7 +112,7 @@ pub trait InstructionFormatter {
                     self.format_val(arg, f)?;
                 }
                 write!(f, ")")
-            },
+            }
 
             Instruction::VirtualCall {
                 out,
@@ -149,7 +140,7 @@ pub trait InstructionFormatter {
                     self.format_val(arg, f)?;
                 }
                 write!(f, ")")
-            },
+            }
 
             Instruction::ClassIs { out, a, class_id } => {
                 write!(f, "{:>width$} ", "is", width = IX_WIDTH)?;
@@ -159,7 +150,7 @@ pub trait InstructionFormatter {
                 self.format_val(a, f)?;
                 write!(f, " is ")?;
                 self.format_type(&Type::RcPointer(Some(*class_id)), f)
-            },
+            }
 
             Instruction::AddrOf { out, a } => {
                 write!(f, "{:>width$} ", "addrof", width = IX_WIDTH)?;
@@ -167,7 +158,7 @@ pub trait InstructionFormatter {
                 self.format_ref(out, f)?;
                 write!(f, " := @")?;
                 self.format_ref(a, f)
-            },
+            }
 
             Instruction::Element {
                 out,
@@ -185,7 +176,7 @@ pub trait InstructionFormatter {
                 write!(f, ")[")?;
                 self.format_val(index, f)?;
                 write!(f, "]")
-            },
+            }
 
             Instruction::Field {
                 out,
@@ -202,7 +193,7 @@ pub trait InstructionFormatter {
                 self.format_type(of_ty, f)?;
                 write!(f, ").")?;
                 self.format_field(of_ty, *field, f)
-            },
+            }
 
             Instruction::VariantTag { out, a, of_ty } => {
                 write!(f, "{:>width$} ", "vartag", width = IX_WIDTH)?;
@@ -212,7 +203,7 @@ pub trait InstructionFormatter {
                 write!(f, " as ")?;
                 self.format_type(of_ty, f)?;
                 write!(f, ").tag")
-            },
+            }
 
             Instruction::VariantData { out, a, of_ty, tag } => {
                 write!(f, "{:>width$} ", "vardata", width = IX_WIDTH)?;
@@ -223,36 +214,46 @@ pub trait InstructionFormatter {
                 self.format_type(of_ty, f)?;
                 write!(f, ").")?;
                 self.format_variant_case(of_ty, *tag, f)
-            },
+            }
 
             Instruction::Label(label) => {
                 write!(f, "{:>width$} {}", "label", label, width = IX_WIDTH)
-            },
+            }
 
             Instruction::Jump { dest } => write!(f, "{:>width$} {}", "jmp", dest, width = IX_WIDTH),
 
             Instruction::JumpIf { dest, test } => {
                 write!(f, "{:>width$} {} if ", "jmpif", dest, width = IX_WIDTH)?;
                 self.format_val(test, f)
-            },
+            }
 
             Instruction::RcNew { out, struct_id } => {
                 write!(f, "{:>width$} ", "rcnew", width = IX_WIDTH)?;
                 self.format_type(&Type::Struct(*struct_id), f)?;
                 write!(f, " at {}^", out)
-            },
+            }
 
             Instruction::Release { at } => {
                 write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH)
-            },
+            }
 
             Instruction::Retain { at } => {
                 write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
-            },
-
-            Instruction::DynAlloc { out, element_ty, len } => {
-                write!(f, "{:>width$} {} := {}[{}]", "dynalloc", out, element_ty, len, width = IX_WIDTH)
             }
+
+            Instruction::DynAlloc {
+                out,
+                element_ty,
+                len,
+            } => write!(
+                f,
+                "{:>width$} {} := {}[{}]",
+                "dynalloc",
+                out,
+                element_ty,
+                len,
+                width = IX_WIDTH
+            ),
 
             Instruction::DynFree { at } => {
                 write!(f, "{:>width$} {}", "dynfree", at, width = IX_WIDTH)
@@ -336,13 +337,15 @@ impl InstructionFormatter for Metadata {
                     None => {
                         let find_iface_impl = self.ifaces().iter().find_map(|(_id, iface)| {
                             iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
-                                let method_id = iface_impl.methods.iter().find_map(|(method_id, func_id)| {
-                                    if *func_id == *id {
-                                        Some(method_id)
-                                    } else {
-                                        None
-                                    }
-                                })?;
+                                let method_id = iface_impl.methods.iter().find_map(
+                                    |(method_id, func_id)| {
+                                        if *func_id == *id {
+                                            Some(method_id)
+                                        } else {
+                                            None
+                                        }
+                                    },
+                                )?;
 
                                 let method = iface.get_method(*method_id).unwrap();
 
@@ -354,13 +357,13 @@ impl InstructionFormatter for Metadata {
                             Some((iface_name, impl_ty, method_name)) => {
                                 write!(f, "{}.{} impl for ", iface_name, method_name)?;
                                 self.format_type(impl_ty, f)
-                            },
+                            }
 
                             None => write!(f, "{}", r),
                         }
-                    },
+                    }
                 }
-            },
+            }
 
             _ => RawInstructionFormatter.format_ref(r, f),
         }

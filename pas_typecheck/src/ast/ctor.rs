@@ -151,9 +151,9 @@ pub fn typecheck_collection_ctor(
     };
 
     let collection_ty = match expect_ty {
-        Type::DynArray { .. } => {
-            Type::DynArray { element: Box::new(elem_ty) }
-        }
+        Type::DynArray { .. } => Type::DynArray {
+            element: Box::new(elem_ty),
+        },
 
         _ => Type::Array {
             element: Box::new(elem_ty),
