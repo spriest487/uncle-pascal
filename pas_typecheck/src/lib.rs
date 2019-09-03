@@ -69,7 +69,8 @@ impl Module {
         let string_class = string_ty
             .clone()
             .as_class()
-            .expect("string class must be a class");
+            .expect("string class must be a class")
+            .clone();
 
         let disposable_name = context::builtin_disposable_name();
         let (_, disposable_iface) = root_ctx

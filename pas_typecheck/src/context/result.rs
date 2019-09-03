@@ -26,6 +26,11 @@ pub enum GenericError {
         actual: usize,
         span: Span,
     },
+    CannotInferArgs {
+        target: GenericTarget,
+        expected: Type,
+        span: Span,
+    }
 }
 
 pub type GenericResult<T> = Result<T, GenericError>;
@@ -34,6 +39,7 @@ impl Spanned for GenericError {
     fn span(&self) -> &Span {
         match self {
             GenericError::ArgsLenMismatch { span, .. } => span,
+            GenericError::CannotInferArgs { span, .. } => span,
         }
     }
 }
@@ -42,6 +48,7 @@ impl DiagnosticOutput for GenericError {
     fn title(&self) -> String {
         match self {
             GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments".to_string(),
+            GenericError::CannotInferArgs { .. } => "Cannot infer type arguments".to_string(),
         }
     }
 
@@ -66,6 +73,17 @@ impl fmt::Display for GenericError {
                 "`{}` expects {} type arguments, found {}",
                 target, expected, actual
             ),
+
+            GenericError::CannotInferArgs {
+                target,
+                expected,
+                ..
+            } => write!(
+                f,
+                "cannot infer type arguments for {} from expected type `{}`",
+                target,
+                expected,
+            )
         }
     }
 }

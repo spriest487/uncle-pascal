@@ -200,9 +200,9 @@ pub fn typecheck_call(
         }
 
         TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
-            variant.decl(),
+            &variant.variant_name,
+            &variant.case,
             &func_call.args,
-            variant.case_index,
             call.span().clone(),
             expect_ty,
             ctx,
@@ -328,26 +328,40 @@ fn typecheck_func_call(
 }
 
 fn typecheck_variant_ctor_call(
-    variant: Rc<Variant>,
+    variant: &IdentPath,
+    case: &Ident,
     args: &[ast::Expression<Span>],
-    case_index: usize,
     span: Span,
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
+    let unspecialized_def = ctx.find_variant_def(variant)?;
+
     // infer the specialized generic type if the written one is generic and the hint is a specialized
     // version of that same generic variant
     let variant = match expect_ty {
         Type::Variant(expect_variant)
-            if expect_variant.name.is_specialization_of(&variant.name) =>
+            if expect_variant.is_specialization_of(&unspecialized_def.name) =>
         {
-            expect_variant.clone()
+            &*expect_variant
         }
 
-        _ => variant,
+        _ => &unspecialized_def.name,
     };
 
-    let arg = match &variant.cases[case_index].data_ty {
+    let variant_def = ctx.instantiate_variant(&variant)?;
+
+    let case_index = match variant_def.case_position(case) {
+        Some(index) => index,
+
+        None => return Err(NameError::MemberNotFound {
+            span: span.clone(),
+            member: case.clone(),
+            base: Type::Variant(Box::new(variant.clone())),
+        }.into()),
+    };
+
+    let arg = match &variant_def.cases[case_index].data_ty {
         None => {
             if !args.is_empty() {
                 let bad_args: Vec<_> = args
@@ -393,18 +407,20 @@ fn typecheck_variant_ctor_call(
         }
     };
 
+    let case = variant_def.cases[case_index].ident.clone();
+
     let annotation = TypeAnnotation::TypedValue {
         decl: None,
         span,
-        ty: Type::Variant(variant.clone()),
+        ty: Type::Variant(Box::new(variant.clone())),
         value_kind: ValueKind::Temporary,
     };
 
     Ok(ast::Call::VariantCtor(ast::VariantCtorCall {
-        variant,
+        variant: variant_def.name.clone(),
         annotation,
         arg,
-        case_index,
+        case,
     }))
 }
 

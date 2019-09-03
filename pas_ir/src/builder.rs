@@ -184,9 +184,12 @@ impl<'m> Builder<'m> {
         // instantiate types which may contain generic params
         match &real_ty {
             pas_ty::Type::Variant(variant_def) => {
-                let name_path = self.translate_name(&variant_def.name);
+                let name_path = self.translate_name(&variant_def);
 
                 if self.module.metadata.find_variant(&name_path).is_none() {
+                    let variant_def = self.module.src_metadata.instantiate_variant(variant_def)
+                        .unwrap();
+
                     self.module.metadata.define_variant(&variant_def);
                 }
             }

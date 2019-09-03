@@ -1,8 +1,8 @@
 use crate::{
-    ast::{Annotation, Expression, Variant},
+    ast::{Annotation, Expression},
     parse::prelude::*,
 };
-use std::{fmt, rc::Rc};
+use std::{fmt};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -72,8 +72,8 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct VariantCtorCall<A: Annotation> {
-    pub variant: Rc<Variant<A>>,
-    pub case_index: usize,
+    pub variant: A::DeclName,
+    pub case: Ident,
 
     pub arg: Option<Expression<A>>,
     pub annotation: A,
@@ -81,9 +81,7 @@ pub struct VariantCtorCall<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for VariantCtorCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let case = &self.variant.cases[self.case_index];
-
-        write!(f, "{}.{}(", self.variant.name, case.ident)?;
+        write!(f, "{}.{}(", self.variant, self.case)?;
         if let Some(arg) = &self.arg {
             write!(f, "{}", arg)?;
         }

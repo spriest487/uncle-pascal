@@ -222,22 +222,37 @@ fn typecheck_member_of(
             let member_ident = member_ident.clone();
 
             let annotation = match lhs.annotation() {
-                TypeAnnotation::Type(Type::Variant(variant), ..) => {
-                    let case_index = variant
+                TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
+                    assert!(
+                        variant_name.type_args.is_empty(),
+                        "shouldn't be possible to have explicit type args for a variant constructor expression"
+                    );
+
+                    // we check the named case exists in the unspecialized definition here, but
+                    // we don't want to try instantiating the actual variant type because we have
+                    // no information about its type args.
+                    let variant_def = ctx.find_variant_def(&variant_name.qualified)?;
+
+                    let case_exists = variant_def
                         .cases
                         .iter()
-                        .position(|case| case.ident == member_ident)
-                        .ok_or_else(|| NameError::MemberNotFound {
-                            span: rhs.annotation().span().clone(),
-                            base: Type::Variant(variant.clone()),
-                            member: member_ident.clone(),
-                        })?;
+                        .any(|case| case.ident == member_ident);
 
-                    TypeAnnotation::VariantCtor(VariantCtorAnnotation::new(
-                        variant.clone(),
-                        case_index,
-                        member_ident.span().clone(),
-                    ))
+                    if !case_exists {
+                        return Err(NameError::MemberNotFound {
+                            span: rhs.annotation().span().clone(),
+                            base: Type::Variant(variant_name.clone()),
+                            member: member_ident.clone(),
+                        }.into());
+                    }
+
+                    let ctor_annotation = VariantCtorAnnotation {
+                        variant_name: variant_name.qualified.clone(),
+                        case: member_ident.clone(),
+                        span: member_ident.span().clone(),
+                    };
+
+                    TypeAnnotation::VariantCtor(ctor_annotation)
                 }
 
                 TypeAnnotation::TypedValue {

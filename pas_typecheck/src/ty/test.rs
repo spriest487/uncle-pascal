@@ -95,7 +95,7 @@ fn specialize_class_with_deep_params() {
     let result = specialize_class_def(b_class, vec![INT32], &span).unwrap();
 
     assert_eq!(
-        Type::Record(expected_a_ty.name.clone()),
+        Type::Record(Box::new(expected_a_ty.name.clone())),
         result.members[0].ty
     );
     assert_eq!(INT32, result.members[1].ty);
@@ -159,7 +159,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .unwrap();
 
     let a_int = specialize_class_def(&a_class, int_params.clone(), &span)
-        .map(|class| Type::Record(class.name))
+        .map(|class| Type::Record(Box::new(class.name)))
         .unwrap();
 
     let b_func = unit.func_defs().next().unwrap();

@@ -268,7 +268,7 @@ impl Context {
             let disposable_ty = Type::Interface(Rc::new(builtin_disposable_iface()));
             let disposable_name = disposable_ty.full_path().unwrap();
 
-            let string_ty = Type::Class(builtin_string_name());
+            let string_ty = Type::Class(Box::new(builtin_string_name()));
             let string_name = string_ty.full_path().unwrap();
 
             let system_scope = root_ctx.push_scope(Some(Ident::new("System", builtin_span)));
@@ -410,7 +410,8 @@ impl Context {
         visibility: Visibility,
     ) -> NamingResult<()> {
         let name = variant.name.decl_name.ident.clone();
-        let variant_ty = Type::Variant(variant.clone());
+
+        let variant_ty = Type::Variant(Box::new(variant.name.clone()));
         self.declare_type(name.clone(), variant_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -426,7 +427,7 @@ impl Context {
 
     pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()> {
         let name = class.name.decl_name.ident.clone();
-        let class_ty = Type::Class(class.name.clone());
+        let class_ty = Type::Class(Box::new(class.name.clone()));
         self.declare_type(name.clone(), class_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -445,10 +446,10 @@ impl Context {
         for (pos, name) in names.iter().enumerate() {
             self.declare_type(
                 name.clone(),
-                Type::GenericParam(TypeParam {
+                Type::GenericParam(Box::new(TypeParam {
                     name: name.clone(),
                     pos,
-                }),
+                })),
                 Visibility::Private,
             )?;
         }

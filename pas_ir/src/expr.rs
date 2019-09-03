@@ -537,7 +537,9 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
         }
 
         ast::Call::VariantCtor(variant_ctor) => {
-            let variant_ty = pas_ty::Type::Variant(variant_ctor.variant.clone());
+            let variant_name = variant_ctor.variant.clone();
+            let variant_ty = pas_ty::Type::Variant(Box::new(variant_name));
+
             let out_ty = builder.translate_type(&variant_ty);
             let out = builder.local_temp(out_ty.clone());
 
@@ -550,10 +552,15 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 of_ty: out_ty.clone(),
             });
 
+            let (_, case_index, _) = builder.translate_variant_case(
+                &variant_ctor.variant,
+                &variant_ctor.case,
+            );
+
             // todo: proper index type
             builder.mov(
                 tag_ptr.deref(),
-                Value::LiteralI32(variant_ctor.case_index as i32),
+                Value::LiteralI32(case_index as i32),
             );
 
             if let Some(arg) = &variant_ctor.arg {
@@ -564,7 +571,7 @@ pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option
                 builder.append(Instruction::VariantData {
                     out: field_ptr.clone(),
                     a: out.clone(),
-                    tag: variant_ctor.case_index,
+                    tag: case_index,
                     of_ty: out_ty.clone(),
                 });
                 builder.mov(field_ptr.deref(), Value::Ref(arg_ref));

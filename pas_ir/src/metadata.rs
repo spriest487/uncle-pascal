@@ -871,7 +871,7 @@ impl Metadata {
                     class
                 );
 
-                let ty_name = NamePath::from_decl(class.clone(), self);
+                let ty_name = NamePath::from_decl(*class.clone(), self);
                 let struct_id = match self.find_struct(&ty_name) {
                     Some((id, _def)) => id,
                     None => panic!(
@@ -916,21 +916,20 @@ impl Metadata {
 
             pas_ty::Type::Variant(variant) => {
                 let any_generic_args = variant
-                    .name
                     .type_args
                     .iter()
                     .any(|arg| arg.is_generic_param());
                 assert!(
                     !any_generic_args,
                     "name of translated variant must not contain unspecialized generics: {}",
-                    variant.name
+                    variant
                 );
 
-                let ty_name = NamePath::from_decl(variant.name.clone(), self);
+                let ty_name = NamePath::from_decl(*variant.clone(), self);
 
                 match self.find_variant(&ty_name) {
                     Some((id, _)) => Type::Variant(id),
-                    None => panic!("missing IR struct metadata for variant {}", variant.name),
+                    None => panic!("missing IR struct metadata for variant {}", variant),
                 }
             }
 

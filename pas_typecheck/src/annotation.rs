@@ -7,12 +7,7 @@ use pas_syn::{
     Ident,
 };
 
-use crate::{
-    ast::{Expression, FunctionDecl, Variant},
-    result::*,
-    ty::*,
-    ValueKind,
-};
+use crate::{ast::{Expression, FunctionDecl}, result::*, ty::*, ValueKind};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -71,36 +66,10 @@ impl MethodAnnotation {
 pub struct VariantCtorAnnotation {
     pub span: Span,
 
-    variant_ty: Type,
-    pub case_index: usize,
-}
+    // variant ctors don't know the type args of their variant, it must be inferred from context
+    pub variant_name: IdentPath,
 
-impl VariantCtorAnnotation {
-    pub fn new(variant: Rc<Variant>, case_index: usize, span: Span) -> Self {
-        Self {
-            span,
-            case_index,
-            variant_ty: Type::Variant(variant),
-        }
-    }
-
-    pub fn ty(&self) -> &Type {
-        &self.variant_ty
-    }
-
-    pub fn decl(&self) -> Rc<Variant> {
-        match &self.variant_ty {
-            Type::Variant(variant) => variant.clone(),
-            _ => unreachable!("variant ctor must always have a variant type"),
-        }
-    }
-
-    pub fn decl_span(&self) -> &Span {
-        match &self.variant_ty {
-            Type::Variant(variant) => variant.span(),
-            _ => unreachable!("variant ctor must always have a variant type"),
-        }
-    }
+    pub case: Ident,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -157,11 +126,19 @@ impl TypeAnnotation {
                 actual: Type::Nothing,
             }),
 
-            TypeAnnotation::VariantCtor(ctor) => Err(TypecheckError::TypeMismatch {
-                span: ctor.span.clone(),
-                expected: expect_ty.clone(),
-                actual: ctor.ty().clone(),
-            }),
+            TypeAnnotation::VariantCtor(ctor) => {
+                let variant_ty = Type::Variant(Box::new(QualifiedDeclName {
+                    qualified: ctor.variant_name.clone(),
+                    decl_name: TypeDeclName::from(ctor.variant_name.last().clone()),
+                    type_args: Vec::new(),
+                }));
+
+                Err(TypecheckError::TypeMismatch {
+                    span: ctor.span.clone(),
+                    expected: expect_ty.clone(),
+                    actual: variant_ty,
+                })
+            },
         }
     }
 
@@ -186,7 +163,7 @@ impl TypeAnnotation {
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
 
-            TypeAnnotation::VariantCtor(ctor) => Some(ctor.decl_span()),
+            TypeAnnotation::VariantCtor(ctor) => Some(ctor.variant_name.span()),
         }
     }
 
