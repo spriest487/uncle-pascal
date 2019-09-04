@@ -430,7 +430,12 @@ impl Context {
 
     pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()> {
         let name = class.name.decl_name.ident.clone();
-        let class_ty = Type::Class(Box::new(class.name.clone()));
+
+        let class_ty = match class.kind {
+            pas_syn::ast::ClassKind::Object => Type::Class(Box::new(class.name.clone())),
+            pas_syn::ast::ClassKind::Record => Type::Record(Box::new(class.name.clone())),
+        };
+
         self.declare_type(name.clone(), class_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();

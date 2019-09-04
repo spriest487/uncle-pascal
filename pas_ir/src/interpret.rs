@@ -593,6 +593,8 @@ impl Interpreter {
     }
 
     fn store(&mut self, at: &Ref, val: MemCell) {
+//        println!("{} <- {:#?}", at, val);
+
         match at {
             Ref::Local(LocalID(id)) => match self.current_frame_mut().locals.get_mut(*id) {
                 Some(Some(cell)) => {
@@ -910,18 +912,13 @@ impl Interpreter {
             // let int := 1;
             // let intPtr := @int;
             // @(intPtr^) -> address of int behind intPtr
-            Ref::Deref(deref_val) => {
-                match deref_val.as_ref() {
-                    // recursively handle multiple deref levels (i^^^)
-                    Value::Ref(Ref::Deref(inner_deref)) => match inner_deref.as_ref() {
-                        Value::Ref(ref_val) => self.addr_of_ref(ref_val),
-                        _ => panic!("deref of non-reference value"),
+            Ref::Deref(val) => {
+                match self.evaluate(val) {
+                    MemCell::Pointer(ptr) => {
+                        ptr.clone()
                     },
 
-                    val => match self.evaluate(val) {
-                        MemCell::Pointer(ptr) => ptr.clone(),
-                        _ => panic!("deref of non-pointer value @ {}", val),
-                    },
+                    _ => panic!("deref of non-pointer value @ {}", val),
                 }
             }
 
@@ -1196,6 +1193,8 @@ impl Interpreter {
                 field,
                 of_ty,
             } => {
+//                println!("{} <- {:#?} -> {}", out, a, field);
+
                 let field_ptr = match of_ty {
                     Type::Struct(..) => {
                         let struct_ptr = self.addr_of_ref(a);

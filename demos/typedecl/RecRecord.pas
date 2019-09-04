@@ -1,3 +1,5 @@
+uses System;
+
 type Node = record
     next: ^Node;
 end;
@@ -11,10 +13,14 @@ begin
         count := count + 1;
         next := next^.next;
     end;
+
+    count
 end;
 
 var last := Node(next: nil);
 var mid := Node(next: @last);
 var head := Node(next: @mid);
 
-ListLen(@head);
+let len := ListLen(@head);
+
+WriteLn(IntToStr(len));
