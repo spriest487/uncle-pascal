@@ -106,8 +106,7 @@ impl Module {
 
         module.ifaces = metadata
             .ifaces()
-            .iter()
-            .map(|(iface_id, iface_def)| Interface::translate(*iface_id, iface_def, &mut module))
+            .map(|(iface_id, iface_def)| Interface::translate(iface_id, iface_def, &mut module))
             .collect();
 
         module

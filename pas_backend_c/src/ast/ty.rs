@@ -385,7 +385,7 @@ impl Class {
                 .enumerate()
                 .filter_map(|(method_index, _method)| {
                     let method_id = MethodID(method_index);
-                    let method_impl = metadata.find_impl(&class_ty, *iface_id, method_id)?;
+                    let method_impl = metadata.find_impl(&class_ty, iface_id, method_id)?;
 
                     Some((method_id, FunctionName::ID(method_impl)))
                 })
@@ -395,7 +395,7 @@ impl Class {
                 continue;
             }
 
-            impls.insert(*iface_id, InterfaceImpl { method_impls });
+            impls.insert(iface_id, InterfaceImpl { method_impls });
         }
 
         let disposer = impls

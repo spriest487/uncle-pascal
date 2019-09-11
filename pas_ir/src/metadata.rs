@@ -464,11 +464,26 @@ pub struct FunctionDecl {
     pub global_name: Option<GlobalName>,
 }
 
+#[derive(Debug, Clone)]
+pub enum InterfaceDecl {
+    Forward(NamePath),
+    Def(Interface),
+}
+
+impl InterfaceDecl {
+    pub fn name(&self) -> &NamePath {
+        match self {
+            InterfaceDecl::Def(def) => &def.name,
+            InterfaceDecl::Forward(name) => name,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
     type_decls: HashMap<StructID, TypeDecl>,
     string_literals: HashMap<StringID, String>,
-    ifaces: HashMap<InterfaceID, Interface>,
+    ifaces: HashMap<InterfaceID, InterfaceDecl>,
 
     dyn_array_structs: HashMap<Type, StructID>,
 
@@ -483,17 +498,17 @@ impl Metadata {
     }
 
     pub fn extend(&mut self, other: &Metadata) {
-        for (id, def) in other.type_defs() {
-            if let Some(TypeDecl::Def(conflict)) = self.type_decls.get(&id) {
+        for (id, decl) in &other.type_decls {
+            if let Some(conflict) = self.type_decls.get(id) {
                 panic!(
                     "duplicate struct ID {} in metadata (new: {}, existing: {})",
                     id,
-                    def.name(),
+                    decl.name(),
                     conflict.name(),
                 );
             };
 
-            self.type_decls.insert(id, TypeDecl::Def(def.clone()));
+            self.type_decls.insert(*id, decl.clone());
         }
 
         for (id, string_lit) in &other.string_literals {
@@ -504,15 +519,15 @@ impl Metadata {
             self.string_literals.insert(*id, string_lit.clone());
         }
 
-        for (id, iface_def) in &other.ifaces {
-            if self.ifaces.contains_key(id) {
-                let existing = &self.ifaces[id];
+        for (id, iface_decl) in &other.ifaces {
+            if let Some(conflict) = self.ifaces.get(id) {
                 panic!(
                     "duplicate iface ID {} in metadata (new: {}, existing: {})",
-                    id, iface_def.name, existing.name
+                    id, iface_decl.name(), conflict.name()
                 );
             }
-            self.ifaces.insert(*id, iface_def.clone());
+
+            self.ifaces.insert(*id, iface_decl.clone());
         }
 
         for (id, func_decl) in &other.functions {
@@ -559,6 +574,13 @@ impl Metadata {
             TypeDecl::Forward(..) => None,
             TypeDecl::Def(TypeDef::Struct(..)) => None,
             TypeDecl::Def(TypeDef::Variant(v)) => Some(v),
+        }
+    }
+
+    pub fn get_iface_def(&self, iface_id: InterfaceID) -> Option<&Interface> {
+        match self.ifaces.get(&iface_id)? {
+            InterfaceDecl::Def(def) => Some(def),
+            InterfaceDecl::Forward(..) => None,
         }
     }
 
@@ -631,7 +653,7 @@ impl Metadata {
             .and_then(|decl| decl.global_name.as_ref())
             .map(GlobalName::to_string)
             .or_else(|| {
-                self.ifaces.values().find_map(|iface| {
+                self.ifaces().find_map(|(_, iface)| {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
                         iface_impl.methods.iter().find_map(|(method, impl_id)| {
                             if *impl_id == id {
@@ -670,7 +692,7 @@ impl Metadata {
                     None => "any".to_string(),
 
                     Some(ClassID::Interface(iface_id)) => {
-                        let iface = self.ifaces.get(iface_id);
+                        let iface = self.get_iface_def(*iface_id);
 
                         iface
                             .map(|def| def.name.to_string())
@@ -726,124 +748,89 @@ impl Metadata {
         }
     }
 
-    pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
-        let name_path = NamePath::from_decl(struct_def.name.clone(), &self);
-
-        let id = self.declare_struct(&name_path);
-
-        let mut fields = HashMap::new();
-        for (id, member) in struct_def.members.iter().enumerate() {
-            let name = member.ident.to_string();
-            let ty = self.translate_type(&member.ty);
-            let rc = member.ty.is_rc();
-
-            fields.insert(FieldID(id), StructField { name, ty, rc });
-        }
-
+    pub fn define_struct(&mut self, struct_def: Struct) -> StructID {
         assert!(
-            !self.type_decls.values().any(|decl| *decl.name() == name_path && !decl.is_forward()),
+            !self.type_decls.values().any(|decl| *decl.name() == struct_def.name && !decl.is_forward()),
             "duplicate type def: {}",
-            name_path
+            struct_def.name
         );
 
-        let struct_def = Struct::new(name_path).with_fields(fields);
+        let id = self.declare_struct(&struct_def.name);
+
         let struct_decl = TypeDecl::Def(TypeDef::Struct(struct_def));
 
         self.type_decls.insert(id, struct_decl);
         id
     }
 
-    pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
-        let name_path = NamePath::from_decl(variant_def.name.clone(), &self);
-
-        let variant_id = self.declare_struct(&name_path);
-
-        self.type_decls.insert(variant_id, TypeDecl::Forward(name_path.clone()));
-
-        let mut cases = Vec::new();
-        for case in &variant_def.cases {
-            let (case_ty, case_rc) = match &case.data_ty {
-                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
-                None => (None, false),
-            };
-            cases.push(VariantCase {
-                name: case.ident.to_string(),
-                ty: case_ty,
-                rc: case_rc,
-            });
-        }
-
+    pub fn define_variant(&mut self, variant_def: Variant) -> StructID {
         assert!(
-            !self.type_decls.values().any(|decl| *decl.name() == name_path && !decl.is_forward()),
+            !self.type_decls.values().any(|decl| *decl.name() == variant_def.name && !decl.is_forward()),
             "duplicate type def: {}",
-            name_path
+            variant_def.name
         );
+
+        let variant_id = self.declare_struct(&variant_def.name);
+
+        self.type_decls.insert(variant_id, TypeDecl::Forward(variant_def.name.clone()));
 
         self.type_decls.insert(
             variant_id,
-            TypeDecl::Def(TypeDef::Variant(Variant {
-                name: name_path,
-                cases,
-            })),
+            TypeDecl::Def(TypeDef::Variant(variant_def)),
         );
 
         variant_id
     }
 
-    pub fn ifaces(&self) -> &HashMap<InterfaceID, Interface> {
-        &self.ifaces
+    pub fn ifaces(&self) -> impl Iterator<Item=(InterfaceID, &Interface)> {
+        self.ifaces.iter()
+            .filter_map(|(id, iface_decl)| match iface_decl {
+                InterfaceDecl::Def(iface_def) => Some((*id, iface_def)),
+                InterfaceDecl::Forward(..) => None,
+            })
     }
 
-    pub fn define_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> InterfaceID {
+    pub fn declare_iface(&mut self, name: &NamePath) -> InterfaceID {
         // System.Disposable is defined in System.pas but we need to refer to it before processing
         // any units, so it has a fixed IR struct ID
-        let name = NamePath::from_decl(iface_def.name.clone(), self);
-
         let disposable_name =
             NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]);
-        let id = if name == disposable_name {
-            DISPOSABLE_ID
-        } else {
-            self.next_iface_id()
-        };
+        if *name == disposable_name {
+            return DISPOSABLE_ID;
+        }
 
-        let methods: Vec<_> = iface_def
-            .methods
-            .iter()
-            .map(|method| {
-                let self_ty = Type::RcPointer(Some(ClassID::Interface(id)));
+        let existing = self.ifaces.iter().find_map(|(id, decl)| match decl {
+            InterfaceDecl::Forward(decl_name) if decl_name == name => Some(*id),
+            InterfaceDecl::Def(iface) if iface.name == *name => Some(*id),
+            _ => None,
+        });
 
-                Method {
-                    name: method.ident.to_string(),
-                    return_ty: match &method.return_ty {
-                        Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
-                        Some(return_ty) => self.translate_type(return_ty),
-                        None => Type::Nothing,
-                    },
-                    params: method
-                        .params
-                        .iter()
-                        .map(|param| match &param.ty {
-                            pas_ty::Type::MethodSelf => self_ty.clone(),
-                            param_ty => self.translate_type(param_ty),
-                        })
-                        .collect(),
-                }
-            })
-            .collect();
+        if let Some(existing) = existing {
+            return existing;
+        }
 
-        self.ifaces.insert(id, Interface::new(name, methods));
+        let id = self.next_iface_id();
+        self.ifaces.insert(id, InterfaceDecl::Forward(name.clone()));
+        id
+    }
+
+    pub fn define_iface(&mut self, iface_def: Interface) -> InterfaceID {
+        let id = self.declare_iface(&iface_def.name);
+
+        self.ifaces.insert(id, InterfaceDecl::Def(iface_def));
 
         id
     }
 
-    pub fn find_iface(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
+    pub fn find_iface_def(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
         let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
 
-        self.ifaces
-            .iter()
-            .find(|(_id, def)| def.name == name)
-            .map(|(id, _def)| *id)
+        self.ifaces()
+            .find_map(|(id, def)| if def.name == name {
+                Some(id)
+            } else {
+                None
+            })
     }
 
     pub fn impl_method(
@@ -855,15 +842,22 @@ impl Metadata {
     ) {
         let method_name = method_name.into();
 
-        let iface = self.ifaces.get_mut(&iface_id).unwrap_or_else(|| {
-            panic!(
+        match self.ifaces.get_mut(&iface_id) {
+            Some(InterfaceDecl::Def(iface_def)) => {
+                let index = iface_def.method_index(&method_name).unwrap();
+                iface_def.add_impl(for_ty, index, func_id);
+            }
+
+            Some(InterfaceDecl::Forward(name)) => panic!(
+                "trying to impl method {} for interface {} which isn't defined yet",
+                method_name, name
+            ),
+
+            None => panic!(
                 "trying to impl method {} for interface {} which doesn't exist",
                 method_name, iface_id
             )
-        });
-
-        let index = iface.method_index(&method_name).unwrap();
-        iface.add_impl(for_ty, index, func_id);
+        }
     }
 
     pub fn find_impl(
@@ -872,7 +866,7 @@ impl Metadata {
         iface_id: InterfaceID,
         method: MethodID,
     ) -> Option<FunctionID> {
-        let iface = self.ifaces.get(&iface_id).unwrap_or_else(|| {
+        let iface = self.get_iface_def(iface_id).unwrap_or_else(|| {
             panic!(
                 "missing metadata definition of iface {} - defined: {:#?}",
                 iface_id, self.ifaces
@@ -885,16 +879,15 @@ impl Metadata {
     }
 
     pub fn is_impl(&self, ty: &Type, iface_id: InterfaceID) -> bool {
-        let impls = &self.ifaces[&iface_id].impls;
+        let impls = &self.get_iface_def(iface_id).unwrap().impls;
         impls.contains_key(ty)
     }
 
     pub fn find_impls(&self, ty: &Type) -> Vec<(InterfaceID, &InterfaceImpl)> {
-        self.ifaces
-            .iter()
+        self.ifaces()
             .filter_map(|(id, iface)| {
                 let impl_for_ty = iface.impls.get(ty)?;
-                Some((*id, impl_for_ty))
+                Some((id, impl_for_ty))
             })
             .collect()
     }
@@ -905,7 +898,7 @@ impl Metadata {
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                let iface_id = match self.find_iface(iface) {
+                let iface_id = match self.find_iface_def(iface) {
                     Some(id) => id,
                     None => panic!("missing IR definition for interface {}", iface),
                 };
@@ -932,7 +925,7 @@ impl Metadata {
                 );
 
                 let ty_name = NamePath::from_decl(*class.clone(), self);
-                let struct_id = match self.find_struct(&ty_name) {
+                let struct_id = match self.find_struct_def(&ty_name) {
                     Some((id, _def)) => id,
                     None => panic!(
                         "{} was not found in metadata (not instantiated)",
@@ -987,7 +980,7 @@ impl Metadata {
 
                 let ty_name = NamePath::from_decl(*variant.clone(), self);
 
-                match self.find_variant(&ty_name) {
+                match self.find_variant_def(&ty_name) {
                     Some((id, _)) => Type::Variant(id),
                     None => panic!("missing IR struct metadata for variant {}", variant),
                 }
@@ -1064,7 +1057,7 @@ impl Metadata {
 
     // find the declared ID and definition of a struct. if the struct is only forward-declared
     // when this call is made, the definition part of the result will be None
-    pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, Option<&Struct>)> {
+    pub fn find_struct_def(&self, name: &NamePath) -> Option<(StructID, Option<&Struct>)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => {
                 Some((*id, Some(struct_def)))
@@ -1078,7 +1071,7 @@ impl Metadata {
         })
     }
 
-    pub fn find_variant(&self, name: &NamePath) -> Option<(StructID, Option<&Variant>)> {
+    pub fn find_variant_def(&self, name: &NamePath) -> Option<(StructID, Option<&Variant>)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => {
                 Some((*id, Some(variant_def)))

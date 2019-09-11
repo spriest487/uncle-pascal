@@ -10,6 +10,7 @@ use std::fmt;
 use pas_common::span::Span;
 use pas_typecheck::Specializable;
 use pas_syn::Ident;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -148,7 +149,7 @@ impl<'m> Builder<'m> {
     ) -> (StructID, usize, Option<&'ty Type>) {
         let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
 
-        let (id, variant_struct) = match self.module.metadata.find_variant(&name_path) {
+        let (id, variant_struct) = match self.module.metadata.find_variant_def(&name_path) {
             Some((id, Some(variant_struct))) => (id, variant_struct),
             Some((_, None)) => panic!("missing variant definition for variant {} when translating case", variant),
             None => panic!("missing IR metadata for variant {}", variant),
@@ -185,6 +186,77 @@ impl<'m> Builder<'m> {
         }
     }
 
+    pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class) -> Struct {
+        let name_path = NamePath::from_decl(class_def.name.clone(), &self.module.metadata);
+
+        let mut fields = HashMap::new();
+        for (id, member) in class_def.members.iter().enumerate() {
+            let name = member.ident.to_string();
+            let ty = self.translate_type(&member.ty);
+            let rc = member.ty.is_rc();
+
+            fields.insert(FieldID(id), StructField { name, ty, rc });
+        }
+
+        Struct::new(name_path).with_fields(fields)
+    }
+
+    pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> Interface {
+        let name = NamePath::from_decl(iface_def.name.clone(), &self.module.metadata);
+
+        // it needs to be declared to reference its own ID in the Self type
+        let id = self.module.metadata.declare_iface(&name);
+
+        let methods: Vec<_> = iface_def
+            .methods
+            .iter()
+            .map(|method| {
+                let self_ty = Type::RcPointer(Some(ClassID::Interface(id)));
+
+                Method {
+                    name: method.ident.to_string(),
+                    return_ty: match &method.return_ty {
+                        Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
+                        Some(return_ty) => self.translate_type(return_ty),
+                        None => Type::Nothing,
+                    },
+                    params: method
+                        .params
+                        .iter()
+                        .map(|param| match &param.ty {
+                            pas_ty::Type::MethodSelf => self_ty.clone(),
+                            param_ty => self.translate_type(param_ty),
+                        })
+                        .collect(),
+                }
+            })
+            .collect();
+
+        Interface::new(name, methods)
+    }
+
+    pub fn translate_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> Variant {
+        let name_path = NamePath::from_decl(variant_def.name.clone(), &self.module.metadata);
+
+        let mut cases = Vec::new();
+        for case in &variant_def.cases {
+            let (case_ty, case_rc) = match &case.data_ty {
+                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
+                None => (None, false),
+            };
+            cases.push(VariantCase {
+                name: case.ident.to_string(),
+                ty: case_ty,
+                rc: case_rc,
+            });
+        }
+
+        Variant {
+            name: name_path,
+            cases,
+        }
+    }
+
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
         let real_ty = src_ty.clone().substitute_type_args(&self.type_args, &self.module.src_metadata);
 
@@ -193,30 +265,34 @@ impl<'m> Builder<'m> {
             pas_ty::Type::Variant(variant_def) => {
                 let name_path = self.translate_name(&variant_def);
 
-                if self.module.metadata.find_variant(&name_path).is_none() {
+                if self.module.metadata.find_variant_def(&name_path).is_none() {
                     let variant_def = self.module.src_metadata.instantiate_variant(variant_def)
                         .unwrap();
+                    let variant_meta = self.translate_variant(&variant_def);
 
-                    self.module.metadata.define_variant(&variant_def);
+                    self.module.metadata.define_variant(variant_meta);
                 }
             }
 
             pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
                 let name_path = self.translate_name(&name);
 
-                if self.module.metadata.find_struct(&name_path).is_none() {
+                if self.module.metadata.find_struct_def(&name_path).is_none() {
                     let class_def = self.module.src_metadata.instantiate_class(name)
                         .unwrap();
-                    self.module.metadata.define_struct(&class_def);
+                    let class_struct = self.translate_class(&class_def);
+
+                    self.module.metadata.define_struct(class_struct);
                 }
             }
 
             pas_ty::Type::Interface(iface_def) => {
-                if self.module.metadata.find_iface(&iface_def).is_none() {
+                if self.module.metadata.find_iface_def(&iface_def).is_none() {
                     let iface_def = self.module.src_metadata.find_iface_def(iface_def)
                         .unwrap();
+                    let iface_meta = self.translate_iface(&iface_def);
 
-                    self.module.metadata.define_iface(&iface_def);
+                    self.module.metadata.define_iface(iface_meta);
                 }
             }
 
@@ -285,7 +361,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
-        self.module.metadata.ifaces().get(&id)
+        self.module.metadata.get_iface_def(id)
     }
 
     #[allow(unused)]

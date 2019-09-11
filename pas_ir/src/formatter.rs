@@ -335,7 +335,7 @@ impl InstructionFormatter for Metadata {
                     Some(name) => write!(f, "{}", name),
 
                     None => {
-                        let find_iface_impl = self.ifaces().iter().find_map(|(_id, iface)| {
+                        let find_iface_impl = self.ifaces().find_map(|(_id, iface)| {
                             iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
                                 let method_id = iface_impl.methods.iter().find_map(
                                     |(method_id, func_id)| {

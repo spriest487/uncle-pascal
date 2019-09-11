@@ -426,9 +426,13 @@ impl Module {
                     Err(..) => panic!("missing interface def {}", iface),
                 };
 
-                let iface_id = match self.metadata.find_iface(&iface_def.name.qualified) {
+                let iface_id = match self.metadata.find_iface_def(&iface_def.name.qualified) {
                     Some(iface_id) => iface_id,
-                    None => self.metadata.define_iface(&iface_def),
+                    None => {
+                        let mut builder = Builder::new(self);
+                        let iface_meta = builder.translate_iface(&iface_def);
+                        self.metadata.define_iface(iface_meta)
+                    },
                 };
 
                 let method_def = self
@@ -636,8 +640,8 @@ impl fmt::Display for Module {
         }
 
         writeln!(f, "* Interfaces: ")?;
-        let mut ifaces: Vec<_> = self.metadata.ifaces().iter().collect();
-        ifaces.sort_by_key(|(id, _)| **id);
+        let mut ifaces: Vec<_> = self.metadata.ifaces().collect();
+        ifaces.sort_by_key(|(id, _)| *id);
 
         for (id, iface) in &ifaces {
             writeln!(f, "{}: {}", id, iface.name)?;
@@ -827,16 +831,17 @@ fn gen_iface_impls(module: &mut Module) {
 }
 
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
-    let mut metadata = Metadata::new();
+    let metadata = Metadata::new();
+    let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
 
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = pas_ty::builtin_string_name();
     if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
-        metadata.define_struct(&string_class);
+        let mut builder = Builder::new(&mut ir_module);
+        let string_struct = builder.translate_class(&string_class);
+        ir_module.metadata.define_struct(string_struct);
     }
-
-    let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
 
     for unit in &module.units {
         ir_module.translate_unit(unit);
@@ -845,8 +850,10 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // the disposable interface may never be referenced statically but needs to be instantiated
     // for automatic cleanup calls
     let builtin_disposable = pas_ty::builtin_disposable_iface();
-    if ir_module.metadata.find_iface(&builtin_disposable.name.qualified).is_none() {
-        ir_module.metadata.define_iface(&builtin_disposable);
+    if ir_module.metadata.find_iface_def(&builtin_disposable.name.qualified).is_none() {
+        let mut builder = Builder::new(&mut ir_module);
+        let disposable_iface = builder.translate_iface(&builtin_disposable);
+        ir_module.metadata.define_iface(disposable_iface);
     }
 
     gen_iface_impls(&mut ir_module);
