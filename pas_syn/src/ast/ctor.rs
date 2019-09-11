@@ -4,6 +4,19 @@ use crate::{ast::Expression, parse::prelude::*};
 pub struct ObjectCtorMember<A: Annotation> {
     pub ident: Ident,
     pub value: Expression<A>,
+    pub span: Span,
+}
+
+impl<A: Annotation> fmt::Display for ObjectCtorMember<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}: {}", self.ident, self.value)
+    }
+}
+
+impl<A: Annotation> Spanned for ObjectCtorMember<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
 }
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
@@ -29,7 +42,9 @@ impl ObjectCtorArgs<Span> {
             tokens.match_one(Separator::Colon)?;
             let value = Expression::parse(tokens)?;
 
-            Ok(Generate::Yield(ObjectCtorMember { ident, value }))
+            let span = ident.span().to(value.annotation());
+
+            Ok(Generate::Yield(ObjectCtorMember { ident, value, span }))
         })?;
         members_tokens.finish()?;
 
@@ -54,7 +69,7 @@ impl<A: Annotation> fmt::Display for ObjectCtorArgs<A> {
             if i > 0 {
                 write!(f, "; ")?;
             }
-            write!(f, "{}: {}", member.ident, member.value)?;
+            write!(f, "{}", member)?;
         }
         write!(f, ")")
     }

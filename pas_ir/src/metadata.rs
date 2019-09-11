@@ -327,6 +327,13 @@ impl Type {
         Type::Pointer(Box::new(self))
     }
 
+    pub fn deref_ty(&self) -> Option<&Self> {
+        match self {
+            Type::Pointer(target) => Some(&target),
+            _ => None,
+        }
+    }
+
     pub fn array(self, dim: usize) -> Self {
         Type::Array {
             dim,

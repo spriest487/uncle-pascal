@@ -70,7 +70,7 @@ impl fmt::Display for GenericError {
                 ..
             } => write!(
                 f,
-                "`{}` expects {} type arguments, found {}",
+                "{} expects {} type argument(s), found {}",
                 target, expected, actual
             ),
 
@@ -291,7 +291,7 @@ impl fmt::Display for NameError {
         match self {
             NameError::NotFound(ident) => write!(f, "`{}` was not found in this scope", ident),
             NameError::MemberNotFound { base, member, .. } => {
-                write!(f, "type {} does not have a member named `{}`", base, member)
+                write!(f, "type `{}` does not have a member named `{}`", base, member)
             }
             NameError::Unexpected {
                 ident,

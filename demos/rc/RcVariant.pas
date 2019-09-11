@@ -1,15 +1,12 @@
 uses System;
 
-type Box = class
-    value: Integer;
-end;
-
 type Things = variant
-    Box: Box;
+    Box: Box of Integer;
     Text: String;
     None;
 end;
 
-var v := Things.Box(Box(value: 123));
+let boxVal := NewBox of Integer(123);
+var v := Things.Box(boxVal);
 v := Things.Text('hello world');
 v := Things.None();

@@ -10,9 +10,9 @@ use pas_syn::{
 use crate::ast::Member;
 use crate::{
     ast::{Class, FunctionDecl, Variant},
-    context::{self, ns::Namespace as _},
+    context::{self},
     result::*,
-    Context, Decl, ExpectedKind, GenericError, GenericResult, GenericTarget, NameError,
+    Context, Decl, GenericError, GenericResult, GenericTarget, NameError,
     NamingResult, QualifiedDeclName, TypeAnnotation,
 };
 
@@ -341,6 +341,8 @@ impl Type {
                 Ok(class.members.get(index).cloned())
             }
 
+            Type::Forward(forward_ty) => forward_ty.get_member(index, ctx),
+
             _ => Ok(None),
         }
     }
@@ -351,6 +353,8 @@ impl Type {
                 let class = ctx.instantiate_class(class)?;
                 Ok(class.members.len())
             }
+
+            Type::Forward(forward_ty) => forward_ty.members_len(ctx),
 
             _ => Ok(0),
         }
@@ -706,35 +710,6 @@ fn specialize_generic_type_args(
         .collect()
 }
 
-pub fn find_type<'c>(name: &IdentPath, ctx: &'c Context) -> context::NamingResult<&'c Type> {
-    match ctx.resolve(name) {
-        Some(context::MemberRef::Value {
-            value: Decl::Type { ty, .. },
-            ..
-        }) => Ok(ty),
-
-        Some(context::MemberRef::Value {
-            value: unexpected, ..
-        }) => Err(NameError::Unexpected {
-            ident: name.clone(),
-            actual: unexpected.clone().into(),
-            expected: ExpectedKind::AnyType,
-        }),
-
-        Some(context::MemberRef::Namespace { path }) => {
-            let ns_ident = path.top().key().unwrap().clone();
-            let unexpected = context::UnexpectedValue::Namespace(ns_ident);
-            Err(NameError::Unexpected {
-                ident: name.clone(),
-                actual: unexpected,
-                expected: ExpectedKind::AnyType,
-            })
-        }
-
-        None => Err(NameError::NotFound(name.last().clone())),
-    }
-}
-
 pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
     match ty {
         ast::TypeName::Ident {
@@ -743,7 +718,8 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             type_args,
             span,
         } => {
-            let raw_ty = find_type(ident, ctx)?.clone();
+            let (_, raw_ty) = ctx.find_type(ident)?;
+            let raw_ty = raw_ty.clone();
 
             let ty = if !type_args.is_empty() {
                 let mut checked_type_args = Vec::new();
@@ -1062,7 +1038,7 @@ impl TypePattern {
         expect_ty: &Type,
         ctx: &Context,
     ) -> TypecheckResult<Type> {
-        let raw_ty = find_type(name, ctx)?;
+        let (_, raw_ty) = ctx.find_type(name)?;
 
         let matchable_ty = if raw_ty.is_matchable() {
             raw_ty.infer_specialized_from_hint(expect_ty).cloned()

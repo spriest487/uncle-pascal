@@ -152,7 +152,7 @@ impl<'m> Builder<'m> {
         variant: &pas_ty::QualifiedDeclName,
         case: &pas_syn::Ident,
     ) -> (StructID, usize, Option<&'ty Type>) {
-        let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
+        let name_path = self.translate_name(variant);
 
         let (id, variant_struct) = match self.module.metadata.find_variant_def(&name_path) {
             Some((id, variant_struct)) => (id, variant_struct),
@@ -191,7 +191,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class) -> Struct {
-        let name_path = NamePath::from_decl(class_def.name.clone(), &self.module.metadata);
+        let name_path = self.translate_name(&class_def.name);
 
         let mut fields = HashMap::new();
         for (id, member) in class_def.members.iter().enumerate() {
@@ -206,7 +206,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> Interface {
-        let name = NamePath::from_decl(iface_def.name.clone(), &self.module.metadata);
+        let name = self.translate_name(&iface_def.name);
 
         // it needs to be declared to reference its own ID in the Self type
         let id = self.module.metadata.declare_iface(&name);
@@ -523,11 +523,11 @@ impl<'m> Builder<'m> {
         Ref::Local(id)
     }
 
+    // creates a managed local with type `ty`
     pub fn local_new(&mut self, ty: Type, name: Option<String>) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.find_next_local_id();
-
         self.current_scope_mut().locals.push(Local::New {
             id,
             name,
@@ -606,6 +606,8 @@ impl<'m> Builder<'m> {
                 // for each case, check if the tag matches and jump past it if not
                 let is_not_case = self.local_temp(Type::Bool);
                 for (tag, case) in cases.iter().enumerate() {
+                    self.comment(&format!("testing for variant case {} ({})", tag, case.name));
+
                     if let Some(data_ty) = &case.ty {
                         let skip_case_label = self.alloc_label();
 
@@ -667,6 +669,8 @@ impl<'m> Builder<'m> {
     }
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
+        self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
+
         self.scope(|builder| {
             builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
                 if let Type::RcPointer(..) = element_ty {
@@ -677,6 +681,8 @@ impl<'m> Builder<'m> {
     }
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
+        self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
+
         self.scope(|builder| {
             builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
                 if let Type::RcPointer(..) = element_ty {
@@ -772,14 +778,15 @@ impl<'m> Builder<'m> {
         // of course, running release code may create new locals, but we just assume
         // that none of those will need cleanup themselves, because they should never
         for local in locals {
+            self.comment(&format!("expire {}", local.id()));
+
             match local {
                 Local::Param { id, ty, .. } | Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
                 }
 
-                Local::Temp { id, .. } => {
+                Local::Temp { .. } => {
                     // no cleanup required
-                    self.comment(&format!("expire {}", id));
                 }
 
                 Local::Return { .. } => {

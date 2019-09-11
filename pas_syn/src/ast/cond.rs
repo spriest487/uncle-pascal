@@ -70,7 +70,7 @@ impl<A: Annotation> fmt::Display for IfCond<A> {
         write!(f, "if {} ", self.cond)?;
 
         if let Some(is_pattern) = &self.is_pattern {
-            write!(f, "{}", is_pattern)?;
+            write!(f, "is {}", is_pattern)?;
         }
 
         write!(f, " then {}", self.then_branch)?;

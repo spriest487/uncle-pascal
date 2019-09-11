@@ -6,6 +6,8 @@ use std::{
     ops::{Add, Index, IndexMut},
 };
 
+const MAX_DUMP_SIZE: usize = 256;
+
 #[derive(Debug, Clone)]
 pub struct Heap {
     slots: Vec<Option<MemCell>>,
@@ -137,24 +139,47 @@ impl Heap {
     pub fn finalize(mut self) {
         self.expect_empty()
     }
+
+    fn dump_stderr(&self) {
+        eprintln!("crashing, heap dump:");
+        for (i, slot) in self.slots.iter().enumerate() {
+            let addr = HeapAddress(i);
+            match slot {
+                Some(val) => eprintln!("{}: {:?}", addr, val),
+                None => eprintln!("{}: FREE", addr),
+            }
+        }
+    }
 }
 
 impl Index<HeapAddress> for Heap {
     type Output = MemCell;
 
     fn index(&self, addr: HeapAddress) -> &MemCell {
-        self.get(addr)
-            .unwrap_or_else(|| panic!("trying to access unallocated heap location {}", addr))
+        if let Some(cell) = self.get(addr) {
+            return cell;
+        }
+
+        if self.slots.len() <= MAX_DUMP_SIZE {
+            self.dump_stderr();
+            panic!("trying to access unallocated heap location {} in heap:", addr)
+        } else {
+            panic!("trying to access unallocated heap location {}", addr)
+        }
     }
 }
 
 impl IndexMut<HeapAddress> for Heap {
     fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
-        self.get_mut(addr).unwrap_or_else(|| {
-            panic!(
-                "trying to mutably access unallocated heap location {}",
-                addr
-            )
-        })
+        if self.get_mut(addr).is_none() {
+            if self.slots.len() <= MAX_DUMP_SIZE {
+                self.dump_stderr();
+                panic!("trying to mutably access unallocated heap location {} in heap:", addr)
+            } else {
+                panic!("trying to mutably access unallocated heap location {}", addr)
+            }
+        }
+
+        self.get_mut(addr).unwrap()
     }
 }

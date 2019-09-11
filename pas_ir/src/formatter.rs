@@ -428,7 +428,12 @@ impl<'f, F: InstructionFormatter> InstructionFormatter for StatefulIndentedForma
             self.tabs.set(self.tabs.get() - 1);
         }
 
-        for _ in 0..self.tabs.get() * self.tab_width {
+        let tabs = match instruction {
+            Instruction::Label(..) => 0,
+            _ => self.tabs.get(),
+        };
+
+        for _ in 0..tabs * self.tab_width {
             f.write_char(' ')?;
         }
 

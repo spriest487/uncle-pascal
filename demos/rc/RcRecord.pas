@@ -1,11 +1,11 @@
 uses System;
 
-type Box = class
+type IntBox = class
     val: Integer;
 end;
 
 type Wrapper = record
-    box: Box;
+    box: IntBox;
 end;
 
 type BigWrapper = record
@@ -19,12 +19,13 @@ begin
 end;
 
 begin
-    let wrapper := Wrapper(box: Box(val: 123));
+    let wrapped := IntBox(val: 123);
+    let wrapper := Wrapper(box: wrapped);
 
     DoNothing(wrapper);
 end;
 
 begin
-    let wrapper := Wrapper(box: Box(val: 123));
+    let wrapper := Wrapper(box: IntBox(val: 123));
     let wrapper2 := BigWrapper(wrapper1: wrapper; wrapper2: wrapper);
 end;

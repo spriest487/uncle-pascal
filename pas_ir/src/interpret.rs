@@ -5,10 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
-    metadata::*, Function as FunctionIR, GlobalRef, Instruction, Label, LocalID, Module, Ref, Type,
-    Value,
-};
+use crate::{metadata::*, Function as FunctionIR, GlobalRef, Instruction, Label, LocalID, Module, Ref, Type, Value, InstructionFormatter};
 
 use self::heap::{Heap, HeapAddress};
 
@@ -881,7 +878,6 @@ impl Interpreter {
         }
     }
 
-    // todo: this should be handled in the IR
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
@@ -896,14 +892,9 @@ impl Interpreter {
                 }
             }
 
-            MemCell::Structure(StructCell { fields, .. }) => {
-                for field_cell in fields {
-                    self.retain_cell(field_cell);
-                }
+            _ => {
+                panic!("{:?} cannot be retained")
             }
-
-            // can't contain rc pointers
-            _ => {}
         }
     }
 
@@ -953,11 +944,14 @@ impl Interpreter {
 
     pub fn execute(&mut self, instructions: &[Instruction]) {
         let labels = find_labels(instructions);
+        let line_count_width = instructions.len().to_string().len();
 
         let mut pc = 0;
         while pc < instructions.len() {
             if self.trace_ir {
-                eprintln!("interpreter: {}", instructions[pc]);
+                let mut instruction_str = String::new();
+                self.metadata.format_instruction(&instructions[pc], &mut instruction_str).unwrap();
+                eprintln!("{:>width$}| {}", pc, instruction_str, width = line_count_width);
             }
 
             self.execute_instruction(&instructions[pc], &mut pc, &labels);
@@ -1193,8 +1187,6 @@ impl Interpreter {
                 field,
                 of_ty,
             } => {
-//                println!("{} <- {:#?} -> {}", out, a, field);
-
                 let field_ptr = match of_ty {
                     Type::Struct(..) => {
                         let struct_ptr = self.addr_of_ref(a);
@@ -1211,7 +1203,7 @@ impl Interpreter {
                             .as_rc()
                             .map(|rc_cell| Pointer::Heap(rc_cell.resource_addr))
                             .unwrap_or_else(|| {
-                                panic!("failed to read value pointer of rc pointer @ {}", a);
+                                panic!("trying to read field pointer of rc type but target wasn't an rc cell @ {}", a);
                             });
 
                         Pointer::IntoStruct {

@@ -65,6 +65,11 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    DuplicateNamedArg {
+        name: Ident,
+        previous: Span,
+        span: Span,
+    },
     UndefinedSymbols {
         unit: Ident,
         syms: Vec<Ident>,
@@ -154,6 +159,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
             TypecheckError::AmbiguousMethod { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
+            TypecheckError::DuplicateNamedArg { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
             TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
@@ -226,6 +232,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::Private { .. } => "Name is private".to_string(),
 
             TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
+            TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
         }
     }
 
@@ -275,6 +282,16 @@ impl DiagnosticOutput for TypecheckError {
                     span: decl_span.clone(),
                 }),
             }],
+
+            TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![
+                DiagnosticMessage {
+                    title: format!("previous occurence of `{}`", name),
+                    label: Some(DiagnosticLabel {
+                        text: None,
+                        span: previous.clone(),
+                    }),
+                },
+            ],
 
             _ => Vec::new(),
         }
@@ -434,6 +451,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::PrivateConstructor { ty, .. } => {
                 write!(f, "`{}` is a private type constructor and can only be constructed in the unit where it is declared", ty)
+            }
+
+            TypecheckError::DuplicateNamedArg { name, .. } => {
+                write!(f, "named argument `{}` already occurred in this argument list", name)
             }
         }
     }

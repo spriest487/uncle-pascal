@@ -349,6 +349,14 @@ fn typecheck_variant_ctor_call(
         _ => &unspecialized_def.name,
     };
 
+    if variant.is_generic() {
+        return Err(GenericError::CannotInferArgs {
+            target: GenericTarget::Name(variant.qualified.clone()),
+            expected: expect_ty.clone(),
+            span,
+        }.into());
+    }
+
     let variant_def = ctx.instantiate_variant(&variant)?;
 
     let case_index = match variant_def.case_position(case) {

@@ -671,25 +671,34 @@ impl fmt::Display for Module {
 
         writeln!(f, "* Functions")?;
         for (id, func) in funcs {
-            let formatter = StatefulIndentedFormatter::new(&self.metadata, 8);
-
             writeln!(f, "{}: {}", id.0, self.metadata.func_desc(*id))?;
 
-            for instruction in &func.body {
-                formatter.format_instruction(instruction, f)?;
-                writeln!(f)?;
-            }
+            write_instruction_list(f, &self.metadata, &func.body)?;
             writeln!(f)?;
         }
 
-        let formatter = StatefulIndentedFormatter::new(&self.metadata, 8);
         writeln!(f, "* Init:")?;
-        for instruction in &self.init {
-            formatter.format_instruction(instruction, f)?;
-            writeln!(f)?;
-        }
+        write_instruction_list(f, &self.metadata, &self.init)?;
         Ok(())
     }
+}
+
+fn write_instruction_list(
+    f: &mut fmt::Formatter,
+    metadata: &Metadata,
+    instructions: &[Instruction]
+) -> fmt::Result {
+    let num_len = instructions.len().to_string().len();
+
+    let formatter = StatefulIndentedFormatter::new(metadata, 4);
+
+    for (i, instruction) in instructions.iter().enumerate() {
+        write!(f, "{:>width$}|", i, width = num_len)?;
+        formatter.format_instruction(instruction, f)?;
+        writeln!(f)?;
+    }
+
+    Ok(())
 }
 
 // dynamic arrays are given an ID for their dispose impl when the type is

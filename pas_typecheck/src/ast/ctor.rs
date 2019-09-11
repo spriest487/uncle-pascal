@@ -11,24 +11,35 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let raw_ty = find_type(&ctor.ident, ctx)?;
+    let (_, raw_ty) = ctx.find_type(&ctor.ident)?;
+
+    let ty_name = raw_ty
+        .full_path()
+        .ok_or_else(|| TypecheckError::InvalidCtorType {
+            ty: raw_ty.clone(),
+            span: span.clone(),
+        })?;
 
     // generic types can't be constructed, but if the type hint is a parameterized instance of
     // the generic type the constructor expression refers to, use that instead
     let ty = raw_ty
         .infer_specialized_from_hint(expect_ty)
-        .ok_or_else(|| TypecheckError::InvalidCtorType {
-            ty: raw_ty.clone(),
+        .ok_or_else(|| GenericError::CannotInferArgs {
+            target: GenericTarget::Name(ty_name.clone()),
             span: span.clone(),
+            expected: expect_ty.clone(),
         })?
         .clone();
 
-    let ty_name = ty
-        .full_path()
-        .ok_or_else(|| TypecheckError::InvalidCtorType {
-            ty: ty.clone(),
-            span: span.clone(),
-        })?;
+    if ty.is_generic() {
+        return Err(GenericError::CannotInferArgs {
+            target: GenericTarget::Name(ctor.ident.clone()),
+            expected: expect_ty.clone(),
+            span,
+        }.into());
+    }
+
+
 
     if !ctx.is_accessible(&ty_name) {
         return Err(TypecheckError::Private {
@@ -41,36 +52,43 @@ pub fn typecheck_object_ctor(
         return Err(TypecheckError::PrivateConstructor { ty, span });
     }
 
-    let ty_members: Vec<_> = ty.members(ctx)?.into_iter().map(|m| m.ty).collect();
-    let mut members = Vec::new();
+    let ty_members: Vec<_> = ty.members(ctx)?;
+    let mut members: Vec<ObjectCtorMember> = Vec::new();
 
-    for (member_ty, ctor_member) in ty_members.iter().zip(ctor.args.members.iter()) {
-        let value = typecheck_expr(&ctor_member.value, member_ty, ctx)?;
-
-        match ty.find_data_member(&ctor_member.ident, ctx)? {
-            None => {
-                return Err(NameError::MemberNotFound {
-                    base: ty,
-                    member: ctor_member.ident.clone(),
-                    span: ctor_member.ident.span.clone(),
-                }
-                .into());
-            }
-
-            Some(ref member_ref) if !member_ref.ty.assignable_from(value.annotation().ty(), ctx) => {
-                return Err(TypecheckError::InvalidBinOp {
-                    rhs: value.annotation().ty().clone(),
-                    lhs: member_ref.ty.clone(),
-                    op: Operator::Assignment,
-                    span: ctor_member.value.annotation().span().clone(),
-                });
-            }
-
-            Some(_) => members.push(ObjectCtorMember {
-                ident: ctor_member.ident.clone(),
-                value,
-            }),
+    for arg in &ctor.args.members {
+        if let Some(prev) = members.iter().find(|a| a.ident == arg.ident) {
+            return Err(TypecheckError::DuplicateNamedArg {
+                name: arg.ident.clone(),
+                span: arg.span().clone(),
+                previous: prev.span().clone(),
+            });
         }
+
+        let member = match ty_members.iter().find(|m| m.ident == arg.ident) {
+            Some(member) => member,
+            None => return Err(NameError::MemberNotFound {
+                base: ty,
+                member: arg.ident.clone(),
+                span: arg.span.clone(),
+            }.into()),
+        };
+
+        let value = typecheck_expr(&arg.value, &member.ty, ctx)?;
+
+        if !member.ty.assignable_from(value.annotation().ty(), ctx) {
+            return Err(TypecheckError::InvalidBinOp {
+                lhs: member.ty.clone(),
+                rhs: value.annotation().ty().clone(),
+                op: Operator::Assignment,
+                span: arg.span().clone(),
+            });
+        }
+
+        members.push(ObjectCtorMember {
+            ident: arg.ident.clone(),
+            value,
+            span: arg.span.clone(),
+        });
     }
 
     if members.len() != ty.members_len(ctx)? {
@@ -80,7 +98,7 @@ pub fn typecheck_object_ctor(
             .collect();
         return Err(TypecheckError::InvalidArgs {
             span: ctor.annotation.clone(),
-            expected: ty_members,
+            expected: ty_members.into_iter().map(|m| m.ty).collect(),
             actual,
         });
     }

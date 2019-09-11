@@ -1,3 +1,17 @@
+export type Box of T = class
+    value: T
+end;
+
+export function Unbox of T(b: Box of T): T
+begin
+    b.value
+end;
+
+export function NewBox of T(value: T): Box of T
+begin
+    Box(value: value)
+end;
+
 export type String = class
     chars: ^Byte;
     len: Integer;
