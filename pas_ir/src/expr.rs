@@ -267,15 +267,6 @@ pub fn translate_if_cond(
                             tag: case_index,
                         });
 
-                        // this is slightly less efficient but easier to follow: create a new
-                        // local with managed lifetime here to manage the lifetime of the pattern
-                        // binding. if we can assume anything that produces bindings has already
-                        // stored them in locals with the right lifetime, we don't need to worry about
-                        // that later in this function
-//                        let binding_val = builder.local_new(case_ty.clone(), None);
-//                        builder.mov(binding_val.clone(), data_ptr.deref());
-//                        builder.retain(binding_val.clone(), &case_ty);
-
                         vec![(binding_name, case_ty, data_ptr.deref())]
                     }
 

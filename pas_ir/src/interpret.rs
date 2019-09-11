@@ -177,6 +177,7 @@ pub struct RcCell {
 enum ReleaseTarget {
     RcPointer,
     Struct(StructID),
+    Variant(StructID),
 }
 
 impl ReleaseTarget {
@@ -184,6 +185,7 @@ impl ReleaseTarget {
         match ty {
             Type::RcPointer(..) => Some(ReleaseTarget::RcPointer),
             Type::Struct(id) => Some(ReleaseTarget::Struct(*id)),
+            Type::Variant(id) => Some(ReleaseTarget::Variant(*id)),
             _ => None,
         }
     }
@@ -283,6 +285,13 @@ impl MemCell {
     pub fn as_struct(&self, struct_id: StructID) -> Option<&StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
+            _ => None,
+        }
+    }
+
+    pub fn as_variant(&self, struct_id: StructID) -> Option<&VariantCell> {
+        match self {
+            MemCell::Variant(var_cell) if struct_id == var_cell.id => Some(var_cell),
             _ => None,
         }
     }
@@ -802,6 +811,22 @@ impl Interpreter {
 
                     if let Some(field_release_target) = ReleaseTarget::for_ty(field_ty) {
                         self.release_cell(field_cell, field_release_target);
+                    }
+                }
+            }
+
+            ReleaseTarget::Variant(struct_id) => {
+                let variant_cell = cell.as_variant(struct_id).unwrap();
+                let cell_ty = Type::Variant(struct_id);
+
+                self.invoke_disposer(&cell, &cell_ty);
+
+                let variant_def: Variant = self.metadata.get_variant_def(struct_id).unwrap().clone();
+
+                let case = &variant_def.cases[variant_cell.tag.as_i32().unwrap() as usize];
+                if let Some(data_ty) = &case.ty {
+                    if let Some(data_release_target) = ReleaseTarget::for_ty(data_ty) {
+                        self.release_cell(&variant_cell.data, data_release_target);
                     }
                 }
             }
