@@ -500,8 +500,13 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Literal(ast::Literal::Nil, _) => {
+            let ty = match expect_ty {
+                ptr @ Type::Pointer(..) => ptr.clone(),
+                _ => Type::Nil,
+            };
+
             let annotation = TypeAnnotation::TypedValue {
-                ty: Type::Nil,
+                ty,
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,

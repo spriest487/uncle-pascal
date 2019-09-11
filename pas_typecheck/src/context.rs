@@ -465,7 +465,7 @@ impl Context {
         self.declare_type(self_ident, ty, Visibility::Private)
     }
 
-    fn declare_type(&mut self, name: Ident, ty: Type, visibility: Visibility) -> NamingResult<()> {
+    pub fn declare_type(&mut self, name: Ident, ty: Type, visibility: Visibility) -> NamingResult<()> {
         self.declare(name, Decl::Type { ty, visibility })?;
         Ok(())
     }

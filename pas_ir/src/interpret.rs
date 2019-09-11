@@ -421,7 +421,7 @@ impl Interpreter {
     }
 
     fn init_struct(&mut self, id: StructID) -> MemCell {
-        let struct_def = self.metadata.get_struct(id).unwrap().clone();
+        let struct_def = self.metadata.get_struct_def(id).unwrap().clone();
 
         let mut fields = Vec::new();
         for (&id, field) in &struct_def.fields {
@@ -795,7 +795,7 @@ impl Interpreter {
                 let cell_ty = Type::Struct(struct_id);
 
                 self.invoke_disposer(&cell, &cell_ty);
-                let struct_def: Struct = self.metadata.get_struct(struct_id).unwrap().clone();
+                let struct_def: Struct = self.metadata.get_struct_def(struct_id).unwrap().clone();
 
                 for (field_id, field_def) in &struct_def.fields {
                     let field_cell = &struct_cell[*field_id];

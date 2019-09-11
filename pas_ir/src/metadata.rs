@@ -262,6 +262,28 @@ pub struct Variant {
 }
 
 #[derive(Clone, Debug)]
+pub enum TypeDecl {
+    Forward(NamePath),
+    Def(TypeDef),
+}
+
+impl TypeDecl {
+    pub fn name(&self) -> &NamePath {
+        match self {
+            TypeDecl::Def(def) => def.name(),
+            TypeDecl::Forward(name) => name,
+        }
+    }
+
+    pub fn is_forward(&self) -> bool {
+        match self {
+            TypeDecl::Forward(..) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum TypeDef {
     Struct(Struct),
     Variant(Variant),
@@ -444,7 +466,7 @@ pub struct FunctionDecl {
 
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
-    type_defs: HashMap<StructID, TypeDef>,
+    type_decls: HashMap<StructID, TypeDecl>,
     string_literals: HashMap<StringID, String>,
     ifaces: HashMap<InterfaceID, Interface>,
 
@@ -462,17 +484,16 @@ impl Metadata {
 
     pub fn extend(&mut self, other: &Metadata) {
         for (id, def) in other.type_defs() {
-            if self.type_defs.contains_key(id) {
-                let existing = &self.type_defs[id];
+            if let Some(TypeDecl::Def(conflict)) = self.type_decls.get(&id) {
                 panic!(
                     "duplicate struct ID {} in metadata (new: {}, existing: {})",
                     id,
                     def.name(),
-                    existing.name()
+                    conflict.name(),
                 );
-            }
+            };
 
-            self.type_defs.insert(*id, def.clone());
+            self.type_decls.insert(id, TypeDecl::Def(def.clone()));
         }
 
         for (id, string_lit) in &other.string_literals {
@@ -518,28 +539,33 @@ impl Metadata {
         }
     }
 
-    pub fn type_defs(&self) -> &HashMap<StructID, TypeDef> {
-        &self.type_defs
+    pub fn type_defs(&self) -> impl Iterator<Item=(StructID, &TypeDef)> {
+        self.type_decls.iter().filter_map(|(id, decl)| match decl {
+            TypeDecl::Def(def) => Some((*id, def)),
+            TypeDecl::Forward(..) => None,
+        })
     }
 
-    pub fn get_struct(&self, struct_id: StructID) -> Option<&Struct> {
-        match self.type_defs.get(&struct_id)? {
-            TypeDef::Variant(..) => None,
-            TypeDef::Struct(s) => Some(s),
+    pub fn get_struct_def(&self, struct_id: StructID) -> Option<&Struct> {
+        match self.type_decls.get(&struct_id)? {
+            TypeDecl::Forward(..) => None,
+            TypeDecl::Def(TypeDef::Variant(..)) => None,
+            TypeDecl::Def(TypeDef::Struct(s)) => Some(s),
         }
     }
 
-    pub fn get_variant(&self, struct_id: StructID) -> Option<&Variant> {
-        match self.type_defs.get(&struct_id)? {
-            TypeDef::Struct(..) => None,
-            TypeDef::Variant(v) => Some(v),
+    pub fn get_variant_def(&self, struct_id: StructID) -> Option<&Variant> {
+        match self.type_decls.get(&struct_id)? {
+            TypeDecl::Forward(..) => None,
+            TypeDecl::Def(TypeDef::Struct(..)) => None,
+            TypeDecl::Def(TypeDef::Variant(v)) => Some(v),
         }
     }
 
     fn next_struct_id(&mut self) -> StructID {
         (0..)
             .map(StructID)
-            .find(|id| !self.type_defs.contains_key(id))
+            .find(|id| !self.type_decls.contains_key(id))
             .unwrap()
     }
 
@@ -626,11 +652,13 @@ impl Metadata {
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Struct(id) | Type::Variant(id) => self
-                .type_defs
-                .get(id)
-                .map(|def| def.name().to_string())
-                .unwrap_or_else(|| id.to_string()),
+            Type::Struct(id) | Type::Variant(id) => {
+                match self.type_decls.get(id) {
+                    Some(TypeDecl::Forward(name)) => name.to_string(),
+                    Some(TypeDecl::Def(def)) => def.name().to_string(),
+                    None => id.to_string(),
+                }
+            },
 
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
@@ -662,8 +690,46 @@ impl Metadata {
         }
     }
 
+    fn find_forward_decl(&self, name: &NamePath) -> Option<StructID> {
+        for (id, decl) in &self.type_decls {
+            match decl {
+                TypeDecl::Forward(decl_name) if decl_name == name => {
+                    return Some(*id);
+                },
+
+                _ => {},
+            }
+        }
+
+        None
+    }
+
+    pub fn declare_struct(&mut self, name: &NamePath) -> StructID {
+        // System.String is defined in System.pas but we need to refer to it before processing
+        // any units, so it has a fixed IR struct ID
+        let is_string = name.path.as_slice().len() == 2
+            && name.path.as_slice()[0].as_str() == "System"
+            && name.path.as_slice()[1].as_str() == "String";
+        if is_string {
+            self.type_decls.insert(STRING_ID, TypeDecl::Forward(name.clone()));
+            return STRING_ID;
+        }
+
+        match self.find_forward_decl(name) {
+            None => {
+                let id = self.next_struct_id();
+                self.type_decls.insert(id, TypeDecl::Forward(name.clone()));
+                id
+            }
+
+            Some(id) => id,
+        }
+    }
+
     pub fn define_struct(&mut self, struct_def: &pas_ty::ast::Class) -> StructID {
         let name_path = NamePath::from_decl(struct_def.name.clone(), &self);
+
+        let id = self.declare_struct(&name_path);
 
         let mut fields = HashMap::new();
         for (id, member) in struct_def.members.iter().enumerate() {
@@ -674,31 +740,25 @@ impl Metadata {
             fields.insert(FieldID(id), StructField { name, ty, rc });
         }
 
-        // System.String is defined in System.pas but we need to refer to it before processing
-        // any units, so it has a fixed IR struct ID
-        let string_name = NamePath::from_parts(vec!["System".to_string(), "String".to_string()]);
-        let id = if name_path == string_name {
-            STRING_ID
-        } else {
-            self.next_struct_id()
-        };
-
         assert!(
-            !self.type_defs.values().any(|def| *def.name() == name_path),
+            !self.type_decls.values().any(|decl| *decl.name() == name_path && !decl.is_forward()),
             "duplicate type def: {}",
             name_path
         );
 
         let struct_def = Struct::new(name_path).with_fields(fields);
+        let struct_decl = TypeDecl::Def(TypeDef::Struct(struct_def));
 
-        self.type_defs.insert(id, TypeDef::Struct(struct_def));
+        self.type_decls.insert(id, struct_decl);
         id
     }
 
     pub fn define_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> StructID {
         let name_path = NamePath::from_decl(variant_def.name.clone(), &self);
 
-        let variant_id = self.next_struct_id();
+        let variant_id = self.declare_struct(&name_path);
+
+        self.type_decls.insert(variant_id, TypeDecl::Forward(name_path.clone()));
 
         let mut cases = Vec::new();
         for case in &variant_def.cases {
@@ -714,17 +774,17 @@ impl Metadata {
         }
 
         assert!(
-            !self.type_defs.values().any(|def| *def.name() == name_path),
+            !self.type_decls.values().any(|decl| *decl.name() == name_path && !decl.is_forward()),
             "duplicate type def: {}",
             name_path
         );
 
-        self.type_defs.insert(
+        self.type_decls.insert(
             variant_id,
-            TypeDef::Variant(Variant {
+            TypeDecl::Def(TypeDef::Variant(Variant {
                 name: name_path,
                 cases,
-            }),
+            })),
         );
 
         variant_id
@@ -981,8 +1041,8 @@ impl Metadata {
         );
 
         let struct_id = self.next_struct_id();
-        self.type_defs
-            .insert(struct_id, TypeDef::Struct(Struct { name, fields }));
+        self.type_decls
+            .insert(struct_id, TypeDecl::Def(TypeDef::Struct(Struct { name, fields })));
 
         self.dyn_array_structs.insert(element, struct_id);
 
@@ -1002,28 +1062,30 @@ impl Metadata {
         &self.dyn_array_structs
     }
 
-    pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, &Struct)> {
-        self.type_defs.iter().find_map(|(id, def)| match def {
-            TypeDef::Struct(struct_def) => {
-                if struct_def.name == *name {
-                    Some((*id, struct_def))
-                } else {
-                    None
-                }
+    // find the declared ID and definition of a struct. if the struct is only forward-declared
+    // when this call is made, the definition part of the result will be None
+    pub fn find_struct(&self, name: &NamePath) -> Option<(StructID, Option<&Struct>)> {
+        self.type_decls.iter().find_map(|(id, def)| match def {
+            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => {
+                Some((*id, Some(struct_def)))
+            }
+
+            TypeDecl::Forward(forward_name) if *forward_name == *name => {
+                Some((*id, None))
             }
 
             _ => None,
         })
     }
 
-    pub fn find_variant(&self, name: &NamePath) -> Option<(StructID, &Variant)> {
-        self.type_defs.iter().find_map(|(id, def)| match def {
-            TypeDef::Variant(variant_def) => {
-                if variant_def.name == *name {
-                    Some((*id, variant_def))
-                } else {
-                    None
-                }
+    pub fn find_variant(&self, name: &NamePath) -> Option<(StructID, Option<&Variant>)> {
+        self.type_decls.iter().find_map(|(id, def)| match def {
+            TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => {
+                Some((*id, Some(variant_def)))
+            }
+
+            TypeDecl::Forward(forward_name) if *forward_name == *name => {
+                Some((*id, None))
             }
 
             _ => None,

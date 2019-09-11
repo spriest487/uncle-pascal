@@ -75,10 +75,9 @@ impl Module {
 
         let classes = metadata
             .type_defs()
-            .iter()
             .filter_map(|(id, def)| match def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
-                    Some(Class::translate(*id, struct_def, metadata))
+                    Some(Class::translate(id, struct_def, metadata))
                 }
                 _ => None,
             })
@@ -158,11 +157,11 @@ impl Module {
         for (id, type_def) in module.metadata.type_defs() {
             let c_type_def = match type_def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
-                    TypeDef::Struct(StructDef::translate(*id, struct_def, self))
+                    TypeDef::Struct(StructDef::translate(id, struct_def, self))
                 }
 
                 ir::metadata::TypeDef::Variant(variant_def) => {
-                    TypeDef::Variant(VariantDef::translate(*id, variant_def, self))
+                    TypeDef::Variant(VariantDef::translate(id, variant_def, self))
                 }
             };
             self.type_defs.push(c_type_def);

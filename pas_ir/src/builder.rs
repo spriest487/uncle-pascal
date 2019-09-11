@@ -149,7 +149,8 @@ impl<'m> Builder<'m> {
         let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
 
         let (id, variant_struct) = match self.module.metadata.find_variant(&name_path) {
-            Some((id, variant_struct)) => (id, variant_struct),
+            Some((id, Some(variant_struct))) => (id, variant_struct),
+            Some((_, None)) => panic!("missing variant definition for variant {} when translating case", variant),
             None => panic!("missing IR metadata for variant {}", variant),
         };
 
@@ -280,7 +281,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn get_struct(&self, id: StructID) -> Option<&Struct> {
-        self.module.metadata.get_struct(id)
+        self.module.metadata.get_struct_def(id)
     }
 
     pub fn get_iface(&self, id: InterfaceID) -> Option<&Interface> {
@@ -461,7 +462,7 @@ impl<'m> Builder<'m> {
     {
         match ty {
             Type::Struct(struct_id) => {
-                let struct_def = self.module.metadata.get_struct(*struct_id).unwrap();
+                let struct_def = self.module.metadata.get_struct_def(*struct_id).unwrap();
 
                 let fields: Vec<_> = struct_def
                     .fields
@@ -489,7 +490,7 @@ impl<'m> Builder<'m> {
                 let cases = &self
                     .module
                     .metadata
-                    .get_variant(*id)
+                    .get_variant_def(*id)
                     .unwrap()
                     .cases
                     .to_vec();

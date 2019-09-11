@@ -596,10 +596,10 @@ impl Module {
 impl fmt::Display for Module {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "* Structures")?;
-        let mut defs: Vec<_> = self.metadata.type_defs().iter().collect();
-        defs.sort_by_key(|(id, _)| **id);
+        let mut defs: Vec<_> = self.metadata.type_defs().collect();
+        defs.sort_by_key(|(id, _)| *id);
 
-        for (id, def) in defs {
+        for (id, def) in &defs {
             match def {
                 TypeDef::Struct(s) => {
                     write!(f, "{}: ", id.0)?;
@@ -634,6 +634,27 @@ impl fmt::Display for Module {
 
             writeln!(f)?;
         }
+
+        writeln!(f, "* Interfaces: ")?;
+        let mut ifaces: Vec<_> = self.metadata.ifaces().iter().collect();
+        ifaces.sort_by_key(|(id, _)| **id);
+
+        for (id, iface) in &ifaces {
+            writeln!(f, "{}: {}", id, iface.name)?;
+
+            for (i, method) in iface.methods.iter().enumerate() {
+                let sig_params: Vec<_> = method.params.iter()
+                    .map(|param| self.metadata.pretty_ty_name(param))
+                    .collect();
+                let return_ty = self.metadata.pretty_ty_name(&method.return_ty);
+
+                let sig = format!("({}) -> {}", sig_params.join(", "), return_ty);
+
+                let index = format!("  .{}", i);
+                write!(f, "{:8>} ({}): {}", index, method.name, sig)?;
+            }
+        }
+        writeln!(f)?;
 
         writeln!(f, "* String literals")?;
         for (id, lit) in self.metadata.strings() {
@@ -783,12 +804,6 @@ fn gen_iface_impls(module: &mut Module) {
                 let iface_def = module.src_metadata.find_iface_def(iface).unwrap();
 
                 for method in &iface_def.methods {
-                    let method_def = module.src_metadata.find_method_def(
-                        iface,
-                        &real_ty,
-                        method.ident.single()
-                    ).unwrap();
-
                     let cache_key = FunctionCacheKey {
                         decl_key: FunctionDeclKey::Method {
                             self_ty: real_ty.clone(),
@@ -812,12 +827,26 @@ fn gen_iface_impls(module: &mut Module) {
 }
 
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
-    let metadata = Metadata::new();
+    let mut metadata = Metadata::new();
+
+    // if String is defined it needs to be defined in the metadata even if it isn't used,
+    // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
+    let string_name = pas_ty::builtin_string_name();
+    if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
+        metadata.define_struct(&string_class);
+    }
 
     let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
 
     for unit in &module.units {
         ir_module.translate_unit(unit);
+    }
+
+    // the disposable interface may never be referenced statically but needs to be instantiated
+    // for automatic cleanup calls
+    let builtin_disposable = pas_ty::builtin_disposable_iface();
+    if ir_module.metadata.find_iface(&builtin_disposable.name.qualified).is_none() {
+        ir_module.metadata.define_iface(&builtin_disposable);
     }
 
     gen_iface_impls(&mut ir_module);

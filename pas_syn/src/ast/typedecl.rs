@@ -256,11 +256,18 @@ impl<A: Annotation> TypeDecl<A> {
 /// name. we parse it first and pass it into the parse functions for specific decl kinds.
 /// this isn't quite the same thing as a TypeName, which can be a full qualified path - a decl
 /// name is a single unqualified ident + maybe a type parameter list
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, Hash)]
 pub struct TypeDeclName {
     pub ident: Ident,
     pub type_params: Vec<Ident>,
     pub span: Span,
+}
+
+impl PartialEq for TypeDeclName {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident
+            && self.type_params == other.type_params
+    }
 }
 
 impl DeclNamed for TypeDeclName {

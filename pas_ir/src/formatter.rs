@@ -376,7 +376,7 @@ impl InstructionFormatter for Metadata {
                 ClassID::Class(struct_id) => Some(struct_id),
                 _ => None,
             })
-            .and_then(|struct_id| self.get_struct(struct_id))
+            .and_then(|struct_id| self.get_struct_def(struct_id))
             .and_then(|struct_def| struct_def.fields.get(&field))
             .map(|field| &field.name);
 
@@ -389,7 +389,7 @@ impl InstructionFormatter for Metadata {
     fn format_variant_case(&self, of_ty: &Type, tag: usize, f: &mut fmt::Write) -> fmt::Result {
         let case_name = match of_ty {
             Type::Variant(id) => self
-                .get_variant(*id)
+                .get_variant_def(*id)
                 .and_then(|variant| variant.cases.get(tag))
                 .map(|case| &case.name),
             _ => None,
