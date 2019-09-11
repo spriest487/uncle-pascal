@@ -8,8 +8,8 @@ use crate::{
 use std::fmt;
 
 use pas_common::span::Span;
-use pas_typecheck::Specializable;
 use pas_syn::Ident;
+use pas_typecheck::Specializable;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -138,8 +138,13 @@ impl<'m> Builder<'m> {
     }
 
     #[allow(unused)]
-    pub fn get_method_decl(&self, ty: &pas_ty::Type, method_ident: &Ident) -> Option<pas_ty::ast::FunctionDecl> {
-        ty.get_method(method_ident, &self.module.src_metadata).unwrap()
+    pub fn get_method_decl(
+        &self,
+        ty: &pas_ty::Type,
+        method_ident: &Ident,
+    ) -> Option<pas_ty::ast::FunctionDecl> {
+        ty.get_method(method_ident, &self.module.src_metadata)
+            .unwrap()
     }
 
     pub fn translate_variant_case<'ty>(
@@ -150,9 +155,8 @@ impl<'m> Builder<'m> {
         let name_path = NamePath::from_decl(variant.clone(), &self.module.metadata);
 
         let (id, variant_struct) = match self.module.metadata.find_variant_def(&name_path) {
-            Some((id, Some(variant_struct))) => (id, variant_struct),
-            Some((_, None)) => panic!("missing variant definition for variant {} when translating case", variant),
-            None => panic!("missing IR metadata for variant {}", variant),
+            Some((id, variant_struct)) => (id, variant_struct),
+            None => panic!("missing IR metadata definition for variant {}", variant),
         };
 
         let case_index = variant_struct
@@ -166,7 +170,7 @@ impl<'m> Builder<'m> {
         }
     }
 
-    fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
+    pub fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
         let path_parts = name
             .qualified
             .clone()
@@ -258,15 +262,20 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let real_ty = src_ty.clone().substitute_type_args(&self.type_args, &self.module.src_metadata);
+        let real_ty = src_ty
+            .clone()
+            .substitute_type_args(&self.type_args, &self.module.src_metadata);
 
         // instantiate types which may contain generic params
         match &real_ty {
             pas_ty::Type::Variant(variant_def) => {
                 let name_path = self.translate_name(&variant_def);
 
-                if self.module.metadata.find_variant_def(&name_path).is_none() {
-                    let variant_def = self.module.src_metadata.instantiate_variant(variant_def)
+                if self.module.metadata.find_type_decl(&name_path).is_none() {
+                    let variant_def = self
+                        .module
+                        .src_metadata
+                        .instantiate_variant(variant_def)
                         .unwrap();
                     let variant_meta = self.translate_variant(&variant_def);
 
@@ -277,9 +286,8 @@ impl<'m> Builder<'m> {
             pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
                 let name_path = self.translate_name(&name);
 
-                if self.module.metadata.find_struct_def(&name_path).is_none() {
-                    let class_def = self.module.src_metadata.instantiate_class(name)
-                        .unwrap();
+                if self.module.metadata.find_type_decl(&name_path).is_none() {
+                    let class_def = self.module.src_metadata.instantiate_class(name).unwrap();
                     let class_struct = self.translate_class(&class_def);
 
                     self.module.metadata.define_struct(class_struct);
@@ -287,14 +295,27 @@ impl<'m> Builder<'m> {
             }
 
             pas_ty::Type::Interface(iface_def) => {
-                if self.module.metadata.find_iface_def(&iface_def).is_none() {
-                    let iface_def = self.module.src_metadata.find_iface_def(iface_def)
-                        .unwrap();
+                if self.module.metadata.find_iface_decl(&iface_def).is_none() {
+                    let iface_def = self.module.src_metadata.find_iface_def(iface_def).unwrap();
                     let iface_meta = self.translate_iface(&iface_def);
 
                     self.module.metadata.define_iface(iface_meta);
                 }
             }
+
+            pas_ty::Type::Forward(forward_ty) => match forward_ty.as_ref() {
+                pas_ty::Type::Record(name)
+                | pas_ty::Type::Class(name)
+                | pas_ty::Type::Variant(name) => {
+                    let name = self.translate_name(name);
+
+                    if self.module.metadata.find_type_decl(&name).is_none() {
+                        self.module.metadata.declare_struct(&name);
+                    }
+                }
+
+                _ => {}
+            },
 
             pas_ty::Type::DynArray { element } => {
                 self.translate_dyn_array_struct(&element);
@@ -307,7 +328,7 @@ impl<'m> Builder<'m> {
 
         self.module.add_type_instance(real_ty.clone());
 
-        self.module.metadata.translate_type(&real_ty)
+        self.module.metadata.find_type(&real_ty)
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
@@ -323,7 +344,7 @@ impl<'m> Builder<'m> {
         &mut self,
         iface: IdentPath,
         method: Ident,
-        self_ty: pas_ty::Type
+        self_ty: pas_ty::Type,
     ) -> CachedFunction {
         self.module.translate_method(iface, method, self_ty)
     }

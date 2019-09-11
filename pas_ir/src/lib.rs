@@ -426,7 +426,7 @@ impl Module {
                     Err(..) => panic!("missing interface def {}", iface),
                 };
 
-                let iface_id = match self.metadata.find_iface_def(&iface_def.name.qualified) {
+                let iface_id = match self.metadata.find_iface_decl(&iface_def.name.qualified) {
                     Some(iface_id) => iface_id,
                     None => {
                         let mut builder = Builder::new(self);
@@ -448,7 +448,7 @@ impl Module {
                     .metadata
                     .declare_func(&specialized_decl, key.type_args.clone());
 
-                let self_ty = self.metadata.translate_type(self_ty);
+                let self_ty = self.metadata.find_type(self_ty);
 
                 self.metadata
                     .impl_method(iface_id, self_ty, method_name, id);
@@ -838,9 +838,18 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = pas_ty::builtin_string_name();
     if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
-        let mut builder = Builder::new(&mut ir_module);
-        let string_struct = builder.translate_class(&string_class);
-        ir_module.metadata.define_struct(string_struct);
+        let name = {
+            let mut builder = Builder::new(&mut ir_module);
+            builder.translate_name(&string_name)
+        };
+
+        ir_module.metadata.declare_struct(&name);
+        let string_def = {
+            let mut builder = Builder::new(&mut ir_module);
+            builder.translate_class(&string_class)
+        };
+
+        ir_module.metadata.define_struct(string_def);
     }
 
     for unit in &module.units {
@@ -850,9 +859,19 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // the disposable interface may never be referenced statically but needs to be instantiated
     // for automatic cleanup calls
     let builtin_disposable = pas_ty::builtin_disposable_iface();
-    if ir_module.metadata.find_iface_def(&builtin_disposable.name.qualified).is_none() {
-        let mut builder = Builder::new(&mut ir_module);
-        let disposable_iface = builder.translate_iface(&builtin_disposable);
+    if ir_module.metadata.find_iface_decl(&builtin_disposable.name.qualified).is_none() {
+        let name = {
+            let mut builder = Builder::new(&mut ir_module);
+            builder.translate_name(&builtin_disposable.name)
+        };
+
+        ir_module.metadata.declare_struct(&name);
+
+        let disposable_iface = {
+            let mut builder = Builder::new(&mut ir_module);
+            builder.translate_iface(&builtin_disposable)
+        };
+
         ir_module.metadata.define_iface(disposable_iface);
     }
 

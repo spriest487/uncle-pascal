@@ -2,7 +2,7 @@ use std::{collections::hash_map::HashMap, fmt};
 
 use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
 use pas_syn as syn;
-use pas_syn::{Path, Ident, IdentPath};
+use pas_syn::{Ident, IdentPath, Path};
 use pas_typecheck as pas_ty;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
@@ -79,7 +79,7 @@ impl NamePath {
         let type_args = name
             .type_args
             .iter()
-            .map(|arg| metadata.translate_type(arg))
+            .map(|arg| metadata.find_type(arg))
             .collect();
 
         NamePath {
@@ -523,7 +523,9 @@ impl Metadata {
             if let Some(conflict) = self.ifaces.get(id) {
                 panic!(
                     "duplicate iface ID {} in metadata (new: {}, existing: {})",
-                    id, iface_decl.name(), conflict.name()
+                    id,
+                    iface_decl.name(),
+                    conflict.name()
                 );
             }
 
@@ -554,7 +556,7 @@ impl Metadata {
         }
     }
 
-    pub fn type_defs(&self) -> impl Iterator<Item=(StructID, &TypeDef)> {
+    pub fn type_defs(&self) -> impl Iterator<Item = (StructID, &TypeDef)> {
         self.type_decls.iter().filter_map(|(id, decl)| match decl {
             TypeDecl::Def(def) => Some((*id, def)),
             TypeDecl::Forward(..) => None,
@@ -674,12 +676,10 @@ impl Metadata {
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
         match ty {
-            Type::Struct(id) | Type::Variant(id) => {
-                match self.type_decls.get(id) {
-                    Some(TypeDecl::Forward(name)) => name.to_string(),
-                    Some(TypeDecl::Def(def)) => def.name().to_string(),
-                    None => id.to_string(),
-                }
+            Type::Struct(id) | Type::Variant(id) => match self.type_decls.get(id) {
+                Some(TypeDecl::Forward(name)) => name.to_string(),
+                Some(TypeDecl::Def(def)) => def.name().to_string(),
+                None => id.to_string(),
             },
 
             Type::Array { element, dim } => {
@@ -713,17 +713,10 @@ impl Metadata {
     }
 
     fn find_forward_decl(&self, name: &NamePath) -> Option<StructID> {
-        for (id, decl) in &self.type_decls {
-            match decl {
-                TypeDecl::Forward(decl_name) if decl_name == name => {
-                    return Some(*id);
-                },
-
-                _ => {},
-            }
-        }
-
-        None
+        self.type_decls.iter().find_map(|(id, decl)| match decl {
+            TypeDecl::Forward(decl_name) if decl_name == name => Some(*id),
+            _ => None,
+        })
     }
 
     pub fn declare_struct(&mut self, name: &NamePath) -> StructID {
@@ -733,7 +726,8 @@ impl Metadata {
             && name.path.as_slice()[0].as_str() == "System"
             && name.path.as_slice()[1].as_str() == "String";
         if is_string {
-            self.type_decls.insert(STRING_ID, TypeDecl::Forward(name.clone()));
+            self.type_decls
+                .insert(STRING_ID, TypeDecl::Forward(name.clone()));
             return STRING_ID;
         }
 
@@ -750,7 +744,10 @@ impl Metadata {
 
     pub fn define_struct(&mut self, struct_def: Struct) -> StructID {
         assert!(
-            !self.type_decls.values().any(|decl| *decl.name() == struct_def.name && !decl.is_forward()),
+            !self
+                .type_decls
+                .values()
+                .any(|decl| *decl.name() == struct_def.name && !decl.is_forward()),
             "duplicate type def: {}",
             struct_def.name
         );
@@ -765,25 +762,28 @@ impl Metadata {
 
     pub fn define_variant(&mut self, variant_def: Variant) -> StructID {
         assert!(
-            !self.type_decls.values().any(|decl| *decl.name() == variant_def.name && !decl.is_forward()),
+            !self
+                .type_decls
+                .values()
+                .any(|decl| *decl.name() == variant_def.name && !decl.is_forward()),
             "duplicate type def: {}",
             variant_def.name
         );
 
         let variant_id = self.declare_struct(&variant_def.name);
 
-        self.type_decls.insert(variant_id, TypeDecl::Forward(variant_def.name.clone()));
+        self.type_decls
+            .insert(variant_id, TypeDecl::Forward(variant_def.name.clone()));
 
-        self.type_decls.insert(
-            variant_id,
-            TypeDecl::Def(TypeDef::Variant(variant_def)),
-        );
+        self.type_decls
+            .insert(variant_id, TypeDecl::Def(TypeDef::Variant(variant_def)));
 
         variant_id
     }
 
-    pub fn ifaces(&self) -> impl Iterator<Item=(InterfaceID, &Interface)> {
-        self.ifaces.iter()
+    pub fn ifaces(&self) -> impl Iterator<Item = (InterfaceID, &Interface)> {
+        self.ifaces
+            .iter()
             .filter_map(|(id, iface_decl)| match iface_decl {
                 InterfaceDecl::Def(iface_def) => Some((*id, iface_def)),
                 InterfaceDecl::Forward(..) => None,
@@ -822,15 +822,16 @@ impl Metadata {
         id
     }
 
-    pub fn find_iface_def(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
+    pub fn find_iface_decl(&self, iface_ident: &IdentPath) -> Option<InterfaceID> {
         let name = NamePath::from_parts(iface_ident.iter().map(Ident::to_string));
 
-        self.ifaces()
-            .find_map(|(id, def)| if def.name == name {
-                Some(id)
+        self.ifaces.iter().find_map(|(id, decl)| {
+            if *decl.name() == name {
+                Some(*id)
             } else {
                 None
-            })
+            }
+        })
     }
 
     pub fn impl_method(
@@ -856,7 +857,7 @@ impl Metadata {
             None => panic!(
                 "trying to impl method {} for interface {} which doesn't exist",
                 method_name, iface_id
-            )
+            ),
         }
     }
 
@@ -892,13 +893,13 @@ impl Metadata {
             .collect()
     }
 
-    pub fn translate_type(&self, ty: &pas_ty::Type) -> Type {
+    pub fn find_type(&self, ty: &pas_ty::Type) -> Type {
         match ty {
             pas_ty::Type::Nothing => Type::Nothing,
             pas_ty::Type::Nil => Type::Nothing.ptr(),
 
             pas_ty::Type::Interface(iface) => {
-                let iface_id = match self.find_iface_def(iface) {
+                let iface_id = match self.find_iface_decl(iface) {
                     Some(id) => id,
                     None => panic!("missing IR definition for interface {}", iface),
                 };
@@ -911,13 +912,10 @@ impl Metadata {
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
 
-            pas_ty::Type::Pointer(target) => self.translate_type(target).ptr(),
+            pas_ty::Type::Pointer(target) => self.find_type(target).ptr(),
 
-            pas_typecheck::Type::Record(class) | pas_typecheck::Type::Class(class) => {
-                let any_generic_args = class
-                    .type_args
-                    .iter()
-                    .any(|arg| arg.is_generic_param());
+            pas_ty::Type::Record(class) | pas_ty::Type::Class(class) => {
+                let any_generic_args = class.type_args.iter().any(|arg| arg.is_generic_param());
                 assert!(
                     !any_generic_args,
                     "name of translated class must not contain unspecialized generics: {}",
@@ -925,12 +923,9 @@ impl Metadata {
                 );
 
                 let ty_name = NamePath::from_decl(*class.clone(), self);
-                let struct_id = match self.find_struct_def(&ty_name) {
-                    Some((id, _def)) => id,
-                    None => panic!(
-                        "{} was not found in metadata (not instantiated)",
-                        class
-                    ),
+                let struct_id = match self.find_type_decl(&ty_name) {
+                    Some(id) => id,
+                    None => panic!("{} was not found in metadata (not instantiated)", class),
                 };
 
                 match ty {
@@ -946,7 +941,7 @@ impl Metadata {
             }
 
             pas_ty::Type::Array { element, dim } => {
-                let element = self.translate_type(element.as_ref());
+                let element = self.find_type(element.as_ref());
                 Type::Array {
                     element: Box::new(element),
                     dim: *dim,
@@ -954,7 +949,7 @@ impl Metadata {
             }
 
             pas_ty::Type::DynArray { element } => {
-                let element = self.translate_type(element.as_ref());
+                let element = self.find_type(element.as_ref());
 
                 let array_struct = match self.find_dyn_array_struct(&element) {
                     Some(id) => id,
@@ -968,10 +963,7 @@ impl Metadata {
             }
 
             pas_ty::Type::Variant(variant) => {
-                let any_generic_args = variant
-                    .type_args
-                    .iter()
-                    .any(|arg| arg.is_generic_param());
+                let any_generic_args = variant.type_args.iter().any(|arg| arg.is_generic_param());
                 assert!(
                     !any_generic_args,
                     "name of translated variant must not contain unspecialized generics: {}",
@@ -980,13 +972,15 @@ impl Metadata {
 
                 let ty_name = NamePath::from_decl(*variant.clone(), self);
 
-                match self.find_variant_def(&ty_name) {
-                    Some((id, _)) => Type::Variant(id),
+                match self.find_type_decl(&ty_name) {
+                    Some(id) => Type::Variant(id),
                     None => panic!("missing IR struct metadata for variant {}", variant),
                 }
             }
 
             pas_ty::Type::MethodSelf => panic!("Self is not a real type in this context"),
+
+            pas_ty::Type::Forward(forward_ty) => self.find_type(&forward_ty),
 
             pas_ty::Type::GenericParam(param) => panic!(
                 "{} is not a real type in this context: {:?}",
@@ -1034,8 +1028,10 @@ impl Metadata {
         );
 
         let struct_id = self.next_struct_id();
-        self.type_decls
-            .insert(struct_id, TypeDecl::Def(TypeDef::Struct(Struct { name, fields })));
+        self.type_decls.insert(
+            struct_id,
+            TypeDecl::Def(TypeDef::Struct(Struct { name, fields })),
+        );
 
         self.dyn_array_structs.insert(element, struct_id);
 
@@ -1055,30 +1051,34 @@ impl Metadata {
         &self.dyn_array_structs
     }
 
+    pub fn find_type_decl(&self, name: &NamePath) -> Option<StructID> {
+        self.type_decls.iter().find_map(|(id, def)| match def {
+            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => Some(*id),
+
+            TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => Some(*id),
+
+            TypeDecl::Forward(forward_name) if *forward_name == *name => Some(*id),
+
+            _ => None,
+        })
+    }
+
     // find the declared ID and definition of a struct. if the struct is only forward-declared
     // when this call is made, the definition part of the result will be None
-    pub fn find_struct_def(&self, name: &NamePath) -> Option<(StructID, Option<&Struct>)> {
+    pub fn find_struct_def(&self, name: &NamePath) -> Option<(StructID, &Struct)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => {
-                Some((*id, Some(struct_def)))
-            }
-
-            TypeDecl::Forward(forward_name) if *forward_name == *name => {
-                Some((*id, None))
+                Some((*id, struct_def))
             }
 
             _ => None,
         })
     }
 
-    pub fn find_variant_def(&self, name: &NamePath) -> Option<(StructID, Option<&Variant>)> {
+    pub fn find_variant_def(&self, name: &NamePath) -> Option<(StructID, &Variant)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => {
-                Some((*id, Some(variant_def)))
-            }
-
-            TypeDecl::Forward(forward_name) if *forward_name == *name => {
-                Some((*id, None))
+                Some((*id, variant_def))
             }
 
             _ => None,

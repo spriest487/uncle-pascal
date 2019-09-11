@@ -116,6 +116,8 @@ pub fn typecheck_assignment(
         .ty()
         .assignable_from(rhs.annotation().ty(), ctx)
     {
+        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
+
         return Err(TypecheckError::InvalidBinOp {
             lhs: lhs.annotation().ty().clone(),
             rhs: rhs.annotation().ty().clone(),

@@ -254,6 +254,7 @@ pub enum Type {
     MethodSelf,
     GenericParam(Box<TypeParam>),
     Any,
+    Forward(Box<Type>),
 }
 
 impl From<Primitive> for Type {
@@ -277,8 +278,33 @@ impl Type {
             Type::Interface(iface) => Some(iface.clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.qualified.clone()),
+            Type::Forward(ty) => ty.full_path(),
             _ => None,
         }
+    }
+
+    pub fn is_by_ref(&self) -> bool {
+        match self {
+            Type::Nothing => false,
+            Type::Nil => false,
+            Type::Primitive(_) => false,
+            Type::Pointer(_) => false,
+            Type::Function(_) => false,
+            Type::Record(_) => false,
+            Type::Class(_) => true,
+            Type::Interface(_) => true,
+            Type::Variant(_) => false,
+            Type::Array { .. } => false,
+            Type::DynArray { .. } => true,
+            Type::MethodSelf => true,
+            Type::GenericParam(_) => false,
+            Type::Any => true,
+            Type::Forward(forward) => forward.is_by_ref(),
+        }
+    }
+
+    pub fn forward(self) -> Self {
+        Type::Forward(Box::new(self))
     }
 
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
@@ -314,6 +340,7 @@ impl Type {
 
                 Ok(class.members.get(index).cloned())
             }
+
             _ => Ok(None),
         }
     }
@@ -354,6 +381,8 @@ impl Type {
             Type::Any => true,
             Type::DynArray { .. } => true,
 
+            Type::Forward(forward_ty) => forward_ty.is_rc(),
+
             _ => false,
         }
     }
@@ -361,6 +390,7 @@ impl Type {
     pub fn deref_ty(&self) -> Option<&Type> {
         match self {
             Type::Pointer(ty) => Some(ty.as_ref()),
+            Type::Forward(forward_ty) => forward_ty.deref_ty(),
             _ => None,
         }
     }
@@ -383,6 +413,8 @@ impl Type {
             | Type::GenericParam(..)
             | Type::MethodSelf => false,
 
+            Type::Forward(forward_ty) => forward_ty.self_comparable(),
+
             _ => true,
         }
     }
@@ -392,11 +424,25 @@ impl Type {
             Type::Primitive(Primitive::Real32) => true,
             Type::Primitive(Primitive::Int32) => true,
             Type::Primitive(Primitive::Byte) => true,
+
+            Type::Forward(forward_ty) => forward_ty.self_orderable(),
+
             _ => false,
         }
     }
 
+    fn unwrap_forward(&self) -> &Self {
+        let mut unwrapped = self;
+        while let Type::Forward(forward_ty) = unwrapped {
+            unwrapped = forward_ty.as_ref();
+        }
+        unwrapped
+    }
+
     pub fn assignable_from(&self, from: &Self, ctx: &Context) -> bool {
+        // if "from" is a forward declared name, forget that now
+        let from = from.unwrap_forward();
+
         match self {
             Type::Pointer(_) => *self == *from || *from == Type::Nil,
             Type::Function(_) => false,
@@ -409,6 +455,7 @@ impl Type {
                 Type::Class(..) | Type::Interface(..) => true,
                 _ => false,
             },
+            Type::Forward(forward_ty) => forward_ty.assignable_from(from, ctx),
             _ => *self == *from,
         }
     }
@@ -473,6 +520,7 @@ impl Type {
     pub fn as_iface(&self) -> Result<&IdentPath, &Self> {
         match self {
             Type::Interface(iface) => Ok(iface),
+            Type::Forward(forward_ty) => forward_ty.as_iface(),
             other => Err(other),
         }
     }
@@ -480,6 +528,7 @@ impl Type {
     pub fn as_record(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Record(class) => Ok(&*class),
+            Type::Forward(forward_ty) => forward_ty.as_record(),
             other => Err(other),
         }
     }
@@ -487,6 +536,7 @@ impl Type {
     pub fn as_class(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Class(class) => Ok(&*class),
+            Type::Forward(forward_ty) => forward_ty.as_class(),
             other => Err(other),
         }
     }
@@ -494,6 +544,7 @@ impl Type {
     pub fn as_variant(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Variant(name) => Ok(&*name),
+            Type::Forward(forward_ty) => forward_ty.as_variant(),
             other => Err(other),
         }
     }
@@ -501,6 +552,7 @@ impl Type {
     pub fn as_func(&self) -> Result<Rc<FunctionSig>, &Self> {
         match self {
             Type::Function(sig) => Ok(sig.clone()),
+            Type::Forward(forward_ty) => forward_ty.as_func(),
             other => Err(other),
         }
     }
@@ -536,6 +588,8 @@ impl Type {
 
             Type::Record(name) => Type::Record(Box::new(new_class_name(&name, args, ctx))),
 
+            Type::Forward(forward_ty) => forward_ty.substitute_type_args(args, ctx).forward(),
+
             Type::Variant(variant) => {
                 let new_args = variant
                     .type_args
@@ -567,6 +621,9 @@ impl Type {
 
     pub fn specialize_generic(&self, args: &[Self], span: &Span) -> GenericResult<Self> {
         match self {
+            Type::Forward(forward_ty) => forward_ty.specialize_generic(args, span)
+                .map(Type::forward),
+
             Type::GenericParam(type_param) => {
                 let arg = args.get(type_param.pos).unwrap_or_else(|| {
                     panic!(
@@ -621,6 +678,7 @@ impl fmt::Display for Type {
             Type::MethodSelf => write!(f, "Self"),
             Type::Any => write!(f, "Any"),
             Type::Function(_) => unimplemented!("function types cannot be represented"),
+            Type::Forward(ty) => write!(f, "{}", ty),
         }
     }
 }

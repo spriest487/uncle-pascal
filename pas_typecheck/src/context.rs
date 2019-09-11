@@ -1069,36 +1069,6 @@ impl Context {
         }
     }
 
-    pub fn is_size_known(&self, ty: &Type) -> bool {
-        match ty {
-            Type::Nil |
-            Type::Pointer(..) |
-            Type::Class(..) |
-            Type::DynArray { .. } |
-            Type::MethodSelf |
-            Type::Nothing |
-            Type::Primitive(..) |
-            Type::Interface(..) |
-            Type::Any |
-            Type::GenericParam(..) =>
-                true,
-
-            Type::Array { element: el, dim: _ } => {
-                self.is_size_known(el)
-            }
-
-            Type::Variant(name) => {
-                self.find_variant_def(&name.qualified).is_ok()
-            }
-
-            Type::Record(name) => {
-                self.find_variant_def(&name.qualified).is_ok()
-            }
-
-            Type::Function(..) => false,
-        }
-    }
-
     pub fn undefined_syms(&self) -> Vec<Ident> {
         let mut syms = Vec::new();
         for scope in self.scopes.current_path().as_slice().iter().rev() {
