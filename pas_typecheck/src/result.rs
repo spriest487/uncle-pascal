@@ -98,6 +98,12 @@ pub enum TypecheckError {
 
     GenericError(GenericError),
 
+    UnsizedMember {
+        decl: IdentPath,
+        member: Ident,
+        member_ty: Type,
+    },
+
     InvalidMethodInterface {
         ty: Type,
         span: Span,
@@ -158,6 +164,7 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
+            TypecheckError::UnsizedMember { member, .. } => member.span(),
             TypecheckError::GenericError(err) => err.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
@@ -207,6 +214,8 @@ impl DiagnosticOutput for TypecheckError {
             }
 
             TypecheckError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
+
+            TypecheckError::UnsizedMember { .. } => "Unsized member".to_string(),
 
             TypecheckError::GenericError(err) => err.title(),
 
@@ -405,6 +414,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::NoLoopContext { stmt } => {
                 write!(f, "the statement `{}` can only appear inside a loop", stmt)
+            }
+
+            TypecheckError::UnsizedMember { decl, member_ty, .. } => {
+                write!(f, "`{}` cannot have member of type `{}` because its size is unknown in this context", decl, member_ty)
             }
 
             TypecheckError::GenericError(err) => {

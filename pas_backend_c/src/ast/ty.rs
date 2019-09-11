@@ -200,9 +200,18 @@ impl fmt::Display for StructDecl {
     }
 }
 
+pub struct StructMember {
+    pub name: FieldName,
+    pub ty: Type,
+
+    pub comment: Option<String>,
+}
+
 pub struct StructDef {
     pub decl: StructDecl,
-    pub members: HashMap<FieldName, Type>,
+    pub members: Vec<StructMember>,
+
+    pub comment: Option<String>,
 }
 
 impl fmt::Display for StructName {
@@ -227,7 +236,12 @@ impl StructDef {
             .iter()
             .map(|(id, field)| {
                 let ty = Type::from_metadata(&field.ty, module);
-                (FieldName::ID(*id), ty)
+
+                StructMember {
+                    name: FieldName::ID(*id),
+                    ty,
+                    comment: None,
+                }
             })
             .collect();
 
@@ -236,16 +250,25 @@ impl StructDef {
                 name: StructName::Class(id),
             },
             members,
+            comment: Some(ir_struct.name.to_string())
         }
     }
 }
 
 impl fmt::Display for StructDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(comment) = &self.comment {
+            writeln!(f, "/** {} */", comment)?;
+        }
+
         writeln!(f, "{} {{", self.decl)?;
-        for (field_name, member) in self.members.iter() {
-            let name = format!("{}", field_name);
-            writeln!(f, "{};", member.to_decl_string(&name))?;
+        for member in self.members.iter() {
+            if let Some(comment) = &member.comment {
+                writeln!(f, "/** {} */", comment)?;
+            }
+
+            let name = format!("{}", member.name);
+            writeln!(f, "{};", member.ty.to_decl_string(&name))?;
         }
         write!(f, "}};")
     }

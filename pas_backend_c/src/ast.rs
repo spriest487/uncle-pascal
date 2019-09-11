@@ -125,16 +125,17 @@ impl Module {
             Entry::Occupied(entry) => entry.get().clone(),
 
             Entry::Vacant(entry) => {
-                let mut array_members = HashMap::new();
-                array_members.insert(
-                    FieldName::StaticArrayElements,
-                    element.clone().sized_array(dim),
-                );
-
                 let name = StructName::StaticArray(next_id);
                 let array_struct = StructDef {
                     decl: StructDecl { name: name.clone() },
-                    members: array_members,
+                    members: vec![
+                        StructMember {
+                            name: FieldName::StaticArrayElements,
+                            ty: element.clone().sized_array(dim),
+                            comment: None,
+                        }
+                    ],
+                    comment: Some(format!("array[{}] of {}", dim, element.typename())),
                 };
 
                 self.type_defs.push(TypeDef::Struct(array_struct));

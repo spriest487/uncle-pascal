@@ -745,15 +745,15 @@ impl Context {
                         .clone(),
                 );
 
-                return Err(NameError::Unexpected {
+                Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
                     expected: ExpectedKind::Class,
-                });
+                })
             }
 
             None => {
-                return Err(NameError::NotFound(name.last().clone()));
+                Err(NameError::NotFound(name.last().clone()))
             }
         }
     }
@@ -781,15 +781,15 @@ impl Context {
                         .clone(),
                 );
 
-                return Err(NameError::Unexpected {
+                Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
                     expected: ExpectedKind::Variant,
-                });
+                })
             }
 
             None => {
-                return Err(NameError::NotFound(name.last().clone()));
+                Err(NameError::NotFound(name.last().clone()))
             }
         }
     }
@@ -853,15 +853,15 @@ impl Context {
                         .clone(),
                 );
 
-                return Err(NameError::Unexpected {
+                Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
                     expected: ExpectedKind::Interface,
-                });
+                })
             }
 
             None => {
-                return Err(NameError::NotFound(name.last().clone()));
+                Err(NameError::NotFound(name.last().clone()))
             }
         }
     }
@@ -1066,6 +1066,36 @@ impl Context {
                 span: member_ident.span.clone(),
                 member: member_ident.clone(),
             }),
+        }
+    }
+
+    pub fn is_size_known(&self, ty: &Type) -> bool {
+        match ty {
+            Type::Nil |
+            Type::Pointer(..) |
+            Type::Class(..) |
+            Type::DynArray { .. } |
+            Type::MethodSelf |
+            Type::Nothing |
+            Type::Primitive(..) |
+            Type::Interface(..) |
+            Type::Any |
+            Type::GenericParam(..) =>
+                true,
+
+            Type::Array { element: el, dim: _ } => {
+                self.is_size_known(el)
+            }
+
+            Type::Variant(name) => {
+                self.find_variant_def(&name.qualified).is_ok()
+            }
+
+            Type::Record(name) => {
+                self.find_variant_def(&name.qualified).is_ok()
+            }
+
+            Type::Function(..) => false,
         }
     }
 

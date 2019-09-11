@@ -43,6 +43,15 @@ pub fn typecheck_class(
     let mut members = Vec::new();
     for member in &class.members {
         let ty = typecheck_type(&member.ty, ctx)?.clone();
+
+        if !ctx.is_size_known(&ty) {
+            return Err(TypecheckError::UnsizedMember {
+                decl: name.qualified,
+                member: member.ident.clone(),
+                member_ty: ty,
+            })
+        }
+
         members.push(Member {
             ty,
             span: member.span.clone(),
