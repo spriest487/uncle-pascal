@@ -671,7 +671,15 @@ impl fmt::Display for Module {
 
         writeln!(f, "* Functions")?;
         for (id, func) in funcs {
-            writeln!(f, "{}: {}", id.0, self.metadata.func_desc(*id))?;
+            write!(f, "{}: ", id.0)?;
+            match self.metadata.func_desc(*id) {
+                Some(desc_name) => {
+                    writeln!(f, "{}", desc_name)?;
+                }
+                None => {
+                    writeln!(f, " /* {} */", func.debug_name)?;
+                }
+            }
 
             write_instruction_list(f, &self.metadata, &func.body)?;
             writeln!(f)?;
@@ -859,6 +867,8 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         };
 
         ir_module.metadata.define_struct(string_def);
+
+        Builder::new(&mut ir_module).translate_rc_boilerplate(&Type::Struct(STRING_ID));
     }
 
     for unit in &module.units {

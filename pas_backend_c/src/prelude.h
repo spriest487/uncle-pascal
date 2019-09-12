@@ -7,6 +7,7 @@
 struct Rc;
 
 typedef void (*Disposer)(struct Rc*);
+typedef void (*RcCleanupFunc)(void*);
 
 // classes and interfaces runtime support
 
@@ -19,6 +20,8 @@ struct Class {
     size_t size;
 
     struct MethodTable* iface_methods;
+
+    RcCleanupFunc cleanup;
     Disposer disposer;
 };
 
@@ -153,6 +156,7 @@ static void RcRelease(struct Rc* rc) {
         printf("rc: released ref @ 0x%p\n", rc->resource);
 #endif
     } else {
+        // run the disposer if present
         if (rc->class->disposer) {
 #if TRACE_RC
             printf("rc: deleting disposable resource @ 0x%p\n", rc->resource);
@@ -164,6 +168,10 @@ static void RcRelease(struct Rc* rc) {
 #endif
         }
 
+        // invoke structural release to release struct fields
+        rc->class->cleanup(rc->resource);
+
+        // free memory
         Free(rc->resource);
         Free(rc);
     }

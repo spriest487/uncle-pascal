@@ -138,6 +138,10 @@ impl Expr {
         }
     }
 
+    pub fn cast(self, ty: Type) -> Self {
+        Expr::Cast(Box::new(self), ty)
+    }
+
     fn translate_infix_op(lhs: &ir::Value, op: InfixOp, rhs: &ir::Value, module: &Module) -> Self {
         let lhs_expr = Expr::translate_val(lhs, module);
         let rhs_expr = Expr::translate_val(rhs, module);
@@ -192,7 +196,7 @@ impl Expr {
                     base: Box::new(a_expr),
                     field: FieldName::RcResource,
                 };
-                let class_ptr = Expr::Cast(Box::new(resource_ptr), class_ty.ptr());
+                let class_ptr = resource_ptr.cast(class_ty.ptr());
 
                 let field_ref = Expr::Arrow {
                     base: Box::new(class_ptr),
@@ -547,7 +551,7 @@ impl<'a> Builder<'a> {
             ir::Instruction::DynFree { at } => {
                 let free_mem = Expr::Function(FunctionName::FreeMem);
                 let at_ptr = Expr::translate_ref(at, self.module);
-                let as_u8 = Expr::Cast(Box::new(at_ptr), Type::UChar.ptr());
+                let as_u8 = at_ptr.cast(Type::UChar.ptr());
                 let call_free_mem = Expr::call(free_mem, vec![as_u8]);
 
                 self.stmts.push(Statement::Expr(call_free_mem));

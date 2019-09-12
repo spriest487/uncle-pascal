@@ -276,11 +276,14 @@ impl fmt::Display for StructDef {
 
 pub struct VariantCaseDef {
     pub ty: Option<Type>,
+    pub comment: Option<String>,
 }
 
 pub struct VariantDef {
     pub decl: StructDecl,
     pub cases: Vec<VariantCaseDef>,
+
+    pub comment: Option<String>,
 }
 
 impl VariantDef {
@@ -293,7 +296,10 @@ impl VariantDef {
                     .ty
                     .as_ref()
                     .map(|data_ty| Type::from_metadata(data_ty, module));
-                VariantCaseDef { ty }
+                VariantCaseDef {
+                    ty,
+                    comment: Some(case.name.clone())
+                }
             })
             .collect();
 
@@ -302,12 +308,17 @@ impl VariantDef {
                 name: StructName::Variant(id),
             },
             cases,
+            comment: Some(variant.name.to_string()),
         }
     }
 }
 
 impl fmt::Display for VariantDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(comment) = &self.comment {
+            writeln!(f, "/** {} */", comment)?;
+        }
+
         writeln!(f, "{} {{", self.decl)?;
 
         writeln!(
@@ -322,7 +333,11 @@ impl fmt::Display for VariantDef {
                 let name = FieldName::VariantDataCase(index);
 
                 if let Some(case_ty) = &case.ty {
-                    writeln!(f, "   {};", case_ty.to_decl_string(&name))?;
+                    if let Some(comment) = &case.comment {
+                        writeln!(f, "  /** {} */", comment)?;
+                    }
+
+                    writeln!(f, "    {};", case_ty.to_decl_string(&name))?;
                 }
             }
 
@@ -366,6 +381,7 @@ pub struct Class {
     struct_id: StructID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
     disposer: Option<FunctionName>,
+    cleanup_func: FunctionName,
 }
 
 impl Class {
@@ -407,10 +423,16 @@ impl Class {
                     .cloned()
             });
 
+        let resource_ty = metadata::Type::Struct(struct_id);
+        let cleanup_func = metadata.find_rc_boilerplate(&resource_ty)
+            .map(|funcs| FunctionName::ID(funcs.release))
+            .expect("missing rc cleanup func for IR class resource struct");
+
         Class {
             struct_id,
             impls,
             disposer,
+            cleanup_func,
         }
     }
 
@@ -466,6 +488,10 @@ impl Class {
         } else {
             def.push_str("NULL");
         };
+        def.push_str(",\n");
+
+        def.push_str("  .cleanup = (RcCleanupFunc)&");
+        def.push_str(&self.cleanup_func.to_string());
         def.push_str(",\n");
 
         def.push_str("  .iface_methods = ");

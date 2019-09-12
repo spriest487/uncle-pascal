@@ -174,23 +174,6 @@ pub struct RcCell {
     pub struct_id: StructID,
 }
 
-enum ReleaseTarget {
-    RcPointer,
-    Struct(StructID),
-    Variant(StructID),
-}
-
-impl ReleaseTarget {
-    fn for_ty(ty: &Type) -> Option<Self> {
-        match ty {
-            Type::RcPointer(..) => Some(ReleaseTarget::RcPointer),
-            Type::Struct(id) => Some(ReleaseTarget::Struct(*id)),
-            Type::Variant(id) => Some(ReleaseTarget::Variant(*id)),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct ArrayCell {
     pub el_ty: Type,
@@ -271,6 +254,13 @@ impl MemCell {
                 Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
             }
 
+            _ => None,
+        }
+    }
+
+    pub fn as_function(&self) -> Option<&Function> {
+        match self {
+            MemCell::Function(f) => Some(f),
             _ => None,
         }
     }
@@ -777,7 +767,8 @@ impl Interpreter {
             .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
 
         if let Some(dispose_func) = dispose_impl_id {
-            let dispose_desc = self.metadata.func_desc(dispose_func);
+            let dispose_desc = self.metadata.func_desc(dispose_func)
+                .unwrap_or_else(|| dispose_func.to_string());
             let disposed_name = self.metadata.pretty_ty_name(ty);
 
             let dispose_ref = GlobalRef::Function(dispose_func);
@@ -796,125 +787,97 @@ impl Interpreter {
         }
     }
 
-    fn release_cell(&mut self, cell: &MemCell, target: ReleaseTarget) {
-        match target {
-            ReleaseTarget::Struct(struct_id) => {
-                let struct_cell = cell.as_struct(struct_id).unwrap();
-                let cell_ty = Type::Struct(struct_id);
+    fn release_cell(&mut self, cell: &MemCell) {
+        let ptr = cell.as_pointer().unwrap_or_else(|| {
+            panic!("released cell was not a pointer, found: {:?}", cell)
+        });
+        // NULL is a valid release target because we release uninitialized local RC pointers
+        // just do nothing
+        if *ptr == Pointer::Null {
+            return;
+        }
 
-                self.invoke_disposer(&cell, &cell_ty);
-                let struct_def: Struct = self.metadata.get_struct_def(struct_id).unwrap().clone();
+        let rc_addr = ptr.as_heap_addr().unwrap_or_else(|| {
+            panic!("released cell was not a heap pointer, found: {:?}", cell)
+        });
 
-                for (field_id, field_def) in &struct_def.fields {
-                    let field_cell = &struct_cell[*field_id];
-                    let field_ty = &field_def.ty;
+        let rc_cell = match &self.heap[rc_addr] {
+            MemCell::RcCell(rc_cell) => rc_cell.clone(),
+            other => panic!("released cell was not an rc value, found: {:?}", other),
+        };
 
-                    if let Some(field_release_target) = ReleaseTarget::for_ty(field_ty) {
-                        self.release_cell(field_cell, field_release_target);
-                    }
-                }
+        let resource_ty = Type::Struct(rc_cell.struct_id);
+
+        if rc_cell.ref_count == 1 {
+            if self.trace_rc {
+                println!(
+                    "rc: delete cell {:?} of resource ty {}",
+                    cell,
+                    self.metadata.pretty_ty_name(&resource_ty)
+                );
             }
 
-            ReleaseTarget::Variant(struct_id) => {
-                let variant_cell = cell.as_variant(struct_id).unwrap();
-                let cell_ty = Type::Variant(struct_id);
+            // Dispose() the inner resource. For an RC type, interfaces are implemented
+            // for the RC pointer type, not the resource type
+            let resource_id = ClassID::Class(rc_cell.struct_id);
+            self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)));
 
-                self.invoke_disposer(&cell, &cell_ty);
+            // Now release the fields of the resource struct as if it was a normal record.
+            // This could technically invoke another disposer, but it won't, because there's
+            // no way to declare a disposer for the inner resource type of an RC type
+            let rc_funcs = self.metadata.find_rc_boilerplate(&resource_ty)
+                .unwrap_or_else(|| panic!("missing rc boilerplate for class {}", resource_ty));
 
-                let variant_def: Variant = self.metadata.get_variant_def(struct_id).unwrap().clone();
+            // todo: should function cells be Rc<Function> so we don't need to clone them here?
+            let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
+                .value
+                .as_function()
+                .cloned()
+                .unwrap();
 
-                let case = &variant_def.cases[variant_cell.tag.as_i32().unwrap() as usize];
-                if let Some(data_ty) = &case.ty {
-                    if let Some(data_release_target) = ReleaseTarget::for_ty(data_ty) {
-                        self.release_cell(&variant_cell.data, data_release_target);
-                    }
-                }
+            let release_ptr = MemCell::Pointer(Pointer::Heap(rc_cell.resource_addr));
+
+            self.call(&release_func, &[release_ptr], None);
+
+            if self.trace_rc {
+                eprintln!(
+                    "rc: free {} @ {}",
+                    self.metadata.pretty_ty_name(&resource_ty),
+                    rc_addr
+                )
             }
 
-            ReleaseTarget::RcPointer => {
-                let ptr = cell.as_pointer().unwrap_or_else(|| {
-                    panic!("released cell was not a pointer, found: {:?}", cell)
-                });
-                // NULL is a valid release target because we release uninitialized local RC pointers
-                // just do nothing
-                if *ptr == Pointer::Null {
-                    return;
-                }
-
-                let rc_addr = ptr.as_heap_addr().unwrap_or_else(|| {
-                    panic!("released cell was not a heap pointer, found: {:?}", cell)
-                });
-
-                let rc_cell = match &self.heap[rc_addr] {
-                    MemCell::RcCell(rc_cell) => rc_cell.clone(),
-                    other => panic!("released cell was not an rc value, found: {:?}", other),
-                };
-
-                let resource_ty = Type::Struct(rc_cell.struct_id);
-
-                if rc_cell.ref_count == 1 {
-                    if self.trace_rc {
-                        println!(
-                            "rc: delete cell {:?} of resource ty {}",
-                            cell,
-                            self.metadata.pretty_ty_name(&resource_ty)
-                        );
-                    }
-
-                    // Dispose() the inner resource. For an RC type, interfaces are implemented
-                    // for the RC pointer type, not the resource type
-                    let resource_id = ClassID::Class(rc_cell.struct_id);
-                    self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)));
-
-                    let resource_cell = self.heap[rc_cell.resource_addr].clone();
-
-                    // Now release the fields of the resource struct as if it was a normal record.
-                    // This could technically invoke another disposer, but it won't, because there's
-                    // no way to declare a disposer for the inner resource type of an RC type
-                    self.release_cell(&resource_cell, ReleaseTarget::Struct(rc_cell.struct_id));
-
-                    if self.trace_rc {
-                        eprintln!(
-                            "rc: free {} @ {}",
-                            self.metadata.pretty_ty_name(&resource_ty),
-                            rc_addr
-                        )
-                    }
-
-                    self.heap.free(rc_cell.resource_addr);
-                    self.heap.free(rc_addr);
-                } else {
-                    assert!(rc_cell.ref_count > 1);
-                    if self.trace_rc {
-                        eprintln!(
-                            "rc: release {} @ {} ({} more refs)",
-                            self.metadata.pretty_ty_name(&resource_ty),
-                            rc_cell.resource_addr,
-                            rc_cell.ref_count - 1
-                        )
-                    }
-
-                    self.heap[rc_addr] = MemCell::RcCell(RcCell {
-                        ref_count: rc_cell.ref_count - 1,
-                        ..rc_cell
-                    });
-                }
+            self.heap.free(rc_cell.resource_addr);
+            self.heap.free(rc_addr);
+        } else {
+            assert!(rc_cell.ref_count > 1);
+            if self.trace_rc {
+                eprintln!(
+                    "rc: release {} @ {} ({} more refs)",
+                    self.metadata.pretty_ty_name(&resource_ty),
+                    rc_cell.resource_addr,
+                    rc_cell.ref_count - 1
+                )
             }
+
+            self.heap[rc_addr] = MemCell::RcCell(RcCell {
+                ref_count: rc_cell.ref_count - 1,
+                ..rc_cell
+            });
         }
     }
 
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
-                let rc_cell = self.heap.get_mut(*addr).and_then(MemCell::as_rc_mut);
+                let rc_cell = self.heap[*addr].as_rc_mut()
+                    .expect("retained cell must point to an rc cell");
 
-                if let Some(rc_cell) = rc_cell {
-                    if self.trace_rc {
-                        eprintln!("rc: retain @ {}", addr);
-                    }
-
-                    rc_cell.ref_count += 1;
+                if self.trace_rc {
+                    eprintln!("rc: retain @ {}", addr);
                 }
+
+                rc_cell.ref_count += 1;
             }
 
             _ => {
@@ -1305,12 +1268,12 @@ impl Interpreter {
                 _ => panic!("JumpIf instruction testing non-boolean cell"),
             },
 
-            Instruction::Release { at } => {
+            Instruction::Release { at, } => {
                 let cell = self.load(at).clone();
-                self.release_cell(&cell, ReleaseTarget::RcPointer);
+                self.release_cell(&cell);
             }
 
-            Instruction::Retain { at } => {
+            Instruction::Retain { at, } => {
                 let cell = self.load(at).clone();
                 self.retain_cell(&cell);
             }
@@ -1557,8 +1520,8 @@ impl Interpreter {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
         for GlobalCell { value, ty } in globals {
-            if let Some(release_target) = ReleaseTarget::for_ty(&ty) {
-                self.release_cell(&value, release_target);
+            if ty.is_rc() {
+                self.release_cell(&value);
             }
         }
 

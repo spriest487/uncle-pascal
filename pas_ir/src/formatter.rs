@@ -233,11 +233,11 @@ pub trait InstructionFormatter {
                 write!(f, " at {}^", out)
             }
 
-            Instruction::Release { at } => {
+            Instruction::Release { at, } => {
                 write!(f, "{:>width$} {}", "release", at, width = IX_WIDTH)
             }
 
-            Instruction::Retain { at } => {
+            Instruction::Retain { at, } => {
                 write!(f, "{:>width$} {}", "retain", at, width = IX_WIDTH)
             }
 

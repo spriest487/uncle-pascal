@@ -5,6 +5,8 @@ use pas_syn as syn;
 use pas_syn::{Ident, IdentPath, Path};
 use pas_typecheck as pas_ty;
 
+use linked_hash_map::LinkedHashMap;
+
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
 
@@ -486,15 +488,23 @@ impl InterfaceDecl {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct RcBoilerplatePair {
+    pub release: FunctionID,
+    pub retain: FunctionID,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Metadata {
-    type_decls: HashMap<StructID, TypeDecl>,
-    string_literals: HashMap<StringID, String>,
-    ifaces: HashMap<InterfaceID, InterfaceDecl>,
+    type_decls: LinkedHashMap<StructID, TypeDecl>,
+    string_literals: LinkedHashMap<StringID, String>,
+    ifaces: LinkedHashMap<InterfaceID, InterfaceDecl>,
 
-    dyn_array_structs: HashMap<Type, StructID>,
+    dyn_array_structs: LinkedHashMap<Type, StructID>,
 
-    functions: HashMap<FunctionID, FunctionDecl>,
+    functions: LinkedHashMap<FunctionID, FunctionDecl>,
+
+    rc_boilerplate_funcs: HashMap<Type, RcBoilerplatePair>,
 }
 
 impl Metadata {
@@ -560,6 +570,14 @@ impl Metadata {
                 );
             }
             self.functions.insert(*id, func_decl.clone());
+        }
+
+        for (ty, funcs) in &other.rc_boilerplate_funcs {
+            if self.rc_boilerplate_funcs.contains_key(ty) {
+                panic!("duplicate rc boilerplate definitions for type {}", ty);
+            }
+
+            self.rc_boilerplate_funcs.insert(ty.clone(), funcs.clone());
         }
     }
 
@@ -645,6 +663,29 @@ impl Metadata {
         id
     }
 
+    pub fn declare_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
+        if self.rc_boilerplate_funcs.contains_key(ty) {
+            panic!("duplicate rc boilerplate declaration for type {}", ty);
+        }
+
+        let pair = RcBoilerplatePair {
+            retain: self.insert_func(None),
+            release: self.insert_func(None),
+        };
+
+        self.rc_boilerplate_funcs.insert(ty.clone(), pair.clone());
+
+        pair
+    }
+
+    pub fn find_rc_boilerplate(&self, ty: &Type) -> Option<RcBoilerplatePair> {
+        self.rc_boilerplate_funcs.get(ty).cloned()
+    }
+
+    pub fn rc_boilerplate_funcs(&self) -> impl Iterator<Item=(&Type, &RcBoilerplatePair)> {
+        self.rc_boilerplate_funcs.iter()
+    }
+
     pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
         self.functions
             .iter()
@@ -656,7 +697,7 @@ impl Metadata {
         self.functions.get(&id)
     }
 
-    pub fn func_desc(&self, id: FunctionID) -> String {
+    pub fn func_desc(&self, id: FunctionID) -> Option<String> {
         self.functions
             .get(&id)
             .and_then(|decl| decl.global_name.as_ref())
@@ -678,7 +719,6 @@ impl Metadata {
                     })
                 })
             })
-            .unwrap()
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> String {
@@ -1054,7 +1094,7 @@ impl Metadata {
         struct_id
     }
 
-    pub fn dyn_array_structs(&self) -> &HashMap<Type, StructID> {
+    pub fn dyn_array_structs(&self) -> &LinkedHashMap<Type, StructID> {
         &self.dyn_array_structs
     }
 

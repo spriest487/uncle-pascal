@@ -1,9 +1,6 @@
 use pas_typecheck as pas_ty;
 
-use crate::{
-    metadata::*, CachedFunction, FunctionCacheKey, FunctionDeclKey, IROptions, IdentPath,
-    Instruction, Label, LocalID, Module, Ref, Value,
-};
+use crate::{metadata::*, Function, CachedFunction, FunctionCacheKey, FunctionDeclKey, IROptions, IdentPath, Instruction, Label, LocalID, Module, Ref, Value, RcBoilerplatePair, GlobalRef};
 
 use std::fmt;
 
@@ -290,7 +287,17 @@ impl<'m> Builder<'m> {
                     let class_def = self.module.src_metadata.instantiate_class(name).unwrap();
                     let class_struct = self.translate_class(&class_def);
 
-                    self.module.metadata.define_struct(class_struct);
+                    let class_struct_id = self.module.metadata.define_struct(class_struct);
+
+                    // class types must generate cleanup code for their inner struct which isn't
+                    // explicitly called in IR but must be called dynamically by the target to
+                    // clean up the inner structs of class RC cells.
+                    // for example, a class instance maybe be stored behind an `Any` reference,
+                    // at which point rc instructions must discover the actual class type
+                    // dynamically from the rc cell's class pointer/class ID
+                    if class_def.kind == pas_syn::ast::ClassKind::Object {
+                        self.translate_rc_boilerplate(&Type::Struct(class_struct_id));
+                    }
                 }
             }
 
@@ -564,22 +571,20 @@ impl<'m> Builder<'m> {
                 let fields: Vec<_> = struct_def
                     .fields
                     .iter()
-                    .map(|(field_id, field)| (*field_id, field.ty.clone(), field.rc))
+                    .map(|(field_id, field)| (*field_id, field.ty.clone()))
                     .collect();
 
-                for (field, field_ty, field_rc) in fields {
-                    if field_rc || field_ty.as_struct().is_some() {
-                        // store the field pointer in a temp slot
-                        let field_val = self.local_temp(field_ty.clone().ptr());
-                        self.append(Instruction::Field {
-                            out: field_val.clone(),
-                            a: at.clone(),
-                            of_ty: Type::Struct(*struct_id),
-                            field,
-                        });
+                for (field, field_ty) in fields {
+                    // store the field pointer in a temp slot
+                    let field_val = self.local_temp(field_ty.clone().ptr());
+                    self.append(Instruction::Field {
+                        out: field_val.clone(),
+                        a: at.clone(),
+                        of_ty: Type::Struct(*struct_id),
+                        field,
+                    });
 
-                        self.visit_deep(field_val.deref(), &field_ty, f);
-                    }
+                    self.visit_deep(field_val.deref(), &field_ty, f);
                 }
             }
 
@@ -668,34 +673,111 @@ impl<'m> Builder<'m> {
         };
     }
 
+    // generate deep (retain, release) funcs for complex types
+    pub fn translate_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
+        if let Some(boilerplate) = self.module.metadata.find_rc_boilerplate(ty) {
+            return boilerplate.clone();
+        }
+
+        // declare new func IDs then define them here
+        let funcs = self.module.metadata.declare_rc_boilerplate(ty);
+
+        let release_body = {
+            let mut release_builder = Builder::new(&mut self.module);
+            release_builder.bind_local(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).deref();
+
+            release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                builder.release(el_ref, el_ty);
+            });
+            release_builder.finish()
+        };
+
+        self.module.insert_func(funcs.release, Function {
+            body: release_body,
+            return_ty: Type::Nothing,
+            params: vec![ty.clone().ptr()],
+            debug_name: format!("generated RC release func for {}", ty),
+        });
+
+        let retain_body = {
+            let mut retain_builder = Builder::new(&mut self.module);
+            retain_builder.bind_local(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).deref();
+            retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
+                builder.retain(el_ref, el_ty);
+            });
+            retain_builder.finish()
+        };
+
+        self.module.insert_func(funcs.retain, Function {
+            body: retain_body,
+            return_ty: Type::Nothing,
+            params: vec![ty.clone().ptr()],
+            debug_name: format!("generated RC retain func for {}", ty),
+        });
+
+        funcs
+    }
+
     pub fn retain(&mut self, at: Ref, ty: &Type) {
         self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
 
-        self.scope(|builder| {
-            builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
-                if let Type::RcPointer(..) = element_ty {
-                    builder.append(Instruction::Retain { at: element_ref });
-                }
-            });
-        });
+        match ty {
+            Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
+                let rc_funcs = self.translate_rc_boilerplate(ty);
+
+                let at_ptr = self.local_temp(ty.clone().ptr());
+                self.append(Instruction::AddrOf {
+                    out: at_ptr.clone(),
+                    a: at,
+                });
+
+                self.append(Instruction::Call {
+                    function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.retain))),
+                    args: vec![Value::Ref(at_ptr)],
+                    out: None,
+                })
+            }
+
+            _ if ty.is_rc() => {
+                self.append(Instruction::Retain { at, });
+            }
+
+            _ => {
+                // not an RC type, nor a complex type containing RC types
+            }
+        }
     }
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
         self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
 
-        self.scope(|builder| {
-            builder.visit_deep(at, ty, |builder, element_ty, element_ref| {
-                if let Type::RcPointer(..) = element_ty {
-                    builder.append(Instruction::Release {
-                        at: element_ref.clone(),
-                    });
+        match ty {
+            Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
+                let rc_funcs = self.translate_rc_boilerplate(ty);
 
-                    // a local might be reused within the same scope, for example in a second
-                    // loop iteration and we rely on RC pointers being null when they're uninitialized
-                    builder.mov(element_ref, Value::LiteralNull);
-                }
-            });
-        });
+                let at_ptr = self.local_temp(ty.clone().ptr());
+                self.append(Instruction::AddrOf {
+                    out: at_ptr.clone(),
+                    a: at,
+                });
+
+                self.append(Instruction::Call {
+                    function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.release))),
+                    args: vec![Value::Ref(at_ptr)],
+                    out: None,
+                })
+            }
+
+            _ if ty.is_rc() => {
+                self.append(Instruction::Release { at, });
+            }
+
+            _ => {
+                // not an RC type, nor a complex type containing RC types
+            }
+        }
     }
 
     pub fn begin_loop_body_scope(&mut self, continue_label: Label, break_label: Label) {
@@ -781,7 +863,13 @@ impl<'m> Builder<'m> {
             self.comment(&format!("expire {}", local.id()));
 
             match local {
-                Local::Param { id, ty, .. } | Local::New { id, ty, .. } => {
+                Local::Param { id, ty, by_ref, .. } => {
+                    if !by_ref {
+                        self.release(Ref::Local(id), &ty);
+                    }
+                }
+
+                Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
                 }
 
