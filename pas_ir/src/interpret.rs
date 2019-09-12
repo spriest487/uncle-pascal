@@ -200,12 +200,12 @@ pub enum MemCell {
     U8(u8),
     I32(i32),
     F32(f32),
-    RcCell(RcCell),
+    RcCell(Box<RcCell>),
     Function(Function),
-    Structure(StructCell),
-    Variant(VariantCell),
+    Structure(Box<StructCell>),
+    Variant(Box<VariantCell>),
     Pointer(Pointer),
-    Array(ArrayCell),
+    Array(Box<ArrayCell>),
 }
 
 impl MemCell {
@@ -428,7 +428,7 @@ impl Interpreter {
             fields[id.0] = self.default_init_cell(&field.ty);
         }
 
-        MemCell::Structure(StructCell { id, fields })
+        MemCell::Structure(Box::new(StructCell { id, fields }))
     }
 
     fn default_init_cell(&mut self, ty: &Type) -> MemCell {
@@ -448,17 +448,17 @@ impl Interpreter {
                     elements.push(self.default_init_cell(element.as_ref()));
                 }
 
-                MemCell::Array(ArrayCell {
+                MemCell::Array(Box::new(ArrayCell {
                     el_ty: (**element).clone(),
                     elements,
-                })
+                }))
             }
 
-            Type::Variant(id) => MemCell::Variant(VariantCell {
+            Type::Variant(id) => MemCell::Variant(Box::new(VariantCell {
                 id: *id,
                 tag: Box::new(MemCell::I32(0)),
                 data: Box::new(MemCell::Pointer(Pointer::Null)),
-            }),
+            })),
 
             _ => panic!("can't initialize default cell of type `{:?}`", ty),
         }
@@ -509,9 +509,9 @@ impl Interpreter {
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.deref_ptr(variant) {
-                    MemCell::Variant(VariantCell { data, tag, .. }) => {
-                        assert_eq!(tag.as_i32().unwrap(), expect_tag);
-                        data.as_ref()
+                    MemCell::Variant(variant_cell) => {
+                        assert_eq!(variant_cell.tag.as_i32().unwrap(), expect_tag);
+                        variant_cell.data.as_ref()
                     },
                     other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
@@ -572,9 +572,9 @@ impl Interpreter {
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.deref_ptr_mut(variant) {
-                    MemCell::Variant(VariantCell { data, tag, .. }) => {
-                        assert_eq!(tag.as_i32().unwrap(), expect_tag);
-                        data.as_mut()
+                    MemCell::Variant(variant_cell) => {
+                        assert_eq!(variant_cell.tag.as_i32().unwrap(), expect_tag);
+                        variant_cell.data.as_mut()
                     },
                     other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
                 }
@@ -860,10 +860,10 @@ impl Interpreter {
                 )
             }
 
-            self.heap[rc_addr] = MemCell::RcCell(RcCell {
+            self.heap[rc_addr] = MemCell::RcCell(Box::new(RcCell {
                 ref_count: rc_cell.ref_count - 1,
-                ..rc_cell
-            });
+                ..*rc_cell
+            }));
         }
     }
 
@@ -1337,11 +1337,11 @@ impl Interpreter {
     fn rc_alloc(&mut self, vals: Vec<MemCell>, ty_id: StructID) -> Pointer {
         let resource_addr = self.heap.alloc(vals);
 
-        let rc_cell = MemCell::RcCell(RcCell {
+        let rc_cell = MemCell::RcCell(Box::new(RcCell {
             ref_count: 1,
             resource_addr,
             struct_id: ty_id,
-        });
+        }));
 
         let addr = self.heap.alloc(vec![rc_cell]);
         Pointer::Heap(addr)
@@ -1469,10 +1469,10 @@ impl Interpreter {
             MemCell::I32(chars_len as i32),
         ];
 
-        let str_cell = MemCell::Structure(StructCell {
+        let str_cell = MemCell::Structure(Box::new(StructCell {
             id: STRING_ID,
             fields: str_fields,
-        });
+        }));
 
         let str_ptr = self.rc_alloc(vec![str_cell], STRING_ID);
         MemCell::Pointer(str_ptr)
