@@ -25,8 +25,11 @@ pub fn typecheck_for_loop(
         });
     }
 
+    // loops bodies never have values
+    let body_expect_ty = Type::Nothing;
+
     ctx.push_loop(for_loop.span().clone());
-    let body = typecheck_stmt(&for_loop.body, ctx).map(Box::new)?;
+    let body = typecheck_stmt(&for_loop.body, &body_expect_ty, ctx).map(Box::new)?;
     ctx.pop_loop();
 
     ctx.pop_scope(inner_scope);
@@ -50,8 +53,11 @@ pub fn typecheck_while_loop(
 
     condition.annotation().expect_value(&bool_ty)?;
 
+    // loops bodies never have values
+    let body_expect_ty = Type::Nothing;
+
     ctx.push_loop(while_loop.span().clone());
-    let body = typecheck_stmt(&while_loop.body, ctx).map(Box::new)?;
+    let body = typecheck_stmt(&while_loop.body, &body_expect_ty, ctx).map(Box::new)?;
     ctx.pop_loop();
 
     Ok(WhileLoop {

@@ -369,6 +369,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     let ir_opts = IROptions {
         annotate_scopes: args.annotate_ir_scopes,
         annotate_stmts: args.annotate_ir_stmts,
+        annotate_rc: args.trace_rc,
     };
 
     let module = ir::translate(&typed_module, ir_opts);

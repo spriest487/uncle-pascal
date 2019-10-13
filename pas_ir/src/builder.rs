@@ -1,12 +1,15 @@
 use pas_typecheck as pas_ty;
 
-use crate::{metadata::*, Function, CachedFunction, FunctionCacheKey, FunctionDeclKey, IROptions, IdentPath, Instruction, Label, LocalID, Module, Ref, Value, RcBoilerplatePair, GlobalRef};
+use crate::{
+    metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, GlobalRef, IROptions,
+    IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value,
+};
 
 use std::fmt;
 
 use pas_common::span::Span;
 use pas_syn::Ident;
-use pas_typecheck::Specializable;
+use pas_typecheck::{Specializable, builtin_string_name};
 use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
@@ -168,6 +171,13 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
+        if name.is_generic() || name.type_args.iter().any(|arg| arg.is_generic_param()) {
+            panic!(
+                "can't translate name containing generic parameters: {}",
+                name
+            )
+        }
+
         let path_parts = name
             .qualified
             .clone()
@@ -259,83 +269,117 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let real_ty = src_ty
-            .clone()
-            .substitute_type_args(&self.type_args, &self.module.src_metadata);
+        let src_ty = src_ty.clone().substitute_type_args(&self.type_args);
+
+        if let Some(cached) = self.module.type_cache.get(&src_ty) {
+//            println!("{} -> {}", src_ty, cached);
+
+            return cached.clone();
+        }
+
+//        println!("type cache miss for {}, translating...", src_ty);
 
         // instantiate types which may contain generic params
-        match &real_ty {
-            pas_ty::Type::Variant(variant_def) => {
-                let name_path = self.translate_name(&variant_def);
+        let ty = match &src_ty {
+            pas_ty::Type::Variant(variant) => {
+                let variant_def = self
+                    .module
+                    .src_metadata
+                    .instantiate_variant(variant)
+                    .unwrap();
 
-                if self.module.metadata.find_type_decl(&name_path).is_none() {
-                    let variant_def = self
-                        .module
-                        .src_metadata
-                        .instantiate_variant(variant_def)
-                        .unwrap();
-                    let variant_meta = self.translate_variant(&variant_def);
+                let name_path = self.translate_name(&variant);
 
-                    self.module.metadata.define_variant(variant_meta);
-                }
+                let id = self.module.metadata.reserve_new_struct();
+                let ty = Type::Variant(id);
+                self.module.type_cache.insert(src_ty.clone(), ty.clone());
+//                println!("{} <- {}", src_ty, ty);
+
+                self.module.metadata.declare_struct(id, &name_path);
+
+                let variant_meta = self.translate_variant(&variant_def);
+
+                self.module.metadata.define_variant(id, variant_meta);
+                ty
             }
 
             pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
+                // handle builtin types
+                if **name == builtin_string_name() {
+                    let string_ty = Type::RcPointer(Some(ClassID::Class(STRING_ID)));
+                    self.module.type_cache.insert(src_ty.clone(), string_ty.clone());
+                    return string_ty;
+                }
+
+                let class_def = self.module.src_metadata.instantiate_class(name).unwrap();
+
+                let id = self.module.metadata.reserve_new_struct();
+
+                let ty = match class_def.kind {
+                    pas_syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
+                    pas_syn::ast::ClassKind::Record =>  Type::Struct(id),
+                };
+
+                self.module.type_cache.insert(src_ty.clone(), ty.clone());
+//                println!("{} <- {}", src_ty, ty);
+
                 let name_path = self.translate_name(&name);
 
-                if self.module.metadata.find_type_decl(&name_path).is_none() {
-                    let class_def = self.module.src_metadata.instantiate_class(name).unwrap();
-                    let class_struct = self.translate_class(&class_def);
+                self.module.metadata.declare_struct(id, &name_path);
 
-                    let class_struct_id = self.module.metadata.define_struct(class_struct);
+                let struct_meta = self.translate_class(&class_def);
+                self.module.metadata.define_struct(id, struct_meta);
 
-                    // class types must generate cleanup code for their inner struct which isn't
-                    // explicitly called in IR but must be called dynamically by the target to
-                    // clean up the inner structs of class RC cells.
-                    // for example, a class instance maybe be stored behind an `Any` reference,
-                    // at which point rc instructions must discover the actual class type
-                    // dynamically from the rc cell's class pointer/class ID
-                    if class_def.kind == pas_syn::ast::ClassKind::Object {
-                        self.translate_rc_boilerplate(&Type::Struct(class_struct_id));
-                    }
+                // class types must generate cleanup code for their inner struct which isn't
+                // explicitly called in IR but must be called dynamically by the target to
+                // clean up the inner structs of class RC cells.
+                // for example, a class instance maybe be stored behind an `Any` reference,
+                // at which point rc instructions must discover the actual class type
+                // dynamically from the rc cell's class pointer/class ID
+                if class_def.kind == pas_syn::ast::ClassKind::Object {
+                    self.translate_rc_boilerplate(&Type::Struct(id));
                 }
+
+                ty
             }
 
             pas_ty::Type::Interface(iface_def) => {
-                if self.module.metadata.find_iface_decl(&iface_def).is_none() {
-                    let iface_def = self.module.src_metadata.find_iface_def(iface_def).unwrap();
-                    let iface_meta = self.translate_iface(&iface_def);
+                let iface_def = self.module.src_metadata.find_iface_def(iface_def).unwrap();
 
-                    self.module.metadata.define_iface(iface_meta);
-                }
+                let iface_name = self.translate_name(&iface_def.name);
+                let id = self.module.metadata.declare_iface(&iface_name);
+                let ty = Type::RcPointer(Some(ClassID::Interface(id)));
+
+                self.module.type_cache.insert(src_ty.clone(), ty.clone());
+//                println!("{} <- {}", src_ty, ty);
+
+                let iface_meta = self.translate_iface(&iface_def);
+                self.module.metadata.define_iface(iface_meta);
+
+                ty
             }
-
-            pas_ty::Type::Forward(forward_ty) => match forward_ty.as_ref() {
-                pas_ty::Type::Record(name)
-                | pas_ty::Type::Class(name)
-                | pas_ty::Type::Variant(name) => {
-                    let name = self.translate_name(name);
-
-                    if self.module.metadata.find_type_decl(&name).is_none() {
-                        self.module.metadata.declare_struct(&name);
-                    }
-                }
-
-                _ => {}
-            },
 
             pas_ty::Type::DynArray { element } => {
-                self.translate_dyn_array_struct(&element);
+                let id = self.translate_dyn_array_struct(&element);
+
+                let ty = Type::RcPointer(Some(ClassID::Class(id)));
+                self.module.type_cache.insert(src_ty.clone(), ty.clone());
+//                println!("{} <- {}", src_ty, ty);
+
+                ty
             }
 
-            _ => {
+            real_ty => {
                 // nothing to be instantiated
+                let ty = self.module.metadata.find_type(real_ty);
+                self.module.type_cache.insert(src_ty.clone(), ty.clone());
+//                println!("{} <- {}", src_ty, ty);
+
+                ty
             }
-        }
+        };
 
-        self.module.add_type_instance(real_ty.clone());
-
-        self.module.metadata.find_type(&real_ty)
+        ty
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
@@ -693,12 +737,15 @@ impl<'m> Builder<'m> {
             release_builder.finish()
         };
 
-        self.module.insert_func(funcs.release, Function {
-            body: release_body,
-            return_ty: Type::Nothing,
-            params: vec![ty.clone().ptr()],
-            debug_name: format!("generated RC release func for {}", ty),
-        });
+        self.module.insert_func(
+            funcs.release,
+            Function {
+                body: release_body,
+                return_ty: Type::Nothing,
+                params: vec![ty.clone().ptr()],
+                debug_name: format!("generated RC release func for {}", self.pretty_ty_name(ty)),
+            },
+        );
 
         let retain_body = {
             let mut retain_builder = Builder::new(&mut self.module);
@@ -710,18 +757,23 @@ impl<'m> Builder<'m> {
             retain_builder.finish()
         };
 
-        self.module.insert_func(funcs.retain, Function {
-            body: retain_body,
-            return_ty: Type::Nothing,
-            params: vec![ty.clone().ptr()],
-            debug_name: format!("generated RC retain func for {}", ty),
-        });
+        self.module.insert_func(
+            funcs.retain,
+            Function {
+                body: retain_body,
+                return_ty: Type::Nothing,
+                params: vec![ty.clone().ptr()],
+                debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
+            },
+        );
 
         funcs
     }
 
     pub fn retain(&mut self, at: Ref, ty: &Type) {
-        self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
+        if self.opts().annotate_rc {
+            self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
+        }
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
@@ -741,7 +793,7 @@ impl<'m> Builder<'m> {
             }
 
             _ if ty.is_rc() => {
-                self.append(Instruction::Retain { at, });
+                self.append(Instruction::Retain { at });
             }
 
             _ => {
@@ -751,7 +803,9 @@ impl<'m> Builder<'m> {
     }
 
     pub fn release(&mut self, at: Ref, ty: &Type) {
-        self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
+        if self.opts().annotate_rc {
+            self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
+        }
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
@@ -771,7 +825,7 @@ impl<'m> Builder<'m> {
             }
 
             _ if ty.is_rc() => {
-                self.append(Instruction::Release { at, });
+                self.append(Instruction::Release { at });
             }
 
             _ => {
@@ -857,10 +911,14 @@ impl<'m> Builder<'m> {
             .collect();
 
         // release local bindings that will be lost when the current scope is popped.
-        // of course, running release code may create new locals, but we just assume
-        // that none of those will need cleanup themselves, because they should never
+        // of course. releasing a ref should either insert a release instruction directly
+        // (for an RC pointer) or insert a call to a structural release function (for
+        // complex types containing RC pointers), so should never introduce new locals
+        // in the scope being popped
         for local in locals {
-            self.comment(&format!("expire {}", local.id()));
+            if self.opts().annotate_rc {
+                self.comment(&format!("expire {}", local.id()));
+            }
 
             match local {
                 Local::Param { id, ty, by_ref, .. } => {
@@ -878,7 +936,9 @@ impl<'m> Builder<'m> {
                 }
 
                 Local::Return { .. } => {
-                    self.comment("expire return slot");
+                    if self.opts().annotate_rc {
+                        self.comment("expire return slot");
+                    }
                 }
             }
         }
@@ -972,28 +1032,14 @@ mod test {
             })
             .unwrap();
 
-        // Both locals should be freed, which since they're RC variables means each one should
-        // be release then have NULL mov'd into it. Because the implementation of `release` uses
-        // `visit_deep` it'll create a block around each one too.
+        // Both locals should be released
         let expect = &[
-            Instruction::LocalBegin,
             Instruction::Release {
                 at: Ref::Local(LocalID(1)),
             },
-            Instruction::Move {
-                out: Ref::Local(LocalID(1)),
-                new_val: Value::LiteralNull,
-            },
-            Instruction::LocalEnd,
-            Instruction::LocalBegin,
             Instruction::Release {
                 at: Ref::Local(LocalID(0)),
             },
-            Instruction::Move {
-                out: Ref::Local(LocalID(0)),
-                new_val: Value::LiteralNull,
-            },
-            Instruction::LocalEnd,
             // and the final jmp for the break
             Instruction::Jump { dest: break_label },
         ];

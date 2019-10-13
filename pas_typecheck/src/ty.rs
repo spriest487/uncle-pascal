@@ -10,10 +10,10 @@ use pas_syn::{
 use crate::ast::Member;
 use crate::{
     ast::{Class, FunctionDecl, Variant},
-    context::{self},
+    context,
     result::*,
-    Context, Decl, GenericError, GenericResult, GenericTarget, NameError,
-    NamingResult, QualifiedDeclName, TypeAnnotation,
+    Context, Decl, GenericError, GenericResult, GenericTarget, NameError, NamingResult,
+    QualifiedDeclName, TypeAnnotation,
 };
 
 #[cfg(test)]
@@ -85,11 +85,11 @@ impl FunctionSig {
             });
         }
 
-        let specialized_params = self
+        let params = self
             .params
             .iter()
             .map(|sig_param| {
-                let ty = Type::specialize_generic(&sig_param.ty, &type_args, span)?;
+                let ty = sig_param.ty.clone().substitute_type_args(&type_args);
                 Ok(FunctionParamSig {
                     ty,
                     ..sig_param.clone()
@@ -97,11 +97,16 @@ impl FunctionSig {
             })
             .collect::<GenericResult<_>>()?;
 
+        let return_ty = self.return_ty.clone().substitute_type_args(&type_args);
+
         let specialized_sig = FunctionSig {
-            return_ty: Type::specialize_generic(&self.return_ty, &type_args, span)?,
-            params: specialized_params,
+            return_ty,
+            params,
             type_params_len: self.type_params_len,
         };
+
+        //        let args_print = type_args.iter().map(Type::to_string).collect::<Vec<_>>().join(", ");
+        //        println!("specialized {} of with [{}] -> {}", self, args_print, specialized_sig);
 
         Ok(specialized_sig)
     }
@@ -254,7 +259,6 @@ pub enum Type {
     MethodSelf,
     GenericParam(Box<TypeParam>),
     Any,
-    Forward(Box<Type>),
 }
 
 impl From<Primitive> for Type {
@@ -278,7 +282,6 @@ impl Type {
             Type::Interface(iface) => Some(iface.clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.qualified.clone()),
-            Type::Forward(ty) => ty.full_path(),
             _ => None,
         }
     }
@@ -299,12 +302,7 @@ impl Type {
             Type::MethodSelf => true,
             Type::GenericParam(_) => false,
             Type::Any => true,
-            Type::Forward(forward) => forward.is_by_ref(),
         }
-    }
-
-    pub fn forward(self) -> Self {
-        Type::Forward(Box::new(self))
     }
 
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
@@ -341,8 +339,6 @@ impl Type {
                 Ok(class.members.get(index).cloned())
             }
 
-            Type::Forward(forward_ty) => forward_ty.get_member(index, ctx),
-
             _ => Ok(None),
         }
     }
@@ -353,8 +349,6 @@ impl Type {
                 let class = ctx.instantiate_class(class)?;
                 Ok(class.members.len())
             }
-
-            Type::Forward(forward_ty) => forward_ty.members_len(ctx),
 
             _ => Ok(0),
         }
@@ -385,8 +379,6 @@ impl Type {
             Type::Any => true,
             Type::DynArray { .. } => true,
 
-            Type::Forward(forward_ty) => forward_ty.is_rc(),
-
             _ => false,
         }
     }
@@ -394,7 +386,6 @@ impl Type {
     pub fn deref_ty(&self) -> Option<&Type> {
         match self {
             Type::Pointer(ty) => Some(ty.as_ref()),
-            Type::Forward(forward_ty) => forward_ty.deref_ty(),
             _ => None,
         }
     }
@@ -417,8 +408,6 @@ impl Type {
             | Type::GenericParam(..)
             | Type::MethodSelf => false,
 
-            Type::Forward(forward_ty) => forward_ty.self_comparable(),
-
             _ => true,
         }
     }
@@ -429,24 +418,11 @@ impl Type {
             Type::Primitive(Primitive::Int32) => true,
             Type::Primitive(Primitive::Byte) => true,
 
-            Type::Forward(forward_ty) => forward_ty.self_orderable(),
-
             _ => false,
         }
     }
 
-    fn unwrap_forward(&self) -> &Self {
-        let mut unwrapped = self;
-        while let Type::Forward(forward_ty) = unwrapped {
-            unwrapped = forward_ty.as_ref();
-        }
-        unwrapped
-    }
-
     pub fn assignable_from(&self, from: &Self, ctx: &Context) -> bool {
-        // if "from" is a forward declared name, forget that now
-        let from = from.unwrap_forward();
-
         match self {
             Type::Pointer(_) => *self == *from || *from == Type::Nil,
             Type::Function(_) => false,
@@ -459,7 +435,6 @@ impl Type {
                 Type::Class(..) | Type::Interface(..) => true,
                 _ => false,
             },
-            Type::Forward(forward_ty) => forward_ty.assignable_from(from, ctx),
             _ => *self == *from,
         }
     }
@@ -524,7 +499,6 @@ impl Type {
     pub fn as_iface(&self) -> Result<&IdentPath, &Self> {
         match self {
             Type::Interface(iface) => Ok(iface),
-            Type::Forward(forward_ty) => forward_ty.as_iface(),
             other => Err(other),
         }
     }
@@ -532,7 +506,6 @@ impl Type {
     pub fn as_record(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Record(class) => Ok(&*class),
-            Type::Forward(forward_ty) => forward_ty.as_record(),
             other => Err(other),
         }
     }
@@ -540,7 +513,6 @@ impl Type {
     pub fn as_class(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Class(class) => Ok(&*class),
-            Type::Forward(forward_ty) => forward_ty.as_class(),
             other => Err(other),
         }
     }
@@ -548,7 +520,6 @@ impl Type {
     pub fn as_variant(&self) -> Result<&QualifiedDeclName, &Self> {
         match self {
             Type::Variant(name) => Ok(&*name),
-            Type::Forward(forward_ty) => forward_ty.as_variant(),
             other => Err(other),
         }
     }
@@ -556,27 +527,26 @@ impl Type {
     pub fn as_func(&self) -> Result<Rc<FunctionSig>, &Self> {
         match self {
             Type::Function(sig) => Ok(sig.clone()),
-            Type::Forward(forward_ty) => forward_ty.as_func(),
             other => Err(other),
         }
     }
 
     // todo: error handling
-    pub fn substitute_type_args(self, args: &[Self], ctx: &Context) -> Self {
+    pub fn substitute_type_args(self, args: &[Self]) -> Self {
         if args.len() == 0 {
             return self;
         }
 
-        fn new_class_name(
-            name: &QualifiedDeclName,
-            args: &[Type],
-            ctx: &Context,
-        ) -> QualifiedDeclName {
+        fn new_class_name(name: &QualifiedDeclName, args: &[Type]) -> QualifiedDeclName {
+            if name.is_generic() {
+                panic!("can't substitute types args into unspecialized name")
+            }
+
             let new_args = name
                 .type_args
                 .iter()
                 .cloned()
-                .map(|arg| arg.substitute_type_args(args, ctx))
+                .map(|arg| arg.substitute_type_args(args))
                 .collect();
 
             QualifiedDeclName {
@@ -588,34 +558,24 @@ impl Type {
         match self {
             Type::GenericParam(param) => args[param.pos].clone(),
 
-            Type::Class(name) => Type::Class(Box::new(new_class_name(&name, args, ctx))),
+            Type::Class(name) => {
+                Type::Class(Box::new(new_class_name(&name, args)))
+            },
 
-            Type::Record(name) => Type::Record(Box::new(new_class_name(&name, args, ctx))),
-
-            Type::Forward(forward_ty) => forward_ty.substitute_type_args(args, ctx).forward(),
+            Type::Record(name) => {
+                Type::Record(Box::new(new_class_name(&name, args)))
+            },
 
             Type::Variant(variant) => {
-                let new_args = variant
-                    .type_args
-                    .iter()
-                    .cloned()
-                    .map(|arg| arg.substitute_type_args(args, ctx))
-                    .collect();
-
-                let new_name = QualifiedDeclName {
-                    type_args: new_args,
-                    ..*variant.clone()
-                };
-
-                Type::Variant(Box::new(new_name))
-            }
+                Type::Variant(Box::new(new_class_name(&variant, args)))
+            },
 
             Type::DynArray { element } => Type::DynArray {
-                element: element.substitute_type_args(args, ctx).into(),
+                element: element.substitute_type_args(args).into(),
             },
 
             Type::Array { element, dim } => Type::Array {
-                element: element.substitute_type_args(args, ctx).into(),
+                element: element.substitute_type_args(args).into(),
                 dim,
             },
 
@@ -625,9 +585,6 @@ impl Type {
 
     pub fn specialize_generic(&self, args: &[Self], span: &Span) -> GenericResult<Self> {
         match self {
-            Type::Forward(forward_ty) => forward_ty.specialize_generic(args, span)
-                .map(Type::forward),
-
             Type::GenericParam(type_param) => {
                 let arg = args.get(type_param.pos).unwrap_or_else(|| {
                     panic!(
@@ -682,7 +639,6 @@ impl fmt::Display for Type {
             Type::MethodSelf => write!(f, "Self"),
             Type::Any => write!(f, "Any"),
             Type::Function(_) => unimplemented!("function types cannot be represented"),
-            Type::Forward(ty) => write!(f, "{}", ty),
         }
     }
 }
@@ -697,17 +653,6 @@ impl Typed for Type {
 pub struct MemberRef<'ty> {
     pub ident: &'ty Ident,
     pub ty: &'ty Type,
-}
-
-fn specialize_generic_type_args(
-    type_args: &[Type],
-    outer_args: &[Type],
-    span: &Span,
-) -> GenericResult<Vec<Type>> {
-    type_args
-        .iter()
-        .map(|arg| Type::specialize_generic(arg, outer_args, span))
-        .collect()
 }
 
 pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
@@ -755,61 +700,15 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
     }
 }
 
-fn specialize_member(member_ty: &Type, args: &[Type], span: &Span) -> GenericResult<Type> {
-    match member_ty {
-        Type::GenericParam(class_param) => {
-            let ty = args.get(class_param.pos).unwrap_or_else(|| {
-                panic!(
-                    "missing type arg {} in arg list {:?} for {}",
-                    class_param.pos, args, member_ty,
-                )
-            });
-
-            Ok(ty.clone())
-        }
-
-        Type::Class(name) => {
-            let class_args = specialize_generic_type_args(&name.type_args, &args, span)?;
-            let class = specialize_generic_name(&name, &class_args, span)?;
-            Ok(Type::Class(Box::new(class)))
-        }
-
-        Type::Record(name) => {
-            let class_args = specialize_generic_type_args(&name.type_args, &args, span)?;
-            let class = specialize_generic_name(&name, &class_args, span)?;
-            Ok(Type::Record(Box::new(class)))
-        }
-
-        Type::Variant(variant) => {
-            let variant_args = specialize_generic_type_args(&variant.type_args, &args, span)?;
-            let variant = specialize_generic_name(variant, &variant_args, span)?;
-            Ok(Type::Variant(Box::new(variant)))
-        }
-
-        Type::Array { element, dim } => {
-            let ty = specialize_member(element, args, span)?;
-            Ok(Type::Array {
-                element: Box::new(ty),
-                dim: *dim,
-            })
-        }
-
-        Type::DynArray { element } => {
-            let ty = specialize_member(element, args, span)?;
-            Ok(Type::DynArray {
-                element: Box::new(ty),
-            })
-        }
-
-        _ => Ok(member_ty.clone()),
-    }
-}
-
 pub fn specialize_generic_name(
     name: &QualifiedDeclName,
     args: &[Type],
     span: &Span,
 ) -> GenericResult<QualifiedDeclName> {
+    if !name.is_generic() {
+        return Ok(name.clone());
+    }
+
     let type_params: &[Ident] = &name.decl_name.type_params.as_slice();
 
     if args.len() != type_params.len() {
@@ -836,7 +735,9 @@ pub fn specialize_class_def(class: &Class, args: Vec<Type>, span: &Span) -> Gene
         .members
         .iter()
         .map(|member| {
-            let ty = specialize_member(&member.ty, &args, span)?;
+//            let ty = specialize_member(&member.ty, &args, span)?;
+            let ty = member.ty.clone().substitute_type_args(&args);
+
             Ok(ast::Member {
                 ty,
                 ..member.clone()
@@ -866,7 +767,7 @@ pub fn specialize_generic_variant(
             let data_ty = match &case.data_ty {
                 None => None,
                 Some(ty) => {
-                    let ty = specialize_member(ty, &args, span)?;
+                    let ty = ty.clone().substitute_type_args(&args);
                     Some(ty)
                 }
             };

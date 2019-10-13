@@ -25,6 +25,13 @@ pub fn typecheck_local_binding(
 
         val_ty => {
             let explicit_ty = typecheck_type(val_ty, ctx)?;
+            if explicit_ty.is_generic() {
+                return Err(GenericError::IllegalUnspecialized {
+                    ty: explicit_ty,
+                    span: binding.val_ty.span().clone(),
+                }.into());
+            }
+
             let val = match &binding.val {
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
@@ -53,6 +60,13 @@ pub fn typecheck_local_binding(
         });
     }
 
+    if binding_ty.is_generic() {
+        return Err(GenericError::IllegalUnspecialized {
+            ty: binding_ty,
+            span: binding.val_ty.span().clone(),
+        }.into());
+    }
+
     let name = binding.name.clone();
     let mutable = binding.mutable;
     let span = binding.annotation.span().clone();
@@ -71,13 +85,15 @@ pub fn typecheck_local_binding(
 
     let annotation = TypeAnnotation::Untyped(span);
 
-    Ok(LocalBinding {
+    let local_binding = LocalBinding {
         name,
         val_ty: binding_ty,
         val,
         annotation,
         mutable,
-    })
+    };
+
+    Ok(local_binding)
 }
 
 pub type Assignment = ast::Assignment<TypeAnnotation>;
@@ -116,7 +132,7 @@ pub fn typecheck_assignment(
         .ty()
         .assignable_from(rhs.annotation().ty(), ctx)
     {
-        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
+//        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
 
         return Err(TypecheckError::InvalidBinOp {
             lhs: lhs.annotation().ty().clone(),
@@ -141,6 +157,7 @@ pub fn typecheck_assignment(
 
 pub fn typecheck_stmt(
     stmt: &ast::Statement<Span>,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Statement> {
     match stmt {
@@ -148,7 +165,7 @@ pub fn typecheck_stmt(
             typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
         }
 
-        ast::Statement::Call(call) => match typecheck_call(call, &Type::Nothing, ctx)? {
+        ast::Statement::Call(call) => match typecheck_call(call, expect_ty, ctx)? {
             CallOrCtor::Call(call) => Ok(ast::Statement::Call(*call)),
             CallOrCtor::Ctor(ctor) => {
                 let ctor_expr = Expression::from(*ctor);
@@ -158,8 +175,7 @@ pub fn typecheck_stmt(
         },
 
         ast::Statement::Block(block) => {
-            let block = typecheck_block(block, &Type::Nothing, ctx)?;
-            assert_eq!(Type::Nothing, *block.annotation.ty());
+            let block = typecheck_block(block, expect_ty, ctx)?;
 
             Ok(ast::Statement::Block(block))
         }
@@ -191,8 +207,8 @@ pub fn typecheck_stmt(
         }
 
         ast::Statement::If(if_cond) => {
-            let if_cond = typecheck_if_cond(if_cond, &Type::Nothing, ctx)?;
-            Ok(ast::Statement::If(if_cond))
+            let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
+            Ok(ast::Statement::If(Box::new(if_cond)))
         }
     }
 }

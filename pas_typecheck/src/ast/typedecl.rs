@@ -37,21 +37,19 @@ pub fn typecheck_class(
         ast::ClassKind::Record => Type::Record(Box::new(name.clone())),
         ast::ClassKind::Object => Type::Class(Box::new(name.clone())),
     };
-    ctx.declare_self_ty(self_ty.clone().forward(), name.span().clone())?;
-    ctx.declare_type(class.name.ident.clone(), self_ty.forward(), Visibility::Private)?;
+    ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
+    ctx.declare_type(class.name.ident.clone(), self_ty, Visibility::Private)?;
 
     let mut members = Vec::new();
     for member in &class.members {
         let ty = typecheck_type(&member.ty, ctx)?.clone();
 
-        if let Type::Forward(forward_ty) = &ty {
-            if !forward_ty.is_by_ref() {
-                return Err(TypecheckError::UnsizedMember {
-                    decl: name.qualified,
-                    member: member.ident.clone(),
-                    member_ty: ty,
-                })
-            }
+        if ctx.is_unsized_ty(&ty)? {
+            return Err(TypecheckError::UnsizedMember {
+                decl: name.qualified,
+                member: member.ident.clone(),
+                member_ty: ty,
+            })
         }
 
         members.push(Member {

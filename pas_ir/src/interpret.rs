@@ -826,7 +826,20 @@ impl Interpreter {
             // This could technically invoke another disposer, but it won't, because there's
             // no way to declare a disposer for the inner resource type of an RC type
             let rc_funcs = self.metadata.find_rc_boilerplate(&resource_ty)
-                .unwrap_or_else(|| panic!("missing rc boilerplate for class {}", resource_ty));
+                .unwrap_or_else(|| {
+                    let name = self.metadata.pretty_ty_name(&resource_ty);
+                    let funcs = self.metadata.rc_boilerplate_funcs()
+                        .map(|(ty, funcs)| format!(
+                            "  {}: release={}, retain={}",
+                            self.metadata.pretty_ty_name(ty),
+                            funcs.release,
+                            funcs.retain,
+                        ))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+
+                    panic!("missing rc boilerplate for class {} in:\n{}", name, funcs);
+                });
 
             // todo: should function cells be Rc<Function> so we don't need to clone them here?
             let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
@@ -1480,9 +1493,15 @@ impl Interpreter {
 
     fn read_string(&self, str_ref: &Ref) -> String {
         let str_cell = self
-            .deref_rc(self.load(str_ref))
-            .as_struct(STRING_ID)
-            .unwrap();
+            .deref_rc(self.load(str_ref));
+
+        let str_cell = match str_cell.as_struct(STRING_ID) {
+            Some(struct_cell) => struct_cell,
+            None => panic!(
+                "tried to read string value from rc cell which didn't contain a string struct: {:?}",
+                str_cell,
+            )
+        };
 
         let len = &str_cell[STRING_LEN_FIELD].as_i32().unwrap();
 

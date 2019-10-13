@@ -30,6 +30,10 @@ pub enum GenericError {
         target: GenericTarget,
         expected: Type,
         span: Span,
+    },
+    IllegalUnspecialized {
+        ty: Type,
+        span: Span,
     }
 }
 
@@ -40,6 +44,7 @@ impl Spanned for GenericError {
         match self {
             GenericError::ArgsLenMismatch { span, .. } => span,
             GenericError::CannotInferArgs { span, .. } => span,
+            GenericError::IllegalUnspecialized { span, .. } => span,
         }
     }
 }
@@ -49,6 +54,7 @@ impl DiagnosticOutput for GenericError {
         match self {
             GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments".to_string(),
             GenericError::CannotInferArgs { .. } => "Cannot infer type arguments".to_string(),
+            GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type".to_string(),
         }
     }
 
@@ -83,6 +89,14 @@ impl fmt::Display for GenericError {
                 "cannot infer type arguments for {} from expected type `{}`",
                 target,
                 expected,
+            ),
+
+            GenericError::IllegalUnspecialized {
+                ty, ..
+            } => write!(
+                f,
+                "the type `{}` cannot be used without type arguments in this context",
+                ty,
             )
         }
     }

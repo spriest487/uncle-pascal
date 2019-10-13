@@ -10,7 +10,7 @@ pub use self::{
     formatter::*,
     interpret::{Interpreter, InterpreterOpts},
 };
-use std::collections::HashSet;
+use linked_hash_map::LinkedHashMap;
 
 mod builder;
 
@@ -29,6 +29,7 @@ pub mod metadata;
 pub struct IROptions {
     pub annotate_scopes: bool,
     pub annotate_stmts: bool,
+    pub annotate_rc: bool,
 }
 
 impl Default for IROptions {
@@ -36,6 +37,7 @@ impl Default for IROptions {
         Self {
             annotate_scopes: false,
             annotate_stmts: false,
+            annotate_rc: false,
         }
     }
 }
@@ -294,8 +296,7 @@ pub struct CachedFunction {
 pub struct Module {
     src_metadata: pas_ty::Context,
 
-    // set of all encountered type instances, used to generate unreferenced disposers
-    src_types: HashSet<pas_ty::Type>,
+    type_cache: LinkedHashMap<pas_ty::Type, Type>,
 
     pub opts: IROptions,
 
@@ -329,7 +330,7 @@ impl Module {
     pub fn new(src_metadata: pas_ty::Context, metadata: Metadata, opts: IROptions) -> Self {
         Self {
             src_metadata,
-            src_types: Default::default(),
+            type_cache: Default::default(),
 
             init: Vec::new(),
 
@@ -361,10 +362,6 @@ impl Module {
         self.functions.insert(id, function);
     }
 
-    pub fn add_type_instance(&mut self, ty: pas_ty::Type) {
-        self.src_types.insert(ty);
-    }
-
     fn translate_func_usage(&mut self, key: FunctionCacheKey) -> CachedFunction {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
@@ -376,6 +373,7 @@ impl Module {
                     Some(pas_ty::Def::Function(func_def)) => {
                         let specialized_decl = specialize_func_decl(&func_def.decl, &key.type_args)
                             .expect("function specialization must be valid after typechecking");
+
                         let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
 
                         let id = self
@@ -813,12 +811,12 @@ fn gen_dyn_array_disposers(module: &mut Module) {
 // dynamic dispatch, so we need to cover all possible combinations and generate function bodies for
 // every interface method implemented by a class at the end of codegen
 fn gen_iface_impls(module: &mut Module) {
-    let mut last_instance_count = module.src_types.len();
+    let mut last_instance_count = module.type_cache.len();
 
     // generating an impl might actually reference new types in the body of the
     // function, so just keep doing this until the type cache is a stable size
     loop {
-        for real_ty in module.src_types.clone() {
+        for real_ty in module.type_cache.keys().cloned().collect::<Vec<_>>() {
             let ifaces = module.src_metadata.implemented_ifaces(&real_ty);
 
             for iface in &ifaces {
@@ -839,10 +837,10 @@ fn gen_iface_impls(module: &mut Module) {
             }
         }
 
-        if module.src_types.len() == last_instance_count {
+        if module.type_cache.len() == last_instance_count {
             break;
         } else {
-            last_instance_count = module.src_types.len();
+            last_instance_count = module.type_cache.len();
         }
     }
 }
@@ -860,13 +858,15 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
             builder.translate_name(&string_name)
         };
 
-        ir_module.metadata.declare_struct(&name);
+        ir_module.metadata.reserve_struct(STRING_ID);
+        ir_module.metadata.declare_struct(STRING_ID, &name);
+
         let string_def = {
             let mut builder = Builder::new(&mut ir_module);
             builder.translate_class(&string_class)
         };
 
-        ir_module.metadata.define_struct(string_def);
+        ir_module.metadata.define_struct(STRING_ID, string_def);
 
         Builder::new(&mut ir_module).translate_rc_boilerplate(&Type::Struct(STRING_ID));
     }
@@ -879,13 +879,6 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // for automatic cleanup calls
     let builtin_disposable = pas_ty::builtin_disposable_iface();
     if ir_module.metadata.find_iface_decl(&builtin_disposable.name.qualified).is_none() {
-        let name = {
-            let mut builder = Builder::new(&mut ir_module);
-            builder.translate_name(&builtin_disposable.name)
-        };
-
-        ir_module.metadata.declare_struct(&name);
-
         let disposable_iface = {
             let mut builder = Builder::new(&mut ir_module);
             builder.translate_iface(&builtin_disposable)

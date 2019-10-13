@@ -366,6 +366,7 @@ impl Context {
                     } => Path::new(key.clone(), parent_path.keys().cloned()),
                     MemberRef::Namespace { path } => Path::from_parts(path.keys().cloned()),
                 };
+
                 Err(NameError::AlreadyDeclared {
                     new: name.clone(),
                     existing: old_ident,
@@ -1039,6 +1040,44 @@ impl Context {
                         .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single().clone())),
                 ),
             }),
+        }
+    }
+
+    pub fn is_unsized_ty(&self, ty: &Type) -> NamingResult<bool> {
+        match ty {
+            Type::Nothing
+            | Type::MethodSelf => Ok(true),
+
+            Type::Class(class) | Type::Record(class) => {
+                match self.find_class_def(&class.qualified) {
+                    Ok(..) => Ok(false),
+                    Err(NameError::NotFound(..)) => Ok(true),
+                    Err(err) => Err(err.into()),
+                }
+            }
+
+            Type::Variant(variant) => {
+                match self.find_variant_def(&variant.qualified) {
+                    Ok(..) => Ok(false),
+                    Err(NameError::NotFound(..)) => Ok(true),
+                    Err(err) => Err(err.into()),
+                }
+            }
+
+            Type::Array { element, .. } => {
+                self.is_unsized_ty(element)
+            }
+
+            Type::Any
+            | Type::GenericParam(_)
+            | Type::Interface(..)
+            | Type::Pointer(..)
+            | Type::Primitive(..)
+            | Type::Nil
+            | Type::Function(..)
+            | Type::DynArray { .. } => {
+                Ok(false)
+            }
         }
     }
 

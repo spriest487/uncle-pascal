@@ -229,7 +229,7 @@ impl DiagnosticOutput for TypecheckError {
                 "Invalid interface type for method".to_string()
             }
 
-            TypecheckError::Private { .. } => "Name is private".to_string(),
+            TypecheckError::Private { .. } => "Name not exported".to_string(),
 
             TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
             TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
@@ -446,7 +446,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::Private { name, .. } => {
-                write!(f, "`{}` is private and can only be referenced in the unit where it is declared", name)
+                write!(f, "`{}` is not exported and can only be referenced in the unit where it is declared", name)
             }
 
             TypecheckError::PrivateConstructor { ty, .. } => {

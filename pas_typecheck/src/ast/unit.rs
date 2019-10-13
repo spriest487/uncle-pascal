@@ -140,7 +140,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
 
     let mut init = Vec::new();
     for stmt in &unit.init {
-        let stmt = typecheck_stmt(stmt, ctx)?;
+        let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
         expect_stmt_initialized(&stmt, ctx)?;
         init.push(stmt);
     }

@@ -108,7 +108,7 @@ pub enum Statement<A: Annotation> {
     ForLoop(ForLoop<A>),
     WhileLoop(WhileLoop<A>),
     Assignment(Assignment<A>),
-    If(IfCond<A>),
+    If(Box<IfCond<A>>),
     Break(A),
     Continue(A),
 }
@@ -132,19 +132,28 @@ impl<A: Annotation> Statement<A> {
         }
     }
 
-    pub fn try_into_expr(self) -> Option<Expression<A>> {
+    pub fn try_into_expr(self) -> Result<Expression<A>, Self> {
         match self {
-            Statement::Call(call) => Some(Expression::from(call)),
+            Statement::Call(call) => Ok(Expression::from(call)),
 
             Statement::Block(block) => {
                 if block.output.is_some() {
-                    Some(Expression::from(block))
+                    Ok(Expression::from(block))
                 } else {
-                    None
+                    Err(Statement::Block(block))
                 }
             }
 
-            _ => None,
+            Statement::If(if_cond) => {
+                // if-expressions must always have an else branch
+                if if_cond.else_branch.is_some() {
+                    Ok(Expression::IfCond(if_cond))
+                } else {
+                    Err(Statement::If(if_cond))
+                }
+            }
+
+            not_expr => Err(not_expr),
         }
     }
 
@@ -196,13 +205,13 @@ impl<A: Annotation> Statement<A> {
                     None => None,
                 };
 
-                Ok(Statement::If(IfCond {
+                Ok(Statement::If(Box::new(IfCond {
                     cond: if_cond.cond,
                     is_pattern: if_cond.is_pattern,
                     then_branch,
                     else_branch,
                     annotation: if_cond.annotation,
-                }))
+                })))
             }
 
             invalid => Err(invalid),

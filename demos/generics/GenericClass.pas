@@ -1,11 +1,11 @@
-uses System;
+// uses System;
 
-type Box of Val = class
+type GenericBox of Val = class
     val: Val;
 end;
 
-let y: Box of String := Box(val: 'test');
-WriteLn('y contains ' + y.val);
+let y: GenericBox of Boolean := GenericBox(val: true);
+// WriteLn('y contains ' + y.val);
 
-let z: Box of Integer := Box(val: 123);
-WriteLn('z contains ' + IntToStr(z.val));
+let z: GenericBox of Integer := GenericBox(val: 123);
+// WriteLn('z contains ' + IntToStr(z.val));

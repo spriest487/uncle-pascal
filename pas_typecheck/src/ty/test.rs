@@ -88,16 +88,10 @@ fn specialize_class_with_deep_params() {
 
     let span = builtin_span();
 
-    let a_class = &tys[0];
-    let b_class = &tys[1];
+    let result = specialize_class_def(&tys[1], vec![INT32], &span).unwrap();
 
-    let expected_a_ty = specialize_class_def(a_class, vec![INT32, INT32], &span).unwrap();
-    let result = specialize_class_def(b_class, vec![INT32], &span).unwrap();
-
-    assert_eq!(
-        Type::Record(Box::new(expected_a_ty.name.clone())),
-        result.members[0].ty
-    );
+    let a_name = result.members[0].ty.as_record().unwrap();
+    assert_eq!("test.A of Integer, Integer", a_name.to_string());
     assert_eq!(INT32, result.members[1].ty);
 }
 

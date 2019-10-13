@@ -10,8 +10,15 @@ pub fn typecheck_block(
     let block_scope = ctx.push_scope(None);
 
     let mut statements = Vec::new();
-    for stmt in &block.statements {
-        let stmt = typecheck_stmt(stmt, ctx)?;
+
+    for (i, stmt) in block.statements.iter().enumerate() {
+        let stmt_expect_ty = if i == block.statements.len() - 1 {
+            expect_ty
+        } else {
+            &Type::Nothing
+        };
+
+        let stmt = typecheck_stmt(stmt, stmt_expect_ty, ctx)?;
         expect_stmt_initialized(&stmt, ctx)?;
         statements.push(stmt);
     }
@@ -39,10 +46,19 @@ pub fn typecheck_block(
         // parsing didn't find us the output expression, we can move the final
         // stmt into the output if the type matches
         None if *expect_ty != Type::Nothing => {
-            let last_stmt_type = statements.last().map(|s: &Statement| s.annotation().ty());
+            if statements.last().is_some() {
+                let last_stmt = statements.pop().unwrap();
 
-            if last_stmt_type == Some(expect_ty) {
-                Some(statements.pop().and_then(Statement::try_into_expr).unwrap())
+                let output = last_stmt.try_into_expr()
+                    .unwrap_or_else(|not_expr| {
+                        panic!(
+                            "block output expression had type {} but couldn't be converted to an expression: {}",
+                            expect_ty,
+                            not_expr
+                        )
+                    });
+
+                Some(output)
             } else {
                 None
             }

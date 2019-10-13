@@ -1,42 +1,103 @@
 uses System;
 
-type LinkedList of T = class
-    next: Option of LinkedList of T;
+type Node of T = class
+    next: Option of Node of T;
     val: T;
 end;
 
-function Length of T(list: LinkedList of T): Integer
+export type LinkedList of T = class
+    head: Option of Node of T;
+end;
+
+export function NewLinkedList of T(): LinkedList of T
 begin
-    var current := list;
-    var count := 0;
+    LinkedList(
+        head: Option.None();
+    )
+end;
 
-    while true do begin
-        count := count + 1;
+export function Length of T(list: LinkedList of T): Integer
+begin
+    if list.head is Option.Some head then begin
+        var current := head.next;
+        var count := 0;
 
-        if current.next is Option.Some next then begin
-            current := next;
-        end
-        else
-            break;
+        while true do begin
+            count := count + 1;
+
+            if current is Option.Some node then begin
+                current := node.next;
+            end
+            else
+                break;
+        end;
+
+        count;
+    end
+    else begin
+        0;
     end;
-
-    count
 end;
 
-var x: LinkedList of Integer;
+function NthNode of T(list: LinkedList of T; n: Integer): Option of Node of T
+begin
+    if list.head is Option.Some head then begin
+        if n = 0 then
+            Option.Some(head)
+        else begin
+            var current := head;
+            var tooShort := false;
 
-let l: LinkedList of Integer := LinkedList(
-    val: 123;
-    next: Option.Some(LinkedList(
-        val: 456;
-        next: Option.None();
-    ));
-);
+            for let i := 0 to (n - 1) do begin
+                if current.next is Option.Some node then begin
+                    current := node;
+                end
+                else begin
+                    tooShort := true;
+                    break;
+                end;
+            end;
 
-if l.next is Option.Some next then begin
-    let l2 := l;
-    WriteLn('Here');
+            if tooShort then
+                Option.None()
+            else
+                Option.Some(current)
+        end
+    end
+    else begin
+        Option.None()
+    end
 end;
 
-let lLen := Length of Integer(l);
-WriteLn(IntToStr(lLen))
+export function Nth of T(list: LinkedList of T; n: Integer): Option of T
+begin
+    if NthNode of T(list, n) is Option.Some node then
+        Option.Some(node.val)
+    else
+        Option.None()
+end;
+
+export function Append of T(list: LinkedList of T; item: T)
+begin
+    if list.head is Option.Some head then begin
+        var current := head;
+
+        while true do begin
+            if current.next is Option.Some next then
+                current := next
+            else begin
+                current.next := Option.Some(Node(
+                    next: Option.None();
+                    val: item;
+                ));
+            end
+        end
+    end
+    else begin
+        list.head := Option.Some(Node(
+            next: Option.None();
+            val: item;
+        ));
+    end
+end;
+

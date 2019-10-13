@@ -169,7 +169,7 @@ pub fn specialize_func_decl(decl: &FunctionDecl, args: &[Type]) -> TypecheckResu
         .params
         .iter()
         .map(|param| {
-            let ty = Type::specialize_generic(&param.ty, args, param.span())?;
+            let ty = param.ty.clone().substitute_type_args(args);
 
             Ok(FunctionParam {
                 ty,
@@ -179,7 +179,7 @@ pub fn specialize_func_decl(decl: &FunctionDecl, args: &[Type]) -> TypecheckResu
         .collect::<TypecheckResult<_>>()?;
 
     let return_ty = match &decl.return_ty {
-        Some(return_ty) => Some(Type::specialize_generic(return_ty, args, decl.span())?),
+        Some(return_ty) => Some(return_ty.clone().substitute_type_args(args)),
         None => None,
     };
 

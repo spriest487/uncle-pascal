@@ -302,6 +302,7 @@ fn typecheck_func_call(
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
     let type_args = typecheck_type_args(&func_call.type_args, ctx)?;
+
     let call_sig = sig.clone().specialize_generic(type_args.clone(), &span)?;
 
     let args = typecheck_args(&call_sig.params, &func_call.args, None, &span, ctx)?;

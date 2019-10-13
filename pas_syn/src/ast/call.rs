@@ -52,11 +52,23 @@ pub struct FunctionCall<A: Annotation> {
 
 impl<A: Annotation> fmt::Display for FunctionCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}(", self.target)?;
+        write!(f, "{}", self.target)?;
+
+        if self.type_args.len() > 0 {
+            write!(f, " of ")?;
+
+            for (i, arg) in self.type_args.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+        }
+
+        write!(f, "(")?;
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;
-                ;
             }
             write!(f, "{}", arg)?;
         }
