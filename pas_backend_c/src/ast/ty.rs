@@ -328,7 +328,7 @@ impl fmt::Display for VariantDef {
         )?;
 
         if self.cases.iter().any(|c| c.ty.is_some()) {
-            writeln!(f, "  union Data {{")?;
+            writeln!(f, "  union {}_Data {{", self.decl.name)?;
             for (index, case) in self.cases.iter().enumerate() {
                 let name = FieldName::VariantDataCase(index);
 
