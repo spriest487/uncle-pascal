@@ -250,7 +250,7 @@ impl StructDef {
                 name: StructName::Class(id),
             },
             members,
-            comment: Some(ir_struct.name.to_string())
+            comment: Some(module.pretty_name(&ir_struct.name)),
         }
     }
 }
@@ -308,7 +308,7 @@ impl VariantDef {
                 name: StructName::Variant(id),
             },
             cases,
-            comment: Some(variant.name.to_string()),
+            comment: Some(module.pretty_name(&variant.name)),
         }
     }
 }

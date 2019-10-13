@@ -11,6 +11,7 @@ use pas_common::span::Span;
 use pas_syn::Ident;
 use pas_typecheck::{Specializable, builtin_string_name};
 use std::collections::HashMap;
+use std::borrow::Cow;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -428,7 +429,7 @@ impl<'m> Builder<'m> {
         self.module.translate_func_usage(key)
     }
 
-    pub fn pretty_ty_name(&self, ty: &Type) -> String {
+    pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         self.module.metadata.pretty_ty_name(ty)
     }
 

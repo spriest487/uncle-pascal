@@ -1,5 +1,6 @@
 use std::{
     collections::hash_map::{Entry, HashMap},
+    borrow::Cow,
     fmt,
 };
 
@@ -29,6 +30,8 @@ pub struct Module {
     string_literals: HashMap<StringID, String>,
 
     opts: Options,
+
+    type_names: HashMap<ir::Type, String>,
 }
 
 impl Module {
@@ -88,6 +91,20 @@ impl Module {
             .map(|(id, str)| (id, str.to_string()))
             .collect();
 
+        let type_names = metadata.type_defs()
+            .map(|(id, ty_def)| {
+                let ty = match ty_def {
+                    ir::metadata::TypeDef::Variant(..) => ir::Type::Variant(id),
+                    ir::metadata::TypeDef::Struct(..) => ir::Type::Struct(id),
+                };
+
+                let name = metadata.pretty_ty_name(&ty);
+                (ty, name.to_string())
+            })
+            .collect();
+
+        println!("pretty type names: {:#?}", type_names);
+
         let mut module = Module {
             functions: Vec::new(),
             type_defs: Vec::new(),
@@ -102,6 +119,8 @@ impl Module {
             builtin_funcs,
 
             opts,
+
+            type_names,
         };
 
         module.ifaces = metadata
@@ -110,6 +129,17 @@ impl Module {
             .collect();
 
         module
+    }
+
+    pub fn pretty_type(&self, ir_ty: &ir::Type) -> Cow<str> {
+        match self.type_names.get(ir_ty) {
+            Some(name) => Cow::Borrowed(name),
+            None => Cow::Owned(ir_ty.to_string()),
+        }
+    }
+
+    pub fn pretty_name(&self, name_path: &ir::metadata::NamePath) -> String {
+        name_path.to_pretty_string(|ty| self.pretty_type(ty))
     }
 
     fn make_array_type(&mut self, element: Type, dim: usize) -> Type {

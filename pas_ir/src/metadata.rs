@@ -6,6 +6,7 @@ use pas_syn::{Ident, IdentPath, Path};
 use pas_typecheck as pas_ty;
 
 use linked_hash_map::LinkedHashMap;
+use std::borrow::Cow;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -101,6 +102,27 @@ impl NamePath {
             path: Path::from_parts(iter),
             type_args: Vec::new(),
         }
+    }
+
+    pub fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
+        where TyFormat: Fn(&Type) -> Cow<'a, str>,
+    {
+        let mut buf = self.path.join("::");
+
+        if self.type_args.len() > 0 {
+            buf.push('<');
+            for (i, ty_arg) in self.type_args.iter().enumerate() {
+                if i > 0 {
+                    buf.push_str(", ");
+                }
+
+                let ty_name = ty_format(ty_arg);
+                buf.push_str(&ty_name);
+            }
+            buf.push('>');
+        }
+
+        buf
     }
 }
 
@@ -741,50 +763,58 @@ impl Metadata {
             })
     }
 
-    pub fn pretty_ty_name(&self, ty: &Type) -> String {
+    pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         match ty {
-            Type::Struct(id) | Type::Variant(id) => match self.type_decls.get(id) {
-                Some(TypeDecl::Forward(name)) => name.to_string(),
-                Some(TypeDecl::Def(def)) => def.name().to_string(),
-                Some(TypeDecl::Reserved) | None => id.to_string(),
+            Type::Struct(id) | Type::Variant(id) => {
+                let name = match self.type_decls.get(id) {
+                    Some(TypeDecl::Forward(name)) => Some(name),
+                    Some(TypeDecl::Def(def)) => Some(def.name()),
+                    Some(TypeDecl::Reserved) | None => None,
+                };
+
+                match name {
+                    None => Cow::Owned(id.to_string()),
+
+                    Some(name) => {
+                        Cow::Owned(name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
+                    }
+                }
             },
 
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
-                format!("array [{}] of {}", dim, elem_name)
+                Cow::Owned(format!("array [{}] of {}", dim, elem_name))
             }
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
-                    None => "any".to_string(),
+                    None => Cow::Borrowed("any"),
 
                     Some(ClassID::Interface(iface_id)) => {
                         let iface = self.get_iface_def(*iface_id);
 
-                        iface
-                            .map(|def| def.name.to_string())
-                            .unwrap_or_else(|| format!("<interface {}>", iface_id))
+                        Cow::Owned(iface
+                            .map(|def| {
+                                def.name.to_pretty_string(|ty| self.pretty_ty_name(ty))
+                            })
+                            .unwrap_or_else(|| {
+                                format!("<interface {}>", iface_id)
+                            }))
                     }
 
                     Some(ClassID::Class(struct_id)) => {
                         self.pretty_ty_name(&Type::Struct(*struct_id))
                     }
                 };
-                format!("rc {}", resource_name)
+
+                Cow::Owned(format!("rc {}", resource_name))
             }
 
-            Type::Pointer(ty) => format!("^{}", self.pretty_ty_name(ty)),
+            Type::Pointer(ty) => Cow::Owned(format!("^{}", self.pretty_ty_name(ty))),
 
-            ty => ty.to_string(),
+            ty => Cow::Owned(ty.to_string()),
         }
     }
-
-//    fn find_forward_decl(&self, name: &NamePath) -> Option<StructID> {
-//        self.type_decls.iter().find_map(|(id, decl)| match decl {
-//            TypeDecl::Forward(decl_name) if decl_name == name => Some(*id),
-//            _ => None,
-//        })
-//    }
 
     pub fn reserve_new_struct(&mut self) -> StructID {
         let id = self.next_struct_id();

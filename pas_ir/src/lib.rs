@@ -9,6 +9,9 @@ use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 pub use self::{
     formatter::*,
     interpret::{Interpreter, InterpreterOpts},
+    metadata::{
+        Type,
+    }
 };
 use linked_hash_map::LinkedHashMap;
 
