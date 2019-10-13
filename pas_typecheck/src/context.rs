@@ -70,10 +70,7 @@ pub struct Binding {
 #[derive(Clone, Debug)]
 pub enum InstanceMember {
     Data { ty: Type },
-    Method {
-        iface_ty: Type,
-        method: Ident,
-    },
+    Method { iface_ty: Type, method: Ident },
 }
 
 #[derive(Clone, Debug)]
@@ -359,6 +356,27 @@ impl Context {
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
         match self.find(&name) {
+            Some(MemberRef::Value { value: Decl::Alias(aliased), key, ref parent_path }) => {
+                match &decl {
+                    // new decl aliases the same type and is OK
+                    Decl::Alias(new_aliased) if *new_aliased == *aliased => {
+                        // don't need to redeclare it, it's already the same alias
+                        Ok(())
+                    }
+
+                    // new name replaces an existing alias and doesn't match the old alias
+                    _ => {
+                        let old_ident = IdentPath::from_parts(parent_path.keys().cloned())
+                            .child(key.clone());
+
+                        Err(NameError::AlreadyDeclared {
+                            new: name.clone(),
+                            existing: old_ident,
+                        })
+                    }
+                }
+            }
+
             Some(old_ref) => {
                 let old_ident = match old_ref {
                     MemberRef::Value {
@@ -471,7 +489,12 @@ impl Context {
         self.declare_type(self_ident, ty, Visibility::Private)
     }
 
-    pub fn declare_type(&mut self, name: Ident, ty: Type, visibility: Visibility) -> NamingResult<()> {
+    pub fn declare_type(
+        &mut self,
+        name: Ident,
+        ty: Type,
+        visibility: Visibility,
+    ) -> NamingResult<()> {
         self.declare(name, Decl::Type { ty, visibility })?;
         Ok(())
     }
@@ -753,9 +776,7 @@ impl Context {
                 })
             }
 
-            None => {
-                Err(NameError::NotFound(name.last().clone()))
-            }
+            None => Err(NameError::NotFound(name.last().clone())),
         }
     }
 
@@ -789,9 +810,7 @@ impl Context {
                 })
             }
 
-            None => {
-                Err(NameError::NotFound(name.last().clone()))
-            }
+            None => Err(NameError::NotFound(name.last().clone())),
         }
     }
 
@@ -861,9 +880,7 @@ impl Context {
                 })
             }
 
-            None => {
-                Err(NameError::NotFound(name.last().clone()))
-            }
+            None => Err(NameError::NotFound(name.last().clone())),
         }
     }
 
@@ -990,9 +1007,7 @@ impl Context {
             .map(|(of_ty, m)| (of_ty.clone(), m.clone()))
             .collect();
 
-        fn ambig_paths<'a>(
-            options: impl IntoIterator<Item = (Type, Ident)>,
-        ) -> Vec<IdentPath> {
+        fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {
             options
                 .into_iter()
                 .map(|(of_ty, ident)| match of_ty.full_path() {
@@ -1045,8 +1060,7 @@ impl Context {
 
     pub fn is_unsized_ty(&self, ty: &Type) -> NamingResult<bool> {
         match ty {
-            Type::Nothing
-            | Type::MethodSelf => Ok(true),
+            Type::Nothing | Type::MethodSelf => Ok(true),
 
             Type::Class(class) | Type::Record(class) => {
                 match self.find_class_def(&class.qualified) {
@@ -1056,17 +1070,13 @@ impl Context {
                 }
             }
 
-            Type::Variant(variant) => {
-                match self.find_variant_def(&variant.qualified) {
-                    Ok(..) => Ok(false),
-                    Err(NameError::NotFound(..)) => Ok(true),
-                    Err(err) => Err(err.into()),
-                }
-            }
+            Type::Variant(variant) => match self.find_variant_def(&variant.qualified) {
+                Ok(..) => Ok(false),
+                Err(NameError::NotFound(..)) => Ok(true),
+                Err(err) => Err(err.into()),
+            },
 
-            Type::Array { element, .. } => {
-                self.is_unsized_ty(element)
-            }
+            Type::Array { element, .. } => self.is_unsized_ty(element),
 
             Type::Any
             | Type::GenericParam(_)
@@ -1075,17 +1085,11 @@ impl Context {
             | Type::Primitive(..)
             | Type::Nil
             | Type::Function(..)
-            | Type::DynArray { .. } => {
-                Ok(false)
-            }
+            | Type::DynArray { .. } => Ok(false),
         }
     }
 
-    pub fn find_type_member(
-        &self,
-        ty: &Type,
-        member_ident: &Ident,
-    ) -> NamingResult<TypeMember> {
+    pub fn find_type_member(&self, ty: &Type, member_ident: &Ident) -> NamingResult<TypeMember> {
         match ty {
             Type::Interface(iface) => {
                 let iface_def = self.find_iface_def(iface)?;
@@ -1097,7 +1101,9 @@ impl Context {
                     }
                 })?;
 
-                Ok(TypeMember::Method { decl: method_decl.clone() })
+                Ok(TypeMember::Method {
+                    decl: method_decl.clone(),
+                })
             }
 
             _ => Err(NameError::MemberNotFound {
@@ -1204,20 +1210,35 @@ impl Context {
         match self.resolve(name) {
             Some(MemberRef::Value {
                 parent_path, value, ..
-            }) => match value {
-                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
-                    match visibility {
-                        Visibility::Exported => true,
-                        Visibility::Private => {
-                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
-                            let current_ns = self.namespace();
+            }) => {
+                // if if resolved to something in a different namespace from the name we
+                // used to find it, we followed an alias - in this case the name is only accessible
+                // if resolved name is in the current scope
+                if let Some(name_parent) = name.parent() {
+                    let resolved_parent = IdentPath::from_parts(parent_path.keys().cloned());
 
-                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
-                        }
+                    if resolved_parent != name_parent && resolved_parent != self.namespace() {
+                        return false;
                     }
                 }
 
-                _ => true,
+                match value {
+                    Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
+                        match visibility {
+                            Visibility::Exported => true,
+                            Visibility::Private => {
+                                let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                                let current_ns = self.namespace();
+
+                                current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
+                            }
+                        }
+                    }
+
+                    Decl::Alias(..) => false,
+
+                    _ => true,
+                }
             },
 
             _ => true,

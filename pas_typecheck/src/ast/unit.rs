@@ -10,9 +10,13 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 match ctx.resolve(&IdentPath::from(unit.clone())) {
                     Some(MemberRef::Namespace { path }) => {
                         let aliased_unit = IdentPath::from_parts(path.keys().cloned());
+
                         for decl_key in path.top().keys() {
                             let aliased = aliased_unit.clone().child(decl_key.clone());
-                            ctx.declare_alias(decl_key, aliased)?;
+
+                            if ctx.is_accessible(&aliased) {
+                                ctx.declare_alias(decl_key, aliased)?;
+                            }
                         }
                     }
 
