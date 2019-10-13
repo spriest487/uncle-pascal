@@ -20,6 +20,7 @@ pub mod ast {
     mod statement;
     mod typedecl;
     mod unit;
+    mod call;
 
     mod prelude {
         pub use pas_common::span::*;
