@@ -245,12 +245,15 @@ impl StructDef {
             })
             .collect();
 
+        let struct_ty = metadata::Type::Struct(id);
+        let comment = module.pretty_type(&struct_ty).to_string();
+
         Self {
             decl: StructDecl {
                 name: StructName::Class(id),
             },
             members,
-            comment: Some(module.pretty_name(&ir_struct.name)),
+            comment: Some(comment),
         }
     }
 }
@@ -303,12 +306,15 @@ impl VariantDef {
             })
             .collect();
 
+        let variant_ty = metadata::Type::Variant(id);
+        let comment = module.pretty_type(&variant_ty).to_string();
+
         Self {
             decl: StructDecl {
                 name: StructName::Variant(id),
             },
             cases,
-            comment: Some(module.pretty_name(&variant.name)),
+            comment: Some(comment),
         }
     }
 }
@@ -426,7 +432,10 @@ impl Class {
         let resource_ty = metadata::Type::Struct(struct_id);
         let cleanup_func = metadata.find_rc_boilerplate(&resource_ty)
             .map(|funcs| FunctionName::ID(funcs.release))
-            .expect("missing rc cleanup func for IR class resource struct");
+            .unwrap_or_else(|| panic!(
+                "missing rc cleanup func for resource struct of IR class {}",
+                metadata.pretty_ty_name(&resource_ty),
+            ));
 
         Class {
             struct_id,

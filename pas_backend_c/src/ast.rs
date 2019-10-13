@@ -11,6 +11,7 @@ use pas_ir::{
 };
 
 pub use self::{function::*, stmt::*, ty::*};
+use pas_ir::metadata::{STRING_LEN_FIELD, STRING_CHARS_FIELD};
 
 mod function;
 mod stmt;
@@ -102,8 +103,6 @@ impl Module {
                 (ty, name.to_string())
             })
             .collect();
-
-        println!("pretty type names: {:#?}", type_names);
 
         let mut module = Module {
             functions: Vec::new(),
@@ -275,10 +274,13 @@ impl fmt::Display for Module {
         }
 
         for (str_id, lit) in &self.string_literals {
+            let chars_field = FieldName::ID(STRING_CHARS_FIELD);
+            let len_field = FieldName::ID(STRING_LEN_FIELD);
+
             let string_name = StructName::Class(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
-            writeln!(f, "  .field_0 = (unsigned char*) \"{}\",", lit)?;
-            writeln!(f, "  .field_1 = {},", lit.len())?;
+            writeln!(f, "  .{} = (unsigned char*) \"{}\",",  chars_field, lit)?;
+            writeln!(f, "  .{} = {},", len_field, lit.len())?;
             writeln!(f, "}};")?;
 
             writeln!(
@@ -287,9 +289,9 @@ impl fmt::Display for Module {
                 StructName::Rc,
                 str_id.0
             )?;
-            writeln!(f, "  .resource = &String_{},", str_id.0)?;
-            writeln!(f, "  .class = &Class_{},", ir::metadata::STRING_ID.0)?;
-            writeln!(f, "  .count = -1,")?;
+            writeln!(f, "  .{} = &String_{},", FieldName::RcResource, str_id.0)?;
+            writeln!(f, "  .{} = &Class_{},", FieldName::RcClass, ir::metadata::STRING_ID.0)?;
+            writeln!(f, "  .{} = -1,", FieldName::RcRefCount)?;
             writeln!(f, "}};")?;
         }
 

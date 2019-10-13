@@ -286,7 +286,10 @@ impl<'m> Builder<'m> {
             return cached.clone();
         }
 
-//        println!("type cache miss for {}, translating...", src_ty);
+//        println!("\ntype cache miss for {}, translating...", src_ty);
+//        for (cache_ty, _) in &self.module.type_cache {
+//            println!("{} == {}? {}", src_ty, cache_ty, src_ty == *cache_ty);
+//        }
 
         // instantiate types which may contain generic params
         let ty = match &src_ty {
@@ -297,13 +300,12 @@ impl<'m> Builder<'m> {
                     .instantiate_variant(variant)
                     .unwrap();
 
-                let name_path = self.translate_name(&variant);
-
                 let id = self.module.metadata.reserve_new_struct();
                 let ty = Type::Variant(id);
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, ty);
+//                println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
 
+                let name_path = self.translate_name(&variant);
                 self.module.metadata.declare_struct(id, &name_path);
 
                 let variant_meta = self.translate_variant(&variant_def);
@@ -338,16 +340,6 @@ impl<'m> Builder<'m> {
 
                 let struct_meta = self.translate_class(&class_def);
                 self.module.metadata.define_struct(id, struct_meta);
-
-                // class types must generate cleanup code for their inner struct which isn't
-                // explicitly called in IR but must be called dynamically by the target to
-                // clean up the inner structs of class RC cells.
-                // for example, a class instance maybe be stored behind an `Any` reference,
-                // at which point rc instructions must discover the actual class type
-                // dynamically from the rc cell's class pointer/class ID
-                if class_def.kind == pas_syn::ast::ClassKind::Object {
-                    self.translate_rc_boilerplate(&Type::Struct(id));
-                }
 
                 ty
             }
@@ -646,7 +638,7 @@ impl<'m> Builder<'m> {
                     .module
                     .metadata
                     .get_variant_def(*id)
-                    .unwrap()
+                    .unwrap_or_else(|| panic!("missing variant def {}", id))
                     .cases
                     .to_vec();
 

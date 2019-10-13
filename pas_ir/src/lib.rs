@@ -20,6 +20,7 @@ mod builder;
 mod expr;
 mod formatter;
 mod stmt;
+mod dep_sort;
 
 pub mod prelude {
     pub use crate::{metadata::*, GlobalRef, Instruction, Interpreter, Label, Ref, Value};
@@ -848,6 +849,33 @@ fn gen_iface_impls(module: &mut Module) {
     }
 }
 
+// class types must generate cleanup code for their inner struct which isn't
+// explicitly called in IR but must be called dynamically by the target to
+// clean up the inner structs of class RC cells.
+// for example, a class instance maybe be stored behind an `Any` reference,
+// at which point rc instructions must discover the actual class type
+// dynamically from the rc cell's class pointer/class ID
+fn gen_class_rc_boilerplate(module: &mut Module) {
+    let translated_classes: Vec<_> = module.type_cache.iter()
+        .filter_map(|(src_ty, ir_ty)| {
+            if src_ty.as_class().is_ok() {
+                Some(ir_ty.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    for class_ty in &translated_classes {
+        let resource_struct = class_ty.rc_resource_class_id()
+            .and_then(|class_id| class_id.as_class())
+            .expect("resource class of translated class type was not a struct");
+
+        let mut builder = Builder::new(module);
+        builder.translate_rc_boilerplate(&Type::Struct(resource_struct));
+    }
+}
+
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let metadata = Metadata::new();
     let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
@@ -892,6 +920,9 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
 
     gen_iface_impls(&mut ir_module);
     gen_dyn_array_disposers(&mut ir_module);
+    gen_class_rc_boilerplate(&mut ir_module);
+
+    ir_module.metadata.sort_type_defs_by_deps();
 
     ir_module
 }

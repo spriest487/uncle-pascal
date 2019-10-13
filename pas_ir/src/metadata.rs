@@ -7,6 +7,7 @@ use pas_typecheck as pas_ty;
 
 use linked_hash_map::LinkedHashMap;
 use std::borrow::Cow;
+use crate::dep_sort::sort_defs;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -261,6 +262,15 @@ impl Struct {
 pub enum ClassID {
     Class(StructID),
     Interface(InterfaceID),
+}
+
+impl ClassID {
+    pub fn as_class(&self) -> Option<StructID> {
+        match self {
+            ClassID::Class(id) => Some(*id),
+            ClassID::Interface(..) => None,
+        }
+    }
 }
 
 impl fmt::Display for ClassID {
@@ -1214,5 +1224,32 @@ impl Metadata {
 
     pub fn strings(&self) -> impl Iterator<Item = (StringID, &str)> + '_ {
         self.string_literals.iter().map(|(id, s)| (*id, s.as_str()))
+    }
+
+    // hack: we don't always end up with types properly ordered by structural dependencies
+    // as a result of the order we encounter types in, so this gets called to sort them before
+    // finishing the module (assuming backends expect the types to be ordered e.g. like in C)
+    pub fn sort_type_defs_by_deps(&mut self) {
+        let mut unsorted = self.type_decls.clone();
+
+        // remove all defs into a separate collection
+        let mut defs = Vec::new();
+        let mut decls = LinkedHashMap::new();
+
+        while let Some((id, decl)) = unsorted.pop_front() {
+            match decl {
+                TypeDecl::Reserved => { decls.insert(id, TypeDecl::Reserved); },
+                TypeDecl::Forward(name) => { decls.insert(id, TypeDecl::Forward(name)); },
+
+                TypeDecl::Def(def) => { defs.push((id, def)); }
+            }
+        }
+
+        let sorted_defs = sort_defs(defs, self);
+
+        self.type_decls = decls;
+        for (id, def) in sorted_defs {
+            self.type_decls.insert(id, TypeDecl::Def(def));
+        }
     }
 }

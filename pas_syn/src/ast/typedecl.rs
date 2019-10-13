@@ -3,6 +3,7 @@ use crate::{
     parse::prelude::*,
 };
 use std::rc::Rc;
+use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Member<A: Annotation> {
@@ -256,7 +257,7 @@ impl<A: Annotation> TypeDecl<A> {
 /// name. we parse it first and pass it into the parse functions for specific decl kinds.
 /// this isn't quite the same thing as a TypeName, which can be a full qualified path - a decl
 /// name is a single unqualified ident + maybe a type parameter list
-#[derive(Debug, Clone, Eq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypeDeclName {
     pub ident: Ident,
     pub type_params: Vec<Ident>,
@@ -267,6 +268,13 @@ impl PartialEq for TypeDeclName {
     fn eq(&self, other: &Self) -> bool {
         self.ident == other.ident
             && self.type_params == other.type_params
+    }
+}
+
+impl Hash for TypeDeclName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+        self.type_params.hash(state);
     }
 }
 
