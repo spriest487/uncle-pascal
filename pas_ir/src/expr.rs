@@ -20,8 +20,14 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             match annotation {
                 TypeAnnotation::TypedValue {
                     value_kind: ValueKind::Temporary,
+                    ty,
                     ..
-                } => panic!("temporaries cannot be referenced by ident"),
+                } => panic!(
+                    "expr `{}` of type `{}` is referenced by ident `{}` but is of temporary value kind",
+                    expr,
+                    ty,
+                    ident,
+                ),
 
                 TypeAnnotation::Function {
                     name,

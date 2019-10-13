@@ -2,7 +2,7 @@ uses System;
 
 function ReturnSome of T(x: T): Option of T
 begin
-    Option.Some(x)
+    Option.Some(x);
 end
 
 let someX := ReturnSome of Integer(123);

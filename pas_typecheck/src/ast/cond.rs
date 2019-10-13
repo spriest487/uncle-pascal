@@ -38,7 +38,7 @@ pub fn typecheck_if_cond(
             then_ctx.declare_binding(
                 binding.ident.clone(),
                 Binding {
-                    kind: cond.annotation().value_kind().unwrap(),
+                    kind: ValueKind::Immutable,
                     ty: binding.ty.clone(),
                     def: Some(binding.ident.span().clone()),
                 },
