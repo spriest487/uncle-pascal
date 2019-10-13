@@ -1,10 +1,6 @@
 # critical
 
-* the code for deep-releasing structs/variants in rc types should be generated
-as functions and called in IR, instead of being
-dependent on the interpreter (when this functionality already
-partially exists for deep-releasing local versions of the same objects)
-* `type System.Option of T cannot be used in matching constructs`
+* thread 'main' panicked at 'argument a of ClassIs instruction must evaluate to a heap pointer', src/libcore/option.rs:1036:5
 * add `NativeUInt` type
 * `exit` statement
 * unique compiler error codes

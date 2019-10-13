@@ -249,7 +249,7 @@ fn typecheck_method_call(
     let call_sig = method_annotation
         .decl_sig()
         .clone()
-        .specialize_generic(type_args.clone(), &span)?;
+        .specialize_generic(&type_args, &span)?;
 
     let (self_type, impl_sig, args) = match &method_annotation.self_arg {
         None => {
@@ -352,6 +352,100 @@ fn typecheck_ufcs_call(
     }))
 }
 
+struct SpecializedCallArgs {
+    sig: FunctionSig,
+    type_args: Vec<Type>,
+    actual_args: Vec<Expression>,
+}
+
+fn specialize_call_args(
+    decl_sig: &FunctionSig,
+    args: &[ast::Expression<Span>],
+    self_arg: Option<&Expression>,
+    explicit_ty_args: &[Type],
+    span: &Span,
+    ctx: &mut Context,
+) -> TypecheckResult<SpecializedCallArgs> {
+    if !explicit_ty_args.is_empty() {
+        // we have explicit args, don't try to infer types
+        let sig = decl_sig.clone().specialize_generic(explicit_ty_args, span)?;
+
+        let actual_args = typecheck_args(
+            &sig.params,
+            args,
+            self_arg,
+            span,
+            ctx,
+        )?;
+
+        Ok(SpecializedCallArgs {
+            sig,
+            actual_args,
+            type_args: explicit_ty_args.to_vec(),
+        })
+    } else {
+        // try to infer type from args, left to right
+        let mut inferred_ty_args = vec![None; decl_sig.type_params_len];
+
+        let mut actual_args = match self_arg {
+            Some(self_arg) => vec![self_arg.clone()],
+            None => Vec::new(),
+        };
+
+        for (i, arg) in args.iter().enumerate() {
+            let arg = match &decl_sig.params[i].ty {
+                // param is generic: arg expr ty drives param type
+                Type::GenericParam(param_ty) => {
+                    match &inferred_ty_args[param_ty.pos] {
+                        // type arg in this pos was already inferred from an earlier arg
+                        Some(already_inferred_ty) => {
+                            typecheck_expr(arg, already_inferred_ty, ctx)?
+                        },
+                        None => {
+                            let actual_arg= typecheck_expr(arg, &Type::Nothing, ctx)?;
+                            let actual_ty = actual_arg.annotation().ty().clone();
+
+                            inferred_ty_args[param_ty.pos] = Some(actual_ty);
+                            actual_arg
+                        },
+                    }
+                }
+
+                // param is not generic: param type drives expr expected type
+                param_ty => {
+                    typecheck_expr(arg, param_ty, ctx)?
+                },
+            };
+
+            actual_args.push(arg);
+        }
+
+        if inferred_ty_args.iter().any(Option::is_none) {
+            let arg_tys = actual_args.into_iter()
+                .map(|a| a.annotation().ty().clone())
+                .collect();
+
+            return Err(GenericError::CannotInferArgs {
+                target: GenericTarget::FunctionSig(decl_sig.clone()),
+                expected: GenericTypeHint::ArgTypes(arg_tys),
+                span: span.clone(),
+            }.into());
+        }
+
+        let inferred_ty_args: Vec<_> = inferred_ty_args.into_iter()
+            .map(|a| a.unwrap())
+            .collect();
+
+        let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span)?;
+
+        Ok(SpecializedCallArgs {
+            type_args: inferred_ty_args,
+            sig: actual_sig,
+            actual_args,
+        })
+    }
+}
+
 fn typecheck_func_call(
     func_call: &ast::FunctionCall<Span>,
     sig: &FunctionSig,
@@ -363,11 +457,16 @@ fn typecheck_func_call(
 
     let type_args = typecheck_type_args(&func_call.type_args, ctx)?;
 
-    let call_sig = sig.clone().specialize_generic(type_args.clone(), &span)?;
+    let specialized_call_args = specialize_call_args(
+        sig,
+        &func_call.args,
+        None,
+        &type_args,
+        &span,
+        ctx,
+    )?;
 
-    let args = typecheck_args(&call_sig.params, &func_call.args, None, &span, ctx)?;
-
-    let return_ty = call_sig.return_ty.clone();
+    let return_ty = specialized_call_args.sig.return_ty.clone();
 
     let annotation = match return_ty {
         Type::Nothing => TypeAnnotation::Untyped(span),
@@ -381,8 +480,8 @@ fn typecheck_func_call(
 
     Ok(ast::Call::Function(FunctionCall {
         annotation,
-        args,
-        type_args,
+        args: specialized_call_args.actual_args,
+        type_args: specialized_call_args.type_args,
         target,
         args_brackets: func_call.args_brackets.clone(),
     }))
@@ -413,7 +512,7 @@ fn typecheck_variant_ctor_call(
     if variant.is_generic() {
         return Err(GenericError::CannotInferArgs {
             target: GenericTarget::Name(variant.qualified.clone()),
-            expected: expect_ty.clone(),
+            expected: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
         }.into());
     }

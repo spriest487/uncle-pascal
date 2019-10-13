@@ -13,7 +13,42 @@ impl fmt::Display for GenericTarget {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GenericTarget::Name(name) => write!(f, "name `{}`", name),
-            GenericTarget::FunctionSig(sig) => write!(f, "function signature `{}`", sig),
+            GenericTarget::FunctionSig(sig) => write!(f, "`{}`", sig),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum GenericTypeHint {
+    ExpectedValueType(Type),
+    ArgTypes(Vec<Type>),
+}
+
+impl fmt::Display for GenericTypeHint {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GenericTypeHint::ExpectedValueType(ty) => {
+                write!(f, "expected type {}", ty)
+            }
+
+            GenericTypeHint::ArgTypes(tys) => {
+                write!(f, "argument type")?;
+                if tys.len() > 1 {
+                    write!(f, "s")?;
+                }
+
+                if !tys.is_empty() {
+                    write!(f, " ")?;
+                    for (i, ty) in tys.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "`{}`", ty)?;
+                    }
+                }
+
+                Ok(())
+            }
         }
     }
 }
@@ -28,7 +63,7 @@ pub enum GenericError {
     },
     CannotInferArgs {
         target: GenericTarget,
-        expected: Type,
+        expected: GenericTypeHint,
         span: Span,
     },
     IllegalUnspecialized {
@@ -86,7 +121,7 @@ impl fmt::Display for GenericError {
                 ..
             } => write!(
                 f,
-                "cannot infer type arguments for {} from expected type `{}`",
+                "cannot infer type arguments for {} from {}",
                 target,
                 expected,
             ),

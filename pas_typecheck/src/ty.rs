@@ -75,7 +75,7 @@ impl FunctionSig {
         }
     }
 
-    pub fn specialize_generic(&self, type_args: Vec<Type>, span: &Span) -> GenericResult<Self> {
+    pub fn specialize_generic(&self, type_args: &[Type], span: &Span) -> GenericResult<Self> {
         if type_args.len() != self.type_params_len {
             return Err(GenericError::ArgsLenMismatch {
                 expected: self.type_params_len,
@@ -89,7 +89,7 @@ impl FunctionSig {
             .params
             .iter()
             .map(|sig_param| {
-                let ty = sig_param.ty.clone().substitute_type_args(&type_args);
+                let ty = sig_param.ty.clone().substitute_type_args(type_args);
                 Ok(FunctionParamSig {
                     ty,
                     ..sig_param.clone()
@@ -97,16 +97,13 @@ impl FunctionSig {
             })
             .collect::<GenericResult<_>>()?;
 
-        let return_ty = self.return_ty.clone().substitute_type_args(&type_args);
+        let return_ty = self.return_ty.clone().substitute_type_args(type_args);
 
         let specialized_sig = FunctionSig {
             return_ty,
             params,
             type_params_len: self.type_params_len,
         };
-
-        //        let args_print = type_args.iter().map(Type::to_string).collect::<Vec<_>>().join(", ");
-        //        println!("specialized {} of with [{}] -> {}", self, args_print, specialized_sig);
 
         Ok(specialized_sig)
     }
