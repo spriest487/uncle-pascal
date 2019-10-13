@@ -17,6 +17,19 @@ pub(super) fn int_to_str(state: &mut Interpreter) {
     state.store(&return_ref, string);
 }
 
+/// $1: String -> $0: Integer
+pub(super) fn str_to_int(state: &mut Interpreter) {
+    let return_ref = Ref::Local(LocalID(0));
+    let arg_0 = Ref::Local(LocalID(1));
+
+    let string = state.read_string(&arg_0.deref());
+    let int: i32 = string.parse().unwrap_or_else(|_| {
+        panic!("IntToStr failed: could not convert `{}` to int", string);
+    });
+
+    state.store(&return_ref, MemCell::I32(int));
+}
+
 /// $0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) {
     let arg_0 = Ref::Local(LocalID(0));

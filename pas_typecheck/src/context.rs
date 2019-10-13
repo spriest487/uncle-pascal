@@ -2,12 +2,9 @@ pub mod builtin;
 pub mod ns;
 pub mod result;
 
-use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface, Variant},
-    context::NamespaceStack,
-    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName,
-    Type, TypeParam,
-};
+mod ufcs;
+
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -71,6 +68,7 @@ pub struct Binding {
 pub enum InstanceMember {
     Data { ty: Type },
     Method { iface_ty: Type, method: Ident },
+    UFCSCall { func_name: IdentPath, sig: Rc<FunctionSig> },
 }
 
 #[derive(Clone, Debug)]
@@ -933,66 +931,6 @@ impl Context {
         }
     }
 
-    /// an instance method is an interface impl method for `ty` that takes Self as the first argument
-    /// TODO: or any function taking `ty` as its first argument
-    fn instance_methods_of(&self, ty: &Type) -> NamingResult<Vec<(Type, FunctionDecl)>> {
-        match ty {
-            Type::Interface(iface) => {
-                let iface_def = self.find_iface_def(iface)?;
-                let methods = iface_def
-                    .methods
-                    .iter()
-                    .map(|method_decl| (ty.clone(), method_decl.clone()))
-                    .collect();
-
-                Ok(methods)
-            }
-
-            _ => {
-                let mut methods = Vec::new();
-
-                for (iface_ident, iface_impls) in &self.iface_impls {
-                    let iface_decl = self
-                        .resolve(iface_ident)
-                        .and_then(|member| member.as_value())
-                        .unwrap();
-
-                    let (iface_ty, iface) = match iface_decl {
-                        Decl::Type {
-                            ty: iface_ty @ Type::Interface(..),
-                            ..
-                        } => match iface_ty {
-                            Type::Interface(iface) => (iface_ty, iface),
-                            _ => unreachable!(),
-                        },
-
-                        _ => panic!("invalid kind of decl referenced in iface impl"),
-                    };
-
-                    if iface_impls.contains_key(ty) {
-                        let iface_def = self.find_iface_def(iface)?;
-                        let iface_instance_methods =
-                            iface_def.methods.iter().filter(|method_decl| {
-                                method_decl
-                                    .params
-                                    .get(0)
-                                    .map(|arg_0| arg_0.ty == Type::MethodSelf)
-                                    .unwrap_or(false)
-                            });
-
-                        // add all the methods, we don't need to check if they're actually defined
-                        // or implemented - we should check that elsewhere
-                        for method in iface_instance_methods {
-                            methods.push((iface_ty.clone(), method.clone()))
-                        }
-                    }
-                }
-
-                Ok(methods)
-            }
-        }
-    }
-
     pub fn find_instance_member<'ty, 'ctx: 'ty>(
         &'ctx self,
         of_ty: &'ty Type,
@@ -1000,11 +938,10 @@ impl Context {
     ) -> NamingResult<InstanceMember> {
         let data_member = of_ty.find_data_member(member, self)?;
 
-        let methods = self.instance_methods_of(of_ty)?;
+        let methods = ufcs::instance_methods_of(of_ty, self)?;
         let matching_methods: Vec<_> = methods
             .iter()
-            .filter(|(_of_ty, m)| *m.ident.single() == *member)
-            .map(|(of_ty, m)| (of_ty.clone(), m.clone()))
+            .filter(|m| *m.ident() == *member)
             .collect();
 
         fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {
@@ -1017,17 +954,43 @@ impl Context {
                 .collect()
         }
 
+        fn ambig_matching_methods(
+            methods: &[&ufcs::InstanceMethod]
+        ) -> Vec<(Type, Ident)> {
+            methods.iter()
+                .map(|im| match im {
+                    ufcs::InstanceMethod::Method { iface_ty, decl } => {
+                        (iface_ty.clone(), decl.ident.last().clone())
+                    }
+
+                    ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
+                        let of_ty = sig.params.first().unwrap().ty.clone();
+                        (of_ty.clone(), func_name.last().clone())
+                    }
+                })
+                .collect()
+        }
+
         match (data_member, matching_methods.len()) {
             (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
 
             // unambiguous method
             (None, 1) => {
-                let (iface_ty, method) = &matching_methods[0];
+                match matching_methods.last().unwrap() {
+                    ufcs::InstanceMethod::Method { iface_ty, decl } => {
+                        Ok(InstanceMember::Method {
+                            iface_ty: iface_ty.clone(),
+                            method: decl.ident.last().clone(),
+                        })
+                    }
 
-                Ok(InstanceMember::Method {
-                    iface_ty: iface_ty.clone(),
-                    method: method.ident.single().clone(),
-                })
+                    ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
+                        Ok(InstanceMember::UFCSCall {
+                            func_name: func_name.clone(),
+                            sig: sig.clone(),
+                        })
+                    }
+                }
             }
 
             (None, 0) => Err(NameError::MemberNotFound {
@@ -1039,21 +1002,14 @@ impl Context {
             // there's a data member and 1+ methods
             (Some(data_member), _) => Err(NameError::Ambiguous {
                 ident: member.clone(),
-                options: ambig_paths(
-                    matching_methods
-                        .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single().clone()))
-                        .chain(vec![(of_ty.clone(), data_member.ident)]),
-                ),
+                options: ambig_paths(ambig_matching_methods(&matching_methods)
+                    .into_iter()
+                    .chain(vec![(of_ty.clone(), data_member.ident)])),
             }),
 
             (None, _) => Err(NameError::Ambiguous {
                 ident: member.clone(),
-                options: ambig_paths(
-                    matching_methods
-                        .into_iter()
-                        .map(|(of_ty, method_decl)| (of_ty, method_decl.ident.single().clone())),
-                ),
+                options: ambig_paths(ambig_matching_methods(&matching_methods)),
             }),
         }
     }

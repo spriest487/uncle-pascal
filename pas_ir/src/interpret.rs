@@ -1368,7 +1368,21 @@ impl Interpreter {
                 GlobalCell {
                     value: MemCell::Function(Function::Builtin {
                         func: builtin::int_to_str,
-                        ret: Type::Struct(STRING_ID).ptr(),
+                        ret: Type::RcPointer(Some(ClassID::Class(STRING_ID))),
+                    }),
+                    ty: Type::Nothing,
+                },
+            );
+        }
+
+        let strtoint_name = GlobalName::new("StrToInt", vec!["System"]);
+        if let Some(strtoint_id) = self.metadata.find_function(&strtoint_name) {
+            self.globals.insert(
+                GlobalRef::Function(strtoint_id),
+                GlobalCell {
+                    value: MemCell::Function(Function::Builtin {
+                        func: builtin::str_to_int,
+                        ret: Type::I32,
                     }),
                     ty: Type::Nothing,
                 },

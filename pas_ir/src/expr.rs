@@ -495,12 +495,12 @@ fn translate_func_call(
 ) -> Option<Ref> {
     let (_, full_name) = match func_call.target.annotation() {
         pas_ty::TypeAnnotation::Function {
-            ty: pas_ty::Type::Function(sig),
+            func_ty: pas_ty::Type::Function(sig),
             ns,
             name,
             ..
         } => (sig.as_ref(), ns.clone().child(name.clone())),
-        _ => panic!("type of function target expr must be a function"),
+        _ => panic!("type of function call expr must be a function"),
     };
 
     let type_args = func_call.type_args.clone();

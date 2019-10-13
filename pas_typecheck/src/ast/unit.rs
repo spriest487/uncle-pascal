@@ -1,4 +1,5 @@
 use crate::ast::prelude::*;
+use crate::ModuleUnit;
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
@@ -134,7 +135,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
     }
 }
 
-pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<Unit> {
+pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<ModuleUnit> {
     let unit_scope = ctx.push_scope(Some(unit.ident.clone()));
 
     let mut decls = Vec::new();
@@ -157,11 +158,18 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         });
     }
 
+    let unit_ctx = ctx.clone();
+
     ctx.pop_scope(unit_scope);
 
-    Ok(Unit {
+    let unit = Unit {
         ident: unit.ident.clone(),
         init,
         decls,
+    };
+
+    Ok(ModuleUnit {
+        context: unit_ctx,
+        unit,
     })
 }

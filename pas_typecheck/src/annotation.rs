@@ -7,7 +7,12 @@ use pas_syn::{
     Ident,
 };
 
-use crate::{ast::{Expression, FunctionDecl}, result::*, ty::*, ValueKind};
+use crate::{
+    ast::{Expression, FunctionDecl},
+    result::*,
+    ty::*,
+    ValueKind,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -85,12 +90,18 @@ pub enum TypeAnnotation {
         span: Span,
         name: Ident,
         ns: IdentPath,
-        ty: Type,
+        func_ty: Type,
         type_args: Vec<Type>,
     },
     Type(Type, Span),
     Namespace(IdentPath, Span),
     Method(MethodAnnotation),
+    UFCSCall {
+        self_arg: Box<Expression>,
+        function: IdentPath,
+        func_ty: Type,
+        span: Span,
+    },
     VariantCtor(VariantCtorAnnotation),
 }
 
@@ -99,7 +110,8 @@ impl TypeAnnotation {
         assert_ne!(Type::Nothing, *expect_ty);
 
         match self {
-            TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. }
+            TypeAnnotation::Function { func_ty: ty, .. }
+            | TypeAnnotation::TypedValue { ty, .. }
                 if ty == expect_ty =>
             {
                 Ok(())
@@ -117,8 +129,14 @@ impl TypeAnnotation {
                 actual: ty.clone(),
             }),
 
-            TypeAnnotation::Function { span, .. }
-            | TypeAnnotation::Untyped(span)
+            TypeAnnotation::UFCSCall { span, func_ty, .. }
+            | TypeAnnotation::Function { span, func_ty, .. } => Err(TypecheckError::TypeMismatch {
+                span: span.clone(),
+                expected: expect_ty.clone(),
+                actual: func_ty.clone(),
+            }),
+
+            TypeAnnotation::Untyped(span)
             | TypeAnnotation::Namespace(_, span)
             | TypeAnnotation::Type(_, span) => Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
@@ -138,7 +156,7 @@ impl TypeAnnotation {
                     expected: expect_ty.clone(),
                     actual: variant_ty,
                 })
-            },
+            }
         }
     }
 
@@ -150,7 +168,9 @@ impl TypeAnnotation {
             TypeAnnotation::Method(method) => &method.method_ty,
             TypeAnnotation::VariantCtor(..) => &Type::Nothing,
 
-            TypeAnnotation::Function { ty, .. } | TypeAnnotation::TypedValue { ty, .. } => ty,
+            TypeAnnotation::UFCSCall { func_ty: ty, .. }
+            | TypeAnnotation::Function { func_ty: ty, .. }
+            | TypeAnnotation::TypedValue { ty, .. } => ty,
         }
     }
 
@@ -159,6 +179,8 @@ impl TypeAnnotation {
             TypeAnnotation::Type(..) => None,
             TypeAnnotation::Method(method) => Some(&method.span),
             TypeAnnotation::Function { .. } => None, // TODO
+            TypeAnnotation::UFCSCall { .. } => None, // TODO
+
             TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
@@ -192,6 +214,7 @@ impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
         match self {
             TypeAnnotation::Function { span, .. }
+            | TypeAnnotation::UFCSCall { span, .. }
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::TypedValue { span, .. }
             | TypeAnnotation::Method(MethodAnnotation { span, .. })

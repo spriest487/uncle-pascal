@@ -37,15 +37,21 @@ pub mod ast {
 pub mod ty;
 
 #[cfg(test)]
-mod test;
+pub mod test;
 
 use ast::typecheck_unit;
 use pas_common::span::*;
 use pas_syn::IdentPath;
 
 #[derive(Debug, Clone)]
+pub struct ModuleUnit {
+    pub unit: ast::Unit,
+    pub context: Context,
+}
+
+#[derive(Debug, Clone)]
 pub struct Module {
-    pub units: Vec<ast::Unit>,
+    pub units: Vec<ModuleUnit>,
     pub root_ctx: Context,
 
     // language builtins

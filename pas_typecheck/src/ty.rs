@@ -191,7 +191,7 @@ impl FunctionSig {
 
 impl fmt::Display for FunctionSig {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "function(")?;
+        write!(f, "function (")?;
 
         for (i, param) in self.params.iter().enumerate() {
             if i > 0 {
@@ -638,7 +638,7 @@ impl fmt::Display for Type {
             Type::Variant(variant) => write!(f, "{}", variant),
             Type::MethodSelf => write!(f, "Self"),
             Type::Any => write!(f, "Any"),
-            Type::Function(_) => unimplemented!("function types cannot be represented"),
+            Type::Function(sig) => write!(f, "{}", sig),
         }
     }
 }
@@ -650,7 +650,7 @@ impl Typed for Type {
 }
 
 #[derive(Debug, Copy, Clone)]
-pub struct MemberRef<'ty> {
+pub struct TypeMemberRef<'ty> {
     pub ident: &'ty Ident,
     pub ty: &'ty Type,
 }

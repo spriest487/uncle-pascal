@@ -361,7 +361,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
 
     if args.stage == Stage::TypecheckAst {
         for unit in &typed_module.units {
-            println!("{}", unit);
+            println!("{}", unit.unit);
         }
         return Ok(());
     }

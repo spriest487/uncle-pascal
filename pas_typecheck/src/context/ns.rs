@@ -247,6 +247,31 @@ impl<NS: Namespace> NamespaceStack<NS> {
 
         Some(MemberRef::Namespace { path: current })
     }
+
+    #[allow(unused)]
+    pub fn visit_all<Visitor, Err>(&self, mut visitor: Visitor) -> Result<(), Err>
+        where Visitor: FnMut(&[NS::Key], &Member<NS>) -> Result<(), Err>
+    {
+        let mut path = Vec::new();
+
+        for ns_index in (0..self.namespaces.len()).rev() {
+            path.clear();
+            path.extend(self.namespaces[0..=ns_index].iter()
+                .filter_map(|ns| ns.key())
+                .cloned());
+
+            let ns = &self.namespaces[ns_index];
+            for key in ns.keys() {
+                if let Some((key, member)) = ns.get_member(&key) {
+                    path.push(key.clone());
+                    visitor(&path, member)?;
+                    path.pop();
+                }
+            }
+        }
+
+        Ok(())
+    }
 }
 
 fn print_ns<NS: Namespace>(ns: &NS, indent: usize, f: &mut fmt::Formatter) -> fmt::Result
@@ -653,5 +678,50 @@ mod test {
             }
             _ => panic!("B should be a namespace"),
         }
+    }
+
+    fn visit_all_to_vec(namespaces: &NamespaceStack<TestNamespace>) -> Vec<(String, usize)> {
+        let mut visited = Vec::new();
+        namespaces.visit_all::<_, ()>(|path, member| {
+            match member {
+                Member::Value(val) => {
+                    visited.push((path.join("::"), *val));
+                }
+
+                _ => {}
+            }
+
+            Ok(())
+        }).unwrap();
+
+        visited
+    }
+
+    #[test]
+    fn visit_all_visits_parent_scopes_rev_order() {
+        let mut namespaces: NamespaceStack<TestNamespace> = NamespaceStack::new(ns("A"));
+        namespaces.insert("a_val", 1).unwrap();
+        namespaces.push(ns("B"));
+        namespaces.insert("b_val", 2).unwrap();
+
+        let visited = visit_all_to_vec(&namespaces);
+
+        assert_eq!(2, visited.len());
+        assert_eq!(("A::B::b_val".to_string(), 2), visited[0]);
+        assert_eq!(("A::a_val".to_string(), 1), visited[1]);
+    }
+
+    #[test]
+    fn visit_all_visits_unnamed_scopes() {
+        let mut namespaces: NamespaceStack<TestNamespace> = NamespaceStack::new(ns("A"));
+        namespaces.insert("a_val", 1).unwrap();
+        namespaces.push(ns_anon());
+        namespaces.insert("b_val", 2).unwrap();
+
+        let visited = visit_all_to_vec(&namespaces);
+
+        assert_eq!(2, visited.len());
+        assert_eq!(("A::b_val".to_string(), 2), visited[0]);
+        assert_eq!(("A::a_val".to_string(), 1), visited[1]);
     }
 }

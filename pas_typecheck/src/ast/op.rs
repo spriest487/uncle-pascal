@@ -188,7 +188,7 @@ fn desugar_string_concat(
                 ns: concat_path.parent().unwrap(),
                 name: concat_path.last().clone(),
                 span: span.clone(),
-                ty: Type::Function(concat_sig),
+                func_ty: Type::Function(concat_sig),
                 type_args: Vec::new(),
             };
 
@@ -287,6 +287,15 @@ fn typecheck_member_of(
                                 method,
                             );
                             TypeAnnotation::Method(method)
+                        }
+
+                        InstanceMember::UFCSCall { func_name, sig } => {
+                            TypeAnnotation::UFCSCall {
+                                function: func_name,
+                                func_ty: Type::Function(sig),
+                                span: span.clone(),
+                                self_arg: Box::new(lhs.clone()),
+                            }
                         }
 
                         InstanceMember::Data { ty: member_ty } => {

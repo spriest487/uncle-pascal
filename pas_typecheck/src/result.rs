@@ -283,15 +283,13 @@ impl DiagnosticOutput for TypecheckError {
                 }),
             }],
 
-            TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![
-                DiagnosticMessage {
-                    title: format!("previous occurence of `{}`", name),
-                    label: Some(DiagnosticLabel {
-                        text: None,
-                        span: previous.clone(),
-                    }),
-                },
-            ],
+            TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![DiagnosticMessage {
+                title: format!("previous occurence of `{}`", name),
+                label: Some(DiagnosticLabel {
+                    text: None,
+                    span: previous.clone(),
+                }),
+            }],
 
             _ => Vec::new(),
         }
@@ -317,7 +315,7 @@ impl fmt::Display for TypecheckError {
         match self {
             TypecheckError::ScopeError(err) => write!(f, "{}", err),
             TypecheckError::NotCallable(expr) => {
-                write!(f, "expression `{}` is not a callable function", expr)
+                write!(f, "expression `{}` of type `{}` is not a callable function", expr, expr.annotation().ty())
             }
 
             TypecheckError::InvalidArgs { expected, actual, .. } => {

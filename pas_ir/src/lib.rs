@@ -903,7 +903,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     }
 
     for unit in &module.units {
-        ir_module.translate_unit(unit);
+        ir_module.translate_unit(&unit.unit);
     }
 
     // the disposable interface may never be referenced statically but needs to be instantiated

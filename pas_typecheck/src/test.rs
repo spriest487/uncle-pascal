@@ -1,9 +1,46 @@
-use crate::FunctionParamSig;
+use crate::{FunctionParamSig, Type, Primitive, Module, FunctionSig, ModuleUnit};
 
-use super::*;
+use pas_syn::{ast, TokenTree, Ident};
+use pas_syn::parse::TokenStream;
+use pas_common::BuildOptions;
+use pas_common::span::Span;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
+
+pub fn module_from_src(unit_name: &'static str, src: &'static str) -> Module {
+    module_from_srcs(vec![(unit_name, src)])
+}
+
+pub fn module_from_srcs<UnitSources>(unit_srcs: UnitSources) -> Module
+    where UnitSources: IntoIterator<Item = (&'static str, &'static str)>
+{
+    let mut units = Vec::new();
+
+    for (unit_name, src) in unit_srcs {
+        let tokens = TokenTree::tokenize(unit_name, src, &BuildOptions::default()).unwrap();
+        let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
+
+        let unit = ast::Unit::parse(&mut stream, Ident::new(unit_name, Span::zero(unit_name))).unwrap();
+
+        units.push(unit);
+    }
+
+    Module::typecheck(&units, true).unwrap()
+}
+
+pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {
+    let mut module = module_from_src(unit_name, src);
+
+    module.units.pop().unwrap()
+}
+
+pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> Vec<ModuleUnit>
+    where UnitSources: IntoIterator<Item = (&'static str, &'static str)>
+{
+    let module = module_from_srcs(unit_srcs);
+    module.units
+}
 
 #[test]
 fn sig_without_self_is_invalid_impl() {

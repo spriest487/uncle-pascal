@@ -1,26 +1,21 @@
 use crate::{
-    ast::{typecheck_unit, Class, Unit},
+    ast::{Class, Unit},
     context::*,
     ty::*,
 };
-use pas_common::BuildOptions;
-use pas_syn::{ast, parse::prelude::*};
+use pas_syn::{ast};
 use std::rc::Rc;
+use crate::test::module_from_src;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BYTE: Type = Type::Primitive(Primitive::Byte);
 
-fn unit_from_src(src: &str) -> Unit {
-    let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
-    let mut stream = TokenStream::new(tokens, Span::zero("test"));
-
-    let unit = ast::Unit::parse(&mut stream, Ident::new("test", Span::zero("test"))).unwrap();
-
-    let mut ctx = Context::root(true);
-    typecheck_unit(&unit, &mut ctx).unwrap()
+fn unit_from_src(src: &'static str) -> Unit {
+    let mut module = module_from_src("test", src);
+    module.units.pop().unwrap().unit
 }
 
-fn classes_from_src(src: &str) -> Vec<Rc<Class>> {
+fn classes_from_src(src: &'static str) -> Vec<Rc<Class>> {
     let unit = unit_from_src(src);
     let decls = unit.type_decls().cloned().map(|t| match t {
         ast::TypeDecl::Class(class) => class,

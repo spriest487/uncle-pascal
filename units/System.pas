@@ -28,6 +28,7 @@ export function FreeMem(mem: ^Byte); external 'rt';
 export function WriteLn(line: String); external 'rt';
 
 export function IntToStr(i: Integer): String; external 'rt';
+export function StrToInt(s: String): Integer; external 'rt';
 
 export type Disposable = interface
     function Dispose(self: Self);

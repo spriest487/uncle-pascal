@@ -168,11 +168,32 @@ pub fn typecheck_call(
             .map(CallOrCtor::Call)?,
 
         TypeAnnotation::Function {
-            ty: Type::Function(sig),
+            func_ty: Type::Function(sig),
             ..
         } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
             .map(Box::new)
             .map(CallOrCtor::Call)?,
+
+        TypeAnnotation::UFCSCall {
+            function,
+            func_ty: Type::Function(sig),
+            self_arg,
+            ..
+        } => {
+            let arg_brackets = (&func_call.args_brackets.0, &func_call.args_brackets.1);
+
+            let typecheck_call = typecheck_ufcs_call(
+                function,
+                sig,
+                *self_arg.clone(),
+                &func_call.args,
+                func_call.annotation.span(),
+                arg_brackets,
+                ctx
+            );
+
+            typecheck_call.map(Box::new).map(CallOrCtor::Call)?
+        }
 
         TypeAnnotation::Method(method_annotation) => {
             typecheck_method_call(&func_call, &method_annotation, ctx)
@@ -290,6 +311,44 @@ fn typecheck_method_call(
         ident: method_annotation.method_name.clone(),
         of_type: method_annotation.iface_ty.clone(),
         args_brackets: func_call.args_brackets.clone(),
+    }))
+}
+
+fn typecheck_ufcs_call(
+    func_name: &IdentPath,
+    sig: &Rc<FunctionSig>,
+    self_arg: Expression,
+    rest_args: &[ast::Expression<Span>],
+    span: &Span,
+    arg_brackets: (&Span, &Span),
+    ctx: &mut Context,
+) -> TypecheckResult<Call> {
+    let args = typecheck_args(&sig.params, rest_args, Some(&self_arg), span, ctx)?;
+
+    let func_annotation = TypeAnnotation::Function {
+        func_ty: Type::Function(sig.clone()),
+        ns: func_name.clone().parent().unwrap(),
+        name: func_name.last().clone(),
+        span: span.clone(),
+        type_args: Vec::new(),
+    };
+
+    // todo: this should construct a fully qualified path expr instead
+    let target = ast::Expression::Ident(func_name.last().clone(), func_annotation);
+
+    let annotation = TypeAnnotation::TypedValue {
+        ty: sig.return_ty.clone(),
+        span: span.clone(),
+        decl: None,
+        value_kind: ValueKind::Temporary,
+    };
+
+    Ok(ast::Call::Function(FunctionCall {
+        args,
+        args_brackets: (arg_brackets.0.clone(), arg_brackets.1.clone()),
+        annotation,
+        type_args: Vec::new(),
+        target
     }))
 }
 
@@ -619,7 +678,7 @@ pub fn ns_member_ref_to_annotation(
                 span,
                 ns: IdentPath::from_parts(parent_path.keys().cloned()),
                 name: key.clone(),
-                ty: Type::Function(sig.clone()),
+                func_ty: Type::Function(sig.clone()),
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expression to add some
                 type_args: Vec::new(),
