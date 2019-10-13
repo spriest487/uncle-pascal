@@ -518,8 +518,8 @@ impl Type {
 
     pub fn is_matchable(&self) -> bool {
         match self {
-            Type::Class(..) | Type::Interface(..) | Type::Any => true,
-            _ => false,
+            Type::Nothing | Type::Nil => false,
+            _ => true,
         }
     }
 

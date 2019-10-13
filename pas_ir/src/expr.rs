@@ -214,13 +214,14 @@ pub fn translate_if_cond(
         let else_label = if_cond.else_branch.as_ref().map(|_| builder.alloc_label());
 
         let cond_val = translate_expr(&if_cond.cond, builder);
+        let cond_ty = builder.translate_type(if_cond.cond.annotation().ty());
 
         let (test_val, pattern_bindings) = match &if_cond.is_pattern {
-            None => (cond_val, Vec::new()),
+            None => (Value::Ref(cond_val), Vec::new()),
 
             Some(TypePattern::Type { binding, ty, .. }) => {
                 let is_ty = builder.translate_type(ty);
-                let is = translate_is_ty(cond_val.clone(), &is_ty, builder);
+                let is = translate_is_ty(cond_val.clone(), &cond_ty, &is_ty, builder);
 
                 let bindings = match binding {
                     Some(binding) => {
@@ -237,13 +238,9 @@ pub fn translate_if_cond(
 
             Some(TypePattern::NegatedType { ty, .. }) => {
                 let is_not_ty = builder.translate_type(ty);
-                let is = translate_is_ty(cond_val, &is_not_ty, builder);
+                let is = translate_is_ty(cond_val, &cond_ty, &is_not_ty, builder);
 
-                let is_not = builder.local_temp(Type::Bool);
-                builder.append(Instruction::Not {
-                    out: is_not.clone(),
-                    a: Value::Ref(is),
-                });
+                let is_not = builder.not(is);
                 (is_not, Vec::new())
             }
 
@@ -280,7 +277,7 @@ pub fn translate_if_cond(
                 };
 
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
-                (is, bindings)
+                (Value::Ref(is), bindings)
             }
 
             Some(TypePattern::NegatedVariantCase { variant, case, .. }) => {
@@ -289,11 +286,7 @@ pub fn translate_if_cond(
                 let variant_ty = Type::Variant(struct_id);
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
 
-                let is_not = builder.local_temp(Type::Bool);
-                builder.append(Instruction::Not {
-                    out: is_not.clone(),
-                    a: Value::Ref(is),
-                });
+                let is_not = builder.not(Value::Ref(is));
 
                 (is_not, Vec::new())
             }
@@ -375,20 +368,35 @@ fn translate_is_variant(
     is
 }
 
-fn translate_is_ty(val: Ref, ty: &Type, builder: &mut Builder) -> Ref {
-    let result = builder.local_temp(Type::Bool);
-    match ty {
-        Type::RcPointer(Some(class_id)) => {
-            builder.append(Instruction::ClassIs {
-                out: result.clone(),
-                a: Value::Ref(val),
-                class_id: *class_id,
-            });
+fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) -> Value {
+
+
+    // if the value expression is of a value type, then we can perform the check statically
+    if val_ty.is_rc() {
+
+        match ty {
+            Type::RcPointer(Some(class_id)) => {
+                let result = builder.local_temp(Type::Bool);
+
+                builder.append(Instruction::ClassIs {
+                    out: result.clone(),
+                    a: Value::Ref(val),
+                    class_id: *class_id,
+                });
+
+                Value::Ref(result)
+            }
+
+            _ => {
+                Value::LiteralBool(false)
+            }
         }
 
-        _ => unimplemented!("is-pattern for type {}", ty),
+
+    } else {
+        let same_ty = *val_ty == *ty;
+        Value::LiteralBool(same_ty)
     }
-    result
 }
 
 fn translate_call_with_args(
@@ -531,8 +539,8 @@ fn translate_method_call(
     let call_target = match &self_ty {
         Type::RcPointer(Some(ClassID::Interface(iface_id))) => {
             CallTarget::Virtual {
-            iface_id: *iface_id,
-            method: method_call.ident.to_string(),
+                iface_id: *iface_id,
+                method: method_call.ident.to_string(),
             }
         },
 

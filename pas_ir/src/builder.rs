@@ -492,6 +492,21 @@ impl<'m> Builder<'m> {
         });
     }
 
+    pub fn not(&mut self, bool_val: Value) -> Value {
+        match bool_val {
+            Value::LiteralBool(b) => Value::LiteralBool(!b),
+
+            other_val => {
+                let result = self.local_temp(Type::Bool);
+                self.append(Instruction::Not {
+                    a: other_val,
+                    out: result.clone(),
+                });
+                Value::Ref(result)
+            }
+        }
+    }
+
     pub fn bind_local(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
         let name = name.into();
 
