@@ -7,6 +7,7 @@ use std::rc::Rc;
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
+pub type VariantCtorCall = ast::VariantCtorCall<TypeAnnotation>;
 pub type Call = ast::Call<TypeAnnotation>;
 pub type Expression = ast::Expression<TypeAnnotation>;
 

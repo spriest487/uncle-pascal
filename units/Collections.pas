@@ -71,10 +71,14 @@ end;
 
 export function Nth of T(list: LinkedList of T; n: Integer): Option of T
 begin
-    if NthNode of T(list, n) is Option.Some node then
+    let nth := NthNode of T(list, n);
+
+    let result: Option of T := if nth is Option.Some node then
         Option.Some(node.val)
     else
-        Option.None()
+        Option.None();
+
+    result
 end;
 
 export function Append of T(list: LinkedList of T; item: T)

@@ -470,107 +470,130 @@ enum CallTarget {
 pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
         ast::Call::Function(func_call) => {
-            let (_, full_name) = match func_call.target.annotation() {
-                pas_ty::TypeAnnotation::Function {
-                    ty: pas_ty::Type::Function(sig),
-                    ns,
-                    name,
-                    ..
-                } => (sig.as_ref(), ns.clone().child(name.clone())),
-                _ => panic!("type of function target expr must be a function"),
-            };
-
-            let type_args = func_call.type_args.clone();
-            let func = builder.translate_func(full_name, type_args, func_call.span());
-
-            let func_ref = Ref::Global(GlobalRef::Function(func.id));
-            let call_target = CallTarget::Function(Value::Ref(func_ref));
-
-            translate_call_with_args(call_target, &func_call.args, &func.sig, builder)
+            translate_func_call(func_call, builder)
         }
 
         ast::Call::Method(method_call) => {
-            if !method_call.type_args.is_empty() {
-                unimplemented!("method call with type args")
-            }
-
-            let iface = match method_call.of_type.as_iface() {
-                Ok(iface) => iface.clone(),
-                Err(..) => unreachable!("can't have non-interface interface types in method calls"),
-            };
-
-            let method_decl = builder.translate_method(
-                iface,
-                method_call.ident.clone(),
-                method_call.self_type.clone()
-            );
-
-            let self_ty = builder.translate_type(&method_call.self_type);
-            let method_sig = method_call.func_type.as_func().unwrap();
-
-            let call_target = match &self_ty {
-                Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
-                    iface_id: *iface_id,
-                    method: method_call.ident.to_string(),
-                },
-
-                _ => {
-                    let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
-
-                    CallTarget::Function(func_val.into())
-                }
-            };
-
-            translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
+            translate_method_call(method_call, builder)
         }
 
         ast::Call::VariantCtor(variant_ctor) => {
-            let variant_name = variant_ctor.variant.clone();
-            let variant_ty = pas_ty::Type::Variant(Box::new(variant_name));
-
-            let out_ty = builder.translate_type(&variant_ty);
-            let out = builder.local_new(out_ty.clone(), None);
-
-            builder.begin_scope();
-
-            let tag_ptr = builder.local_temp(Type::I32.ptr());
-            builder.append(Instruction::VariantTag {
-                out: tag_ptr.clone(),
-                a: out.clone(),
-                of_ty: out_ty.clone(),
-            });
-
-            let (_, case_index, _) = builder.translate_variant_case(
-                &variant_ctor.variant,
-                &variant_ctor.case,
-            );
-
-            // todo: proper index type
-            builder.mov(
-                tag_ptr.deref(),
-                Value::LiteralI32(case_index as i32),
-            );
-
-            if let Some(arg) = &variant_ctor.arg {
-                let arg_ref = translate_expr(arg, builder);
-
-                let arg_ty = builder.translate_type(arg.annotation().ty());
-                let field_ptr = builder.local_temp(arg_ty.clone().ptr());
-                builder.append(Instruction::VariantData {
-                    out: field_ptr.clone(),
-                    a: out.clone(),
-                    tag: case_index,
-                    of_ty: out_ty.clone(),
-                });
-
-                builder.mov(field_ptr.clone().deref(), Value::Ref(arg_ref));
-                builder.retain(field_ptr.deref(), &arg_ty);
-            }
-
-            builder.end_scope();
-            Some(out)
+            translate_variant_ctor_call(variant_ctor, builder)
         }
     }
+}
+
+fn translate_func_call(
+    func_call: &pas_ty::ast::FunctionCall,
+    builder: &mut Builder
+) -> Option<Ref> {
+    let (_, full_name) = match func_call.target.annotation() {
+        pas_ty::TypeAnnotation::Function {
+            ty: pas_ty::Type::Function(sig),
+            ns,
+            name,
+            ..
+        } => (sig.as_ref(), ns.clone().child(name.clone())),
+        _ => panic!("type of function target expr must be a function"),
+    };
+
+    let type_args = func_call.type_args.clone();
+    let func = builder.translate_func(full_name, type_args, func_call.span());
+
+    let func_ref = Ref::Global(GlobalRef::Function(func.id));
+    let call_target = CallTarget::Function(Value::Ref(func_ref));
+
+    translate_call_with_args(call_target, &func_call.args, &func.sig, builder)
+}
+
+fn translate_method_call(
+    method_call: &pas_ty::ast::MethodCall,
+    builder: &mut Builder
+) -> Option<Ref> {
+    if !method_call.type_args.is_empty() {
+        unimplemented!("method call with type args")
+    }
+
+    let iface = match method_call.of_type.as_iface() {
+        Ok(iface) => iface.clone(),
+        Err(..) => unreachable!("can't have non-interface interface types in method calls"),
+    };
+
+    let method_decl = builder.translate_method(
+        iface,
+        method_call.ident.clone(),
+        method_call.self_type.clone()
+    );
+
+    let self_ty = builder.translate_type(&method_call.self_type);
+    let method_sig = method_call.func_type.as_func().unwrap();
+
+    let call_target = match &self_ty {
+        Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
+            iface_id: *iface_id,
+            method: method_call.ident.to_string(),
+        },
+
+        _ => {
+            let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
+
+            CallTarget::Function(func_val.into())
+        }
+    };
+
+    translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
+}
+
+fn translate_variant_ctor_call(
+    variant_ctor: &pas_ty::ast::VariantCtorCall,
+    builder: &mut Builder
+) -> Option<Ref> {
+    let variant_ty = pas_ty::Type::Variant(Box::new(variant_ctor.variant.clone()))
+        .substitute_type_args(builder.type_args());
+    let variant_name = variant_ty.as_variant()
+        .unwrap();
+
+    let out_ty = builder.translate_type(&variant_ty);
+    let out = builder.local_new(out_ty.clone(), None);
+
+    builder.begin_scope();
+
+    let tag_ptr = builder.local_temp(Type::I32.ptr());
+    builder.append(Instruction::VariantTag {
+        out: tag_ptr.clone(),
+        a: out.clone(),
+        of_ty: out_ty.clone(),
+    });
+
+    let (_, case_index, _) = builder.translate_variant_case(
+        variant_name,
+        &variant_ctor.case,
+    );
+
+    // todo: proper index type
+    builder.mov(
+        tag_ptr.deref(),
+        Value::LiteralI32(case_index as i32),
+    );
+
+    if let Some(arg) = &variant_ctor.arg {
+        let arg_ref = translate_expr(arg, builder);
+
+        let arg_ty = builder.translate_type(arg.annotation().ty());
+        let field_ptr = builder.local_temp(arg_ty.clone().ptr());
+        builder.append(Instruction::VariantData {
+            out: field_ptr.clone(),
+            a: out.clone(),
+            tag: case_index,
+            of_ty: out_ty.clone(),
+        });
+
+        builder.mov(field_ptr.clone().deref(), Value::Ref(arg_ref));
+        builder.retain(field_ptr.deref(), &arg_ty);
+    }
+
+    builder.end_scope();
+    Some(out)
 }
 
 fn is_string_class(class: &pas_ty::QualifiedDeclName) -> bool {

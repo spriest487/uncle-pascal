@@ -123,6 +123,10 @@ impl<'m> Builder<'m> {
         &self.module.opts
     }
 
+    pub fn type_args(&self) -> &[pas_ty::Type] {
+        &self.type_args
+    }
+
     pub fn with_type_args(self, type_args: Vec<pas_ty::Type>) -> Self {
         let any_generic = type_args
             .iter()
@@ -171,7 +175,11 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
-        if name.is_generic() || name.type_args.iter().any(|arg| arg.is_generic_param()) {
+        if name.is_generic() {
+            panic!("can't translate unspecialized generic name: {}", name);
+        }
+
+        if name.type_args.iter().any(|arg| arg.is_generic_param()) {
             panic!(
                 "can't translate name containing generic parameters: {}",
                 name
