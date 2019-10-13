@@ -154,13 +154,11 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         builder.append(Instruction::Label(top_label));
 
         // evaluate condition
-        //        builder.scope(|builder| {
         let cond_val = translate_expr(&while_loop.condition, builder);
         builder.append(Instruction::Not {
             a: Value::Ref(cond_val),
             out: not_cond.clone(),
         });
-        //        });
 
         // break now if condition is false
         builder.append(Instruction::JumpIf {

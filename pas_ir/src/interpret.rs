@@ -702,10 +702,16 @@ impl Interpreter {
         self.metadata
             .find_impl(&instance_ty, iface_id, method)
             .unwrap_or_else(|| {
-                panic!(
-                    "virtual call {}.{} missing implementation for {}",
-                    iface_id, method.0, instance_ty
-                )
+                let mut err = "virtual call ".to_string();
+
+                let iface_ty = Type::RcPointer(Some(ClassID::Interface(iface_id)));
+                let _ = self.metadata.format_type(&iface_ty, &mut err);
+                err.push('.');
+                let _ = self.metadata.format_method(iface_id, method, &mut err);
+                err.push_str(" missing implementation for ");
+                let _ = self.metadata.format_type(&instance_ty, &mut err);
+
+                panic!(err)
             })
     }
 

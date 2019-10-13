@@ -392,13 +392,13 @@ impl<'m> Builder<'m> {
         }
     }
 
-    pub fn translate_method(
+    pub fn translate_method_impl(
         &mut self,
         iface: IdentPath,
         method: Ident,
         self_ty: pas_ty::Type,
     ) -> CachedFunction {
-        self.module.translate_method(iface, method, self_ty)
+        self.module.translate_method_impl(iface, method, self_ty)
     }
 
     pub fn translate_func(
@@ -418,7 +418,7 @@ impl<'m> Builder<'m> {
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 
-        self.module.translate_func_usage(key)
+        self.module.instantiate_func(key)
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {

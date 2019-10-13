@@ -666,14 +666,16 @@ impl Metadata {
     fn next_struct_id(&mut self) -> StructID {
         (0..)
             .map(StructID)
-            .find(|id| !self.type_decls.contains_key(id))
+            .find(|id| !self.type_decls.contains_key(id)
+                && *id != STRING_ID)
             .unwrap()
     }
 
     fn next_iface_id(&mut self) -> InterfaceID {
         (0..)
             .map(InterfaceID)
-            .find(|id| !self.ifaces.contains_key(id))
+            .find(|id| !self.ifaces.contains_key(id)
+                && *id != DISPOSABLE_ID)
             .unwrap()
     }
 
@@ -755,15 +757,16 @@ impl Metadata {
             .and_then(|decl| decl.global_name.as_ref())
             .map(GlobalName::to_string)
             .or_else(|| {
-                self.ifaces().find_map(|(_, iface)| {
+                self.ifaces().find_map(|(iface_id, iface)| {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {
                         iface_impl.methods.iter().find_map(|(method, impl_id)| {
                             if *impl_id == id {
-                                let impl_ty_name = self.pretty_ty_name(impl_ty);
-                                Some(format!(
-                                    "impl of {}.{} for {}",
-                                    iface.name, method.0, impl_ty_name
-                                ))
+                                let mut desc = format!("impl of {}.", iface.name);
+                                let _ = self.format_method(iface_id, *method, &mut desc);
+                                desc.push_str(" for ");
+                                let _ = self.format_type(impl_ty, &mut desc);
+
+                                Some(desc)
                             } else {
                                 None
                             }
@@ -981,6 +984,16 @@ impl Metadata {
         let ty_impl = iface.impls.get(ty)?;
 
         ty_impl.methods.get(&method).cloned()
+    }
+
+    pub fn impls(&self, ty: &Type) -> Vec<InterfaceID> {
+        self.ifaces.iter()
+            .filter_map(|(id, _decl)| if self.is_impl(ty, *id) {
+                Some(*id)
+            } else {
+                None
+            })
+            .collect()
     }
 
     pub fn is_impl(&self, ty: &Type, iface_id: InterfaceID) -> bool {

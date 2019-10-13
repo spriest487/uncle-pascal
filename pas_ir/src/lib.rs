@@ -366,7 +366,7 @@ impl Module {
         self.functions.insert(id, function);
     }
 
-    fn translate_func_usage(&mut self, key: FunctionCacheKey) -> CachedFunction {
+    fn instantiate_func(&mut self, key: FunctionCacheKey) -> CachedFunction {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
@@ -439,7 +439,7 @@ impl Module {
 
                 let method_def = self
                     .src_metadata
-                    .find_method_def(&iface_def.name.qualified, self_ty, method)
+                    .find_method_impl_def(&iface_def.name.qualified, self_ty, method)
                     .cloned()
                     .expect("missing method def");
 
@@ -474,7 +474,7 @@ impl Module {
     // statically reference a method and get a function ID. interface methods are all translated
     // at the end of compilation for a module anyway, but for methods that are referenced statically
     // this call reserves us a function ID
-    pub fn translate_method(
+    pub fn translate_method_impl(
         &mut self,
         iface: IdentPath,
         method: pas_syn::Ident,
@@ -492,7 +492,7 @@ impl Module {
         };
 
         // methods must always be present so make sure they're immediately instantiated
-        self.translate_func_usage(key)
+        self.instantiate_func(key)
     }
 
     pub fn translate_func(
@@ -505,7 +505,7 @@ impl Module {
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 
-        self.translate_func_usage(key)
+        self.instantiate_func(key)
     }
 
     fn translate_func_def(
@@ -623,6 +623,21 @@ impl fmt::Display for Module {
                         self.metadata.format_type(&field.ty, f)?;
                         writeln!(f)?;
                     }
+
+                    let ty_as_struct = Type::Struct(*id);
+                    let ty_as_class = Type::RcPointer(Some(ClassID::Class(*id)));
+                    let mut iface_impls = self.metadata.impls(&ty_as_struct);
+                    iface_impls.extend(self.metadata.impls(&ty_as_class));
+
+                    if !iface_impls.is_empty() {
+                        writeln!(f, "interface impls:")?;
+                        for iface_id in iface_impls {
+                            let iface_ty = Type::RcPointer(Some(ClassID::Interface(iface_id)));
+                            write!(f, "  * ")?;
+                            self.metadata.format_type(&iface_ty, f)?;
+                            writeln!(f)?;
+                        }
+                    }
                 }
 
                 TypeDef::Variant(v) => {
@@ -659,6 +674,7 @@ impl fmt::Display for Module {
                 let index = format!("  .{}", i);
                 write!(f, "{:8>} ({}): {}", index, method.name, sig)?;
             }
+            writeln!(f)?;
         }
         writeln!(f)?;
 
@@ -836,7 +852,7 @@ fn gen_iface_impls(module: &mut Module) {
                         type_args: Vec::new(),
                     };
 
-                    module.translate_func_usage(cache_key);
+                    module.instantiate_func(cache_key);
                 }
             }
         }

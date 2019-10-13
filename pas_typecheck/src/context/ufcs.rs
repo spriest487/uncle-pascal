@@ -27,7 +27,10 @@ impl InstanceMethod {
 }
 
 /// an instance method is an interface impl method for `ty` that takes Self as the first argument
-/// TODO: or any function taking `ty` as its first argument
+/// OR a virtual method of the interface type referenced by `ty`
+/// OR any free function taking `ty` as its first parameter (UFCS syntax)
+/// OR any free function taking a generic type, or a parameterized type into which `ty` can
+///    be substituted, as its first parameter (generic UFCS)
 pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
     match ty {
         Type::Interface(iface) => {
@@ -48,7 +51,7 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
             let mut methods = Vec::new();
 
             methods.extend(find_ufcs_methods(ty, ctx));
-            methods.extend(find_iface_methods(ty, ctx)?);
+            methods.extend(find_iface_impl_methods(ty, ctx)?);
 
             Ok(methods)
         }
@@ -107,7 +110,7 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     methods
 }
 
-fn find_iface_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
+fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
     let mut methods = Vec::new();
 
     for (iface_ident, iface_impls) in &ctx.iface_impls {

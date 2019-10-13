@@ -269,23 +269,41 @@ fn typecheck_member_of(
                                 _ => unimplemented!("non-interface interface types"),
                             };
 
-                            let method_def = match ctx.find_method_def(iface_id, base_ty, &method) {
-                                Some(method_def) => method_def,
+                            // if it's being called through an interface, it's a virtual call
+                            let method = if base_ty.as_iface().is_ok() {
+                                // calling the virtual method
+                                let iface_decl = ctx.find_iface_def(iface_id)?;
+                                let method_decl = iface_decl.get_method(&method)
+                                    .expect("method must exist, it was found by find_instance_member");
 
-                                None => return Err(NameError::MemberNotFound {
-                                    span: span,
-                                    base: base_ty.clone(),
-                                    member: method,
-                                }.into())
+                                MethodAnnotation::vcall(
+                                    span.clone(),
+                                    lhs.clone(),
+                                    iface_id.clone(),
+                                    method_decl,
+                                )
+                            } else {
+                                let method_def = match ctx.find_method_impl_def(iface_id, base_ty, &method) {
+                                    Some(method_def) => method_def,
+
+                                    None => {
+                                        return Err(NameError::MemberNotFound {
+                                            span: span,
+                                            base: base_ty.clone(),
+                                            member: method,
+                                        }.into())
+                                    }
+                                };
+
+                                MethodAnnotation::ufcs(
+                                    span.clone(),
+                                    iface_ty.clone(),
+                                    lhs.clone(),
+                                    Rc::new(FunctionSig::of_decl(&method_def.decl)),
+                                    method,
+                                )
                             };
 
-                            let method = MethodAnnotation::ufcs(
-                                span.clone(),
-                                iface_ty.clone(),
-                                lhs.clone(),
-                                Rc::new(FunctionSig::of_decl(&method_def.decl)),
-                                method,
-                            );
                             TypeAnnotation::Method(method)
                         }
 

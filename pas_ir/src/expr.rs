@@ -525,22 +525,24 @@ fn translate_method_call(
         Err(..) => unreachable!("can't have non-interface interface types in method calls"),
     };
 
-    let method_decl = builder.translate_method(
-        iface,
-        method_call.ident.clone(),
-        method_call.self_type.clone()
-    );
-
     let self_ty = builder.translate_type(&method_call.self_type);
     let method_sig = method_call.func_type.as_func().unwrap();
 
     let call_target = match &self_ty {
-        Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
+        Type::RcPointer(Some(ClassID::Interface(iface_id))) => {
+            CallTarget::Virtual {
             iface_id: *iface_id,
             method: method_call.ident.to_string(),
+            }
         },
 
         _ => {
+            let method_decl = builder.translate_method_impl(
+                iface,
+                method_call.ident.clone(),
+                method_call.self_type.clone()
+            );
+
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
 
             CallTarget::Function(func_val.into())

@@ -622,7 +622,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn find_method_def(
+    pub fn find_method_impl_def(
         &self,
         iface: &IdentPath,
         for_ty: &Type,

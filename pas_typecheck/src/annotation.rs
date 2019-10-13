@@ -44,6 +44,23 @@ impl MethodAnnotation {
         }
     }
 
+    pub fn vcall(
+        span: Span,
+        self_arg: Expression,
+        iface: IdentPath,
+        method: &FunctionDecl
+    ) -> Self {
+        let method_sig = FunctionSig::of_decl(method);
+
+        Self {
+            span,
+            iface_ty: Type::Interface(iface),
+            method_name: method.ident.single().clone(),
+            self_arg: Some(Box::new(self_arg)),
+            method_ty: Type::Function(Rc::new(method_sig)),
+        }
+    }
+
     pub fn explicit(span: Span, iface_ty: Type, method_decl: FunctionDecl) -> Self {
         Self {
             span,
