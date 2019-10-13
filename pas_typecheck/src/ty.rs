@@ -369,6 +369,36 @@ impl Type {
         }
     }
 
+    /// is this type, or any of the type parameters that it contains, a generic param type?
+    /// e.g. in the sig `X of T(a: Box of T)`, the type of param `a` is `Box of '0`.
+    /// `Box` isn't itself a generic param, but contains param `'0` (`T`) in its own type args
+    pub fn contains_generic_params(&self) -> bool {
+        self.is_generic_param() || self.type_args()
+            .map(|args| args.iter().any(|a| a.contains_generic_params()))
+            .unwrap_or(false)
+    }
+
+    pub fn same_decl_type(&self, other: &Self) -> bool {
+        match (self.full_path(), other.full_path()) {
+            (Some(path), Some(other_path)) => path == other_path,
+            _ => false,
+        }
+    }
+
+    pub fn type_args(&self) -> Option<&[Type]> {
+        match self {
+            Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
+                if name.is_generic() || name.decl_name.type_params.is_empty() {
+                    None
+                } else {
+                    Some(&name.type_args)
+                }
+            }
+
+            _ => None,
+        }
+    }
+
     pub fn is_rc(&self) -> bool {
         match self {
             Type::Class(..) => true,

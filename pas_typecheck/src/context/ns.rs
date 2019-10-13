@@ -249,8 +249,8 @@ impl<NS: Namespace> NamespaceStack<NS> {
     }
 
     #[allow(unused)]
-    pub fn visit_all<Visitor, Err>(&self, mut visitor: Visitor) -> Result<(), Err>
-        where Visitor: FnMut(&[NS::Key], &Member<NS>) -> Result<(), Err>
+    pub fn visit_all<Visitor>(&self, mut visitor: Visitor)
+        where Visitor: FnMut(&[NS::Key], &Member<NS>)
     {
         let mut path = Vec::new();
 
@@ -264,13 +264,11 @@ impl<NS: Namespace> NamespaceStack<NS> {
             for key in ns.keys() {
                 if let Some((key, member)) = ns.get_member(&key) {
                     path.push(key.clone());
-                    visitor(&path, member)?;
+                    visitor(&path, member);
                     path.pop();
                 }
             }
         }
-
-        Ok(())
     }
 }
 
@@ -682,7 +680,7 @@ mod test {
 
     fn visit_all_to_vec(namespaces: &NamespaceStack<TestNamespace>) -> Vec<(String, usize)> {
         let mut visited = Vec::new();
-        namespaces.visit_all::<_, ()>(|path, member| {
+        namespaces.visit_all(|path, member| {
             match member {
                 Member::Value(val) => {
                     visited.push((path.join("::"), *val));
@@ -690,9 +688,7 @@ mod test {
 
                 _ => {}
             }
-
-            Ok(())
-        }).unwrap();
+        });
 
         visited
     }

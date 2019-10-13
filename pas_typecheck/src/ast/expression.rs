@@ -323,31 +323,38 @@ fn typecheck_ufcs_call(
     arg_brackets: (&Span, &Span),
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
-    let args = typecheck_args(&sig.params, rest_args, Some(&self_arg), span, ctx)?;
+    let specialized_call_args = specialize_call_args(
+        sig,
+        &rest_args,
+        Some(&self_arg),
+        &Vec::new(), // ufcs call can't have explicit type args
+        &span,
+        ctx,
+    )?;
 
     let func_annotation = TypeAnnotation::Function {
-        func_ty: Type::Function(sig.clone()),
+        func_ty: Type::Function(Rc::new(specialized_call_args.sig.clone())),
         ns: func_name.clone().parent().unwrap(),
         name: func_name.last().clone(),
         span: span.clone(),
-        type_args: Vec::new(),
+        type_args: specialized_call_args.type_args.clone(),
     };
 
     // todo: this should construct a fully qualified path expr instead
     let target = ast::Expression::Ident(func_name.last().clone(), func_annotation);
 
     let annotation = TypeAnnotation::TypedValue {
-        ty: sig.return_ty.clone(),
+        ty: specialized_call_args.sig.return_ty.clone(),
         span: span.clone(),
         decl: None,
         value_kind: ValueKind::Temporary,
     };
 
     Ok(ast::Call::Function(FunctionCall {
-        args,
+        args: specialized_call_args.actual_args,
         args_brackets: (arg_brackets.0.clone(), arg_brackets.1.clone()),
         annotation,
-        type_args: Vec::new(),
+        type_args: specialized_call_args.type_args,
         target
     }))
 }
@@ -356,6 +363,83 @@ struct SpecializedCallArgs {
     sig: FunctionSig,
     type_args: Vec<Type>,
     actual_args: Vec<Expression>,
+}
+
+fn specialize_arg<ArgProducer>(
+    param_ty: &Type,
+    inferred_ty_args: &mut Vec<Option<Type>>,
+    produce_expr: ArgProducer,
+    ctx: &mut Context,
+) -> TypecheckResult<Expression>
+    // (expected type, ctx) -> expression val
+    where ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expression>,
+{
+    match param_ty {
+        // param is generic: arg expr ty drives param type
+        Type::GenericParam(param_ty) => {
+            match &inferred_ty_args[param_ty.pos] {
+                // type arg in this pos was already inferred from an earlier arg
+                Some(already_inferred_ty) => {
+                    produce_expr(already_inferred_ty, ctx)
+                },
+
+                None => {
+                    let actual_arg = produce_expr(&Type::Nothing, ctx)?;
+                    let actual_ty = actual_arg.annotation().ty().clone();
+
+                    inferred_ty_args[param_ty.pos] = Some(actual_ty);
+                    Ok(actual_arg)
+                },
+            }
+        }
+
+        // param is not generic: param type drives expr expected type
+        param_ty => {
+            let actual_arg = produce_expr(param_ty, ctx)?;
+            let actual_ty = actual_arg.annotation().ty();
+
+            infer_from_structural_ty_args(param_ty, actual_ty, inferred_ty_args);
+
+            Ok(actual_arg)
+        },
+    }
+}
+
+fn infer_from_structural_ty_args(
+    param_ty: &Type,
+    actual_ty: &Type,
+    inferred_ty_args: &mut Vec<Option<Type>>
+) {
+    if !param_ty.same_decl_type(param_ty) {
+        return;
+    }
+
+    let param_ty_args = match param_ty.type_args() {
+        Some(args) => args,
+        None => return,
+    };
+    let actual_ty_args = match actual_ty.type_args() {
+        Some(args) => args,
+        None => return,
+    };
+
+    let all_ty_args = param_ty_args.iter().zip(actual_ty_args.iter());
+    for (param_ty_arg, actual_ty_arg) in all_ty_args {
+        match param_ty_arg {
+            Type::GenericParam(param_generic) => {
+                let inferred = &mut inferred_ty_args[param_generic.pos];
+                assert_eq!(None, *inferred);
+
+                *inferred = Some(actual_ty_arg.clone());
+            },
+
+            _ => infer_from_structural_ty_args(
+                param_ty_arg,
+                actual_ty_arg,
+                inferred_ty_args,
+            ),
+        }
+    }
 }
 
 fn specialize_call_args(
@@ -384,40 +468,46 @@ fn specialize_call_args(
             type_args: explicit_ty_args.to_vec(),
         })
     } else {
+        // we haven't checked arg length matches yet because we haven't typechecked args        let self
+        let self_arg_len = if self_arg.is_some() { 1 } else { 0 };
+        if args.len() + self_arg_len != decl_sig.params.len() {
+            // this is an inferral error because we don't have enough information to report
+            // it as an arg type mismatch
+            return Err(GenericError::CannotInferArgs {
+                target: GenericTarget::FunctionSig(decl_sig.clone()),
+                hint: GenericTypeHint::Unknown,
+                span: span.clone(),
+            }.into());
+        }
+
         // try to infer type from args, left to right
         let mut inferred_ty_args = vec![None; decl_sig.type_params_len];
+        let mut actual_args = Vec::new();
 
-        let mut actual_args = match self_arg {
-            Some(self_arg) => vec![self_arg.clone()],
-            None => Vec::new(),
-        };
+        if let Some(self_arg) = self_arg.cloned() {
+            let self_param = &decl_sig.params[0];
+            let self_arg = specialize_arg(
+                &self_param.ty,
+                &mut inferred_ty_args,
+                |_expect_ty, _ctx| Ok(self_arg),
+                ctx
+            )?;
+
+            actual_args.push(self_arg);
+        }
 
         for (i, arg) in args.iter().enumerate() {
-            let arg = match &decl_sig.params[i].ty {
-                // param is generic: arg expr ty drives param type
-                Type::GenericParam(param_ty) => {
-                    match &inferred_ty_args[param_ty.pos] {
-                        // type arg in this pos was already inferred from an earlier arg
-                        Some(already_inferred_ty) => {
-                            typecheck_expr(arg, already_inferred_ty, ctx)?
-                        },
-                        None => {
-                            let actual_arg= typecheck_expr(arg, &Type::Nothing, ctx)?;
-                            let actual_ty = actual_arg.annotation().ty().clone();
-
-                            inferred_ty_args[param_ty.pos] = Some(actual_ty);
-                            actual_arg
-                        },
-                    }
-                }
-
-                // param is not generic: param type drives expr expected type
-                param_ty => {
-                    typecheck_expr(arg, param_ty, ctx)?
+            let param_ty = &decl_sig.params[i + self_arg_len].ty;
+            let actual_arg = specialize_arg(
+                param_ty,
+                &mut inferred_ty_args,
+                |expect_ty, ctx| {
+                    typecheck_expr(arg, expect_ty, ctx)
                 },
-            };
+                ctx,
+            )?;
 
-            actual_args.push(arg);
+            actual_args.push(actual_arg);
         }
 
         if inferred_ty_args.iter().any(Option::is_none) {
@@ -427,7 +517,7 @@ fn specialize_call_args(
 
             return Err(GenericError::CannotInferArgs {
                 target: GenericTarget::FunctionSig(decl_sig.clone()),
-                expected: GenericTypeHint::ArgTypes(arg_tys),
+                hint: GenericTypeHint::ArgTypes(arg_tys),
                 span: span.clone(),
             }.into());
         }
@@ -437,6 +527,8 @@ fn specialize_call_args(
             .collect();
 
         let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span)?;
+
+//        println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
 
         Ok(SpecializedCallArgs {
             type_args: inferred_ty_args,
@@ -512,7 +604,7 @@ fn typecheck_variant_ctor_call(
     if variant.is_generic() {
         return Err(GenericError::CannotInferArgs {
             target: GenericTarget::Name(variant.qualified.clone()),
-            expected: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
         }.into());
     }

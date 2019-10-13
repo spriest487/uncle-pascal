@@ -1,14 +1,16 @@
-uses Collections, System;
+uses System, Collections;
 
 let x := NewLinkedList of Integer();
 
-Append of Integer(x, 123);
-Append of Integer(x, 456);
+WriteLn('len of x: ' + x.Length().IntToStr());
 
-WriteLn('len of x: ' + IntToStr(Length of Integer(x)));
+x.Append(123);
+x.Append(456);
 
-if Nth of Integer(x, 0) is Option.Some n then
-    WriteLn('x[0]: ' + IntToStr(n));
+WriteLn('len of x: ' + x.Length().IntToStr());
 
-if Nth of Integer(x, 1) is Option.Some n then
-    WriteLn('x[1]: ' + IntToStr(n));
+if x.Nth(0) is Option.Some n then
+    WriteLn('x[0]: ' + n.IntToStr());
+
+if x.Nth(1) is Option.Some n then
+    WriteLn('x[1]: ' + n.IntToStr());

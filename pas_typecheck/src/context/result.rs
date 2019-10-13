@@ -20,6 +20,7 @@ impl fmt::Display for GenericTarget {
 
 #[derive(Debug)]
 pub enum GenericTypeHint {
+    Unknown,
     ExpectedValueType(Type),
     ArgTypes(Vec<Type>),
 }
@@ -27,6 +28,8 @@ pub enum GenericTypeHint {
 impl fmt::Display for GenericTypeHint {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            GenericTypeHint::Unknown => write!(f, "unknown"),
+
             GenericTypeHint::ExpectedValueType(ty) => {
                 write!(f, "expected type {}", ty)
             }
@@ -63,7 +66,7 @@ pub enum GenericError {
     },
     CannotInferArgs {
         target: GenericTarget,
-        expected: GenericTypeHint,
+        hint: GenericTypeHint,
         span: Span,
     },
     IllegalUnspecialized {
@@ -117,14 +120,16 @@ impl fmt::Display for GenericError {
 
             GenericError::CannotInferArgs {
                 target,
-                expected,
+                hint,
                 ..
-            } => write!(
-                f,
-                "cannot infer type arguments for {} from {}",
-                target,
-                expected,
-            ),
+            } => {
+                write!(f, "cannot infer type arguments for {}", target)?;
+
+                match hint {
+                    GenericTypeHint::Unknown => Ok(()),
+                    hint => write!(f, "from {}", hint)
+                }
+            },
 
             GenericError::IllegalUnspecialized {
                 ty, ..

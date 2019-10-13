@@ -27,14 +27,14 @@ pub fn typecheck_object_ctor(
         .ok_or_else(|| GenericError::CannotInferArgs {
             target: GenericTarget::Name(ty_name.clone()),
             span: span.clone(),
-            expected: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
         })?
         .clone();
 
     if ty.is_generic() {
         return Err(GenericError::CannotInferArgs {
             target: GenericTarget::Name(ctor.ident.clone()),
-            expected: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
         }.into());
     }

@@ -522,6 +522,21 @@ impl Context {
         self.declare(name, Decl::Alias(aliased))
     }
 
+    pub fn resolve_alias(&self, path: &IdentPath) -> Option<IdentPath> {
+        let member = self.resolve(path)?;
+
+        match member {
+            MemberRef::Value { value, parent_path, key } => {
+                match value {
+                    Decl::Alias(aliased) => self.resolve_alias(aliased),
+                    _ => Some(IdentPath::new(key.clone(), parent_path.keys().cloned())),
+                }
+            }
+
+            _ => None,
+        }
+    }
+
     pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
         match self.resolve(ns_path) {
             Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
@@ -1167,17 +1182,6 @@ impl Context {
             Some(MemberRef::Value {
                 parent_path, value, ..
             }) => {
-                // if if resolved to something in a different namespace from the name we
-                // used to find it, we followed an alias - in this case the name is only accessible
-                // if resolved name is in the current scope
-                if let Some(name_parent) = name.parent() {
-                    let resolved_parent = IdentPath::from_parts(parent_path.keys().cloned());
-
-                    if resolved_parent != name_parent && resolved_parent != self.namespace() {
-                        return false;
-                    }
-                }
-
                 match value {
                     Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
                         match visibility {

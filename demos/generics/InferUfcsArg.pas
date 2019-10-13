@@ -1,6 +1,9 @@
 uses System;
 
-let x := NewBox of Integer(246);
-let y := x.Unbox();
+function Identity of T(t: T): T
+begin
+    t
+end;
 
-WriteLn('y: ' + y.IntToStr());
+let x := 1;
+let y := x.Identity();

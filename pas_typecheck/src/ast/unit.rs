@@ -13,10 +13,16 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                         let aliased_unit = IdentPath::from_parts(path.keys().cloned());
 
                         for decl_key in path.top().keys() {
-                            let aliased = aliased_unit.clone().child(decl_key.clone());
+                            let new_alias = aliased_unit.clone().child(decl_key.clone());
+                            let decl_path = ctx.resolve_alias(&new_alias).unwrap();
 
-                            if ctx.is_accessible(&aliased) {
-                                ctx.declare_alias(decl_key, aliased)?;
+                            if ctx.is_accessible(&new_alias) {
+                                // don't re-export names imported as aliases in the unit
+                                let reexport = decl_path.parent().as_ref() != Some(&aliased_unit);
+
+                                if !reexport {
+                                    ctx.declare_alias(decl_key, new_alias)?;
+                                }
                             }
                         }
                     }

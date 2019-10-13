@@ -3,8 +3,9 @@ use std::rc::Rc;
 use pas_syn::{Ident, IdentPath};
 
 use crate::ast::FunctionDecl;
-use crate::{Context, Decl, FunctionSig, MemberRef, NamingResult, Type, Namespace};
+use crate::{Context, Decl, FunctionSig, MemberRef, NamingResult, Type};
 
+#[derive(Clone, Debug)]
 pub enum InstanceMethod {
     FreeFunction {
         func_name: IdentPath,
@@ -55,16 +56,17 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
 }
 
 fn find_ufcs_methods(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
-    let methods = ctx.scopes
-        .current_path()
-        .top()
-        .keys()
-        .into_iter()
-        .map(|k| {
-            // must exist if it's in the current NS's keys()
-            ctx.find(&k)
-                .expect("keys from current_path.top().keys() must not map to None with find(key)")
-        })
+    let mut members = Vec::new();
+
+    let current_ns = ctx.namespace();
+    ctx.scopes.visit_all(|path, _| {
+        let path = IdentPath::from_parts(path.to_vec());
+        if path.parent().as_ref() == Some(&current_ns) {
+            members.push(ctx.find(path.last()).unwrap());
+        }
+    });
+
+    let methods = members.into_iter()
         .filter_map(|member| {
             match member {
                 MemberRef::Value {
@@ -72,10 +74,19 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
                     ref parent_path,
                     key,
                 } => {
-                    let path = IdentPath::from_parts(parent_path.keys().cloned())
-                        .child(key.clone());
+                    let path =
+                        IdentPath::from_parts(parent_path.keys().cloned()).child(key.clone());
 
-                    if sig.params.len() > 0 && sig.params[0].ty == *ty {
+                    if sig.params.is_empty() {
+                        return None;
+                    }
+
+                    let self_param = &sig.params[0];
+
+                    if self_param.ty == *ty
+                        || (self_param.ty.contains_generic_params()
+                            && self_param.ty.same_decl_type(ty))
+                    {
                         Some(InstanceMethod::FreeFunction {
                             func_name: path,
                             sig: sig.clone(),
@@ -160,17 +171,17 @@ mod test {
         );
 
         let target = Type::of_decl(&unit.unit.type_decls().next().unwrap());
-        assert_eq!("UFCSTarget", target.full_path().unwrap().last().name);
+        assert_eq!(target.full_path().unwrap().last().name, "UFCSTarget");
 
         let methods = find_ufcs_methods(&target, &unit.context);
 
-        assert_eq!(1, methods.len());
-        assert_eq!("TargetMethod", methods[0].ident().name);
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].ident().name, "TargetMethod");
     }
 
     #[test]
     fn finds_exported_ufcs_func_from_other_unit() {
-        let a_src = r"type UFCSTarget = class
+        let a_src = r"export type UFCSTarget = class
             end;";
 
         let b_src = r"export function TargetMethod(t: A.UFCSTarget)
@@ -187,7 +198,7 @@ mod test {
         let target = Type::of_decl(&a.unit.type_decls().next().unwrap());
         let methods = find_ufcs_methods(&target, &c.context);
 
-        assert_eq!(1, methods.len());
-        assert_eq!("TargetMethod", methods[0].ident().name);
+        assert_eq!(methods.len(), 1);
+        assert_eq!(methods[0].ident().name, "TargetMethod");
     }
 }
