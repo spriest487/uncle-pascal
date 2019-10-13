@@ -636,7 +636,12 @@ fn translate_bin_op(
     }
 
     let out_ty = builder.translate_type(out_ty);
-    let out_val = builder.local_new(out_ty.clone(), None);
+
+    let (out_val, out_by_ref) = if bin_op.op == syn::Operator::Member {
+        (builder.local_new(out_ty.clone().ptr(), None), true)
+    } else {
+        (builder.local_new(out_ty.clone(), None), false)
+    };
 
     builder.begin_scope();
     let lhs_val = translate_expr(&bin_op.lhs, builder);
@@ -670,17 +675,12 @@ fn translate_bin_op(
                 .find_field(&member_name)
                 .expect("referenced field must exist");
 
-            let field_ptr = builder.local_new(out_ty.clone().ptr(), None);
-
             builder.append(Instruction::Field {
-                out: field_ptr.clone(),
+                out: out_val.clone(),
                 a: lhs_val,
                 of_ty,
                 field,
             });
-
-            // this will get retained later in this function
-            builder.mov(out_val.clone(), field_ptr.deref());
         }
 
         syn::Operator::NotEquals => {
@@ -823,10 +823,17 @@ fn translate_bin_op(
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 
-    builder.retain(out_val.clone(), &out_ty);
+    if !out_by_ref {
+        builder.retain(out_val.clone(), &out_ty);
+    }
+
     builder.end_scope();
 
-    out_val
+    if out_by_ref {
+        out_val.deref()
+    } else {
+        out_val
+    }
 }
 
 fn translate_unary_op(

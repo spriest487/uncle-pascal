@@ -90,6 +90,7 @@ begin
                     next: Option.None();
                     val: item;
                 ));
+                break;
             end
         end
     end
