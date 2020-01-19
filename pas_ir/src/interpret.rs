@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-    metadata::*, Function as FunctionIR, GlobalRef, Instruction, InstructionFormatter, Label,
+    metadata::*, Function as IRFunction, FunctionDef, GlobalRef, Instruction, InstructionFormatter, Label,
     LocalID, Module, Ref, Type, Value,
 };
 
@@ -20,7 +20,7 @@ pub type BuiltinFn = fn(state: &mut Interpreter);
 #[derive(Clone)]
 pub enum Function {
     Builtin { func: BuiltinFn, ret: Type },
-    IR(Rc<FunctionIR>),
+    IR(Rc<FunctionDef>),
 }
 
 impl Function {
@@ -1457,16 +1457,18 @@ impl Interpreter {
         self.metadata.extend(&module.metadata);
 
         for (func_name, func) in &module.functions {
-            let func_cell = MemCell::Function(Function::IR(Rc::new(func.clone())));
-            let func_ref = GlobalRef::Function(*func_name);
+            if let IRFunction::Local(func_def) = func {
+                let func_cell = MemCell::Function(Function::IR(Rc::new(func_def.clone())));
+                let func_ref = GlobalRef::Function(*func_name);
 
-            self.globals.insert(
-                func_ref,
-                GlobalCell {
-                    value: func_cell,
-                    ty: Type::Nothing,
-                },
-            );
+                self.globals.insert(
+                    func_ref,
+                    GlobalCell {
+                        value: func_cell,
+                        ty: Type::Nothing,
+                    },
+                );
+            }
         }
 
         for (id, literal) in module.metadata.strings() {

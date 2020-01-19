@@ -1,17 +1,18 @@
 use pas_typecheck as pas_ty;
 
 use crate::{
-    metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, GlobalRef, IROptions,
-    IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value,
+    metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef,
+    GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
+    Value,
 };
 
 use std::fmt;
 
 use pas_common::span::Span;
 use pas_syn::Ident;
-use pas_typecheck::{Specializable, builtin_string_name};
-use std::collections::HashMap;
+use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
+use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -281,15 +282,15 @@ impl<'m> Builder<'m> {
         let src_ty = src_ty.clone().substitute_type_args(&self.type_args);
 
         if let Some(cached) = self.module.type_cache.get(&src_ty) {
-//            println!("{} -> {}", src_ty, cached);
+            //            println!("{} -> {}", src_ty, cached);
 
             return cached.clone();
         }
 
-//        println!("\ntype cache miss for {}, translating...", src_ty);
-//        for (cache_ty, _) in &self.module.type_cache {
-//            println!("{} == {}? {}", src_ty, cache_ty, src_ty == *cache_ty);
-//        }
+        //        println!("\ntype cache miss for {}, translating...", src_ty);
+        //        for (cache_ty, _) in &self.module.type_cache {
+        //            println!("{} == {}? {}", src_ty, cache_ty, src_ty == *cache_ty);
+        //        }
 
         // instantiate types which may contain generic params
         let ty = match &src_ty {
@@ -303,7 +304,7 @@ impl<'m> Builder<'m> {
                 let id = self.module.metadata.reserve_new_struct();
                 let ty = Type::Variant(id);
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
+                //                println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
 
                 let name_path = self.translate_name(&variant);
                 self.module.metadata.declare_struct(id, &name_path);
@@ -318,7 +319,9 @@ impl<'m> Builder<'m> {
                 // handle builtin types
                 if **name == builtin_string_name() {
                     let string_ty = Type::RcPointer(Some(ClassID::Class(STRING_ID)));
-                    self.module.type_cache.insert(src_ty.clone(), string_ty.clone());
+                    self.module
+                        .type_cache
+                        .insert(src_ty.clone(), string_ty.clone());
                     return string_ty;
                 }
 
@@ -328,11 +331,11 @@ impl<'m> Builder<'m> {
 
                 let ty = match class_def.kind {
                     pas_syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
-                    pas_syn::ast::ClassKind::Record =>  Type::Struct(id),
+                    pas_syn::ast::ClassKind::Record => Type::Struct(id),
                 };
 
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, ty);
+                //                println!("{} <- {}", src_ty, ty);
 
                 let name_path = self.translate_name(&name);
 
@@ -352,7 +355,7 @@ impl<'m> Builder<'m> {
                 let ty = Type::RcPointer(Some(ClassID::Interface(id)));
 
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, ty);
+                //                println!("{} <- {}", src_ty, ty);
 
                 let iface_meta = self.translate_iface(&iface_def);
                 self.module.metadata.define_iface(iface_meta);
@@ -365,7 +368,7 @@ impl<'m> Builder<'m> {
 
                 let ty = Type::RcPointer(Some(ClassID::Class(id)));
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, ty);
+                //                println!("{} <- {}", src_ty, ty);
 
                 ty
             }
@@ -374,7 +377,7 @@ impl<'m> Builder<'m> {
                 // nothing to be instantiated
                 let ty = self.module.metadata.find_type(real_ty);
                 self.module.type_cache.insert(src_ty.clone(), ty.clone());
-//                println!("{} <- {}", src_ty, ty);
+                //                println!("{} <- {}", src_ty, ty);
 
                 ty
             }
@@ -755,12 +758,12 @@ impl<'m> Builder<'m> {
 
         self.module.insert_func(
             funcs.release,
-            Function {
+            Function::Local(FunctionDef {
                 body: release_body,
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("generated RC release func for {}", self.pretty_ty_name(ty)),
-            },
+            }),
         );
 
         let retain_body = {
@@ -775,12 +778,12 @@ impl<'m> Builder<'m> {
 
         self.module.insert_func(
             funcs.retain,
-            Function {
+            Function::Local(FunctionDef {
                 body: retain_body,
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
-            },
+            }),
         );
 
         funcs

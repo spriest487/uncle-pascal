@@ -1,17 +1,14 @@
 use std::{
-    collections::hash_map::{Entry, HashMap},
     borrow::Cow,
+    collections::hash_map::{Entry, HashMap},
     fmt,
 };
 
 use crate::Options;
-use pas_ir::{
-    self as ir,
-    metadata::{FunctionID, GlobalName, StringID},
-};
+use pas_ir::{self as ir, metadata::{FunctionID, GlobalName, StringID}};
 
 pub use self::{function::*, stmt::*, ty::*};
-use pas_ir::metadata::{STRING_LEN_FIELD, STRING_CHARS_FIELD};
+use pas_ir::metadata::{STRING_CHARS_FIELD, STRING_LEN_FIELD};
 
 mod function;
 mod stmt;
@@ -37,45 +34,24 @@ pub struct Module {
 
 impl Module {
     pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
-        let mut builtin_funcs = HashMap::new();
+        let system_funcs = &[
+            ("IntToStr", FunctionName::IntToStr),
+            ("StrToInt", FunctionName::StrToInt),
+            ("GetMem", FunctionName::GetMem),
+            ("FreeMem", FunctionName::FreeMem),
+            ("WriteLn", FunctionName::WriteLn),
+            ("ReadLn", FunctionName::ReadLn),
+        ];
 
-        fn lookup_sys_builtin(
-            metadata: &ir::metadata::Metadata,
-            results: &mut HashMap<FunctionID, FunctionName>,
-            decl_name: &str,
-            c_name: FunctionName,
-        ) {
-            let global_name = &GlobalName::new(decl_name, vec!["System"]);
-            if let Some(inttostr_id) = metadata.find_function(global_name) {
-                results.insert(inttostr_id, c_name);
+        let mut builtin_funcs = HashMap::new();
+        for (pas_name, c_name) in system_funcs {
+            let global_name = &GlobalName::new(*pas_name, vec!["System"]);
+
+            // if a function isn't used then it won't be included in the metadata
+            if let Some(func_id) = metadata.find_function(global_name) {
+                builtin_funcs.insert(func_id, *c_name);
             }
         }
-
-        lookup_sys_builtin(
-            metadata,
-            &mut builtin_funcs,
-            "IntToStr",
-            FunctionName::IntToStr,
-        );
-        lookup_sys_builtin(
-            metadata,
-            &mut builtin_funcs,
-            "StrToInt",
-            FunctionName::StrToInt,
-        );
-        lookup_sys_builtin(metadata, &mut builtin_funcs, "GetMem", FunctionName::GetMem);
-        lookup_sys_builtin(
-            metadata,
-            &mut builtin_funcs,
-            "FreeMem",
-            FunctionName::FreeMem,
-        );
-        lookup_sys_builtin(
-            metadata,
-            &mut builtin_funcs,
-            "WriteLn",
-            FunctionName::WriteLn,
-        );
 
         let classes = metadata
             .type_defs()
@@ -92,7 +68,8 @@ impl Module {
             .map(|(id, str)| (id, str.to_string()))
             .collect();
 
-        let type_names = metadata.type_defs()
+        let type_names = metadata
+            .type_defs()
             .map(|(id, ty_def)| {
                 let ty = match ty_def {
                     ir::metadata::TypeDef::Variant(..) => ir::Type::Variant(id),
@@ -156,13 +133,11 @@ impl Module {
                 let name = StructName::StaticArray(next_id);
                 let array_struct = StructDef {
                     decl: StructDecl { name: name.clone() },
-                    members: vec![
-                        StructMember {
-                            name: FieldName::StaticArrayElements,
-                            ty: element.clone().sized_array(dim),
-                            comment: None,
-                        }
-                    ],
+                    members: vec![StructMember {
+                        name: FieldName::StaticArrayElements,
+                        ty: element.clone().sized_array(dim),
+                        comment: None,
+                    }],
                     comment: Some(format!("array[{}] of {}", dim, element.typename())),
                 };
 
@@ -197,8 +172,10 @@ impl Module {
         }
 
         for (id, func) in &module.functions {
-            let c_func = FunctionDef::translate(*id, func, self);
-            self.functions.push(c_func);
+            if let ir::Function::Local(func_def) = func {
+                let c_func = FunctionDef::translate(*id, func_def, self);
+                self.functions.push(c_func);
+            }
         }
 
         let init_index = self
@@ -279,7 +256,7 @@ impl fmt::Display for Module {
 
             let string_name = StructName::Class(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
-            writeln!(f, "  .{} = (unsigned char*) \"{}\",",  chars_field, lit)?;
+            writeln!(f, "  .{} = (unsigned char*) \"{}\",", chars_field, lit)?;
             writeln!(f, "  .{} = {},", len_field, lit.len())?;
             writeln!(f, "}};")?;
 
@@ -290,7 +267,12 @@ impl fmt::Display for Module {
                 str_id.0
             )?;
             writeln!(f, "  .{} = &String_{},", FieldName::RcResource, str_id.0)?;
-            writeln!(f, "  .{} = &Class_{},", FieldName::RcClass, ir::metadata::STRING_ID.0)?;
+            writeln!(
+                f,
+                "  .{} = &Class_{},",
+                FieldName::RcClass,
+                ir::metadata::STRING_ID.0
+            )?;
             writeln!(f, "  .{} = -1,", FieldName::RcRefCount)?;
             writeln!(f, "}};")?;
         }

@@ -205,10 +205,10 @@ struct Args {
     verbose: bool,
 
     #[structopt(long = "ir-stmts")]
-    annotate_ir_stmts: bool,
+    ir_annotate_stmts: bool,
 
     #[structopt(long = "ir-scopes")]
-    annotate_ir_scopes: bool,
+    ir_annotate_scopes: bool,
 }
 
 fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
@@ -367,8 +367,8 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     }
 
     let ir_opts = IROptions {
-        annotate_scopes: args.annotate_ir_scopes,
-        annotate_stmts: args.annotate_ir_stmts,
+        annotate_scopes: args.ir_annotate_scopes,
+        annotate_stmts: args.ir_annotate_stmts,
         annotate_rc: args.trace_rc,
     };
 

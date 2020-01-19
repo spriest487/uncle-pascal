@@ -61,7 +61,7 @@ pub struct FunctionDecl {
 }
 
 impl FunctionDecl {
-    pub fn translate(id: FunctionID, func: &ir::Function, module: &mut Module) -> Self {
+    pub fn translate(id: FunctionID, func: &ir::FunctionDef, module: &mut Module) -> Self {
         let name = FunctionName::ID(id);
         let return_ty = Type::from_metadata(&func.return_ty, module);
         let params = func
@@ -130,7 +130,7 @@ pub struct FunctionDef {
 }
 
 impl FunctionDef {
-    pub fn translate(id: FunctionID, func: &ir::Function, module: &mut Module) -> Self {
+    pub fn translate(id: FunctionID, func: &ir::FunctionDef, module: &mut Module) -> Self {
         let mut builder = Builder::new(module);
         builder.translate_instructions(&func.body);
 

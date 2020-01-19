@@ -292,12 +292,30 @@ impl fmt::Display for Instruction {
 }
 
 #[derive(Clone, Debug)]
-pub struct Function {
+pub struct FunctionDef {
     pub debug_name: String,
 
     pub body: Vec<Instruction>,
     pub return_ty: Type,
     pub params: Vec<Type>,
+}
+
+#[derive(Clone, Debug)]
+pub enum Function {
+    External {
+        symbol: String,
+        src: String,
+    },
+    Local(FunctionDef),
+}
+
+impl Function {
+    pub fn debug_name(&self) -> &str {
+        match self {
+            Function::External { symbol, .. } => symbol.as_str(),
+            Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -398,7 +416,7 @@ impl Module {
                         let ir_func =
                             self.translate_func_def(&func_def, key.type_args.clone(), debug_name);
 
-                        self.functions.insert(id, ir_func);
+                        self.functions.insert(id, Function::Local(ir_func));
 
                         let cached_func = CachedFunction { id, sig };
                         self.translated_funcs.insert(key, cached_func.clone());
@@ -417,6 +435,14 @@ impl Module {
                             .declare_func(&extern_decl, key.type_args.clone());
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
                         let cached_func = CachedFunction { id, sig };
+
+                        let extern_src = extern_decl.external_src()
+                            .expect("function with external def must have an extern src");
+
+                        self.functions.insert(id, Function::External {
+                            src: extern_src.to_string(),
+                            symbol: extern_decl.ident.last().to_string(),
+                        });
                         self.translated_funcs.insert(key, cached_func.clone());
 
                         cached_func
@@ -473,7 +499,7 @@ impl Module {
                 let debug_name = specialized_decl.to_string();
                 let ir_func =
                     self.translate_func_def(&method_def, key.type_args.clone(), debug_name);
-                self.functions.insert(id, ir_func);
+                self.functions.insert(id, Function::Local(ir_func));
 
                 let cached_func = CachedFunction {
                     id,
@@ -528,7 +554,7 @@ impl Module {
         func: &pas_ty::ast::FunctionDef,
         type_args: Vec<pas_ty::Type>,
         debug_name: String,
-    ) -> Function {
+    ) -> FunctionDef {
         let mut body_builder = Builder::new(self).with_type_args(type_args);
 
         let return_ty = match func.decl.return_ty.as_ref() {
@@ -601,7 +627,7 @@ impl Module {
 
         let body = body_builder.finish();
 
-        Function {
+        FunctionDef {
             body,
             params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
             return_ty,
@@ -712,11 +738,19 @@ impl fmt::Display for Module {
                     writeln!(f, "{}", desc_name)?;
                 }
                 None => {
-                    writeln!(f, " /* {} */", func.debug_name)?;
+                    writeln!(f, " /* {} */", func.debug_name())?;
                 }
             }
 
-            write_instruction_list(f, &self.metadata, &func.body)?;
+            match func {
+                Function::Local(FunctionDef { body, .. }) => {
+                    write_instruction_list(f, &self.metadata, body)?;
+                }
+
+                Function::External { src, symbol } => {
+                    writeln!(f, "<external function '{}' in module '{}'>", symbol, src)?;
+                }
+            }
             writeln!(f)?;
         }
 
@@ -834,12 +868,12 @@ fn gen_dyn_array_disposers(module: &mut Module) {
 
         module.insert_func(
             disposer_id,
-            Function {
+            Function::Local(FunctionDef {
                 debug_name: format!("<generated disposer for {}>", array_ref_ty),
                 return_ty: Type::Nothing,
                 params: vec![array_ref_ty.clone()],
                 body,
-            },
+            }),
         );
     }
 }
