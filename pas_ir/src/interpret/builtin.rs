@@ -1,7 +1,6 @@
-use crate::{
-    interpret::{Interpreter, MemCell, Pointer},
-    LocalID, Ref,
-};
+use crate::{interpret::{Interpreter, MemCell, Pointer}, LocalID, Ref};
+use std::io::{self, BufRead};
+use std::cmp::Ordering;
 
 /// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {
@@ -30,12 +29,51 @@ pub(super) fn str_to_int(state: &mut Interpreter) {
     state.store(&return_ref, MemCell::I32(int));
 }
 
+/// $1: String; $2: String -> $0: Integer
+pub(super) fn compare_str(state: &mut Interpreter) {
+    let return_ref = Ref::Local(LocalID(0));
+
+    let arg_a = Ref::Local(LocalID(1));
+    let arg_b = Ref::Local(LocalID(2));
+
+    let string_a  = state.read_string(&arg_a.deref());
+    let string_b  = state.read_string(&arg_b.deref());
+
+    let cmp = match string_a.cmp(&string_b) {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    };
+
+//    println!("'{}' <=> '{}' = {}", string_a, string_b, cmp);
+
+    state.store(&return_ref, MemCell::I32(cmp));
+}
+
 /// $0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) {
     let arg_0 = Ref::Local(LocalID(0));
     let string = state.read_string(&arg_0.deref());
 
     println!("{}", string);
+}
+
+pub(super) fn read_ln(state: &mut Interpreter) {
+    let ret = Ref::Local(LocalID(0));
+
+    let stdin = io::stdin();
+    let mut line = String::new();
+
+    if let Err(_) = stdin.lock().read_line(&mut line) {
+        line = String::new();
+    }
+
+    // remove the newline
+    line.remove(line.len() - 1);
+
+    let result_str = state.create_string(&line);
+
+    state.store(&ret, result_str);
 }
 
 /// $1: Integer -> $0: ^Byte

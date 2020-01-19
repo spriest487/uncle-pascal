@@ -5,19 +5,21 @@ use std::{
     rc::Rc,
 };
 
-use crate::{metadata::*, Function as FunctionIR, GlobalRef, Instruction, Label, LocalID, Module, Ref, Type, Value, InstructionFormatter};
+use crate::{
+    metadata::*, Function as FunctionIR, GlobalRef, Instruction, InstructionFormatter, Label,
+    LocalID, Module, Ref, Type, Value,
+};
 
 use self::heap::{Heap, HeapAddress};
 
 mod builtin;
 mod heap;
 
+pub type BuiltinFn = fn(state: &mut Interpreter);
+
 #[derive(Clone)]
 pub enum Function {
-    Builtin {
-        func: fn(state: &mut Interpreter),
-        ret: Type,
-    },
+    Builtin { func: BuiltinFn, ret: Type },
     IR(Rc<FunctionIR>),
 }
 
@@ -225,7 +227,7 @@ impl MemCell {
     pub fn try_add(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a + b)),
-
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a + b)),
             (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a + b)),
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
@@ -243,7 +245,7 @@ impl MemCell {
     pub fn try_sub(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a - b)),
-
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a - b)),
             (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a - b)),
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
@@ -434,8 +436,10 @@ impl Interpreter {
     fn default_init_cell(&mut self, ty: &Type) -> MemCell {
         match ty {
             Type::I32 => MemCell::I32(-1),
+            Type::U8 => MemCell::U8(255),
             Type::Bool => MemCell::Bool(false),
-            Type::F32 => MemCell::F32(f32::INFINITY),
+            Type::F32 => MemCell::F32(f32::NAN),
+
             Type::Struct(id) => self.init_struct(*id),
 
             Type::RcPointer(_) => MemCell::Pointer(Pointer::Null),
@@ -651,6 +655,7 @@ impl Interpreter {
             Value::Ref(r) => self.load(r).clone(),
 
             Value::LiteralI32(i) => MemCell::I32(*i),
+            Value::LiteralByte(i) => MemCell::U8(*i),
             Value::LiteralF32(f) => MemCell::F32(*f),
             Value::LiteralBool(b) => MemCell::Bool(*b),
             Value::LiteralNull => MemCell::Pointer(Pointer::Null),
@@ -773,7 +778,9 @@ impl Interpreter {
             .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
 
         if let Some(dispose_func) = dispose_impl_id {
-            let dispose_desc = self.metadata.func_desc(dispose_func)
+            let dispose_desc = self
+                .metadata
+                .func_desc(dispose_func)
                 .unwrap_or_else(|| dispose_func.to_string());
             let disposed_name = self.metadata.pretty_ty_name(ty);
 
@@ -794,18 +801,18 @@ impl Interpreter {
     }
 
     fn release_cell(&mut self, cell: &MemCell) {
-        let ptr = cell.as_pointer().unwrap_or_else(|| {
-            panic!("released cell was not a pointer, found: {:?}", cell)
-        });
+        let ptr = cell
+            .as_pointer()
+            .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
         if *ptr == Pointer::Null {
             return;
         }
 
-        let rc_addr = ptr.as_heap_addr().unwrap_or_else(|| {
-            panic!("released cell was not a heap pointer, found: {:?}", cell)
-        });
+        let rc_addr = ptr
+            .as_heap_addr()
+            .unwrap_or_else(|| panic!("released cell was not a heap pointer, found: {:?}", cell));
 
         let rc_cell = match &self.heap[rc_addr] {
             MemCell::RcCell(rc_cell) => rc_cell.clone(),
@@ -831,16 +838,22 @@ impl Interpreter {
             // Now release the fields of the resource struct as if it was a normal record.
             // This could technically invoke another disposer, but it won't, because there's
             // no way to declare a disposer for the inner resource type of an RC type
-            let rc_funcs = self.metadata.find_rc_boilerplate(&resource_ty)
+            let rc_funcs = self
+                .metadata
+                .find_rc_boilerplate(&resource_ty)
                 .unwrap_or_else(|| {
                     let name = self.metadata.pretty_ty_name(&resource_ty);
-                    let funcs = self.metadata.rc_boilerplate_funcs()
-                        .map(|(ty, funcs)| format!(
+                    let funcs = self
+                        .metadata
+                        .rc_boilerplate_funcs()
+                        .map(|(ty, funcs)| {
+                            format!(
                             "  {}: release={}, retain={}",
                             self.metadata.pretty_ty_name(ty),
                             funcs.release,
                             funcs.retain,
-                        ))
+                            )
+                        })
                         .collect::<Vec<_>>()
                         .join("\n");
 
@@ -889,7 +902,8 @@ impl Interpreter {
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
-                let rc_cell = self.heap[*addr].as_rc_mut()
+                let rc_cell = self.heap[*addr]
+                    .as_rc_mut()
                     .expect("retained cell must point to an rc cell");
 
                 if self.trace_rc {
@@ -899,9 +913,7 @@ impl Interpreter {
                 rc_cell.ref_count += 1;
             }
 
-            _ => {
-                panic!("{:?} cannot be retained")
-            }
+            _ => panic!("{:?} cannot be retained"),
         }
     }
 
@@ -910,15 +922,11 @@ impl Interpreter {
             // let int := 1;
             // let intPtr := @int;
             // @(intPtr^) -> address of int behind intPtr
-            Ref::Deref(val) => {
-                match self.evaluate(val) {
-                    MemCell::Pointer(ptr) => {
-                        ptr.clone()
-                    },
+            Ref::Deref(val) => match self.evaluate(val) {
+                MemCell::Pointer(ptr) => ptr.clone(),
 
                     _ => panic!("deref of non-pointer value @ {}", val),
-                }
-            }
+            },
 
             // let int := 1;
             // @int -> stack address of int cell
@@ -957,8 +965,15 @@ impl Interpreter {
         while pc < instructions.len() {
             if self.trace_ir {
                 let mut instruction_str = String::new();
-                self.metadata.format_instruction(&instructions[pc], &mut instruction_str).unwrap();
-                eprintln!("{:>width$}| {}", pc, instruction_str, width = line_count_width);
+                self.metadata
+                    .format_instruction(&instructions[pc], &mut instruction_str)
+                    .unwrap();
+                eprintln!(
+                    "{:>width$}| {}",
+                    pc,
+                    instruction_str,
+                    width = line_count_width
+                );
             }
 
             self.execute_instruction(&instructions[pc], &mut pc, &labels);
@@ -1287,12 +1302,12 @@ impl Interpreter {
                 _ => panic!("JumpIf instruction testing non-boolean cell"),
             },
 
-            Instruction::Release { at, } => {
+            Instruction::Release { at } => {
                 let cell = self.load(at).clone();
                 self.release_cell(&cell);
             }
 
-            Instruction::Retain { at, } => {
+            Instruction::Retain { at } => {
                 let cell = self.load(at).clone();
                 self.retain_cell(&cell);
             }
@@ -1366,75 +1381,37 @@ impl Interpreter {
         Pointer::Heap(addr)
     }
 
+    fn define_builtin(&mut self, name: GlobalName, func: BuiltinFn, ret: Type) {
+        if let Some(func_id) = self.metadata.find_function(&name) {
+            self.globals.insert(
+                GlobalRef::Function(func_id),
+                GlobalCell {
+                    value: MemCell::Function(Function::Builtin { func, ret }),
+                    ty: Type::Nothing,
+                },
+            );
+        } else {
+            eprintln!(
+                "define_builtin: no declaration for defined function `{}`",
+                name
+            );
+        }
+        }
+
     fn init_stdlib_globals(&mut self) {
-        let inttostr_name = GlobalName::new("IntToStr", vec!["System"]);
-        if let Some(inttostr_id) = self.metadata.find_function(&inttostr_name) {
-            self.globals.insert(
-                GlobalRef::Function(inttostr_id),
-                GlobalCell {
-                    value: MemCell::Function(Function::Builtin {
-                        func: builtin::int_to_str,
-                        ret: Type::RcPointer(Some(ClassID::Class(STRING_ID))),
-                    }),
-                    ty: Type::Nothing,
-                },
-            );
-        }
+        let system_funcs: &[(&str, BuiltinFn, Type)] = &[
+            ("IntToStr", builtin::int_to_str, Type::string_ptr()),
+            ("StrToInt", builtin::str_to_int, Type::I32),
+            ("CompareStr", builtin::compare_str, Type::I32),
+            ("WriteLn", builtin::write_ln, Type::Nothing),
+            ("ReadLn", builtin::read_ln, Type::string_ptr()),
+            ("GetMem", builtin::get_mem, Type::U8.ptr()),
+            ("FreeMem", builtin::free_mem, Type::Nothing),
+        ];
 
-        let strtoint_name = GlobalName::new("StrToInt", vec!["System"]);
-        if let Some(strtoint_id) = self.metadata.find_function(&strtoint_name) {
-            self.globals.insert(
-                GlobalRef::Function(strtoint_id),
-                GlobalCell {
-                    value: MemCell::Function(Function::Builtin {
-                        func: builtin::str_to_int,
-                        ret: Type::I32,
-                    }),
-                    ty: Type::Nothing,
-                },
-            );
-        }
-
-        let writeln_name = GlobalName::new("WriteLn", vec!["System"]);
-        if let Some(writeln_id) = self.metadata.find_function(&writeln_name) {
-            self.globals.insert(
-                GlobalRef::Function(writeln_id),
-                GlobalCell {
-                    value: MemCell::Function(Function::Builtin {
-                        func: builtin::write_ln,
-                        ret: Type::Nothing,
-                    }),
-                    ty: Type::Nothing,
-                },
-            );
-        }
-
-        let getmem_name = GlobalName::new("GetMem", vec!["System"]);
-        if let Some(getmem_id) = self.metadata.find_function(&getmem_name) {
-            self.globals.insert(
-                GlobalRef::Function(getmem_id),
-                GlobalCell {
-                    value: MemCell::Function(Function::Builtin {
-                        func: builtin::get_mem,
-                        ret: Type::U8.ptr(),
-                    }),
-                    ty: Type::Nothing,
-                },
-            );
-        }
-
-        let freemem_name = GlobalName::new("FreeMem", vec!["System"]);
-        if let Some(freemem_id) = self.metadata.find_function(&freemem_name) {
-            self.globals.insert(
-                GlobalRef::Function(freemem_id),
-                GlobalCell {
-                    value: MemCell::Function(Function::Builtin {
-                        func: builtin::free_mem,
-                        ret: Type::Nothing,
-                    }),
-                    ty: Type::Nothing,
-                },
-            );
+        for (ident, func, ret) in system_funcs {
+            let name = GlobalName::new(ident.to_string(), vec!["System"]);
+            self.define_builtin(name, *func, ret.clone());
         }
     }
 
@@ -1512,8 +1489,7 @@ impl Interpreter {
     }
 
     fn read_string(&self, str_ref: &Ref) -> String {
-        let str_cell = self
-            .deref_rc(self.load(str_ref));
+        let str_cell = self.deref_rc(self.load(str_ref));
 
         let str_cell = match str_cell.as_struct(STRING_ID) {
             Some(struct_cell) => struct_cell,

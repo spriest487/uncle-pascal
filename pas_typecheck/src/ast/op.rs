@@ -97,7 +97,7 @@ pub fn typecheck_bin_op(
             }))
         }
 
-        Operator::Plus | Operator::Minus | Operator::Multiply | Operator::Divide => {
+        Operator::Plus | Operator::Minus | Operator::Multiply | Operator::IntegerDivide => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
 
@@ -452,10 +452,11 @@ pub fn typecheck_unary_op(
 ) -> TypecheckResult<UnaryOp> {
     let span = unary_op.span().clone();
     let operand = typecheck_expr(&unary_op.operand, &Type::Nothing, ctx)?;
+    let operand_ty = operand.annotation().ty();
 
     let annotation = match unary_op.op {
         Operator::AddressOf => {
-            let addr_ty = match (operand.annotation().ty(), operand.annotation().value_kind()) {
+            let addr_ty = match (operand_ty, operand.annotation().value_kind()) {
                 (Type::Pointer(_), Some(ValueKind::Mutable))
                 | (Type::Record(_), Some(ValueKind::Mutable))
                 | (Type::Primitive(_), Some(ValueKind::Mutable)) => {
@@ -473,6 +474,26 @@ pub fn typecheck_unary_op(
 
             TypeAnnotation::TypedValue {
                 ty: addr_ty,
+                value_kind: ValueKind::Temporary,
+                span,
+                decl: None,
+            }
+        }
+
+        // unary +, is this always a no-op?
+        Operator::Plus if operand_ty.valid_math_op(Operator::Plus, operand_ty) => {
+            TypeAnnotation::TypedValue {
+                ty: operand_ty.clone(),
+                value_kind: ValueKind::Temporary,
+                span,
+                decl: None,
+            }
+        }
+
+        // unary negation - should this be disallowed for unsigned types?
+        Operator::Minus if operand_ty.valid_math_op(Operator::Minus, operand_ty) => {
+            TypeAnnotation::TypedValue {
+                ty: operand_ty.clone(),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,

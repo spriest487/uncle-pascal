@@ -10,6 +10,7 @@
 * does symbol with same name declared in branch scope confuse the initialization consolidation?
 * interpreter should disallow overwriting cells on stack/heap with cells of different types (by dtor)
 * unify StructID, InterfaceID, VariantID into TypeID
+* indexing into something not indexable throws wrong error (e.g. string.chars[i])
 
 # type inference
 * for function calls (generic args from func arguments)

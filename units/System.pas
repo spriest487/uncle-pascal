@@ -26,9 +26,12 @@ export function GetMem(count: Integer): ^Byte; external 'rt';
 export function FreeMem(mem: ^Byte); external 'rt';
 
 export function WriteLn(line: String); external 'rt';
+export function ReadLn(): String; external 'rt';
 
 export function IntToStr(i: Integer): String; external 'rt';
 export function StrToInt(s: String): Integer; external 'rt';
+
+export function CompareStr(a: String; b: String): Integer; external 'rt';
 
 export type Disposable = interface
     function Dispose(self: Self);
@@ -40,6 +43,11 @@ begin
 
     self.chars := nil;
     self.len := 0;
+end;
+
+export function StringLen(s: String): Integer
+begin
+    s.len
 end;
 
 export function StringConcat(a, b: String): String
@@ -89,6 +97,27 @@ begin
     end;
 
     String(chars: strBytes; len: len)
+end;
+
+export function SubString(s: String; from: Integer; len: Integer): String
+begin
+    // todo: bounds check
+    if len = 0 then
+        ''
+    else begin
+        var buf := GetMem(len);
+        for let i := 0 to len - 1 do begin
+            (buf + i)^ := (s.chars + from + i)^;
+        end;
+
+        String(chars: buf; len: len)
+    end
+end;
+
+export function StringCharAt(s: String; at: Integer): Byte
+begin
+    // todo: bounds check
+    (s.chars + at)^
 end;
 
 export function Max(a, b: Integer): Integer

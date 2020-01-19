@@ -637,6 +637,19 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
                     .expect("Int32-typed constant must be within range of i32");
                 builder.mov(out.clone(), Value::LiteralI32(val));
             }
+            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
+                let val = i
+                    .as_u8()
+                    .expect("Byte-typed constant must be within range of u8");
+                builder.mov(out.clone(), Value::LiteralByte(val))
+            }
+            pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
+                let val = i
+                    .as_f32()
+                    .expect("Real-typed constant must be within range of f32");
+                builder.mov(out.clone(), Value::LiteralF32(val))
+            }
+
             _ => panic!("bad type for integer literal: {}", ty),
         },
 
@@ -898,7 +911,36 @@ fn translate_unary_op(
 
         syn::Operator::Deref => operand_ref.deref(),
 
-        op => unimplemented!("unary operator {}", op),
+        syn::Operator::Minus => {
+            let out_ty = builder.translate_type(out_ty);
+            let out_val = builder.local_new(out_ty.clone(), None);
+
+            let zero_val = match unary_op.annotation.ty() {
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Value::LiteralI32(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Value::LiteralByte(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Value::LiteralF32(0.0),
+                _ => unimplemented!("unary negation of {}", unary_op.annotation.ty())
+            };
+
+            builder.append(Instruction::Sub {
+                a: zero_val,
+                b: Value::Ref(operand_ref),
+                out: out_val.clone(),
+            });
+
+            out_val
+        }
+
+        syn::Operator::Plus => {
+            // just turns its operand into a temporary value
+            let out_ty = builder.translate_type(out_ty);
+            let out_val = builder.local_new(out_ty.clone(), None);
+            builder.mov(out_val.clone(), operand_ref);
+
+            out_val
+        }
+
+        op => unimplemented!("IR translation of unary operator {}", op),
     }
 }
 

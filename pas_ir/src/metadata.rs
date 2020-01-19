@@ -373,6 +373,18 @@ impl Type {
         Type::Pointer(Box::new(self))
     }
 
+    pub const fn rc_ptr_to(class: ClassID) -> Self {
+        Type::RcPointer(Some(class))
+    }
+
+    pub const fn rc_ptr_any() -> Self {
+        Type::RcPointer(None)
+    }
+
+    pub const fn string_ptr() -> Self {
+        Type::rc_ptr_to(ClassID::Class(STRING_ID))
+    }
+
     pub fn deref_ty(&self) -> Option<&Self> {
         match self {
             Type::Pointer(target) => Some(&target),

@@ -45,12 +45,29 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Literal(ast::Literal::Integer(i), _) => {
-            let annotation = TypeAnnotation::TypedValue {
-                ty: if i.as_i32().is_some() {
-                    Type::from(Primitive::Int32)
-                } else {
-                    unimplemented!("integers outside range of i32")
+            let ty = match expect_ty {
+                Type::Primitive(Primitive::Byte) => {
+                    match i.as_u8() {
+                        Some(_) => Type::from(Primitive::Byte),
+                        None => Type::Primitive(Primitive::Int32),
+                    }
                 },
+                Type::Primitive(Primitive::Real32) => {
+                    match i.as_f32() {
+                        Some(_) => Type::from(Primitive::Real32),
+                        None => Type::Primitive(Primitive::Int32),
+                    }
+                },
+                _ => {
+                    match i.as_f32() {
+                        Some(_) => Type::from(Primitive::Int32),
+                        None => unimplemented!("integer literals outside range of i32"),
+                    }
+                }
+            };
+
+            let annotation = TypeAnnotation::TypedValue {
+                ty,
                 value_kind: ValueKind::Immutable,
                 span,
                 decl: None,
