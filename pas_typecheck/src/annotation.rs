@@ -15,76 +15,6 @@ use crate::{
 };
 use crate::ast::OverloadCandidate;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct MethodAnnotation {
-    pub span: Span,
-    pub iface_ty: Type,
-    pub method_name: Ident,
-
-    //    pub self_ty: Type,
-    pub self_arg: Option<Box<Expression>>,
-
-    method_ty: Type,
-}
-
-impl MethodAnnotation {
-    pub fn ufcs(
-        span: Span,
-        iface_ty: Type,
-        self_arg: Expression,
-        method_sig: Rc<FunctionSig>,
-        method_name: Ident,
-    ) -> Self {
-        Self {
-            span,
-            iface_ty,
-            method_ty: Type::Function(method_sig),
-            method_name,
-
-            self_arg: Some(Box::new(self_arg)),
-        }
-    }
-
-    pub fn vcall(
-        span: Span,
-        self_arg: Expression,
-        iface: IdentPath,
-        method: &FunctionDecl
-    ) -> Self {
-        let method_sig = FunctionSig::of_decl(method);
-
-        Self {
-            span,
-            iface_ty: Type::Interface(iface),
-            method_name: method.ident.single().clone(),
-            self_arg: Some(Box::new(self_arg)),
-            method_ty: Type::Function(Rc::new(method_sig)),
-        }
-    }
-
-    pub fn explicit(span: Span, iface_ty: Type, method_decl: FunctionDecl) -> Self {
-        Self {
-            span,
-            iface_ty,
-            method_ty: Type::Function(Rc::new(FunctionSig::of_decl(&method_decl))),
-            method_name: method_decl.ident.single().clone(),
-
-            self_arg: None,
-        }
-    }
-
-    pub fn decl_sig(&self) -> &FunctionSig {
-        match &self.method_ty {
-            Type::Function(sig) => sig.as_ref(),
-            _ => unreachable!(),
-        }
-    }
-
-    pub fn ty(&self) -> &Type {
-        &self.method_ty
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantCtorAnnotation {
     pub span: Span,
@@ -108,6 +38,30 @@ pub struct OverloadAnnotation {
 }
 
 impl OverloadAnnotation {
+    pub fn method(
+        iface_ty: Type,
+        self_arg: Expression,
+        decl: FunctionDecl,
+        span: Span
+    ) -> Self {
+        let sig = Rc::new(FunctionSig::of_decl(&decl));
+
+        Self {
+            span,
+            type_args: Vec::new(), // NYI: methods can't have type args yet,
+            self_arg: Some(Box::new(self_arg)),
+            func_ty: Type::Function(sig.clone()),
+            candidates: vec![
+                OverloadCandidate::Method {
+                    ident: decl.ident.last().clone(),
+                    decl,
+                    sig,
+                    iface_ty,
+                }
+            ],
+        }
+    }
+
     pub fn new(
         candidates: Vec<OverloadCandidate>,
         self_arg: Option<Box<Expression>>,
@@ -149,7 +103,6 @@ pub enum TypeAnnotation {
     },
     Type(Type, Span),
     Namespace(IdentPath, Span),
-    Method(MethodAnnotation),
     UFCSCall {
         self_arg: Box<Expression>,
         function: IdentPath,
@@ -172,12 +125,6 @@ impl TypeAnnotation {
             {
                 Ok(())
             }
-
-            TypeAnnotation::Method(method_annotation) => Err(TypecheckError::TypeMismatch {
-                span: method_annotation.span.clone(),
-                expected: expect_ty.clone(),
-                actual: method_annotation.method_ty.clone(),
-            }),
 
             TypeAnnotation::TypedValue { ty, span, .. } => Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
@@ -223,7 +170,6 @@ impl TypeAnnotation {
             TypeAnnotation::Namespace(_, _) => &Type::Nothing,
             TypeAnnotation::Untyped(_) => &Type::Nothing,
             TypeAnnotation::Type(_, _) => &Type::Nothing,
-            TypeAnnotation::Method(method) => &method.method_ty,
             TypeAnnotation::VariantCtor(..) => &Type::Nothing,
 
             TypeAnnotation::UFCSCall { func_ty: ty, .. }
@@ -237,7 +183,6 @@ impl TypeAnnotation {
     pub fn decl(&self) -> Option<&Span> {
         match self {
             TypeAnnotation::Type(..) => None,
-            TypeAnnotation::Method(method) => Some(&method.span),
             TypeAnnotation::Function { .. } => None, // TODO
             TypeAnnotation::UFCSCall { .. } => None, // TODO
             TypeAnnotation::Overload { .. } => None, // TODO
@@ -278,7 +223,6 @@ impl Spanned for TypeAnnotation {
             | TypeAnnotation::UFCSCall { span, .. }
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::TypedValue { span, .. }
-            | TypeAnnotation::Method(MethodAnnotation { span, .. })
             | TypeAnnotation::VariantCtor(VariantCtorAnnotation { span, .. })
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
@@ -352,5 +296,11 @@ impl fmt::Display for QualifiedDeclName {
         }
 
         Ok(())
+    }
+}
+
+impl From<OverloadAnnotation> for TypeAnnotation {
+    fn from(a: OverloadAnnotation) -> Self {
+        TypeAnnotation::Overload(a)
     }
 }

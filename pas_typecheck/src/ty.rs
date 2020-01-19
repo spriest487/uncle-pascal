@@ -122,7 +122,7 @@ impl FunctionSig {
 
     /// given that `self` is the sig of an interface method with one
     /// or more `Self`-typed arguments, find the expected self-type for
-    pub fn impl_ty_from_args<'arg>(&self, args: &'arg [Type]) -> Option<&'arg Type> {
+    pub fn self_ty_from_args<'arg>(&self, args: &'arg [Type]) -> Option<&'arg Type> {
         if args.len() != self.params.len() {
             return None;
         }

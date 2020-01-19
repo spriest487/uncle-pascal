@@ -276,11 +276,13 @@ fn typecheck_member_of(
                                 let method_decl = iface_decl.get_method(&method)
                                     .expect("method must exist, it was found by find_instance_member");
 
-                                MethodAnnotation::vcall(
-                                    span.clone(),
+                                let iface_ty = Type::Interface(iface_id.clone());
+
+                                OverloadAnnotation::method(
+                                    iface_ty,
                                     lhs.clone(),
-                                    iface_id.clone(),
-                                    method_decl,
+                                    method_decl.clone(),
+                                    span.clone(),
                                 )
                             } else {
                                 let method_def = match ctx.find_method_impl_def(iface_id, base_ty, &method) {
@@ -295,16 +297,15 @@ fn typecheck_member_of(
                                     }
                                 };
 
-                                MethodAnnotation::ufcs(
-                                    span.clone(),
-                                    iface_ty.clone(),
+                                OverloadAnnotation::method(
+                                    iface_ty,
                                     lhs.clone(),
-                                    Rc::new(FunctionSig::of_decl(&method_def.decl)),
-                                    method,
+                                    method_def.decl.clone(),
+                                    span.clone()
                                 )
                             };
 
-                            TypeAnnotation::Method(method)
+                            TypeAnnotation::from(method)
                         }
 
                         InstanceMember::UFCSCall { func_name, sig } => {

@@ -8,11 +8,7 @@ use pas_syn::ast::FunctionParamMod;
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor, FunctionDecl};
-use crate::{
-    context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError,
-    GenericTarget, GenericTypeHint, MethodAnnotation, NameError, Specializable, Type,
-    TypeAnnotation, TypecheckError, TypecheckResult, ValueKind,
-};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation};
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -203,69 +199,10 @@ pub fn typecheck_call(
             typecheck_call.map(Box::new).map(CallOrCtor::Call)?
         }
 
-        TypeAnnotation::Method(method_annotation) => {
-            typecheck_method_call(&func_call, &method_annotation, ctx)
+        TypeAnnotation::Overload(overloaded) => {
+            typecheck_func_overload(ctx, func_call, &target, &overloaded)
                 .map(Box::new)
                 .map(CallOrCtor::Call)?
-        }
-
-        TypeAnnotation::Overload(overloaded) => {
-            let overload = resolve_overload(
-                &overloaded.candidates,
-                &func_call.args,
-                overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
-                &overloaded.span,
-                ctx
-            )?;
-
-            let args_brackets = func_call.args_brackets.clone();
-
-            let call = match &overloaded.candidates[overload.selected_sig] {
-                OverloadCandidate::Method { iface_ty, ident, sig, decl } => {
-                    let sig = Rc::new(sig.with_self(overload.args[0].annotation().ty()));
-
-                    let return_annotation = TypeAnnotation::TypedValue {
-                        span: overloaded.span.clone(),
-                        ty: sig.return_ty.clone(),
-                        decl: Some(decl.span().clone()),
-                        value_kind: ValueKind::Temporary,
-                    };
-
-                    let method_call = MethodCall {
-                        annotation: return_annotation,
-                        ident: ident.clone(),
-                        args: overload.args,
-                        type_args: overload.type_args,
-                        self_type: sig.params[0].ty.clone(),
-                        func_type: Type::Function(sig.clone()),
-                        of_type: iface_ty.clone(),
-                        args_brackets,
-                    };
-
-                    ast::Call::Method(method_call)
-                }
-
-                OverloadCandidate::Function { decl_name, sig } => {
-                    let return_annotation = TypeAnnotation::TypedValue {
-                        span: overloaded.span.clone(),
-                        ty: sig.return_ty.clone(),
-                        decl: Some(decl_name.span().clone()),
-                        value_kind: ValueKind::Temporary,
-                    };
-
-                    let func_call = FunctionCall {
-                        annotation: return_annotation,
-                        args: overload.args,
-                        type_args: overload.type_args.clone(),
-                        target,
-                        args_brackets,
-                    };
-
-                    ast::Call::Function(func_call)
-                }
-            };
-
-            CallOrCtor::Call(Box::new(call))
         }
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
@@ -305,81 +242,89 @@ pub fn typecheck_call(
     Ok(expr)
 }
 
-fn typecheck_method_call(
-    func_call: &ast::FunctionCall<Span>,
-    method_annotation: &MethodAnnotation,
+fn typecheck_func_overload(
     ctx: &mut Context,
+    func_call: &ast::FunctionCall<Span>,
+    target: &Expression,
+    overloaded: &OverloadAnnotation
 ) -> TypecheckResult<Call> {
-    let span = func_call.span().clone();
+    let overload = resolve_overload(
+        &overloaded.candidates,
+        &func_call.args,
+        overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
+        &overloaded.span,
+        ctx
+    )?;
 
-    let type_args = typecheck_type_args(&func_call.type_args, ctx)?;
-    let call_sig = method_annotation
-        .decl_sig()
-        .clone()
-        .specialize_generic(&type_args, &span)?;
+    let args_brackets = func_call.args_brackets.clone();
 
-    let (self_type, impl_sig, args) = match &method_annotation.self_arg {
-        None => {
-            // deduce self-ty from args
-            let args = typecheck_args(&call_sig.params, &func_call.args, None, &span, ctx)?;
+    let call = match &overloaded.candidates[overload.selected_sig] {
+        OverloadCandidate::Method { iface_ty, ident, sig, decl } => {
+            let self_ty = match &overloaded.self_arg {
+                Some(self_arg) => {
+                    self_arg.annotation().ty().clone()
+                },
 
-            let arg_tys: Vec<_> = args.iter().map(|a| a.annotation().ty().clone()).collect();
+                None => {
+                    let arg_tys: Vec<_> = overload.args.iter()
+                        .map(|a| a.annotation().ty().clone())
+                        .collect();
 
-            let self_type = call_sig
-                .impl_ty_from_args(&arg_tys)
-                .cloned()
-                .ok_or_else(|| TypecheckError::AmbiguousSelfType {
-                    method: method_annotation.method_name.clone(),
-                    iface: method_annotation.iface_ty.clone(),
-                    span: span.clone(),
-                })?;
+                    match sig.self_ty_from_args(&arg_tys) {
+                        Some(self_ty) => self_ty.clone(),
+                        None => return Err(TypecheckError::AmbiguousSelfType {
+                            span: overloaded.span.clone(),
+                            method: ident.clone(),
+                            iface: iface_ty.clone(),
+                        })
+                    }
+                }
+            };
 
-            let impl_sig = call_sig.with_self(&self_type);
+            let sig = Rc::new(sig.with_self(&self_ty));
 
-            (self_type, impl_sig, args)
+            let return_annotation = TypeAnnotation::TypedValue {
+                span: overloaded.span.clone(),
+                ty: sig.return_ty.clone(),
+                decl: Some(decl.span().clone()),
+                value_kind: ValueKind::Temporary,
+            };
+
+            let method_call = MethodCall {
+                annotation: return_annotation,
+                ident: ident.clone(),
+                args: overload.args,
+                type_args: overload.type_args,
+                self_type: sig.params[0].ty.clone(),
+                func_type: Type::Function(sig.clone()),
+                of_type: iface_ty.clone(),
+                args_brackets,
+            };
+
+            ast::Call::Method(method_call)
         }
 
-        Some(self_arg) => {
-            // we have a self arg, we know how to specialize the signature before checking the
-            // arg types
-            let self_type = self_arg.annotation().ty().clone();
-            let impl_sig = call_sig.with_self(&self_type);
+        OverloadCandidate::Function { decl_name, sig } => {
+            let return_annotation = TypeAnnotation::TypedValue {
+                span: overloaded.span.clone(),
+                ty: sig.return_ty.clone(),
+                decl: Some(decl_name.span().clone()),
+                value_kind: ValueKind::Temporary,
+            };
 
-            // the self-arg is passed as the first argument
-            assert!(!impl_sig.params.is_empty());
+            let func_call = FunctionCall {
+                annotation: return_annotation,
+                args: overload.args,
+                type_args: overload.type_args.clone(),
+                target: target.clone(),
+                args_brackets,
+            };
 
-            let args = typecheck_args(
-                &impl_sig.params,
-                &func_call.args,
-                Some(self_arg.as_ref()),
-                &span,
-                ctx,
-            )?;
-
-            (self_type, impl_sig, args)
+            ast::Call::Function(func_call)
         }
     };
 
-    let annotation = match &impl_sig.return_ty {
-        Type::Nothing => TypeAnnotation::Untyped(span),
-        return_ty => TypeAnnotation::TypedValue {
-            span,
-            ty: return_ty.clone(),
-            value_kind: ValueKind::Temporary,
-            decl: None,
-        },
-    };
-
-    Ok(ast::Call::Method(MethodCall {
-        annotation,
-        args,
-        type_args,
-        self_type,
-        func_type: Type::Function(Rc::new(impl_sig)),
-        ident: method_annotation.method_name.clone(),
-        of_type: method_annotation.iface_ty.clone(),
-        args_brackets: func_call.args_brackets.clone(),
-    }))
+    Ok(call)
 }
 
 fn typecheck_ufcs_call(
@@ -586,7 +531,7 @@ fn specialize_call_args(
 
         let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span)?;
 
-        //        println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
+//                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
 
         Ok(SpecializedCallArgs {
             type_args: inferred_ty_args,
@@ -825,9 +770,20 @@ pub fn resolve_overload(
         panic!("overload resolution requires at least 1 candidate");
     }
 
+    let candidate_sigs: Vec<_> = match self_arg {
+        Some(self_arg) => {
+            let self_ty = self_arg.annotation().ty();
+            candidates.iter().map(|c| c.sig().with_self(self_ty)).collect()
+        }
+
+        None => {
+            candidates.iter().map(|c| (**c.sig()).clone()).collect()
+        }
+    };
+
     // no overload resolution needed, we can use the param type hint for all args
     if candidates.len() == 1 {
-        let sig = candidates[0].sig();
+        let sig = &candidate_sigs[0];
         let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
 
         return Ok(Overload {
@@ -846,17 +802,6 @@ pub fn resolve_overload(
 
     let mut param_index = 0;
     let mut arg_index = 0;
-
-    let candidate_sigs: Vec<_> = match self_arg {
-        Some(self_arg) => {
-            let self_ty = self_arg.annotation().ty();
-            candidates.iter().map(|c| c.sig().with_self(self_ty)).collect()
-        }
-
-        None => {
-            candidates.iter().map(|c| (**c.sig()).clone()).collect()
-        }
-    };
 
     // do the self-arg (which has a known type already) first
     if let Some(self_arg) = self_arg {
@@ -890,8 +835,11 @@ pub fn resolve_overload(
     loop {
         // did we find a best match? try to typecheck args as if this is the sig to be called
         if valid_candidates.len() == 1 {
+            let selected_sig = valid_candidates[0];
+//            println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
+
             break Ok(Overload {
-                selected_sig: valid_candidates[0],
+                selected_sig,
                 args: actual_args,
                 type_args: Vec::new(), //todo
             });
