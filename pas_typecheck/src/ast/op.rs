@@ -346,9 +346,19 @@ fn typecheck_member_of(
 
                 TypeAnnotation::Type(ty, _) => match ctx.find_type_member(ty, &member_ident)? {
                     TypeMember::Method { decl } => {
-                        let method =
-                            MethodAnnotation::explicit(span.clone(), ty.clone(), decl.clone());
-                        TypeAnnotation::Method(method)
+                        let candidate = OverloadCandidate::Method {
+                            sig: Rc::new(FunctionSig::of_decl(&decl)),
+                            ident: member_ident.clone(),
+                            decl,
+                            iface_ty: ty.clone(),
+                        };
+
+                        TypeAnnotation::Overload(OverloadAnnotation::new(
+                            vec![candidate],
+                            None,
+                            Vec::new(), // methods cannot have type args
+                            span.clone(),
+                        ))
                     }
                 },
 
