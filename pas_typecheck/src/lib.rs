@@ -7,7 +7,7 @@ mod result;
 pub mod ast {
     pub use self::{
         block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-        typedecl::*, unit::*,
+        typedecl::*, unit::*, call::*,
     };
 
     mod block;

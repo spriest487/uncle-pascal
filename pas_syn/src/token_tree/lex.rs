@@ -111,7 +111,7 @@ impl Lexer {
 
     fn literal_float(&mut self) -> TokenizeResult<TokenTree> {
         let find_non_num = |c| match c {
-            '0'...'9' => false,
+            '0'..='9' => false,
             _ => true,
         };
 
@@ -153,7 +153,7 @@ impl Lexer {
 
         let line_after_sigil = &self.line[self.location.col + 1..];
         let next_non_hex = find_ahead(line_after_sigil, |c| match c {
-            'a'...'f' | 'A'...'F' | '0'...'9' => false,
+            'a'..='f' | 'A'..='F' | '0'..='9' => false,
             _ => true,
         });
 
@@ -184,7 +184,7 @@ impl Lexer {
         let next_non_num = {
             let from_start = &self.line[num_start..];
             find_ahead(from_start, |c| match c {
-                '0'...'9' => false,
+                '0'..='9' => false,
                 _ => true,
             })
         };
@@ -277,7 +277,7 @@ impl Lexer {
         let mut next_col = self.location.col;
         while let Some(c) = self.line.get(next_col) {
             match c {
-                '0'...'9' => {
+                '0'..='9' => {
                     if !token_str.is_empty() {
                         token_str.push(*c);
                     } else {
@@ -290,7 +290,7 @@ impl Lexer {
                     }
                 }
 
-                'a'...'z' | 'A'...'Z' | '_' => {
+                'a'..='z' | 'A'..='Z' | '_' => {
                     token_str.push(*c);
                 }
 
@@ -453,9 +453,9 @@ impl Lexer {
             '=' => Some(self.operator_token(Operator::Equals, 1)),
             '$' => Some(self.literal_hex()?),
             '#' => Some(self.literal_int(true)?),
-            '0'...'9' => Some(self.literal_int(false)?),
+            '0'..='9' => Some(self.literal_int(false)?),
             '\'' => Some(self.literal_string()?),
-            'a'...'z' | '_' | 'A'...'Z' => {
+            'a'..='z' | '_' | 'A'..='Z' => {
                 match self.word()? {
                     // keyword "begin" always signals the start of a begin..end delimited group
                     TokenTree::Keyword {

@@ -1,13 +1,15 @@
+use std::rc::Rc;
+
+use pas_common::span::{Span, Spanned as _};
+use pas_syn::ast::FunctionParamMod;
+use pas_syn::{ast, Ident, IdentPath};
+
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor};
 use crate::{
     typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget,
     GenericTypeHint, MethodAnnotation, NameError, Specializable, Type, TypeAnnotation,
     TypecheckError, TypecheckResult, ValueKind,
 };
-use pas_common::span::{Span, Spanned as _};
-use pas_syn::ast::FunctionParamMod;
-use pas_syn::{ast, Ident, IdentPath};
-use std::rc::Rc;
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -204,27 +206,25 @@ pub fn typecheck_call(
                 .map(CallOrCtor::Call)?
         }
 
-        TypeAnnotation::Type(ty, ..)
-        if func_call.args.is_empty() && ty.full_path().is_some() =>
-            {
-                let ty: &Type = ty;
-                let (open, close) = &func_call.args_brackets;
-                let ctor = ast::ObjectCtor {
-                    ident: ty.full_path().unwrap(),
-                    annotation: call.span().clone(),
-                    args: ast::ObjectCtorArgs {
-                        open: open.clone(),
-                        close: close.clone(),
-                        members: Vec::new(),
-                    },
-                };
+        TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
+            let ty: &Type = ty;
+            let (open, close) = &func_call.args_brackets;
+            let ctor = ast::ObjectCtor {
+                ident: ty.full_path().unwrap(),
+                annotation: call.span().clone(),
+                args: ast::ObjectCtorArgs {
+                    open: open.clone(),
+                    close: close.clone(),
+                    members: Vec::new(),
+                },
+            };
 
-                let span = ctor.annotation.span().clone();
+            let span = ctor.annotation.span().clone();
 
-                typecheck_object_ctor(&ctor, span, expect_ty, ctx)
-                    .map(Box::new)
-                    .map(CallOrCtor::Ctor)?
-            }
+            typecheck_object_ctor(&ctor, span, expect_ty, ctx)
+                .map(Box::new)
+                .map(CallOrCtor::Ctor)?
+        }
 
         TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
             &variant.variant_name,
@@ -234,8 +234,8 @@ pub fn typecheck_call(
             expect_ty,
             ctx,
         )
-            .map(Box::new)
-            .map(CallOrCtor::Call)?,
+        .map(Box::new)
+        .map(CallOrCtor::Call)?,
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };
@@ -266,8 +266,9 @@ fn typecheck_method_call(
             let self_type = call_sig
                 .impl_ty_from_args(&arg_tys)
                 .cloned()
-                .ok_or_else(|| TypecheckError::AmbiguousMethod {
+                .ok_or_else(|| TypecheckError::AmbiguousSelfType {
                     method: method_annotation.method_name.clone(),
+                    iface: method_annotation.iface_ty.clone(),
                     span: span.clone(),
                 })?;
 
@@ -377,8 +378,8 @@ fn specialize_arg<ArgProducer>(
     ctx: &mut Context,
 ) -> TypecheckResult<Expression>
 // (expected type, ctx) -> expression val
-  where
-      ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expression>,
+where
+    ArgProducer: FnOnce(&Type, &mut Context) -> TypecheckResult<Expression>,
 {
     match param_ty {
         // param is generic: arg expr ty drives param type
@@ -474,7 +475,7 @@ fn specialize_call_args(
                 hint: GenericTypeHint::Unknown,
                 span: span.clone(),
             }
-                .into());
+            .into());
         }
 
         // try to infer type from args, left to right
@@ -516,11 +517,10 @@ fn specialize_call_args(
                 hint: GenericTypeHint::ArgTypes(arg_tys),
                 span: span.clone(),
             }
-                .into());
+            .into());
         }
 
-        let inferred_ty_args: Vec<_> =
-            inferred_ty_args.into_iter().map(|a| a.unwrap()).collect();
+        let inferred_ty_args: Vec<_> = inferred_ty_args.into_iter().map(|a| a.unwrap()).collect();
 
         let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span)?;
 
@@ -583,10 +583,10 @@ fn typecheck_variant_ctor_call(
     // version of that same generic variant
     let variant = match expect_ty {
         Type::Variant(expect_variant)
-        if expect_variant.is_specialization_of(&unspecialized_def.name) =>
-            {
-                &*expect_variant
-            }
+            if expect_variant.is_specialization_of(&unspecialized_def.name) =>
+        {
+            &*expect_variant
+        }
 
         _ => &unspecialized_def.name,
     };
@@ -597,7 +597,7 @@ fn typecheck_variant_ctor_call(
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
         }
-            .into());
+        .into());
     }
 
     let variant_def = ctx.instantiate_variant(&variant)?;
@@ -611,7 +611,7 @@ fn typecheck_variant_ctor_call(
                 member: case.clone(),
                 base: Type::Variant(Box::new(variant.clone())),
             }
-                .into())
+            .into())
         }
     };
 
@@ -676,4 +676,204 @@ fn typecheck_variant_ctor_call(
         arg,
         case,
     }))
+}
+
+struct Overload {
+    selected_sig: usize,
+    args: Vec<Expression>,
+}
+
+#[derive(Debug, Clone)]
+pub enum OverloadCandidate {
+    Declared(IdentPath, Rc<FunctionSig>),
+}
+
+impl OverloadCandidate {
+    pub fn sig(&self) -> &FunctionSig {
+        match self {
+            OverloadCandidate::Declared(_, sig) => sig.as_ref(),
+        }
+    }
+}
+
+fn resolve_overload(
+    candidates: &[OverloadCandidate],
+    args: &[ast::Expression<Span>],
+    self_arg: Option<&Expression>,
+    span: &Span,
+    ctx: &mut Context,
+) -> TypecheckResult<Overload> {
+    if candidates.is_empty() {
+        panic!("overload resolution requires at least 1 candidate");
+    }
+
+    // no overload resolution needed, we can use the param type hint for all args
+    if candidates.len() == 1 {
+        let sig = candidates[0].sig();
+        let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
+
+        return Ok(Overload {
+            selected_sig: 0,
+            args,
+        });
+    }
+
+    // full overload resolution: while > 1 candidates remain, typecheck an additional arg
+    // left-to-right, without a type hint, and look at the type of the resulting expr to eliminate
+    // candidates. as soon as 1 candidate remains, process the rest of the arguments using that
+    // sig. if 0 candidates remain after an arg is processed, the call is ambiguous
+    let mut actual_args = Vec::new();
+    let mut valid_candidates: Vec<_> = (0..candidates.len()).collect();
+
+    // do the self-arg (which has a known type already) first
+    let self_arg = if let Some(self_arg) = self_arg {
+        actual_args.push(self_arg.clone());
+
+        valid_candidates.retain(|i| {
+            let sig = candidates[*i].sig();
+            let self_arg_ty = self_arg.annotation().ty();
+
+            if sig.params.len() < 1 {
+                false
+            } else {
+                sig.params[0].ty.assignable_from(self_arg_ty, ctx)
+            }
+        });
+
+        Some(())
+    } else {
+        None
+    };
+
+    let param_offset = if self_arg.is_some() { 1 } else { 0 };
+    let mut arg_index = 0;
+    loop {
+        // did we find a best match? try to typecheck args as if this is the sig to be called
+        if valid_candidates.len() == 1 {
+            break Ok(Overload {
+                selected_sig: valid_candidates[0],
+                args: actual_args,
+            });
+        }
+
+        // ran out of candidates or arguments, couldn't resolve a single sig
+        if arg_index > args.len() || valid_candidates.len() == 0 {
+            break Err(TypecheckError::AmbiguousFunction {
+                candidates: candidates.to_vec(),
+                span: span.clone(),
+            });
+        }
+
+        let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
+        let arg_ty = arg.annotation().ty().clone();
+        actual_args.push(arg);
+
+        valid_candidates.retain(|i| {
+            let sig = candidates[*i].sig();
+            let param_index = arg_index + param_offset;
+
+            if param_index > sig.params.len() {
+                false
+            } else {
+                sig.params[param_index].ty.assignable_from(&arg_ty, ctx)
+            }
+        });
+
+        arg_index = arg_index + 1;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::rc::Rc;
+
+    use crate::ast::{OverloadCandidate, call::resolve_overload};
+    use crate::test::module_from_src;
+    use crate::{FunctionSig, Context};
+    use pas_common::span::Span;
+    use pas_common::BuildOptions;
+    use pas_syn::{TokenTree, ast};
+    use pas_syn::parse::TokenStream;
+
+    fn parse_expr(src: &str) -> ast::Expression<Span> {
+        let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
+
+        let mut tokens = TokenStream::new(tokens, Span::zero("test"));
+
+        ast::Expression::parse(&mut tokens).and_then(|expr| {
+            tokens.finish()?;
+            Ok(expr)
+        }).unwrap()
+    }
+
+    fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
+        let mut module = module_from_src("overload", src);
+
+        let unit = module.units.remove(0);
+
+        let candidates = unit.unit.func_defs().map(|func| {
+            let sig = FunctionSig::of_decl(&func.decl);
+            OverloadCandidate::Declared(func.decl.ident.clone(), Rc::new(sig))
+        });
+
+        (candidates.collect(), unit.context)
+    }
+
+    #[test]
+    fn resolves_overload_single() {
+        let src = r"
+            function X(i: Integer)
+            begin
+            end;
+
+            let i: Integer := 1;
+        ";
+        let (candidates, mut ctx) = candidates_from_src(src);
+
+        let expr = parse_expr("i");
+        let span = expr.annotation().clone();
+
+        let overload = resolve_overload(
+            &candidates,
+            &[expr],
+            None,
+            &span,
+            &mut ctx
+        ).unwrap();
+
+        assert_eq!(0, overload.selected_sig);
+        assert_eq!(1, overload.args.len());
+        assert_eq!("i", overload.args[0].to_string());
+    }
+
+    #[test]
+    fn resolves_overload_by_arg_ty() {
+        let src = r"
+            function X(i: Integer)
+            begin
+            end;
+
+            function X(b: Boolean)
+            begin
+            end;
+
+            let i: Integer := 1;
+        ";
+        let (candidates, mut ctx) = candidates_from_src(src);
+
+        let expr = parse_expr("i");
+        let span = expr.annotation().clone();
+
+        let overload = resolve_overload(
+            &candidates,
+            &[expr],
+            None,
+            &span,
+            &mut ctx
+        ).unwrap();
+
+        assert_eq!(0, overload.selected_sig);
+        assert_eq!(1, overload.args.len());
+        assert_eq!("i", overload.args[0].to_string());
+    }
 }

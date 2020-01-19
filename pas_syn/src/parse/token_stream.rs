@@ -5,7 +5,7 @@ use pas_common::{span::*, TracedError};
 use crate::{parse::*, token_tree::*};
 
 pub struct TokenStream {
-    tokens: Box<Iterator<Item = TokenTree>>,
+    tokens: Box<dyn Iterator<Item = TokenTree>>,
     context: Span,
 
     lookahead_buffer: VecDeque<TokenTree>,
@@ -27,7 +27,7 @@ impl Iterator for TokenStream {
 
 impl TokenStream {
     pub fn new(tokens: impl IntoIterator<Item = TokenTree> + 'static, context: Span) -> Self {
-        let token_iter: Box<Iterator<Item = TokenTree>> = Box::new(tokens.into_iter());
+        let token_iter = Box::new(tokens.into_iter());
 
         TokenStream {
             tokens: token_iter,

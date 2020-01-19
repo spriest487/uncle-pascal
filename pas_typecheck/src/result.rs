@@ -1,6 +1,6 @@
 use crate::{
     annotation::TypeAnnotation,
-    ast::{Call, Expression, Variant},
+    ast::{Call, Expression, Variant, OverloadCandidate},
     context::NameError,
     GenericError, Type, ValueKind,
 };
@@ -59,6 +59,15 @@ pub enum TypecheckError {
     InvalidBlockOutput(Box<Expression>),
     AmbiguousMethod {
         method: Ident,
+        span: Span,
+    },
+    AmbiguousSelfType {
+        method: Ident,
+        iface: Type,
+        span: Span,
+    },
+    AmbiguousFunction {
+        candidates: Vec<OverloadCandidate>,
         span: Span,
     },
     InvalidCtorType {
@@ -157,7 +166,9 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
+            TypecheckError::AmbiguousFunction { span, .. } => span,
             TypecheckError::AmbiguousMethod { span, .. } => span,
+            TypecheckError::AmbiguousSelfType { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::DuplicateNamedArg { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
@@ -195,7 +206,9 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
             TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
+            TypecheckError::AmbiguousFunction { .. } => "Function reference is ambiguous".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
+            TypecheckError::AmbiguousSelfType { .. } => "Self type of method is ambiguous".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
                 "Invalid constructor expression type".to_string()
             }
@@ -381,9 +394,16 @@ impl fmt::Display for TypecheckError {
                 write!(f, "expression `{}` is not valid as the final expression in a block because it is not a complete statement", expr)
             }
 
+            TypecheckError::AmbiguousFunction { .. } => {
+                write!(f, "call to function was ambiguous")
+            }
+
             TypecheckError::AmbiguousMethod { method, .. } => {
-                // todo: show ambiguous options
                 write!(f, "call to method `{}` was ambiguous", method)
+            }
+
+            TypecheckError::AmbiguousSelfType{  method, iface, .. } => {
+                write!(f, "the type implementing `{}` could not be deduced for `{}` in this context", iface, method)
             }
 
             TypecheckError::InvalidCtorType { ty, .. } => {
