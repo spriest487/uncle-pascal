@@ -82,13 +82,17 @@ end;
 
 export function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
-    let strBytes: ^Byte := GetMem(len);
+    if len = 0 then
+        String(chars: nil; len: 0)
+    else begin
+        let strBytes: ^Byte := GetMem(len);
 
-    for let i: Integer := 0 to len do begin
-        (strBytes + i)^ := (bytes + i)^;
-    end;
+        for let i: Integer := 0 to len do begin
+            (strBytes + i)^ := (bytes + i)^;
+        end;
 
-    String(chars: strBytes; len: len)
+        String(chars: strBytes; len: len)
+    end
 end;
 
 export function SubString(s: String; from: Integer; len: Integer): String
