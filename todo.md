@@ -1,6 +1,7 @@
 # critical
 
-* thread 'main' panicked at 'argument a of ClassIs instruction must evaluate to a heap pointer', src/libcore/option.rs:1036:5
+* better message when unit name conflicts with a member name (or make this not an error)
+* better message when iface impl doens't match decl sig
 * add `NativeUInt` type
 * `exit` statement
 * unique compiler error codes
@@ -28,7 +29,6 @@
 * defining a function needs to check visibility is the same as previous decl
 * functiondecl.ident should be an enum of { FullName, MethodName }
 * QualifiedDeclName should be an enum of { Raw, Specialized }
-* better message when unit name conflicts with a member name (or make this not an error)
 
 # types refactor
 
