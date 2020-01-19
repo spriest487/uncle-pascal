@@ -100,10 +100,12 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         );
 
         let inc_val = Value::LiteralI32(1);
-        let loop_val = builder.local_temp(Type::Bool);
 
-        let counter_val =
-            builder.local_new(counter_ty, Some(for_loop.init_binding.name.to_string()));
+        // temp value to store the result of evaluating the break condition
+        let break_cond_val = builder.local_temp(Type::Bool);
+
+        let counter_binding_name = for_loop.init_binding.name.to_string();
+        let counter_val = builder.local_new(counter_ty, Some(counter_binding_name));
         let init_val = translate_expr(&counter_init, builder);
 
         let to_val = translate_expr(&for_loop.to_expr, builder);
@@ -112,30 +114,34 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
         builder.append(Instruction::Label(top_label));
 
+        // break check: break_cond_val := counter_val > to_val
+        builder.append(Instruction::Gt {
+            a: Value::Ref(counter_val.clone()),
+            b: to_val.into(),
+            out: break_cond_val.clone(),
+        });
+
+        // jump to break label if loop_val
+        builder.append(Instruction::JumpIf {
+            test: Value::Ref(break_cond_val),
+            dest: break_label,
+        });
+
         builder.begin_loop_body_scope(continue_label, break_label);
         translate_stmt(&for_loop.body, builder);
         builder.end_loop_body_scope();
 
         builder.append(Instruction::Label(continue_label));
 
-        // if not ++loop_counter > loop_val then jmp to loop_top
+        // counter_val := counter_val + inc_val
         builder.append(Instruction::Add {
-            out: counter_val.clone(),
             a: Value::Ref(counter_val.clone()),
             b: inc_val,
+            out: counter_val.clone(),
         });
 
-        builder.append(Instruction::Gt {
-            out: loop_val.clone(),
-            a: Value::Ref(counter_val),
-            b: to_val.into(),
-        });
-        builder.append(Instruction::Not {
-            out: loop_val.clone(),
-            a: Value::Ref(loop_val.clone()),
-        });
-        builder.append(Instruction::JumpIf {
-            test: Value::Ref(loop_val),
+        // return to top of loop
+        builder.append(Instruction::Jump {
             dest: top_label,
         });
 
