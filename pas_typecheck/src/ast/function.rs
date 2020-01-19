@@ -3,6 +3,7 @@ use pas_syn::Ident;
 use crate::ast::prelude::*;
 
 use std::rc::Rc;
+use pas_syn::ast::DeclMod;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
@@ -28,6 +29,17 @@ pub fn typecheck_func_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
     let decl_scope = ctx.push_scope(None);
+
+    if let Some(extern_mod) = decl.mods.iter().find(|m| m.keyword() == DeclMod::EXTERNAL_WORD) {
+        if !decl.type_params.is_empty() {
+            let ty_args_span = decl.type_params[0].span().to(decl.type_params.last().unwrap().span());
+            return Err(TypecheckError::ExternalGenericFunction {
+                func: decl.ident.last().clone(),
+                extern_modifier: extern_mod.span().clone(),
+                ty_args: ty_args_span,
+            });
+        }
+    }
 
     ctx.declare_type_params(&decl.type_params)?;
 

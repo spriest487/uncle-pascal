@@ -182,6 +182,14 @@ begin
     if a < b then a else b
 end;
 
+// compiler magic
+function ArrayLengthInternal(arr: Any): Integer; external 'rt';
+
+export function Length of T(arr: array of T): Integer
+begin
+    ArrayLengthInternal(arr)
+end;
+
 // NYI: missing dynamic arrays
 {
 export function SetLength of T(var arr: array of T; len: Integer); external 'rt';
@@ -193,7 +201,7 @@ export function SetLength of T(var arr: array of T; len: Integer); external 'rt'
 // missing NewArray RT support
 {
 function NewArray of T(el: T; len: Integer): array of T; external 'rt';
-function Length of T(arr: array of T): Integer; external 'rt';
+
 
 function SetLength of T(var arr: array of T; len: Integer)
     where T is Default

@@ -960,6 +960,17 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let metadata = Metadata::new();
     let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
 
+    let builtin_disposable = pas_ty::builtin_disposable_iface();
+
+    // make sure compiler builtin types are defined e.g. dynamic array types add implementations
+    // to Disposable so need that interface to be defined
+    let disposable_iface = {
+        let mut builder = Builder::new(&mut ir_module);
+        builder.translate_iface(&builtin_disposable)
+    };
+
+    ir_module.metadata.define_iface(disposable_iface);
+
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = pas_ty::builtin_string_name();
@@ -984,22 +995,6 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
 
     for unit in &module.units {
         ir_module.translate_unit(&unit.unit);
-    }
-
-    // the disposable interface may never be referenced statically but needs to be instantiated
-    // for automatic cleanup calls
-    let builtin_disposable = pas_ty::builtin_disposable_iface();
-    if ir_module
-        .metadata
-        .find_iface_decl(&builtin_disposable.name.qualified)
-        .is_none()
-    {
-        let disposable_iface = {
-            let mut builder = Builder::new(&mut ir_module);
-            builder.translate_iface(&builtin_disposable)
-        };
-
-        ir_module.metadata.define_iface(disposable_iface);
     }
 
     gen_iface_impls(&mut ir_module);

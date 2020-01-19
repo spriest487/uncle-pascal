@@ -70,6 +70,11 @@ pub enum TypecheckError {
         candidates: Vec<OverloadCandidate>,
         span: Span,
     },
+    ExternalGenericFunction {
+        func: Ident,
+        extern_modifier: Span,
+        ty_args: Span,
+    },
     InvalidCtorType {
         ty: Type,
         span: Span,
@@ -168,6 +173,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
             TypecheckError::AmbiguousFunction { span, .. } => span,
             TypecheckError::AmbiguousMethod { span, .. } => span,
+            TypecheckError::ExternalGenericFunction { func, .. } => func.span(),
             TypecheckError::AmbiguousSelfType { span, .. } => span,
             TypecheckError::InvalidCtorType { span, .. } => span,
             TypecheckError::DuplicateNamedArg { span, .. } => span,
@@ -209,6 +215,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::AmbiguousFunction { .. } => "Function reference is ambiguous".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
             TypecheckError::AmbiguousSelfType { .. } => "Self type of method is ambiguous".to_string(),
+            TypecheckError::ExternalGenericFunction { .. } => "Function imported from external module may not have type parameters".to_string(),
             TypecheckError::InvalidCtorType { .. } => {
                 "Invalid constructor expression type".to_string()
             }
@@ -414,6 +421,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::AmbiguousSelfType{  method, iface, .. } => {
                 write!(f, "the type implementing `{}` could not be deduced for `{}` in this context", iface, method)
+            }
+
+            TypecheckError::ExternalGenericFunction { func, .. } => {
+                write!(f, "`{}` is generic but is declared with the `{}` modifier", func, ast::DeclMod::EXTERNAL_WORD)
             }
 
             TypecheckError::InvalidCtorType { ty, .. } => {

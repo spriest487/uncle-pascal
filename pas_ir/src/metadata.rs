@@ -915,6 +915,7 @@ impl Metadata {
         let disposable_name =
             NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]);
         if *name == disposable_name {
+            self.ifaces.insert(DISPOSABLE_ID, InterfaceDecl::Forward(disposable_name));
             return DISPOSABLE_ID;
         }
 

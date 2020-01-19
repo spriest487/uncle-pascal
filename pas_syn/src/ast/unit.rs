@@ -246,7 +246,7 @@ pub enum DeclMod {
 }
 
 impl DeclMod {
-    const EXTERNAL_WORD: &'static str = "external";
+    pub const EXTERNAL_WORD: &'static str = "external";
 
     pub fn keyword(&self) -> &str {
         match self {
