@@ -346,15 +346,11 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::InvalidArgs { expected, actual, .. } => {
-                if expected.len() != actual.len() {
-                    write!(f, "expected {} args, got {}", expected.len(), actual.len())
-                } else {
-                    write!(f, "expected arguments (")?;
-                    write_args(f, expected.iter())?;
-                    write!(f, "), found (")?;
-                    write_args(f, actual.iter())?;
-                    write!(f, ")")
-                }
+                write!(f, "expected arguments (")?;
+                write_args(f, expected.iter())?;
+                write!(f, "), found (")?;
+                write_args(f, actual.iter())?;
+                write!(f, ")")
             }
 
             TypecheckError::InvalidCallInExpression(call) => {

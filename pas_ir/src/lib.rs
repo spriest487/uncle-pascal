@@ -9,18 +9,16 @@ use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 pub use self::{
     formatter::*,
     interpret::{Interpreter, InterpreterOpts},
-    metadata::{
-        Type,
-    }
+    metadata::Type,
 };
 use linked_hash_map::LinkedHashMap;
 
 mod builder;
 
+mod dep_sort;
 mod expr;
 mod formatter;
 mod stmt;
-mod dep_sort;
 
 pub mod prelude {
     pub use crate::{metadata::*, GlobalRef, Instruction, Interpreter, Label, Ref, Value};
@@ -434,14 +432,19 @@ impl Module {
                         let mut builder = Builder::new(self);
                         let iface_meta = builder.translate_iface(&iface_def);
                         self.metadata.define_iface(iface_meta)
-                    },
+                    }
                 };
 
                 let method_def = self
                     .src_metadata
                     .find_method_impl_def(&iface_def.name.qualified, self_ty, method)
                     .cloned()
-                    .expect("missing method def");
+                    .unwrap_or_else(|| panic!(
+                        "missing method def: {}.{} for {}",
+                        iface_def.name.qualified,
+                        method,
+                        self_ty,
+                    ));
 
                 let specialized_decl = specialize_func_decl(&method_def.decl, &key.type_args)
                     .expect("method specialization failed in codegen");
@@ -664,7 +667,9 @@ impl fmt::Display for Module {
             writeln!(f, "{}: {}", id, iface.name)?;
 
             for (i, method) in iface.methods.iter().enumerate() {
-                let sig_params: Vec<_> = method.params.iter()
+                let sig_params: Vec<_> = method
+                    .params
+                    .iter()
                     .map(|param| self.metadata.pretty_ty_name(param))
                     .collect();
                 let return_ty = self.metadata.pretty_ty_name(&method.return_ty);
@@ -712,7 +717,7 @@ impl fmt::Display for Module {
 fn write_instruction_list(
     f: &mut fmt::Formatter,
     metadata: &Metadata,
-    instructions: &[Instruction]
+    instructions: &[Instruction],
 ) -> fmt::Result {
     let num_len = instructions.len().to_string().len();
 
@@ -872,7 +877,9 @@ fn gen_iface_impls(module: &mut Module) {
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
 fn gen_class_rc_boilerplate(module: &mut Module) {
-    let translated_classes: Vec<_> = module.type_cache.iter()
+    let translated_classes: Vec<_> = module
+        .type_cache
+        .iter()
         .filter_map(|(src_ty, ir_ty)| {
             if src_ty.as_class().is_ok() {
                 Some(ir_ty.clone())
@@ -883,7 +890,8 @@ fn gen_class_rc_boilerplate(module: &mut Module) {
         .collect();
 
     for class_ty in &translated_classes {
-        let resource_struct = class_ty.rc_resource_class_id()
+        let resource_struct = class_ty
+            .rc_resource_class_id()
             .and_then(|class_id| class_id.as_class())
             .expect("resource class of translated class type was not a struct");
 
@@ -925,7 +933,11 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // the disposable interface may never be referenced statically but needs to be instantiated
     // for automatic cleanup calls
     let builtin_disposable = pas_ty::builtin_disposable_iface();
-    if ir_module.metadata.find_iface_decl(&builtin_disposable.name.qualified).is_none() {
+    if ir_module
+        .metadata
+        .find_iface_decl(&builtin_disposable.name.qualified)
+        .is_none()
+    {
         let disposable_iface = {
             let mut builder = Builder::new(&mut ir_module);
             builder.translate_iface(&builtin_disposable)

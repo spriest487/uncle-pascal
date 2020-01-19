@@ -16,16 +16,19 @@ end;
 
 function I.Second(a: Integer; b: C)
 begin
-    WriteLn('first');
+    WriteLn('second');
 end;
 
 function I.Both(a, b: C)
 begin
-    WriteLn('first');
+    WriteLn('both');
 end;
 
 let c := C();
 I.First(c, 123);
 I.Second(456, c);
 I.Both(c, c);
+
+c.First(123);
+c.Both(c);
 

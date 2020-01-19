@@ -46,7 +46,7 @@ fn typecheck_args(
 ) -> TypecheckResult<Vec<Expression>> {
     let mut checked_args = Vec::new();
 
-    let expected_args = if let Some(self_arg) = self_arg {
+    let rest_args = if let Some(self_arg) = self_arg {
         let self_param = &expected_args[0];
         let self_compatible = self_param
             .ty
@@ -66,7 +66,7 @@ fn typecheck_args(
         expected_args
     };
 
-    for (arg, expected_param) in actual_args.iter().zip(expected_args.iter()) {
+    for (arg, expected_param) in actual_args.iter().zip(rest_args.iter()) {
         let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
 
         let (is_in_ref, is_out_ref) = match &expected_param.modifier {
@@ -107,12 +107,7 @@ fn typecheck_args(
         checked_args.push(arg_expr);
     }
 
-    let expected_len = match self_arg {
-        Some(..) => expected_args.len() + 1,
-        None => expected_args.len(),
-    };
-
-    if checked_args.len() != expected_len {
+    if checked_args.len() != expected_args.len() {
         // arg count doesn't match expected param count
         return Err(invalid_args(checked_args, expected_args, span.clone()));
     }
@@ -260,7 +255,7 @@ fn typecheck_func_overload(
 
     let call = match &overloaded.candidates[overload.selected_sig] {
         OverloadCandidate::Method { iface_ty, ident, sig, decl } => {
-            let self_ty = match &overloaded.self_arg {
+            let self_type = match &overloaded.self_arg {
                 Some(self_arg) => {
                     self_arg.annotation().ty().clone()
                 },
@@ -281,7 +276,7 @@ fn typecheck_func_overload(
                 }
             };
 
-            let sig = Rc::new(sig.with_self(&self_ty));
+            let sig = Rc::new(sig.with_self(&self_type));
 
             let return_annotation = TypeAnnotation::TypedValue {
                 span: overloaded.span.clone(),
@@ -295,7 +290,7 @@ fn typecheck_func_overload(
                 ident: ident.clone(),
                 args: overload.args,
                 type_args: overload.type_args,
-                self_type: sig.params[0].ty.clone(),
+                self_type,
                 func_type: Type::Function(sig.clone()),
                 of_type: iface_ty.clone(),
                 args_brackets,
@@ -784,6 +779,8 @@ pub fn resolve_overload(
     // no overload resolution needed, we can use the param type hint for all args
     if candidates.len() == 1 {
         let sig = &candidate_sigs[0];
+//        println!("only one candidate for {}, using {}", span, sig);
+
         let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
 
         return Ok(Overload {
