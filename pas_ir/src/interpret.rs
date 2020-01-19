@@ -1440,7 +1440,6 @@ impl Interpreter {
         let system_funcs: &[(&str, BuiltinFn, Type)] = &[
             ("IntToStr", builtin::int_to_str, Type::string_ptr()),
             ("StrToInt", builtin::str_to_int, Type::I32),
-            ("CompareStr", builtin::compare_str, Type::I32),
             ("WriteLn", builtin::write_ln, Type::Nothing),
             ("ReadLn", builtin::read_ln, Type::string_ptr()),
             ("GetMem", builtin::get_mem, Type::U8.ptr()),

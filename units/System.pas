@@ -31,8 +31,6 @@ export function ReadLn(): String; external 'rt';
 export function IntToStr(i: Integer): String; external 'rt';
 export function StrToInt(s: String): Integer; external 'rt';
 
-export function CompareStr(a: String; b: String): Integer; external 'rt';
-
 export type Disposable = interface
     function Dispose(self: Self);
 end;
@@ -48,6 +46,17 @@ end;
 export function StringLen(s: String): Integer
 begin
     s.len
+end;
+
+export function IsWhiteSpace(char: Byte): Boolean
+begin
+    char = 9
+    or char = 10
+    or char = 12
+    or char = 13
+    or char = 32
+    or char = 133
+    or char = 160
 end;
 
 export function StringConcat(a, b: String): String
@@ -70,23 +79,6 @@ begin
         String(chars: bytes; len: len);
     end
 end;
-
-{
-export function StringCompare(a, b: String): Boolean
-begin
-    if a.len = b.len then
-        false
-    else begin
-        for let i := 0 to a.len do
-        begin
-            if a.chars[i] = b.chars[i] then
-                exit false;
-        end;
-
-        true
-    end;
-end;
-}
 
 export function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
@@ -118,6 +110,62 @@ export function StringCharAt(s: String; at: Integer): Byte
 begin
     // todo: bounds check
     (s.chars + at)^
+end;
+
+export function CompareStr(a, b: String): Integer
+begin
+    if a.len = 0 and b.len = 0 then 0
+    else begin
+        var aPos := 0;
+        var bPos := 0;
+
+        var cmp: Integer := 0;
+        while true do begin
+            if aPos < a.len and aPos >= b.len then begin
+                cmp := 1;
+                break;
+            end;
+            if bPos < b.len and bPos >= a.len then begin
+                cmp := -1;
+                break;
+            end;
+            if aPos >= a.len and bPos >= b.len then begin
+                cmp := 0;
+                break;
+            end;
+
+            let aChar := (a.chars + aPos)^;
+            let bChar := (b.chars + bPos)^;
+            cmp := if aChar > bChar then 1
+                else if bChar > aChar then -1
+                else 0;
+
+            if cmp <> 0 then break;
+
+            aPos := aPos + 1;
+            bPos := bPos + 1;
+        end;
+
+        cmp
+    end
+end;
+
+export function StringTrim(s: String): String
+begin
+    if s.len = 0 then
+        s
+    else begin
+        var startAt := 0;
+        while s.StringCharAt(startAt).IsWhiteSpace() do
+            startAt := startAt + 1;
+
+        var endAt := s.len - 1;
+        while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
+            endAt := endAt - 1;
+
+        let len := (endAt + 1) - startAt;
+        SubString(s, startAt, len)
+    end
 end;
 
 export function Max(a, b: Integer): Integer
