@@ -280,6 +280,24 @@ impl MemCell {
         }
     }
 
+    pub fn try_shl(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a << b)),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a << b)),
+
+            _ => None,
+        }
+    }
+
+    pub fn try_shr(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a >> b)),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a >> b)),
+
+            _ => None,
+        }
+    }
+
     pub fn as_function(&self) -> Option<&Function> {
         match self {
             MemCell::Function(f) => Some(f),
@@ -1112,6 +1130,24 @@ impl Interpreter {
                 ),
             },
 
+            Instruction::Shl { out, a, b } => match self.evaluate(a).try_shl(&self.evaluate(b)) {
+                Some(result) => self.store(out, result),
+                None => panic!(
+                    "Shl is not valid for {:?} shl {:?}",
+                    self.evaluate(a),
+                    self.evaluate(b)
+                ),
+            },
+
+            Instruction::Shr { out, a, b } => match self.evaluate(a).try_shr(&self.evaluate(b)) {
+                Some(result) => self.store(out, result),
+                None => panic!(
+                    "Shr is not valid for {:?} shr {:?}",
+                    self.evaluate(a),
+                    self.evaluate(b)
+                ),
+            },
+
             Instruction::Eq { out, a, b } => {
                 let eq = match self.evaluate(a).try_eq(&self.evaluate(b)) {
                     Some(eq) => eq,
@@ -1427,11 +1463,6 @@ impl Interpreter {
                     value: MemCell::Function(Function::Builtin { func, ret }),
                     ty: Type::Nothing,
                 },
-            );
-        } else {
-            eprintln!(
-                "define_builtin: no declaration for defined function `{}`",
-                name
             );
         }
     }
