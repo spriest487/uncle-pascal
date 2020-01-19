@@ -408,6 +408,24 @@ impl<'a> Builder<'a> {
                 )));
             }
 
+            ir::Instruction::Mul { out, a, b } => {
+                let mul_result = Expr::translate_infix_op(a, InfixOp::Mul, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    mul_result,
+                    self.module,
+                )));
+            }
+
+            ir::Instruction::IDiv { out, a, b } => {
+                let div_result = Expr::translate_infix_op(a, InfixOp::Div, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    div_result,
+                    self.module,
+                )));
+            }
+
             ir::Instruction::Element { out, a, index, .. } => {
                 let element = Expr::translate_element(a, index, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(

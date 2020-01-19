@@ -46,6 +46,24 @@ pub trait InstructionFormatter {
                 write!(f, " - ")?;
                 self.format_val(b, f)
             }
+            Instruction::Mul { out, a, b } => {
+                write!(f, "{:>width$} ", "mul", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " * ")?;
+                self.format_val(b, f)
+            }
+            Instruction::IDiv { out, a, b } => {
+                write!(f, "{:>width$} ", "idiv", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " div ")?;
+                self.format_val(b, f)
+            }
 
             Instruction::Eq { out, a, b } => {
                 write!(f, "{:>width$} ", "eq", width = IX_WIDTH)?;

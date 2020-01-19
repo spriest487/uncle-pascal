@@ -425,7 +425,7 @@ impl Lexer {
             '+' => Some(self.operator_token(Operator::Plus, 1)),
             '-' => Some(self.operator_token(Operator::Minus, 1)),
             '*' => Some(self.operator_token(Operator::Multiply, 1)),
-            '/' => Some(self.operator_token(Operator::Divide, 1)),
+            '/' => Some(self.operator_token(Operator::IntegerDivide, 1)),
             '@' => Some(self.operator_token(Operator::AddressOf, 1)),
             ',' => Some(self.separator_token(Separator::Comma, 1)),
             '.' => Some(match self.line.get(self.location.col + 1) {

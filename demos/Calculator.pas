@@ -8,7 +8,7 @@ let divCommand: Byte := 47; // '/'
 WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
 
 while true do begin
-    let command := ReadLn();
+    let command := ReadLn().StringTrim();
 
     if command.CompareStr('exit') = 0 then break;
 
@@ -28,8 +28,12 @@ while true do begin
     end;
 
     let op := command.StringCharAt(opIndex);
-    let lhs := command.SubString(0, opIndex).StrToInt();
-    let rhs := command.SubString(opIndex + 1, command.StringLen() - (opIndex + 1)).StrToInt();
+    let lhs := command.SubString(0, opIndex)
+        .StringTrim()
+        .StrToInt();
+    let rhs := command.SubString(opIndex + 1, command.StringLen() - (opIndex + 1))
+        .StringTrim()
+        .StrToInt();
 
     let result :=
         if op = addCommand then lhs + rhs

@@ -260,6 +260,26 @@ impl MemCell {
         }
     }
 
+    pub fn try_mul(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a * b)),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a * b)),
+            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a * b)),
+
+            _ => None,
+        }
+    }
+
+    pub fn try_idiv(&self, other: &Self) -> Option<Self> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a / b)),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a / b)),
+            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a / b)),
+
+            _ => None,
+        }
+    }
+
     pub fn as_function(&self) -> Option<&Function> {
         match self {
             MemCell::Function(f) => Some(f),
@@ -593,7 +613,7 @@ impl Interpreter {
     }
 
     fn store(&mut self, at: &Ref, val: MemCell) {
-//        println!("{} <- {:#?}", at, val);
+        //        println!("{} <- {:#?}", at, val);
 
         match at {
             Ref::Local(LocalID(id)) => match self.current_frame_mut().locals.get_mut(*id) {
@@ -848,10 +868,10 @@ impl Interpreter {
                         .rc_boilerplate_funcs()
                         .map(|(ty, funcs)| {
                             format!(
-                            "  {}: release={}, retain={}",
-                            self.metadata.pretty_ty_name(ty),
-                            funcs.release,
-                            funcs.retain,
+                                "  {}: release={}, retain={}",
+                                self.metadata.pretty_ty_name(ty),
+                                funcs.release,
+                                funcs.retain,
                             )
                         })
                         .collect::<Vec<_>>()
@@ -925,7 +945,7 @@ impl Interpreter {
             Ref::Deref(val) => match self.evaluate(val) {
                 MemCell::Pointer(ptr) => ptr.clone(),
 
-                    _ => panic!("deref of non-pointer value @ {}", val),
+                _ => panic!("deref of non-pointer value @ {}", val),
             },
 
             // let int := 1;
@@ -1060,6 +1080,24 @@ impl Interpreter {
                 Some(result) => self.store(out, result),
                 None => panic!(
                     "Add is not valid for {:?} + {:?}",
+                    self.evaluate(a),
+                    self.evaluate(b)
+                ),
+            },
+
+            Instruction::Mul { out, a, b } => match self.evaluate(a).try_mul(&self.evaluate(b)) {
+                Some(result) => self.store(out, result),
+                None => panic!(
+                    "Mul is not valid for {:?} * {:?}",
+                    self.evaluate(a),
+                    self.evaluate(b)
+                ),
+            }
+
+            Instruction::IDiv { out, a, b } => match self.evaluate(a).try_idiv(&self.evaluate(b)) {
+                Some(result) => self.store(out, result),
+                None => panic!(
+                    "IDiv is not valid for {:?} div {:?}",
                     self.evaluate(a),
                     self.evaluate(b)
                 ),
@@ -1396,7 +1434,7 @@ impl Interpreter {
                 name
             );
         }
-        }
+    }
 
     fn init_stdlib_globals(&mut self) {
         let system_funcs: &[(&str, BuiltinFn, Type)] = &[

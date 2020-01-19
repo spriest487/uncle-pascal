@@ -157,6 +157,16 @@ pub enum Instruction {
         a: Value,
         b: Value,
     },
+    Mul {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    IDiv {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
 
     Eq {
         out: Ref,

@@ -477,7 +477,7 @@ impl Type {
             // all maths ops are valid for primitives of the same type
             (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Minus, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Divide, Type::Primitive(b))
+            | (Type::Primitive(a), Operator::IntegerDivide, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
 
             _ => false,

@@ -134,6 +134,26 @@ impl IntConstant {
         }
     }
 
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            IntConstant::Char(i) => Some(cast::f32(*i)),
+            IntConstant::I32(i) => Some(cast::f32(*i)),
+            IntConstant::U32(i) => Some(cast::f32(*i)),
+            IntConstant::I64(i) => Some(cast::f32(*i)),
+            IntConstant::U64(i) => Some(cast::f32(*i)),
+        }
+    }
+
+    pub fn as_f64(&self) -> Option<f64> {
+        match self {
+            IntConstant::Char(i) => Some(cast::f64(*i)),
+            IntConstant::I32(i) => Some(cast::f64(*i)),
+            IntConstant::U32(i) => Some(cast::f64(*i)),
+            IntConstant::I64(i) => Some(cast::f64(*i)),
+            IntConstant::U64(i) => Some(cast::f64(*i)),
+        }
+    }
+
     #[cfg(target_pointer_width = "64")]
     pub fn as_usize(&self) -> Option<usize> {
         match self {

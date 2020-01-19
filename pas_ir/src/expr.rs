@@ -766,6 +766,24 @@ fn translate_bin_op(
             });
         }
 
+        syn::Operator::Multiply => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::Mul {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
+        syn::Operator::IntegerDivide => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::IDiv {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
         syn::Operator::Gt => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::Gt {
