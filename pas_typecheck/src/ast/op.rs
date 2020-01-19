@@ -316,6 +316,15 @@ fn typecheck_member_of(
                             }
                         }
 
+                        InstanceMember::Overloaded { candidates } => {
+                            TypeAnnotation::Overload(OverloadAnnotation::new(
+                                candidates,
+                                Some(Box::new(lhs.clone())),
+                                Vec::new(),
+                                span.clone(),
+                            ))
+                        }
+
                         InstanceMember::Data { ty: member_ty } => {
                             /* class members are always mutable because a mutable class ref is only
                             a mutable *reference*. record members inherit their value kind from the

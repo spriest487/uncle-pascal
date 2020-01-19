@@ -4,7 +4,12 @@ pub mod result;
 
 mod ufcs;
 
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, Variant}, context::NamespaceStack, specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName, Type, TypeParam};
+use crate::{
+    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
+    context::NamespaceStack,
+    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName,
+    Type, TypeParam,
+};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -15,7 +20,7 @@ use std::{
     rc::Rc,
 };
 
-pub use self::{builtin::*, ns::*, result::*};
+pub use self::{builtin::*, ns::*, result::*, ufcs::InstanceMethod};
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
 pub enum ValueKind {
@@ -66,9 +71,20 @@ pub struct Binding {
 
 #[derive(Clone, Debug)]
 pub enum InstanceMember {
-    Data { ty: Type },
-    Method { iface_ty: Type, method: Ident },
-    UFCSCall { func_name: IdentPath, sig: Rc<FunctionSig> },
+    Data {
+        ty: Type,
+    },
+    Method {
+        iface_ty: Type,
+        method: Ident,
+    },
+    UFCSCall {
+        func_name: IdentPath,
+        sig: Rc<FunctionSig>,
+    },
+    Overloaded {
+        candidates: Vec<OverloadCandidate>,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -354,7 +370,11 @@ impl Context {
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
         match self.find(&name) {
-            Some(MemberRef::Value { value: Decl::Alias(aliased), key, ref parent_path }) => {
+            Some(MemberRef::Value {
+                value: Decl::Alias(aliased),
+                key,
+                ref parent_path,
+            }) => {
                 match &decl {
                     // new decl aliases the same type and is OK
                     Decl::Alias(new_aliased) if *new_aliased == *aliased => {
@@ -364,8 +384,8 @@ impl Context {
 
                     // new name replaces an existing alias and doesn't match the old alias
                     _ => {
-                        let old_ident = IdentPath::from_parts(parent_path.keys().cloned())
-                            .child(key.clone());
+                        let old_ident =
+                            IdentPath::from_parts(parent_path.keys().cloned()).child(key.clone());
 
                         Err(NameError::AlreadyDeclared {
                             new: name.clone(),
@@ -526,12 +546,14 @@ impl Context {
         let member = self.resolve(path)?;
 
         match member {
-            MemberRef::Value { value, parent_path, key } => {
-                match value {
-                    Decl::Alias(aliased) => self.resolve_alias(aliased),
-                    _ => Some(IdentPath::new(key.clone(), parent_path.keys().cloned())),
-                }
-            }
+            MemberRef::Value {
+                value,
+                parent_path,
+                key,
+            } => match value {
+                Decl::Alias(aliased) => self.resolve_alias(aliased),
+                _ => Some(IdentPath::new(key.clone(), parent_path.keys().cloned())),
+            },
 
             _ => None,
         }
@@ -954,10 +976,7 @@ impl Context {
         let data_member = of_ty.find_data_member(member, self)?;
 
         let methods = ufcs::instance_methods_of(of_ty, self)?;
-        let matching_methods: Vec<_> = methods
-            .iter()
-            .filter(|m| *m.ident() == *member)
-            .collect();
+        let matching_methods: Vec<_> = methods.iter().filter(|m| *m.ident() == *member).collect();
 
         fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {
             options
@@ -969,10 +988,9 @@ impl Context {
                 .collect()
         }
 
-        fn ambig_matching_methods(
-            methods: &[&ufcs::InstanceMethod]
-        ) -> Vec<(Type, Ident)> {
-            methods.iter()
+        fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident)> {
+            methods
+                .iter()
                 .map(|im| match im {
                     ufcs::InstanceMethod::Method { iface_ty, decl } => {
                         (iface_ty.clone(), decl.ident.last().clone())
@@ -990,41 +1008,44 @@ impl Context {
             (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
 
             // unambiguous method
-            (None, 1) => {
-                match matching_methods.last().unwrap() {
-                    ufcs::InstanceMethod::Method { iface_ty, decl } => {
-                        Ok(InstanceMember::Method {
-                            iface_ty: iface_ty.clone(),
-                            method: decl.ident.last().clone(),
-                        })
-                    }
+            (None, 1) => match matching_methods.last().unwrap() {
+                ufcs::InstanceMethod::Method { iface_ty, decl } => Ok(InstanceMember::Method {
+                    iface_ty: iface_ty.clone(),
+                    method: decl.ident.last().clone(),
+                }),
 
-                    ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
-                        Ok(InstanceMember::UFCSCall {
-                            func_name: func_name.clone(),
-                            sig: sig.clone(),
-                        })
-                    }
+                ufcs::InstanceMethod::FreeFunction { func_name, sig } => {
+                    Ok(InstanceMember::UFCSCall {
+                        func_name: func_name.clone(),
+                        sig: sig.clone(),
+                    })
                 }
-            }
+            },
 
+            // no data member, no methods
             (None, 0) => Err(NameError::MemberNotFound {
                 span: member.span.clone(),
                 member: member.clone(),
                 base: of_ty.clone(),
             }),
 
-            // there's a data member and 1+ methods
+            // no data member, multiple methods - we can use overloading to determine which
+            (None, _) => {
+                let candidates: Vec<_> = matching_methods.iter()
+                    .map(|m| OverloadCandidate::from((**m).clone()))
+                    .collect();
+
+                Ok(InstanceMember::Overloaded { candidates })
+            }
+
+            // there's a data member AND 1+ methods
             (Some(data_member), _) => Err(NameError::Ambiguous {
                 ident: member.clone(),
-                options: ambig_paths(ambig_matching_methods(&matching_methods)
-                    .into_iter()
-                    .chain(vec![(of_ty.clone(), data_member.ident)])),
-            }),
-
-            (None, _) => Err(NameError::Ambiguous {
-                ident: member.clone(),
-                options: ambig_paths(ambig_matching_methods(&matching_methods)),
+                options: ambig_paths(
+                    ambig_matching_methods(&matching_methods)
+                        .into_iter()
+                        .chain(vec![(of_ty.clone(), data_member.ident)]),
+                ),
             }),
         }
     }
@@ -1181,24 +1202,22 @@ impl Context {
         match self.resolve(name) {
             Some(MemberRef::Value {
                 parent_path, value, ..
-            }) => {
-                match value {
-                    Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
-                        match visibility {
-                            Visibility::Exported => true,
-                            Visibility::Private => {
-                                let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
-                                let current_ns = self.namespace();
+            }) => match value {
+                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
+                    match visibility {
+                        Visibility::Exported => true,
+                        Visibility::Private => {
+                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                            let current_ns = self.namespace();
 
-                                current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
-                            }
+                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
                         }
                     }
-
-                    Decl::Alias(..) => false,
-
-                    _ => true,
                 }
+
+                Decl::Alias(..) => false,
+
+                _ => true,
             },
 
             _ => true,

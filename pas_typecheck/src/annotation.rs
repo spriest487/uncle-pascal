@@ -13,6 +13,7 @@ use crate::{
     ty::*,
     ValueKind,
 };
+use crate::ast::OverloadCandidate;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct MethodAnnotation {
@@ -95,6 +96,42 @@ pub struct VariantCtorAnnotation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OverloadAnnotation {
+    pub span: Span,
+
+    pub candidates: Vec<OverloadCandidate>,
+    func_ty: Type,
+
+    pub self_arg: Option<Box<Expression>>,
+
+    pub type_args: Vec<Type>,
+}
+
+impl OverloadAnnotation {
+    pub fn new(
+        candidates: Vec<OverloadCandidate>,
+        self_arg: Option<Box<Expression>>,
+        type_args: Vec<Type>,
+        span: Span
+    ) -> Self {
+        let func_ty = if candidates.len() == 1 {
+            Type::Function(candidates[0].sig().clone())
+        } else {
+            // undecided
+            Type::Nothing
+        };
+
+        Self {
+            candidates,
+            func_ty,
+            span,
+            self_arg,
+            type_args,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeAnnotation {
     Untyped(Span),
     TypedValue {
@@ -120,6 +157,7 @@ pub enum TypeAnnotation {
         span: Span,
     },
     VariantCtor(VariantCtorAnnotation),
+    Overload(OverloadAnnotation),
 }
 
 impl TypeAnnotation {
@@ -129,6 +167,7 @@ impl TypeAnnotation {
         match self {
             TypeAnnotation::Function { func_ty: ty, .. }
             | TypeAnnotation::TypedValue { ty, .. }
+            | TypeAnnotation::Overload(OverloadAnnotation { func_ty: ty, .. })
                 if ty == expect_ty =>
             {
                 Ok(())
@@ -147,7 +186,9 @@ impl TypeAnnotation {
             }),
 
             TypeAnnotation::UFCSCall { span, func_ty, .. }
-            | TypeAnnotation::Function { span, func_ty, .. } => Err(TypecheckError::TypeMismatch {
+            | TypeAnnotation::Function { span, func_ty, .. }
+            | TypeAnnotation::Overload(OverloadAnnotation { span, func_ty, .. })
+            => Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
                 expected: expect_ty.clone(),
                 actual: func_ty.clone(),
@@ -188,6 +229,8 @@ impl TypeAnnotation {
             TypeAnnotation::UFCSCall { func_ty: ty, .. }
             | TypeAnnotation::Function { func_ty: ty, .. }
             | TypeAnnotation::TypedValue { ty, .. } => ty,
+
+            TypeAnnotation::Overload(overload) => &overload.func_ty,
         }
     }
 
@@ -197,6 +240,7 @@ impl TypeAnnotation {
             TypeAnnotation::Method(method) => Some(&method.span),
             TypeAnnotation::Function { .. } => None, // TODO
             TypeAnnotation::UFCSCall { .. } => None, // TODO
+            TypeAnnotation::Overload { .. } => None, // TODO
 
             TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
@@ -238,6 +282,7 @@ impl Spanned for TypeAnnotation {
             | TypeAnnotation::VariantCtor(VariantCtorAnnotation { span, .. })
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
+            | TypeAnnotation::Overload(overload) => &overload.span,
         }
     }
 }

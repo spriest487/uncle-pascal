@@ -1,14 +1,17 @@
-use std::rc::Rc;
+use std::{
+    rc::Rc,
+    fmt,
+};
 
 use pas_common::span::{Span, Spanned as _};
 use pas_syn::ast::FunctionParamMod;
 use pas_syn::{ast, Ident, IdentPath};
 
-use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor};
+use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor, FunctionDecl};
 use crate::{
-    typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget,
-    GenericTypeHint, MethodAnnotation, NameError, Specializable, Type, TypeAnnotation,
-    TypecheckError, TypecheckResult, ValueKind,
+    context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError,
+    GenericTarget, GenericTypeHint, MethodAnnotation, NameError, Specializable, Type,
+    TypeAnnotation, TypecheckError, TypecheckResult, ValueKind,
 };
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
@@ -204,6 +207,65 @@ pub fn typecheck_call(
             typecheck_method_call(&func_call, &method_annotation, ctx)
                 .map(Box::new)
                 .map(CallOrCtor::Call)?
+        }
+
+        TypeAnnotation::Overload(overloaded) => {
+            let overload = resolve_overload(
+                &overloaded.candidates,
+                &func_call.args,
+                overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
+                &overloaded.span,
+                ctx
+            )?;
+
+            let args_brackets = func_call.args_brackets.clone();
+
+            let call = match &overloaded.candidates[overload.selected_sig] {
+                OverloadCandidate::Method { iface_ty, ident, sig, decl } => {
+                    let sig = Rc::new(sig.with_self(overload.args[0].annotation().ty()));
+
+                    let return_annotation = TypeAnnotation::TypedValue {
+                        span: overloaded.span.clone(),
+                        ty: sig.return_ty.clone(),
+                        decl: Some(decl.span().clone()),
+                        value_kind: ValueKind::Temporary,
+                    };
+
+                    let method_call = MethodCall {
+                        annotation: return_annotation,
+                        ident: ident.clone(),
+                        args: overload.args,
+                        type_args: overload.type_args,
+                        self_type: sig.params[0].ty.clone(),
+                        func_type: Type::Function(sig.clone()),
+                        of_type: iface_ty.clone(),
+                        args_brackets,
+                    };
+
+                    ast::Call::Method(method_call)
+                }
+
+                OverloadCandidate::Function { decl_name, sig } => {
+                    let return_annotation = TypeAnnotation::TypedValue {
+                        span: overloaded.span.clone(),
+                        ty: sig.return_ty.clone(),
+                        decl: Some(decl_name.span().clone()),
+                        value_kind: ValueKind::Temporary,
+                    };
+
+                    let func_call = FunctionCall {
+                        annotation: return_annotation,
+                        args: overload.args,
+                        type_args: overload.type_args.clone(),
+                        target,
+                        args_brackets,
+                    };
+
+                    ast::Call::Function(func_call)
+                }
+            };
+
+            CallOrCtor::Call(Box::new(call))
         }
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
@@ -678,25 +740,81 @@ fn typecheck_variant_ctor_call(
     }))
 }
 
-struct Overload {
-    selected_sig: usize,
-    args: Vec<Expression>,
+pub struct Overload {
+    pub selected_sig: usize,
+    pub args: Vec<Expression>,
+    pub type_args: Vec<Type>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum OverloadCandidate {
-    Declared(IdentPath, Rc<FunctionSig>),
+    Function {
+        decl_name: IdentPath,
+        sig: Rc<FunctionSig>,
+    },
+    Method {
+        iface_ty: Type,
+        ident: Ident,
+        decl: FunctionDecl,
+        sig: Rc<FunctionSig>,
+    },
 }
 
 impl OverloadCandidate {
-    pub fn sig(&self) -> &FunctionSig {
+    pub fn sig(&self) -> &Rc<FunctionSig> {
         match self {
-            OverloadCandidate::Declared(_, sig) => sig.as_ref(),
+            OverloadCandidate::Function { sig, .. } => sig,
+            OverloadCandidate::Method { sig, .. } => sig,
+        }
+    }
+
+    pub fn ident(&self) -> &IdentPath {
+        match self {
+            OverloadCandidate::Method { decl, .. } => &decl.ident,
+            OverloadCandidate::Function { decl_name, .. } => decl_name,
+        }
+    }
+
+    pub fn span(&self) -> &Span {
+        match self {
+            OverloadCandidate::Function { decl_name, .. } => decl_name.span(),
+            OverloadCandidate::Method { decl, .. } => decl.span(),
         }
     }
 }
 
-fn resolve_overload(
+impl fmt::Display for OverloadCandidate {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            OverloadCandidate::Function { decl_name, .. } => {
+                write!(f, "function {}", decl_name)
+            },
+            OverloadCandidate::Method { iface_ty, ident, .. } => {
+                write!(f, "method {}.{}", iface_ty, ident)
+            },
+        }
+    }
+}
+
+impl From<InstanceMethod> for OverloadCandidate {
+    fn from(im: InstanceMethod) -> Self {
+        match im {
+            InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
+                iface_ty,
+                ident: decl.ident.last().clone(),
+                sig: Rc::new(FunctionSig::of_decl(&decl)),
+                decl,
+            },
+
+            InstanceMethod::FreeFunction { func_name, sig } => OverloadCandidate::Function {
+                decl_name: func_name,
+                sig,
+            },
+        }
+    }
+}
+
+pub fn resolve_overload(
     candidates: &[OverloadCandidate],
     args: &[ast::Expression<Span>],
     self_arg: Option<&Expression>,
@@ -715,6 +833,7 @@ fn resolve_overload(
         return Ok(Overload {
             selected_sig: 0,
             args,
+            type_args: Vec::new(), //todo
         });
     }
 
@@ -725,61 +844,94 @@ fn resolve_overload(
     let mut actual_args = Vec::new();
     let mut valid_candidates: Vec<_> = (0..candidates.len()).collect();
 
+    let mut param_index = 0;
+    let mut arg_index = 0;
+
+    let candidate_sigs: Vec<_> = match self_arg {
+        Some(self_arg) => {
+            let self_ty = self_arg.annotation().ty();
+            candidates.iter().map(|c| c.sig().with_self(self_ty)).collect()
+        }
+
+        None => {
+            candidates.iter().map(|c| (**c.sig()).clone()).collect()
+        }
+    };
+
     // do the self-arg (which has a known type already) first
-    let self_arg = if let Some(self_arg) = self_arg {
+    if let Some(self_arg) = self_arg {
         actual_args.push(self_arg.clone());
 
         valid_candidates.retain(|i| {
-            let sig = candidates[*i].sig();
+            let sig = &candidate_sigs[*i];
+
             let self_arg_ty = self_arg.annotation().ty();
 
             if sig.params.len() < 1 {
+//                println!("discarding {} as candidate for {}, not enough params", sig, span);
                 false
             } else {
-                sig.params[0].ty.assignable_from(self_arg_ty, ctx)
+                let self_param_ty = &sig.params[0].ty;
+
+                if !self_param_ty.assignable_from(self_arg_ty, ctx) {
+//                    println!("discarding {} as candidate for {}, {} :!= {}", sig, span, self_param_ty, self_arg_ty);
+                    false
+                } else {
+                    true
+                }
             }
         });
 
-        Some(())
-    } else {
-        None
-    };
+        param_index += 1;
+    }
 
-    let param_offset = if self_arg.is_some() { 1 } else { 0 };
-    let mut arg_index = 0;
+    let arg_count = args.len() + self_arg.iter().len();
+
     loop {
         // did we find a best match? try to typecheck args as if this is the sig to be called
         if valid_candidates.len() == 1 {
             break Ok(Overload {
                 selected_sig: valid_candidates[0],
                 args: actual_args,
+                type_args: Vec::new(), //todo
             });
         }
 
         // ran out of candidates or arguments, couldn't resolve a single sig
-        if arg_index > args.len() || valid_candidates.len() == 0 {
+        if arg_index >= arg_count || valid_candidates.len() == 0 {
+//            println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
+
             break Err(TypecheckError::AmbiguousFunction {
                 candidates: candidates.to_vec(),
                 span: span.clone(),
             });
         }
 
+//        println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
+
         let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
         let arg_ty = arg.annotation().ty().clone();
         actual_args.push(arg);
 
         valid_candidates.retain(|i| {
-            let sig = candidates[*i].sig();
-            let param_index = arg_index + param_offset;
+            let sig = &candidate_sigs[*i];
 
             if param_index > sig.params.len() {
+//                println!("discarding {} as candidate for {}: not enough params", sig, span);
                 false
             } else {
-                sig.params[param_index].ty.assignable_from(&arg_ty, ctx)
+                let param_ty = &sig.params[param_index].ty;
+                if param_ty.assignable_from(&arg_ty, ctx) {
+                    true
+                } else {
+//                    println!("discarding {} as candidate for {}: {} :!= {}", sig, span, param_ty, arg_ty);
+                    false
+                }
             }
         });
 
-        arg_index = arg_index + 1;
+        param_index += 1;
+        arg_index += 1;
     }
 }
 
@@ -787,23 +939,27 @@ fn resolve_overload(
 mod test {
     use std::rc::Rc;
 
-    use crate::ast::{OverloadCandidate, call::resolve_overload};
-    use crate::test::module_from_src;
-    use crate::{FunctionSig, Context};
     use pas_common::span::Span;
     use pas_common::BuildOptions;
-    use pas_syn::{TokenTree, ast};
     use pas_syn::parse::TokenStream;
+    use pas_syn::{ast, TokenTree};
+
+    use crate::ast::{call::resolve_overload, OverloadCandidate, typecheck_expr};
+    use crate::test::module_from_src;
+    use crate::{Context, FunctionSig, Type, Primitive};
+    use std::cmp::Ordering;
 
     fn parse_expr(src: &str) -> ast::Expression<Span> {
         let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
 
         let mut tokens = TokenStream::new(tokens, Span::zero("test"));
 
-        ast::Expression::parse(&mut tokens).and_then(|expr| {
-            tokens.finish()?;
-            Ok(expr)
-        }).unwrap()
+        ast::Expression::parse(&mut tokens)
+            .and_then(|expr| {
+                tokens.finish()?;
+                Ok(expr)
+            })
+            .unwrap()
     }
 
     fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
@@ -813,7 +969,20 @@ mod test {
 
         let candidates = unit.unit.func_defs().map(|func| {
             let sig = FunctionSig::of_decl(&func.decl);
-            OverloadCandidate::Declared(func.decl.ident.clone(), Rc::new(sig))
+
+            match &func.decl.impl_iface {
+                Some(impl_iface) => OverloadCandidate::Method {
+                    ident: func.decl.ident.last().clone(),
+                    iface_ty: impl_iface.iface.clone(),
+                    sig: Rc::new(sig),
+                    decl: func.decl.clone(),
+                },
+
+                None => OverloadCandidate::Function {
+                    decl_name: func.decl.ident.clone(),
+                    sig: Rc::new(sig),
+                },
+            }
         });
 
         (candidates.collect(), unit.context)
@@ -833,17 +1002,68 @@ mod test {
         let expr = parse_expr("i");
         let span = expr.annotation().clone();
 
-        let overload = resolve_overload(
-            &candidates,
-            &[expr],
-            None,
-            &span,
-            &mut ctx
-        ).unwrap();
+        let overload = resolve_overload(&candidates, &[expr], None, &span, &mut ctx).unwrap();
 
         assert_eq!(0, overload.selected_sig);
         assert_eq!(1, overload.args.len());
         assert_eq!("i", overload.args[0].to_string());
+    }
+
+    #[test]
+    fn resolves_method_by_args() {
+        let src = r"
+            type I1 = interface
+                function M(self: Self; i: Integer);
+            end;
+
+            type I2 = interface
+                function M(self: Self; b: Boolean);
+            end;
+
+            type C = class end;
+
+            function I1.M(self: C; i: Integer)
+            begin
+            end;
+
+            function I2.M(self: C; b: Boolean)
+            begin
+            end;
+
+            let c := C();
+            let i: Integer := 1;
+            let b: Boolean := true;
+        ";
+
+        let (mut candidates, mut ctx) = candidates_from_src(src);
+        // make sure they're in the declared order, just to be sure
+        candidates.sort_by(|a, b| {
+            match (&a.sig().params[1].ty, &b.sig().params[1].ty) {
+                (Type::Primitive(Primitive::Int32), Type::Primitive(Primitive::Boolean)) => {
+                    Ordering::Less
+                }
+
+                (Type::Primitive(Primitive::Boolean), Type::Primitive(Primitive::Int32)) => {
+                    Ordering::Greater
+                }
+
+                _ => Ordering::Equal,
+            }
+        });
+
+        let self_expr = typecheck_expr(&parse_expr("c"), &Type::Nothing, &mut ctx).unwrap();
+
+        let i_expr = parse_expr("i");
+        let i_span = i_expr.annotation().clone();
+        let i_overload = resolve_overload(&candidates, &[i_expr], Some(&self_expr), &i_span, &mut ctx).unwrap();
+
+        assert_eq!(i_overload.selected_sig, 0);
+
+        let b_expr = parse_expr("b");
+        let b_span = b_expr.annotation().clone();
+        let b_overload = resolve_overload(&candidates, &[b_expr], Some(&self_expr), &b_span, &mut ctx).unwrap();
+
+        assert_eq!(b_overload.selected_sig, 1);
     }
 
     #[test]
@@ -864,13 +1084,7 @@ mod test {
         let expr = parse_expr("i");
         let span = expr.annotation().clone();
 
-        let overload = resolve_overload(
-            &candidates,
-            &[expr],
-            None,
-            &span,
-            &mut ctx
-        ).unwrap();
+        let overload = resolve_overload(&candidates, &[expr], None, &span, &mut ctx).unwrap();
 
         assert_eq!(0, overload.selected_sig);
         assert_eq!(1, overload.args.len());

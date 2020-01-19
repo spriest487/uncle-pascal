@@ -297,12 +297,26 @@ impl DiagnosticOutput for TypecheckError {
             }],
 
             TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![DiagnosticMessage {
-                title: format!("previous occurence of `{}`", name),
+                title: format!("previous occurrence of `{}`", name),
                 label: Some(DiagnosticLabel {
                     text: None,
                     span: previous.clone(),
                 }),
             }],
+
+            TypecheckError::AmbiguousFunction { candidates, .. } => {
+                candidates.iter()
+                    .map(|c| {
+                        DiagnosticMessage {
+                            label: Some(DiagnosticLabel {
+                                span: c.span().clone(),
+                                text: None,
+                            }),
+                            title: format!("may refer to {}", c),
+                        }
+                    })
+                    .collect()
+            }
 
             _ => Vec::new(),
         }
