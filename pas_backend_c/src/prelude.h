@@ -187,6 +187,7 @@ static unsigned char* System_GetMem(int32_t len);
 static void System_FreeMem(unsigned char* mem);
 static void System_Write(struct Rc* str_rc);
 static void System_WriteLn(struct Rc* str_rc);
+static struct Rc* System_ReadLn(void);
 
 // Strings
 

@@ -54,4 +54,20 @@ static void System_WriteLn(struct Rc* str_rc) {
     putchar('\n');
 }
 
+static struct Rc* System_ReadLn(void) {
+    char buf[64];
+    if (!fgets(buf, 64, stdin)) {
+        fputs("ReadLn i/o failure\n", stderr);
+        abort();
+    }
+
+    size_t len = strlen(buf);
+    struct Rc* str_rc = RcAlloc(&STRING_CLASS);
+    STRING_LEN(str_rc) = (int32_t) len;
+    STRING_CHARS(str_rc) = System_GetMem(len);
+    memcpy(STRING_CHARS(str_rc), buf, len);
+
+    return str_rc;
+}
+
 #endif

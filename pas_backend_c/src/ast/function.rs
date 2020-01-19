@@ -26,6 +26,7 @@ pub enum FunctionName {
     IntToStr,
     StrToInt,
     WriteLn,
+    ReadLn,
     GetMem,
     FreeMem,
 }
@@ -44,6 +45,7 @@ impl fmt::Display for FunctionName {
             FunctionName::IsImpl => write!(f, "IsImpl"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
+            FunctionName::ReadLn => write!(f, "System_ReadLn"),
             FunctionName::IntToStr => write!(f, "System_IntToStr"),
             FunctionName::StrToInt => write!(f, "System_StrToInt"),
             FunctionName::GetMem => write!(f, "System_GetMem"),
