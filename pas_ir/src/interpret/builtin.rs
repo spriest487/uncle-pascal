@@ -1,6 +1,5 @@
 use crate::{interpret::{Interpreter, MemCell, Pointer}, LocalID, Ref};
 use std::io::{self, BufRead};
-use std::cmp::Ordering;
 
 /// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {

@@ -872,6 +872,24 @@ fn translate_bin_op(
             });
         }
 
+        syn::Operator::Shl => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::Shl {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
+        syn::Operator::Shr => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::Shr {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
         syn::Operator::And => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::And {

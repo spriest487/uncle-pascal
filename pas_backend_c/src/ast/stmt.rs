@@ -20,6 +20,8 @@ pub enum InfixOp {
     Mul,
     Div,
     Rem,
+    Shl,
+    Shr,
 }
 
 impl fmt::Display for InfixOp {
@@ -35,6 +37,8 @@ impl fmt::Display for InfixOp {
             InfixOp::Mul => write!(f, "*"),
             InfixOp::Div => write!(f, "/"),
             InfixOp::Rem => write!(f, "%"),
+            InfixOp::Shl => write!(f, "<<"),
+            InfixOp::Shr => write!(f, ">>"),
         }
     }
 }
@@ -419,6 +423,24 @@ impl<'a> Builder<'a> {
 
             ir::Instruction::IDiv { out, a, b } => {
                 let div_result = Expr::translate_infix_op(a, InfixOp::Div, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    div_result,
+                    self.module,
+                )));
+            }
+
+            ir::Instruction::Shl { out, a, b } => {
+                let div_result = Expr::translate_infix_op(a, InfixOp::Shl, b, self.module);
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    div_result,
+                    self.module,
+                )));
+            }
+
+            ir::Instruction::Shr { out, a, b } => {
+                let div_result = Expr::translate_infix_op(a, InfixOp::Shr, b, self.module);
                 self.stmts.push(Statement::Expr(Expr::translate_assign(
                     out,
                     div_result,

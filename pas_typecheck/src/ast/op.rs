@@ -97,17 +97,17 @@ pub fn typecheck_bin_op(
             }))
         }
 
-        Operator::Plus | Operator::Minus | Operator::Multiply | Operator::IntegerDivide => {
+        _ => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
 
             // string concat sugar isn't available if the String class isn't loaded
             if let Ok(string_ty) = string_type(ctx) {
-                let string_concat = bin_op.op == Operator::Plus
+                let is_string_concat = bin_op.op == Operator::Plus
                     && *lhs.annotation().ty() == string_ty
                     && *rhs.annotation().ty() == string_ty;
 
-                if string_concat {
+                if is_string_concat {
                     return desugar_string_concat(lhs, rhs, &string_ty, ctx);
                 }
             }
@@ -146,12 +146,6 @@ pub fn typecheck_bin_op(
                 annotation,
             }))
         }
-
-        _ => unimplemented!(
-            "typechecking for expression containing binary operator {} @ {}",
-            bin_op.op,
-            bin_op.span()
-        ),
     }
 }
 

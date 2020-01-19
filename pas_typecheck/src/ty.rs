@@ -480,6 +480,14 @@ impl Type {
             | (Type::Primitive(a), Operator::IntegerDivide, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
 
+            (_, Operator::Shl, _) | (_, Operator::Shr, _) if *self == *rhs => {
+                match self {
+                    Type::Primitive(Primitive::Byte) => true,
+                    Type::Primitive(Primitive::Int32) => true,
+                    _ => false,
+                }
+            }
+
             _ => false,
         }
     }

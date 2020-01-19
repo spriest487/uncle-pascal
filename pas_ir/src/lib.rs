@@ -167,6 +167,16 @@ pub enum Instruction {
         a: Value,
         b: Value,
     },
+    Shl {
+        out: Ref,
+        a: Value,
+        b: Value
+    },
+    Shr {
+        out: Ref,
+        a: Value,
+        b: Value
+    },
 
     Eq {
         out: Ref,

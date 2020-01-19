@@ -42,6 +42,8 @@ pub enum Operator {
     RangeInclusive,
     In,
     Member,
+    Shl,
+    Shr,
 
     // not used as a syntactical operator, but included so it can easily
     // participate in precedence comparisons
@@ -50,7 +52,7 @@ pub enum Operator {
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-pub static PRECEDENCE: [(Operator, Position); 22] = [
+pub static PRECEDENCE: [(Operator, Position); 24] = [
     (Operator::Member, Position::Binary),
     (Operator::Call, Position::Postfix),
     (Operator::Deref, Position::Postfix),
@@ -58,6 +60,8 @@ pub static PRECEDENCE: [(Operator, Position); 22] = [
     (Operator::Plus, Position::Prefix),
     (Operator::Minus, Position::Prefix),
     (Operator::Not, Position::Prefix),
+    (Operator::Shl, Position::Binary),
+    (Operator::Shr, Position::Binary),
     (Operator::Multiply, Position::Binary),
     (Operator::IntegerDivide, Position::Binary),
     (Operator::Plus, Position::Binary),
@@ -108,6 +112,8 @@ impl Operator {
             "and" => Some(Operator::And),
             "not" => Some(Operator::Not),
             "in" => Some(Operator::In),
+            "shl" => Some(Operator::Shl),
+            "shr" => Some(Operator::Shr),
             _ => None,
         }
     }
@@ -137,6 +143,8 @@ impl fmt::Display for Operator {
                 Operator::Assignment => ":=",
                 Operator::Equals => "=",
                 Operator::NotEquals => "<>",
+                Operator::Shl => "shl",
+                Operator::Shr => "shr",
                 Operator::Plus => "+",
                 Operator::Minus => "-",
                 Operator::Multiply => "*",
