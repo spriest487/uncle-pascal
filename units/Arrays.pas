@@ -1,6 +1,7 @@
 uses System;
 
-function QuickSortPartition(arr: array of String; left, right: Integer): Integer
+function QuickSortPartition of T(arr: array of T; left, right: Integer): Integer
+where T is Comparable
 begin
     var l := left;
     var r := right;
@@ -9,15 +10,15 @@ begin
     var result := r;
 
     while true do begin
-        while CompareStr(arr[l], pivot) < 0 do begin
+        while Comparable.Compare(arr[l], pivot) < 0 do begin
             l := l + 1;
         end;
-        while CompareStr(arr[r], pivot) > 0 do begin
+        while Comparable.Compare(arr[r], pivot) > 0 do begin
             r := r - 1;
         end;
 
         if l < r then begin
-            if CompareStr(arr[l], arr[r]) = 0 then begin
+            if Comparable.Compare(arr[l], arr[r]) = 0 then begin
                 exit r;
             end;
 
@@ -33,21 +34,24 @@ begin
     result
 end;
 
-function QuickSortRange(arr: array of String; left, right: Integer)
+function QuickSortRange of T(arr: array of T; left, right: Integer)
+//where T is Comparable
 begin
     if left < right then begin
-        let pivot := QuickSortPartition(arr, left, right);
+        let pivot := QuickSortPartition of T(arr, left, right);
 
         if pivot > 1 then begin
-            QuickSortRange(arr, left, pivot - 1);
+            QuickSortRange of T(arr, left, pivot - 1);
         end;
         if pivot + 1 < right then begin
-            QuickSortRange(arr, pivot + 1, right);
+            QuickSortRange of T(arr, pivot + 1, right);
         end;
     end;
 end;
 
-export function QuickSort(arr: array of String)
+export function QuickSort of T(arr: array of T)
+// this shouldn't compile without the constraint
+//where T is Comparable
 begin
-    QuickSortRange(arr, 0, Length of String(arr) - 1);
+    QuickSortRange of T(arr, 0, Length of T(arr) - 1);
 end;

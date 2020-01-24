@@ -191,6 +191,20 @@ begin
     ArrayLengthInternal(arr)
 end;
 
+export type Comparable = interface
+    function Compare(self: Self; other: Self): Integer;
+end;
+
+export function Comparable.Compare(self: String; other: String): Integer
+begin
+    CompareStr(self, other)
+end;
+
+export function Comparable.Compare(self: Integer; other: Integer): Integer
+begin
+    self - other
+end;
+
 // NYI: missing dynamic arrays
 {
 export function SetLength of T(var arr: array of T; len: Integer); external 'rt';
