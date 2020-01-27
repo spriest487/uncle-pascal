@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Block, DeclMod, OfClause},
+    ast::{Block, DeclMod, OfClause, TypeParam, WhereClause},
     parse::prelude::*,
 };
 
@@ -57,7 +57,7 @@ pub struct FunctionDecl<A: Annotation> {
     pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
-    pub type_params: Vec<Ident>,
+    pub type_params: Vec<TypeParam<A::Type>>,
 
     pub return_ty: Option<A::Type>,
 
@@ -78,21 +78,13 @@ impl FunctionDecl<Span> {
             ident_token = tokens.match_one(Matcher::AnyIdent)?;
         }
 
-        let type_params = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?
+        let type_param_idents = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?
             .map(|of| of.items)
             .unwrap_or_else(Vec::new);
 
         let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
 
         let args_span = args_tt.span().clone();
-
-        let return_ty = match tokens.match_one_maybe(Separator::Colon) {
-            Some(_) => {
-                // look for a return type
-                Some(TypeName::parse(tokens)?)
-            }
-            None => None,
-        };
 
         let mut params_tokens = match args_tt {
             TokenTree::Delimited { inner, open, .. } => TokenStream::new(inner, open),
@@ -144,7 +136,59 @@ impl FunctionDecl<Span> {
         })?;
         params_tokens.finish()?;
 
+        let return_ty = match tokens.match_one_maybe(Separator::Colon) {
+            Some(_) => {
+                // look for a return type
+                Some(TypeName::parse(tokens)?)
+            }
+            None => None,
+        };
+
         let mods = DeclMod::parse(tokens)?;
+
+        let type_params = match tokens.look_ahead().match_one(Keyword::Where) {
+            Some(..) => {
+                let mut where_clause = WhereClause::parse(tokens)?;
+
+                let mut type_params = Vec::new();
+                for type_param_ident in type_param_idents {
+                    let constraint_index = where_clause
+                        .constraints
+                        .iter()
+                        .position(|c| c.param_ident == type_param_ident);
+
+                    type_params.push(TypeParam {
+                        ident: type_param_ident,
+                        constraint: match constraint_index {
+                            Some(i) => Some(where_clause.constraints.remove(i)),
+                            None => None,
+                        },
+                    })
+                }
+
+                // any spare type constraints left over? they must not match a type param
+                if !where_clause.constraints.is_empty() {
+                    let first_bad = where_clause.constraints.remove(0);
+                    // just error on the first one
+                    let is_duplicate = type_params.iter().any(|p| p.ident == first_bad.param_ident);
+                    return Err(TracedError::trace(if is_duplicate {
+                        ParseError::TypeConstraintAlreadySpecified(first_bad)
+                    } else {
+                        ParseError::NoMatchingParamForTypeConstraint(first_bad)
+                    }));
+                }
+
+                type_params
+            }
+
+            None => type_param_idents
+                .into_iter()
+                .map(|ident| TypeParam {
+                    ident,
+                    constraint: None,
+                })
+                .collect(),
+        };
 
         let sig_span = match &return_ty {
             Some(return_ty) => func_kw.span().to(return_ty.span()),

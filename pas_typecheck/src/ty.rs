@@ -19,6 +19,34 @@ use crate::{
 #[cfg(test)]
 mod test;
 
+pub type TypeParam = ast::TypeParam<Type>;
+
+pub fn typecheck_type_params(
+    type_params: &[ast::TypeParam<ast::TypeName>],
+    ctx: &mut Context
+) -> TypecheckResult<Vec<TypeParam>> {
+    let mut result = Vec::new();
+
+    for ty_param in type_params {
+        result.push(ast::TypeParam {
+            ident: ty_param.ident.clone(),
+            constraint: match &ty_param.constraint {
+                Some(constraint) => {
+                    let is_ty = typecheck_type(&constraint.is_ty, ctx)?;
+                    Some(ast::TypeConstraint {
+                        param_ident: ty_param.ident.clone(),
+                        span: constraint.span.clone(),
+                        is_ty,
+                    })
+                }
+                None => None,
+            }
+        });
+    }
+
+    Ok(result)
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
     pub modifier: Option<FunctionParamMod>,
@@ -229,12 +257,12 @@ impl Primitive {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct TypeParam {
+pub struct TypeParamType {
     pub name: Ident,
     pub pos: usize,
 }
 
-impl fmt::Display for TypeParam {
+impl fmt::Display for TypeParamType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.name)
     }
@@ -254,7 +282,7 @@ pub enum Type {
     Array { element: Box<Type>, dim: usize },
     DynArray { element: Box<Type> },
     MethodSelf,
-    GenericParam(Box<TypeParam>),
+    GenericParam(Box<TypeParamType>),
     Any,
 }
 

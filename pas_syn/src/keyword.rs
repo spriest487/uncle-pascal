@@ -45,6 +45,7 @@ pub enum Keyword {
     Is,
     Break,
     Continue,
+    Where,
 }
 
 impl Keyword {
@@ -93,6 +94,7 @@ impl Keyword {
             "is" => Some(Keyword::Is),
             "break" => Some(Keyword::Break),
             "continue" => Some(Keyword::Continue),
+            "where" => Some(Keyword::Where),
             _ => None,
         }
     }
@@ -152,6 +154,7 @@ impl fmt::Display for Keyword {
             Keyword::Is => "is",
             Keyword::Break => "break",
             Keyword::Continue => "continue",
+            Keyword::Where => "where",
         })
     }
 }

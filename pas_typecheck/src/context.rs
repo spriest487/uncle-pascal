@@ -8,7 +8,7 @@ use crate::{
     ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
     context::NamespaceStack,
     specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName,
-    Type, TypeParam,
+    Type, TypeParamType, TypeParam,
 };
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
@@ -520,12 +520,14 @@ impl Context {
     }
 
     /// declare the type params of a function in the local scope
-    pub fn declare_type_params(&mut self, names: &[Ident]) -> NamingResult<()> {
-        for (pos, name) in names.iter().enumerate() {
+    pub fn declare_type_params(&mut self, names: &[TypeParam]) -> NamingResult<()> {
+        for (pos, param) in names.iter().enumerate() {
+            // todo: use type constraint
+
             self.declare_type(
-                name.clone(),
-                Type::GenericParam(Box::new(TypeParam {
-                    name: name.clone(),
+                param.ident.clone(),
+                Type::GenericParam(Box::new(TypeParamType {
+                    name: param.ident.clone(),
                     pos,
                 })),
                 Visibility::Private,

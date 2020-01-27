@@ -32,7 +32,7 @@ pub fn typecheck_func_decl(
 
     if let Some(extern_mod) = decl.mods.iter().find(|m| m.keyword() == DeclMod::EXTERNAL_WORD) {
         if !decl.type_params.is_empty() {
-            let ty_args_span = decl.type_params[0].span().to(decl.type_params.last().unwrap().span());
+            let ty_args_span = decl.type_params[0].ident.span().to(decl.type_params.last().unwrap().ident.span());
             return Err(TypecheckError::ExternalGenericFunction {
                 func: decl.ident.last().clone(),
                 extern_modifier: extern_mod.span().clone(),
@@ -41,7 +41,8 @@ pub fn typecheck_func_decl(
         }
     }
 
-    ctx.declare_type_params(&decl.type_params)?;
+    let type_params = typecheck_type_params(&decl.type_params, ctx)?;
+    ctx.declare_type_params(&type_params)?;
 
     let return_ty = match &decl.return_ty {
         Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
@@ -96,7 +97,7 @@ pub fn typecheck_func_decl(
         ident,
         impl_iface,
         params,
-        type_params: decl.type_params.clone(),
+        type_params: type_params.clone(),
         return_ty: Some(return_ty),
         span: decl.span.clone(),
         mods: decl.mods.clone(),
@@ -145,7 +146,9 @@ pub fn typecheck_func_def(
     // functions are always declared within their own bodies (allowing recursive calls)
     ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Private)?;
 
-    ctx.declare_type_params(&def.decl.type_params)?;
+    let type_params = typecheck_type_params(&def.decl.type_params, ctx)?;
+
+    ctx.declare_type_params(&type_params)?;
 
     for param in &decl.params {
         let (kind, init) = match param.modifier {

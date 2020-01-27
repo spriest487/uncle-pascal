@@ -51,6 +51,9 @@ pub enum ParseError {
     InvalidStatement(InvalidStatement<Span>),
     DuplicateModifier { new: DeclMod, existing: DeclMod },
     CtorWithTypeArgs { span: Span },
+    EmptyWhereClause(WhereClause<TypeName>),
+    TypeConstraintAlreadySpecified(TypeConstraint<TypeName>),
+    NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -65,6 +68,9 @@ impl Spanned for ParseError {
             ParseError::InvalidStatement(invalid) => invalid.0.annotation().span(),
             ParseError::DuplicateModifier { new, .. } => new.span(),
             ParseError::CtorWithTypeArgs { span } => span,
+            ParseError::TypeConstraintAlreadySpecified(c) => c.span(),
+            ParseError::NoMatchingParamForTypeConstraint(c) => c.span(),
+            ParseError::EmptyWhereClause(c) => c.span(),
         }
     }
 }
@@ -79,6 +85,9 @@ impl fmt::Display for ParseError {
             ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),
             ParseError::DuplicateModifier { .. } => write!(f, "Duplicate modifier"),
             ParseError::CtorWithTypeArgs { .. } => write!(f, "Constructor with type args"),
+            ParseError::TypeConstraintAlreadySpecified(..) => write!(f, "Type constraint already specified"),
+            ParseError::NoMatchingParamForTypeConstraint(..) => write!(f, "No matching parameter for type constraint"),
+            ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
         }
     }
 }
@@ -112,6 +121,18 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::CtorWithTypeArgs { .. } => {
                 "Object constructor expression cannot explicitly specify type args".to_string()
+            }
+
+            ParseError::TypeConstraintAlreadySpecified(c) => {
+                format!("parameter `{}` has more than one type constraint", c.param_ident)
+            }
+
+            ParseError::EmptyWhereClause(..) => {
+                "`where` clause must contain one or more type constraints in the form `Type is InterfaceName`".to_string()
+            }
+
+            ParseError::NoMatchingParamForTypeConstraint(c) => {
+                format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident)
             }
         };
 

@@ -113,7 +113,17 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 type_args: Vec::new(),
             };
 
-            ctx.declare_type_params(&full_name.decl_name.type_params)?;
+            // todo: support type constraints for type decls
+            let type_params: Vec<_> = full_name.decl_name.type_params.iter()
+                .map(|p| ast::TypeParam {
+                    ident: p.clone(),
+                    constraint: None,
+                })
+                .collect();
+
+            let type_params = typecheck_type_params(&type_params, ctx)?;
+
+            ctx.declare_type_params(&type_params)?;
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
 
