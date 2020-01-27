@@ -217,143 +217,34 @@ fn typecheck_member_of(
 
             let annotation = match lhs.annotation() {
                 TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
-                    assert!(
-                        variant_name.type_args.is_empty(),
-                        "shouldn't be possible to have explicit type args for a variant constructor expression"
-                    );
-
-                    // we check the named case exists in the unspecialized definition here, but
-                    // we don't want to try instantiating the actual variant type because we have
-                    // no information about its type args.
-                    let variant_def = ctx.find_variant_def(&variant_name.qualified)?;
-
-                    let case_exists = variant_def
-                        .cases
-                        .iter()
-                        .any(|case| case.ident == member_ident);
-
-                    if !case_exists {
-                        return Err(NameError::MemberNotFound {
-                            span: rhs.annotation().span().clone(),
-                            base: Type::Variant(variant_name.clone()),
-                            member: member_ident.clone(),
-                        }.into());
-                    }
-
-                    let ctor_annotation = VariantCtorAnnotation {
-                        variant_name: variant_name.qualified.clone(),
-                        case: member_ident.clone(),
-                        span: member_ident.span().clone(),
-                    };
-
-                    TypeAnnotation::VariantCtor(ctor_annotation)
+                    typecheck_variant_ctor(variant_name, &member_ident, ctx)?
                 }
 
                 TypeAnnotation::TypedValue {
-                    value_kind: base_value_kind,
+                    value_kind,
                     ty: base_ty,
                     ..
                 } => {
-                    let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
+                    typecheck_typed_value(&lhs, base_ty, *value_kind, &member_ident, span, ctx)?
+                }
 
-                    match member {
-                        InstanceMember::Method { iface_ty, method } => {
-                            let iface_id = match &iface_ty {
-                                Type::Interface(iface_id) => iface_id,
-                                _ => unimplemented!("non-interface interface types"),
+                TypeAnnotation::Type(ty, _) => {
+                    match ctx.find_type_member(ty, &member_ident)? {
+                        TypeMember::Method { decl } => {
+                            let candidate = OverloadCandidate::Method {
+                                sig: Rc::new(FunctionSig::of_decl(&decl)),
+                                ident: member_ident.clone(),
+                                decl,
+                                iface_ty: ty.clone(),
                             };
 
-                            // if it's being called through an interface, it's a virtual call
-                            let method = if base_ty.as_iface().is_ok() {
-                                // calling the virtual method
-                                let iface_decl = ctx.find_iface_def(iface_id)?;
-                                let method_decl = iface_decl.get_method(&method)
-                                    .expect("method must exist, it was found by find_instance_member");
-
-                                let iface_ty = Type::Interface(iface_id.clone());
-
-                                OverloadAnnotation::method(
-                                    iface_ty,
-                                    lhs.clone(),
-                                    method_decl.clone(),
-                                    span.clone(),
-                                )
-                            } else {
-                                let method_def = match ctx.find_method_impl_def(iface_id, base_ty, &method) {
-                                    Some(method_def) => method_def,
-
-                                    None => {
-                                        return Err(NameError::MemberNotFound {
-                                            span: span,
-                                            base: base_ty.clone(),
-                                            member: method,
-                                        }.into())
-                                    }
-                                };
-
-                                OverloadAnnotation::method(
-                                    iface_ty,
-                                    lhs.clone(),
-                                    method_def.decl.clone(),
-                                    span.clone()
-                                )
-                            };
-
-                            TypeAnnotation::from(method)
-                        }
-
-                        InstanceMember::UFCSCall { func_name, sig } => {
-                            TypeAnnotation::UFCSCall {
-                                function: func_name,
-                                func_ty: Type::Function(sig),
-                                span: span.clone(),
-                                self_arg: Box::new(lhs.clone()),
-                            }
-                        }
-
-                        InstanceMember::Overloaded { candidates } => {
                             TypeAnnotation::Overload(OverloadAnnotation::new(
-                                candidates,
-                                Some(Box::new(lhs.clone())),
-                                Vec::new(),
+                                vec![candidate],
+                                None,
+                                Vec::new(), // methods cannot have type args
                                 span.clone(),
                             ))
                         }
-
-                        InstanceMember::Data { ty: member_ty } => {
-                            /* class members are always mutable because a mutable class ref is only
-                            a mutable *reference*. record members inherit their value kind from the
-                            record they're part of */
-                            let value_kind = match base_ty {
-                                Type::Class(..) => ValueKind::Mutable,
-                                _ => *base_value_kind,
-                            };
-
-                            TypeAnnotation::TypedValue {
-                                ty: member_ty.clone(),
-                                span: span.clone(),
-                                value_kind,
-                                decl: None,
-                            }
-                        }
-                    }
-                }
-
-                TypeAnnotation::Type(ty, _) => match ctx.find_type_member(ty, &member_ident)? {
-                    TypeMember::Method { decl } => {
-                        let candidate = OverloadCandidate::Method {
-                            sig: Rc::new(FunctionSig::of_decl(&decl)),
-                            ident: member_ident.clone(),
-                            decl,
-                            iface_ty: ty.clone(),
-                        };
-
-                        TypeAnnotation::Overload(OverloadAnnotation::new(
-                            vec![candidate],
-                            None,
-                            Vec::new(), // methods cannot have type args
-                            span.clone(),
-                        ))
                     }
                 },
 
@@ -436,6 +327,158 @@ fn typecheck_member_of(
             })
         }
     }
+}
+
+pub fn typecheck_typed_value(
+    lhs: &Expression,
+    base_ty: &Type,
+    value_kind: ValueKind,
+    member_ident: &Ident,
+    span: Span,
+    ctx: &mut Context
+) -> TypecheckResult<TypeAnnotation> {
+    let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
+
+    let annotation = match member {
+        InstanceMember::Method { iface_ty, method } => {
+            let iface_id = match &iface_ty {
+                Type::Interface(iface_id) => iface_id,
+                _ => unimplemented!("non-interface interface types"),
+            };
+
+            // if it's being called through an interface, it's a virtual call
+            let method = if base_ty.as_iface().is_ok() {
+                // calling the virtual method
+                let iface_decl = ctx.find_iface_def(iface_id)?;
+                let method_decl = iface_decl.get_method(&method)
+                    .expect("method must exist, it was found by find_instance_member");
+
+                let iface_ty = Type::Interface(iface_id.clone());
+
+                OverloadAnnotation::method(
+                    iface_ty,
+                    lhs.clone(),
+                    method_decl.clone(),
+                    span.clone(),
+                )
+            } else {
+                let method_decl = match base_ty {
+                    Type::GenericParam(type_param_ty) => {
+                        match &type_param_ty.is_iface {
+                            None => None,
+                            Some(is_iface) => {
+                                // the implementor type is generic - so unknown during typechecking
+                                // get the declared method from the interface. we'll have to look up
+                                // which implementation to call during codegen
+                                let iface_ident = is_iface.as_iface()
+                                    .expect("type constraint must be an interface");
+                                let method_iface = ctx.find_iface_def(iface_ident)?;
+
+                                method_iface.get_method(&method).cloned()
+                            }
+                        }
+                    }
+
+                    _ => {
+                        ctx.find_method_impl_def(iface_id, base_ty, &method)
+                            .map(|def| &def.decl)
+                            .cloned()
+                    }
+                };
+
+                match method_decl {
+                    Some(method_decl) => OverloadAnnotation::method(
+                        iface_ty,
+                        lhs.clone(),
+                        method_decl,
+                        span.clone()
+                    ),
+
+                    None => return Err(NameError::MemberNotFound {
+                        span,
+                        base: base_ty.clone(),
+                        member: method,
+                    }.into())
+                }
+            };
+
+            TypeAnnotation::from(method)
+        }
+
+        InstanceMember::UFCSCall { func_name, sig } => {
+            TypeAnnotation::UFCSCall {
+                function: func_name,
+                func_ty: Type::Function(sig),
+                span: span.clone(),
+                self_arg: Box::new(lhs.clone()),
+            }
+        }
+
+        InstanceMember::Overloaded { candidates } => {
+            TypeAnnotation::Overload(OverloadAnnotation::new(
+                candidates,
+                Some(Box::new(lhs.clone())),
+                Vec::new(),
+                span.clone(),
+            ))
+        }
+
+        InstanceMember::Data { ty: member_ty } => {
+            /* class members are always mutable because a mutable class ref is only
+            a mutable *reference*. record members inherit their value kind from the
+            record they're part of */
+            let value_kind = match base_ty {
+                Type::Class(..) => ValueKind::Mutable,
+                _ => value_kind,
+            };
+
+            TypeAnnotation::TypedValue {
+                ty: member_ty.clone(),
+                span: span.clone(),
+                value_kind,
+                decl: None,
+            }
+        }
+    };
+
+    Ok(annotation)
+}
+
+pub fn typecheck_variant_ctor(
+    variant_name: &QualifiedDeclName,
+    member_ident: &Ident,
+    ctx: &mut Context
+) -> TypecheckResult<TypeAnnotation> {
+    assert!(
+        variant_name.type_args.is_empty(),
+        "shouldn't be possible to have explicit type args for a variant constructor expression"
+    );
+
+    // we check the named case exists in the unspecialized definition here, but
+    // we don't want to try instantiating the actual variant type because we have
+    // no information about its type args.
+    let variant_def = ctx.find_variant_def(&variant_name.qualified)?;
+
+    let case_exists = variant_def
+        .cases
+        .iter()
+        .any(|case| case.ident == *member_ident);
+
+    if !case_exists {
+        return Err(NameError::MemberNotFound {
+            span: member_ident.span().clone(),
+            base: Type::Variant(Box::new(variant_name.clone())),
+            member: member_ident.clone(),
+        }.into());
+    }
+
+    let ctor_annotation = VariantCtorAnnotation {
+        variant_name: variant_name.qualified.clone(),
+        case: member_ident.clone(),
+        span: member_ident.span().clone(),
+    };
+
+    Ok(TypeAnnotation::VariantCtor(ctor_annotation))
 }
 
 pub type UnaryOp = ast::UnaryOp<TypeAnnotation>;

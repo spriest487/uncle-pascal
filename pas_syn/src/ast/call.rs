@@ -6,7 +6,7 @@ use std::{fmt};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
-    pub of_type: A::Type,
+    pub iface_type: A::Type,
     pub self_type: A::Type,
 
     pub func_type: A::Type,
@@ -29,7 +29,7 @@ impl<A: Annotation> Spanned for MethodCall<A> {
 
 impl<A: Annotation> fmt::Display for MethodCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}.{}(", self.of_type, self.ident)?;
+        write!(f, "{}.{}(", self.iface_type, self.ident)?;
         for (i, arg) in self.args.iter().enumerate() {
             if i > 0 {
                 write!(f, ", ")?;

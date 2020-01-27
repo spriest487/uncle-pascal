@@ -522,12 +522,15 @@ impl Context {
     /// declare the type params of a function in the local scope
     pub fn declare_type_params(&mut self, names: &[TypeParam]) -> NamingResult<()> {
         for (pos, param) in names.iter().enumerate() {
-            // todo: use type constraint
+            let is_iface = param.constraint.as_ref()
+                .map(|c| c.is_ty.clone())
+                .map(Box::new);
 
             self.declare_type(
                 param.ident.clone(),
                 Type::GenericParam(Box::new(TypeParamType {
                     name: param.ident.clone(),
+                    is_iface,
                     pos,
                 })),
                 Visibility::Private,
@@ -691,7 +694,7 @@ impl Context {
 
         let method = impls_for_ty.methods.get(method)?.as_ref()?;
 
-        Some(method)
+        Some(&method)
     }
 
     pub fn namespace(&self) -> IdentPath {
@@ -954,22 +957,47 @@ impl Context {
         }
     }
 
-    pub fn is_iface_impl(&self, ty: &Type, iface_name: &IdentPath) -> bool {
-        match self.iface_impls.get(iface_name) {
-            None => false,
-            Some(impls) => impls.contains_key(ty),
+    pub fn is_iface_impl(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
+        match self_ty {
+            Type::GenericParam(param_ty) => {
+                match &param_ty.is_iface {
+                    Some(as_iface) => as_iface.as_iface() == Ok(iface_name),
+                    None => false,
+                }
+            },
+
+            _ => match self.iface_impls.get(iface_name) {
+                None => false,
+                Some(impls) => impls.contains_key(self_ty),
+            }
         }
     }
 
     pub fn implemented_ifaces(&self, self_ty: &Type) -> Vec<IdentPath> {
-        let mut result = Vec::new();
-        for (iface_id, iface_impl) in &self.iface_impls {
-            if iface_impl.contains_key(self_ty) {
-                result.push(iface_id.clone());
+        match self_ty {
+            Type::GenericParam(param_ty) => {
+                match &param_ty.is_iface {
+                    Some(as_iface) => {
+                        let iface_path = as_iface.as_iface()
+                            .expect("is-constraint can only refer to interface")
+                            .clone();
+                        vec![iface_path]
+                    },
+                    None => Vec::new(),
+                }
+            }
+
+            _ => {
+                let mut result = Vec::new();
+                for (iface_id, iface_impl) in &self.iface_impls {
+                    if iface_impl.contains_key(self_ty) {
+                        result.push(iface_id.clone());
+                    }
+                }
+
+                result
             }
         }
-
-        result
     }
 
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
@@ -1067,7 +1095,7 @@ impl Context {
             // no data member, multiple methods - we can use overloading to determine which
             (None, _) => {
                 let candidates: Vec<_> = matching_methods.iter()
-                    .map(|m| OverloadCandidate::from((**m).clone()))
+                    .map(|m| OverloadCandidate::from_instance_method((**m).clone()))
                     .collect();
 
                 Ok(InstanceMember::Overloaded { candidates })

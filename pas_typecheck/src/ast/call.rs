@@ -292,7 +292,7 @@ fn typecheck_func_overload(
                 type_args: overload.type_args,
                 self_type,
                 func_type: Type::Function(sig.clone()),
-                of_type: iface_ty.clone(),
+                iface_type: iface_ty.clone(),
                 args_brackets,
             };
 
@@ -701,6 +701,22 @@ pub enum OverloadCandidate {
 }
 
 impl OverloadCandidate {
+    pub fn from_instance_method(im: InstanceMethod) -> Self {
+        match im {
+            InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
+                iface_ty,
+                ident: decl.ident.last().clone(),
+                sig: Rc::new(FunctionSig::of_decl(&decl)),
+                decl,
+            },
+
+            InstanceMethod::FreeFunction { func_name, sig } => OverloadCandidate::Function {
+                decl_name: func_name,
+                sig,
+            },
+        }
+    }
+
     pub fn sig(&self) -> &Rc<FunctionSig> {
         match self {
             OverloadCandidate::Function { sig, .. } => sig,
@@ -736,24 +752,6 @@ impl fmt::Display for OverloadCandidate {
     }
 }
 
-impl From<InstanceMethod> for OverloadCandidate {
-    fn from(im: InstanceMethod) -> Self {
-        match im {
-            InstanceMethod::Method { iface_ty, decl } => OverloadCandidate::Method {
-                iface_ty,
-                ident: decl.ident.last().clone(),
-                sig: Rc::new(FunctionSig::of_decl(&decl)),
-                decl,
-            },
-
-            InstanceMethod::FreeFunction { func_name, sig } => OverloadCandidate::Function {
-                decl_name: func_name,
-                sig,
-            },
-        }
-    }
-}
-
 pub fn resolve_overload(
     candidates: &[OverloadCandidate],
     args: &[ast::Expression<Span>],
@@ -782,6 +780,32 @@ pub fn resolve_overload(
 //        println!("only one candidate for {}, using {}", span, sig);
 
         let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
+        let actual_arg_tys: Vec<_> = args.iter()
+            .map(|arg_expr| arg_expr.annotation().ty().clone())
+            .collect();
+
+        // if it's a direct interface method invocation (e.g. `Comparable.Compare(1, 2)`),
+        // we don't actually know at this point whether that implementation exists!
+        if self_arg.is_none() {
+            if let OverloadCandidate::Method { iface_ty, ident: method_ident, .. } = &candidates[0] {
+                let self_ty = sig.self_ty_from_args(&actual_arg_tys)
+                    .ok_or_else(|| TypecheckError::AmbiguousSelfType {
+                        iface: iface_ty.clone(),
+                        span: span.clone(),
+                        method: method_ident.clone(),
+                    })?;
+
+                let iface_name = iface_ty.as_iface()
+                    .expect("can't be a self-less method if the iface type isn't a declared interface!");
+                if !ctx.is_iface_impl(self_ty, iface_name) {
+                    return Err(TypecheckError::InterfaceNotImplemented {
+                        iface_ty: iface_ty.clone(),
+                        self_ty: self_ty.clone(),
+                        span: span.clone(),
+                    });
+                }
+            }
+        }
 
         return Ok(Overload {
             selected_sig: 0,

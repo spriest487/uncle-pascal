@@ -260,6 +260,7 @@ impl Primitive {
 pub struct TypeParamType {
     pub name: Ident,
     pub pos: usize,
+    pub is_iface: Option<Box<Type>>,
 }
 
 impl fmt::Display for TypeParamType {

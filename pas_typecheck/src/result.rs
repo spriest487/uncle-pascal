@@ -130,6 +130,11 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+    InterfaceNotImplemented {
+        self_ty: Type,
+        iface_ty: Type,
+        span: Span,
+    },
 
     Private {
         name: IdentPath,
@@ -194,6 +199,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnsizedMember { member, .. } => member.span(),
             TypecheckError::GenericError(err) => err.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
+            TypecheckError::InterfaceNotImplemented { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
         }
@@ -252,6 +258,10 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
+            }
+
+            TypecheckError::InterfaceNotImplemented { .. } => {
+                "Interface not implemented".to_string()
             }
 
             TypecheckError::Private { .. } => "Name not exported".to_string(),
@@ -491,6 +501,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {
                 write!(f, "`{}` is not an interface type and cannot have methods", ty)
+            }
+
+            TypecheckError::InterfaceNotImplemented { self_ty, iface_ty, .. } => {
+                write!(f, "`{}` does not implement interface `{}`", self_ty, iface_ty)
             }
 
             TypecheckError::Private { name, .. } => {

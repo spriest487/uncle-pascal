@@ -47,6 +47,13 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
             Ok(methods)
         }
 
+        Type::GenericParam(generic_param_ty) => {
+            match &generic_param_ty.is_iface {
+                Some(is_iface) => instance_methods_of(is_iface, ctx),
+                None => Ok(Vec::new()),
+            }
+        },
+
         _ => {
             let mut methods = Vec::new();
 

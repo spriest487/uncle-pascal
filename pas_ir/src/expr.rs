@@ -1,7 +1,9 @@
 use crate::{prelude::*, translate_stmt, Builder};
 use pas_common::span::*;
-use pas_syn::{self as syn, ast};
-use pas_typecheck::{self as pas_ty, TypeAnnotation, TypePattern, ValueKind};
+use pas_syn as syn;
+use syn::ast;
+use pas_typecheck as pas_ty;
+use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
 use crate::builder::{RETURN_REF};
 
@@ -529,9 +531,9 @@ fn translate_method_call(
         unimplemented!("method call with type args")
     }
 
-    let iface = match method_call.of_type.as_iface() {
+    let iface = match method_call.iface_type.as_iface() {
         Ok(iface) => iface.clone(),
-        Err(..) => unreachable!("can't have non-interface interface types in method calls"),
+        Err(bad_ty) => unreachable!("can't have non-interface interface types in method calls (trying to call method on {})", bad_ty),
     };
 
     let self_ty = builder.translate_type(&method_call.self_type);
@@ -546,10 +548,11 @@ fn translate_method_call(
         },
 
         _ => {
+//            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
             let method_decl = builder.translate_method_impl(
                 iface,
                 method_call.ident.clone(),
-                method_call.self_type.clone()
+                method_call.self_type.clone().substitute_type_args(builder.type_args()),
             );
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
