@@ -130,41 +130,22 @@ pub fn typecheck_collection_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<CollectionCtor> {
-    let mut elements = Vec::new();
-
-    let elem_ty = match expect_ty.collection_element_ty() {
+    let (elements, elem_ty) = match expect_ty.collection_element_ty() {
         None => {
-            // must have at at least one element to infer types
-            if ctor.elements.is_empty() {
-                return Err(TypecheckError::UnableToInferType {
-                    expr: Box::new(ast::Expression::from(ctor.clone())),
-                });
-            }
-
-            let first_element = typecheck_expr(&ctor.elements[0], &Type::Nothing, ctx)?;
-
-            let elem_ty = first_element.annotation().ty().clone();
-            elements.push(first_element);
-
-            for e in ctor.elements.iter().skip(1) {
-                let element = typecheck_expr(e, &elem_ty, ctx)?;
-                element.annotation().expect_value(&elem_ty)?;
-
-                elements.push(element);
-            }
-
-            elem_ty
+            let elements = elements_for_inferred_ty(ctor, ctx)?;
+            let elem_ty = elements[0].annotation().ty().clone();
+            (elements, elem_ty)
         }
 
         Some(elem_ty) => {
-            for e in &ctor.elements {
-                let element = typecheck_expr(e, elem_ty, ctx)?;
-                element.annotation().expect_value(&elem_ty)?;
-
-                elements.push(element);
+            if elem_ty.contains_generic_params() {
+                let elements = elements_for_inferred_ty(ctor, ctx)?;
+                let elem_ty = elements[0].annotation().ty().clone();
+                (elements, elem_ty)
+            } else {
+                let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
+                (elements, elem_ty.clone())
             }
-
-            elem_ty.clone()
         }
     };
 
@@ -190,4 +171,47 @@ pub fn typecheck_collection_ctor(
         elements,
         annotation,
     })
+}
+
+fn elements_for_inferred_ty(
+    ctor: &ast::CollectionCtor<Span>,
+    ctx: &mut Context
+) -> TypecheckResult<Vec<Expression>> {
+    // must have at at least one element to infer types
+    if ctor.elements.is_empty() {
+        return Err(TypecheckError::UnableToInferType {
+            expr: Box::new(ast::Expression::from(ctor.clone())),
+        });
+    }
+
+    let mut elements = Vec::new();
+    let first_element = typecheck_expr(&ctor.elements[0], &Type::Nothing, ctx)?;
+    let expected_ty = first_element.annotation().ty().clone();
+
+    elements.push(first_element);
+
+    for e in ctor.elements.iter().skip(1) {
+        let element = typecheck_expr(e, &expected_ty, ctx)?;
+        element.annotation().expect_value(&expected_ty)?;
+
+        elements.push(element);
+    }
+
+    Ok(elements)
+}
+
+fn elements_for_expected_ty(
+    ctor: &ast::CollectionCtor<Span>,
+    expected_ty: &Type,
+    ctx: &mut Context
+) -> TypecheckResult<Vec<Expression>> {
+    let mut elements = Vec::new();
+    for e in &ctor.elements {
+        let element = typecheck_expr(e, expected_ty, ctx)?;
+        element.annotation().expect_value(&expected_ty)?;
+
+        elements.push(element);
+    }
+
+    Ok(elements)
 }

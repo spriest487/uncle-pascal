@@ -402,9 +402,19 @@ impl Type {
     /// e.g. in the sig `X of T(a: Box of T)`, the type of param `a` is `Box of '0`.
     /// `Box` isn't itself a generic param, but contains param `'0` (`T`) in its own type args
     pub fn contains_generic_params(&self) -> bool {
-        self.is_generic_param() || self.type_args()
-            .map(|args| args.iter().any(|a| a.contains_generic_params()))
-            .unwrap_or(false)
+        if self.is_generic_param() {
+            return true;
+        }
+
+        if let Some(ty_args) = self.type_args() {
+            return ty_args.iter().any(|a| a.contains_generic_params());
+        }
+
+        if let Some(array_el) = self.array_element_ty() {
+            return array_el.contains_generic_params();
+        }
+
+        false
     }
 
     pub fn same_array_dim(&self, other: &Self) -> bool {
@@ -433,6 +443,15 @@ impl Type {
                     Some(&name.type_args)
                 }
             }
+
+            _ => None,
+        }
+    }
+
+    pub fn array_element_ty(&self) -> Option<&Type> {
+        match self {
+            Type::DynArray { element }
+            | Type::Array { element, .. } => Some(element),
 
             _ => None,
         }
