@@ -639,7 +639,10 @@ impl Module {
             body_builder.retain(return_at, &return_ty);
         }
 
-        let body = body_builder.finish();
+        let mut body = body_builder.finish();
+
+        // all functions finish with the reserved EXIT label
+        body.push(Instruction::Label(EXIT_LABEL));
 
         FunctionDef {
             body,

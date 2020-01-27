@@ -1,9 +1,9 @@
-use crate::{prelude::*, translate_stmt, Builder, LocalID};
+use crate::{prelude::*, translate_stmt, Builder};
 use pas_common::span::*;
 use pas_syn::{self as syn, ast};
 use pas_typecheck::{self as pas_ty, TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
-use crate::builder::EXIT_LABEL;
+use crate::builder::{RETURN_REF};
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     match expr {

@@ -482,9 +482,6 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
         }
 
-        // all functions end with the reserved EXIT label
-        self.instructions.push(Instruction::Label(EXIT_LABEL));
-
         self.instructions
     }
 
