@@ -140,6 +140,9 @@ pub fn typecheck_func_def(
 
     let body_scope = ctx.push_scope(None);
 
+    // functions are always declared within their own bodies (allowing recursive calls)
+    ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Private)?;
+
     ctx.declare_type_params(&def.decl.type_params)?;
 
     for param in &decl.params {
