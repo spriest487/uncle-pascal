@@ -4,7 +4,7 @@ use pas_syn::{ast, IdentPath};
 use pas_ty::ast::specialize_func_decl;
 use pas_typecheck as pas_ty;
 
-use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
+use crate::{builder::{Builder, EXIT_LABEL}, expr::*, metadata::*, stmt::*};
 
 pub use self::{
     formatter::*,
@@ -875,10 +875,13 @@ fn gen_dyn_array_disposers(module: &mut Module) {
 
         let releaser_body = releaser_builder.finish();
 
+        let array_ref_ty_name = module.metadata.pretty_ty_name(&array_ref_ty)
+            .into_owned();
+
         module.insert_func(
             rc_boilerplate.release,
             Function::Local(FunctionDef {
-                debug_name: format!("<generated releaser for {}>", array_ref_ty),
+                debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
                 return_ty: Type::Nothing,
                 params: vec![array_ref_ty.clone()],
                 body: releaser_body,
@@ -889,7 +892,7 @@ fn gen_dyn_array_disposers(module: &mut Module) {
         module.insert_func(
             rc_boilerplate.retain,
             Function::Local(FunctionDef {
-                debug_name: format!("<generated empty retainer for {}>", array_ref_ty),
+                debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
                 return_ty: Type::Nothing,
                 params: vec![array_ref_ty.clone()],
                 body: Vec::new(),

@@ -18,16 +18,30 @@ mod heap;
 pub type BuiltinFn = fn(state: &mut Interpreter);
 
 #[derive(Clone)]
+pub struct BuiltinFunctionDef {
+    pub func: BuiltinFn,
+    pub ret: Type,
+    pub debug_name: String,
+}
+
+#[derive(Clone)]
 pub enum Function {
-    Builtin { func: BuiltinFn, ret: Type },
+    Builtin(BuiltinFunctionDef),
     IR(Rc<FunctionDef>),
 }
 
 impl Function {
     pub fn return_ty(&self) -> &Type {
         match self {
-            Function::Builtin { ret, .. } => ret,
-            Function::IR(func) => &func.return_ty,
+            Function::Builtin(def) => &def.ret,
+            Function::IR(def) => &def.return_ty,
+        }
+    }
+
+    pub fn debug_name(&self) -> &str {
+        match self {
+            Function::Builtin(def) => &def.debug_name,
+            Function::IR(def) => &def.debug_name,
         }
     }
 }
@@ -782,8 +796,21 @@ impl Interpreter {
             }));
 
         match func {
-            Function::Builtin { func, .. } => func(self),
-            Function::IR(ir_func) => self.execute(&ir_func.body),
+            Function::Builtin(def) => {
+                if self.trace_ir {
+                    println!("calling {} (interpreter builtin)", def.debug_name);
+                }
+                (def.func)(self)
+            },
+            Function::IR(def) => {
+                if self.trace_ir {
+                    println!("entering {}", def.debug_name);
+                }
+                self.execute(&def.body);
+                if self.trace_ir {
+                    println!("exiting {}", def.debug_name);
+                }
+            },
         };
 
         let result_cell = match return_ty {
@@ -1297,13 +1324,13 @@ impl Interpreter {
                     }
 
                     Type::RcPointer(..) => {
-                        let struct_ptr = self
-                            .load(&a.clone().deref())
-                            .as_rc()
-                            .map(|rc_cell| Pointer::Heap(rc_cell.resource_addr))
-                            .unwrap_or_else(|| {
-                                panic!("trying to read field pointer of rc type but target wasn't an rc cell @ {}", a);
-                            });
+                        let target = self.load(&a.clone().deref());
+                        let struct_ptr = match target.as_rc() {
+                            Some(rc_cell) => Pointer::Heap(rc_cell.resource_addr),
+                            None => {
+                                panic!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
+                            }
+                        };
 
                         Pointer::IntoStruct {
                             field: *field,
@@ -1463,7 +1490,11 @@ impl Interpreter {
             self.globals.insert(
                 GlobalRef::Function(func_id),
                 GlobalCell {
-                    value: MemCell::Function(Function::Builtin { func, ret }),
+                    value: MemCell::Function(Function::Builtin(BuiltinFunctionDef {
+                        func: func,
+                        ret,
+                        debug_name: name.to_string(),
+                    })),
                     ty: Type::Nothing,
                 },
             );

@@ -770,7 +770,7 @@ impl<'m> Builder<'m> {
                 body: release_body,
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
-                debug_name: format!("generated RC release func for {}", self.pretty_ty_name(ty)),
+                debug_name: format!("<generated releaser for {}>", self.pretty_ty_name(ty)),
             }),
         );
 
