@@ -422,14 +422,16 @@ impl Module {
                             .metadata
                             .declare_func(&func_def.decl, key.type_args.clone());
 
+                        // cache the function before translating the instantiation, because
+                        // it may recurse and instantiate itself in its own body
+                        let cached_func = CachedFunction { id, sig };
+                        self.translated_funcs.insert(key.clone(), cached_func.clone());
+
                         let debug_name = specialized_decl.to_string();
                         let ir_func =
-                            self.translate_func_def(&func_def, key.type_args.clone(), debug_name);
+                            self.translate_func_def(&func_def, key.type_args, debug_name);
 
                         self.functions.insert(id, Function::Local(ir_func));
-
-                        let cached_func = CachedFunction { id, sig };
-                        self.translated_funcs.insert(key, cached_func.clone());
 
                         cached_func
                     }
@@ -506,16 +508,18 @@ impl Module {
                 self.metadata
                     .impl_method(iface_id, self_ty, method_name, id);
 
-                let debug_name = specialized_decl.to_string();
-                let ir_func =
-                    self.translate_func_def(&method_def, key.type_args.clone(), debug_name);
-                self.functions.insert(id, Function::Local(ir_func));
-
+                // cache the function before translating the instantiation, because
+                // it may recurse and instantiate itself in its own body
                 let cached_func = CachedFunction {
                     id,
                     sig: pas_ty::FunctionSig::of_decl(&specialized_decl),
                 };
-                self.translated_funcs.insert(key, cached_func.clone());
+                self.translated_funcs.insert(key.clone(), cached_func.clone());
+
+                let debug_name = specialized_decl.to_string();
+                let ir_func =
+                    self.translate_func_def(&method_def, key.type_args, debug_name);
+                self.functions.insert(id, Function::Local(ir_func));
 
                 cached_func
             }
