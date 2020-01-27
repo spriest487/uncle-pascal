@@ -798,16 +798,19 @@ fn write_instruction_list(
 fn gen_dyn_array_disposers(module: &mut Module) {
     for (elem_ty, struct_id) in module.metadata.dyn_array_structs().clone() {
         let array_class = ClassID::Class(struct_id);
-        let array_struct_ty = Type::Struct(struct_id);
         let array_ref_ty = Type::RcPointer(Some(array_class));
 
-        let rc_boilerplate = module.metadata.find_rc_boilerplate(&Type::Struct(struct_id))
+        // the thing we're cleaning up is the internal struct, not the rc object itself,
+        // so the parameter type of the releaser will be a pointer to that struct
+        let array_struct_ty = Type::Struct(struct_id);
+
+        let rc_boilerplate = module.metadata.find_rc_boilerplate(&array_struct_ty)
             .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
         let mut releaser_builder = Builder::new(module);
 
-        // %0 is the self arg, and releasers are passed a pointer to the self-object
-        releaser_builder.bind_local(LocalID(0), array_ref_ty.clone().ptr(), "self", true);
+        // %0 is the self arg, the pointer to the inner struct
+        releaser_builder.bind_local(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
         let self_arg = Ref::Local(LocalID(0)).deref();
 
         let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
@@ -886,7 +889,7 @@ fn gen_dyn_array_disposers(module: &mut Module) {
             Function::Local(FunctionDef {
                 debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
                 return_ty: Type::Nothing,
-                params: vec![array_ref_ty.clone()],
+                params: vec![array_struct_ty.clone().ptr()],
                 body: releaser_body,
             }),
         );
@@ -897,7 +900,7 @@ fn gen_dyn_array_disposers(module: &mut Module) {
             Function::Local(FunctionDef {
                 debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
                 return_ty: Type::Nothing,
-                params: vec![array_ref_ty.clone()],
+                params: vec![array_struct_ty.clone().ptr()],
                 body: Vec::new(),
             })
         );

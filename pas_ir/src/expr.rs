@@ -1048,118 +1048,135 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut Builder) -> Ref {
     match &ctor.annotation.ty() {
         pas_ty::Type::Array { element, dim } => {
-            let el_ty = builder.translate_type(element.as_ref());
-
-            let array_ty = el_ty.clone().array(*dim);
-            let arr = builder.local_temp(array_ty.clone());
-
-            builder.begin_scope();
-
-            let el_ptr = builder.local_temp(el_ty.clone().ptr());
-
-            for (i, el) in ctor.elements.iter().enumerate() {
-                builder.begin_scope();
-
-                let index = i32::try_from(i).expect("invalid array index in array ctor");
-
-                builder.append(Instruction::Element {
-                    out: el_ptr.clone(),
-                    a: arr.clone(),
-                    index: Value::LiteralI32(index),
-                    element: el_ty.clone(),
-                });
-
-                let el_init = translate_expr(el, builder);
-
-                builder.mov(el_ptr.clone().deref(), el_init);
-                builder.end_scope();
-            }
-
-            builder.end_scope();
-
-            arr
+            translate_static_array_ctor(ctor, element, *dim, builder)
         }
 
         pas_ty::Type::DynArray { element } => {
-            let elem_ty = builder.translate_type(element);
-
-            // should be a class rc-ptr to the unique class for this dyn array element type
-            let array_ty = builder.translate_type(&ctor.annotation.ty());
-            let struct_id = match &array_ty {
-                Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
-                _ => unreachable!("dynamic array must have an rc class type"),
-            };
-
-            let arr = builder.local_new(array_ty.clone(), None);
-
-            // allocate the array object itself
-            builder.scope(|builder| {
-                builder.append(Instruction::RcNew {
-                    out: arr.clone(),
-                    struct_id,
-                });
-
-                // get pointer to the length
-                let len_ref = builder.local_temp(Type::I32.ptr());
-                builder.append(Instruction::Field {
-                    out: len_ref.clone(),
-                    of_ty: array_ty.clone(),
-                    field: DYNARRAY_LEN_FIELD,
-                    a: arr.clone(),
-                });
-
-                // set length
-                let len =
-                    i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
-                builder.mov(len_ref.clone().deref(), Value::LiteralI32(len));
-
-                // get pointer to storage pointer
-                let arr_ptr = builder.local_temp(elem_ty.clone().ptr().ptr());
-                builder.append(Instruction::Field {
-                    out: arr_ptr.clone(),
-                    of_ty: array_ty,
-                    field: DYNARRAY_PTR_FIELD,
-                    a: arr.clone(),
-                });
-
-                // allocate array storage
-                builder.append(Instruction::DynAlloc {
-                    out: arr_ptr.clone().deref(),
-                    len: Value::LiteralI32(len),
-                    element_ty: elem_ty.clone(),
-                });
-
-                let el_ptr = builder.local_temp(elem_ty.clone().ptr());
-
-                for (i, el) in ctor.elements.iter().enumerate() {
-                    builder.scope(|builder| {
-                        // we know this cast is OK because we check the length is in range of i32 previously
-                        let index = Value::LiteralI32(i as i32);
-
-                        // el_ptr := arr_ptr^ + i
-                        builder.append(Instruction::Add {
-                            a: Value::Ref(arr_ptr.clone().deref()),
-                            b: index,
-                            out: el_ptr.clone(),
-                        });
-
-                        // el_ptr^ := el
-                        let el = translate_expr(el, builder);
-                        builder.mov(el_ptr.clone().deref(), el);
-
-                        // retain each element. we don't do this for static arrays because retaining
-                        // a static array retains all its elements - for dynamic arrays, retaining
-                        // the array object itself does not retain the elements
-                        builder.retain(el_ptr.clone().deref(), &elem_ty);
-                    });
-                }
-            });
-
-            arr
+            translate_dyn_array_ctor(ctor, element, builder)
         }
 
         unimpl => unimplemented!("IR for array constructor {} of type {}", ctor, unimpl),
     }
+}
+
+fn translate_static_array_ctor(
+    ctor: &pas_ty::ast::CollectionCtor,
+    element: &pas_ty::Type,
+    dim: usize,
+    builder: &mut Builder
+) -> Ref {
+    let el_ty = builder.translate_type(element);
+
+    let array_ty = el_ty.clone().array(dim);
+    let arr = builder.local_temp(array_ty.clone());
+
+    builder.begin_scope();
+
+    let el_ptr = builder.local_temp(el_ty.clone().ptr());
+
+    for (i, el) in ctor.elements.iter().enumerate() {
+        builder.begin_scope();
+
+        let index = i32::try_from(i).expect("invalid array index in array ctor");
+
+        builder.append(Instruction::Element {
+            out: el_ptr.clone(),
+            a: arr.clone(),
+            index: Value::LiteralI32(index),
+            element: el_ty.clone(),
+        });
+
+        let el_init = translate_expr(el, builder);
+
+        builder.mov(el_ptr.clone().deref(), el_init);
+        builder.end_scope();
+    }
+
+    builder.end_scope();
+
+    arr
+}
+
+fn translate_dyn_array_ctor(
+    ctor: &pas_ty::ast::CollectionCtor,
+    element: &pas_ty::Type,
+    builder: &mut Builder
+) -> Ref {
+    let elem_ty = builder.translate_type(element);
+
+    // should be a class rc-ptr to the unique class for this dyn array element type
+    let array_ty = builder.translate_type(&ctor.annotation.ty());
+    let struct_id = match &array_ty {
+        Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
+        _ => unreachable!("dynamic array must have an rc class type"),
+    };
+
+    let arr = builder.local_new(array_ty.clone(), None);
+
+    // allocate the array object itself
+    builder.scope(|builder| {
+        builder.append(Instruction::RcNew {
+            out: arr.clone(),
+            struct_id,
+        });
+
+        // get pointer to the length
+        let len_ref = builder.local_temp(Type::I32.ptr());
+        builder.append(Instruction::Field {
+            out: len_ref.clone(),
+            of_ty: array_ty.clone(),
+            field: DYNARRAY_LEN_FIELD,
+            a: arr.clone(),
+        });
+
+        // set length
+        let len =
+            i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
+        builder.mov(len_ref.clone().deref(), Value::LiteralI32(len));
+
+        // get pointer to storage pointer
+        let arr_ptr = builder.local_temp(elem_ty.clone().ptr().ptr());
+        builder.append(Instruction::Field {
+            out: arr_ptr.clone(),
+            of_ty: array_ty,
+            field: DYNARRAY_PTR_FIELD,
+            a: arr.clone(),
+        });
+
+        // allocate array storage
+        builder.append(Instruction::DynAlloc {
+            out: arr_ptr.clone().deref(),
+            len: Value::LiteralI32(len),
+            element_ty: elem_ty.clone(),
+        });
+
+        let el_ptr = builder.local_temp(elem_ty.clone().ptr());
+
+        for (i, el) in ctor.elements.iter().enumerate() {
+            builder.scope(|builder| {
+                // we know this cast is OK because we check the length is in range of i32 previously
+                let index = Value::LiteralI32(i as i32);
+
+                // el_ptr := arr_ptr^ + i
+                builder.append(Instruction::Add {
+                    a: Value::Ref(arr_ptr.clone().deref()),
+                    b: index,
+                    out: el_ptr.clone(),
+                });
+
+                // el_ptr^ := el
+                let el = translate_expr(el, builder);
+                builder.mov(el_ptr.clone().deref(), el);
+
+                // retain each element. we don't do this for static arrays because retaining
+                // a static array retains all its elements - for dynamic arrays, retaining
+                // the array object itself does not retain the elements
+                builder.retain(el_ptr.clone().deref(), &elem_ty);
+            });
+        }
+    });
+
+    arr
 }
 
 pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Ref> {
