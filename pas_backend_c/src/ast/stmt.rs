@@ -578,12 +578,13 @@ impl<'a> Builder<'a> {
                 let get_mem = Expr::Function(FunctionName::GetMem);
 
                 let el_ty = Type::from_metadata(&element_ty, self.module);
-                let sizeof_el = Expr::SizeOf(el_ty);
+                let sizeof_el = Expr::SizeOf(el_ty.clone());
 
                 let el_count = Expr::translate_val(len, self.module);
                 let total_len = Expr::infix_op(sizeof_el, InfixOp::Mul, el_count);
 
-                let call_get_mem = Expr::call(get_mem, vec![total_len]);
+                let call_get_mem = Expr::call(get_mem, vec![total_len])
+                    .cast(el_ty.ptr());
                 let assign_result = Expr::translate_assign(out, call_get_mem, self.module);
 
                 self.stmts.push(Statement::Expr(assign_result));
