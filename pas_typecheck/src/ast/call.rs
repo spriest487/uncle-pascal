@@ -44,13 +44,6 @@ fn typecheck_args(
     span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<Vec<Expression>> {
-    assert!(
-        !expected_args.iter().any(|a| {
-            a.ty.contains_generic_params() || a.ty == Type::MethodSelf
-        }),
-        "signature passed to typecheck_args should not have any generic argument types"
-    );
-
     let mut checked_args = Vec::new();
 
     let rest_args = if let Some(self_arg) = self_arg {
@@ -641,13 +634,6 @@ fn specialize_call_args(
 }
 
 fn check_arg_types(args: &[Expression], sig: &FunctionSig, ctx: &Context) -> TypecheckResult<()> {
-    assert!(
-        !sig.params.iter().any(|a| {
-            a.ty.contains_generic_params() || a.ty == Type::MethodSelf
-        }),
-        "signature passed to check_arg_types should not have any generic argument types"
-    );
-
     let args_and_params = args.iter().zip(sig.params.iter());
     for (arg, param) in args_and_params {
         if !param.ty.blittable_from(arg.annotation().ty(), ctx) {
