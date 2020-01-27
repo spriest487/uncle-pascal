@@ -588,9 +588,9 @@ impl Type {
         }
     }
 
-    pub fn as_func(&self) -> Result<Rc<FunctionSig>, &Self> {
+    pub fn as_func(&self) -> Result<&Rc<FunctionSig>, &Self> {
         match self {
-            Type::Function(sig) => Ok(sig.clone()),
+            Type::Function(sig) => Ok(sig),
             other => Err(other),
         }
     }

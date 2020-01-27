@@ -12,6 +12,12 @@ begin
     WriteLn('Hello, world');
 end;
 
+function Greeting.Greet(self: String)
+begin
+    WriteLn('Hello, ' + self);
+end;
+
 let hw := HelloWorld();
 
 hw.Greet();
+'Alice'.Greet();

@@ -8,7 +8,7 @@ use pas_syn::ast::FunctionParamMod;
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor, FunctionDecl};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation, InterfaceMethodAnnotation};
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -200,6 +200,12 @@ pub fn typecheck_call(
                 .map(CallOrCtor::Call)?
         }
 
+        TypeAnnotation::InterfaceMethod(iface_method) => {
+            typecheck_iface_method_call(iface_method, func_call, ctx)
+                .map(Box::new)
+                .map(CallOrCtor::Call)?
+        }
+
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
             let ty: &Type = ty;
             let (open, close) = &func_call.args_brackets;
@@ -320,6 +326,76 @@ fn typecheck_func_overload(
     };
 
     Ok(call)
+}
+
+fn typecheck_iface_method_call(
+    iface_method: &InterfaceMethodAnnotation,
+    func_call: &ast::FunctionCall<Span>,
+    ctx: &mut Context
+) -> TypecheckResult<Call> {
+    // not yet supported
+    if !func_call.type_args.is_empty() {
+        return Err(GenericError::ArgsLenMismatch {
+            expected: 0,
+            actual: func_call.type_args.len(),
+            span: func_call.span().clone(),
+            target: GenericTarget::FunctionSig(iface_method.sig().clone()),
+        }.into());
+    }
+    let type_args = Vec::new();
+
+    // branch the context to check the self-arg, because we're about to re-check it in a second
+    let self_type = {
+        let mut ctx = ctx.clone();
+        let first_self_pos = iface_method.sig().params.iter()
+            .position(|param| param.ty == Type::MethodSelf)
+            .expect("method function must have at least one argument with Self type");
+
+        // note that this isn't the "self arg" used for typecheck_args, because we're not passing
+        // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
+        // it's just the first arg from which we can infer the self-type
+        let first_self_arg = typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+        first_self_arg.annotation().ty().clone()
+    };
+
+    let iface_ident = match iface_method.iface_ty.as_iface() {
+        Ok(iface_ident) => iface_ident,
+        Err(not_iface) => panic!("expect all method-defining types to be interfaces currently, found: {}", not_iface),
+    };
+
+    if !ctx.is_iface_impl(&self_type, iface_ident) {
+        return Err(TypecheckError::InterfaceNotImplemented {
+            iface_ty: iface_method.iface_ty.clone(),
+            span: func_call.span().clone(),
+            self_ty: self_type,
+        });
+    }
+
+    let sig = iface_method.sig().with_self(&self_type);
+
+    let typechecked_args = typecheck_args(
+        &sig.params,
+        &func_call.args,
+        None,
+        func_call.span(),
+        ctx
+    )?;
+
+    Ok(ast::Call::Method(MethodCall {
+        annotation: TypeAnnotation::TypedValue {
+            ty: sig.return_ty.clone(),
+            span: func_call.span().clone(),
+            value_kind: ValueKind::Temporary,
+            decl: None,
+        },
+        args_brackets: func_call.args_brackets.clone(),
+        func_type: Type::Function(Rc::new(sig)),
+        self_type,
+        iface_type: iface_method.iface_ty.clone(),
+        ident: iface_method.method_ident.clone(),
+        type_args,
+        args: typechecked_args,
+    }))
 }
 
 fn typecheck_ufcs_call(

@@ -86,6 +86,32 @@ impl OverloadAnnotation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InterfaceMethodAnnotation {
+    pub iface_ty: Type,
+    pub method_ident: Ident,
+    pub span: Span,
+
+    method_func_ty: Type,
+}
+
+impl InterfaceMethodAnnotation {
+    pub fn new(decl: &FunctionDecl, iface_ty: Type, span: Span) -> Self {
+        let sig = FunctionSig::of_decl(decl);
+
+        Self {
+            iface_ty,
+            method_ident: decl.ident.last().clone(),
+            span,
+            method_func_ty: Type::Function(Rc::new(sig)),
+        }
+    }
+
+    pub fn sig(&self) -> &FunctionSig {
+        self.method_func_ty.as_func().as_ref().unwrap()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeAnnotation {
     Untyped(Span),
     TypedValue {
@@ -101,6 +127,8 @@ pub enum TypeAnnotation {
         func_ty: Type,
         type_args: Vec<Type>,
     },
+    // direct method reference e.g. `Interface.Method`
+    InterfaceMethod(InterfaceMethodAnnotation),
     Type(Type, Span),
     Namespace(IdentPath, Span),
     UFCSCall {
@@ -110,6 +138,9 @@ pub enum TypeAnnotation {
         span: Span,
     },
     VariantCtor(VariantCtorAnnotation),
+
+    // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
+    // or free functions)
     Overload(OverloadAnnotation),
 }
 
@@ -119,6 +150,7 @@ impl TypeAnnotation {
 
         match self {
             TypeAnnotation::Function { func_ty: ty, .. }
+            | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { method_func_ty: ty, .. })
             | TypeAnnotation::TypedValue { ty, .. }
             | TypeAnnotation::Overload(OverloadAnnotation { func_ty: ty, .. })
                 if ty == expect_ty =>
@@ -134,6 +166,7 @@ impl TypeAnnotation {
 
             TypeAnnotation::UFCSCall { span, func_ty, .. }
             | TypeAnnotation::Function { span, func_ty, .. }
+            | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { span, method_func_ty: func_ty, .. })
             | TypeAnnotation::Overload(OverloadAnnotation { span, func_ty, .. })
             => Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
@@ -174,6 +207,7 @@ impl TypeAnnotation {
 
             TypeAnnotation::UFCSCall { func_ty: ty, .. }
             | TypeAnnotation::Function { func_ty: ty, .. }
+            | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { method_func_ty: ty, .. })
             | TypeAnnotation::TypedValue { ty, .. } => ty,
 
             TypeAnnotation::Overload(overload) => &overload.func_ty,
@@ -184,6 +218,7 @@ impl TypeAnnotation {
         match self {
             TypeAnnotation::Type(..) => None,
             TypeAnnotation::Function { .. } => None, // TODO
+            TypeAnnotation::InterfaceMethod(..) => None, // TODO
             TypeAnnotation::UFCSCall { .. } => None, // TODO
             TypeAnnotation::Overload { .. } => None, // TODO
 
@@ -220,6 +255,7 @@ impl Spanned for TypeAnnotation {
     fn span(&self) -> &Span {
         match self {
             TypeAnnotation::Function { span, .. }
+            | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { span, .. })
             | TypeAnnotation::UFCSCall { span, .. }
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::TypedValue { span, .. }

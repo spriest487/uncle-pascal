@@ -229,23 +229,7 @@ fn typecheck_member_of(
                 }
 
                 TypeAnnotation::Type(ty, _) => {
-                    match ctx.find_type_member(ty, &member_ident)? {
-                        TypeMember::Method { decl } => {
-                            let candidate = OverloadCandidate::Method {
-                                sig: Rc::new(FunctionSig::of_decl(&decl)),
-                                ident: member_ident.clone(),
-                                decl,
-                                iface_ty: ty.clone(),
-                            };
-
-                            TypeAnnotation::Overload(OverloadAnnotation::new(
-                                vec![candidate],
-                                None,
-                                Vec::new(), // methods cannot have type args
-                                span.clone(),
-                            ))
-                        }
-                    }
+                    typecheck_type_member(ty, &member_ident, span, ctx)?
                 },
 
                 TypeAnnotation::Namespace(path, _) => {
@@ -327,6 +311,21 @@ fn typecheck_member_of(
             })
         }
     }
+}
+
+fn typecheck_type_member(
+    ty: &Type,
+    member_ident: &Ident,
+    span: Span,
+    ctx: &mut Context
+) -> TypecheckResult<TypeAnnotation> {
+    let annotation = match ctx.find_type_member(ty, member_ident)? {
+        TypeMember::Method { decl } => {
+            TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation::new(&decl, ty.clone(), span))
+        }
+    };
+
+    Ok(annotation)
 }
 
 pub fn typecheck_typed_value(
