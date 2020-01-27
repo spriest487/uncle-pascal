@@ -549,7 +549,14 @@ pub fn typecheck_indexer(
         .ty()
         .collection_element_ty()
         .and_then(|el_ty| {
-            let value_kind = base.annotation().value_kind()?;
+            let value_kind = if base.annotation().ty().is_by_ref() {
+                // on heap e.g. dynamic array, always mutable
+                ValueKind::Mutable
+            } else {
+                // inherit mutability from owning variable
+                base.annotation().value_kind()?
+            };
+
             Some((el_ty.clone(), value_kind))
         })
         .ok_or_else(|| TypecheckError::InvalidIndexer {
