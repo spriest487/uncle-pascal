@@ -788,102 +788,108 @@ fn write_instruction_list(
     Ok(())
 }
 
-// dynamic arrays are given an ID for their dispose impl when the type is
-// added to the metadata. here's where we generate the code for those disposers
 fn gen_dyn_array_disposers(module: &mut Module) {
     for (elem_ty, struct_id) in module.metadata.dyn_array_structs().clone() {
         let array_class = ClassID::Class(struct_id);
+        let array_struct_ty = Type::Struct(struct_id);
         let array_ref_ty = Type::RcPointer(Some(array_class));
 
-        let disposer_id = module
-            .metadata
-            .find_impl(&array_ref_ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX)
-            .expect("dynamic array class must have disposer impl registered");
+        let rc_boilerplate = module.metadata.find_rc_boilerplate(&Type::Struct(struct_id))
+            .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
-        // build a disposer func for it
-        let mut body_builder = Builder::new(module);
+        let mut releaser_builder = Builder::new(module);
 
-        // %0 is first arg, and the builder expects us to retain it
-        body_builder.bind_local(LocalID(0), array_ref_ty.clone(), "self", false);
-        let self_arg = Ref::Local(LocalID(0));
-        body_builder.retain(self_arg.clone(), &array_ref_ty);
+        // %0 is the self arg, and releasers are passed a pointer to the self-object
+        releaser_builder.bind_local(LocalID(0), array_ref_ty.clone().ptr(), "self", true);
+        let self_arg = Ref::Local(LocalID(0)).deref();
 
-        let len_field_ptr = body_builder.local_temp(Type::I32.ptr());
-        body_builder.append(Instruction::Field {
+        let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
+        releaser_builder.append(Instruction::Field {
             out: len_field_ptr.clone(),
-            of_ty: array_ref_ty.clone(),
+            of_ty: array_struct_ty.clone(),
             field: DYNARRAY_LEN_FIELD,
             a: self_arg.clone(),
         });
 
-        let arr_field_ptr = body_builder.local_temp(elem_ty.clone().ptr().ptr());
-        body_builder.append(Instruction::Field {
+        let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
+        releaser_builder.append(Instruction::Field {
             out: arr_field_ptr.clone(),
-            of_ty: array_ref_ty.clone(),
+            of_ty: array_struct_ty.clone(),
             field: DYNARRAY_PTR_FIELD,
             a: self_arg,
         });
 
         // release every element
-        let counter = body_builder.local_temp(Type::I32);
-        body_builder.mov(counter.clone(), Value::LiteralI32(0));
+        let counter = releaser_builder.local_temp(Type::I32);
+        releaser_builder.mov(counter.clone(), Value::LiteralI32(0));
 
         // jump to loop end if counter == array len
-        let start_loop_label = body_builder.alloc_label();
-        let end_loop_label = body_builder.alloc_label();
+        let start_loop_label = releaser_builder.alloc_label();
+        let end_loop_label = releaser_builder.alloc_label();
 
-        body_builder.append(Instruction::Label(start_loop_label));
+        releaser_builder.append(Instruction::Label(start_loop_label));
 
-        let at_end = body_builder.local_temp(Type::Bool);
-        body_builder.append(Instruction::Eq {
+        let at_end = releaser_builder.local_temp(Type::Bool);
+        releaser_builder.append(Instruction::Eq {
             out: at_end.clone(),
             a: Value::Ref(len_field_ptr.clone().deref()),
             b: Value::Ref(counter.clone()),
         });
-        body_builder.append(Instruction::JumpIf {
+        releaser_builder.append(Instruction::JumpIf {
             dest: end_loop_label,
             test: Value::Ref(at_end),
         });
 
         // release arr[counter]
-        let el_ptr = body_builder.local_temp(elem_ty.clone().ptr());
-        body_builder.append(Instruction::Add {
+        let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
+        releaser_builder.append(Instruction::Add {
             out: el_ptr.clone(),
             a: Value::Ref(arr_field_ptr.clone().deref()),
             b: Value::Ref(counter.clone()),
         });
-        body_builder.release(el_ptr.deref(), &elem_ty);
+        releaser_builder.release(el_ptr.deref(), &elem_ty);
 
         // counter := counter + 1
-        body_builder.append(Instruction::Add {
+        releaser_builder.append(Instruction::Add {
             out: counter.clone(),
             a: Value::Ref(counter),
             b: Value::LiteralI32(1),
         });
 
-        body_builder.append(Instruction::Jump {
+        releaser_builder.append(Instruction::Jump {
             dest: start_loop_label,
         });
-        body_builder.append(Instruction::Label(end_loop_label));
+        releaser_builder.append(Instruction::Label(end_loop_label));
 
         // free the dynamic-allocated buffer
-        body_builder.append(Instruction::DynFree {
+        releaser_builder.append(Instruction::DynFree {
             at: arr_field_ptr.clone().deref(),
         });
 
-        body_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
-        body_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
+        releaser_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
+        releaser_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
 
-        let body = body_builder.finish();
+        let releaser_body = releaser_builder.finish();
 
         module.insert_func(
-            disposer_id,
+            rc_boilerplate.release,
             Function::Local(FunctionDef {
-                debug_name: format!("<generated disposer for {}>", array_ref_ty),
+                debug_name: format!("<generated releaser for {}>", array_ref_ty),
                 return_ty: Type::Nothing,
                 params: vec![array_ref_ty.clone()],
-                body,
+                body: releaser_body,
             }),
+        );
+
+        // no custom retain behaviour (dynarrays can't be retained!)
+        module.insert_func(
+            rc_boilerplate.retain,
+            Function::Local(FunctionDef {
+                debug_name: format!("<generated empty retainer for {}>", array_ref_ty),
+                return_ty: Type::Nothing,
+                params: vec![array_ref_ty.clone()],
+                body: Vec::new(),
+            })
         );
     }
 }

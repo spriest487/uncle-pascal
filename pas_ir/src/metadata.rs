@@ -57,8 +57,8 @@ pub const STRING_ID: StructID = StructID(1);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 
-pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(0);
-pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(1);
+pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
+pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {
@@ -1135,22 +1135,24 @@ impl Metadata {
             element
         );
 
-        let name = NamePath::from_parts(vec![format!("{}[]", element)]);
+        let name = NamePath::from_parts(vec![
+            format!("array of {}", self.pretty_ty_name(&element))
+        ]);
 
         let mut fields = HashMap::new();
-        fields.insert(
-            DYNARRAY_PTR_FIELD,
-            StructField {
-                name: "ptr".to_string(),
-                ty: element.clone().ptr(),
-                rc: false,
-            },
-        );
         fields.insert(
             DYNARRAY_LEN_FIELD,
             StructField {
                 name: "len".to_string(),
                 ty: Type::I32,
+                rc: false,
+            },
+        );
+        fields.insert(
+            DYNARRAY_PTR_FIELD,
+            StructField {
+                name: "ptr".to_string(),
+                ty: element.clone().ptr(),
                 rc: false,
             },
         );
@@ -1163,14 +1165,19 @@ impl Metadata {
 
         self.dyn_array_structs.insert(element, struct_id);
 
+        // the rc boilerplate impls for a dynarray should be empty
+        // dyn array structs are heap-allocated and don't need structural ref-counting
+        // (but they do need custom finalization to clean up references they hold)
+        self.declare_rc_boilerplate(&Type::Struct(struct_id));
+
         // we know it will have a disposer impl (and trust that the module
         // will generate the code for it if we give it an ID here)
-        let disposer_id = self.next_function_id();
-        self.functions
-            .insert(disposer_id, FunctionDecl { global_name: None });
+//        let disposer_id = self.next_function_id();
+//        self.functions
+//            .insert(disposer_id, FunctionDecl { global_name: None });
 
-        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
-        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
+//        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
+//        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
 
         struct_id
     }

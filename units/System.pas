@@ -31,6 +31,8 @@ export function ReadLn(): String; external 'rt';
 export function IntToStr(i: Integer): String; external 'rt';
 export function StrToInt(s: String): Integer; external 'rt';
 
+function ArrayLengthInternal(arr: Any): Integer; external 'rt';
+
 export type Disposable = interface
     function Dispose(self: Self);
 end;
@@ -181,9 +183,6 @@ export function Min(a, b: Integer): Integer
 begin
     if a < b then a else b
 end;
-
-// compiler magic
-function ArrayLengthInternal(arr: Any): Integer; external 'rt';
 
 export function Length of T(arr: array of T): Integer
 begin

@@ -895,7 +895,7 @@ impl Interpreter {
                         .collect::<Vec<_>>()
                         .join("\n");
 
-                    panic!("missing rc boilerplate for class {} in:\n{}", name, funcs);
+                    panic!("missing rc boilerplate for {} in:\n{}", name, funcs);
                 });
 
             // todo: should function cells be Rc<Function> so we don't need to clone them here?
@@ -940,9 +940,12 @@ impl Interpreter {
     fn retain_cell(&mut self, cell: &MemCell) {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
-                let rc_cell = self.heap[*addr]
-                    .as_rc_mut()
-                    .expect("retained cell must point to an rc cell");
+                let rc_cell = match &mut self.heap[*addr] {
+                    MemCell::RcCell(rc_cell) => rc_cell.as_mut(),
+                    other => {
+                        panic!("retained cell must point to an rc cell, found: {:?}", other)
+                    }
+                };
 
                 if self.trace_rc {
                     eprintln!("rc: retain @ {}", addr);
@@ -1475,6 +1478,7 @@ impl Interpreter {
             ("ReadLn", builtin::read_ln, Type::string_ptr()),
             ("GetMem", builtin::get_mem, Type::U8.ptr()),
             ("FreeMem", builtin::free_mem, Type::Nothing),
+            ("ArrayLengthInternal", builtin::array_length, Type::I32),
         ];
 
         for (ident, func, ret) in system_funcs {
@@ -1526,7 +1530,7 @@ impl Interpreter {
     fn deref_rc(&self, rc_cell: &MemCell) -> &MemCell {
         let rc = rc_cell
             .as_rc()
-            .unwrap_or_else(|| panic!("trying to dereference RC pointer with an invalid value"));
+            .unwrap_or_else(|| panic!("trying to dereference RC pointer with an invalid value: {:?}", rc_cell));
 
         self.heap.get(rc.resource_addr).unwrap()
     }

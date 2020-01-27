@@ -1,5 +1,6 @@
 use crate::{interpret::{Interpreter, MemCell, Pointer}, LocalID, Ref};
 use std::io::{self, BufRead};
+use crate::metadata::DYNARRAY_LEN_FIELD;
 
 /// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {
@@ -81,4 +82,29 @@ pub(super) fn free_mem(state: &mut Interpreter) {
         .unwrap_or_else(|| panic!("FreeMem expected heap pointer argument"));
 
     state.heap.free(ptr);
+}
+
+/// $1: <any dyn array ref> -> Integer
+pub(super) fn array_length(state: &mut Interpreter) {
+    let ret = Ref::Local(LocalID(0));
+    let array_ref = Ref::Local(LocalID(1));
+
+    // the type should be Any (pointer to an rc cell)
+    let array_ref_cell = state.load(&array_ref);
+    let rc_cell_ptr = array_ref_cell.as_pointer()
+        .expect("array_length: argument cell must be pointer");
+    let rc_cell = state.deref_ptr(rc_cell_ptr);
+
+    match state.deref_rc(rc_cell) {
+        MemCell::Structure(dyn_array_struct_cell) => {
+            let len = dyn_array_struct_cell[DYNARRAY_LEN_FIELD]
+                .as_i32()
+                .expect("array_length: argument cell must contain array length field");
+            state.store(&ret, MemCell::I32(len));
+        }
+
+        other => {
+            panic!("array_length: expected array cell, got {:?}", other)
+        }
+    }
 }
