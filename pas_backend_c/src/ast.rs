@@ -41,6 +41,7 @@ impl Module {
             ("FreeMem", FunctionName::FreeMem),
             ("WriteLn", FunctionName::WriteLn),
             ("ReadLn", FunctionName::ReadLn),
+            ("ArrayLengthInternal", FunctionName::ArrayLengthInternal),
         ];
 
         let mut builtin_funcs = HashMap::new();

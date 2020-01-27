@@ -70,4 +70,10 @@ static struct Rc* System_ReadLn(void) {
     return str_rc;
 }
 
+static int32_t System_ArrayLengthInternal(struct Rc* arr_rc) {
+    // all rc arrays start with a length field, so it's safe to access it through Int32*
+    const int32_t* len_ptr = (int32_t*) arr_rc->resource;
+    return *len_ptr;
+}
+
 #endif

@@ -188,6 +188,7 @@ static void System_FreeMem(unsigned char* mem);
 static void System_Write(struct Rc* str_rc);
 static void System_WriteLn(struct Rc* str_rc);
 static struct Rc* System_ReadLn(void);
+static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
 
 // Strings
 
