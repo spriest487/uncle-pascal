@@ -12,9 +12,9 @@ var foods: array of String := [
     'lemon',
 ];
 
-QuickSort of String(foods);
+QuickSort(foods);
 
-for let i := 0 to Length of String(foods) - 1 do begin
+for let i := 0 to Length(foods) - 1 do begin
     WriteLn(foods[i]);
 end;
 
@@ -28,8 +28,8 @@ var numbers: array of Integer := [
     0,
 ];
 
-QuickSort of Integer(numbers);
+QuickSort(numbers);
 
-for let i := 0 to Length of Integer(numbers) - 1 do begin
+for let i := 0 to Length(numbers) - 1 do begin
     WriteLn(numbers[i].IntToStr());
 end;

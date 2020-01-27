@@ -127,7 +127,7 @@ impl fmt::Display for GenericError {
 
                 match hint {
                     GenericTypeHint::Unknown => Ok(()),
-                    hint => write!(f, "from {}", hint)
+                    hint => write!(f, " from {}", hint)
                 }
             },
 

@@ -407,6 +407,16 @@ impl Type {
             .unwrap_or(false)
     }
 
+    pub fn same_array_dim(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Array { dim, .. }, Type::Array { dim: other_dim, .. }) => {
+                *dim == *other_dim
+            }
+
+            _ => false,
+        }
+    }
+
     pub fn same_decl_type(&self, other: &Self) -> bool {
         match (self.full_path(), other.full_path()) {
             (Some(path), Some(other_path)) => path == other_path,

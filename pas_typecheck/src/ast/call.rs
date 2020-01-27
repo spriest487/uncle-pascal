@@ -497,17 +497,34 @@ fn infer_from_structural_ty_args(
     actual_ty: &Type,
     inferred_ty_args: &mut Vec<Option<Type>>,
 ) {
-    if !param_ty.same_decl_type(param_ty) {
-        return;
-    }
+    let (param_ty_args, actual_ty_args) = match (param_ty, actual_ty) {
+        (Type::Array { element: param_el, dim: param_dim }, Type::Array { element: actual_el, dim: actual_dim }) => {
+            if *actual_dim != *param_dim {
+                return;
+            }
 
-    let param_ty_args = match param_ty.type_args() {
-        Some(args) => args,
-        None => return,
-    };
-    let actual_ty_args = match actual_ty.type_args() {
-        Some(args) => args,
-        None => return,
+            (vec![*param_el.clone()], vec![*actual_el.clone()])
+        }
+
+        (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {
+            (vec![*param_el.clone()], vec![*actual_el.clone()])
+        }
+
+        _ => {
+            if !param_ty.same_decl_type(actual_ty) {
+                return;
+            }
+
+            let param_ty_args = match param_ty.type_args() {
+                Some(args) => args.to_vec(),
+                None => return,
+            };
+            let actual_ty_args = match actual_ty.type_args() {
+                Some(args) => args.to_vec(),
+                None => return,
+            };
+            (param_ty_args, actual_ty_args)
+        }
     };
 
     let all_ty_args = param_ty_args.iter().zip(actual_ty_args.iter());
