@@ -120,58 +120,60 @@ end;
 
 export function CompareStr(a, b: String): Integer
 begin
-    if a.len = 0 and b.len = 0 then 0
-    else begin
-        var aPos := 0;
-        var bPos := 0;
+    if a.len = 0 and b.len = 0 then begin
+        exit 0;
+    end;
 
-        var cmp: Integer := 0;
-        while true do begin
-            if aPos < a.len and aPos >= b.len then begin
-                cmp := 1;
-                break;
-            end;
-            if bPos < b.len and bPos >= a.len then begin
-                cmp := -1;
-                break;
-            end;
-            if aPos >= a.len and bPos >= b.len then begin
-                cmp := 0;
-                break;
-            end;
+    var aPos := 0;
+    var bPos := 0;
 
+    var cmp: Integer := 0;
+    while true do begin
+        if aPos < a.len and bPos < b.len then begin
             let aChar := (a.chars + aPos)^;
             let bChar := (b.chars + bPos)^;
             cmp := if aChar > bChar then 1
                 else if bChar > aChar then -1
                 else 0;
 
-            if cmp <> 0 then break;
-
             aPos := aPos + 1;
             bPos := bPos + 1;
+        end
+        else if aPos < a.len and aPos >= b.len then begin
+            // a is longer than b
+            cmp := 1;
+        end
+        else if bPos < b.len and bPos >= a.len then begin
+            // b is longer than a
+            cmp := -1;
+        end
+        else begin
+            // out of range of both
+            break;
         end;
 
-        cmp
-    end
+        if cmp <> 0 then break;
+    end;
+
+    cmp
 end;
 
 export function StringTrim(s: String): String
 begin
-    if s.len = 0 then
-        s
-    else begin
-        var startAt := 0;
-        while s.StringCharAt(startAt).IsWhiteSpace() do
-            startAt := startAt + 1;
+    if s.len = 0 then begin
+        exit s;
+    end;
 
-        var endAt := s.len - 1;
-        while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
-            endAt := endAt - 1;
+    var startAt := 0;
+    while s.StringCharAt(startAt).IsWhiteSpace() do
+        startAt := startAt + 1;
 
-        let len := (endAt + 1) - startAt;
-        SubString(s, startAt, len)
-    end
+    var endAt := s.len - 1;
+    while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
+        endAt := endAt - 1;
+
+    let len := (endAt + 1) - startAt;
+    SubString(s, startAt, len)
 end;
 
 export function Max(a, b: Integer): Integer

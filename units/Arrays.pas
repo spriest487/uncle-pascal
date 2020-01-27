@@ -18,8 +18,7 @@ begin
 
         if l < r then begin
             if CompareStr(arr[l], arr[r]) = 0 then begin
-                result := r;
-                break;
+                exit r;
             end;
 
             let temp := arr[l];
@@ -27,8 +26,7 @@ begin
             arr[r] := temp;
         end
         else begin
-            result := r;
-            break;
+            exit r;
         end;
     end;
 
@@ -42,8 +40,8 @@ begin
 
         if pivot > 1 then begin
             QuickSortRange(arr, left, pivot - 1);
-        end
-        else if pivot + 1 < right then begin
+        end;
+        if pivot + 1 < right then begin
             QuickSortRange(arr, pivot + 1, right);
         end;
     end;

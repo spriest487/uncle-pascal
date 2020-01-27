@@ -1,14 +1,14 @@
 uses System, Arrays;
 
 var foods: array of String := [
+    'mustard',
+    'onion',
     'apple',
     'melon',
     'yogurt',
     'cookies',
     'treacle',
-    'onion',
     'banana',
-    'mustard',
     'lemon',
 ];
 
