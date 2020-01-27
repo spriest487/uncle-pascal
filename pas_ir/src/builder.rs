@@ -1012,6 +1012,14 @@ impl<'m> Builder<'m> {
             dest: continue_label,
         });
     }
+
+    pub fn exit_function(&mut self) {
+        self.cleanup_scope(0);
+
+        self.append(Instruction::Jump {
+            dest: EXIT_LABEL
+        })
+    }
 }
 
 #[cfg(test)]

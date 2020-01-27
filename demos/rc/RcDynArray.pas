@@ -1,12 +1,12 @@
 uses System;
 
-function PrintNth(xs: array of Integer; n: Integer)
+function PrintNth(xs: array of String; n: Integer)
 begin
     let x := xs[n];
-    WriteLn(x.IntToStr());
+    WriteLn(x);
 end;
 
-let arr: array of Integer := [1, 2, 3];
+let arr: array of String := ['1', '2', '3'];
 PrintNth(arr, 0);
 
 let arr2 := arr;

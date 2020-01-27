@@ -1194,13 +1194,10 @@ pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {
     if let ast::Exit::WithValue(val, _) = exit {
         let value_val = translate_expr(val, builder);
 
-        // returns always go in %0
-        let ret_ref = Ref::Local(LocalID(0));
-
-        builder.mov(ret_ref, value_val);
+        // we can assume this function has a return register, otherwise an exit statement
+        // wouldn't pass typechecking
+        builder.mov(RETURN_REF, value_val);
     }
 
-    builder.append(Instruction::Jump {
-        dest: EXIT_LABEL
-    })
+    builder.exit_function();
 }
