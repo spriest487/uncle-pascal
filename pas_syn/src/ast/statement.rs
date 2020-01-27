@@ -73,7 +73,7 @@ impl<A: Annotation> fmt::Display for LocalBinding<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
-    WithValue(Expression<A>),
+    WithValue(Expression<A>, A),
     WithoutValue(A),
 }
 
@@ -81,7 +81,7 @@ impl<A: Annotation> fmt::Display for Exit<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Exit::WithoutValue(_) => write!(f, "exit"),
-            Exit::WithValue(expr) => write!(f, "exit {}", expr),
+            Exit::WithValue(value, _) => write!(f, "exit {}", value),
         }
     }
 }
@@ -119,7 +119,7 @@ impl<A: Annotation> Statement<A> {
             Statement::LocalBinding(binding) => &binding.annotation,
             Statement::Call(call) => &call.annotation(),
             Statement::Exit(exit) => match exit {
-                Exit::WithValue(expr) => expr.annotation(),
+                Exit::WithValue(_expr, annotation) => annotation,
                 Exit::WithoutValue(a) => a,
             },
             Statement::Block(block) => &block.annotation,
@@ -281,6 +281,28 @@ impl Statement<Span> {
                 tokens.advance(1);
                 Ok(Statement::Continue(span))
             }
+
+            Some(TokenTree::Keyword {
+                     kw: Keyword::Exit,
+                     span,
+                 }) => {
+                tokens.advance(1);
+
+                let stmt_terminator = Keyword::End.or(Separator::Semicolon);
+
+                match tokens.look_ahead().match_one(stmt_terminator) {
+                    Some(..) => {
+                        Ok(Statement::Exit(Exit::WithoutValue(span.clone())))
+                    }
+
+                    _ => {
+                        let value_expr = Expression::parse(tokens)?;
+                        let span = span.to(value_expr.annotation().span());
+                        Ok(Statement::Exit(Exit::WithValue(value_expr, span)))
+                    }
+                }
+            }
+
 
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
