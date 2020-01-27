@@ -415,6 +415,7 @@ fn typecheck_ufcs_call(
         &span,
         ctx,
     )?;
+    check_args_match(&specialized_call_args.actual_args, &specialized_call_args.sig, ctx)?;
 
     let func_annotation = TypeAnnotation::Function {
         func_ty: Type::Function(Rc::new(specialized_call_args.sig.clone())),
@@ -464,13 +465,16 @@ where
         Type::GenericParam(param_ty) => {
             match &inferred_ty_args[param_ty.pos] {
                 // type arg in this pos was already inferred from an earlier arg
-                Some(already_inferred_ty) => produce_expr(already_inferred_ty, ctx),
+                Some(already_inferred_ty) => {
+                    let actual_arg = produce_expr(already_inferred_ty, ctx)?;
+                    Ok(actual_arg)
+                },
 
                 None => {
                     let actual_arg = produce_expr(&Type::Nothing, ctx)?;
                     let actual_ty = actual_arg.annotation().ty().clone();
 
-                    inferred_ty_args[param_ty.pos] = Some(actual_ty);
+                    inferred_ty_args[param_ty.pos] = Some(actual_ty.clone());
                     Ok(actual_arg)
                 }
             }
@@ -479,9 +483,9 @@ where
         // param is not generic: param type drives expr expected type
         param_ty => {
             let actual_arg = produce_expr(param_ty, ctx)?;
-            let actual_ty = actual_arg.annotation().ty();
+            let actual_ty = actual_arg.annotation().ty().clone();
 
-            infer_from_structural_ty_args(param_ty, actual_ty, inferred_ty_args);
+            infer_from_structural_ty_args(param_ty, &actual_ty, inferred_ty_args);
 
             Ok(actual_arg)
         }
@@ -543,7 +547,7 @@ fn specialize_call_args(
             type_args: explicit_ty_args.to_vec(),
         })
     } else {
-        // we haven't checked arg length matches yet because we haven't typechecked args        let self
+        // we haven't checked arg length matches yet because we haven't typechecked args
         let self_arg_len = if self_arg.is_some() { 1 } else { 0 };
         if args.len() + self_arg_len != decl_sig.params.len() {
             // this is an inferral error because we don't have enough information to report
@@ -561,15 +565,15 @@ fn specialize_call_args(
         let mut actual_args = Vec::new();
 
         if let Some(self_arg) = self_arg.cloned() {
-            let self_param = &decl_sig.params[0];
-            let self_arg = specialize_arg(
-                &self_param.ty,
+            let decl_self_param = &decl_sig.params[0];
+            let actual_self_arg = specialize_arg(
+                &decl_self_param.ty,
                 &mut inferred_ty_args,
                 |_expect_ty, _ctx| Ok(self_arg),
                 ctx,
             )?;
 
-            actual_args.push(self_arg);
+            actual_args.push(actual_self_arg);
         }
 
         for (i, arg) in args.iter().enumerate() {
@@ -612,6 +616,21 @@ fn specialize_call_args(
     }
 }
 
+fn check_args_match(args: &[Expression], sig: &FunctionSig, ctx: &Context) -> TypecheckResult<()> {
+    let args_and_params = args.iter().zip(sig.params.iter());
+    for (arg, param) in args_and_params {
+        if !param.ty.blittable_from(arg.annotation().ty(), ctx) {
+            return Err(TypecheckError::TypeMismatch {
+                expected: param.ty.clone(),
+                actual: arg.annotation().ty().clone(),
+                span: arg.annotation().span().clone(),
+            });
+        }
+    }
+
+    Ok(())
+}
+
 fn typecheck_func_call(
     func_call: &ast::FunctionCall<Span>,
     sig: &FunctionSig,
@@ -625,6 +644,7 @@ fn typecheck_func_call(
 
     let specialized_call_args =
         specialize_call_args(sig, &func_call.args, None, &type_args, &span, ctx)?;
+    check_args_match(&specialized_call_args.actual_args, &specialized_call_args.sig, ctx)?;
 
     let return_ty = specialized_call_args.sig.return_ty.clone();
 
@@ -853,7 +873,6 @@ pub fn resolve_overload(
     // no overload resolution needed, we can use the param type hint for all args
     if candidates.len() == 1 {
         let sig = &candidate_sigs[0];
-//        println!("only one candidate for {}, using {}", span, sig);
 
         let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
         let actual_arg_tys: Vec<_> = args.iter()

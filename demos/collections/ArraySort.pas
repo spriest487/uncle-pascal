@@ -31,7 +31,5 @@ var numbers: array of Integer := [
 QuickSort of Integer(numbers);
 
 for let i := 0 to Length of Integer(numbers) - 1 do begin
-    // this shouldn't compile!
-    WriteLn(numbers[i]);
-    //WriteLn(numbers[i].IntToStr());
+    WriteLn(numbers[i].IntToStr());
 end;

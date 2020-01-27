@@ -488,7 +488,7 @@ impl Type {
                 _ => false,
             },
             Type::Any => match from {
-                Type::Class(..) | Type::Interface(..) => true,
+                Type::DynArray { .. } | Type::Class(..) | Type::Interface(..) => true,
                 _ => false,
             },
             _ => *self == *from,
