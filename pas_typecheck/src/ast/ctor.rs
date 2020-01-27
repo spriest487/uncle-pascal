@@ -75,7 +75,7 @@ pub fn typecheck_object_ctor(
 
         let value = typecheck_expr(&arg.value, &member.ty, ctx)?;
 
-        if !member.ty.assignable_from(value.annotation().ty(), ctx) {
+        if !member.ty.blittable_from(value.annotation().ty(), ctx) {
             return Err(TypecheckError::InvalidBinOp {
                 lhs: member.ty.clone(),
                 rhs: value.annotation().ty().clone(),

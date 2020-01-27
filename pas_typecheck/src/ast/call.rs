@@ -50,7 +50,7 @@ fn typecheck_args(
         let self_param = &expected_args[0];
         let self_compatible = self_param
             .ty
-            .assignable_from(self_arg.annotation().ty(), ctx);
+            .blittable_from(self_arg.annotation().ty(), ctx);
         if !self_compatible {
             return Err(TypecheckError::TypeMismatch {
                 actual: self_arg.annotation().ty().clone(),
@@ -815,7 +815,7 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                if !self_param_ty.assignable_from(self_arg_ty, ctx) {
+                if !self_param_ty.blittable_from(self_arg_ty, ctx) {
 //                    println!("discarding {} as candidate for {}, {} :!= {}", sig, span, self_param_ty, self_arg_ty);
                     false
                 } else {
@@ -866,7 +866,7 @@ pub fn resolve_overload(
                 false
             } else {
                 let param_ty = &sig.params[param_index].ty;
-                if param_ty.assignable_from(&arg_ty, ctx) {
+                if param_ty.blittable_from(&arg_ty, ctx) {
                     true
                 } else {
 //                    println!("discarding {} as candidate for {}: {} :!= {}", sig, span, param_ty, arg_ty);

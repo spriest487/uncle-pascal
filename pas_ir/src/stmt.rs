@@ -1,5 +1,5 @@
 use crate::{
-    prelude::*, translate_block, translate_call, translate_expr, translate_if_cond, Builder,
+    prelude::*, translate_block, translate_exit, translate_call, translate_expr, translate_if_cond, Builder,
 };
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
@@ -33,7 +33,9 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
             translate_block(block, builder);
         }
 
-        ast::Statement::Exit(_) => unimplemented!(),
+        ast::Statement::Exit(exit) => {
+            translate_exit(exit, builder);
+        },
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);

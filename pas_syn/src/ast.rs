@@ -25,6 +25,7 @@ pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
 
 pub trait DeclNamed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn as_local(&self) -> &TypeDeclName;
+    fn decl_ty_params(&self) -> &[Ident];
 }
 
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {

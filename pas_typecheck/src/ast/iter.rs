@@ -9,7 +9,7 @@ pub fn typecheck_for_loop(
 ) -> TypecheckResult<ForLoop> {
     let annotation = TypeAnnotation::Untyped(for_loop.annotation.clone());
 
-    let inner_scope = ctx.push_scope(None);
+    let inner_scope = ctx.push_scope(Environment::Block);
     let init_binding = typecheck_local_binding(&for_loop.init_binding, ctx)?;
 
     if init_binding.val_ty != Type::Primitive(Primitive::Int32) {

@@ -136,15 +136,15 @@ pub struct ScopeID(usize);
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
     id: ScopeID,
-    ident: Option<Ident>,
+    env: Environment,
     decls: HashMap<Ident, Member<Scope>>,
 }
 
 impl Scope {
-    fn new(id: ScopeID, ident: Option<Ident>) -> Self {
+    fn new(id: ScopeID, env: Environment) -> Self {
         Self {
             id,
-            ident,
+            env,
             decls: HashMap::new(),
         }
     }
@@ -155,7 +155,10 @@ impl Namespace for Scope {
     type Value = Decl;
 
     fn key(&self) -> Option<&Self::Key> {
-        self.ident.as_ref()
+        match &self.env {
+            Environment::Module { namespace } => Some(namespace),
+            _ => None,
+        }
     }
 
     fn keys(&self) -> Vec<Ident> {
@@ -226,6 +229,25 @@ impl DefDeclMatch {
     }
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum Environment {
+    Global,
+    Module { namespace: Ident },
+    TypeDecl,
+    FunctionDecl,
+    FunctionBody { result_ty: Type },
+    Block,
+}
+
+impl Environment {
+    pub fn namespace(&self) -> Option<&Ident> {
+        match self {
+            Environment::Module { namespace } => Some(namespace),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Context {
     next_id: ScopeID,
@@ -245,7 +267,7 @@ impl Context {
         let builtin_span = builtin_span();
 
         let mut root_ctx = Self {
-            scopes: NamespaceStack::new(Scope::new(ScopeID(0), None)),
+            scopes: NamespaceStack::new(Scope::new(ScopeID(0), Environment::Global)),
             next_id: ScopeID(1),
 
             defs: Default::default(),
@@ -275,7 +297,7 @@ impl Context {
         }
 
         // builtins are in scope 0, unit is scope 1
-        root_ctx.push_scope(None);
+        root_ctx.push_scope(Environment::Global);
 
         if no_stdlib {
             // declare things normally declared in System.pas that the compiler needs to function
@@ -285,7 +307,8 @@ impl Context {
             let string_ty = Type::Class(Box::new(builtin_string_name()));
             let string_name = string_ty.full_path().unwrap();
 
-            let system_scope = root_ctx.push_scope(Some(Ident::new("System", builtin_span)));
+            let unit_env = Environment::Module { namespace: Ident::new("System", builtin_span) };
+            let system_scope = root_ctx.push_scope(unit_env);
 
             root_ctx
                 .declare_type(
@@ -305,11 +328,11 @@ impl Context {
         root_ctx
     }
 
-    pub fn push_scope(&mut self, ns: Option<Ident>) -> ScopeID {
+    pub fn push_scope(&mut self, env: Environment) -> ScopeID {
         let new_id = self.next_id;
         self.next_id = ScopeID(self.next_id.0 + 1);
 
-        self.scopes.push(Scope::new(new_id, ns));
+        self.scopes.push(Scope::new(new_id, env));
         new_id
     }
 
@@ -366,6 +389,16 @@ impl Context {
             }) => self.resolve(aliased),
             result => result,
         }
+    }
+
+    pub fn current_func_return_ty(&self) -> Option<&Type> {
+        for scope in self.scopes.iter_up() {
+            if let Environment::FunctionBody { result_ty } = &scope.env {
+                return Some(result_ty);
+            }
+        }
+
+        None
     }
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
@@ -779,7 +812,7 @@ impl Context {
 
             Some(MemberRef::Namespace { path }) => Err(NameError::Unexpected {
                 ident: name.clone(),
-                actual: UnexpectedValue::Namespace(path.top().ident.clone().unwrap()),
+                actual: UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone()),
                 expected: ExpectedKind::AnyType,
             }),
 
@@ -883,7 +916,7 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
+                let unexpected = UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -956,7 +989,7 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = UnexpectedValue::Namespace(path.top().ident.clone().unwrap());
+                let unexpected = UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,

@@ -248,6 +248,10 @@ impl<NS: Namespace> NamespaceStack<NS> {
         Some(MemberRef::Namespace { path: current })
     }
 
+    pub fn iter_up(&self) -> impl Iterator<Item=&NS> {
+        self.namespaces.iter().rev()
+    }
+
     #[allow(unused)]
     pub fn visit_all<Visitor>(&self, mut visitor: Visitor)
         where Visitor: FnMut(&[NS::Key], &Member<NS>)

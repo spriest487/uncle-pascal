@@ -261,6 +261,10 @@ impl DeclNamed for QualifiedDeclName {
     fn as_local(&self) -> &TypeDeclName {
         &self.decl_name
     }
+
+    fn decl_ty_params(&self) -> &[Ident] {
+        &self.decl_name.type_params
+    }
 }
 
 impl Spanned for QualifiedDeclName {

@@ -86,6 +86,15 @@ impl<A: Annotation> fmt::Display for Exit<A> {
     }
 }
 
+impl<A: Annotation> Spanned for Exit<A> {
+    fn span(&self) -> &Span {
+        match self {
+            Exit::WithValue(_, a) => a.span(),
+            Exit::WithoutValue(a) => a.span()
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Assignment<A: Annotation> {
     pub lhs: Expression<A>,

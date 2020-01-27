@@ -7,7 +7,7 @@ pub fn typecheck_block(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Block> {
-    let block_scope = ctx.push_scope(None);
+    let block_scope = ctx.push_scope(Environment::Block);
 
     let mut statements = Vec::new();
 

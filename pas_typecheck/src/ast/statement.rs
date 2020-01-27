@@ -4,6 +4,7 @@ use crate::ast::expression::{CallOrCtor, typecheck_call};
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
+pub type Exit = ast::Exit<TypeAnnotation>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
@@ -37,7 +38,7 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    if !explicit_ty.assignable_from(val.annotation().ty(), ctx) {
+                    if !explicit_ty.blittable_from(val.annotation().ty(), ctx) {
                         return Err(TypecheckError::InvalidBinOp {
                             lhs: explicit_ty.clone(),
                             rhs: val.annotation().ty().clone(),
@@ -130,7 +131,7 @@ pub fn typecheck_assignment(
     if !lhs
         .annotation()
         .ty()
-        .assignable_from(rhs.annotation().ty(), ctx)
+        .blittable_from(rhs.annotation().ty(), ctx)
     {
 //        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
 
@@ -192,7 +193,10 @@ pub fn typecheck_stmt(
             typecheck_assignment(assignment, ctx).map(ast::Statement::Assignment)
         }
 
-        ast::Statement::Exit(_exit) => unimplemented!(),
+        ast::Statement::Exit(exit) => {
+            let exit = typecheck_exit(exit, ctx)?;
+            Ok(ast::Statement::Exit(exit))
+        }
 
         ast::Statement::Break(span) => {
             expect_in_loop(stmt, ctx)?;
@@ -221,4 +225,40 @@ fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult
             stmt: Box::new(stmt.clone()),
         }),
     }
+}
+
+fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<Exit> {
+    let expect_ty = ctx.current_func_return_ty()
+        .ok_or_else(|| {
+            TypecheckError::NoFunctionContext {
+                stmt: Box::new(ast::Statement::Exit(exit.clone()))
+            }
+        })?
+        .clone();
+
+    let (exit, ret_ty) = match exit {
+        ast::Exit::WithoutValue(span) => {
+            let exit = ast::Exit::WithoutValue(TypeAnnotation::Untyped(span.clone()));
+            (exit, Type::Nothing)
+        },
+
+        ast::Exit::WithValue(value, span) => {
+            let value = typecheck_expr(value, &expect_ty, ctx)?;
+            let ret_ty = value.annotation().ty().clone();
+
+            let exit = ast::Exit::WithValue(value, TypeAnnotation::Untyped(span.clone()));
+
+            (exit, ret_ty)
+        }
+    };
+
+    if !expect_ty.blittable_from(&ret_ty, ctx) {
+        return Err(TypecheckError::TypeMismatch {
+            expected: expect_ty,
+            actual: ret_ty,
+            span: exit.span().clone(),
+        });
+    }
+
+    Ok(exit)
 }

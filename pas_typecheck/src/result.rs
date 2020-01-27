@@ -114,6 +114,9 @@ pub enum TypecheckError {
     NoLoopContext {
         stmt: Box<ast::Statement<Span>>,
     },
+    NoFunctionContext {
+        stmt: Box<ast::Statement<Span>>,
+    },
 
     GenericError(GenericError),
 
@@ -187,6 +190,7 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyVariant(variant) => variant.span(),
             TypecheckError::EmptyVariantCaseBinding { span, .. } => span,
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
+            TypecheckError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::UnsizedMember { member, .. } => member.span(),
             TypecheckError::GenericError(err) => err.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
@@ -240,6 +244,7 @@ impl DiagnosticOutput for TypecheckError {
             }
 
             TypecheckError::NoLoopContext { .. } => "Statement requires loop context".to_string(),
+            TypecheckError::NoFunctionContext { .. } => "Statement requires function context".to_string(),
 
             TypecheckError::UnsizedMember { .. } => "Unsized member".to_string(),
 
@@ -470,6 +475,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::NoLoopContext { stmt } => {
                 write!(f, "the statement `{}` can only appear inside a loop", stmt)
+            }
+
+            TypecheckError::NoFunctionContext { stmt } => {
+                write!(f, "the statement `{}` can only appear inside a function", stmt)
             }
 
             TypecheckError::UnsizedMember { decl, member_ty, .. } => {

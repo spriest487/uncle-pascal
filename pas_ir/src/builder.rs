@@ -14,6 +14,9 @@ use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
+pub const EXIT_LABEL: Label = Label(0);
+
 #[derive(Clone, Debug)]
 pub enum Local {
     // the builder created this local allocation and must track its lifetime to drop it
@@ -113,7 +116,9 @@ impl<'m> Builder<'m> {
             type_args: Vec::new(),
 
             instructions: vec![Instruction::LocalBegin],
-            next_label: Label(0),
+
+            // the EXIT label is always reserved, so start one after that
+            next_label: Label(EXIT_LABEL.0 + 1),
 
             scopes: vec![Scope { locals: Vec::new() }],
 
@@ -476,6 +481,9 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
             self.instructions.remove(pos);
         }
+
+        // all functions end with the reserved EXIT label
+        self.instructions.push(Instruction::Label(EXIT_LABEL));
 
         self.instructions
     }

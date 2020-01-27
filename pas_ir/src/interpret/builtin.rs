@@ -1,10 +1,13 @@
-use crate::{interpret::{Interpreter, MemCell, Pointer}, LocalID, Ref};
+use crate::{
+    builder::RETURN_REF,
+    interpret::{Interpreter, MemCell, Pointer},
+    metadata::DYNARRAY_LEN_FIELD,
+    LocalID, Ref,
+};
 use std::io::{self, BufRead};
-use crate::metadata::DYNARRAY_LEN_FIELD;
 
 /// $1: Integer -> $0: String
 pub(super) fn int_to_str(state: &mut Interpreter) {
-    let return_ref = Ref::Local(LocalID(0));
     let arg_0 = Ref::Local(LocalID(1));
 
     let int = state
@@ -13,12 +16,11 @@ pub(super) fn int_to_str(state: &mut Interpreter) {
         .unwrap_or_else(|| panic!("IntToStr expected I32 argument"));
 
     let string = state.create_string(&int.to_string());
-    state.store(&return_ref, string);
+    state.store(&RETURN_REF, string);
 }
 
 /// $1: String -> $0: Integer
 pub(super) fn str_to_int(state: &mut Interpreter) {
-    let return_ref = Ref::Local(LocalID(0));
     let arg_0 = Ref::Local(LocalID(1));
 
     let string = state.read_string(&arg_0.deref());
@@ -26,7 +28,7 @@ pub(super) fn str_to_int(state: &mut Interpreter) {
         panic!("IntToStr failed: could not convert `{}` to int", string);
     });
 
-    state.store(&return_ref, MemCell::I32(int));
+    state.store(&RETURN_REF, MemCell::I32(int));
 }
 
 /// $0: String -> Nothing
@@ -37,9 +39,8 @@ pub(super) fn write_ln(state: &mut Interpreter) {
     println!("{}", string);
 }
 
+/// $0: Nothing -> String
 pub(super) fn read_ln(state: &mut Interpreter) {
-    let ret = Ref::Local(LocalID(0));
-
     let stdin = io::stdin();
     let mut line = String::new();
 
@@ -52,12 +53,11 @@ pub(super) fn read_ln(state: &mut Interpreter) {
 
     let result_str = state.create_string(&line);
 
-    state.store(&ret, result_str);
+    state.store(&RETURN_REF, result_str);
 }
 
 /// $1: Integer -> $0: ^Byte
 pub(super) fn get_mem(state: &mut Interpreter) {
-    let ret = Ref::Local(LocalID(0));
     let arg_0 = Ref::Local(LocalID(1));
 
     let len = state
@@ -68,7 +68,7 @@ pub(super) fn get_mem(state: &mut Interpreter) {
     let empty_bytes = vec![MemCell::U8(0); len as usize];
     let mem = state.heap.alloc(empty_bytes);
 
-    state.store(&ret, MemCell::Pointer(Pointer::Heap(mem)));
+    state.store(&RETURN_REF, MemCell::Pointer(Pointer::Heap(mem)));
 }
 
 /// $0: ^Byte -> Nothing
@@ -86,12 +86,12 @@ pub(super) fn free_mem(state: &mut Interpreter) {
 
 /// $1: <any dyn array ref> -> Integer
 pub(super) fn array_length(state: &mut Interpreter) {
-    let ret = Ref::Local(LocalID(0));
     let array_ref = Ref::Local(LocalID(1));
 
     // the type should be Any (pointer to an rc cell)
     let array_ref_cell = state.load(&array_ref);
-    let rc_cell_ptr = array_ref_cell.as_pointer()
+    let rc_cell_ptr = array_ref_cell
+        .as_pointer()
         .expect("array_length: argument cell must be pointer");
     let rc_cell = state.deref_ptr(rc_cell_ptr);
 
@@ -100,11 +100,9 @@ pub(super) fn array_length(state: &mut Interpreter) {
             let len = dyn_array_struct_cell[DYNARRAY_LEN_FIELD]
                 .as_i32()
                 .expect("array_length: argument cell must contain array length field");
-            state.store(&ret, MemCell::I32(len));
+            state.store(&RETURN_REF, MemCell::I32(len));
         }
 
-        other => {
-            panic!("array_length: expected array cell, got {:?}", other)
-        }
+        other => panic!("array_length: expected array cell, got {:?}", other),
     }
 }

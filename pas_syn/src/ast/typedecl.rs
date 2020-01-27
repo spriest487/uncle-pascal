@@ -282,6 +282,10 @@ impl DeclNamed for TypeDeclName {
     fn as_local(&self) -> &Self {
         self
     }
+
+    fn decl_ty_params(&self) -> &[Ident] {
+        &self.type_params
+    }
 }
 
 impl fmt::Display for TypeDeclName {

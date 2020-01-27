@@ -1,8 +1,9 @@
-use crate::{prelude::*, translate_stmt, Builder};
+use crate::{prelude::*, translate_stmt, Builder, LocalID};
 use pas_common::span::*;
 use pas_syn::{self as syn, ast};
 use pas_typecheck::{self as pas_ty, TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
+use crate::builder::EXIT_LABEL;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     match expr {
@@ -1187,4 +1188,19 @@ pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Opt
     builder.end_scope();
 
     out_val
+}
+
+pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {
+    if let ast::Exit::WithValue(val, _) = exit {
+        let value_val = translate_expr(val, builder);
+
+        // returns always go in %0
+        let ret_ref = Ref::Local(LocalID(0));
+
+        builder.mov(ret_ref, value_val);
+    }
+
+    builder.append(Instruction::Jump {
+        dest: EXIT_LABEL
+    })
 }

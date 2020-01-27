@@ -104,7 +104,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             visibility,
         } => {
             // type decls have an inner scope
-            let ty_scope = ctx.push_scope(None);
+            let ty_scope = ctx.push_scope(Environment::TypeDecl);
 
             let decl_name = type_decl.ident().clone();
             let full_name = QualifiedDeclName {
@@ -142,7 +142,9 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 }
 
 pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<ModuleUnit> {
-    let unit_scope = ctx.push_scope(Some(unit.ident.clone()));
+    let unit_scope = ctx.push_scope(Environment::Module {
+        namespace: unit.ident.clone(),
+    });
 
     let mut decls = Vec::new();
     for decl in &unit.decls {

@@ -28,7 +28,7 @@ pub fn typecheck_func_decl(
     decl: &ast::FunctionDecl<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<FunctionDecl> {
-    let decl_scope = ctx.push_scope(None);
+    let decl_scope = ctx.push_scope(Environment::FunctionDecl);
 
     if let Some(extern_mod) = decl.mods.iter().find(|m| m.keyword() == DeclMod::EXTERNAL_WORD) {
         if !decl.type_params.is_empty() {
@@ -138,7 +138,9 @@ pub fn typecheck_func_def(
 ) -> TypecheckResult<FunctionDef> {
     let decl = typecheck_func_decl(&def.decl, ctx)?;
 
-    let body_scope = ctx.push_scope(None);
+    let body_scope = ctx.push_scope(Environment::FunctionBody {
+        result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing)
+    });
 
     // functions are always declared within their own bodies (allowing recursive calls)
     ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Private)?;

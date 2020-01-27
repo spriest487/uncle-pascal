@@ -449,7 +449,7 @@ impl Type {
         }
     }
 
-    pub fn assignable_from(&self, from: &Self, ctx: &Context) -> bool {
+    pub fn blittable_from(&self, from: &Self, ctx: &Context) -> bool {
         match self {
             Type::Pointer(_) => *self == *from || *from == Type::Nil,
             Type::Function(_) => false,

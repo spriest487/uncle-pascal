@@ -13,4 +13,3 @@ end;
 for let i := 1 to 5 do begin
     if IsFive(i) then WriteLn('found five!');
 end;
-
