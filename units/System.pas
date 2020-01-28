@@ -176,16 +176,6 @@ begin
     SubString(s, startAt, len)
 end;
 
-export function Max(a, b: Integer): Integer
-begin
-    if a > b then a else b
-end;
-
-export function Min(a, b: Integer): Integer
-begin
-    if a < b then a else b
-end;
-
 export function Length of T(arr: array of T): Integer
 begin
     ArrayLengthInternal(arr)
@@ -193,6 +183,18 @@ end;
 
 export type Comparable = interface
     function Compare(self: Self; other: Self): Integer;
+end;
+
+export function Max of T(a, b: T): T
+where T is Comparable
+begin
+    if a.Compare(b) > 0 then a else b
+end;
+
+export function Min of T(a, b: T): T
+where T is Comparable
+begin
+    if a.Compare(b) < 0 then a else b
 end;
 
 export function Comparable.Compare(self: String; other: String): Integer
@@ -203,6 +205,25 @@ end;
 export function Comparable.Compare(self: Integer; other: Integer): Integer
 begin
     self - other
+end;
+
+export type Displayable = interface
+    function ToString(self: Self): String;
+end;
+
+export function Displayable.ToString(self: Integer): String
+begin
+    IntToStr(self)
+end;
+
+export function Displayable.ToString(self: Boolean): String
+begin
+    if self then 'true' else 'false'
+end;
+
+export function Displayable.ToString(self: String): String
+begin
+    self
 end;
 
 // NYI: missing dynamic arrays
