@@ -5,7 +5,7 @@ use std::{
     rc::Rc,
 };
 
-use crate::{
+use pas_ir::{
     metadata::*, Function as IRFunction, FunctionDef, GlobalRef, Instruction, InstructionFormatter, Label,
     LocalID, Module, Ref, Type, Value,
 };

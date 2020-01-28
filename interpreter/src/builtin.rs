@@ -1,9 +1,9 @@
-use crate::{
-    builder::RETURN_REF,
-    interpret::{Interpreter, MemCell, Pointer},
+use pas_ir::{
+    RETURN_REF,
     metadata::DYNARRAY_LEN_FIELD,
     LocalID, Ref,
 };
+use crate::{Interpreter, MemCell, Pointer};
 use std::io::{self, BufRead};
 
 /// $1: Integer -> $0: String

@@ -1,4 +1,4 @@
-use crate::interpret::MemCell;
+use crate::MemCell;
 use std::{
     collections::HashMap,
     fmt,

@@ -3,7 +3,7 @@ use pas_typecheck as pas_ty;
 use crate::{
     metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef,
     GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
-    Value,
+    Value, EXIT_LABEL,
 };
 
 use std::fmt;
@@ -13,9 +13,6 @@ use pas_syn::Ident;
 use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
 use std::collections::HashMap;
-
-pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
-pub const EXIT_LABEL: Label = Label(0);
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -1013,9 +1010,7 @@ impl<'m> Builder<'m> {
     pub fn exit_function(&mut self) {
         self.cleanup_scope(0);
 
-        self.append(Instruction::Jump {
-            dest: EXIT_LABEL
-        })
+        self.append(Instruction::Jump { dest: EXIT_LABEL })
     }
 }
 

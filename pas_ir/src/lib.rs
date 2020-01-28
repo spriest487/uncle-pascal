@@ -4,11 +4,10 @@ use pas_syn::{ast, IdentPath};
 use pas_ty::ast::specialize_func_decl;
 use pas_typecheck as pas_ty;
 
-use crate::{builder::{Builder, EXIT_LABEL}, expr::*, metadata::*, stmt::*};
+use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 
 pub use self::{
     formatter::*,
-    interpret::{Interpreter, InterpreterOpts},
     metadata::Type,
 };
 use linked_hash_map::LinkedHashMap;
@@ -21,11 +20,13 @@ mod formatter;
 mod stmt;
 
 pub mod prelude {
-    pub use crate::{metadata::*, GlobalRef, Instruction, Interpreter, Label, Ref, Value};
+    pub use crate::{metadata::*, GlobalRef, Instruction, Label, Ref, Value};
 }
 
-pub mod interpret;
 pub mod metadata;
+
+pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
+pub const EXIT_LABEL: Label = Label(0);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IROptions {

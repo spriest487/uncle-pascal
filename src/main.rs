@@ -5,7 +5,8 @@ use pas_common::{
     span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
     TracedError,
 };
-use pas_ir::{self as ir, IROptions, Interpreter, InterpreterOpts};
+use pas_ir::{self as ir, IROptions};
+use pas_interpreter::{Interpreter, InterpreterOpts};
 use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
 use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
 use pas_typecheck::{self as ty, TypecheckError};

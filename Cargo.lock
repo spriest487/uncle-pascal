@@ -219,6 +219,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pas_interpreter"
+version = "0.1.0"
+dependencies = [
+ "pas_common 0.1.0",
+ "pas_ir 0.1.0",
+]
+
+[[package]]
 name = "pas_ir"
 version = "0.1.0"
 dependencies = [
@@ -261,6 +269,7 @@ dependencies = [
  "codespan-reporting 0.2.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "pas_backend_c 0.1.0",
  "pas_common 0.1.0",
+ "pas_interpreter 0.1.0",
  "pas_ir 0.1.0",
  "pas_pp 0.1.0",
  "pas_syn 0.1.0",
