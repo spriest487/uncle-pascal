@@ -64,6 +64,11 @@ pub enum GenericError {
         actual: usize,
         span: Span,
     },
+    ArgConstraintNotSatisfied {
+        arg_ty: Type,
+        is_not_ty: Type,
+        span: Span,
+    },
     CannotInferArgs {
         target: GenericTarget,
         hint: GenericTypeHint,
@@ -81,6 +86,7 @@ impl Spanned for GenericError {
     fn span(&self) -> &Span {
         match self {
             GenericError::ArgsLenMismatch { span, .. } => span,
+            GenericError::ArgConstraintNotSatisfied { span, .. } => span,
             GenericError::CannotInferArgs { span, .. } => span,
             GenericError::IllegalUnspecialized { span, .. } => span,
         }
@@ -91,6 +97,7 @@ impl DiagnosticOutput for GenericError {
     fn title(&self) -> String {
         match self {
             GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments".to_string(),
+            GenericError::ArgConstraintNotSatisfied { .. } => "Type paramter constraint not satisfied by argument".to_string(),
             GenericError::CannotInferArgs { .. } => "Cannot infer type arguments".to_string(),
             GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type".to_string(),
         }
@@ -116,6 +123,17 @@ impl fmt::Display for GenericError {
                 f,
                 "{} expects {} type argument(s), found {}",
                 target, expected, actual
+            ),
+
+            GenericError::ArgConstraintNotSatisfied {
+                is_not_ty,
+                arg_ty,
+                ..
+            } => write!(
+                f,
+                "argument type {} does not meet the type constraint on this parameter: must be {}",
+                arg_ty,
+                is_not_ty,
             ),
 
             GenericError::CannotInferArgs {

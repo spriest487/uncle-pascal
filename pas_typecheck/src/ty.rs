@@ -7,7 +7,7 @@ use pas_syn::{
     Operator,
 };
 
-use crate::ast::Member;
+use crate::ast::{Member, FunctionParam};
 use crate::{
     ast::{Class, FunctionDecl, Variant},
     context,
@@ -81,37 +81,87 @@ impl FunctionParamSig {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
+pub struct FunctionSigTypeParam {
+    pub is_ty: Type,
+}
+
+#[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionSig {
     pub return_ty: Type,
     pub params: Vec<FunctionParamSig>,
-    pub type_params_len: usize,
+    pub type_params: Vec<FunctionSigTypeParam>,
 }
 
 impl FunctionSig {
-    pub fn of_decl(decl: &ast::FunctionDecl<TypeAnnotation>) -> Self {
+    pub fn new<'a, Params, TypeParams>(
+        return_ty: Type,
+        params: Params,
+        type_params: TypeParams,
+    ) -> Self
+      where Params: IntoIterator<Item=&'a FunctionParam>,
+        TypeParams: IntoIterator<Item=&'a TypeParam>
+    {
         Self {
-            params: decl
-                .params
-                .iter()
+            return_ty,
+            params: params.into_iter()
                 .map(|p| FunctionParamSig {
                     ty: p.ty.clone(),
                     modifier: p.modifier.clone(),
                 })
                 .collect(),
-            return_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
-            type_params_len: decl.type_params.len(),
+            type_params: type_params.into_iter()
+                .map(|decl_param| {
+                    let is_ty = decl_param.constraint.as_ref()
+                        .map(|c| c.is_ty.clone())
+                        .unwrap_or(Type::Any);
+
+                    FunctionSigTypeParam { is_ty }
+                })
+                .collect()
         }
     }
 
-    pub fn specialize_generic(&self, type_args: &[Type], span: &Span) -> GenericResult<Self> {
-        if type_args.len() != self.type_params_len {
+    pub fn of_decl(decl: &FunctionDecl) -> Self {
+        let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
+        Self::new(return_ty, decl.params.iter(), decl.type_params.iter())
+    }
+
+    fn check_type_args(&self, type_args: &[Type], span: &Span, ctx: &Context) -> GenericResult<()> {
+        if type_args.len() != self.type_params.len() {
             return Err(GenericError::ArgsLenMismatch {
-                expected: self.type_params_len,
+                expected: self.type_params.len(),
                 actual: type_args.len(),
                 target: GenericTarget::FunctionSig(self.clone()),
                 span: span.clone(),
             });
         }
+
+        for arg_pos in 0..self.type_params.len() {
+            match &self.type_params[arg_pos].is_ty {
+                Type::Any => {
+                    // nothing to validate
+                },
+
+                Type::Interface(is_iface_ident) => {
+                    let actual_ty = &type_args[arg_pos];
+                    if !ctx.is_iface_impl(actual_ty, is_iface_ident) {
+                        return Err(GenericError::ArgConstraintNotSatisfied {
+                            is_not_ty: Type::Interface(is_iface_ident.clone()),
+                            arg_ty: actual_ty.clone(),
+                            span: span.clone(),
+                        });
+                    }
+                }
+
+                bad => panic!("unsupported type in signature type param constraint: {}", bad),
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn specialize_generic(&self, type_args: &[Type], span: &Span, ctx: &Context) -> GenericResult<Self> {
+        self.check_type_args(type_args, span, ctx)?;
 
         let params = self
             .params
@@ -130,7 +180,7 @@ impl FunctionSig {
         let specialized_sig = FunctionSig {
             return_ty,
             params,
-            type_params_len: self.type_params_len,
+            type_params: self.type_params.clone(),
         };
 
         Ok(specialized_sig)

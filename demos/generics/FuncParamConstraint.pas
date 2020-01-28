@@ -28,7 +28,9 @@ begin
 end;
 
 let alice := Person(name: 'Alice');
-Greet of Person(alice);
+Greet(alice);
 
 let kitty := Cat();
-Greet of Cat(kitty);
+Greet(kitty);
+
+//Greet('nobody');

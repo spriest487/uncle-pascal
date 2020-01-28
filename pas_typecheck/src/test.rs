@@ -46,13 +46,13 @@ pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> Vec<ModuleUnit>
 fn sig_without_self_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: BOOL,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
@@ -63,13 +63,13 @@ fn sig_without_self_is_invalid_impl() {
 fn sig_with_self_return_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
@@ -80,13 +80,13 @@ fn sig_with_self_return_is_valid_impl() {
 fn sig_with_no_params_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![],
     };
 
@@ -97,13 +97,13 @@ fn sig_with_no_params_is_invalid_impl() {
 fn sig_with_self_param_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(INT32)],
     };
 
@@ -114,13 +114,13 @@ fn sig_with_self_param_is_valid_impl() {
 fn sig_with_self_param_and_return_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(INT32)],
     };
 
@@ -131,13 +131,13 @@ fn sig_with_self_param_and_return_is_valid_impl() {
 fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params_len: 0,
+        type_params: Vec::new(),
         params: vec![FunctionParamSig::by_val(BOOL)],
     };
 

@@ -35,7 +35,7 @@ begin
 end;
 
 function QuickSortRange of T(arr: array of T; left, right: Integer)
-//where T is Comparable
+where T is Comparable
 begin
     if left < right then begin
         let pivot := QuickSortPartition(arr, left, right);
@@ -50,8 +50,7 @@ begin
 end;
 
 export function QuickSort of T(arr: array of T)
-// this shouldn't compile without the constraint
-//where T is Comparable
+where T is Comparable
 begin
     QuickSortRange(arr, 0, Length(arr) - 1);
 end;

@@ -554,7 +554,7 @@ fn specialize_call_args(
         // we have explicit args, don't try to infer types
         let sig = decl_sig
             .clone()
-            .specialize_generic(explicit_ty_args, span)?;
+            .specialize_generic(explicit_ty_args, span, ctx)?;
 
         let actual_args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
 
@@ -578,7 +578,7 @@ fn specialize_call_args(
         }
 
         // try to infer type from args, left to right
-        let mut inferred_ty_args = vec![None; decl_sig.type_params_len];
+        let mut inferred_ty_args = vec![None; decl_sig.type_params.len()];
         let mut actual_args = Vec::new();
 
         if let Some(self_arg) = self_arg.cloned() {
@@ -621,7 +621,7 @@ fn specialize_call_args(
 
         let inferred_ty_args: Vec<_> = inferred_ty_args.into_iter().map(|a| a.unwrap()).collect();
 
-        let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span)?;
+        let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span, ctx)?;
 
 //                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
 

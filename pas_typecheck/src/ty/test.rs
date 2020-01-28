@@ -101,15 +101,17 @@ fn specialized_fn_has_right_sig() {
         ",
     );
 
+    let ctx = Context::root(true);
+
     let a_func = unit.func_defs().next().unwrap();
     let a_sig = FunctionSig::of_decl(&a_func.decl);
 
     let a_int_sig = a_sig
-        .specialize_generic(&[INT32.clone()], &span)
+        .specialize_generic(&[INT32.clone()], &span, &ctx)
         .unwrap();
 
     let expect_sig = FunctionSig {
-        type_params_len: 1,
+        type_params: vec![FunctionSigTypeParam { is_ty: Type::Any }],
         return_ty: INT32.clone(),
         params: vec![FunctionParamSig {
             ty: INT32.clone(),
@@ -154,10 +156,12 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let b_func = unit.func_defs().next().unwrap();
     let b_sig = FunctionSig::of_decl(&b_func.decl);
 
-    let b_int_sig = b_sig.specialize_generic(&int_params, &span).unwrap();
+    let ctx = Context::root(true);
+
+    let b_int_sig = b_sig.specialize_generic(&int_params, &span, &ctx).unwrap();
 
     let expect_sig = FunctionSig {
-        type_params_len: 1,
+        type_params: vec![FunctionSigTypeParam { is_ty: Type::Any }],
         return_ty: a_int.clone(),
         params: vec![FunctionParamSig {
             ty: a_int,
