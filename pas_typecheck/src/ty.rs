@@ -798,7 +798,7 @@ pub struct TypeMemberRef<'ty> {
     pub ty: &'ty Type,
 }
 
-pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
+pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type> {
     match ty {
         ast::TypeName::Ident {
             ident,
@@ -1077,12 +1077,15 @@ impl TypePattern {
     // case we infer the specialized type (or throw NotMatchable for generics we can't infer a
     // proper specialization for)
     fn find_pattern_ty(
-        name: &IdentPath,
+        name: &ast::TypeName,
         span: &Span,
         expect_ty: &Type,
         ctx: &Context,
     ) -> TypecheckResult<Type> {
-        let (_, raw_ty) = ctx.find_type(name)?;
+        let raw_ty = match name {
+            ast::TypeName::Ident { ident, .. } => ctx.find_type(ident)?.1.clone(),
+            _ => typecheck_type(name, ctx)?,
+        };
 
         let matchable_ty = if raw_ty.is_matchable() {
             raw_ty.infer_specialized_from_hint(expect_ty).cloned()
@@ -1142,72 +1145,63 @@ impl TypePattern {
             // expression's expected type
             ast::TypeNamePattern::TypeName {
                 name,
-                binding,
+                kind,
                 span,
-            } if name.as_slice().len() > 1 => match Self::find_variant_case(name, ctx)? {
-                Some((variant, case_ident)) => {
-                    let variant = Self::find_pattern_variant(&variant, span, expect_ty, ctx)?;
+            } => {
+                let span = span.clone();
 
-                    Ok(TypePattern::VariantCase {
-                        variant: variant.clone(),
-                        case: case_ident,
-                        data_binding: binding.clone(),
-                        span: span.clone(),
-                    })
-                }
-
-                None => {
-                    let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
-
-                    Ok(TypePattern::Type {
-                        ty,
-                        binding: binding.clone(),
-                        span: span.clone(),
-                    })
-                }
-            },
-
-            ast::TypeNamePattern::NegatedTypeName { name, span } if name.as_slice().len() > 1 => {
                 match Self::find_variant_case(name, ctx)? {
-                    Some((variant, case_ident)) => {
-                        let variant = Self::find_pattern_variant(&variant, span, expect_ty, ctx)?;
+                    Some((variant, case)) => {
+                        let variant = Self::find_pattern_variant(&variant, &span, expect_ty, ctx)?;
 
-                        Ok(TypePattern::NegatedVariantCase {
-                            variant: variant.clone(),
-                            case: case_ident,
-                            span: span.clone(),
-                        })
+                        match kind {
+                            ast::TypeNamePatternKind::Is | ast::TypeNamePatternKind::IsWithBinding(..) => {
+                                let data_binding = kind.binding().cloned();
+                                Ok(TypePattern::VariantCase { variant, case, data_binding, span, })
+                            }
+                            ast::TypeNamePatternKind::IsNot => {
+                                Ok(TypePattern::NegatedVariantCase { variant, case, span, })
+                            }
+                        }
                     }
 
                     None => {
-                        let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
-                        Ok(TypePattern::NegatedType {
-                            ty,
-                            span: span.clone(),
-                        })
+                        let ty_name = ast::TypeName::Ident {
+                            span: name.span().clone(),
+                            indirection: 0,
+                            type_args: Vec::new(),
+                            ident: name.clone(),
+                        };
+
+                        let ty = Self::find_pattern_ty(&ty_name, pattern.span(), expect_ty, ctx)?;
+
+                        match kind {
+                            ast::TypeNamePatternKind::Is | ast::TypeNamePatternKind::IsWithBinding(..) => {
+                                let binding = kind.binding().cloned();
+                                Ok(TypePattern::Type { ty, binding, span, })
+                            }
+                            ast::TypeNamePatternKind::IsNot => {
+                                Ok(TypePattern::NegatedType { ty, span, })
+                            }
+                        }
                     }
                 }
-            }
+            },
 
-            ast::TypeNamePattern::TypeName {
-                name,
-                binding,
-                span,
-            } => {
-                let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
-                Ok(TypePattern::Type {
-                    ty,
-                    binding: binding.clone(),
-                    span: span.clone(),
-                })
-            }
+            ast::TypeNamePattern::ExactType { name, kind, span } => {
+                let span = span.clone();
 
-            ast::TypeNamePattern::NegatedTypeName { name, span } => {
-                let ty = Self::find_pattern_ty(name, pattern.span(), expect_ty, ctx)?;
-                Ok(TypePattern::NegatedType {
-                    ty,
-                    span: span.clone(),
-                })
+                let ty = Self::find_pattern_ty(name, &span, expect_ty, ctx)?;
+
+                match kind {
+                    ast::TypeNamePatternKind::Is | ast::TypeNamePatternKind::IsWithBinding(..) => {
+                        let binding = kind.binding().cloned();
+                        Ok(TypePattern::Type { ty, binding, span, })
+                    }
+                    ast::TypeNamePatternKind::IsNot => {
+                        Ok(TypePattern::NegatedType { ty, span, })
+                    }
+                }
             }
         }
     }

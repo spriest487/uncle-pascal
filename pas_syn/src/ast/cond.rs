@@ -93,6 +93,7 @@ impl<A: Annotation> Spanned for IfCond<A> {
 mod test {
     use super::*;
     use crate::ast::expression::test::parse_expr;
+    use crate::ast::TypeNamePatternKind;
 
     fn parse_if_cond(src: &str) -> IfCond<Span> {
         match parse_expr(src) {
@@ -113,9 +114,9 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::TypeName { name, binding, .. } => {
-                assert_eq!("String", name.to_string());
-                assert!(binding.is_none());
+            TypeNamePattern::ExactType { name, kind, .. } => {
+                assert_eq!(name.to_string(), "String");
+                assert_eq!(*kind, TypeNamePatternKind::Is);
             }
 
             _ => panic!("expected positive binding"),
@@ -128,7 +129,7 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::NegatedTypeName { name, .. } => {
+            TypeNamePattern::ExactType { name, .. } => {
                 assert_eq!("String", name.to_string());
             }
 
@@ -142,12 +143,9 @@ mod test {
         assert!(cond.is_pattern.is_some());
 
         match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::TypeName { name, binding, .. } => {
-                assert_eq!("String", name.to_string());
-                assert_eq!(
-                    Some("s".to_string()),
-                    binding.as_ref().map(|b| b.to_string())
-                );
+            TypeNamePattern::ExactType { name, kind: TypeNamePatternKind::IsWithBinding(binding), .. } => {
+                assert_eq!(name.to_string(), "String");
+                assert_eq!(binding.to_string(), "s".to_string());
             }
 
             _ => panic!("expected positive binding"),

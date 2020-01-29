@@ -470,7 +470,7 @@ impl Interpreter {
         }
     }
 
-    fn init_struct(&mut self, id: StructID) -> MemCell {
+    fn init_struct(&self, id: StructID) -> MemCell {
         let struct_def = self.metadata.get_struct_def(id).unwrap().clone();
 
         let mut fields = Vec::new();
@@ -485,7 +485,7 @@ impl Interpreter {
         MemCell::Structure(Box::new(StructCell { id, fields }))
     }
 
-    fn default_init_cell(&mut self, ty: &Type) -> MemCell {
+    fn default_init_cell(&self, ty: &Type) -> MemCell {
         match ty {
             Type::I32 => MemCell::I32(-1),
             Type::U8 => MemCell::U8(255),
@@ -1510,6 +1510,7 @@ impl Interpreter {
             ("GetMem", builtin::get_mem, Type::U8.ptr()),
             ("FreeMem", builtin::free_mem, Type::Nothing),
             ("ArrayLengthInternal", builtin::array_length, Type::I32),
+            ("ArraySetLengthInternal", builtin::set_length, Type::RcPointer(None)),
         ];
 
         for (ident, func, ret) in system_funcs {

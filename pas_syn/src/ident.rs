@@ -208,13 +208,13 @@ impl IdentPath {
     }
 }
 
-impl fmt::Display for IdentPath {
+impl fmt::Display for Path<Ident> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.join("."))
     }
 }
 
-impl Spanned for IdentPath {
+impl Spanned for Path<Ident> {
     fn span(&self) -> &Span {
         self.last().span()
     }

@@ -635,6 +635,13 @@ impl Metadata {
 
             self.rc_boilerplate_funcs.insert(ty.clone(), funcs.clone());
         }
+
+        for (el_ty, struct_id) in &other.dyn_array_structs {
+            if self.dyn_array_structs.contains_key(el_ty) {
+                panic!("duplicate dyn array type definition for element type {}", el_ty);
+            }
+            self.dyn_array_structs.insert(el_ty.clone(), *struct_id);
+        }
     }
 
     pub fn type_defs(&self) -> impl Iterator<Item = (StructID, &TypeDef)> {

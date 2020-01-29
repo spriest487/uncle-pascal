@@ -226,26 +226,11 @@ begin
     self
 end;
 
-// NYI: missing dynamic arrays
-{
-export function SetLength of T(var arr: array of T; len: Integer); external 'rt';
-}
+function ArraySetLengthInternal(arr: Any; len: Integer): Any; external 'rt';
 
-// NYI:
-// missing dynamic arrays
-// missing traits/type constraints for Default
-// missing NewArray RT support
-{
-function NewArray of T(el: T; len: Integer): array of T; external 'rt';
-
-
-function SetLength of T(var arr: array of T; len: Integer)
-    where T is Default
+export function SetLength of T(var arr: array of T; len: Integer)
 begin
-    var newArr := NewArray(T.Default(), len);
-    var oldLen := Length of T(arr);
-
-    for let i := 0 to Max(len, oldLen) do
-        newArr[i] := arr[i];
+    arr := if ArraySetLengthInternal(arr, len) is array of T newArr
+        then newArr
+        else arr; // unreachable
 end;
-}

@@ -246,47 +246,87 @@ impl<Item: Spanned> OfClause<Item> {
     }
 }
 
+#[derive( Clone, Debug, Eq, PartialEq, Hash)]
+pub enum TypeNamePatternKind {
+    Is,
+    IsWithBinding(Ident),
+    IsNot,
+}
+
+impl TypeNamePatternKind {
+    pub fn binding(&self) -> Option<&Ident> {
+        match self {
+            TypeNamePatternKind::IsWithBinding(binding) => Some(binding),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeNamePattern {
     TypeName {
         name: IdentPath,
-        binding: Option<Ident>,
+        kind: TypeNamePatternKind,
         span: Span,
     },
-    NegatedTypeName {
-        name: IdentPath,
+    ExactType {
+        name: TypeName,
+        kind: TypeNamePatternKind,
         span: Span,
     },
 }
 
 impl TypeNamePattern {
+    pub fn kind(&self) -> &TypeNamePatternKind {
+        match self {
+            TypeNamePattern::ExactType { kind, .. } => kind,
+            TypeNamePattern::TypeName { kind, .. } => kind,
+        }
+    }
+
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let not_kw = tokens.match_one_maybe(Operator::Not);
-        let name = IdentPath::parse(tokens)?;
+        let name = TypeName::parse(tokens)?;
 
-        match not_kw {
-            Some(not_kw) => Ok(TypeNamePattern::NegatedTypeName {
-                span: not_kw.span().to(&name),
-                name,
-            }),
+        let pattern_path = match &name {
+            TypeName::Ident { ident, type_args, indirection, .. } => {
+                if ident.as_slice().len() >= 2 && type_args.is_empty() && *indirection == 0 {
+                    Some(ident)
+                } else {
+                    None
+                }
+            },
+            _ => None,
+        };
+
+        let binding = if not_kw.is_none() {
+            tokens.match_one_maybe(Matcher::AnyIdent).and_then(TokenTree::into_ident)
+        } else {
+            None
+        };
+
+        let span = match (&not_kw, &binding) {
+            (Some(not_kw), None) => not_kw.span().to(name.span()),
+            (None, Some(binding)) => name.span().to(binding.span()),
+            _ => name.span().clone(),
+        };
+
+        let kind = match binding {
+            Some(binding) => {
+                assert!(not_kw.is_none());
+                TypeNamePatternKind::IsWithBinding(binding)
+            },
+            None if not_kw.is_some() => TypeNamePatternKind::IsNot,
+            None => TypeNamePatternKind::Is,
+        };
+
+        match pattern_path {
+            Some(pattern_path) => {
+                Ok(TypeNamePattern::TypeName { name: pattern_path.clone(), span, kind })
+            }
 
             None => {
-                let (span, binding) = match tokens.match_one_maybe(Matcher::AnyIdent) {
-                    Some(binding) => {
-                        let binding_ident = binding.into_ident().unwrap();
-                        let span = name.span().to(binding_ident.span());
-
-                        (span, Some(binding_ident))
-                    }
-
-                    None => (name.span().clone(), None),
-                };
-
-                Ok(TypeNamePattern::TypeName {
-                    name,
-                    binding,
-                    span,
-                })
+                Ok(TypeNamePattern::ExactType { name, span, kind })
             }
         }
     }
@@ -295,14 +335,27 @@ impl TypeNamePattern {
 impl fmt::Display for TypeNamePattern {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeNamePattern::TypeName { name, binding, .. } => {
+            TypeNamePattern::TypeName { name, kind, .. } => {
+                if let TypeNamePatternKind::IsNot = kind {
+                    write!(f, "not ")?;
+                }
                 write!(f, "{}", name)?;
-                if let Some(binding) = binding {
+                if let TypeNamePatternKind::IsWithBinding(binding) = kind {
                     write!(f, " {}", binding)?;
                 }
                 Ok(())
             }
-            TypeNamePattern::NegatedTypeName { name, .. } => write!(f, "not {}", name),
+
+            TypeNamePattern::ExactType { name, kind, .. } => {
+                if let TypeNamePatternKind::IsNot = kind {
+                    write!(f, "not ")?;
+                }
+                write!(f, "{}", name)?;
+                if let TypeNamePatternKind::IsWithBinding(binding) = kind {
+                    write!(f, " {}", binding)?;
+                }
+                Ok(())
+            }
         }
     }
 }
@@ -311,7 +364,7 @@ impl Spanned for TypeNamePattern {
     fn span(&self) -> &Span {
         match self {
             TypeNamePattern::TypeName { span, .. } => span,
-            TypeNamePattern::NegatedTypeName { span, .. } => span,
+            TypeNamePattern::ExactType { span, .. } => span,
         }
     }
 }
