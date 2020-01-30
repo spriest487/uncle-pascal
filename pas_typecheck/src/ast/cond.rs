@@ -50,7 +50,7 @@ pub fn typecheck_if_cond(
     let else_branch = match &if_cond.else_branch {
         Some(else_expr) => {
             let mut else_ctx = ctx.clone();
-            let else_expr = typecheck_expr(else_expr, expect_ty, &mut else_ctx)?;
+            let else_expr = typecheck_expr(else_expr, then_branch.annotation().ty(), &mut else_ctx)?;
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_expr)
