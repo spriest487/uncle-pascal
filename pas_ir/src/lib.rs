@@ -20,7 +20,7 @@ mod formatter;
 mod stmt;
 
 pub mod prelude {
-    pub use crate::{metadata::*, GlobalRef, Instruction, Label, Ref, Value};
+    pub use crate::{metadata::*, GlobalRef, Instruction, Label, Ref, Value, RETURN_REF};
 }
 
 pub mod metadata;
@@ -71,6 +71,7 @@ impl fmt::Display for GlobalRef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
+    Discard, // write-only ref that doesn't result in mov instructions when written to
     Local(LocalID),
     Global(GlobalRef),
     Deref(Box<Value>),
@@ -85,6 +86,7 @@ impl Ref {
 impl fmt::Display for Ref {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Ref::Discard => write!(f, "_"),
             Ref::Local(id) => write!(f, "{}", id),
             Ref::Global(name) => write!(f, "{}", name),
             Ref::Deref(at) => write!(f, "{}^", at),
@@ -289,6 +291,10 @@ pub enum Instruction {
     DynFree {
         at: Ref,
     },
+
+    Raise {
+        val: Ref,
+    }
 }
 
 impl fmt::Display for Instruction {

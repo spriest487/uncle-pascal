@@ -6,7 +6,7 @@ use pas_common::{
     TracedError,
 };
 use pas_ir::{self as ir, IROptions};
-use pas_interpreter::{Interpreter, InterpreterOpts};
+use pas_interpreter::{Interpreter, InterpreterOpts, ExecError};
 use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
 use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
 use pas_typecheck::{self as ty, TypecheckError};
@@ -30,6 +30,7 @@ pub enum CompileError {
     PreprocessorError(PreprocessorError),
     InvalidUnitFilename(Span),
     OutputFailed(Span, io::Error),
+    ExecError(ExecError),
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -56,6 +57,12 @@ impl From<PreprocessorError> for CompileError {
     }
 }
 
+impl From<ExecError> for CompileError {
+    fn from(err: ExecError) -> Self {
+        CompileError::ExecError(err)
+    }
+}
+
 impl DiagnosticOutput for CompileError {
     fn main(&self) -> DiagnosticMessage {
         match self {
@@ -78,6 +85,12 @@ impl DiagnosticOutput for CompileError {
                     span: at.clone(),
                 }),
             },
+            CompileError::ExecError(ExecError::Raised { msg, ..}) => {
+                DiagnosticMessage {
+                    title: msg.clone(),
+                    label: None,
+                }
+            }
         }
     }
 
@@ -88,7 +101,8 @@ impl DiagnosticOutput for CompileError {
             CompileError::TypecheckError(err) => err.see_also(),
             CompileError::PreprocessorError(err) => err.see_also(),
             CompileError::OutputFailed(..) => Vec::new(),
-            CompileError::InvalidUnitFilename(_) => Vec::new(),
+            CompileError::InvalidUnitFilename(..) => Vec::new(),
+            CompileError::ExecError(..) => Vec::new(),
         }
     }
 
@@ -100,6 +114,7 @@ impl DiagnosticOutput for CompileError {
             CompileError::PreprocessorError(_) => None,
             CompileError::InvalidUnitFilename(_) => None,
             CompileError::OutputFailed(..) => None,
+            CompileError::ExecError(..) => None,
         }
     }
 }
@@ -113,6 +128,7 @@ impl Spanned for CompileError {
             CompileError::PreprocessorError(err) => err.span(),
             CompileError::InvalidUnitFilename(span) => span,
             CompileError::OutputFailed(span, ..) => span,
+            CompileError::ExecError(err) => err.span(),
         }
     }
 }
@@ -132,6 +148,7 @@ impl fmt::Display for CompileError {
             CompileError::OutputFailed(span, err) => {
                 write!(f, "writing to file {} failed: {}", span.file.display(), err,)
             }
+            CompileError::ExecError(err) => write!(f, "{}", err),
         }
     }
 }
@@ -403,8 +420,8 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
         };
 
         let mut interpreter = Interpreter::new(&interpret_opts);
-        interpreter.load_module(&module, !args.no_stdlib);
-        interpreter.shutdown();
+        interpreter.load_module(&module, !args.no_stdlib)?;
+        interpreter.shutdown()?;
     }
 
     Ok(())

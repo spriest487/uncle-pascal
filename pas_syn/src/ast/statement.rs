@@ -4,6 +4,7 @@ use crate::{
     },
     parse::prelude::*,
 };
+use crate::ast::Raise;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocalBinding<A: Annotation> {
@@ -120,6 +121,7 @@ pub enum Statement<A: Annotation> {
     If(Box<IfCond<A>>),
     Break(A),
     Continue(A),
+    Raise(Box<Raise<A>>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -138,6 +140,7 @@ impl<A: Annotation> Statement<A> {
             Statement::If(if_stmt) => &if_stmt.annotation,
             Statement::Break(a) => a,
             Statement::Continue(a) => a,
+            Statement::Raise(raise) => &raise.annotation,
         }
     }
 
@@ -161,6 +164,8 @@ impl<A: Annotation> Statement<A> {
                     Err(Statement::If(if_cond))
                 }
             }
+
+            Statement::Raise(raise) => Ok(Expression::Raise(raise)),
 
             not_expr => Err(not_expr),
         }
@@ -221,6 +226,10 @@ impl<A: Annotation> Statement<A> {
                     else_branch,
                     annotation: if_cond.annotation,
                 })))
+            }
+
+            Expression::Raise(raise) => {
+                Ok(Statement::Raise(raise))
             }
 
             invalid => Err(invalid),
@@ -312,7 +321,6 @@ impl Statement<Span> {
                 }
             }
 
-
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = Expression::parse(tokens)?;
@@ -348,6 +356,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::If(if_stmt) => write!(f, "{}", if_stmt),
             Statement::Break(..) => write!(f, "{}", Keyword::Break),
             Statement::Continue(..) => write!(f, "{}", Keyword::Continue),
+            Statement::Raise(raise) => write!(f, "{}", raise),
         }
     }
 }

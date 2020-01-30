@@ -30,6 +30,7 @@ pub enum FunctionName {
     GetMem,
     FreeMem,
     ArrayLengthInternal,
+    Raise,
 }
 
 impl fmt::Display for FunctionName {
@@ -52,6 +53,8 @@ impl fmt::Display for FunctionName {
             FunctionName::GetMem => write!(f, "System_GetMem"),
             FunctionName::FreeMem => write!(f, "System_FreeMem"),
             FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
+
+            FunctionName::Raise => write!(f, "System_Raise"),
         }
     }
 }

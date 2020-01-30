@@ -214,6 +214,11 @@ pub fn typecheck_stmt(
             let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
             Ok(ast::Statement::If(Box::new(if_cond)))
         }
+
+        ast::Statement::Raise(raise) => {
+            let raise = typecheck_raise(raise, expect_ty, ctx)?;
+            Ok(ast::Statement::Raise(Box::new(raise)))
+        }
     }
 }
 

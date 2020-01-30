@@ -298,6 +298,10 @@ pub trait InstructionFormatter {
             Instruction::DynFree { at } => {
                 write!(f, "{:>width$} {}", "dynfree", at, width = IX_WIDTH)
             }
+
+            Instruction::Raise { val } => {
+                write!(f, "{:>width$} {}", "raise", val, width = IX_WIDTH)
+            }
         }
     }
 

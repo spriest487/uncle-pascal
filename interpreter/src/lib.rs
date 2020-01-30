@@ -11,6 +11,7 @@ use pas_ir::{
 };
 
 use self::heap::{Heap, HeapAddress};
+use pas_common::span::Span;
 
 mod builtin;
 mod heap;
@@ -442,6 +443,29 @@ struct GlobalCell {
 }
 
 #[derive(Debug)]
+pub enum ExecError {
+    Raised { msg: String, span: Span },
+}
+
+impl fmt::Display for ExecError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExecError::Raised { msg, .. } => write!(f, "{}", msg)
+        }
+    }
+}
+
+impl ExecError {
+    pub fn span(&self) -> &Span {
+        match self {
+            ExecError::Raised { span, .. } => span,
+        }
+    }
+}
+
+pub type ExecResult<T> = Result<T, ExecError>;
+
+#[derive(Debug)]
 pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
@@ -648,6 +672,10 @@ impl Interpreter {
         //        println!("{} <- {:#?}", at, val);
 
         match at {
+            Ref::Discard => {
+                // do nothing with this value
+            }
+
             Ref::Local(LocalID(id)) => match self.current_frame_mut().locals.get_mut(*id) {
                 Some(Some(cell)) => {
                     cell.value = val;
@@ -681,6 +709,8 @@ impl Interpreter {
 
     fn load(&self, at: &Ref) -> &MemCell {
         match at {
+            Ref::Discard => panic!("can't read value from discard ref"),
+
             Ref::Local(LocalID(id)) => match self.current_frame().locals.get(*id) {
                 Some(Some(cell)) => &cell.value,
                 None | Some(None) => {
@@ -772,7 +802,7 @@ impl Interpreter {
             })
     }
 
-    fn call(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) {
+    fn call(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) -> ExecResult<()> {
         self.push_stack();
 
         // store empty result at $0 if needed
@@ -806,7 +836,7 @@ impl Interpreter {
                 if self.trace_ir {
                     println!("entering {}", def.debug_name);
                 }
-                self.execute(&def.body);
+                self.execute(&def.body)?;
                 if self.trace_ir {
                     println!("exiting {}", def.debug_name);
                 }
@@ -835,9 +865,11 @@ impl Interpreter {
             // ok, no output expected, ignore result if there is one
             (_, None) => {}
         }
+
+        Ok(())
     }
 
-    fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) {
+    fn invoke_disposer(&mut self, cell: &MemCell, ty: &Type) -> ExecResult<()> {
         let dispose_impl_id = self
             .metadata
             .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
@@ -859,20 +891,22 @@ impl Interpreter {
                 eprintln!("rc: invoking {}", dispose_desc);
             }
 
-            self.call(&func, &[cell.clone()], None);
+            self.call(&func, &[cell.clone()], None)?;
         } else if self.trace_rc {
             eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
+
+        Ok(())
     }
 
-    fn release_cell(&mut self, cell: &MemCell) {
+    fn release_cell(&mut self, cell: &MemCell) -> ExecResult<()> {
         let ptr = cell
             .as_pointer()
             .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
         if *ptr == Pointer::Null {
-            return;
+            return Ok(());
         }
 
         let rc_addr = ptr
@@ -898,7 +932,7 @@ impl Interpreter {
             // Dispose() the inner resource. For an RC type, interfaces are implemented
             // for the RC pointer type, not the resource type
             let resource_id = ClassID::Class(rc_cell.struct_id);
-            self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)));
+            self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)))?;
 
             // Now release the fields of the resource struct as if it was a normal record.
             // This could technically invoke another disposer, but it won't, because there's
@@ -934,7 +968,7 @@ impl Interpreter {
 
             let release_ptr = MemCell::Pointer(Pointer::Heap(rc_cell.resource_addr));
 
-            self.call(&release_func, &[release_ptr], None);
+            self.call(&release_func, &[release_ptr], None)?;
 
             if self.trace_rc {
                 eprintln!(
@@ -962,6 +996,8 @@ impl Interpreter {
                 ..*rc_cell
             }));
         }
+
+        Ok(())
     }
 
     fn retain_cell(&mut self, cell: &MemCell) {
@@ -987,6 +1023,8 @@ impl Interpreter {
 
     fn addr_of_ref(&self, target: &Ref) -> Pointer {
         match target {
+            Ref::Discard => panic!("can't take address of discard ref"),
+
             // let int := 1;
             // let intPtr := @int;
             // @(intPtr^) -> address of int behind intPtr
@@ -1025,7 +1063,7 @@ impl Interpreter {
         }
     }
 
-    pub fn execute(&mut self, instructions: &[Instruction]) {
+    pub fn execute(&mut self, instructions: &[Instruction]) -> ExecResult<()> {
         let labels = find_labels(instructions);
         let line_count_width = instructions.len().to_string().len();
 
@@ -1044,10 +1082,12 @@ impl Interpreter {
                 );
             }
 
-            self.execute_instruction(&instructions[pc], &mut pc, &labels);
+            self.execute_instruction(&instructions[pc], &mut pc, &labels)?;
 
             pc += 1;
         }
+
+        Ok(())
     }
 
     fn execute_instruction(
@@ -1055,7 +1095,7 @@ impl Interpreter {
         instruction: &Instruction,
         pc: &mut usize,
         labels: &HashMap<Label, LabelLocation>,
-    ) {
+    ) -> ExecResult<()> {
         match instruction {
             Instruction::Comment(_) => {
                 // noop
@@ -1250,7 +1290,7 @@ impl Interpreter {
                 let arg_cells: Vec<_> = args.iter().map(|arg_val| self.evaluate(arg_val)).collect();
 
                 match self.evaluate(function) {
-                    MemCell::Function(function) => self.call(&function, &arg_cells, out.as_ref()),
+                    MemCell::Function(function) => self.call(&function, &arg_cells, out.as_ref())?,
 
                     _ => panic!("{} does not reference a function", function),
                 }
@@ -1275,7 +1315,7 @@ impl Interpreter {
                     unexpected => panic!("invalid function cell: {:?}", unexpected),
                 };
 
-                self.call(&func, &arg_cells, out.as_ref())
+                self.call(&func, &arg_cells, out.as_ref())?
             }
 
             Instruction::ClassIs { out, a, class_id } => {
@@ -1408,7 +1448,7 @@ impl Interpreter {
 
             Instruction::Release { at } => {
                 let cell = self.load(at).clone();
-                self.release_cell(&cell);
+                self.release_cell(&cell)?;
             }
 
             Instruction::Retain { at } => {
@@ -1445,7 +1485,18 @@ impl Interpreter {
 
                 x => panic!("target of DynFree at {} must be pointer, was: {:?}", at, x),
             },
+
+            Instruction::Raise { val } => {
+                let msg = self.read_string(&val.clone().deref());
+                return Err(ExecError::Raised {
+                    msg,
+                    //todo
+                    span: Span::zero("<interpreter>"),
+                });
+            }
         }
+
+        Ok(())
     }
 
     fn jump(&mut self, pc: &mut usize, label: &LabelLocation) {
@@ -1519,7 +1570,7 @@ impl Interpreter {
         }
     }
 
-    pub fn load_module(&mut self, module: &Module, init_stdlib: bool) {
+    pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
         for (func_name, func) in &module.functions {
@@ -1555,8 +1606,10 @@ impl Interpreter {
         }
 
         self.push_stack();
-        self.execute(&module.init);
+        self.execute(&module.init)?;
         self.pop_stack();
+
+        Ok(())
     }
 
     fn deref_rc(&self, rc_cell: &MemCell) -> &MemCell {
@@ -1637,16 +1690,17 @@ impl Interpreter {
         chars.into_iter().collect()
     }
 
-    pub fn shutdown(mut self) {
+    pub fn shutdown(mut self) -> ExecResult<()> {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
         for GlobalCell { value, ty } in globals {
             if ty.is_rc() {
-                self.release_cell(&value);
+                self.release_cell(&value)?;
             }
         }
 
-        self.heap.finalize()
+        self.heap.finalize();
+        Ok(())
     }
 }
 

@@ -7,7 +7,7 @@ mod result;
 pub mod ast {
     pub use self::{
         block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-        typedecl::*, unit::*, call::*,
+        typedecl::*, unit::*, call::*, raise::*,
     };
 
     mod block;
@@ -21,6 +21,7 @@ pub mod ast {
     mod typedecl;
     mod unit;
     mod call;
+    mod raise;
 
     mod prelude {
         pub use pas_common::span::*;

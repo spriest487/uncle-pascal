@@ -4,7 +4,7 @@ pub(crate) mod test;
 use crate::{
     ast::{
         Annotation, ArgList, BinOp, Block, Call, CollectionCtor, FunctionCall, IfCond, Indexer,
-        ObjectCtor, ObjectCtorArgs, OfClause, TypeName, UnaryOp,
+        ObjectCtor, ObjectCtorArgs, OfClause, TypeName, UnaryOp, Raise,
     },
     consts::*,
     ident::*,
@@ -49,6 +49,7 @@ pub enum Expression<A: Annotation> {
     IfCond(Box<IfCond<A>>),
     Block(Box<Block<A>>),
     Indexer(Box<Indexer<A>>),
+    Raise(Box<Raise<A>>),
 }
 
 impl<A: Annotation> From<BinOp<A>> for Expression<A> {
@@ -99,6 +100,12 @@ impl<A: Annotation> From<Indexer<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<Raise<A>> for Expression<A> {
+    fn from(raise: Raise<A>) -> Self {
+        Expression::Raise(Box::new(raise))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -112,6 +119,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &ctor.annotation,
             Expression::ObjectCtor(ctor) => &ctor.annotation,
             Expression::Indexer(indexer) => &indexer.annotation,
+            Expression::Raise(raise) => &raise.annotation,
         }
     }
 
@@ -127,6 +135,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &mut ctor.annotation,
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
             Expression::Indexer(indexer) => &mut indexer.annotation,
+            Expression::Raise(raise) => &mut raise.annotation,
         }
     }
 
@@ -186,7 +195,14 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
             Expression::Indexer(indexer) => write!(f, "{}", indexer),
+            Expression::Raise(raise) => write!(f, "{}", raise),
         }
+    }
+}
+
+impl<A: Annotation> Spanned for Expression<A> {
+    fn span(&self) -> &Span {
+        self.annotation().span()
     }
 }
 
@@ -201,6 +217,7 @@ pub fn match_operand_start() -> Matcher {
         // block/control flow
         .or(DelimiterPair::BeginEnd)
         .or(Keyword::If)
+        .or(Keyword::Raise)
         // literals
         .or(Keyword::Nil)
         .or(Matcher::AnyLiteralBoolean)
@@ -641,6 +658,12 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 kw: Keyword::True, ..
             }) => {
                 let expr = parse_literal_bool(self.tokens)?;
+                self.push_operand(expr);
+            }
+
+            Some(TokenTree::Keyword { kw: Keyword::Raise, .. }) => {
+                let raise = Raise::parse(self.tokens)?;
+                let expr = Expression::from(raise);
                 self.push_operand(expr);
             }
 

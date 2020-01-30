@@ -166,6 +166,11 @@ pub fn typecheck_expr(
             let indexer = typecheck_indexer(indexer, ctx)?;
             Ok(ast::Expression::from(indexer))
         }
+
+        ast::Expression::Raise(raise) => {
+            let raise = typecheck_raise(raise, expect_ty, ctx)?;
+            Ok(ast::Expression::from(raise))
+        }
     }
 }
 
@@ -265,6 +270,10 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
         ast::Statement::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
 
         ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(()),
+
+        ast::Statement::Raise(raise) => {
+            expect_expr_initialized(&raise.value, ctx)
+        }
     }
 }
 
@@ -324,6 +333,10 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         }
 
         ast::Expression::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
+
+        ast::Expression::Raise(raise) => {
+            expect_expr_initialized(&raise.value, ctx)
+        },
     }
 }
 

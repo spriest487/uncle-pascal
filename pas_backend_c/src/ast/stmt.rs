@@ -110,6 +110,7 @@ impl Expr {
 
     pub fn translate_ref(r: &ir::Ref, module: &Module) -> Self {
         match r {
+            ir::Ref::Discard => panic!("can't translate a discard ref, it should only be used in assignments"),
             ir::Ref::Local(local_id) => Expr::Local(*local_id),
             ir::Ref::Deref(inner) => Expr::translate_val(inner.as_ref(), module).deref(),
             ir::Ref::Global(ir::GlobalRef::Function(id)) => {
@@ -155,12 +156,17 @@ impl Expr {
     }
 
     pub fn translate_assign(out: &ir::Ref, val: Self, module: &Module) -> Self {
-        let out_ref = Expr::translate_ref(out, module);
-        Self::infix_op(out_ref, InfixOp::Assign, val)
+        match out {
+            ir::Ref::Discard => val,
+            _ => {
+                let out_ref = Expr::translate_ref(out, module);
+                Self::infix_op(out_ref, InfixOp::Assign, val)
+            }
+        }
     }
 
-    pub fn translate_element(a: &ir::Ref, index: &ir::Value, module: &Module) -> Self {
-        let array_expr = Expr::translate_ref(a, module);
+    pub fn translate_element(arr: &ir::Ref, index: &ir::Value, module: &Module) -> Self {
+        let array_expr = Expr::translate_ref(arr, module);
         let elements_expr = Expr::Field {
             base: Box::new(array_expr),
             field: FieldName::StaticArrayElements,
@@ -625,6 +631,12 @@ impl<'a> Builder<'a> {
 
             ir::Instruction::ClassIs { out, a, class_id } => {
                 self.translate_is(out, a, *class_id);
+            }
+
+            ir::Instruction::Raise { val } => {
+                let raise_func = Expr::Function(FunctionName::Raise);
+                let val_expr = Expr::translate_ref(val, self.module);
+                self.stmts.push(Statement::Expr(Expr::call(raise_func, vec![val_expr])));
             }
         }
     }

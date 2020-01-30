@@ -5,7 +5,6 @@ use syn::ast;
 use pas_typecheck as pas_ty;
 use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
-use crate::{RETURN_REF};
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     match expr {
@@ -109,6 +108,8 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Indexer(indexer) => translate_indexer(indexer, builder),
+
+        ast::Expression::Raise(raise) => translate_raise(raise, builder),
     }
 }
 
@@ -1220,4 +1221,12 @@ pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {
     }
 
     builder.exit_function();
+}
+
+pub fn translate_raise(raise: &pas_ty::ast::Raise, builder: &mut Builder) -> Ref {
+    let val = translate_expr(&raise.value, builder);
+
+    builder.append(Instruction::Raise { val: val.clone() });
+
+    Ref::Discard
 }

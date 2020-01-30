@@ -978,7 +978,7 @@ impl Specializable for Type {
     }
 }
 
-pub fn string_type(ctx: &mut Context) -> TypecheckResult<Type> {
+pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
     let span = context::builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
     let str_class_name = ast::TypeName::Ident {

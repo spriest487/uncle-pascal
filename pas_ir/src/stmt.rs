@@ -3,6 +3,7 @@ use crate::{
 };
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
+use crate::expr::translate_raise;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     if stmt.as_block().is_none() && builder.opts().annotate_stmts {
@@ -51,6 +52,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::If(if_stmt) => {
             translate_if_cond(if_stmt, builder, true);
+        }
+
+        ast::Statement::Raise(raise) => {
+            translate_raise(raise, builder);
         }
 
         ast::Statement::Break(_) => {
