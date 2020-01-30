@@ -1,12 +1,12 @@
 use std::{collections::HashMap, fmt};
 
 use pas_ir::{
-    self as ir,
     metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID},
 };
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
 use std::fmt::Write;
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -239,9 +239,12 @@ impl StructDef {
         ir_struct: &metadata::Struct,
         module: &mut Module,
     ) -> Self {
-        let members = ir_struct
-            .fields
-            .iter()
+        // fields should be written in the numerical order of their field IDs in the IR
+        let mut sorted_fields: Vec<_> = ir_struct.fields.iter()
+            .collect();
+        sorted_fields.sort_by_key(|(id, _)| (id.0));
+
+        let members = sorted_fields.into_iter()
             .map(|(id, field)| {
                 let ty = Type::from_metadata(&field.ty, module);
 
@@ -398,7 +401,7 @@ pub struct Class {
     cleanup_func: FunctionName,
 
     // if this class is a dyn array, the element type
-    dyn_array_el_ty: Option<ir::Type>,
+    dyn_array_el_ty: Option<Type>,
 }
 
 impl Class {
@@ -406,6 +409,7 @@ impl Class {
         struct_id: StructID,
         _struct_def: &metadata::Struct,
         metadata: &metadata::Metadata,
+        module: &mut Module,
     ) -> Self {
         let class_id = ClassID::Class(struct_id);
         let class_ty = metadata::Type::RcPointer(Some(class_id));
@@ -456,7 +460,7 @@ impl Class {
             .iter()
             .filter_map(|(el_ty, arr_struct_id)| {
                 if *arr_struct_id == struct_id {
-                    Some(el_ty.clone())
+                    Some(Type::from_metadata(el_ty, module))
                 } else {
                     None
                 }
@@ -573,11 +577,53 @@ impl Class {
         class_init.push_str("}");
 
         match &self.dyn_array_el_ty {
-            Some(_el_ty) => {
-                writeln!(def, "struct DynArrayClass Class_{} = {{", self.struct_id).unwrap();
-                writeln!(def, "  .base = {},", class_init).unwrap();
-                writeln!(def, "  .alloc = NULL,").unwrap();
-                writeln!(def, "}};").unwrap();
+            Some(el_ty) => {
+                writeln!(
+                    def,
+                    r#"
+                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from) {{
+                        int32_t data_len = (int32_t) sizeof({el_ty}) * len;
+                        {el_ty}* data = ({el_ty}*) System_GetMem(data_len);
+
+                        if (copy_from && len) {{
+                            if (!copy_from->resource) {{
+                                abort();
+                            }}
+
+                            {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
+                            int32_t copy_arr_len = copy_arr_res->{len_field};
+                            int32_t copy_count = len < copy_arr_len ? len : copy_arr_len;
+                            size_t copy_size = (size_t) copy_count * sizeof({el_ty});
+
+                            memcpy(data, copy_arr_res->{data_field}, copy_size);
+                        }}
+
+                        {res_ty}* arr_resource = ({res_ty}*) arr->resource;
+                        arr_resource->{len_field} = len;
+                        arr_resource->{data_field} = data;
+                    }}
+
+                    int32_t DynArrayLength_{struct_id}(struct Rc* arr) {{
+                        if (!arr || !arr->resource) {{
+                            abort();
+                        }}
+
+                        {res_ty}* arr_resource = ({res_ty}*) arr->resource;
+                        return arr_resource->{len_field};
+                    }}
+
+                    struct DynArrayClass Class_{struct_id} = {{
+                        .base = {class_init},
+                        .alloc = DynArrayAlloc_{struct_id},
+                        .length = DynArrayLength_{struct_id},
+                    }};"#,
+                    struct_id = self.struct_id,
+                    res_ty = Type::Struct(StructName::Struct(self.struct_id)).typename(),
+                    el_ty = el_ty.typename(),
+                    class_init = class_init,
+                    len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
+                    data_field = FieldName::ID(DYNARRAY_PTR_FIELD),
+                ).unwrap();
             }
 
             None => {

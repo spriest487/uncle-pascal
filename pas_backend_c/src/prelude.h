@@ -32,12 +32,14 @@ struct Rc {
     int count;
 };
 
-typedef void (*DynArrayAlloc)(struct Rc*, struct Rc*, int32_t);
+typedef void (*DynArrayAlloc)(struct Rc* arr, int32_t len, struct Rc* copy_from);
+typedef int32_t (*DynArrayLength)(struct Rc* arr);
 
 struct DynArrayClass {
     struct Class base;
 
     DynArrayAlloc alloc;
+    DynArrayLength length;
 };
 
 static bool IsImpl(struct Class* class, size_t iface) {

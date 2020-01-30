@@ -81,9 +81,13 @@ static struct Rc* System_ReadLn(void) {
 }
 
 static int32_t System_ArrayLengthInternal(struct Rc* arr_rc) {
-    // all rc arrays start with a length field, so it's safe to access it through Int32*
-    const int32_t* len_ptr = (int32_t*) arr_rc->resource;
-    return *len_ptr;
+    if (!arr_rc || !arr_rc->resource) {
+        abort();
+    }
+
+    struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
+
+    return array_class->length(arr_rc);
 }
 
 static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len) {
@@ -91,13 +95,10 @@ static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_l
         abort();
     }
 
-    int32_t old_len = System_ArrayLengthInternal(arr_rc);
     struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
 
     struct Rc* new_arr = RcAlloc(arr_rc->class);
-
-    int32_t copy_len = old_len < new_len ? old_len : new_len;
-    array_class->alloc(new_arr, arr_rc, copy_len);
+    array_class->alloc(new_arr, new_len, arr_rc);
 
     return new_arr;
 }

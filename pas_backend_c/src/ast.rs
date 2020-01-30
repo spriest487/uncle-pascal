@@ -55,15 +55,7 @@ impl Module {
             }
         }
 
-        let classes = metadata
-            .type_defs()
-            .filter_map(|(id, def)| match def {
-                ir::metadata::TypeDef::Struct(struct_def) => {
-                    Some(Class::translate(id, struct_def, metadata))
-                }
-                _ => None,
-            })
-            .collect();
+
 
         let string_literals = metadata
             .strings()
@@ -91,7 +83,7 @@ impl Module {
 
             string_literals,
 
-            classes,
+            classes: Vec::new(),
             ifaces: Vec::new(),
 
             builtin_funcs,
@@ -101,10 +93,23 @@ impl Module {
             type_names,
         };
 
-        module.ifaces = metadata
-            .ifaces()
-            .map(|(iface_id, iface_def)| Interface::translate(iface_id, iface_def, &mut module))
-            .collect();
+        let class_defs = metadata.type_defs()
+            .filter_map(|(id, def)| match def {
+                ir::metadata::TypeDef::Struct(struct_def) => {
+                    Some((id, struct_def))
+                }
+                _ => None,
+            });
+
+        for (class_id, class_def) in class_defs {
+            let class = Class::translate(class_id, class_def, metadata, &mut module);
+            module.classes.push(class);
+        }
+
+        for (iface_id, iface_def) in metadata.ifaces() {
+            let iface = Interface::translate(iface_id, iface_def, &mut module);
+            module.ifaces.push(iface);
+        }
 
         module
     }
