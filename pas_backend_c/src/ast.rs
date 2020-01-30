@@ -42,6 +42,7 @@ impl Module {
             ("WriteLn", FunctionName::WriteLn),
             ("ReadLn", FunctionName::ReadLn),
             ("ArrayLengthInternal", FunctionName::ArrayLengthInternal),
+            ("ArraySetLengthInternal", FunctionName::ArraySetLengthInternal),
         ];
 
         let mut builtin_funcs = HashMap::new();
@@ -228,7 +229,7 @@ impl fmt::Display for Module {
 
         for def in &self.type_defs {
             // special case for System.String: we expect it to already be defined in the prelude
-            if def.decl().name == StructName::Class(ir::metadata::STRING_ID) {
+            if def.decl().name == StructName::Struct(ir::metadata::STRING_ID) {
                 continue;
             }
 
@@ -247,6 +248,7 @@ impl fmt::Display for Module {
         }
 
         for class in &self.classes {
+            writeln!(f, "{}", class.to_decl_string())?;
             writeln!(f, "{}", class.to_def_string())?;
             writeln!(f)?;
         }
@@ -255,7 +257,7 @@ impl fmt::Display for Module {
             let chars_field = FieldName::ID(STRING_CHARS_FIELD);
             let len_field = FieldName::ID(STRING_LEN_FIELD);
 
-            let string_name = StructName::Class(ir::metadata::STRING_ID);
+            let string_name = StructName::Struct(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
             writeln!(f, "  .{} = (unsigned char*) \"{}\",", chars_field, lit)?;
             writeln!(f, "  .{} = {},", len_field, lit.len())?;

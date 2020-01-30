@@ -1,8 +1,12 @@
 use std::{collections::HashMap, fmt};
 
-use pas_ir::metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID};
+use pas_ir::{
+    self as ir,
+    metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID},
+};
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
+use std::fmt::Write;
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -27,7 +31,7 @@ impl Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::RcPointer(..) => Type::Struct(StructName::Rc).ptr(),
-            metadata::Type::Struct(id) => Type::Struct(StructName::Class(*id)),
+            metadata::Type::Struct(id) => Type::Struct(StructName::Struct(*id)),
             metadata::Type::Variant(id) => Type::Struct(StructName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
             metadata::Type::I32 => Type::Int32,
@@ -180,8 +184,11 @@ pub enum StructName {
     // internal struct for implementation of RC pointers
     Rc,
 
+    // internal struct for class vtable etc
+    Class,
+
     // struct from class def ID
-    Class(StructID),
+    Struct(StructID),
 
     // struct from variant def ID
     Variant(StructID),
@@ -218,7 +225,8 @@ impl fmt::Display for StructName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             StructName::Rc => write!(f, "Rc"),
-            StructName::Class(id) => write!(f, "Struct_{}", id.0),
+            StructName::Class => write!(f, "Class"),
+            StructName::Struct(id) => write!(f, "Struct_{}", id.0),
             StructName::Variant(id) => write!(f, "Variant_{}", id.0),
             StructName::StaticArray(i) => write!(f, "StaticArray_{}", i),
         }
@@ -250,7 +258,7 @@ impl StructDef {
 
         Self {
             decl: StructDecl {
-                name: StructName::Class(id),
+                name: StructName::Struct(id),
             },
             members,
             comment: Some(comment),
@@ -301,7 +309,7 @@ impl VariantDef {
                     .map(|data_ty| Type::from_metadata(data_ty, module));
                 VariantCaseDef {
                     ty,
-                    comment: Some(case.name.clone())
+                    comment: Some(case.name.clone()),
                 }
             })
             .collect();
@@ -388,6 +396,9 @@ pub struct Class {
     impls: HashMap<InterfaceID, InterfaceImpl>,
     disposer: Option<FunctionName>,
     cleanup_func: FunctionName,
+
+    // if this class is a dyn array, the element type
+    dyn_array_el_ty: Option<ir::Type>,
 }
 
 impl Class {
@@ -430,19 +441,58 @@ impl Class {
             });
 
         let resource_ty = metadata::Type::Struct(struct_id);
-        let cleanup_func = metadata.find_rc_boilerplate(&resource_ty)
+        let cleanup_func = metadata
+            .find_rc_boilerplate(&resource_ty)
             .map(|funcs| FunctionName::ID(funcs.release))
-            .unwrap_or_else(|| panic!(
-                "missing rc cleanup func for resource struct of IR class {}",
-                metadata.pretty_ty_name(&resource_ty),
-            ));
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing rc cleanup func for resource struct of IR class {}",
+                    metadata.pretty_ty_name(&resource_ty),
+                )
+            });
+
+        let dyn_array_el_ty = metadata
+            .dyn_array_structs()
+            .iter()
+            .filter_map(|(el_ty, arr_struct_id)| {
+                if *arr_struct_id == struct_id {
+                    Some(el_ty.clone())
+                } else {
+                    None
+                }
+            })
+            .next();
 
         Class {
             struct_id,
             impls,
             disposer,
             cleanup_func,
+            dyn_array_el_ty,
         }
+    }
+
+    pub fn to_decl_string(&self) -> String {
+        let mut decls = String::new();
+        for (iface_id, _) in &self.impls {
+            decls
+                .write_fmt(format_args!(
+                    "struct MethodTable_{} ImplTable_{}_{};\n",
+                    iface_id.0, self.struct_id.0, iface_id.0
+                ))
+                .unwrap();
+        }
+
+        match self.dyn_array_el_ty {
+            Some(..) => {
+                writeln!(decls, "struct DynArrayClass Class_{};", self.struct_id).unwrap();
+            },
+            None => {
+                writeln!(decls, "struct Class Class_{};", self.struct_id).unwrap();
+            }
+        }
+
+        decls
     }
 
     pub fn to_def_string(&self) -> String {
@@ -465,7 +515,10 @@ impl Class {
                 def.push_str("    .next = ");
                 match impls.get(i + 1) {
                     Some((_, (next_impl_id, _))) => {
-                        def.push_str(&format!("ImplTable_{}_{}", self.struct_id, next_impl_id));
+                        def.push_str(&format!(
+                            "&ImplTable_{}_{}.base",
+                            self.struct_id, next_impl_id
+                        ));
                     }
                     None => def.push_str("NULL"),
                 }
@@ -484,37 +537,58 @@ impl Class {
 
         // class struct
 
-        def.push_str(&format!("struct Class Class_{} = {{\n", self.struct_id));
+        let mut class_init = String::new();
+        writeln!(class_init, "{{").unwrap();
+        writeln!(
+            class_init,
+            "  .size = sizeof(struct {}),",
+            StructName::Struct(self.struct_id)
+        )
+        .unwrap();
 
-        def.push_str("  .size = sizeof(struct ");
-        def.push_str(&StructName::Class(self.struct_id).to_string());
-        def.push_str("),\n");
-
-        def.push_str("  .disposer = ");
         if let Some(disposer_func) = self.disposer {
-            def.push('&');
-            def.push_str(&disposer_func.to_string());
+            writeln!(class_init, "  .disposer = &{},", disposer_func).unwrap();
         } else {
-            def.push_str("NULL");
+            writeln!(class_init, "  .disposer = NULL,").unwrap();
         };
-        def.push_str(",\n");
 
-        def.push_str("  .cleanup = (RcCleanupFunc)&");
-        def.push_str(&self.cleanup_func.to_string());
-        def.push_str(",\n");
+        writeln!(
+            class_init,
+            "  .cleanup = (RcCleanupFunc) &{},",
+            self.cleanup_func
+        )
+        .unwrap();
 
-        def.push_str("  .iface_methods = ");
         if let Some((_, (first_iface_id, _))) = impls.get(0) {
-            def.push_str(&format!(
-                "(struct MethodTable*) &ImplTable_{}_{}",
+            writeln!(
+                class_init,
+                "  .iface_methods = (struct MethodTable*) &ImplTable_{}_{},",
                 self.struct_id, first_iface_id
-            ));
+            )
+            .unwrap();
         } else {
-            def.push_str("NULL");
+            writeln!(class_init, "  .iface_methods = NULL,").unwrap();
         }
-        def.push_str(",\n");
 
-        def.push_str("};\n\n");
+        class_init.push_str("}");
+
+        match &self.dyn_array_el_ty {
+            Some(_el_ty) => {
+                writeln!(def, "struct DynArrayClass Class_{} = {{", self.struct_id).unwrap();
+                writeln!(def, "  .base = {},", class_init).unwrap();
+                writeln!(def, "  .alloc = NULL,").unwrap();
+                writeln!(def, "}};").unwrap();
+            }
+
+            None => {
+                writeln!(
+                    def,
+                    "struct Class Class_{} = {};",
+                    self.struct_id, class_init,
+                )
+                .unwrap();
+            }
+        }
 
         def
     }

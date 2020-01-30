@@ -21,6 +21,7 @@ pub enum FunctionName {
     RcRetain,
     RcRelease,
     IsImpl,
+    Raise,
 
     // builtins
     IntToStr,
@@ -29,8 +30,9 @@ pub enum FunctionName {
     ReadLn,
     GetMem,
     FreeMem,
+
     ArrayLengthInternal,
-    Raise,
+    ArraySetLengthInternal,
 }
 
 impl fmt::Display for FunctionName {
@@ -45,6 +47,7 @@ impl fmt::Display for FunctionName {
             FunctionName::RcRetain => write!(f, "RcRetain"),
             FunctionName::RcRelease => write!(f, "RcRelease"),
             FunctionName::IsImpl => write!(f, "IsImpl"),
+            FunctionName::Raise => write!(f, "Raise"),
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::ReadLn => write!(f, "System_ReadLn"),
@@ -52,9 +55,9 @@ impl fmt::Display for FunctionName {
             FunctionName::StrToInt => write!(f, "System_StrToInt"),
             FunctionName::GetMem => write!(f, "System_GetMem"),
             FunctionName::FreeMem => write!(f, "System_FreeMem"),
-            FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
 
-            FunctionName::Raise => write!(f, "System_Raise"),
+            FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
+            FunctionName::ArraySetLengthInternal => write!(f, "System_ArraySetLengthInternal"),
         }
     }
 }

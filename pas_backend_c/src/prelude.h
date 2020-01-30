@@ -32,6 +32,14 @@ struct Rc {
     int count;
 };
 
+typedef void (*DynArrayAlloc)(struct Rc*, struct Rc*, int32_t);
+
+struct DynArrayClass {
+    struct Class base;
+
+    DynArrayAlloc alloc;
+};
+
 static bool IsImpl(struct Class* class, size_t iface) {
     struct MethodTable* next = class->iface_methods;
     while (next) {
@@ -177,6 +185,8 @@ static void RcRelease(struct Rc* rc) {
     }
 }
 
+static void Raise(struct Rc* msg_str_rc);
+
 #if !NO_STDLIB
 
 // implementations of System.pas builtins
@@ -189,6 +199,7 @@ static void System_Write(struct Rc* str_rc);
 static void System_WriteLn(struct Rc* str_rc);
 static struct Rc* System_ReadLn(void);
 static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
+static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len);
 
 // Strings
 

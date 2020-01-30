@@ -1,10 +1,20 @@
-#if !NO_STDLIB
-
 #define STRING_STRUCT struct Struct_1
 #define STRING_CLASS Class_1
 #define STRING_PTR(s_rc) ((STRING_STRUCT*) s_rc->resource)
 #define STRING_CHARS(s_rc) (STRING_PTR(s_rc)->field_0)
 #define STRING_LEN(s_rc) (STRING_PTR(s_rc)->field_1)
+
+static void Raise(struct Rc* msg_str_rc) {
+    if (msg_str_rc && msg_str_rc->resource) {
+        int32_t msg_len = STRING_LEN(msg_str_rc);
+        char* msg_chars = (char*) STRING_CHARS(msg_str_rc);
+
+        fprintf(stderr, "%.*s\n", (int) msg_len, msg_chars);
+    }
+    abort();
+}
+
+#if !NO_STDLIB
 
 static int32_t System_StrToInt(struct Rc* str_rc) {
     if (!str_rc || !str_rc->resource) {
@@ -74,6 +84,22 @@ static int32_t System_ArrayLengthInternal(struct Rc* arr_rc) {
     // all rc arrays start with a length field, so it's safe to access it through Int32*
     const int32_t* len_ptr = (int32_t*) arr_rc->resource;
     return *len_ptr;
+}
+
+static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len) {
+    if (!arr_rc || !arr_rc->resource) {
+        abort();
+    }
+
+    int32_t old_len = System_ArrayLengthInternal(arr_rc);
+    struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
+
+    struct Rc* new_arr = RcAlloc(arr_rc->class);
+
+    int32_t copy_len = old_len < new_len ? old_len : new_len;
+    array_class->alloc(new_arr, arr_rc, copy_len);
+
+    return new_arr;
 }
 
 #endif

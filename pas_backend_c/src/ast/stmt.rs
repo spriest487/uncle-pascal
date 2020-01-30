@@ -194,7 +194,7 @@ impl Expr {
                 // pointer to RC containing pointer to class resource
                 let class_ty = match class_id {
                     Some(metadata::ClassID::Class(struct_id)) => {
-                        Type::Struct(StructName::Class(*struct_id))
+                        Type::Struct(StructName::Struct(*struct_id))
                     }
 
                     _ => panic!(
@@ -226,6 +226,12 @@ impl Expr {
                 field.addr_of()
             }
         }
+    }
+
+    pub fn class_ptr(struct_id: StructID) -> Self {
+        Expr::Class(struct_id)
+            .addr_of()
+            .cast(Type::Struct(StructName::Class).ptr())
     }
 }
 
@@ -652,7 +658,7 @@ impl<'a> Builder<'a> {
 
         let is = match class_id {
             metadata::ClassID::Class(struct_id) => {
-                let is_class_ptr = Expr::Class(struct_id).addr_of();
+                let is_class_ptr = Expr::class_ptr(struct_id);
                 Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
             }
 
@@ -688,11 +694,11 @@ impl<'a> Builder<'a> {
     }
 
     fn translate_rc_new(&mut self, out: &ir::Ref, struct_id: StructID) {
-        let ty_class = Expr::Class(struct_id).addr_of();
+        let ty_class_ptr = Expr::class_ptr(struct_id);
 
         let new_rc = Expr::Call {
             func: Box::new(Expr::Function(FunctionName::RcAlloc)),
-            args: vec![ty_class],
+            args: vec![ty_class_ptr],
         };
 
         self.stmts.push(Statement::Expr(Expr::translate_assign(
