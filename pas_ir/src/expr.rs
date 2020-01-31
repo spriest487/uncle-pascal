@@ -1148,35 +1148,39 @@ fn translate_dyn_array_ctor(
         });
 
         // allocate array storage
-        builder.append(Instruction::DynAlloc {
-            out: arr_ptr.clone().deref(),
-            len: Value::LiteralI32(len),
-            element_ty: elem_ty.clone(),
-        });
-
-        let el_ptr = builder.local_temp(elem_ty.clone().ptr());
-
-        for (i, el) in ctor.elements.iter().enumerate() {
-            builder.scope(|builder| {
-                // we know this cast is OK because we check the length is in range of i32 previously
-                let index = Value::LiteralI32(i as i32);
-
-                // el_ptr := arr_ptr^ + i
-                builder.append(Instruction::Add {
-                    a: Value::Ref(arr_ptr.clone().deref()),
-                    b: index,
-                    out: el_ptr.clone(),
-                });
-
-                // el_ptr^ := el
-                let el = translate_expr(el, builder);
-                builder.mov(el_ptr.clone().deref(), el);
-
-                // retain each element. we don't do this for static arrays because retaining
-                // a static array retains all its elements - for dynamic arrays, retaining
-                // the array object itself does not retain the elements
-                builder.retain(el_ptr.clone().deref(), &elem_ty);
+        if len > 0 {
+            builder.append(Instruction::DynAlloc {
+                out: arr_ptr.clone().deref(),
+                len: Value::LiteralI32(len),
+                element_ty: elem_ty.clone(),
             });
+
+            let el_ptr = builder.local_temp(elem_ty.clone().ptr());
+
+            for (i, el) in ctor.elements.iter().enumerate() {
+                builder.scope(|builder| {
+                    // we know this cast is OK because we check the length is in range of i32 previously
+                    let index = Value::LiteralI32(i as i32);
+
+                    // el_ptr := arr_ptr^ + i
+                    builder.append(Instruction::Add {
+                        a: Value::Ref(arr_ptr.clone().deref()),
+                        b: index,
+                        out: el_ptr.clone(),
+                    });
+
+                    // el_ptr^ := el
+                    let el = translate_expr(el, builder);
+                    builder.mov(el_ptr.clone().deref(), el);
+
+                    // retain each element. we don't do this for static arrays because retaining
+                    // a static array retains all its elements - for dynamic arrays, retaining
+                    // the array object itself does not retain the elements
+                    builder.retain(el_ptr.clone().deref(), &elem_ty);
+                });
+            }
+        } else {
+            builder.mov(arr_ptr.deref(), Value::LiteralNull);
         }
     });
 

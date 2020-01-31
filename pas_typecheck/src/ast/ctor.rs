@@ -138,7 +138,7 @@ pub fn typecheck_collection_ctor(
         }
 
         Some(elem_ty) => {
-            if elem_ty.contains_generic_params() {
+            if false && elem_ty.contains_generic_params() {
                 let elements = elements_for_inferred_ty(ctor, ctx)?;
                 let elem_ty = elements[0].annotation().ty().clone();
                 (elements, elem_ty)

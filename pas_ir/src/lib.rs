@@ -878,10 +878,25 @@ fn gen_dyn_array_disposers(module: &mut Module) {
         });
         releaser_builder.append(Instruction::Label(end_loop_label));
 
-        // free the dynamic-allocated buffer
+        // free the dynamic-allocated buffer - if len > 0
+        let after_free = releaser_builder.alloc_label();
+
+        let zero_elements = releaser_builder.local_temp(Type::Bool);
+        releaser_builder.append(Instruction::Eq {
+            a: Value::Ref(len_field_ptr.clone().deref()),
+            b: Value::LiteralI32(0),
+            out: zero_elements.clone()
+        });
+        releaser_builder.append(Instruction::JumpIf {
+            dest: after_free,
+            test: Value::Ref(zero_elements),
+        });
+
         releaser_builder.append(Instruction::DynFree {
             at: arr_field_ptr.clone().deref(),
         });
+
+        releaser_builder.append(Instruction::Label(after_free));
 
         releaser_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
         releaser_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
