@@ -1017,7 +1017,7 @@ impl Interpreter {
                 rc_cell.ref_count += 1;
             }
 
-            _ => panic!("{:?} cannot be retained"),
+            _ => panic!("{:?} cannot be retained",  cell),
         }
     }
 
