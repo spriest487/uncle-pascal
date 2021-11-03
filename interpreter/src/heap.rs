@@ -129,9 +129,17 @@ impl Heap {
                     None => None,
                 });
 
+            let mut leak_count = 0;
+
             for addr in leaked_addrs {
                 let val = self.get(addr).unwrap();
                 println!("heap: leaked cell {}: {:?}", addr, val);
+
+                leak_count += 1;
+            }
+
+            if leak_count == 0 {
+                println!("heap: no leaks detected");
             }
         }
     }

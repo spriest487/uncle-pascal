@@ -233,6 +233,7 @@ fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf
     for search_path in search_paths.iter() {
         if search_path.exists() && search_path.is_dir() {
             let file_path = search_path.join(filename);
+
             if file_path.exists() {
                 return Some(file_path);
             }
@@ -243,12 +244,12 @@ fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf
 }
 
 fn preprocess(
-    filename: PathBuf,
+    filename: &PathBuf,
     search_paths: &[PathBuf],
     opts: &BuildOptions,
 ) -> Result<PreprocessedUnit, CompileError> {
     let filename = find_in_paths(&filename, search_paths).unwrap_or_else(|| {
-        eprintln!("could not find unit {}", filename.display());
+        eprintln!("unit not found: {}", filename.display());
         process::exit(1);
     });
 
@@ -322,32 +323,19 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     opts.verbose = args.verbose;
 
     let all_filenames = units.into_iter().chain(vec![args.file.clone()]);
-
-    // todo: search paths should be an arg or env var
-    let compiler_dir = env::current_exe()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .join("units")
-        .canonicalize()
-        .unwrap();
-
-    let cwd = env::current_dir().unwrap().canonicalize().unwrap();
-    let search_paths = vec![cwd, compiler_dir];
+    let search_paths = search_paths();
 
     if opts.verbose {
         println!("Unit search paths:");
         for path in &search_paths {
-            println!("  {}", path.display());
+            println!("\t{}", path.display());
         }
     }
 
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| preprocess(unit_filename, &search_paths, &opts))
+        .map(|unit_filename| {
+            preprocess(&unit_filename, &search_paths, &opts)
+        })
         .collect::<Result<_, CompileError>>()?;
 
     if args.stage == Stage::Preprocessed {
@@ -425,6 +413,24 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     }
 
     Ok(())
+}
+
+fn search_paths() -> Vec<PathBuf> {
+    let cwd = env::current_dir().ok();
+
+    // todo: search paths should be an arg or env var
+    let executable_path = env::current_exe().ok();
+    let compiler_dir = executable_path.as_ref().and_then(|p| p.parent());
+
+    let units_dir = compiler_dir
+        .and_then(|p| p.parent())
+        .and_then(|p| p.parent())
+        .map(|p| p.join("units"));
+
+    [cwd, units_dir].iter().filter_map(|p| match p {
+        Some(search_path) => Some(search_path.clone()),
+        None => None,
+    }).collect()
 }
 
 fn main() {

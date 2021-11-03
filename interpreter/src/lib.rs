@@ -798,7 +798,7 @@ impl Interpreter {
                 err.push_str(" missing implementation for ");
                 let _ = self.metadata.format_type(&instance_ty, &mut err);
 
-                panic!(err)
+                panic!("{}", err)
             })
     }
 
