@@ -8,7 +8,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor, FunctionDecl};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation, InterfaceMethodAnnotation, TypeArgsResult};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation, InterfaceMethodAnnotation, TypeArgsResult, Conversion};
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -48,10 +48,8 @@ fn typecheck_args(
 
     let rest_args = if let Some(self_arg) = self_arg {
         let self_param = &expected_args[0];
-        let self_compatible = self_param
-            .ty
-            .blittable_from(self_arg.annotation().ty(), ctx);
-        if !self_compatible {
+        let self_conversion = self_param.ty.implicit_conversion_from(self_arg.annotation().ty(), ctx);
+        if self_conversion == Conversion::Illegal {
             return Err(TypecheckError::TypeMismatch {
                 actual: self_arg.annotation().ty().clone(),
                 expected: self_param.ty.clone(),
@@ -112,7 +110,7 @@ fn typecheck_args(
         return Err(invalid_args(checked_args, expected_args, span.clone()));
     }
 
-    let mut self_ty = None;
+    let mut self_ty: Option<&Type> = None;
 
     let all_arg_tys = checked_args
         .iter()
@@ -122,13 +120,13 @@ fn typecheck_args(
     for (actual, expected) in all_arg_tys {
         if expected.ty == Type::MethodSelf {
             if let Some(self_ty) = &self_ty {
-                if *self_ty != actual {
+                if self_ty.implicit_conversion_from(actual, ctx) == Conversion::Illegal {
                     return Err(invalid_args(checked_args, expected_args, span.clone()));
                 }
             } else {
                 self_ty = Some(actual);
             }
-        } else if *actual != expected.ty {
+        } else if expected.ty.implicit_conversion_from(actual, ctx) == Conversion::Illegal {
             return Err(invalid_args(checked_args, expected_args, span.clone()));
         }
     }
@@ -676,7 +674,7 @@ fn unwrap_inferred_args(
 fn check_arg_types(args: &[Expression], sig: &FunctionSig, ctx: &Context) -> TypecheckResult<()> {
     let args_and_params = args.iter().zip(sig.params.iter());
     for (arg, param) in args_and_params {
-        if !param.ty.blittable_from(arg.annotation().ty(), ctx) {
+        if param.ty.implicit_conversion_from(arg.annotation().ty(), ctx) == Conversion::Illegal {
             return Err(TypecheckError::TypeMismatch {
                 expected: param.ty.clone(),
                 actual: arg.annotation().ty().clone(),
@@ -994,7 +992,7 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                if !self_param_ty.blittable_from(self_arg_ty, ctx) {
+                if self_param_ty.implicit_conversion_from(self_arg_ty, ctx)  == Conversion::Illegal {
 //                    println!("discarding {} as candidate for {}, {} :!= {}", sig, span, self_param_ty, self_arg_ty);
                     false
                 } else {
@@ -1045,7 +1043,7 @@ pub fn resolve_overload(
                 false
             } else {
                 let param_ty = &sig.params[param_index].ty;
-                if param_ty.blittable_from(&arg_ty, ctx) {
+                if param_ty.implicit_conversion_from(&arg_ty, ctx) != Conversion::Illegal {
                     true
                 } else {
 //                    println!("discarding {} as candidate for {}: {} :!= {}", sig, span, param_ty, arg_ty);

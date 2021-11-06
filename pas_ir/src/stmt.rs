@@ -102,7 +102,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
             .expect("for loop counter binding must have an init expr");
 
         assert!(
-            !for_loop.init_binding.val_ty.is_rc(),
+            !for_loop.init_binding.val_ty.is_rc_reference(),
             "counter type must not be ref counted"
         );
 

@@ -75,7 +75,7 @@ pub fn typecheck_object_ctor(
 
         let value = typecheck_expr(&arg.value, &member.ty, ctx)?;
 
-        if !member.ty.blittable_from(value.annotation().ty(), ctx) {
+        if member.ty.implicit_conversion_from(value.annotation().ty(), ctx) == Conversion::Illegal {
             return Err(TypecheckError::InvalidBinOp {
                 lhs: member.ty.clone(),
                 rhs: value.annotation().ty().clone(),

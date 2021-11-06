@@ -143,6 +143,11 @@ pub fn typecheck_func_def(
     // functions are always declared within their own bodies (allowing recursive calls)
     ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Private)?;
 
+    // declare decl's type params within the body too
+    if let Some(decl_type_params) = decl.type_params.as_ref() {
+        ctx.declare_type_params(&decl_type_params)?;
+    };
+
     for param in &decl.params {
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),

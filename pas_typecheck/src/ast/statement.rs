@@ -38,7 +38,7 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    if !explicit_ty.blittable_from(val.annotation().ty(), ctx) {
+                    if explicit_ty.implicit_conversion_from(val.annotation().ty(), ctx) == Conversion::Illegal {
                         return Err(TypecheckError::InvalidBinOp {
                             lhs: explicit_ty.clone(),
                             rhs: val.annotation().ty().clone(),
@@ -128,11 +128,8 @@ pub fn typecheck_assignment(
 
     let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
 
-    if !lhs
-        .annotation()
-        .ty()
-        .blittable_from(rhs.annotation().ty(), ctx)
-    {
+    let conversion = lhs.annotation().ty().implicit_conversion_from(rhs.annotation().ty(), ctx);
+    if conversion == Conversion::Illegal {
 //        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
 
         return Err(TypecheckError::InvalidBinOp {
@@ -257,7 +254,7 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
         }
     };
 
-    if !expect_ty.blittable_from(&ret_ty, ctx) {
+    if expect_ty.implicit_conversion_from(&ret_ty, ctx) == Conversion::Illegal {
         return Err(TypecheckError::TypeMismatch {
             expected: expect_ty,
             actual: ret_ty,

@@ -217,7 +217,7 @@ impl<'m> Builder<'m> {
         for (id, member) in class_def.members.iter().enumerate() {
             let name = member.ident.to_string();
             let ty = self.translate_type(&member.ty);
-            let rc = member.ty.is_rc();
+            let rc = member.ty.is_rc_reference();
 
             fields.insert(FieldID(id), StructField { name, ty, rc });
         }
@@ -265,7 +265,7 @@ impl<'m> Builder<'m> {
         let mut cases = Vec::new();
         for case in &variant_def.cases {
             let (case_ty, case_rc) = match &case.data_ty {
-                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc()),
+                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc_reference()),
                 None => (None, false),
             };
             cases.push(VariantCase {

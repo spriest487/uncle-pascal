@@ -25,6 +25,13 @@ pub type TypeParam = ast::TypeParam<Type>;
 pub type TypeList = ast::TypeList<Type>;
 pub type TypeParamList = ast::TypeList<TypeParam>;
 
+#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
+pub enum Conversion {
+    Blittable,
+    UnsafeBlittable,
+    Illegal,
+}
+
 pub fn typecheck_type_params(
     type_params: &ast::TypeList<ast::TypeParam<ast::TypeName>>,
     ctx: &mut Context
@@ -321,6 +328,14 @@ pub enum Primitive {
 }
 
 impl Primitive {
+    pub const ALL: [Primitive; 5] = [
+        Primitive::Boolean,
+        Primitive::Byte,
+        Primitive::Int32,
+        Primitive::Real32,
+        Primitive::Pointer,
+    ];
+
     pub fn name(&self) -> &str {
         match self {
             Primitive::Boolean => "Boolean",
@@ -552,13 +567,21 @@ impl Type {
         }
     }
 
-    pub fn is_rc(&self) -> bool {
+    pub fn is_rc_reference(&self) -> bool {
         match self {
             Type::Class(..) => true,
             Type::Interface(..) => true,
             Type::Any => true,
             Type::DynArray { .. } => true,
 
+            _ => false,
+        }
+    }
+
+    /// Is this a value pointer type, not including primitive pointer types and RC pointers?
+    pub fn is_pointer(&self) -> bool {
+        match self {
+            Type::Pointer(..) => true,
             _ => false,
         }
     }
@@ -602,20 +625,36 @@ impl Type {
         }
     }
 
-    pub fn blittable_from(&self, from: &Self, ctx: &Context) -> bool {
+    pub fn implicit_conversion_from(&self, from: &Self, ctx: &Context) -> Conversion {
+        if *self == *from {
+            return Conversion::Blittable;
+        }
+
         match self {
-            Type::Pointer(_) => *self == *from || *from == Type::Nil,
-            Type::Function(_) => false,
+            Type::Primitive(Primitive::Pointer) if *from == Type::Nil => Conversion::Blittable,
+
+            Type::Primitive(Primitive::Pointer) if from.is_rc_reference() => Conversion::UnsafeBlittable,
+            Type::Primitive(Primitive::Pointer) if from.is_pointer() => Conversion::UnsafeBlittable,
+
+            Type::Pointer(..)
+            | Type::Class(..)
+            | Type::Interface(..)
+            | Type::DynArray { .. } if *from == Type::Primitive(Primitive::Pointer) => Conversion::UnsafeBlittable,
+
+            Type::Pointer(_) if *self == *from || *from == Type::Nil => Conversion::Blittable,
+
             Type::Interface(iface) => match from {
-                Type::Class(..) => ctx.is_iface_impl(from, &iface),
-                Type::Interface(from_iface) => iface == from_iface,
-                _ => false,
+                Type::Class(..) if ctx.is_iface_impl(from, &iface) => Conversion::Blittable,
+                Type::Interface(from_iface) if iface == from_iface => Conversion::Blittable,
+                _ => Conversion::Illegal,
             },
+
             Type::Any => match from {
-                Type::DynArray { .. } | Type::Class(..) | Type::Interface(..) => true,
-                _ => false,
+                Type::DynArray { .. } | Type::Class(..) | Type::Interface(..) => Conversion::Blittable,
+                _ => Conversion::Illegal,
             },
-            _ => *self == *from,
+
+            _ => Conversion::Illegal,
         }
     }
 

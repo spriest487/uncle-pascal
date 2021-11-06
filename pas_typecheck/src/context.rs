@@ -288,14 +288,7 @@ impl Context {
         declare_builtin(&mut root_ctx, "Nothing", Type::Nothing);
         declare_builtin(&mut root_ctx, "Any", Type::Any);
 
-        let primitives = [
-            Primitive::Boolean,
-            Primitive::Byte,
-            Primitive::Int32,
-            Primitive::Real32,
-            Primitive::Pointer,
-        ];
-        for primitive in &primitives {
+        for primitive in &Primitive::ALL {
             declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
         }
 
