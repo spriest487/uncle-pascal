@@ -403,12 +403,6 @@ impl Module {
         self.init.extend(unit_init);
     }
 
-    fn file_span(&self) -> Span {
-        let namespace = self.src_metadata.namespace();
-        let file_name = namespace.span().file.as_ref();
-        Span::zero(file_name.clone())
-    }
-
     pub fn insert_func(&mut self, id: FunctionID, function: Function) {
         assert!(
             self.metadata.get_function(id).is_some(),
@@ -429,7 +423,7 @@ impl Module {
                     Some(pas_ty::Def::Function(func_def)) => {
                         let specialized_decl = match key.type_args.as_ref() {
                             Some(key_type_args) => {
-                                specialize_func_decl(&func_def.decl, key_type_args, &self.file_span(), &self.src_metadata)
+                                specialize_func_decl(&func_def.decl, key_type_args, func_def.span(), &self.src_metadata)
                                     .expect("function specialization must be valid after typechecking")
                             },
                             None => func_def.decl.clone(),
@@ -517,7 +511,7 @@ impl Module {
 
                 let specialized_decl = match &key.type_args {
                     Some(key_type_args) => {
-                        specialize_func_decl(&method_def.decl, &key_type_args, &self.file_span(), &self.src_metadata)
+                        specialize_func_decl(&method_def.decl, &key_type_args, &method_def.span(), &self.src_metadata)
                             .expect("method specialization failed in codegen")
                     },
                     None => method_def.decl.clone(),

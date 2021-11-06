@@ -6,19 +6,20 @@ pub mod expression;
 pub mod function;
 pub mod iter;
 pub mod op;
+pub mod raise;
 pub mod statement;
+pub mod type_constraint;
 pub mod typedecl;
 pub mod unit;
-pub mod type_constraint;
-pub mod raise;
 
 pub use self::{
-    block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-    typedecl::*, unit::*, type_constraint::*, raise::*,
+    block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, raise::*,
+    statement::*, type_constraint::*, typedecl::*, unit::*,
 };
 
 use crate::parse::prelude::*;
 use pas_common::TracedError;
+use std::hash::Hasher;
 use std::{fmt, hash::Hash};
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
@@ -98,14 +99,22 @@ impl TypeName {
         tokens.look_ahead().expect_one(Self::match_next())?;
 
         match tokens.match_one_maybe(Keyword::Array) {
-            Some(array_kw) => {
-                Self::parse_array_type(tokens, array_kw.span(), indirection, indirection_span.as_ref())
-            },
+            Some(array_kw) => Self::parse_array_type(
+                tokens,
+                array_kw.span(),
+                indirection,
+                indirection_span.as_ref(),
+            ),
             None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
         }
     }
 
-    fn parse_array_type(tokens: &mut TokenStream, array_kw_span: &Span, indirection: usize, indirection_span: Option<&Span>) -> ParseResult<Self> {
+    fn parse_array_type(
+        tokens: &mut TokenStream,
+        array_kw_span: &Span,
+        indirection: usize,
+        indirection_span: Option<&Span>,
+    ) -> ParseResult<Self> {
         // `array of` means the array is dynamic (no dimension)
         let dim = match tokens.look_ahead().match_one(Keyword::Of) {
             Some(_) => None,
@@ -144,21 +153,26 @@ impl TypeName {
         })
     }
 
-    fn parse_named_type(tokens: &mut TokenStream, indirection: usize, indirection_span: Option<&Span>) -> ParseResult<Self> {
+    fn parse_named_type(
+        tokens: &mut TokenStream,
+        indirection: usize,
+        indirection_span: Option<&Span>,
+    ) -> ParseResult<Self> {
         let ident = IdentPath::parse(tokens)?;
 
-        let (type_args, name_span) = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
-            Some(..) => {
-                let type_args = TypeList::parse_type_args(tokens)?;
-                let name_span = ident.span().to(type_args.span());
+        let (type_args, name_span) =
+            match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
+                Some(..) => {
+                    let type_args = TypeList::parse_type_args(tokens)?;
+                    let name_span = ident.span().to(type_args.span());
 
-                (Some(type_args), name_span)
-            },
-            None => {
-                let name_span = ident.span().clone();
-                (None, name_span)
-            },
-        };
+                    (Some(type_args), name_span)
+                }
+                None => {
+                    let name_span = ident.span().clone();
+                    (None, name_span)
+                }
+            };
 
         let span = match indirection_span {
             Some(indir_span) => indir_span.to(&name_span),
@@ -209,7 +223,9 @@ impl fmt::Display for TypeName {
             } => write!(f, "array[{}] of {}", dim, element),
 
             TypeName::Array {
-                element, dim: Option::None, ..
+                element,
+                dim: Option::None,
+                ..
             } => write!(f, "array of {}", element),
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
@@ -225,7 +241,7 @@ impl fmt::Display for TypeName {
 ///
 /// Generic because items may be type names (when they refer to real types in expressions)
 /// or idents only (when they are declaring type parameter names in type/function declarations)
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq)]
 pub struct TypeList<Item> {
     pub items: Vec<Item>,
     span: Span,
@@ -236,7 +252,7 @@ impl<Item> TypeList<Item> {
         self.items.len()
     }
 
-    pub fn new(items: impl IntoIterator<Item=Item>, span: Span) -> Self {
+    pub fn new(items: impl IntoIterator<Item = Item>, span: Span) -> Self {
         let items: Vec<_> = items.into_iter().collect();
         if items.len() == 0 {
             panic!("can't construct an empty type list (@ {})", span);
@@ -246,13 +262,34 @@ impl<Item> TypeList<Item> {
     }
 }
 
+impl<Item> PartialEq for TypeList<Item>
+where
+    Item: PartialEq,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.items.eq(&other.items)
+    }
+}
+
+impl<Item> Hash for TypeList<Item>
+where
+    Item: Hash,
+{
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.items.hash(state)
+    }
+}
+
 impl<Item> Spanned for TypeList<Item> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<Item> fmt::Display for TypeList<Item> where Item: fmt::Display {
+impl<Item> fmt::Display for TypeList<Item>
+where
+    Item: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "[")?;
 
@@ -318,9 +355,9 @@ impl<Item: Spanned> TypeList<Item> {
                 // expect at least one item after `of`
                 if i > 0
                     && tokens
-                    .look_ahead()
-                    .match_one(item_next_matcher.clone())
-                    .is_none()
+                        .look_ahead()
+                        .match_one(item_next_matcher.clone())
+                        .is_none()
                 {
                     Ok(Generate::Break)
                 } else {
@@ -333,14 +370,11 @@ impl<Item: Spanned> TypeList<Item> {
             items
         };
 
-        Ok(TypeList {
-            items,
-            span,
-        })
+        Ok(TypeList { items, span })
     }
 }
 
-#[derive( Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeNamePatternKind {
     Is,
     IsWithBinding(Ident),
@@ -383,18 +417,25 @@ impl TypeNamePattern {
         let name = TypeName::parse(tokens)?;
 
         let pattern_path = match &name {
-            TypeName::Ident { ident, type_args, indirection, .. } => {
+            TypeName::Ident {
+                ident,
+                type_args,
+                indirection,
+                ..
+            } => {
                 if ident.as_slice().len() >= 2 && type_args.is_none() && *indirection == 0 {
                     Some(ident)
                 } else {
                     None
                 }
-            },
+            }
             _ => None,
         };
 
         let binding = if not_kw.is_none() {
-            tokens.match_one_maybe(Matcher::AnyIdent).and_then(TokenTree::into_ident)
+            tokens
+                .match_one_maybe(Matcher::AnyIdent)
+                .and_then(TokenTree::into_ident)
         } else {
             None
         };
@@ -409,19 +450,19 @@ impl TypeNamePattern {
             Some(binding) => {
                 assert!(not_kw.is_none());
                 TypeNamePatternKind::IsWithBinding(binding)
-            },
+            }
             None if not_kw.is_some() => TypeNamePatternKind::IsNot,
             None => TypeNamePatternKind::Is,
         };
 
         match pattern_path {
-            Some(pattern_path) => {
-                Ok(TypeNamePattern::TypeName { name: pattern_path.clone(), span, kind })
-            }
+            Some(pattern_path) => Ok(TypeNamePattern::TypeName {
+                name: pattern_path.clone(),
+                span,
+                kind,
+            }),
 
-            None => {
-                Ok(TypeNamePattern::ExactType { name, span, kind })
-            }
+            None => Ok(TypeNamePattern::ExactType { name, span, kind }),
         }
     }
 }

@@ -417,30 +417,22 @@ impl<'m> Builder<'m> {
         span: &Span,
     ) -> CachedFunction {
         // specialize type args for current context
-        let type_args = match (type_args, self.type_args()) {
+        let instance_type_args = match (type_args, self.type_args.as_ref()) {
             (Some(func_ty_args), Some(current_ty_args)) => {
-                assert_eq!(func_ty_args.len(), current_ty_args.len());
-
-                let items =func_ty_args.items
+                let items = func_ty_args.items
                     .iter()
                     .map(|arg| arg.specialize_generic(&current_ty_args, span).unwrap());
 
                 Some(TypeList::new(items, func_ty_args.span().clone()))
             },
 
-            (None, Some(current_ty_args)) => {
-                panic!("mismatch between expected and available type args: expected none, found {}", current_ty_args)
-            },
+            (Some(func_ty_args), None) => Some(func_ty_args),
 
-            (Some(func_ty_args), None) => {
-                panic!("mismatch between expected and available type args: expected {}, found none", func_ty_args)
-            },
-
-            (None, None) => None,
+            (None, ..)  => None,
         };
 
         let key = FunctionCacheKey {
-            type_args,
+            type_args: instance_type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 

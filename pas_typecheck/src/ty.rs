@@ -654,7 +654,10 @@ impl Type {
                 _ => Conversion::Illegal,
             },
 
-            _ => Conversion::Illegal,
+            _ => {
+                eprintln!("illegal!\n{:#?}\n\n{:#?}", self, from);
+                Conversion::Illegal
+            },
         }
     }
 

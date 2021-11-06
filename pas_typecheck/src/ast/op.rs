@@ -3,6 +3,19 @@ use pas_syn::Operator;
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
+fn invalid_bin_op(
+    bin_op: &ast::BinOp<Span>,
+    lhs: &Expression,
+    rhs: &Expression,
+) -> TypecheckError {
+    TypecheckError::InvalidBinOp {
+        lhs: lhs.annotation().ty().clone(),
+        rhs: rhs.annotation().ty().clone(),
+        op: bin_op.op,
+        span: bin_op.annotation.span().clone(),
+    }
+}
+
 pub fn typecheck_bin_op(
     bin_op: &ast::BinOp<Span>,
     expect_ty: &Type,
@@ -44,12 +57,7 @@ pub fn typecheck_bin_op(
             rhs.annotation().expect_value(lhs.annotation().ty())?;
 
             if !lhs.annotation().ty().self_comparable() {
-                return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation().ty().clone(),
-                    rhs: rhs.annotation().ty().clone(),
-                    op: bin_op.op,
-                    span: bin_op.annotation.span().clone(),
-                });
+                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
             let annotation = TypeAnnotation::TypedValue {
@@ -74,12 +82,7 @@ pub fn typecheck_bin_op(
             rhs.annotation().expect_value(lhs.annotation().ty())?;
 
             if !lhs.annotation().ty().self_orderable() {
-                return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation().ty().clone(),
-                    rhs: rhs.annotation().ty().clone(),
-                    op: bin_op.op,
-                    span: bin_op.annotation.span().clone(),
-                });
+                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
             let annotation = TypeAnnotation::TypedValue {
@@ -118,12 +121,7 @@ pub fn typecheck_bin_op(
                 .valid_math_op(bin_op.op, rhs.annotation().ty());
 
             if !valid_math {
-                return Err(TypecheckError::InvalidBinOp {
-                    lhs: lhs.annotation().ty().clone(),
-                    rhs: rhs.annotation().ty().clone(),
-                    op: bin_op.op,
-                    span: bin_op.annotation.span().clone(),
-                });
+                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
             // check valid ops etc, result type etc

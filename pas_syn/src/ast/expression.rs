@@ -762,9 +762,8 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .or(Matcher::any_operator_in_position(Position::Postfix));
 
         let match_after_operand = operator_matcher
-            .or(DelimiterPair::SquareBracket) // array element access
+            .or(DelimiterPair::SquareBracket) // array element access or explicit generic args
             .or(DelimiterPair::Bracket) // function call argument list
-            .or(Keyword::Of) // generic argument list for explicitly specialized function call
             .or(Operator::Member); // member access
 
         let mut look_ahead = self.tokens.look_ahead();
@@ -813,7 +812,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 }
             }
 
-            Some(_) => unreachable!("pattern excludes anything else"),
+            Some(illegal) => panic!("pattern excludes anything else: got {}", illegal),
 
             // nothing following the last operand, which is fine, just end here
             None => return Ok(false),

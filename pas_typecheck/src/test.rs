@@ -1,9 +1,9 @@
-use crate::{FunctionParamSig, Type, Primitive, Module, FunctionSig, ModuleUnit};
+use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
 
-use pas_syn::{ast, TokenTree, Ident};
-use pas_syn::parse::TokenStream;
-use pas_common::BuildOptions;
 use pas_common::span::Span;
+use pas_common::BuildOptions;
+use pas_syn::parse::TokenStream;
+use pas_syn::{ast, Ident, TokenTree};
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -13,7 +13,8 @@ pub fn module_from_src(unit_name: &'static str, src: &'static str) -> Module {
 }
 
 pub fn module_from_srcs<UnitSources>(unit_srcs: UnitSources) -> Module
-    where UnitSources: IntoIterator<Item = (&'static str, &'static str)>
+where
+    UnitSources: IntoIterator<Item = (&'static str, &'static str)>,
 {
     let mut units = Vec::new();
 
@@ -21,7 +22,8 @@ pub fn module_from_srcs<UnitSources>(unit_srcs: UnitSources) -> Module
         let tokens = TokenTree::tokenize(unit_name, src, &BuildOptions::default()).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
 
-        let unit = ast::Unit::parse(&mut stream, Ident::new(unit_name, Span::zero(unit_name))).unwrap();
+        let unit =
+            ast::Unit::parse(&mut stream, Ident::new(unit_name, Span::zero(unit_name))).unwrap();
 
         units.push(unit);
     }
@@ -36,7 +38,8 @@ pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {
 }
 
 pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> Vec<ModuleUnit>
-    where UnitSources: IntoIterator<Item = (&'static str, &'static str)>
+where
+    UnitSources: IntoIterator<Item = (&'static str, &'static str)>,
 {
     let module = module_from_srcs(unit_srcs);
     module.units

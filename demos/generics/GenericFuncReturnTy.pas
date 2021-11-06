@@ -1,15 +1,21 @@
-type Box of T = class
+type Box[T] = class
     val: T;
 end;
 
-function BoxUp of T(val: T): Box of T
+function BoxUp[T](val: T): Box[T]
 begin
     Box(val: val)
 end;
 
 let i := 1;
-let iBox := BoxUp of Integer(i);
+let iBox: Box[Integer] := BoxUp(i);
 
 let i2: Integer := iBox.val;
 
 System.WriteLn(System.IntToStr(i2));
+
+let s1 := 'test';
+let sBox: Box[System.String] := BoxUp(s1);
+let s2 := sBox.val;
+
+System.WriteLn(s2);
