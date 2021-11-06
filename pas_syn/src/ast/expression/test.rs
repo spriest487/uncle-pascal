@@ -54,3 +54,47 @@ fn parse_assignment_then_call_in_order_explicit() {
         invalid => panic!("expected binary op, got `{:#?}`", invalid),
     }
 }
+
+#[test]
+fn invocation_with_empty_type_args_is_error() {
+    let input = "A[]()";
+    match try_parse_expr(input) {
+        Ok(invalid) => panic!("expected error, got expression {:#?}", invalid),
+        Err(TracedError { err: ParseError::EmptyTypeArgList(..), .. }) => {},
+        Err(invalid) => panic!("unexpected error: {}", invalid.err),
+    }
+}
+
+#[test]
+fn parse_invocation_with_type_args() {
+    match parse_expr("A[B, C]()") {
+        Expression::Call(call) => match call.as_ref() {
+            Call::Function(func_call) => {
+                let target_ident = func_call.target.as_ident().unwrap_or_else(|| {
+                    panic!("parsed func call should have ident as the call target");
+                });
+                assert_eq!(target_ident.name.as_str(), "A");
+
+                let type_args = func_call.type_args.as_ref().unwrap_or_else(|| {
+                    panic!("parsed func call should have type args")
+                });
+
+                let expect_args = [ "B", "C" ];
+                assert_eq!(expect_args.len(), type_args.items.len());
+
+                for (&expected, actual) in expect_args.iter().zip(type_args.items.iter()) {
+                    match actual {
+                        TypeName::Ident { ident, .. } => {
+                            assert_eq!(None, ident.parent());
+                            assert_eq!(expected, ident.last().name.as_str());
+                        }
+
+                        invalid => panic!("expected all args to be idents, got {:#?}", invalid)
+                    }
+                }
+            },
+            invalid => panic!("expected function call, got {:#?}", invalid)
+        },
+        invalid => panic!("expected call, got {:#?}", invalid)
+    }
+}

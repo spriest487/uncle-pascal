@@ -27,7 +27,7 @@ pub fn typecheck_local_binding(
 
         val_ty => {
             let explicit_ty = typecheck_type(val_ty, ctx)?;
-            if explicit_ty.is_generic() {
+            if explicit_ty.is_unspecialized_generic() {
                 return Err(GenericError::IllegalUnspecialized {
                     ty: explicit_ty,
                     span: binding.val_ty.span().clone(),
@@ -62,7 +62,7 @@ pub fn typecheck_local_binding(
         });
     }
 
-    if binding_ty.is_generic() {
+    if binding_ty.is_unspecialized_generic() {
         return Err(GenericError::IllegalUnspecialized {
             ty: binding_ty,
             span: binding.val_ty.span().clone(),

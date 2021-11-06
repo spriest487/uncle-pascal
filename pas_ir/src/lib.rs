@@ -1,5 +1,6 @@
 use std::{collections::hash_map::HashMap, fmt};
 
+use pas_common::span::*;
 use pas_syn::{ast, IdentPath};
 use pas_ty::ast::specialize_func_decl;
 use pas_typecheck as pas_ty;
@@ -372,7 +373,7 @@ enum FunctionDeclKey {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 struct FunctionCacheKey {
     decl_key: FunctionDeclKey,
-    type_args: Vec<pas_ty::Type>,
+    type_args: Option<pas_ty::TypeList>,
 }
 
 impl Module {
@@ -402,6 +403,12 @@ impl Module {
         self.init.extend(unit_init);
     }
 
+    fn file_span(&self) -> Span {
+        let namespace = self.src_metadata.namespace();
+        let file_name = namespace.span().file.as_ref();
+        Span::zero(file_name.clone())
+    }
+
     pub fn insert_func(&mut self, id: FunctionID, function: Function) {
         assert!(
             self.metadata.get_function(id).is_some(),
@@ -420,14 +427,19 @@ impl Module {
             FunctionDeclKey::Function { name } => {
                 match self.src_metadata.find_def(&name).cloned() {
                     Some(pas_ty::Def::Function(func_def)) => {
-                        let specialized_decl = specialize_func_decl(&func_def.decl, &key.type_args)
-                            .expect("function specialization must be valid after typechecking");
+                        let specialized_decl = match key.type_args.as_ref() {
+                            Some(key_type_args) => {
+                                specialize_func_decl(&func_def.decl, key_type_args, &self.file_span(), &self.src_metadata)
+                                    .expect("function specialization must be valid after typechecking")
+                            },
+                            None => func_def.decl.clone(),
+                        };
 
                         let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
 
                         let id = self
                             .metadata
-                            .declare_func(&func_def.decl, key.type_args.clone());
+                            .declare_func(&func_def.decl, key.type_args.as_ref());
 
                         // cache the function before translating the instantiation, because
                         // it may recurse and instantiate itself in its own body
@@ -436,7 +448,7 @@ impl Module {
 
                         let debug_name = specialized_decl.to_string();
                         let ir_func =
-                            self.translate_func_def(&func_def, key.type_args, debug_name);
+                            self.translate_func_def(&func_def, key.type_args.clone(), debug_name);
 
                         self.functions.insert(id, Function::Local(ir_func));
 
@@ -445,13 +457,13 @@ impl Module {
 
                     Some(pas_ty::Def::External(extern_decl)) => {
                         assert!(
-                            key.type_args.is_empty(),
+                            key.type_args.is_none(),
                             "external function must not be generic"
                         );
 
                         let id = self
                             .metadata
-                            .declare_func(&extern_decl, key.type_args.clone());
+                            .declare_func(&extern_decl, key.type_args.as_ref());
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
                         let cached_func = CachedFunction { id, sig };
 
@@ -503,12 +515,17 @@ impl Module {
                         self_ty,
                     ));
 
-                let specialized_decl = specialize_func_decl(&method_def.decl, &key.type_args)
-                    .expect("method specialization failed in codegen");
+                let specialized_decl = match &key.type_args {
+                    Some(key_type_args) => {
+                        specialize_func_decl(&method_def.decl, &key_type_args, &self.file_span(), &self.src_metadata)
+                            .expect("method specialization failed in codegen")
+                    },
+                    None => method_def.decl.clone(),
+                };
 
                 let id = self
                     .metadata
-                    .declare_func(&specialized_decl, key.type_args.clone());
+                    .declare_func(&specialized_decl, key.type_args.as_ref());
 
                 let self_ty = self.metadata.find_type(self_ty);
 
@@ -525,7 +542,7 @@ impl Module {
 
                 let debug_name = specialized_decl.to_string();
                 let ir_func =
-                    self.translate_func_def(&method_def, key.type_args, debug_name);
+                    self.translate_func_def(&method_def, key.type_args.clone(), debug_name);
                 self.functions.insert(id, Function::Local(ir_func));
 
                 cached_func
@@ -550,7 +567,7 @@ impl Module {
             },
 
             // dynamic method calls can't have type args
-            type_args: Vec::new(),
+            type_args: None,
         };
 
         // methods must always be present so make sure they're immediately instantiated
@@ -560,7 +577,7 @@ impl Module {
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
-        type_args: Vec<pas_ty::Type>,
+        type_args: Option<pas_ty::TypeList>,
     ) -> CachedFunction {
         let key = FunctionCacheKey {
             type_args,
@@ -573,10 +590,13 @@ impl Module {
     fn translate_func_def(
         &mut self,
         func: &pas_ty::ast::FunctionDef,
-        type_args: Vec<pas_ty::Type>,
+        type_args: Option<pas_ty::TypeList>,
         debug_name: String,
     ) -> FunctionDef {
-        let mut body_builder = Builder::new(self).with_type_args(type_args);
+        let mut body_builder = match type_args {
+            Some(type_args) => Builder::new(self).with_type_args(type_args),
+            None => Builder::new(self),
+        };
 
         let return_ty = match func.decl.return_ty.as_ref() {
             None | Some(pas_ty::Type::Nothing) => Type::Nothing,
@@ -951,7 +971,7 @@ fn gen_iface_impls(module: &mut Module) {
                             method: method.ident.single().clone(),
                             iface: iface.clone(),
                         },
-                        type_args: Vec::new(),
+                        type_args: None,
                     };
 
                     module.instantiate_func(cache_key);

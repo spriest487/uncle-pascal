@@ -528,7 +528,7 @@ fn translate_method_call(
     method_call: &pas_ty::ast::MethodCall,
     builder: &mut Builder
 ) -> Option<Ref> {
-    if !method_call.type_args.is_empty() {
+    if method_call.type_args.is_some() {
         unimplemented!("method call with type args")
     }
 
@@ -549,11 +549,17 @@ fn translate_method_call(
         },
 
         _ => {
+            let method_self_ty = method_call.self_type.clone();
+            let method_self_ty = match builder.type_args() {
+                Some(builder_type_args) => method_self_ty.substitute_type_args(builder_type_args),
+                None =>  method_self_ty,
+            };
+
 //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
             let method_decl = builder.translate_method_impl(
                 iface,
                 method_call.ident.clone(),
-                method_call.self_type.clone().substitute_type_args(builder.type_args()),
+                method_self_ty,
             );
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
@@ -569,8 +575,13 @@ fn translate_variant_ctor_call(
     variant_ctor: &pas_ty::ast::VariantCtorCall,
     builder: &mut Builder
 ) -> Option<Ref> {
-    let variant_ty = pas_ty::Type::Variant(Box::new(variant_ctor.variant.clone()))
-        .substitute_type_args(builder.type_args());
+    let variant_ty = pas_ty::Type::Variant(Box::new(variant_ctor.variant.clone()));
+
+    let variant_ty = match builder.type_args() {
+        Some(builder_type_args) => variant_ty.substitute_type_args(builder_type_args),
+        None => variant_ty,
+    };
+
     let variant_name = variant_ty.as_variant()
         .unwrap();
 
@@ -617,7 +628,7 @@ fn translate_variant_ctor_call(
     Some(out)
 }
 
-fn is_string_class(class: &pas_ty::QualifiedDeclName) -> bool {
+fn is_string_class(class: &pas_ty::Symbol) -> bool {
     class.qualified.first().name.as_str() == "System"
         && class.qualified.last().name.as_str() == "String"
 }

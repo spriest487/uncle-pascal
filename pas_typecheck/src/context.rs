@@ -1,17 +1,3 @@
-pub mod builtin;
-pub mod ns;
-pub mod result;
-
-mod ufcs;
-
-use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
-    context::NamespaceStack,
-    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, QualifiedDeclName,
-    Type, TypeParamType, TypeParam,
-};
-use pas_common::span::*;
-use pas_syn::{ast::Visibility, ident::*};
 use std::{
     borrow::Borrow,
     collections::hash_map::{Entry, HashMap},
@@ -20,7 +6,23 @@ use std::{
     rc::Rc,
 };
 
+use pas_common::span::*;
+use pas_syn::{ast::Visibility, ident::*};
+
+use crate::{
+    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
+    context::NamespaceStack,
+    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type,
+    TypeParamList, TypeParamType,
+};
+
 pub use self::{builtin::*, ns::*, result::*, ufcs::InstanceMethod};
+
+pub mod builtin;
+pub mod ns;
+pub mod result;
+
+mod ufcs;
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
 pub enum ValueKind {
@@ -84,7 +86,7 @@ pub enum InstanceMember {
     },
     Overloaded {
         candidates: Vec<OverloadCandidate>,
-    }
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -307,7 +309,9 @@ impl Context {
             let string_ty = Type::Class(Box::new(builtin_string_name()));
             let string_name = string_ty.full_path().unwrap();
 
-            let unit_env = Environment::Module { namespace: Ident::new("System", builtin_span) };
+            let unit_env = Environment::Module {
+                namespace: Ident::new("System", builtin_span),
+            };
             let system_scope = root_ctx.push_scope(unit_env);
 
             root_ctx
@@ -520,9 +524,11 @@ impl Context {
     }
 
     /// declare the type params of a function in the local scope
-    pub fn declare_type_params(&mut self, names: &[TypeParam]) -> NamingResult<()> {
-        for (pos, param) in names.iter().enumerate() {
-            let is_iface = param.constraint.as_ref()
+    pub fn declare_type_params(&mut self, names: &TypeParamList) -> NamingResult<()> {
+        for (pos, param) in names.items.iter().enumerate() {
+            let is_iface = param
+                .constraint
+                .as_ref()
                 .map(|c| c.is_ty.clone())
                 .map(Box::new);
 
@@ -853,12 +859,18 @@ impl Context {
         }
     }
 
-    pub fn instantiate_class(&self, name: &QualifiedDeclName) -> NamingResult<Rc<Class>> {
+    pub fn instantiate_class(&self, name: &Symbol) -> NamingResult<Rc<Class>> {
+        name.expect_not_unspecialized()?;
+
         let base_def = self.find_class_def(&name.qualified)?;
 
-        let ty_args = name.type_args.clone();
-        let instance_def =
-            specialize_class_def(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
+        let instance_def = match &name.type_args {
+            Some(type_args) => {
+                let instance_def = specialize_class_def(base_def.as_ref(), type_args, name.span())?;
+                Rc::new(instance_def)
+            }
+            None => base_def,
+        };
 
         Ok(instance_def)
     }
@@ -887,12 +899,19 @@ impl Context {
         }
     }
 
-    pub fn instantiate_variant(&self, name: &QualifiedDeclName) -> NamingResult<Rc<Variant>> {
+    pub fn instantiate_variant(&self, name: &Symbol) -> NamingResult<Rc<Variant>> {
+        name.expect_not_unspecialized()?;
+
         let base_def = self.find_variant_def(&name.qualified)?;
 
-        let ty_args = name.type_args.clone();
-        let instance_def =
-            specialize_generic_variant(base_def.as_ref(), ty_args, name.span()).map(Rc::new)?;
+        let instance_def = match &name.type_args {
+            Some(type_args) => {
+                let instance_def =
+                    specialize_generic_variant(base_def.as_ref(), type_args, name.span())?;
+                Rc::new(instance_def)
+            }
+            None => base_def,
+        };
 
         Ok(instance_def)
     }
@@ -921,7 +940,8 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
+                let unexpected =
+                    UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -959,33 +979,30 @@ impl Context {
 
     pub fn is_iface_impl(&self, self_ty: &Type, iface_name: &IdentPath) -> bool {
         match self_ty {
-            Type::GenericParam(param_ty) => {
-                match &param_ty.is_iface {
-                    Some(as_iface) => as_iface.as_iface() == Ok(iface_name),
-                    None => false,
-                }
+            Type::GenericParam(param_ty) => match &param_ty.is_iface {
+                Some(as_iface) => as_iface.as_iface() == Ok(iface_name),
+                None => false,
             },
 
             _ => match self.iface_impls.get(iface_name) {
                 None => false,
                 Some(impls) => impls.contains_key(self_ty),
-            }
+            },
         }
     }
 
     pub fn implemented_ifaces(&self, self_ty: &Type) -> Vec<IdentPath> {
         match self_ty {
-            Type::GenericParam(param_ty) => {
-                match &param_ty.is_iface {
-                    Some(as_iface) => {
-                        let iface_path = as_iface.as_iface()
-                            .expect("is-constraint can only refer to interface")
-                            .clone();
-                        vec![iface_path]
-                    },
-                    None => Vec::new(),
+            Type::GenericParam(param_ty) => match &param_ty.is_iface {
+                Some(as_iface) => {
+                    let iface_path = as_iface
+                        .as_iface()
+                        .expect("is-constraint can only refer to interface")
+                        .clone();
+                    vec![iface_path]
                 }
-            }
+                None => Vec::new(),
+            },
 
             _ => {
                 let mut result = Vec::new();
@@ -1019,7 +1036,8 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
+                let unexpected =
+                    UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -1094,7 +1112,8 @@ impl Context {
 
             // no data member, multiple methods - we can use overloading to determine which
             (None, _) => {
-                let candidates: Vec<_> = matching_methods.iter()
+                let candidates: Vec<_> = matching_methods
+                    .iter()
                     .map(|m| OverloadCandidate::from_instance_method((**m).clone()))
                     .collect();
 

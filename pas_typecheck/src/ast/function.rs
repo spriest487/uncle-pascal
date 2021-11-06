@@ -4,6 +4,7 @@ use crate::ast::prelude::*;
 
 use std::rc::Rc;
 use pas_syn::ast::DeclMod;
+use crate::ast::prelude::ast::TypeList;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
@@ -31,8 +32,8 @@ pub fn typecheck_func_decl(
     let decl_scope = ctx.push_scope(Environment::FunctionDecl);
 
     if let Some(extern_mod) = decl.mods.iter().find(|m| m.keyword() == DeclMod::EXTERNAL_WORD) {
-        if !decl.type_params.is_empty() {
-            let ty_args_span = decl.type_params[0].ident.span().to(decl.type_params.last().unwrap().ident.span());
+        if let Some(decl_type_params) = &decl.type_params {
+            let ty_args_span = decl_type_params.items[0].ident.span().to(decl_type_params.items.last().unwrap().ident.span());
             return Err(TypecheckError::ExternalGenericFunction {
                 func: decl.ident.last().clone(),
                 extern_modifier: extern_mod.span().clone(),
@@ -41,8 +42,14 @@ pub fn typecheck_func_decl(
         }
     }
 
-    let type_params = typecheck_type_params(&decl.type_params, ctx)?;
-    ctx.declare_type_params(&type_params)?;
+    let type_params = match decl.type_params.as_ref() {
+        Some(decl_type_params) => {
+            let type_params = typecheck_type_params(decl_type_params, ctx)?;
+            ctx.declare_type_params(&type_params)?;
+            Some(type_params)
+        },
+        None => None,
+    };
 
     let return_ty = match &decl.return_ty {
         Some(ty_name) => typecheck_type(ty_name, ctx)?.clone(),
@@ -57,11 +64,7 @@ pub fn typecheck_func_decl(
 
     let (ident, impl_iface) = match &decl.impl_iface {
         Some(iface_impl) => {
-            let method_sig = FunctionSig::new(
-                return_ty.clone(),
-                params.iter(),
-                type_params.iter()
-            );
+            let method_sig = FunctionSig::new(return_ty.clone(), params.clone(), type_params.clone());
 
             let iface_def = match typecheck_type(&iface_impl.iface, ctx)? {
                 Type::Interface(iface) => {
@@ -140,10 +143,6 @@ pub fn typecheck_func_def(
     // functions are always declared within their own bodies (allowing recursive calls)
     ctx.declare_function(decl.ident.last().clone(), &decl, Visibility::Private)?;
 
-    let type_params = typecheck_type_params(&def.decl.type_params, ctx)?;
-
-    ctx.declare_type_params(&type_params)?;
-
     for param in &decl.params {
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
@@ -176,21 +175,17 @@ pub fn typecheck_func_def(
     })
 }
 
-pub fn specialize_func_decl(decl: &FunctionDecl, args: &[Type]) -> TypecheckResult<FunctionDecl> {
-    assert_eq!(args.len(), decl.type_params.len());
+pub fn specialize_func_decl(decl: &FunctionDecl, args: &TypeList<Type>, span: &Span, ctx: &Context) -> TypecheckResult<FunctionDecl> {
+    FunctionSig::of_decl(&decl).validate_type_args(args, span, ctx)?;
 
-    let params: Vec<_> = decl
-        .params
-        .iter()
-        .map(|param| {
-            let ty = param.ty.clone().substitute_type_args(args);
-
-            Ok(FunctionParam {
-                ty,
-                ..param.clone()
-            })
-        })
-        .collect::<TypecheckResult<_>>()?;
+    let mut params = Vec::new();
+    for param in decl.params.iter() {
+        let ty = param.ty.clone().substitute_type_args(args);
+        params.push(FunctionParam {
+            ty,
+            ..param.clone()
+        });
+    }
 
     let return_ty = match &decl.return_ty {
         Some(return_ty) => Some(return_ty.clone().substitute_type_args(args)),

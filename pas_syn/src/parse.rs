@@ -15,7 +15,7 @@ pub mod prelude {
     pub use std::fmt;
 }
 
-use crate::{ast::*, token_tree::*};
+use crate::{ast::*, token_tree::*, Ident};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use std::fmt;
 
@@ -51,6 +51,8 @@ pub enum ParseError {
     InvalidStatement(InvalidStatement<Span>),
     DuplicateModifier { new: DeclMod, existing: DeclMod },
     CtorWithTypeArgs { span: Span },
+    EmptyTypeParamList(TypeList<Ident>),
+    EmptyTypeArgList(TypeList<TypeName>),
     EmptyWhereClause(WhereClause<TypeName>),
     TypeConstraintAlreadySpecified(TypeConstraint<TypeName>),
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
@@ -70,6 +72,8 @@ impl Spanned for ParseError {
             ParseError::CtorWithTypeArgs { span } => span,
             ParseError::TypeConstraintAlreadySpecified(c) => c.span(),
             ParseError::NoMatchingParamForTypeConstraint(c) => c.span(),
+            ParseError::EmptyTypeParamList(tl) => tl.span(),
+            ParseError::EmptyTypeArgList(tl) => tl.span(),
             ParseError::EmptyWhereClause(c) => c.span(),
         }
     }
@@ -87,6 +91,8 @@ impl fmt::Display for ParseError {
             ParseError::CtorWithTypeArgs { .. } => write!(f, "Constructor with type args"),
             ParseError::TypeConstraintAlreadySpecified(..) => write!(f, "Type constraint already specified"),
             ParseError::NoMatchingParamForTypeConstraint(..) => write!(f, "No matching parameter for type constraint"),
+            ParseError::EmptyTypeParamList { .. } => write!(f, "Empty type parameter list"),
+            ParseError::EmptyTypeArgList { .. } => write!(f, "Empty type argument list"),
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
         }
     }
@@ -125,6 +131,14 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::TypeConstraintAlreadySpecified(c) => {
                 format!("parameter `{}` has more than one type constraint", c.param_ident)
+            }
+
+            ParseError::EmptyTypeParamList { .. } => {
+                "type parameter list must contain one or more identifiers".to_string()
+            }
+
+            ParseError::EmptyTypeArgList { .. } => {
+                "type argument list must contain one or more type names".to_string()
             }
 
             ParseError::EmptyWhereClause(..) => {

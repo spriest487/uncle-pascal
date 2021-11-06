@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Annotation, Expression},
+    ast::{Annotation, Expression, TypeList},
     parse::prelude::*,
 };
 use std::{fmt};
@@ -14,7 +14,7 @@ pub struct MethodCall<A: Annotation> {
     pub ident: Ident,
 
     pub args: Vec<Expression<A>>,
-    pub type_args: Vec<A::Type>,
+    pub type_args: Option<TypeList<A::Type>>,
 
     pub annotation: A,
 
@@ -44,7 +44,8 @@ impl<A: Annotation> fmt::Display for MethodCall<A> {
 pub struct FunctionCall<A: Annotation> {
     pub target: Expression<A>,
     pub args: Vec<Expression<A>>,
-    pub type_args: Vec<A::Type>,
+
+    pub type_args: Option<TypeList<A::Type>>,
 
     pub annotation: A,
     pub args_brackets: (Span, Span),
@@ -54,15 +55,8 @@ impl<A: Annotation> fmt::Display for FunctionCall<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.target)?;
 
-        if self.type_args.len() > 0 {
-            write!(f, " of ")?;
-
-            for (i, arg) in self.type_args.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", arg)?;
-            }
+        if let Some(type_args) = self.type_args.as_ref() {
+            write!(f, "{}", type_args)?;
         }
 
         write!(f, "(")?;
@@ -84,7 +78,7 @@ impl<A: Annotation> Spanned for FunctionCall<A> {
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct VariantCtorCall<A: Annotation> {
-    pub variant: A::DeclName,
+    pub variant: A::Name,
     pub case: Ident,
 
     pub arg: Option<Expression<A>>,

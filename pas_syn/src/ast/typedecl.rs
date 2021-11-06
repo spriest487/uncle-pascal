@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FunctionDecl, OfClause},
+    ast::{FunctionDecl, TypeList},
     parse::prelude::*,
 };
 use std::rc::Rc;
@@ -25,7 +25,7 @@ pub enum ClassKind {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Class<A: Annotation> {
     pub kind: ClassKind,
-    pub name: A::DeclName,
+    pub name: A::Name,
     pub members: Vec<Member<A>>,
     pub span: Span,
 }
@@ -109,7 +109,7 @@ impl<A: Annotation> fmt::Display for Class<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Interface<A: Annotation> {
-    pub name: A::DeclName,
+    pub name: A::Name,
     pub methods: Vec<FunctionDecl<A>>,
     pub span: Span,
 }
@@ -160,7 +160,7 @@ impl<A: Annotation> fmt::Display for Interface<A> {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Variant<A: Annotation> {
-    pub name: A::DeclName,
+    pub name: A::Name,
     pub cases: Vec<VariantCase<A>>,
 
     pub span: Span,
@@ -244,7 +244,7 @@ pub enum TypeDecl<A: Annotation> {
 }
 
 impl<A: Annotation> TypeDecl<A> {
-    pub fn ident(&self) -> &A::DeclName {
+    pub fn ident(&self) -> &A::Name {
         match self {
             TypeDecl::Class(class) => &class.name,
             TypeDecl::Interface(iface) => &iface.name,
@@ -260,7 +260,7 @@ impl<A: Annotation> TypeDecl<A> {
 #[derive(Debug, Clone, Eq)]
 pub struct TypeDeclName {
     pub ident: Ident,
-    pub type_params: Vec<Ident>,
+    pub type_params: Option<TypeList<Ident>>,
     pub span: Span,
 }
 
@@ -284,21 +284,19 @@ impl DeclNamed for TypeDeclName {
     }
 
     fn decl_ty_params(&self) -> &[Ident] {
-        &self.type_params
+        match &self.type_params {
+            Some(type_params) => &type_params.items,
+            None => &[],
+        }
     }
 }
 
 impl fmt::Display for TypeDeclName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.ident)?;
-        if !self.type_params.is_empty() {
-            write!(f, " of ")?;
-            for (i, param) in self.type_params.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", param)?;
-            }
+
+        if let Some(type_params) = &self.type_params {
+            write!(f, "{}", type_params)?;
         }
 
         Ok(())
@@ -316,24 +314,27 @@ impl From<Ident> for TypeDeclName {
         TypeDeclName {
             span: ident.span().clone(),
             ident,
-            type_params: Vec::new(),
+            type_params: None,
         }
     }
 }
 
 impl TypeDeclName {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
+        let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
 
-        let of_clause = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?;
+        let type_params = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
+            Some(..) => Some(TypeList::parse_type_params(tokens)?),
+            None => None,
+        };
 
-        let (type_params, span) = match of_clause {
-            None => (Vec::new(), ident_tt.span().clone()),
-            Some(of) => (of.items, ident_tt.span().to(&of.span)),
+        let span = match &type_params {
+            Some(type_param_list) => ident.span().to(type_param_list.span()),
+            None => ident.span().clone(),
         };
 
         Ok(Self {
-            ident: ident_tt.into_ident().unwrap(),
+            ident,
             type_params,
             span,
         })

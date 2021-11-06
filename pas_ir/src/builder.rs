@@ -8,11 +8,12 @@ use crate::{
 
 use std::fmt;
 
-use pas_common::span::Span;
+use pas_common::span::{Span, Spanned};
 use pas_syn::Ident;
 use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
 use std::collections::HashMap;
+use pas_syn::ast::TypeList;
 
 #[derive(Clone, Debug)]
 pub enum Local {
@@ -97,7 +98,7 @@ pub struct Builder<'m> {
     module: &'m mut Module,
 
     //positional list of type args that can be used to reify types in the current context
-    type_args: Vec<pas_ty::Type>,
+    type_args: Option<pas_ty::TypeList>,
 
     instructions: Vec<Instruction>,
     scopes: Vec<Scope>,
@@ -110,7 +111,7 @@ impl<'m> Builder<'m> {
     pub fn new(module: &'m mut Module) -> Self {
         Self {
             module,
-            type_args: Vec::new(),
+            type_args: None,
 
             instructions: vec![Instruction::LocalBegin],
 
@@ -127,14 +128,14 @@ impl<'m> Builder<'m> {
         &self.module.opts
     }
 
-    pub fn type_args(&self) -> &[pas_ty::Type] {
-        &self.type_args
+    pub fn type_args(&self) -> Option<&pas_ty::TypeList> {
+        self.type_args.as_ref()
     }
 
-    pub fn with_type_args(self, type_args: Vec<pas_ty::Type>) -> Self {
-        let any_generic = type_args
+    pub fn with_type_args(self, type_args: pas_ty::TypeList) -> Self {
+        let any_generic = type_args.items
             .iter()
-            .any(|a| a.is_generic_param() || a.is_generic());
+            .any(|a| a.is_generic_param() || a.is_unspecialized_generic());
         if any_generic {
             panic!(
                 "type args in a builder scope must be real types, got: [{}]",
@@ -142,7 +143,7 @@ impl<'m> Builder<'m> {
             );
         }
 
-        Self { type_args, ..self }
+        Self { type_args: Some(type_args), ..self }
     }
 
     #[allow(unused)]
@@ -157,7 +158,7 @@ impl<'m> Builder<'m> {
 
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
-        variant: &pas_ty::QualifiedDeclName,
+        variant: &pas_ty::Symbol,
         case: &pas_syn::Ident,
     ) -> (StructID, usize, Option<&'ty Type>) {
         let name_path = self.translate_name(variant);
@@ -178,16 +179,15 @@ impl<'m> Builder<'m> {
         }
     }
 
-    pub fn translate_name(&mut self, name: &pas_ty::QualifiedDeclName) -> NamePath {
-        if name.is_generic() {
+    pub fn translate_name(&mut self, name: &pas_ty::Symbol) -> NamePath {
+        if name.is_unspecialized_generic() {
             panic!("can't translate unspecialized generic name: {}", name);
         }
 
-        if name.type_args.iter().any(|arg| arg.is_generic_param()) {
-            panic!(
-                "can't translate name containing generic parameters: {}",
-                name
-            )
+        if let Some(name_type_args) = name.type_args.as_ref() {
+            if let Some(t) = name_type_args.items.iter().find(|t| t.is_generic_param()) {
+                panic!("can't translate name containing generic parameters (found {}): {}", t, name);
+            }
         }
 
         let path_parts = name
@@ -197,11 +197,12 @@ impl<'m> Builder<'m> {
             .into_iter()
             .map(|ident| ident.to_string());
 
-        let type_args = name
-            .type_args
-            .iter()
-            .map(|arg| self.translate_type(arg))
-            .collect();
+        let type_args = name.type_args.as_ref().map(|name_type_args_list| {
+            name_type_args_list.items
+                .iter()
+                .map(|arg| self.translate_type(arg))
+                .collect()
+        });
 
         NamePath {
             path: pas_syn::Path::from_parts(path_parts),
@@ -281,7 +282,10 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let src_ty = src_ty.clone().substitute_type_args(&self.type_args);
+        let src_ty = match self.type_args() {
+            Some(current_ty_args) => src_ty.clone().substitute_type_args(&current_ty_args),
+            None => src_ty.clone(),
+        };
 
         if let Some(cached) = self.module.type_cache.get(&src_ty) {
             //            println!("{} -> {}", src_ty, cached);
@@ -409,14 +413,31 @@ impl<'m> Builder<'m> {
     pub fn translate_func(
         &mut self,
         func_name: IdentPath,
-        type_args: Vec<pas_ty::Type>,
+        type_args: Option<pas_ty::TypeList>,
         span: &Span,
     ) -> CachedFunction {
         // specialize type args for current context
-        let type_args: Vec<_> = type_args
-            .iter()
-            .map(|arg| arg.specialize_generic(&self.type_args, span).unwrap())
-            .collect();
+        let type_args = match (type_args, self.type_args()) {
+            (Some(func_ty_args), Some(current_ty_args)) => {
+                assert_eq!(func_ty_args.len(), current_ty_args.len());
+
+                let items =func_ty_args.items
+                    .iter()
+                    .map(|arg| arg.specialize_generic(&current_ty_args, span).unwrap());
+
+                Some(TypeList::new(items, func_ty_args.span().clone()))
+            },
+
+            (None, Some(current_ty_args)) => {
+                panic!("mismatch between expected and available type args: expected none, found {}", current_ty_args)
+            },
+
+            (Some(func_ty_args), None) => {
+                panic!("mismatch between expected and available type args: expected {}, found none", func_ty_args)
+            },
+
+            (None, None) => None,
+        };
 
         let key = FunctionCacheKey {
             type_args,
@@ -1075,8 +1096,8 @@ mod test {
     }
 }
 
-fn type_args_to_string(args: &[pas_ty::Type]) -> String {
-    args.iter()
+fn type_args_to_string(args: &pas_ty::TypeList) -> String {
+    args.items.iter()
         .map(|a| a.to_string())
         .collect::<Vec<_>>()
         .join(", ")

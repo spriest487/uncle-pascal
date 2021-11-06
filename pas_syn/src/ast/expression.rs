@@ -4,7 +4,7 @@ pub(crate) mod test;
 use crate::{
     ast::{
         Annotation, ArgList, BinOp, Block, Call, CollectionCtor, FunctionCall, IfCond, Indexer,
-        ObjectCtor, ObjectCtorArgs, OfClause, TypeName, UnaryOp, Raise,
+        ObjectCtor, ObjectCtorArgs, TypeList, TypeName, UnaryOp, Raise,
     },
     consts::*,
     ident::*,
@@ -238,7 +238,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                 let err = ParseError::UnexpectedOperator {
                     operator: match op_part {
                         OperatorPart::Call { args, .. } => args.open,
-                        OperatorPart::Symbol(op_symbol) => op_symbol.token.span().clone(),
+                        OperatorPart::OperatorSymbol(op_symbol) => op_symbol.token.span().clone(),
                     },
                 };
                 return Err(TracedError::trace(err));
@@ -290,7 +290,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
             resolve_ops_by_precedence(merged_parts)
         }
 
-        OperatorPart::Symbol(op_token) => match op_token.pos {
+        OperatorPart::OperatorSymbol(op_token) => match op_token.pos {
             // merge prefix operator with the operand that follows it
             Position::Binary => {
                 let (before_op, after_op) = parts.split_at(lo_op_index);
@@ -452,12 +452,12 @@ struct SymbolOperator {
 #[derive(Debug, Clone)]
 enum OperatorPart {
     // symbol operator e.g. +, *
-    Symbol(SymbolOperator),
+    OperatorSymbol(SymbolOperator),
 
     // () operator with inner argument list
     Call {
         args: ArgList<Span>,
-        type_args: Vec<TypeName>,
+        type_args: Option<TypeList<TypeName>>,
     },
 }
 
@@ -470,13 +470,13 @@ impl OperatorPart {
                 Operator::Call,
                 Position::Postfix,
             ),
-            (OperatorPart::Call { .. }, OperatorPart::Symbol(sym_op)) => {
+            (OperatorPart::Call { .. }, OperatorPart::OperatorSymbol(sym_op)) => {
                 (Operator::Call, Position::Postfix, sym_op.op, sym_op.pos)
             }
-            (OperatorPart::Symbol(sym_op), OperatorPart::Call { .. }) => {
+            (OperatorPart::OperatorSymbol(sym_op), OperatorPart::Call { .. }) => {
                 (sym_op.op, sym_op.pos, Operator::Call, Position::Postfix)
             }
-            (OperatorPart::Symbol(sym_op_a), OperatorPart::Symbol(sym_op_b)) => {
+            (OperatorPart::OperatorSymbol(sym_op_a), OperatorPart::OperatorSymbol(sym_op_b)) => {
                 (sym_op_a.op, sym_op_a.pos, sym_op_b.op, sym_op_b.pos)
             }
         };
@@ -694,18 +694,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         }
     }
 
-    fn parse_ctor_or_call(&mut self) -> ParseResult<()> {
-        let ty_args = match self.tokens.look_ahead().match_one(Keyword::Of) {
-            Some(_) => {
-                let of_clause =
-                    OfClause::parse(self.tokens, TypeName::parse, TypeName::match_next())?
-                        .expect("of clause must be present if `of` keyword is next");
-
-                of_clause.items
-            }
-            None => Vec::new(),
-        };
-
+    fn parse_invocation(&mut self, ty_args: Option<TypeList<TypeName>>) -> ParseResult<()> {
         // replace the last operand with a function call targeting that expr
         let last_was_ident = match self.parts.last() {
             Some(CompoundExpressionPart::Operand(expr)) => expr.as_ident().is_some(),
@@ -740,10 +729,9 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .is_some();
 
         if is_ctor_ahead && last_was_ident {
-            if ty_args.len() > 0 {
-                let ty_args_span = ty_args[0].span().to(ty_args[ty_args.len() - 1].span());
+            if let Some(ty_args) = ty_args {
                 return Err(TracedError::trace(ParseError::CtorWithTypeArgs {
-                    span: ty_args_span,
+                    span: ty_args.span().clone(),
                 }));
             }
 
@@ -760,8 +748,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             self.push_operand(Expression::from(ctor));
         } else {
             let args = ArgList::parse(&mut self.tokens)?;
+
             self.push_operator_call(args, ty_args);
         }
+
+        self.last_was_operand = true;
 
         Ok(())
     }
@@ -776,45 +767,34 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             .or(Keyword::Of) // generic argument list for explicitly specialized function call
             .or(Operator::Member); // member access
 
-        match self.tokens.look_ahead().match_one(match_after_operand) {
+        let mut look_ahead = self.tokens.look_ahead();
+
+        match look_ahead.match_one(match_after_operand) {
+            // a bracket group starting in operator position is always a call or a ctor call
+            // e.g. x.y.z(a, b, c) or A(b: 2)
             Some(TokenTree::Delimited {
                 delim: DelimiterPair::Bracket,
                 ..
             }) => {
-                self.parse_ctor_or_call()?;
+                let ty_args = None;
+                self.parse_invocation(ty_args)?;
             }
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Of, ..
-            }) => {
-                self.parse_ctor_or_call()?;
-            }
-
-            Some(TokenTree::Delimited {
-                delim: DelimiterPair::SquareBracket,
-                open,
-                inner,
-                close,
-                ..
-            }) => {
-                let base = self.pop_operand();
-
-                let mut index_tokens = TokenStream::new(inner, open);
-                let index_expr = Expression::parse(&mut index_tokens)?;
-                index_tokens.finish()?;
-
-                self.tokens.advance(1);
-                self.last_was_operand = true;
-
-                let span = base.annotation().span().to(close.span());
-
-                let indexer = Indexer {
-                    base,
-                    annotation: span.clone(),
-                    index: index_expr,
-                };
-
-                self.push_operand(Expression::from(indexer));
+            // a square bracket group in operator position may be an indexer:
+            // * `x := a[1];`
+            // * `x := b.Y()[4123];`
+            //
+            // or a type param list:
+            // * `x := A[Integer]();`
+            // * `DoSomething[Byte](255);`
+            Some(TokenTree::Delimited { delim: DelimiterPair::SquareBracket, .. }) => {
+                // if the square bracket group is followed by a bracket group, it must be a generic
+                // function invocation or ctor call
+                if look_ahead.match_one(DelimiterPair::Bracket).is_some() {
+                    self.parse_invocation_with_type_args()?;
+                } else {
+                    self.parse_indexer()?;
+                }
             }
 
             Some(TokenTree::Operator { .. }) => {
@@ -842,13 +822,49 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(true)
     }
 
-    fn push_operator_call(&mut self, args: ArgList<Span>, type_args: Vec<TypeName>) {
+    fn parse_invocation_with_type_args(&mut self) -> ParseResult<()>{
+        let type_args = TypeList::parse_type_args(self.tokens)?;
+
+        self.parse_invocation(Some(type_args))?;
+
+        Ok(())
+    }
+
+    fn parse_indexer(&mut self) -> ParseResult<()> {
+        let (inner, open, close) = match self.tokens.match_one(DelimiterPair::SquareBracket)? {
+            TokenTree::Delimited { inner, open, close, .. } => (inner, open, close),
+            _ => unreachable!(),
+        };
+
+        // previous operand is the base of the index expression
+        let base = self.pop_operand();
+
+        let mut index_tokens = TokenStream::new(inner, open);
+        let index_expr = Expression::parse(&mut index_tokens)?;
+        index_tokens.finish()?;
+
+        self.last_was_operand = true;
+
+        let span = base.annotation().span().to(close.span());
+
+        let indexer = Indexer {
+            base,
+            annotation: span.clone(),
+            index: index_expr,
+        };
+
+        self.push_operand(Expression::from(indexer));
+
+        Ok(())
+    }
+
+    fn push_operator_call(&mut self, args: ArgList<Span>, type_args: Option<TypeList<TypeName>>) {
         let op_call = OperatorPart::Call { args, type_args };
         self.parts.push(CompoundExpressionPart::Operator(op_call));
     }
 
     fn push_operator_token(&mut self, op_token: TokenTree, pos: Position) {
-        let op_token = OperatorPart::Symbol(SymbolOperator {
+        let op_token = OperatorPart::OperatorSymbol(SymbolOperator {
             op: op_token.as_operator().unwrap(),
             pos,
             token: op_token,

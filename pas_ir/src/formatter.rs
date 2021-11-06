@@ -320,9 +320,9 @@ pub trait InstructionFormatter {
     fn format_name(&self, name: &NamePath, f: &mut dyn fmt::Write) -> fmt::Result {
         write!(f, "{}", name.path.join("::"))?;
 
-        if !name.type_args.is_empty() {
+        if let Some(name_type_args) = name.type_args.as_ref() {
             write!(f, "<")?;
-            for (i, arg) in name.type_args.iter().enumerate() {
+            for (i, arg) in name_type_args.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }

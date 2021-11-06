@@ -57,7 +57,7 @@ pub struct Module {
     pub root_ctx: Context,
 
     // language builtins
-    pub string_class: QualifiedDeclName,
+    pub string_class: Symbol,
     pub disposable_iface: IdentPath,
 }
 

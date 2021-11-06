@@ -217,7 +217,7 @@ pub fn ns_member_ref_to_annotation(
                 func_ty: Type::Function(sig.clone()),
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expression to add some
-                type_args: Vec::new(),
+                type_args: None,
             }
         }
 

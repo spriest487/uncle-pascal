@@ -183,7 +183,7 @@ fn desugar_string_concat(
                 name: concat_path.last().clone(),
                 span: span.clone(),
                 func_ty: Type::Function(concat_sig),
-                type_args: Vec::new(),
+                type_args: None,
             };
 
             let concat_func = ast::Expression::Ident(concat_path.last().clone(), concat_annotation);
@@ -191,7 +191,7 @@ fn desugar_string_concat(
             let concat_call = ast::Call::Function(ast::FunctionCall {
                 annotation: annotation.clone(),
                 args: vec![lhs, rhs],
-                type_args: Vec::new(),
+                type_args: None,
                 target: concat_func,
                 args_brackets: (span.clone(), span.clone()),
             });
@@ -444,12 +444,12 @@ pub fn typecheck_typed_value(
 }
 
 pub fn typecheck_variant_ctor(
-    variant_name: &QualifiedDeclName,
+    variant_name: &Symbol,
     member_ident: &Ident,
     ctx: &mut Context
 ) -> TypecheckResult<TypeAnnotation> {
     assert!(
-        variant_name.type_args.is_empty(),
+        variant_name.type_args.is_none(),
         "shouldn't be possible to have explicit type args for a variant constructor expression"
     );
 

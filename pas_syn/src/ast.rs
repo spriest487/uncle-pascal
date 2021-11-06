@@ -32,13 +32,13 @@ pub trait DeclNamed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
 
 pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
-    type DeclName: DeclNamed;
+    type Name: DeclNamed;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
     type Type = TypeName;
-    type DeclName = TypeDeclName;
+    type Name = TypeDeclName;
     type Pattern = TypeNamePattern;
 }
 
@@ -48,13 +48,14 @@ pub enum TypeName {
     Unknown(Span),
     Ident {
         ident: IdentPath,
-        type_args: Vec<TypeName>,
+        type_args: Option<TypeList<TypeName>>,
         indirection: usize,
         span: Span,
     },
     Array {
         element: Box<TypeName>,
         dim: Option<usize>,
+        indirection: usize,
         span: Span,
     },
 }
@@ -96,64 +97,80 @@ impl TypeName {
 
         tokens.look_ahead().expect_one(Self::match_next())?;
 
-        if let Some(array_kw) = tokens.match_one_maybe(Keyword::Array) {
-            // `array of` means the array is dynamic (no dimension)
-            let dim = match tokens.look_ahead().match_one(Keyword::Of) {
-                Some(_) => None,
-
-                None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
-                    TokenTree::Delimited { inner, open, .. } => {
-                        let mut dim_tokens = TokenStream::new(inner, open);
-                        let dim = dim_tokens
-                            .match_one(Matcher::AnyLiteralInteger)?
-                            .as_literal_int()
-                            .and_then(IntConstant::as_usize)
-                            .unwrap();
-                        dim_tokens.finish()?;
-
-                        Some(dim)
-                    }
-                    _ => unreachable!("match failed"),
-                },
-            };
-
-            tokens.match_one(Keyword::Of)?;
-
-            let element = Self::parse(tokens)?;
-
-            let array_span = array_kw.span().to(element.span());
-            let span = match indirection_span {
-                Some(indir_span) => indir_span.to(&array_span),
-                None => array_span,
-            };
-
-            Ok(TypeName::Array {
-                dim,
-                span,
-                element: Box::new(element),
-            })
-        } else {
-            let ident = IdentPath::parse(tokens)?;
-
-            let of_clause = OfClause::parse(tokens, TypeName::parse, Self::match_next())?;
-
-            let (type_args, name_span) = match of_clause {
-                None => (Vec::new(), Spanned::span(&ident).clone()),
-                Some(of) => (of.items, ident.span().to(&of.span)),
-            };
-
-            let span = match indirection_span {
-                Some(indir_span) => indir_span.to(&name_span),
-                None => name_span,
-            };
-
-            Ok(TypeName::Ident {
-                ident,
-                indirection,
-                type_args,
-                span,
-            })
+        match tokens.match_one_maybe(Keyword::Array) {
+            Some(array_kw) => {
+                Self::parse_array_type(tokens, array_kw.span(), indirection, indirection_span.as_ref())
+            },
+            None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
         }
+    }
+
+    fn parse_array_type(tokens: &mut TokenStream, array_kw_span: &Span, indirection: usize, indirection_span: Option<&Span>) -> ParseResult<Self> {
+        // `array of` means the array is dynamic (no dimension)
+        let dim = match tokens.look_ahead().match_one(Keyword::Of) {
+            Some(_) => None,
+
+            None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
+                TokenTree::Delimited { inner, open, .. } => {
+                    let mut dim_tokens = TokenStream::new(inner, open);
+                    let dim = dim_tokens
+                        .match_one(Matcher::AnyLiteralInteger)?
+                        .as_literal_int()
+                        .and_then(IntConstant::as_usize)
+                        .unwrap();
+                    dim_tokens.finish()?;
+
+                    Some(dim)
+                }
+                _ => unreachable!("match failed"),
+            },
+        };
+
+        tokens.match_one(Keyword::Of)?;
+
+        let element = Self::parse(tokens)?;
+
+        let array_span = array_kw_span.to(element.span());
+        let span = match indirection_span {
+            Some(indir_span) => indir_span.to(&array_span),
+            None => array_span,
+        };
+
+        Ok(TypeName::Array {
+            dim,
+            span,
+            indirection,
+            element: Box::new(element),
+        })
+    }
+
+    fn parse_named_type(tokens: &mut TokenStream, indirection: usize, indirection_span: Option<&Span>) -> ParseResult<Self> {
+        let ident = IdentPath::parse(tokens)?;
+
+        let (type_args, name_span) = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
+            Some(..) => {
+                let type_args = TypeList::parse_type_args(tokens)?;
+                let name_span = ident.span().to(type_args.span());
+
+                (Some(type_args), name_span)
+            },
+            None => {
+                let name_span = ident.span().clone();
+                (None, name_span)
+            },
+        };
+
+        let span = match indirection_span {
+            Some(indir_span) => indir_span.to(&name_span),
+            None => name_span,
+        };
+
+        Ok(TypeName::Ident {
+            ident,
+            indirection,
+            type_args,
+            span,
+        })
     }
 }
 
@@ -171,9 +188,9 @@ impl fmt::Display for TypeName {
                 }
                 write!(f, "{}", ident)?;
 
-                if !type_args.is_empty() {
+                if let Some(type_args) = type_args {
                     write!(f, "<")?;
-                    for (i, arg) in type_args.iter().enumerate() {
+                    for (i, arg) in type_args.items.iter().enumerate() {
                         if i > 0 {
                             write!(f, ", ")?;
                         }
@@ -187,12 +204,12 @@ impl fmt::Display for TypeName {
 
             TypeName::Array {
                 element,
-                dim: Some(dim),
+                dim: Option::Some(dim),
                 ..
             } => write!(f, "array[{}] of {}", dim, element),
 
             TypeName::Array {
-                element, dim: None, ..
+                element, dim: Option::None, ..
             } => write!(f, "array of {}", element),
 
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
@@ -200,50 +217,126 @@ impl fmt::Display for TypeName {
     }
 }
 
-pub struct OfClause<Item> {
+/// Delimited list of types used for declaring and using generics
+/// e.g. the part in square brackets of the following:
+///
+/// * `let y := MakeANewBox[Integer](123);`
+/// * `let x: Box[Integer] := y;`
+///
+/// Generic because items may be type names (when they refer to real types in expressions)
+/// or idents only (when they are declaring type parameter names in type/function declarations)
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct TypeList<Item> {
     pub items: Vec<Item>,
-    pub span: Span,
+    span: Span,
 }
 
-impl<Item: Spanned> OfClause<Item> {
+impl<Item> TypeList<Item> {
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn new(items: impl IntoIterator<Item=Item>, span: Span) -> Self {
+        let items: Vec<_> = items.into_iter().collect();
+        if items.len() == 0 {
+            panic!("can't construct an empty type list (@ {})", span);
+        }
+
+        Self { items, span }
+    }
+}
+
+impl<Item> Spanned for TypeList<Item> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl<Item> fmt::Display for TypeList<Item> where Item: fmt::Display {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+
+        for (i, item) in self.items.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", item)?;
+        }
+
+        write!(f, "]")?;
+        Ok(())
+    }
+}
+
+impl TypeList<TypeName> {
+    fn parse_type_args(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let type_args = Self::parse(tokens, TypeName::parse, TypeName::match_next())?;
+
+        if type_args.items.len() == 0 {
+            let err = ParseError::EmptyTypeArgList(type_args);
+            return Err(TracedError::trace(err));
+        }
+
+        Ok(type_args)
+    }
+}
+
+impl TypeList<Ident> {
+    fn parse_type_params(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let type_args = Self::parse(tokens, Ident::parse, Matcher::AnyIdent)?;
+
+        if type_args.items.len() == 0 {
+            let err = ParseError::EmptyTypeParamList(type_args);
+            return Err(TracedError::trace(err));
+        }
+
+        Ok(type_args)
+    }
+}
+
+impl<Item: Spanned> TypeList<Item> {
     fn parse<ItemParser, ItemMatcher>(
         tokens: &mut TokenStream,
         mut item_parser: ItemParser,
         item_next_matcher: ItemMatcher,
-    ) -> ParseResult<Option<Self>>
+    ) -> ParseResult<Self>
     where
         ItemParser: FnMut(&mut TokenStream) -> ParseResult<Item>,
         ItemMatcher: Into<Matcher>,
     {
         let item_next_matcher = item_next_matcher.into();
 
-        match tokens.match_one_maybe(Keyword::Of) {
-            Some(of_kw) => {
-                let items = tokens.match_separated(Separator::Comma, |i, tokens| {
-                    // expect at least one item after `of`
-                    if i > 0
-                        && tokens
-                            .look_ahead()
-                            .match_one(item_next_matcher.clone())
-                            .is_none()
-                    {
-                        Ok(Generate::Break)
-                    } else {
-                        let item = item_parser(tokens)?;
-                        Ok(Generate::Yield(item))
-                    }
-                })?;
+        let (items_tokens, span) = match tokens.match_one(DelimiterPair::SquareBracket)? {
+            TokenTree::Delimited { inner, span, .. } => (inner, span),
+            _ => unreachable!(),
+        };
 
-                let span = items
-                    .last()
-                    .map(|item| of_kw.span().to(item.span()))
-                    .expect("must have at least one item following the `of` keyword");
+        let items = {
+            let mut items_token_stream = TokenStream::new(items_tokens, span.clone());
 
-                Ok(Some(OfClause { items, span }))
-            }
+            let items = items_token_stream.match_separated(Separator::Comma, |i, tokens| {
+                // expect at least one item after `of`
+                if i > 0
+                    && tokens
+                    .look_ahead()
+                    .match_one(item_next_matcher.clone())
+                    .is_none()
+                {
+                    Ok(Generate::Break)
+                } else {
+                    let item = item_parser(tokens)?;
+                    Ok(Generate::Yield(item))
+                }
+            })?;
 
-            None => Ok(None),
-        }
+            items_token_stream.finish()?;
+            items
+        };
+
+        Ok(TypeList {
+            items,
+            span,
+        })
     }
 }
 
@@ -291,7 +384,7 @@ impl TypeNamePattern {
 
         let pattern_path = match &name {
             TypeName::Ident { ident, type_args, indirection, .. } => {
-                if ident.as_slice().len() >= 2 && type_args.is_empty() && *indirection == 0 {
+                if ident.as_slice().len() >= 2 && type_args.is_none() && *indirection == 0 {
                     Some(ident)
                 } else {
                     None

@@ -82,7 +82,7 @@ impl fmt::Display for Span {
     }
 }
 
-pub trait Spanned: fmt::Display {
+pub trait Spanned {
     fn span(&self) -> &Span;
 }
 

@@ -1,5 +1,5 @@
 use crate::{
-    ast::{Block, DeclMod, OfClause, TypeParam, WhereClause},
+    ast::{Block, DeclMod, TypeList, TypeParam, WhereClause},
     parse::prelude::*,
 };
 
@@ -57,7 +57,7 @@ pub struct FunctionDecl<A: Annotation> {
     pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
-    pub type_params: Vec<TypeParam<A::Type>>,
+    pub type_params: Option<TypeList<TypeParam<A::Type>>>,
 
     pub return_ty: Option<A::Type>,
 
@@ -78,9 +78,10 @@ impl FunctionDecl<Span> {
             ident_token = tokens.match_one(Matcher::AnyIdent)?;
         }
 
-        let type_param_idents = OfClause::parse(tokens, Ident::parse, Matcher::AnyIdent)?
-            .map(|of| of.items)
-            .unwrap_or_else(Vec::new);
+        let type_params_list = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
+            Some(..) => Some(TypeList::parse_type_params(tokens)?),
+            None => None,
+        };
 
         let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
 
@@ -146,19 +147,27 @@ impl FunctionDecl<Span> {
 
         let mods = DeclMod::parse(tokens)?;
 
-        let type_params = match tokens.look_ahead().match_one(Keyword::Where) {
-            Some(..) => {
+        let where_clause_tt = tokens.look_ahead().match_one(Keyword::Where);
+        let type_params = match (type_params_list, where_clause_tt) {
+            (None, Some(where_clause_tt)) => {
+                let expected = None;
+                let err = ParseError::UnexpectedToken(Box::new(where_clause_tt), expected);
+
+                return Err(TracedError::trace(err));
+            }
+
+            (Some(type_params_list), Some(..)) => {
                 let mut where_clause = WhereClause::parse(tokens)?;
 
                 let mut type_params = Vec::new();
-                for type_param_ident in type_param_idents {
+                for type_param_ident in &type_params_list.items {
                     let constraint_index = where_clause
                         .constraints
                         .iter()
-                        .position(|c| c.param_ident == type_param_ident);
+                        .position(|c| c.param_ident == *type_param_ident);
 
                     type_params.push(TypeParam {
-                        ident: type_param_ident,
+                        ident: type_param_ident.clone(),
                         constraint: match constraint_index {
                             Some(i) => Some(where_clause.constraints.remove(i)),
                             None => None,
@@ -178,16 +187,27 @@ impl FunctionDecl<Span> {
                     }));
                 }
 
-                type_params
+                Some(TypeList::new(
+                    type_params,
+                    type_params_list.span().clone())
+                )
             }
 
-            None => type_param_idents
-                .into_iter()
-                .map(|ident| TypeParam {
-                    ident,
-                    constraint: None,
-                })
-                .collect(),
+            (Some(type_params), None) => {
+                let items: Vec<_> = type_params.items
+                    .iter()
+                    .map(|ident| TypeParam {
+                        ident: ident.clone(),
+                        constraint: None,
+                    })
+                    .collect();
+
+                Some(TypeList::new(items, type_params.span().clone()))
+            }
+
+            (None, None) => {
+                None
+            }
         };
 
         let sig_span = match &return_ty {
@@ -209,7 +229,7 @@ impl FunctionDecl<Span> {
                 span: tt.span().clone(),
                 indirection: 0,
                 ident: tt.into_ident().unwrap().into(),
-                type_args: Vec::new(),
+                type_args: None,
             };
 
             InterfaceImpl { for_ty, iface }

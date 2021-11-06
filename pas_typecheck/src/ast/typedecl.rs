@@ -7,7 +7,7 @@ pub type Interface = ast::Interface<TypeAnnotation>;
 pub type Variant = ast::Variant<TypeAnnotation>;
 
 pub fn typecheck_type_decl(
-    name: QualifiedDeclName,
+    name: Symbol,
     type_decl: &ast::TypeDecl<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<TypeDecl> {
@@ -29,7 +29,7 @@ pub fn typecheck_type_decl(
 }
 
 pub fn typecheck_class(
-    name: QualifiedDeclName,
+    name: Symbol,
     class: &ast::Class<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Class> {
@@ -68,7 +68,7 @@ pub fn typecheck_class(
 }
 
 pub fn typecheck_iface(
-    name: QualifiedDeclName,
+    name: Symbol,
     iface: &ast::Interface<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Interface> {
@@ -103,7 +103,7 @@ pub fn typecheck_iface(
 }
 
 pub fn typecheck_variant(
-    name: QualifiedDeclName,
+    name: Symbol,
     variant: &ast::Variant<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Variant> {

@@ -13,38 +13,44 @@ use crate::{
     context,
     result::*,
     Context, Decl, GenericError, GenericResult, GenericTarget, NameError, NamingResult,
-    QualifiedDeclName, TypeAnnotation,
+    Symbol, TypeAnnotation,
 };
+use crate::TypeArgsResult::NotGeneric;
 
 #[cfg(test)]
 mod test;
 
 pub type TypeParam = ast::TypeParam<Type>;
 
-pub fn typecheck_type_params(
-    type_params: &[ast::TypeParam<ast::TypeName>],
-    ctx: &mut Context
-) -> TypecheckResult<Vec<TypeParam>> {
-    let mut result = Vec::new();
+pub type TypeList = ast::TypeList<Type>;
+pub type TypeParamList = ast::TypeList<TypeParam>;
 
-    for ty_param in type_params {
-        result.push(ast::TypeParam {
-            ident: ty_param.ident.clone(),
-            constraint: match &ty_param.constraint {
-                Some(constraint) => {
-                    let is_ty = typecheck_type(&constraint.is_ty, ctx)?;
-                    Some(ast::TypeConstraint {
-                        param_ident: ty_param.ident.clone(),
-                        span: constraint.span.clone(),
-                        is_ty,
-                    })
-                }
-                None => None,
+pub fn typecheck_type_params(
+    type_params: &ast::TypeList<ast::TypeParam<ast::TypeName>>,
+    ctx: &mut Context
+) -> TypecheckResult<TypeParamList> {
+    let mut items = Vec::new();
+
+    for ty_param in &type_params.items {
+        let constraint = match &ty_param.constraint {
+            Some(constraint) => {
+                let is_ty = typecheck_type(&constraint.is_ty, ctx)?;
+                Some(ast::TypeConstraint {
+                    param_ident: ty_param.ident.clone(),
+                    span: constraint.span.clone(),
+                    is_ty,
+                })
             }
+            None => None,
+        };
+
+        items.push(ast::TypeParam {
+            ident: ty_param.ident.clone(),
+            constraint
         });
     }
 
-    Ok(result)
+    Ok(TypeParamList::new(items, type_params.span().clone()))
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -89,61 +95,79 @@ pub struct FunctionSigTypeParam {
 pub struct FunctionSig {
     pub return_ty: Type,
     pub params: Vec<FunctionParamSig>,
-    pub type_params: Vec<FunctionSigTypeParam>,
+    pub type_params: Option<ast::TypeList<FunctionSigTypeParam>>,
 }
 
 impl FunctionSig {
-    pub fn new<'a, Params, TypeParams>(
+    pub fn new(
         return_ty: Type,
-        params: Params,
-        type_params: TypeParams,
-    ) -> Self
-      where Params: IntoIterator<Item=&'a FunctionParam>,
-        TypeParams: IntoIterator<Item=&'a TypeParam>
-    {
+        params: Vec<FunctionParam>,
+        type_params: Option<TypeParamList>,
+    ) -> Self {
+        let params = params.into_iter()
+            .map(|p| FunctionParamSig {
+                ty: p.ty.clone(),
+                modifier: p.modifier.clone(),
+            })
+            .collect();
+
+        let type_params = match type_params {
+            Some(type_params) => {
+                let items: Vec<_> = type_params.items.iter()
+                    .map(|decl_param| {
+                        let is_ty = decl_param.constraint.as_ref()
+                            .map(|c| c.is_ty.clone())
+                            .unwrap_or(Type::Any);
+
+                        FunctionSigTypeParam { is_ty }
+                    })
+                    .collect();
+
+                Some(ast::TypeList::new(items, type_params.span().clone()))
+            }
+            None => None,
+        };
+
         Self {
             return_ty,
-            params: params.into_iter()
-                .map(|p| FunctionParamSig {
-                    ty: p.ty.clone(),
-                    modifier: p.modifier.clone(),
-                })
-                .collect(),
-            type_params: type_params.into_iter()
-                .map(|decl_param| {
-                    let is_ty = decl_param.constraint.as_ref()
-                        .map(|c| c.is_ty.clone())
-                        .unwrap_or(Type::Any);
-
-                    FunctionSigTypeParam { is_ty }
-                })
-                .collect()
+            params,
+            type_params,
         }
     }
 
     pub fn of_decl(decl: &FunctionDecl) -> Self {
         let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
-        Self::new(return_ty, decl.params.iter(), decl.type_params.iter())
+        Self::new(return_ty, decl.params.clone(), decl.type_params.clone())
     }
 
-    fn check_type_args(&self, type_args: &[Type], span: &Span, ctx: &Context) -> GenericResult<()> {
-        if type_args.len() != self.type_params.len() {
+    /// test if a list of type args that could be used to specialize this function are applicable
+    /// e.g. this sig has type params, the number of type params is the same as the number
+    /// of args provided, and that each arg passes the constraints for its corresponding param
+    pub fn validate_type_args(&self, type_args: &TypeList, span: &Span, ctx: &Context) -> GenericResult<()> {
+        let expected_type_args_len = match self.type_params.as_ref() {
+            Some(type_params) => type_params.len(),
+            None => 0,
+        };
+
+        if type_args.len() != expected_type_args_len {
             return Err(GenericError::ArgsLenMismatch {
-                expected: self.type_params.len(),
+                expected: expected_type_args_len,
                 actual: type_args.len(),
                 target: GenericTarget::FunctionSig(self.clone()),
                 span: span.clone(),
             });
         }
 
-        for arg_pos in 0..self.type_params.len() {
-            match &self.type_params[arg_pos].is_ty {
+        let type_params = self.type_params.as_ref().expect("must have type params or previous check would fail");
+
+        for arg_pos in 0..type_params.len() {
+            match &type_params.items[arg_pos].is_ty {
                 Type::Any => {
                     // nothing to validate
                 },
 
                 Type::Interface(is_iface_ident) => {
-                    let actual_ty = &type_args[arg_pos];
+                    let actual_ty = &type_args.items[arg_pos];
                     if !ctx.is_iface_impl(actual_ty, is_iface_ident) {
                         return Err(GenericError::ArgConstraintNotSatisfied {
                             is_not_ty: Type::Interface(is_iface_ident.clone()),
@@ -160,8 +184,8 @@ impl FunctionSig {
         Ok(())
     }
 
-    pub fn specialize_generic(&self, type_args: &[Type], span: &Span, ctx: &Context) -> GenericResult<Self> {
-        self.check_type_args(type_args, span, ctx)?;
+    pub fn specialize_generic(&self, type_args: &TypeList, span: &Span, ctx: &Context) -> GenericResult<Self> {
+        self.validate_type_args(type_args, span, ctx)?;
 
         let params = self
             .params
@@ -319,6 +343,12 @@ impl fmt::Display for TypeParamType {
     }
 }
 
+pub enum TypeArgsResult<'a> {
+    Specialized(&'a TypeList),
+    Unspecialized(&'a ast::TypeList<Ident>),
+    NotGeneric,
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub enum Type {
     Nothing,
@@ -326,10 +356,10 @@ pub enum Type {
     Primitive(Primitive),
     Pointer(Box<Type>),
     Function(Rc<FunctionSig>),
-    Record(Box<QualifiedDeclName>),
-    Class(Box<QualifiedDeclName>),
+    Record(Box<Symbol>),
+    Class(Box<Symbol>),
     Interface(IdentPath),
-    Variant(Box<QualifiedDeclName>),
+    Variant(Box<Symbol>),
     Array { element: Box<Type>, dim: usize },
     DynArray { element: Box<Type> },
     MethodSelf,
@@ -449,15 +479,14 @@ impl Type {
     }
 
     /// is this type, or any of the type parameters that it contains, a generic param type?
-    /// e.g. in the sig `X of T(a: Box of T)`, the type of param `a` is `Box of '0`.
-    /// `Box` isn't itself a generic param, but contains param `'0` (`T`) in its own type args
+    /// e.g. in the sig `X[T](a: Box[T])`, the type of param `a` is "Box of type param 0".
     pub fn contains_generic_params(&self) -> bool {
         if self.is_generic_param() {
             return true;
         }
 
-        if let Some(ty_args) = self.type_args() {
-            return ty_args.iter().any(|a| a.contains_generic_params());
+        if let TypeArgsResult::Specialized(type_args) = &self.type_args() {
+            return type_args.items.iter().any(|a| a.contains_generic_params());
         }
 
         if let Some(array_el) = self.array_element_ty() {
@@ -484,14 +513,28 @@ impl Type {
         }
     }
 
-    pub fn type_args(&self) -> Option<&[Type]> {
+    /// get the type args this type is specialized with
+    /// e.g. for the type `Box[Integer]`, the type list contains `Integer`
+    /// returns `None` for non-generic types and unspecialized generic types
+    pub fn type_args(&self) -> TypeArgsResult {
         match self {
             Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
-                if name.is_generic() || name.decl_name.type_params.is_empty() {
-                    None
-                } else {
-                    Some(&name.type_args)
+                match (&name.decl_name.type_params, &name.type_args) {
+                    (Some(type_params), None) => TypeArgsResult::Unspecialized(type_params),
+                    (Some(..), Some(type_args)) => TypeArgsResult::Specialized(type_args),
+                    (None, None) => TypeArgsResult::NotGeneric,
+                    (None, Some(..)) => unreachable!(),
                 }
+            }
+
+            _ => NotGeneric,
+        }
+    }
+
+    pub fn type_params(&self) -> Option<&ast::TypeList<Ident>> {
+        match self {
+            Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
+                name.decl_name.type_params.as_ref()
             }
 
             _ => None,
@@ -646,21 +689,21 @@ impl Type {
         }
     }
 
-    pub fn as_record(&self) -> Result<&QualifiedDeclName, &Self> {
+    pub fn as_record(&self) -> Result<&Symbol, &Self> {
         match self {
             Type::Record(class) => Ok(&*class),
             other => Err(other),
         }
     }
 
-    pub fn as_class(&self) -> Result<&QualifiedDeclName, &Self> {
+    pub fn as_class(&self) -> Result<&Symbol, &Self> {
         match self {
             Type::Class(class) => Ok(&*class),
             other => Err(other),
         }
     }
 
-    pub fn as_variant(&self) -> Result<&QualifiedDeclName, &Self> {
+    pub fn as_variant(&self) -> Result<&Symbol, &Self> {
         match self {
             Type::Variant(name) => Ok(&*name),
             other => Err(other),
@@ -674,43 +717,44 @@ impl Type {
         }
     }
 
+    fn new_class_name(name: &Symbol, args: &TypeList) -> Symbol {
+        if name.is_unspecialized_generic() {
+            panic!("can't substitute types args into unspecialized name")
+        }
+
+        let new_args = name.type_args.as_ref().and_then(|name_type_args| {
+            let items = name_type_args.items.iter()
+                .cloned()
+                .map(|arg| arg.substitute_type_args(args));
+
+            Some(TypeList::new(items, name_type_args.span().clone()))
+        });
+
+        Symbol {
+            type_args: new_args,
+            ..name.clone()
+        }
+    }
+
     // todo: error handling
-    pub fn substitute_type_args(self, args: &[Self]) -> Self {
+    pub fn substitute_type_args(self, args: &TypeList) -> Self {
         if args.len() == 0 {
             return self;
         }
 
-        fn new_class_name(name: &QualifiedDeclName, args: &[Type]) -> QualifiedDeclName {
-            if name.is_generic() {
-                panic!("can't substitute types args into unspecialized name")
-            }
-
-            let new_args = name
-                .type_args
-                .iter()
-                .cloned()
-                .map(|arg| arg.substitute_type_args(args))
-                .collect();
-
-            QualifiedDeclName {
-                type_args: new_args,
-                ..name.clone()
-            }
-        }
-
         match self {
-            Type::GenericParam(param) => args[param.pos].clone(),
+            Type::GenericParam(param) => args.items[param.pos].clone(),
 
-            Type::Class(name) => {
-                Type::Class(Box::new(new_class_name(&name, args)))
+            Type::Class(name) if name.decl_name.type_params.is_some() => {
+                Type::Class(Box::new(Self::new_class_name(&name, args)))
             },
 
-            Type::Record(name) => {
-                Type::Record(Box::new(new_class_name(&name, args)))
+            Type::Record(name)  if name.decl_name.type_params.is_some() => {
+                Type::Record(Box::new(Self::new_class_name(&name, args)))
             },
 
-            Type::Variant(variant) => {
-                Type::Variant(Box::new(new_class_name(&variant, args)))
+            Type::Variant(name)  if name.decl_name.type_params.is_some() => {
+                Type::Variant(Box::new(Self::new_class_name(&name, args)))
             },
 
             Type::DynArray { element } => Type::DynArray {
@@ -726,10 +770,10 @@ impl Type {
         }
     }
 
-    pub fn specialize_generic(&self, args: &[Self], span: &Span) -> GenericResult<Self> {
+    pub fn specialize_generic(&self, args: &TypeList, span: &Span) -> GenericResult<Self> {
         match self {
             Type::GenericParam(type_param) => {
-                let arg = args.get(type_param.pos).unwrap_or_else(|| {
+                let arg = args.items.get(type_param.pos).unwrap_or_else(|| {
                     panic!(
                         "missing arg {} in type arg list {:?} for type {}",
                         type_param, args, self
@@ -809,16 +853,20 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
             let (_, raw_ty) = ctx.find_type(ident)?;
             let raw_ty = raw_ty.clone();
 
-            let ty = if !type_args.is_empty() {
-                let mut checked_type_args = Vec::new();
-                for arg in type_args {
-                    let arg_ty = typecheck_type(&arg, ctx)?;
-                    checked_type_args.push(arg_ty);
+            let ty = match type_args {
+                Some(type_args) => {
+                    let mut checked_type_arg_items = Vec::new();
+                    for arg in &type_args.items {
+                        let arg_ty = typecheck_type(arg, ctx)?;
+                        checked_type_arg_items.push(arg_ty);
+                    }
+
+                    let checked_type_args = TypeList::new(checked_type_arg_items, type_args.span().clone());
+
+                    Type::specialize_generic(&raw_ty, &checked_type_args, span)?
                 }
 
-                Type::specialize_generic(&raw_ty, &checked_type_args, span)?
-            } else {
-                raw_ty.clone()
+                None => raw_ty.clone(),
             };
 
             Ok(ty.indirect_by(*indirection))
@@ -844,42 +892,46 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
 }
 
 pub fn specialize_generic_name(
-    name: &QualifiedDeclName,
-    args: &[Type],
+    name: &Symbol,
+    args: &TypeList,
     span: &Span,
-) -> GenericResult<QualifiedDeclName> {
-    if !name.is_generic() {
+) -> GenericResult<Symbol> {
+    if !name.is_unspecialized_generic() {
         return Ok(name.clone());
     }
 
-    let type_params: &[Ident] = &name.decl_name.type_params.as_slice();
+    let type_params = match name.decl_name.type_params.as_ref() {
+        None => unreachable!("is_unspecialized_generic should have returned false"),
 
-    if args.len() != type_params.len() {
+        Some(type_params) => type_params,
+    };
+
+    if args.len() != type_params.items.len() {
         return Err(GenericError::ArgsLenMismatch {
             target: GenericTarget::Name(name.qualified.clone()),
-            expected: type_params.len(),
+            expected: type_params.items.len(),
             actual: args.len(),
             span: span.clone(),
         });
     }
 
-    let name = QualifiedDeclName {
-        type_args: args.to_vec(),
+    let name = Symbol {
+        type_args: Some(args.clone()),
         ..name.clone()
     };
 
     Ok(name)
 }
 
-pub fn specialize_class_def(class: &Class, args: Vec<Type>, span: &Span) -> GenericResult<Class> {
-    let parameterized_name = specialize_generic_name(&class.name, &args, span)?;
+pub fn specialize_class_def(class: &Class, ty_args: &TypeList, span: &Span) -> GenericResult<Class> {
+    let parameterized_name = specialize_generic_name(&class.name, &ty_args, span)?;
 
     let members: Vec<_> = class
         .members
         .iter()
         .map(|member| {
 //            let ty = specialize_member(&member.ty, &args, span)?;
-            let ty = member.ty.clone().substitute_type_args(&args);
+            let ty = member.ty.clone().substitute_type_args(&ty_args);
 
             Ok(ast::Member {
                 ty,
@@ -898,7 +950,7 @@ pub fn specialize_class_def(class: &Class, args: Vec<Type>, span: &Span) -> Gene
 
 pub fn specialize_generic_variant(
     variant: &Variant,
-    args: Vec<Type>,
+    args: &TypeList,
     span: &Span,
 ) -> GenericResult<Variant> {
     let parameterized_name = specialize_generic_name(&variant.name, &args, span)?;
@@ -932,18 +984,18 @@ pub fn specialize_generic_variant(
 pub trait Specializable {
     type GenericID: PartialEq;
 
-    fn is_generic(&self) -> bool;
+    fn is_unspecialized_generic(&self) -> bool;
     fn name(&self) -> Self::GenericID;
 
     fn is_specialization_of(&self, generic: &Self) -> bool {
-        generic.is_generic() && !self.is_generic() && self.name() == generic.name()
+        generic.is_unspecialized_generic() && !self.is_unspecialized_generic() && self.name() == generic.name()
     }
 
     fn infer_specialized_from_hint<'out, 'a: 'out, 'b: 'out>(
         &'a self,
         hint: &'b Self,
     ) -> Option<&'out Self> {
-        if self.is_generic() {
+        if self.is_unspecialized_generic() {
             if hint.is_specialization_of(self) {
                 Some(hint)
             } else {
@@ -958,15 +1010,15 @@ pub trait Specializable {
 impl Specializable for Type {
     type GenericID = IdentPath;
 
-    fn is_generic(&self) -> bool {
+    fn is_unspecialized_generic(&self) -> bool {
         match self {
-            Type::Class(class) | Type::Record(class) => class.is_generic(),
+            Type::Class(class) | Type::Record(class) => class.is_unspecialized_generic(),
 
-            Type::Variant(variant) => variant.is_generic(),
+            Type::Variant(variant) => variant.is_unspecialized_generic(),
 
-            Type::Array { element, .. } => element.is_generic(),
+            Type::Array { element, .. } => element.is_unspecialized_generic(),
 
-            Type::DynArray { element } => element.is_generic(),
+            Type::DynArray { element } => element.is_unspecialized_generic(),
 
             _ => false,
         }
@@ -984,7 +1036,7 @@ pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
     let str_class_name = ast::TypeName::Ident {
         ident: ns.child(Ident::new("String", span.clone())),
         indirection: 0,
-        type_args: Vec::new(),
+        type_args: None,
         span,
     };
 
@@ -994,13 +1046,13 @@ pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {
     VariantCase {
-        variant: QualifiedDeclName,
+        variant: Symbol,
         case: Ident,
         data_binding: Option<Ident>,
         span: Span,
     },
     NegatedVariantCase {
-        variant: QualifiedDeclName,
+        variant: Symbol,
         case: Ident,
         span: Span,
     },
@@ -1105,7 +1157,7 @@ impl TypePattern {
         span: &Span,
         expect_ty: &Type,
         ctx: &mut Context,
-    ) -> TypecheckResult<QualifiedDeclName> {
+    ) -> TypecheckResult<Symbol> {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
                 let variant_def = ctx.find_variant_def(variant)?;
@@ -1169,7 +1221,7 @@ impl TypePattern {
                         let ty_name = ast::TypeName::Ident {
                             span: name.span().clone(),
                             indirection: 0,
-                            type_args: Vec::new(),
+                            type_args: None,
                             ident: name.clone(),
                         };
 

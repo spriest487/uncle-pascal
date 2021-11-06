@@ -107,23 +107,32 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
             let ty_scope = ctx.push_scope(Environment::TypeDecl);
 
             let decl_name = type_decl.ident().clone();
-            let full_name = QualifiedDeclName {
+            let full_name = Symbol {
                 qualified: ctx.qualify_name(decl_name.ident.clone()),
                 decl_name,
-                type_args: Vec::new(),
+                type_args: None,
             };
 
-            // todo: support type constraints for type decls
-            let type_params: Vec<_> = full_name.decl_name.type_params.iter()
-                .map(|p| ast::TypeParam {
-                    ident: p.clone(),
-                    constraint: None,
-                })
-                .collect();
+            if let Some(decl_name_type_params) = &full_name.decl_name.type_params {
+                let type_params = {
+                    let items: Vec<_> = decl_name_type_params.items.iter()
+                        .map(|p| {
+                            ast::TypeParam {
+                                ident: p.clone(),
 
-            let type_params = typecheck_type_params(&type_params, ctx)?;
+                                // todo: support type constraints for type decls
+                                constraint: None,
+                            }
+                        })
+                        .collect();
 
-            ctx.declare_type_params(&type_params)?;
+                    ast::TypeList::new(items, decl_name_type_params.span().clone())
+                };
+
+                let checked_params = typecheck_type_params(&type_params, ctx)?;
+
+                ctx.declare_type_params(&checked_params)?;
+            }
 
             let type_decl = typecheck_type_decl(full_name, type_decl, ctx)?;
 

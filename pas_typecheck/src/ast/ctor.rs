@@ -31,7 +31,7 @@ pub fn typecheck_object_ctor(
         })?
         .clone();
 
-    if ty.is_generic() {
+    if ty.is_unspecialized_generic() {
         return Err(GenericError::CannotInferArgs {
             target: GenericTarget::Name(ctor.ident.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),

@@ -1,13 +1,13 @@
-export type Box of T = class
+export type Box[T] = class
     value: T
 end;
 
-export function Unbox of T(b: Box of T): T
+export function Unbox[T](b: Box[T]): T
 begin
     b.value
 end;
 
-export function NewBox of T(value: T): Box of T
+export function NewBox[T](value: T): Box[T]
 begin
     Box(value: value)
 end;
@@ -17,7 +17,7 @@ export type String = class
     len: Integer;
 end;
 
-export type Option of T = variant
+export type Option[T] = variant
     Some: T;
     None;
 end;
@@ -31,7 +31,7 @@ export function ReadLn(): String; external 'rt';
 export function IntToStr(i: Integer): String; external 'rt';
 export function StrToInt(s: String): Integer; external 'rt';
 
-function ArrayLengthInternal(arr: Any): Integer; external 'rt';
+function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
 
 export type Disposable = interface
     function Dispose(self: Self);
@@ -176,7 +176,7 @@ begin
     SubString(s, startAt, len)
 end;
 
-export function Length of T(arr: array of T): Integer
+export function Length[T](arr: array of T): Integer
 begin
     ArrayLengthInternal(arr)
 end;
@@ -185,13 +185,13 @@ export type Comparable = interface
     function Compare(self: Self; other: Self): Integer;
 end;
 
-export function Max of T(a, b: T): T
+export function Max[T](a, b: T): T
 where T is Comparable
 begin
     if a.Compare(b) > 0 then a else b
 end;
 
-export function Min of T(a, b: T): T
+export function Min[T](a, b: T): T
 where T is Comparable
 begin
     if a.Compare(b) < 0 then a else b
@@ -228,7 +228,7 @@ end;
 
 function ArraySetLengthInternal(arr: Any; len: Integer): Any; external 'rt';
 
-export function SetLength of T(var arr: array of T; len: Integer)
+export function SetLength[T](var arr: array of T; len: Integer)
 begin
     arr := if ArraySetLengthInternal(arr, len) is array of T newArr
         then newArr

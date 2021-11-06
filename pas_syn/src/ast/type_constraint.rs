@@ -60,7 +60,7 @@ impl WhereClause<TypeName> {
 
             let is_ty = TypeName::Ident {
                 span: is_ty_path.span().clone(),
-                type_args: Vec::new(),
+                type_args: None,
                 ident: is_ty_path,
                 indirection: 0,
             };

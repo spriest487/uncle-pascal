@@ -6,13 +6,9 @@ use pas_syn::{
     ident::IdentPath,
     Ident,
 };
+use pas_syn::ast::TypeList;
 
-use crate::{
-    ast::{Expression, FunctionDecl},
-    result::*,
-    ty::*,
-    ValueKind,
-};
+use crate::{ast::{Expression, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
 use crate::ast::OverloadCandidate;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -125,7 +121,7 @@ pub enum TypeAnnotation {
         name: Ident,
         ns: IdentPath,
         func_ty: Type,
-        type_args: Vec<Type>,
+        type_args: Option<TypeList<Type>>,
     },
     // direct method reference e.g. `Interface.Method`
     InterfaceMethod(InterfaceMethodAnnotation),
@@ -183,10 +179,10 @@ impl TypeAnnotation {
             }),
 
             TypeAnnotation::VariantCtor(ctor) => {
-                let variant_ty = Type::Variant(Box::new(QualifiedDeclName {
+                let variant_ty = Type::Variant(Box::new(Symbol {
                     qualified: ctor.variant_name.clone(),
                     decl_name: TypeDeclName::from(ctor.variant_name.last().clone()),
-                    type_args: Vec::new(),
+                    type_args: None,
                 }));
 
                 Err(TypecheckError::TypeMismatch {
@@ -269,23 +265,37 @@ impl Spanned for TypeAnnotation {
 
 impl Annotation for TypeAnnotation {
     type Type = Type;
-    type DeclName = QualifiedDeclName;
+    type Name = Symbol;
     type Pattern = TypePattern;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub struct QualifiedDeclName {
+pub struct Symbol {
     pub decl_name: TypeDeclName,
     pub qualified: IdentPath,
-    pub type_args: Vec<Type>,
+
+    pub type_args: Option<TypeList<Type>>,
 }
 
-impl Specializable for QualifiedDeclName {
+impl Symbol {
+    pub fn expect_not_unspecialized(&self) -> GenericResult<()> {
+        if !self.is_unspecialized_generic() {
+            Ok(())
+        } else {
+            Err(GenericError::IllegalUnspecialized {
+                ty: Type::Class(Box::new(self.clone())),
+                span: self.span().clone(),
+            })
+        }
+    }
+}
+
+impl Specializable for Symbol {
     type GenericID = IdentPath;
 
-    // is this either a type without type args, or does it already have all the type args it needs?
-    fn is_generic(&self) -> bool {
-        self.type_args.len() != self.decl_name.type_params.len()
+    /// is this either a type without type args, or does it already have all the type args it needs?
+    fn is_unspecialized_generic(&self) -> bool {
+        self.decl_name.type_params.is_some() && self.type_args.is_none()
     }
 
     fn name(&self) -> IdentPath {
@@ -293,44 +303,31 @@ impl Specializable for QualifiedDeclName {
     }
 }
 
-impl DeclNamed for QualifiedDeclName {
+impl DeclNamed for Symbol {
     fn as_local(&self) -> &TypeDeclName {
         &self.decl_name
     }
 
     fn decl_ty_params(&self) -> &[Ident] {
-        &self.decl_name.type_params
+        match self.decl_name.type_params.as_ref() {
+            Some(type_params) => &type_params.items,
+            None => &[],
+        }
     }
 }
 
-impl Spanned for QualifiedDeclName {
+impl Spanned for Symbol {
     fn span(&self) -> &Span {
         self.decl_name.span()
     }
 }
 
-impl fmt::Display for QualifiedDeclName {
+impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        if !self.type_args.is_empty() {
-            write!(f, "{} of ", self.qualified)?;
-
-            for (arg_pos, arg_ty) in self.type_args.iter().enumerate() {
-                if arg_pos > 0 {
-                    write!(f, ", ")?;
-                }
-
-                write!(f, "{}", arg_ty)?;
-            }
-        } else if self.decl_name.type_params.len() > 0 {
-            write!(f, "{} of ", self.qualified)?;
-
-            for (arg_pos, arg_name) in self.decl_name.type_params.iter().enumerate() {
-                if arg_pos > 0 {
-                    write!(f, ", ")?;
-                }
-
-                write!(f, "{}", arg_name)?;
-            }
+        if let Some(type_args) = &self.type_args {
+            write!(f, "{}{}", self.qualified, type_args)?;
+        } else if let Some(type_params) = &self.decl_name.type_params {
+            write!(f, "{}{}", self.qualified, type_params)?;
         } else {
             write!(f, "{}", self.qualified)?;
         }
