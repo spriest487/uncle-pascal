@@ -38,14 +38,19 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    if explicit_ty.implicit_conversion_from(val.annotation().ty(), ctx) == Conversion::Illegal {
-                        return Err(TypecheckError::InvalidBinOp {
-                            lhs: explicit_ty.clone(),
-                            rhs: val.annotation().ty().clone(),
-                            op: Operator::Assignment,
-                            span: val.annotation().span().clone(),
-                        });
-                    }
+                    explicit_ty.implicit_conversion_from(val.annotation().ty(), val.span(), ctx)
+                        .map_err(|err| match err {
+                            TypecheckError::TypeMismatch { expected, actual, span, .. } => {
+                                TypecheckError::InvalidBinOp {
+                                    lhs: expected,
+                                    rhs: actual,
+                                    op: Operator::Assignment,
+                                    span,
+                                }
+                            },
+
+                            err => err
+                        })?;
 
                     Some(val)
                 }
@@ -127,18 +132,20 @@ pub fn typecheck_assignment(
     }
 
     let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
+    let rhs_ty = rhs.annotation().ty();
 
-    let conversion = lhs.annotation().ty().implicit_conversion_from(rhs.annotation().ty(), ctx);
-    if conversion == Conversion::Illegal {
-//        println!("invalid {:#?} {} {:#?}", lhs.annotation().ty(), Operator::Assignment, rhs.annotation().ty());
+    lhs.annotation().ty().implicit_conversion_from(rhs_ty, assignment.span(), ctx).map_err(|err| {
+        match err {
+            TypecheckError::TypeMismatch { expected, actual, span } => TypecheckError::InvalidBinOp {
+                lhs: expected,
+                rhs: actual,
+                op: Operator::Assignment,
+                span,
+            },
 
-        return Err(TypecheckError::InvalidBinOp {
-            lhs: lhs.annotation().ty().clone(),
-            rhs: rhs.annotation().ty().clone(),
-            op: Operator::Assignment,
-            span: rhs.annotation().span().clone(),
-        });
-    }
+            err => err,
+        }
+    })?;
 
     if let ast::Expression::Ident(ident, ..) = &lhs {
         if ctx.is_local(ident) {
@@ -254,13 +261,7 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
         }
     };
 
-    if expect_ty.implicit_conversion_from(&ret_ty, ctx) == Conversion::Illegal {
-        return Err(TypecheckError::TypeMismatch {
-            expected: expect_ty,
-            actual: ret_ty,
-            span: exit.span().clone(),
-        });
-    }
+    expect_ty.implicit_conversion_from(&ret_ty, exit.span(), ctx)?;
 
     Ok(exit)
 }

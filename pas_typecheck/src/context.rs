@@ -238,7 +238,7 @@ pub enum Environment {
     TypeDecl,
     FunctionDecl,
     FunctionBody { result_ty: Type },
-    Block,
+    Block { allow_unsafe: bool },
 }
 
 impl Environment {
@@ -397,6 +397,16 @@ impl Context {
         }
 
         None
+    }
+
+    pub fn allow_unsafe(&self) -> bool {
+        for scope in self.scopes.iter_up() {
+            if let Environment::Block { allow_unsafe: true } = &scope.env {
+                return true;
+            }
+        }
+
+        false
     }
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {

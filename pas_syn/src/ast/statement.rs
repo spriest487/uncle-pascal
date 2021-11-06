@@ -1,10 +1,10 @@
+use crate::ast::Raise;
 use crate::{
     ast::{
         expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, Typed, WhileLoop,
     },
     parse::prelude::*,
 };
-use crate::ast::Raise;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LocalBinding<A: Annotation> {
@@ -91,7 +91,7 @@ impl<A: Annotation> Spanned for Exit<A> {
     fn span(&self) -> &Span {
         match self {
             Exit::WithValue(_, a) => a.span(),
-            Exit::WithoutValue(a) => a.span()
+            Exit::WithoutValue(a) => a.span(),
         }
     }
 }
@@ -101,6 +101,15 @@ pub struct Assignment<A: Annotation> {
     pub lhs: Expression<A>,
     pub rhs: Expression<A>,
     pub annotation: A,
+}
+
+impl<A: Annotation> Spanned for Assignment<A>
+where
+    A: Spanned,
+{
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
 }
 
 impl<A: Annotation> fmt::Display for Assignment<A> {
@@ -228,9 +237,7 @@ impl<A: Annotation> Statement<A> {
                 })))
             }
 
-            Expression::Raise(raise) => {
-                Ok(Statement::Raise(raise))
-            }
+            Expression::Raise(raise) => Ok(Statement::Raise(raise)),
 
             invalid => Err(invalid),
         }
@@ -301,17 +308,15 @@ impl Statement<Span> {
             }
 
             Some(TokenTree::Keyword {
-                     kw: Keyword::Exit,
-                     span,
-                 }) => {
+                kw: Keyword::Exit,
+                span,
+            }) => {
                 tokens.advance(1);
 
                 let stmt_terminator = Keyword::End.or(Separator::Semicolon);
 
                 match tokens.look_ahead().match_one(stmt_terminator) {
-                    Some(..) => {
-                        Ok(Statement::Exit(Exit::WithoutValue(span.clone())))
-                    }
+                    Some(..) => Ok(Statement::Exit(Exit::WithoutValue(span.clone()))),
 
                     _ => {
                         let value_expr = Expression::parse(tokens)?;

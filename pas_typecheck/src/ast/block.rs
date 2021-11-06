@@ -7,7 +7,9 @@ pub fn typecheck_block(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Block> {
-    let block_scope = ctx.push_scope(Environment::Block);
+    let block_scope = ctx.push_scope(Environment::Block {
+        allow_unsafe: block.unsafe_kw.is_some(),
+    });
 
     let mut statements = Vec::new();
 
@@ -107,6 +109,8 @@ pub fn typecheck_block(
 
         begin: block.begin.clone(),
         end: block.end.clone(),
+
+        unsafe_kw: block.unsafe_kw.clone(),
     };
 
     assert_eq!(*block.annotation.ty(), {

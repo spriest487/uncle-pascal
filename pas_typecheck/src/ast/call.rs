@@ -1,14 +1,16 @@
-use std::{
-    rc::Rc,
-    fmt,
-};
+use std::{fmt, rc::Rc};
 
 use pas_common::span::{Span, Spanned as _};
 use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
-use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, ObjectCtor, FunctionDecl};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, NameError, Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, ValueKind, OverloadAnnotation, InterfaceMethodAnnotation, TypeArgsResult, Conversion};
+use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
+use crate::{
+    context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig,
+    GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError,
+    OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError,
+    TypecheckResult, ValueKind,
+};
 
 pub type MethodCall = ast::MethodCall<TypeAnnotation>;
 pub type FunctionCall = ast::FunctionCall<TypeAnnotation>;
@@ -48,14 +50,8 @@ fn typecheck_args(
 
     let rest_args = if let Some(self_arg) = self_arg {
         let self_param = &expected_args[0];
-        let self_conversion = self_param.ty.implicit_conversion_from(self_arg.annotation().ty(), ctx);
-        if self_conversion == Conversion::Illegal {
-            return Err(TypecheckError::TypeMismatch {
-                actual: self_arg.annotation().ty().clone(),
-                expected: self_param.ty.clone(),
-                span: span.clone(),
-            });
-        }
+
+        self_param.ty.implicit_conversion_from(self_arg.annotation().ty(), span, ctx)?;
 
         checked_args.push(self_arg.clone());
 
@@ -117,17 +113,26 @@ fn typecheck_args(
         .map(|arg_expr| arg_expr.annotation().ty())
         .zip(expected_args.iter());
 
+    let type_mismatch_as_bad_args = |err| {
+        match err {
+            TypecheckError::TypeMismatch { .. } => {
+                invalid_args(checked_args.clone(), expected_args, span.clone())
+            },
+            err => err,
+        }
+    };
+
     for (actual, expected) in all_arg_tys {
         if expected.ty == Type::MethodSelf {
             if let Some(self_ty) = &self_ty {
-                if self_ty.implicit_conversion_from(actual, ctx) == Conversion::Illegal {
-                    return Err(invalid_args(checked_args, expected_args, span.clone()));
-                }
+                self_ty.implicit_conversion_from(actual, span, ctx)
+                    .map_err(type_mismatch_as_bad_args)?;
             } else {
                 self_ty = Some(actual);
             }
-        } else if expected.ty.implicit_conversion_from(actual, ctx) == Conversion::Illegal {
-            return Err(invalid_args(checked_args, expected_args, span.clone()));
+        } else {
+            expected.ty.implicit_conversion_from(actual, span, ctx)
+                .map_err(type_mismatch_as_bad_args)?;
         }
     }
 
@@ -138,7 +143,8 @@ fn typecheck_type_args(
     type_args: &TypeList<ast::TypeName>,
     ctx: &mut Context,
 ) -> TypecheckResult<TypeList<Type>> {
-    let items: Vec<_> = type_args.items
+    let items: Vec<_> = type_args
+        .items
         .iter()
         .map(|arg_ty| typecheck_type(arg_ty, ctx))
         .collect::<TypecheckResult<_>>()?;
@@ -247,37 +253,44 @@ fn typecheck_func_overload(
     ctx: &mut Context,
     func_call: &ast::FunctionCall<Span>,
     target: &Expression,
-    overloaded: &OverloadAnnotation
+    overloaded: &OverloadAnnotation,
 ) -> TypecheckResult<Call> {
     let overload = resolve_overload(
         &overloaded.candidates,
         &func_call.args,
         overloaded.self_arg.as_ref().map(|arg| arg.as_ref()),
         &overloaded.span,
-        ctx
+        ctx,
     )?;
 
     let args_brackets = func_call.args_brackets.clone();
 
     let call = match &overloaded.candidates[overload.selected_sig] {
-        OverloadCandidate::Method { iface_ty, ident, sig, decl } => {
+        OverloadCandidate::Method {
+            iface_ty,
+            ident,
+            sig,
+            decl,
+        } => {
             let self_type = match &overloaded.self_arg {
-                Some(self_arg) => {
-                    self_arg.annotation().ty().clone()
-                },
+                Some(self_arg) => self_arg.annotation().ty().clone(),
 
                 None => {
-                    let arg_tys: Vec<_> = overload.args.iter()
+                    let arg_tys: Vec<_> = overload
+                        .args
+                        .iter()
                         .map(|a| a.annotation().ty().clone())
                         .collect();
 
                     match sig.self_ty_from_args(&arg_tys) {
                         Some(self_ty) => self_ty.clone(),
-                        None => return Err(TypecheckError::AmbiguousSelfType {
-                            span: overloaded.span.clone(),
-                            method: ident.clone(),
-                            iface: iface_ty.clone(),
-                        })
+                        None => {
+                            return Err(TypecheckError::AmbiguousSelfType {
+                                span: overloaded.span.clone(),
+                                method: ident.clone(),
+                                iface: iface_ty.clone(),
+                            })
+                        }
                     }
                 }
             };
@@ -331,7 +344,7 @@ fn typecheck_func_overload(
 fn typecheck_iface_method_call(
     iface_method: &InterfaceMethodAnnotation,
     func_call: &ast::FunctionCall<Span>,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Call> {
     // not yet supported
     if let Some(call_type_args) = &func_call.type_args {
@@ -340,26 +353,34 @@ fn typecheck_iface_method_call(
             actual: call_type_args.len(),
             span: call_type_args.span().clone(),
             target: GenericTarget::FunctionSig(iface_method.sig().clone()),
-        }.into());
+        }
+        .into());
     }
 
     // branch the context to check the self-arg, because we're about to re-check it in a second
     let self_type = {
         let mut ctx = ctx.clone();
-        let first_self_pos = iface_method.sig().params.iter()
+        let first_self_pos = iface_method
+            .sig()
+            .params
+            .iter()
             .position(|param| param.ty == Type::MethodSelf)
             .expect("method function must have at least one argument with Self type");
 
         // note that this isn't the "self arg" used for typecheck_args, because we're not passing
         // it implicitly as a separate arg (like the self-arg `x` of `x.Y()` in a UFCS call).
         // it's just the first arg from which we can infer the self-type
-        let first_self_arg = typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
+        let first_self_arg =
+            typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
         first_self_arg.annotation().ty().clone()
     };
 
     let iface_ident = match iface_method.iface_ty.as_iface() {
         Ok(iface_ident) => iface_ident,
-        Err(not_iface) => panic!("expect all method-defining types to be interfaces currently, found: {}", not_iface),
+        Err(not_iface) => panic!(
+            "expect all method-defining types to be interfaces currently, found: {}",
+            not_iface
+        ),
     };
 
     if !ctx.is_iface_impl(&self_type, iface_ident) {
@@ -372,13 +393,8 @@ fn typecheck_iface_method_call(
 
     let sig = iface_method.sig().with_self(&self_type);
 
-    let typechecked_args = typecheck_args(
-        &sig.params,
-        &func_call.args,
-        None,
-        func_call.span(),
-        ctx
-    )?;
+    let typechecked_args =
+        typecheck_args(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
 
     Ok(ast::Call::Method(MethodCall {
         annotation: TypeAnnotation::TypedValue {
@@ -414,7 +430,11 @@ fn typecheck_ufcs_call(
         &span,
         ctx,
     )?;
-    check_arg_types(&specialized_call_args.actual_args, &specialized_call_args.sig, ctx)?;
+    check_arg_types(
+        &specialized_call_args.actual_args,
+        &specialized_call_args.sig,
+        ctx,
+    )?;
 
     let func_annotation = TypeAnnotation::Function {
         func_ty: Type::Function(Rc::new(specialized_call_args.sig.clone())),
@@ -467,7 +487,7 @@ where
                 Some(already_inferred_ty) => {
                     let actual_arg = produce_expr(already_inferred_ty, ctx)?;
                     Ok(actual_arg)
-                },
+                }
 
                 None => {
                     let actual_arg = produce_expr(&Type::Nothing, ctx)?;
@@ -497,7 +517,16 @@ fn infer_from_structural_ty_args(
     inferred_ty_args: &mut Vec<Option<Type>>,
 ) {
     let (param_ty_args, actual_ty_args) = match (param_ty, actual_ty) {
-        (Type::Array { element: param_el, dim: param_dim }, Type::Array { element: actual_el, dim: actual_dim }) => {
+        (
+            Type::Array {
+                element: param_el,
+                dim: param_dim,
+            },
+            Type::Array {
+                element: actual_el,
+                dim: actual_dim,
+            },
+        ) => {
             if *actual_dim != *param_dim {
                 return;
             }
@@ -551,12 +580,14 @@ fn specialize_call_args(
 ) -> TypecheckResult<SpecializedCallArgs> {
     if decl_sig.type_params.is_none() {
         if let Some(explicit_ty_args) = explicit_ty_args {
-            return Err(TypecheckError::GenericError(GenericError::ArgsLenMismatch {
-                expected: 0,
-                actual: explicit_ty_args.len(),
-                span: span.clone(),
-                target: GenericTarget::FunctionSig(decl_sig.clone()),
-            }));
+            return Err(TypecheckError::GenericError(
+                GenericError::ArgsLenMismatch {
+                    expected: 0,
+                    actual: explicit_ty_args.len(),
+                    span: span.clone(),
+                    target: GenericTarget::FunctionSig(decl_sig.clone()),
+                },
+            ));
         }
 
         // no type params
@@ -624,11 +655,12 @@ fn specialize_call_args(
             actual_args.push(actual_arg);
         }
 
-        let inferred_ty_args = unwrap_inferred_args(decl_sig, inferred_ty_args, &actual_args, span)?;
+        let inferred_ty_args =
+            unwrap_inferred_args(decl_sig, inferred_ty_args, &actual_args, span)?;
 
         let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span, ctx)?;
 
-//                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
+        //                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
 
         Ok(SpecializedCallArgs {
             type_args: Some(inferred_ty_args),
@@ -644,7 +676,7 @@ fn unwrap_inferred_args(
     decl_sig: &FunctionSig,
     inferred_args: Vec<Option<Type>>,
     actual_args: &[Expression],
-    span: &Span
+    span: &Span,
 ) -> TypecheckResult<TypeList<Type>> {
     let mut items = Vec::new();
 
@@ -655,15 +687,18 @@ fn unwrap_inferred_args(
             }
 
             None => {
-                let arg_tys = actual_args.iter()
+                let arg_tys = actual_args
+                    .iter()
                     .map(|a| a.annotation().ty().clone())
                     .collect();
 
-                return Err(TypecheckError::GenericError(GenericError::CannotInferArgs {
-                    target: GenericTarget::FunctionSig(decl_sig.clone()),
-                    hint: GenericTypeHint::ArgTypes(arg_tys),
-                    span: span.clone(),
-                }));
+                return Err(TypecheckError::GenericError(
+                    GenericError::CannotInferArgs {
+                        target: GenericTarget::FunctionSig(decl_sig.clone()),
+                        hint: GenericTypeHint::ArgTypes(arg_tys),
+                        span: span.clone(),
+                    },
+                ));
             }
         }
     }
@@ -674,13 +709,7 @@ fn unwrap_inferred_args(
 fn check_arg_types(args: &[Expression], sig: &FunctionSig, ctx: &Context) -> TypecheckResult<()> {
     let args_and_params = args.iter().zip(sig.params.iter());
     for (arg, param) in args_and_params {
-        if param.ty.implicit_conversion_from(arg.annotation().ty(), ctx) == Conversion::Illegal {
-            return Err(TypecheckError::TypeMismatch {
-                expected: param.ty.clone(),
-                actual: arg.annotation().ty().clone(),
-                span: arg.annotation().span().clone(),
-            });
-        }
+        param.ty.implicit_conversion_from(arg.annotation().ty(), arg.span(), ctx)?;
     }
 
     Ok(())
@@ -702,7 +731,11 @@ fn typecheck_func_call(
 
     let specialized_call_args =
         specialize_call_args(sig, &func_call.args, None, type_args, &span, ctx)?;
-    check_arg_types(&specialized_call_args.actual_args, &specialized_call_args.sig, ctx)?;
+    check_arg_types(
+        &specialized_call_args.actual_args,
+        &specialized_call_args.sig,
+        ctx,
+    )?;
 
     let return_ty = specialized_call_args.sig.return_ty.clone();
 
@@ -898,10 +931,12 @@ impl fmt::Display for OverloadCandidate {
         match self {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
-            },
-            OverloadCandidate::Method { iface_ty, ident, .. } => {
+            }
+            OverloadCandidate::Method {
+                iface_ty, ident, ..
+            } => {
                 write!(f, "method {}.{}", iface_ty, ident)
-            },
+            }
         }
     }
 }
@@ -920,12 +955,13 @@ pub fn resolve_overload(
     let candidate_sigs: Vec<_> = match self_arg {
         Some(self_arg) => {
             let self_ty = self_arg.annotation().ty();
-            candidates.iter().map(|c| c.sig().with_self(self_ty)).collect()
+            candidates
+                .iter()
+                .map(|c| c.sig().with_self(self_ty))
+                .collect()
         }
 
-        None => {
-            candidates.iter().map(|c| (**c.sig()).clone()).collect()
-        }
+        None => candidates.iter().map(|c| (**c.sig()).clone()).collect(),
     };
 
     // no overload resolution needed, we can use the param type hint for all args
@@ -933,23 +969,31 @@ pub fn resolve_overload(
         let sig = &candidate_sigs[0];
 
         let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
-        let actual_arg_tys: Vec<_> = args.iter()
+        let actual_arg_tys: Vec<_> = args
+            .iter()
             .map(|arg_expr| arg_expr.annotation().ty().clone())
             .collect();
 
         // if it's a direct interface method invocation (e.g. `Comparable.Compare(1, 2)`),
         // we don't actually know at this point whether that implementation exists!
         if self_arg.is_none() {
-            if let OverloadCandidate::Method { iface_ty, ident: method_ident, .. } = &candidates[0] {
-                let self_ty = sig.self_ty_from_args(&actual_arg_tys)
-                    .ok_or_else(|| TypecheckError::AmbiguousSelfType {
+            if let OverloadCandidate::Method {
+                iface_ty,
+                ident: method_ident,
+                ..
+            } = &candidates[0]
+            {
+                let self_ty = sig.self_ty_from_args(&actual_arg_tys).ok_or_else(|| {
+                    TypecheckError::AmbiguousSelfType {
                         iface: iface_ty.clone(),
                         span: span.clone(),
                         method: method_ident.clone(),
-                    })?;
+                    }
+                })?;
 
-                let iface_name = iface_ty.as_iface()
-                    .expect("can't be a self-less method if the iface type isn't a declared interface!");
+                let iface_name = iface_ty.as_iface().expect(
+                    "can't be a self-less method if the iface type isn't a declared interface!",
+                );
                 if !ctx.is_iface_impl(self_ty, iface_name) {
                     return Err(TypecheckError::InterfaceNotImplemented {
                         iface_ty: iface_ty.clone(),
@@ -987,16 +1031,14 @@ pub fn resolve_overload(
             let self_arg_ty = self_arg.annotation().ty();
 
             if sig.params.len() < 1 {
-//                println!("discarding {} as candidate for {}, not enough params", sig, span);
+                //                println!("discarding {} as candidate for {}, not enough params", sig, span);
                 false
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                if self_param_ty.implicit_conversion_from(self_arg_ty, ctx)  == Conversion::Illegal {
-//                    println!("discarding {} as candidate for {}, {} :!= {}", sig, span, self_param_ty, self_arg_ty);
-                    false
-                } else {
-                    true
+                match self_param_ty.implicit_conversion_from(self_arg_ty, self_arg.span(), ctx) {
+                    Ok(..) => true,
+                    Err(..) => false,
                 }
             }
         });
@@ -1010,7 +1052,7 @@ pub fn resolve_overload(
         // did we find a best match? try to typecheck args as if this is the sig to be called
         if valid_candidates.len() == 1 {
             let selected_sig = valid_candidates[0];
-//            println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
+            //            println!("selected {} as candidate for {}", candidates[selected_sig].sig(), span);
 
             break Ok(Overload {
                 selected_sig,
@@ -1021,7 +1063,7 @@ pub fn resolve_overload(
 
         // ran out of candidates or arguments, couldn't resolve a single sig
         if arg_index >= arg_count || valid_candidates.len() == 0 {
-//            println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
+            //            println!("ran out of args or candidates (arg {}/{}), {} candidates remain)", arg_index + 1, arg_count, valid_candidates.len());
 
             break Err(TypecheckError::AmbiguousFunction {
                 candidates: candidates.to_vec(),
@@ -1029,9 +1071,10 @@ pub fn resolve_overload(
             });
         }
 
-//        println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
+        //        println!("matching {} (arg {}/{}), {} candidates remain)", args[arg_index], arg_index + 1, arg_count, valid_candidates.len());
 
         let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
+        let arg_span = args[arg_index].span();
         let arg_ty = arg.annotation().ty().clone();
         actual_args.push(arg);
 
@@ -1039,16 +1082,11 @@ pub fn resolve_overload(
             let sig = &candidate_sigs[*i];
 
             if param_index > sig.params.len() {
-//                println!("discarding {} as candidate for {}: not enough params", sig, span);
+                //                println!("discarding {} as candidate for {}: not enough params", sig, span);
                 false
             } else {
-                let param_ty = &sig.params[param_index].ty;
-                if param_ty.implicit_conversion_from(&arg_ty, ctx) != Conversion::Illegal {
-                    true
-                } else {
-//                    println!("discarding {} as candidate for {}: {} :!= {}", sig, span, param_ty, arg_ty);
-                    false
-                }
+                let sig_param = &sig.params[param_index];
+                sig_param.ty.implicit_conversion_from(&arg_ty, arg_span, ctx).is_ok()
             }
         });
 
@@ -1066,9 +1104,9 @@ mod test {
     use pas_syn::parse::TokenStream;
     use pas_syn::{ast, TokenTree};
 
-    use crate::ast::{call::resolve_overload, OverloadCandidate, typecheck_expr};
+    use crate::ast::{call::resolve_overload, typecheck_expr, OverloadCandidate};
     use crate::test::module_from_src;
-    use crate::{Context, FunctionSig, Type, Primitive};
+    use crate::{Context, FunctionSig, Primitive, Type};
     use std::cmp::Ordering;
 
     fn parse_expr(src: &str) -> ast::Expression<Span> {
@@ -1159,8 +1197,8 @@ mod test {
 
         let (mut candidates, mut ctx) = candidates_from_src(src);
         // make sure they're in the declared order, just to be sure
-        candidates.sort_by(|a, b| {
-            match (&a.sig().params[1].ty, &b.sig().params[1].ty) {
+        candidates.sort_by(
+            |a, b| match (&a.sig().params[1].ty, &b.sig().params[1].ty) {
                 (Type::Primitive(Primitive::Int32), Type::Primitive(Primitive::Boolean)) => {
                     Ordering::Less
                 }
@@ -1170,20 +1208,22 @@ mod test {
                 }
 
                 _ => Ordering::Equal,
-            }
-        });
+            },
+        );
 
         let self_expr = typecheck_expr(&parse_expr("c"), &Type::Nothing, &mut ctx).unwrap();
 
         let i_expr = parse_expr("i");
         let i_span = i_expr.annotation().clone();
-        let i_overload = resolve_overload(&candidates, &[i_expr], Some(&self_expr), &i_span, &mut ctx).unwrap();
+        let i_overload =
+            resolve_overload(&candidates, &[i_expr], Some(&self_expr), &i_span, &mut ctx).unwrap();
 
         assert_eq!(i_overload.selected_sig, 0);
 
         let b_expr = parse_expr("b");
         let b_span = b_expr.annotation().clone();
-        let b_overload = resolve_overload(&candidates, &[b_expr], Some(&self_expr), &b_span, &mut ctx).unwrap();
+        let b_overload =
+            resolve_overload(&candidates, &[b_expr], Some(&self_expr), &b_span, &mut ctx).unwrap();
 
         assert_eq!(b_overload.selected_sig, 1);
     }

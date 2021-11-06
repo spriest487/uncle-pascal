@@ -1,5 +1,4 @@
 use crate::ast::prelude::*;
-use pas_syn::Operator;
 
 pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;
 pub type ObjectCtorMember = ast::ObjectCtorMember<TypeAnnotation>;
@@ -36,10 +35,9 @@ pub fn typecheck_object_ctor(
             target: GenericTarget::Name(ctor.ident.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
-        }.into());
+        }
+        .into());
     }
-
-
 
     if !ctx.is_accessible(&ty_name) {
         return Err(TypecheckError::Private {
@@ -66,23 +64,22 @@ pub fn typecheck_object_ctor(
 
         let member = match ty_members.iter().find(|m| m.ident == arg.ident) {
             Some(member) => member,
-            None => return Err(NameError::MemberNotFound {
-                base: ty,
-                member: arg.ident.clone(),
-                span: arg.span.clone(),
-            }.into()),
+            None => {
+                return Err(NameError::MemberNotFound {
+                    base: ty,
+                    member: arg.ident.clone(),
+                    span: arg.span.clone(),
+                }
+                .into())
+            }
         };
 
         let value = typecheck_expr(&arg.value, &member.ty, ctx)?;
+        let value_ty = value.annotation().ty();
 
-        if member.ty.implicit_conversion_from(value.annotation().ty(), ctx) == Conversion::Illegal {
-            return Err(TypecheckError::InvalidBinOp {
-                lhs: member.ty.clone(),
-                rhs: value.annotation().ty().clone(),
-                op: Operator::Assignment,
-                span: arg.span().clone(),
-            });
-        }
+        member
+            .ty
+            .implicit_conversion_from(value_ty, value.span(), ctx)?;
 
         members.push(ObjectCtorMember {
             ident: arg.ident.clone(),
@@ -175,7 +172,7 @@ pub fn typecheck_collection_ctor(
 
 fn elements_for_inferred_ty(
     ctor: &ast::CollectionCtor<Span>,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Vec<Expression>> {
     // must have at at least one element to infer types
     if ctor.elements.is_empty() {
@@ -203,7 +200,7 @@ fn elements_for_inferred_ty(
 fn elements_for_expected_ty(
     ctor: &ast::CollectionCtor<Span>,
     expected_ty: &Type,
-    ctx: &mut Context
+    ctx: &mut Context,
 ) -> TypecheckResult<Vec<Expression>> {
     let mut elements = Vec::new();
     for e in &ctor.elements {

@@ -66,11 +66,11 @@ impl Unit<Span> {
                 }) => {
                     let func_decl = FunctionDecl::parse(tokens)?;
 
-                    let begin_next = tokens
+                    let block_ahead = tokens
                         .look_ahead()
-                        .match_one(DelimiterPair::BeginEnd)
+                        .match_one(DelimiterPair::BeginEnd.or(Keyword::Unsafe))
                         .is_some();
-                    if begin_next {
+                    if block_ahead {
                         let body = Block::parse(tokens)?;
 
                         decls.push(UnitDecl::FunctionDef {

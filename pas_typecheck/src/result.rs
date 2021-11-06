@@ -144,6 +144,12 @@ pub enum TypecheckError {
         ty: Type,
         span: Span,
     },
+
+    UnsafeConversionNotAllowed {
+        from: Type,
+        to: Type,
+        span: Span,
+    }
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -202,6 +208,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InterfaceNotImplemented { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
+            TypecheckError::UnsafeConversionNotAllowed { span, .. } => span,
         }
     }
 }
@@ -268,6 +275,7 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
             TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
+            TypecheckError::UnsafeConversionNotAllowed { .. } => "Unsafe conversion not allowed here".to_string(),
         }
     }
 
@@ -517,6 +525,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::DuplicateNamedArg { name, .. } => {
                 write!(f, "named argument `{}` already occurred in this argument list", name)
+            }
+
+            TypecheckError::UnsafeConversionNotAllowed { from, to, .. } => {
+                write!(f, "conversion from `{}` to `{}` is only allowed in an unsafe context", from, to)
             }
         }
     }

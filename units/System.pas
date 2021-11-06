@@ -177,7 +177,7 @@ begin
 end;
 
 export function Length[T](arr: array of T): Integer
-begin
+unsafe begin
     ArrayLengthInternal(arr)
 end;
 

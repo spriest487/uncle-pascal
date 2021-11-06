@@ -25,13 +25,6 @@ pub type TypeParam = ast::TypeParam<Type>;
 pub type TypeList = ast::TypeList<Type>;
 pub type TypeParamList = ast::TypeList<TypeParam>;
 
-#[derive(Hash, Eq, PartialEq, Copy, Clone, Debug)]
-pub enum Conversion {
-    Blittable,
-    UnsafeBlittable,
-    Illegal,
-}
-
 pub fn typecheck_type_params(
     type_params: &ast::TypeList<ast::TypeParam<ast::TypeName>>,
     ctx: &mut Context
@@ -625,12 +618,18 @@ impl Type {
         }
     }
 
-    pub fn implicit_conversion_from(&self, from: &Self, ctx: &Context) -> Conversion {
+    pub fn implicit_conversion_from(&self, from: &Self, span: &Span, ctx: &Context) -> TypecheckResult<()> {
         if *self == *from {
-            return Conversion::Blittable;
+            return Ok(());
         }
 
-        match self {
+        enum Conversion {
+            Blittable,
+            UnsafeBlittable,
+            Illegal,
+        }
+
+        let conversion = match self {
             Type::Primitive(Primitive::Pointer) if *from == Type::Nil => Conversion::Blittable,
 
             Type::Primitive(Primitive::Pointer) if from.is_rc_reference() => Conversion::UnsafeBlittable,
@@ -655,9 +654,25 @@ impl Type {
             },
 
             _ => {
-                eprintln!("illegal!\n{:#?}\n\n{:#?}", self, from);
                 Conversion::Illegal
             },
+        };
+
+        match conversion {
+            Conversion::Blittable => Ok(()),
+            Conversion::UnsafeBlittable if ctx.allow_unsafe() => Ok(()),
+
+            Conversion::UnsafeBlittable => Err(TypecheckError::UnsafeConversionNotAllowed {
+                from: from.clone(),
+                to: self.clone(),
+                span: span.clone(),
+            }),
+
+            Conversion::Illegal => Err(TypecheckError::TypeMismatch {
+                expected: self.clone(),
+                actual: from.clone(),
+                span: span.clone(),
+            })
         }
     }
 

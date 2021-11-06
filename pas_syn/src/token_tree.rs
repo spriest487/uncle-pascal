@@ -114,6 +114,19 @@ impl TokenTree {
         }
     }
 
+    pub fn into_span(self) -> Span {
+        match self {
+            TokenTree::Ident(ident) => ident.span,
+            TokenTree::IntNumber { span, .. } => span,
+            TokenTree::RealNumber { span, .. } => span,
+            TokenTree::String { span, .. } => span,
+            TokenTree::Keyword { span, .. } => span,
+            TokenTree::Operator { span, .. } => span,
+            TokenTree::Separator { span, .. } => span,
+            TokenTree::Delimited { span, .. } => span,
+        }
+    }
+
     pub fn is_ident(&self, word: &str) -> bool {
         match self {
             TokenTree::Ident(ident) => ident.name == word,

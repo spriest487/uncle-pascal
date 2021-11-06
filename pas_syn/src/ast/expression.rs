@@ -216,6 +216,7 @@ pub fn match_operand_start() -> Matcher {
         .or(DelimiterPair::SquareBracket)
         // block/control flow
         .or(DelimiterPair::BeginEnd)
+        .or(Keyword::Unsafe)
         .or(Keyword::If)
         .or(Keyword::Raise)
         // literals

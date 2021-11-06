@@ -1,8 +1,4 @@
-use crate::{
-    ast::{Annotation, Expression, Statement},
-    parse::*,
-    token_tree::*,
-};
+use crate::{ast::{Annotation, Expression, Statement}, Keyword, parse::*, token_tree::*};
 use pas_common::span::*;
 use std::fmt;
 
@@ -11,6 +7,8 @@ pub struct Block<A: Annotation> {
     pub statements: Vec<Statement<A>>,
     pub annotation: A,
     pub output: Option<Expression<A>>,
+
+    pub unsafe_kw: Option<Span>,
 
     pub begin: Span,
     pub end: Span,
@@ -23,6 +21,7 @@ impl<A: Annotation> Block<A> {
             begin: stmt.annotation().span().clone(),
             end: stmt.annotation().span().clone(),
             statements: vec![stmt],
+            unsafe_kw: None,
             output: None,
         }
     }
@@ -30,6 +29,9 @@ impl<A: Annotation> Block<A> {
 
 impl Block<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let unsafe_kw = tokens.match_one_maybe(Keyword::Unsafe)
+            .map(|unsafe_tt| unsafe_tt.into_span());
+
         let body_tt = tokens.match_one(DelimiterPair::BeginEnd)?;
 
         let span = body_tt.span().clone();
@@ -72,6 +74,8 @@ impl Block<Span> {
             output: output_expr,
             begin,
             end,
+
+            unsafe_kw,
         };
 
         Ok(block)

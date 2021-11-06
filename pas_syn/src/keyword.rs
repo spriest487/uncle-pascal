@@ -46,6 +46,7 @@ pub enum Keyword {
     Break,
     Continue,
     Where,
+    Unsafe,
 }
 
 impl Keyword {
@@ -95,6 +96,7 @@ impl Keyword {
             "break" => Some(Keyword::Break),
             "continue" => Some(Keyword::Continue),
             "where" => Some(Keyword::Where),
+            "unsafe" => Some(Keyword::Unsafe),
             _ => None,
         }
     }
@@ -155,6 +157,7 @@ impl fmt::Display for Keyword {
             Keyword::Break => "break",
             Keyword::Continue => "continue",
             Keyword::Where => "where",
+            Keyword::Unsafe => "unsafe",
         })
     }
 }

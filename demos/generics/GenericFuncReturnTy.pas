@@ -12,7 +12,7 @@ let iBox: Box[Integer] := BoxUp(i);
 
 let i2: Integer := iBox.val;
 
-System.WriteLn(System.IntToStr(i2));
+System.WriteLn(IntToStr(i2));
 
 let s1 := 'test';
 let sBox: Box[System.String] := BoxUp(s1);
