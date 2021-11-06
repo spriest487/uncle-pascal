@@ -1,157 +1,28 @@
-mod reporting;
-
-use pas_backend_c as backend_c;
-use pas_common::{
-    span::*, Backtrace, BuildOptions, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput,
-    TracedError,
-};
-use pas_ir::{self as ir, IROptions};
-use pas_interpreter::{Interpreter, InterpreterOpts, ExecError};
-use pas_pp::{self as pp, PreprocessedUnit, PreprocessorError};
-use pas_syn::{ast as syn, parse::*, TokenTree, TokenizeError};
-use pas_typecheck::{self as ty, TypecheckError};
 use std::{
     env,
     ffi::OsStr,
     fmt,
     fs::{self, File},
-    io::{self, Read as _, Write as _},
+    io::{Read as _, Write as _},
     path::PathBuf,
     process,
     str::FromStr,
 };
+
 use structopt::StructOpt;
 
-#[derive(Debug)]
-pub enum CompileError {
-    TokenizeError(TracedError<TokenizeError>),
-    ParseError(TracedError<ParseError>),
-    TypecheckError(TypecheckError),
-    PreprocessorError(PreprocessorError),
-    InvalidUnitFilename(Span),
-    OutputFailed(Span, io::Error),
-    ExecError(ExecError),
-}
+use pas_backend_c as backend_c;
+use pas_common::{span::*, BuildOptions};
+use pas_interpreter::{Interpreter, InterpreterOpts};
+use pas_ir::{self as ir, IROptions};
+use pas_pp::{self as pp, PreprocessedUnit};
+use pas_syn::{ast as syn, parse::*, TokenTree};
+use pas_typecheck as ty;
 
-impl From<TracedError<TokenizeError>> for CompileError {
-    fn from(err: TracedError<TokenizeError>) -> Self {
-        CompileError::TokenizeError(err)
-    }
-}
+use crate::compile_error::CompileError;
 
-impl From<TracedError<ParseError>> for CompileError {
-    fn from(err: TracedError<ParseError>) -> Self {
-        CompileError::ParseError(err)
-    }
-}
-
-impl From<TypecheckError> for CompileError {
-    fn from(err: TypecheckError) -> Self {
-        CompileError::TypecheckError(err)
-    }
-}
-
-impl From<PreprocessorError> for CompileError {
-    fn from(err: PreprocessorError) -> Self {
-        CompileError::PreprocessorError(err)
-    }
-}
-
-impl From<ExecError> for CompileError {
-    fn from(err: ExecError) -> Self {
-        CompileError::ExecError(err)
-    }
-}
-
-impl DiagnosticOutput for CompileError {
-    fn main(&self) -> DiagnosticMessage {
-        match self {
-            CompileError::TokenizeError(err) => err.err.main(),
-            CompileError::ParseError(err) => err.err.main(),
-            CompileError::TypecheckError(err) => err.main(),
-            CompileError::PreprocessorError(err) => err.main(),
-            CompileError::OutputFailed(span, err) => DiagnosticMessage {
-                title: format!(
-                    "Writing output file `{}` failed: {}",
-                    span.file.display(),
-                    err
-                ),
-                label: None,
-            },
-            CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
-                title: "Invalid unit filename".to_string(),
-                label: Some(DiagnosticLabel {
-                    text: None,
-                    span: at.clone(),
-                }),
-            },
-            CompileError::ExecError(ExecError::Raised { msg, ..}) => {
-                DiagnosticMessage {
-                    title: msg.clone(),
-                    label: None,
-                }
-            }
-        }
-    }
-
-    fn see_also(&self) -> Vec<DiagnosticMessage> {
-        match self {
-            CompileError::TokenizeError(err) => err.see_also(),
-            CompileError::ParseError(err) => err.see_also(),
-            CompileError::TypecheckError(err) => err.see_also(),
-            CompileError::PreprocessorError(err) => err.see_also(),
-            CompileError::OutputFailed(..) => Vec::new(),
-            CompileError::InvalidUnitFilename(..) => Vec::new(),
-            CompileError::ExecError(..) => Vec::new(),
-        }
-    }
-
-    fn backtrace(&self) -> Option<&Backtrace> {
-        match self {
-            CompileError::TokenizeError(err) => Some(&err.bt),
-            CompileError::ParseError(err) => Some(&err.bt),
-            CompileError::TypecheckError(_) => None,
-            CompileError::PreprocessorError(_) => None,
-            CompileError::InvalidUnitFilename(_) => None,
-            CompileError::OutputFailed(..) => None,
-            CompileError::ExecError(..) => None,
-        }
-    }
-}
-
-impl Spanned for CompileError {
-    fn span(&self) -> &Span {
-        match self {
-            CompileError::TokenizeError(err) => err.span(),
-            CompileError::ParseError(err) => err.span(),
-            CompileError::TypecheckError(err) => err.span(),
-            CompileError::PreprocessorError(err) => err.span(),
-            CompileError::InvalidUnitFilename(span) => span,
-            CompileError::OutputFailed(span, ..) => span,
-            CompileError::ExecError(err) => err.span(),
-        }
-    }
-}
-
-impl fmt::Display for CompileError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            CompileError::TokenizeError(err) => write!(f, "{}", err.err),
-            CompileError::ParseError(err) => write!(f, "{}", err.err),
-            CompileError::TypecheckError(err) => write!(f, "{}", err),
-            CompileError::PreprocessorError(err) => write!(f, "{}", err),
-            CompileError::InvalidUnitFilename(span) => write!(
-                f,
-                "invalid unit identifier in filename: {}",
-                span.file.display()
-            ),
-            CompileError::OutputFailed(span, err) => {
-                write!(f, "writing to file {} failed: {}", span.file.display(), err,)
-            }
-            CompileError::ExecError(err) => write!(f, "{}", err),
-        }
-    }
-}
+mod compile_error;
+mod reporting;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
 enum Stage {
@@ -333,9 +204,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     }
 
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| {
-            preprocess(&unit_filename, &search_paths, &opts)
-        })
+        .map(|unit_filename| preprocess(&unit_filename, &search_paths, &opts))
         .collect::<Result<_, CompileError>>()?;
 
     if args.stage == Stage::Preprocessed {
@@ -427,10 +296,13 @@ fn search_paths() -> Vec<PathBuf> {
         .and_then(|p| p.parent())
         .map(|p| p.join("units"));
 
-    [cwd, units_dir].iter().filter_map(|p| match p {
-        Some(search_path) => Some(search_path.clone()),
-        None => None,
-    }).collect()
+    [cwd, units_dir]
+        .iter()
+        .filter_map(|p| match p {
+            Some(search_path) => Some(search_path.clone()),
+            None => None,
+        })
+        .collect()
 }
 
 fn main() {
