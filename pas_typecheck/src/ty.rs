@@ -317,6 +317,7 @@ pub enum Primitive {
     Byte,
     Int32,
     Real32,
+    Pointer,
 }
 
 impl Primitive {
@@ -326,6 +327,7 @@ impl Primitive {
             Primitive::Byte => "Byte",
             Primitive::Int32 => "Integer",
             Primitive::Real32 => "Real32",
+            Primitive::Pointer => "Pointer",
         }
     }
 }

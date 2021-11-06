@@ -1060,6 +1060,7 @@ impl Metadata {
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Pointer) => Type::Nothing.ptr(),
 
             pas_ty::Type::Pointer(target) => self.find_type(target).ptr(),
 

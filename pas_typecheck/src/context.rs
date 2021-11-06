@@ -293,6 +293,7 @@ impl Context {
             Primitive::Byte,
             Primitive::Int32,
             Primitive::Real32,
+            Primitive::Pointer,
         ];
         for primitive in &primitives {
             declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
