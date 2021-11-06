@@ -487,36 +487,6 @@ impl OperatorPart {
         prec_a.cmp(&prec_b)
     }
 }
-//
-//enum CallOrCtor<A: Annotation> {
-//    Call {
-//        target: Expression<A>,
-//        args: ArgList<A>,
-//        ty_args: Vec<TypeName>,
-//    },
-//    Ctor {
-//        ty: A::Type,
-//        values: Vec<(Ident, Expression<A>)>,
-//    },
-//}
-//
-//impl CallOrCtor<Span> {
-//    fn parse(
-//        tokens: &mut TokenStream,
-//        base: Expression<Span>,
-//        ty_args: Vec<TypeName>) -> ParseResult<Self> {
-//
-//        let base_is_ident = base.as_ident().is_some();
-//
-//        let args_matches_ctor = ;
-//
-//        if base_is_ident && args_matches_ctor {
-//
-//        } else {
-//
-//        }
-//    }
-//}
 
 #[derive(Debug, Clone)]
 enum CompoundExpressionPart {

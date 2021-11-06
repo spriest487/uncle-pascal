@@ -1,6 +1,6 @@
 use crate::ast::prelude::*;
 use pas_syn::Operator;
-use crate::ast::expression::{CallOrCtor, typecheck_call};
+use crate::ast::expression::{Invocation, typecheck_call};
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
@@ -171,8 +171,8 @@ pub fn typecheck_stmt(
         }
 
         ast::Statement::Call(call) => match typecheck_call(call, expect_ty, ctx)? {
-            CallOrCtor::Call(call) => Ok(ast::Statement::Call(*call)),
-            CallOrCtor::Ctor(ctor) => {
+            Invocation::Call(call) => Ok(ast::Statement::Call(*call)),
+            Invocation::Ctor(ctor) => {
                 let ctor_expr = Expression::from(*ctor);
                 let invalid_stmt = InvalidStatement::from(ctor_expr);
                 Err(TypecheckError::InvalidStatement(Box::new(invalid_stmt)))

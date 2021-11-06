@@ -22,7 +22,7 @@ pub type Call = ast::Call<TypeAnnotation>;
 
 // it's possible that during typechecking we discover what was parsed as a call with zero args
 // is actually the ctor for a class with no fields
-pub enum CallOrCtor {
+pub enum Invocation {
     Call(Box<Call>),
     Ctor(Box<ObjectCtor>),
 }
@@ -162,7 +162,7 @@ pub fn typecheck_call(
     call: &ast::Call<Span>,
     expect_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<CallOrCtor> {
+) -> TypecheckResult<Invocation> {
     let func_call = match call {
         ast::Call::Function(func_call) => func_call,
         _ => unreachable!("parsing cannot result in anything except FunctionCall"),
@@ -176,14 +176,14 @@ pub fn typecheck_call(
             ..
         } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
             .map(Box::new)
-            .map(CallOrCtor::Call)?,
+            .map(Invocation::Call)?,
 
         TypeAnnotation::Function {
             func_ty: Type::Function(sig),
             ..
         } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
             .map(Box::new)
-            .map(CallOrCtor::Call)?,
+            .map(Invocation::Call)?,
 
         TypeAnnotation::UFCSCall {
             function,
@@ -203,19 +203,19 @@ pub fn typecheck_call(
                 ctx,
             );
 
-            typecheck_call.map(Box::new).map(CallOrCtor::Call)?
+            typecheck_call.map(Box::new).map(Invocation::Call)?
         }
 
         TypeAnnotation::Overload(overloaded) => {
             typecheck_func_overload(ctx, func_call, &target, &overloaded)
                 .map(Box::new)
-                .map(CallOrCtor::Call)?
+                .map(Invocation::Call)?
         }
 
         TypeAnnotation::InterfaceMethod(iface_method) => {
             typecheck_iface_method_call(iface_method, func_call, ctx)
                 .map(Box::new)
-                .map(CallOrCtor::Call)?
+                .map(Invocation::Call)?
         }
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
@@ -235,7 +235,7 @@ pub fn typecheck_call(
 
             typecheck_object_ctor(&ctor, span, expect_ty, ctx)
                 .map(Box::new)
-                .map(CallOrCtor::Ctor)?
+                .map(Invocation::Ctor)?
         }
 
         TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
@@ -247,7 +247,7 @@ pub fn typecheck_call(
             ctx,
         )
         .map(Box::new)
-        .map(CallOrCtor::Call)?,
+        .map(Invocation::Call)?,
 
         _ => return Err(TypecheckError::NotCallable(Box::new(target))),
     };

@@ -5,7 +5,7 @@ use crate::{ast::prelude::*, ty::FunctionParamSig};
 
 pub type Expression = ast::Expression<TypeAnnotation>;
 
-pub use call::{typecheck_call, Call, CallOrCtor, FunctionCall, MethodCall, VariantCtorCall};
+pub use call::{typecheck_call, Call, Invocation, FunctionCall, MethodCall, VariantCtorCall};
 
 pub fn typecheck_expr(
     expr_node: &ast::Expression<Span>,
@@ -135,8 +135,8 @@ pub fn typecheck_expr(
 
         ast::Expression::Call(call) => {
             let expr = match typecheck_call(call, expect_ty, ctx)? {
-                CallOrCtor::Call(call) => ast::Expression::from(*call),
-                CallOrCtor::Ctor(ctor) => ast::Expression::from(*ctor),
+                Invocation::Call(call) => ast::Expression::from(*call),
+                Invocation::Ctor(ctor) => ast::Expression::from(*ctor),
             };
             Ok(expr)
         }
