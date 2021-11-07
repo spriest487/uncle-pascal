@@ -4,7 +4,7 @@ use std::{
     fmt,
     fs::{self, File},
     io::{Read as _, Write as _},
-    path::PathBuf,
+    path::{PathBuf},
     process,
     str::FromStr,
 };
@@ -25,7 +25,7 @@ mod compile_error;
 mod reporting;
 
 #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
-enum Stage {
+enum Target {
     Interpret,
     Intermediate,
     SyntaxAst,
@@ -33,16 +33,16 @@ enum Stage {
     Preprocessed,
 }
 
-impl FromStr for Stage {
+impl FromStr for Target {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, String> {
         match s {
-            "interpret" => Ok(Stage::Interpret),
-            "ir" => Ok(Stage::Intermediate),
-            "syn" => Ok(Stage::SyntaxAst),
-            "tyck" => Ok(Stage::TypecheckAst),
-            "pp" => Ok(Stage::Preprocessed),
+            "i" | "interpret" => Ok(Target::Interpret),
+            "ir" | "intermediate" => Ok(Target::Intermediate),
+            "p" | "parse" => Ok(Target::SyntaxAst),
+            "t" | "typecheck" => Ok(Target::TypecheckAst),
+            "pp" | "preprocess" => Ok(Target::Preprocessed),
             _ => Err(format!("invalid output kind: {}", s)),
         }
     }
@@ -61,18 +61,22 @@ struct Args {
     #[structopt(name = "OUTPUT", short = "o", parse(from_os_str))]
     output: Option<PathBuf>,
 
-    /// additional units to link
+    /// additional units to compile
     #[structopt(name = "units", short = "u")]
     units: Vec<String>,
+
+    /// source dir for unit source files
+    #[structopt(name= "search-dir", short = "s", parse(from_os_str))]
+    search_dirs: Vec<PathBuf>,
 
     /// don't automatically reference the standard library units
     #[structopt(long = "no-stdlib")]
     no_stdlib: bool,
 
-    /// target stage. intermediate stages other than `interpret` will cause
+    /// target stage. intermediate targets other than `interpret` will cause
     /// compilation to stop at that stage and dump the output.
-    #[structopt(short = "s", long = "stage", default_value = "interpret")]
-    stage: Stage,
+    #[structopt(short = "t", long = "target", default_value = "interpret")]
+    target: Target,
 
     /// interpreter: log RC heap usage
     #[structopt(long = "trace-heap")]
@@ -194,20 +198,20 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     opts.verbose = args.verbose;
 
     let all_filenames = units.into_iter().chain(vec![args.file.clone()]);
-    let search_paths = search_paths();
+    let source_dirs = source_dirs(args);
 
     if opts.verbose {
-        println!("Unit search paths:");
-        for path in &search_paths {
+        println!("Unit source directories:");
+        for path in &source_dirs {
             println!("\t{}", path.display());
         }
     }
 
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| preprocess(&unit_filename, &search_paths, &opts))
+        .map(|unit_filename| preprocess(&unit_filename, &source_dirs, &opts))
         .collect::<Result<_, CompileError>>()?;
 
-    if args.stage == Stage::Preprocessed {
+    if args.target == Target::Preprocessed {
         for unit in pp_units {
             println!("{}", unit.source);
         }
@@ -225,7 +229,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
         })
         .collect::<Result<_, CompileError>>()?;
 
-    if args.stage == Stage::SyntaxAst {
+    if args.target == Target::SyntaxAst {
         for unit in parsed_units {
             println!("{}", unit);
         }
@@ -234,7 +238,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
 
     let typed_module = ty::Module::typecheck(&parsed_units, args.no_stdlib)?;
 
-    if args.stage == Stage::TypecheckAst {
+    if args.target == Target::TypecheckAst {
         for unit in &typed_module.units {
             println!("{}", unit.unit);
         }
@@ -248,7 +252,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     };
 
     let module = ir::translate(&typed_module, ir_opts);
-    if args.stage == Stage::Intermediate {
+    if args.target == Target::Intermediate {
         println!("{}", module);
         return Ok(());
     }
@@ -284,23 +288,19 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     Ok(())
 }
 
-fn search_paths() -> Vec<PathBuf> {
-    let cwd = env::current_dir().ok();
+fn source_dirs(args: &Args) -> Vec<PathBuf> {
+    args.search_dirs.iter()
+        .filter(|dir| dir.exists())
+        .cloned()
+        .chain({
+            let cwd = env::current_dir().ok();
+            let units_dir = env::var("PASCAL2_UNITS").ok().map(PathBuf::from);
 
-    // todo: search paths should be an arg or env var
-    let executable_path = env::current_exe().ok();
-    let compiler_dir = executable_path.as_ref().and_then(|p| p.parent());
-
-    let units_dir = compiler_dir
-        .and_then(|p| p.parent())
-        .and_then(|p| p.parent())
-        .map(|p| p.join("units"));
-
-    [cwd, units_dir]
-        .iter()
-        .filter_map(|p| match p {
-            Some(search_path) => Some(search_path.clone()),
-            None => None,
+            [cwd, units_dir]
+                .iter()
+                .filter_map(|dir| dir.as_ref())
+                .filter(|dir| dir.exists())
+                .cloned()
         })
         .collect()
 }

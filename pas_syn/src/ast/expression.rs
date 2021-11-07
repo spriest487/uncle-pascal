@@ -3,7 +3,7 @@ pub(crate) mod test;
 
 use crate::{
     ast::{
-        Annotation, ArgList, BinOp, Block, Call, CollectionCtor, FunctionCall, IfCond, Indexer,
+        Annotation, ArgList, BinOp, Block, Call, CollectionCtor, FunctionCall, IfCond,
         ObjectCtor, ObjectCtorArgs, TypeList, TypeName, UnaryOp, Raise,
     },
     consts::*,
@@ -48,8 +48,14 @@ pub enum Expression<A: Annotation> {
     CollectionCtor(Box<CollectionCtor<A>>),
     IfCond(Box<IfCond<A>>),
     Block(Box<Block<A>>),
-    Indexer(Box<Indexer<A>>),
     Raise(Box<Raise<A>>),
+}
+
+impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
+    fn from(ident: Ident) -> Self {
+        let annotation = ident.span().clone().into();
+        Expression::Ident(ident, annotation)
+    }
 }
 
 impl<A: Annotation> From<BinOp<A>> for Expression<A> {
@@ -94,12 +100,6 @@ impl<A: Annotation> From<Block<A>> for Expression<A> {
     }
 }
 
-impl<A: Annotation> From<Indexer<A>> for Expression<A> {
-    fn from(indexer: Indexer<A>) -> Self {
-        Expression::Indexer(Box::new(indexer))
-    }
-}
-
 impl<A: Annotation> From<Raise<A>> for Expression<A> {
     fn from(raise: Raise<A>) -> Self {
         Expression::Raise(Box::new(raise))
@@ -118,7 +118,6 @@ impl<A: Annotation> Expression<A> {
             Expression::Block(block) => &block.annotation,
             Expression::CollectionCtor(ctor) => &ctor.annotation,
             Expression::ObjectCtor(ctor) => &ctor.annotation,
-            Expression::Indexer(indexer) => &indexer.annotation,
             Expression::Raise(raise) => &raise.annotation,
         }
     }
@@ -134,7 +133,6 @@ impl<A: Annotation> Expression<A> {
             Expression::Block(block) => &mut block.annotation,
             Expression::CollectionCtor(ctor) => &mut ctor.annotation,
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
-            Expression::Indexer(indexer) => &mut indexer.annotation,
             Expression::Raise(raise) => &mut raise.annotation,
         }
     }
@@ -194,7 +192,6 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::IfCond(if_cond) => write!(f, "{}", if_cond),
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
-            Expression::Indexer(indexer) => write!(f, "{}", indexer),
             Expression::Raise(raise) => write!(f, "{}", raise),
         }
     }
@@ -239,7 +236,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                 let err = ParseError::UnexpectedOperator {
                     operator: match op_part {
                         OperatorPart::Call { args, .. } => args.open,
-                        OperatorPart::OperatorSymbol(op_symbol) => op_symbol.token.span().clone(),
+                        OperatorPart::OperatorSymbol(op_symbol) => op_symbol.span.clone(),
                     },
                 };
                 return Err(TracedError::trace(err));
@@ -298,7 +295,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
 
                 if before_op.is_empty() {
                     return Err(TracedError::trace(ParseError::EmptyOperand {
-                        operator: op_token.token.span().clone(),
+                        operator: op_token.span.clone(),
                         before: true,
                     }));
                 }
@@ -306,7 +303,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                 // 1 because the op is included in this (?)
                 if after_op.len() <= 1 {
                     return Err(TracedError::trace(ParseError::EmptyOperand {
-                        operator: op_token.token.span().clone(),
+                        operator: op_token.span.clone(),
                         before: false,
                     }));
                 }
@@ -331,7 +328,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
 
                 if after_op.is_empty() {
                     return Err(TracedError::trace(ParseError::EmptyOperand {
-                        operator: op_token.token.span().clone(),
+                        operator: op_token.span.clone(),
                         before: false,
                     }));
                 }
@@ -341,7 +338,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                 let rhs = parts_after_op[0].clone().unwrap_operand();
 
                 let op_expr = {
-                    let span = op_token.token.span().to(rhs.annotation().span());
+                    let span = op_token.span.to(rhs.annotation().span());
                     let unary_op = UnaryOp {
                         op: op_token.op,
                         operand: rhs,
@@ -366,14 +363,14 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
 
                 if before_op.is_empty() {
                     return Err(TracedError::trace(ParseError::EmptyOperand {
-                        operator: op_token.token.span().clone(),
+                        operator: op_token.span.clone(),
                         before: true,
                     }));
                 }
 
                 // everything on the left becomes the operand
                 let operand = resolve_ops_by_precedence(before_op.to_vec())?;
-                let span = op_token.token.span().to(operand.annotation().span());
+                let span = op_token.span.to(operand.annotation().span());
 
                 let op_expr = Expression::from(UnaryOp {
                     op: op_token.op,
@@ -447,7 +444,7 @@ fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expression<Span>>
 struct SymbolOperator {
     op: Operator,
     pos: Position,
-    token: TokenTree,
+    span: Span,
 }
 
 #[derive(Debug, Clone)]
@@ -464,21 +461,19 @@ enum OperatorPart {
 
 impl OperatorPart {
     fn cmp_precedence(&self, b: &Self) -> Ordering {
-        let (op_a, pos_a, op_b, pos_b) = match (self, b) {
+        let ((op_a, pos_a), (op_b, pos_b)) = match (self, b) {
             (OperatorPart::Call { .. }, OperatorPart::Call { .. }) => (
-                Operator::Call,
-                Position::Postfix,
-                Operator::Call,
-                Position::Postfix,
+                (Operator::Call, Position::Postfix),
+                (Operator::Call, Position::Postfix),
             ),
             (OperatorPart::Call { .. }, OperatorPart::OperatorSymbol(sym_op)) => {
-                (Operator::Call, Position::Postfix, sym_op.op, sym_op.pos)
+                ((Operator::Call, Position::Postfix), (sym_op.op, sym_op.pos))
             }
             (OperatorPart::OperatorSymbol(sym_op), OperatorPart::Call { .. }) => {
-                (sym_op.op, sym_op.pos, Operator::Call, Position::Postfix)
+                ((sym_op.op, sym_op.pos), (Operator::Call, Position::Postfix))
             }
             (OperatorPart::OperatorSymbol(sym_op_a), OperatorPart::OperatorSymbol(sym_op_b)) => {
-                (sym_op_a.op, sym_op_a.pos, sym_op_b.op, sym_op_b.pos)
+                ((sym_op_a.op, sym_op_a.pos), (sym_op_b.op, sym_op_b.pos))
             }
         };
 
@@ -561,6 +556,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 let mut group_tokens = TokenStream::new(inner.clone(), open);
 
                 match delim {
+                    // operand is a () group: must be a sub-expression
                     DelimiterPair::Bracket => {
                         let subexpr = Expression::parse(&mut group_tokens)?;
                         group_tokens.finish()?;
@@ -568,12 +564,14 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                         self.push_operand(subexpr);
                     }
 
+                    // operand is a [] group: must be a collection ctor
                     DelimiterPair::SquareBracket => {
                         let ctor = CollectionCtor::parse(self.tokens)?;
                         let expr = Expression::from(ctor);
                         self.push_operand(expr);
                     }
 
+                    // operand is a begin/end group: must be a block
                     DelimiterPair::BeginEnd => {
                         let block = Block::parse(self.tokens)?;
                         let expr = Expression::from(block);
@@ -728,6 +726,20 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         Ok(())
     }
 
+    fn parse_member_access(&mut self) -> ParseResult<()> {
+        let member_op_tt = self.tokens.match_one(Operator::Member)?;
+
+        self.push_operator_token(member_op_tt, Position::Binary);
+
+        let member_ident = self.tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
+
+        self.push_operand(Expression::from(member_ident));
+
+        self.last_was_operand = true;
+
+        Ok(())
+    }
+
     fn parse_operator(&mut self) -> ParseResult<bool> {
         let operator_matcher = Matcher::any_operator_in_position(Position::Binary)
             .or(Matcher::any_operator_in_position(Position::Postfix));
@@ -767,6 +779,10 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 }
             }
 
+            Some(TokenTree::Operator { op: Operator::Member, .. }) => {
+                self.parse_member_access()?;
+            }
+
             Some(TokenTree::Operator { .. }) => {
                 // expect another operand afterwards
 
@@ -801,29 +817,29 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     }
 
     fn parse_indexer(&mut self) -> ParseResult<()> {
-        let (inner, open, close) = match self.tokens.match_one(DelimiterPair::SquareBracket)? {
+        let (inner, open, _close) = match self.tokens.match_one(DelimiterPair::SquareBracket)? {
             TokenTree::Delimited { inner, open, close, .. } => (inner, open, close),
             _ => unreachable!(),
         };
 
-        // previous operand is the base of the index expression
-        let base = self.pop_operand();
+        let index = {
+            let mut index_tokens = TokenStream::new(inner, open.clone());
+            let index_expr = Expression::parse(&mut index_tokens)?;
+            index_tokens.finish()?;
 
-        let mut index_tokens = TokenStream::new(inner, open);
-        let index_expr = Expression::parse(&mut index_tokens)?;
-        index_tokens.finish()?;
-
-        self.last_was_operand = true;
-
-        let span = base.annotation().span().to(close.span());
-
-        let indexer = Indexer {
-            base,
-            annotation: span.clone(),
-            index: index_expr,
+            index_expr
         };
 
-        self.push_operand(Expression::from(indexer));
+        let indexer_part = OperatorPart::OperatorSymbol(SymbolOperator {
+            op: Operator::Index,
+            pos: Position::Binary,
+            span: open,
+        });
+        self.parts.push(CompoundExpressionPart::Operator(indexer_part));
+
+        self.push_operand(index);
+
+        self.last_was_operand = true;
 
         Ok(())
     }
@@ -837,7 +853,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         let op_token = OperatorPart::OperatorSymbol(SymbolOperator {
             op: op_token.as_operator().unwrap(),
             pos,
-            token: op_token,
+            span: op_token.span().clone(),
         });
 
         let part = CompoundExpressionPart::Operator(op_token);

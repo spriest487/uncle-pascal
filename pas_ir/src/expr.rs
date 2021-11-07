@@ -107,22 +107,22 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             translate_block(block, builder).expect("block used in expression must have a type")
         }
 
-        ast::Expression::Indexer(indexer) => translate_indexer(indexer, builder),
-
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
     }
 }
 
-fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> Ref {
-    let ty = builder.translate_type(&indexer.annotation.ty());
-    let ptr_into = builder.local_temp(ty.clone().ptr());
+fn translate_indexer(
+    val_ty: &Type,
+    base_ref: Ref,
+    index_ref: Ref,
+    base_ty: &pas_ty::Type,
+    builder: &mut Builder,
+) -> Ref {
+    let ptr_into = builder.local_temp(val_ty.clone().ptr());
 
     builder.begin_scope();
 
-    let index_ref = translate_expr(&indexer.index, builder);
-    let base_ref = translate_expr(&indexer.base, builder);
-
-    match indexer.base.annotation().ty() {
+    match base_ty {
         pas_ty::Type::Array { element, .. } => {
             let element = builder.translate_type(element);
             builder.append(Instruction::Element {
@@ -134,7 +134,7 @@ fn translate_indexer(indexer: &pas_ty::ast::Indexer, builder: &mut Builder) -> R
         }
 
         pas_ty::Type::DynArray { element } => {
-            let arr_field = builder.local_temp(ty.clone().ptr().ptr());
+            let arr_field = builder.local_temp(val_ty.clone().ptr().ptr());
             let array_struct = builder.translate_dyn_array_struct(&element);
             let array_class = ClassID::Class(array_struct);
 
@@ -749,6 +749,11 @@ fn translate_bin_op(
                 of_ty,
                 field,
             });
+        }
+
+        syn::Operator::Index => {
+            let index_val = translate_expr(&bin_op.rhs, builder);
+            translate_indexer(&out_ty, lhs_val, index_val, bin_op.lhs.annotation().ty(), builder);
         }
 
         syn::Operator::NotEquals => {

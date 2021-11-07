@@ -80,6 +80,9 @@ impl TokenStream {
         }
     }
 
+    /// Match one token in the stream. If the matcher doesn't match the next token, don't
+    /// consume it and return `None`. If the matcher does match the next token, consume it and
+    /// return it as `Some`.
     pub fn match_one_maybe(&mut self, matcher: impl Into<Matcher>) -> Option<TokenTree> {
         self.look_ahead().match_one(matcher).map(|tt| {
             self.advance(1);

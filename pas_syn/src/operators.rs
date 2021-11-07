@@ -48,13 +48,15 @@ pub enum Operator {
     // not used as a syntactical operator, but included so it can easily
     // participate in precedence comparisons
     Call,
+    Index,
 }
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-pub static PRECEDENCE: [(Operator, Position); 24] = [
+pub static PRECEDENCE: [(Operator, Position); 25] = [
     (Operator::Member, Position::Binary),
     (Operator::Call, Position::Postfix),
+    (Operator::Index, Position::Binary),
     (Operator::Deref, Position::Postfix),
     (Operator::AddressOf, Position::Prefix),
     (Operator::Plus, Position::Prefix),
@@ -133,33 +135,32 @@ impl Operator {
 
 impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Operator::Member => ".",
-                Operator::Deref => "^",
-                Operator::AddressOf => "@",
-                Operator::Assignment => ":=",
-                Operator::Equals => "=",
-                Operator::NotEquals => "<>",
-                Operator::Shl => "shl",
-                Operator::Shr => "shr",
-                Operator::Plus => "+",
-                Operator::Minus => "-",
-                Operator::Multiply => "*",
-                Operator::IntegerDivide => "/",
-                Operator::And => "and",
-                Operator::Not => "not",
-                Operator::Or => "or",
-                Operator::Gt => ">",
-                Operator::Gte => ">=",
-                Operator::Lt => "<",
-                Operator::Lte => "<=",
-                Operator::In => "in",
-                Operator::RangeInclusive => "..",
-                Operator::Call => "(...)",
-            }
-        )
+        let op_str = match self {
+            Operator::Member => ".",
+            Operator::Deref => "^",
+            Operator::AddressOf => "@",
+            Operator::Assignment => ":=",
+            Operator::Equals => "=",
+            Operator::NotEquals => "<>",
+            Operator::Shl => "shl",
+            Operator::Shr => "shr",
+            Operator::Plus => "+",
+            Operator::Minus => "-",
+            Operator::Multiply => "*",
+            Operator::IntegerDivide => "/",
+            Operator::And => "and",
+            Operator::Not => "not",
+            Operator::Or => "or",
+            Operator::Gt => ">",
+            Operator::Gte => ">=",
+            Operator::Lt => "<",
+            Operator::Lte => "<=",
+            Operator::In => "in",
+            Operator::RangeInclusive => "..",
+            Operator::Call => "(...)",
+            Operator::Index => "[...]",
+        };
+
+        write!(f, "{}", op_str)
     }
 }

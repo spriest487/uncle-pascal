@@ -98,3 +98,32 @@ fn parse_invocation_with_type_args() {
         invalid => panic!("expected call, got {:#?}", invalid)
     }
 }
+
+#[test]
+fn member_indexer_parse_order() {
+    let expr = parse_expr("x.y[1]");
+
+    match expr {
+        Expression::Indexer(indexer) => {
+            match indexer.base {
+                Expression::BinOp(bin_op) => {
+                    let lhs_ident = bin_op.lhs.as_ident().expect("lhs should be an ident");
+                    let rhs_ident = bin_op.rhs.as_ident().expect("rhs should be an ident");
+
+                    assert_eq!(lhs_ident.name, "x");
+                    assert_eq!(rhs_ident.name, "y");
+                }
+                invalid => panic!("expected indexer base expression, got {:#?}", invalid),
+            }
+
+            match indexer.index {
+                Expression::Literal(Literal::Integer(int_const), ..) => {
+                    assert_eq!(1, int_const.as_i32().unwrap());
+                }
+                invalid => panic!("expected indexer index expression, got {:#?}", invalid),
+            }
+        }
+
+        invalid => panic!("expected indexer expression, got {:#?}", invalid)
+    }
+}

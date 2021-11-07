@@ -126,7 +126,9 @@ pub fn typecheck_expr(
             Ok(ast::Expression::Ident(ident.clone(), annotation))
         }
 
-        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
+        ast::Expression::BinOp(bin_op) => {
+            typecheck_bin_op(bin_op, expect_ty, ctx)
+        },
 
         ast::Expression::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, ctx)?;
@@ -160,11 +162,6 @@ pub fn typecheck_expr(
         ast::Expression::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
             Ok(ast::Expression::from(block))
-        }
-
-        ast::Expression::Indexer(indexer) => {
-            let indexer = typecheck_indexer(indexer, ctx)?;
-            Ok(ast::Expression::from(indexer))
         }
 
         ast::Expression::Raise(raise) => {
@@ -292,12 +289,6 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         },
 
         ast::Expression::Literal(..) => Ok(()),
-
-        ast::Expression::Indexer(indexer) => {
-            expect_expr_initialized(&indexer.base, ctx)?;
-            expect_expr_initialized(&indexer.index, ctx)?;
-            Ok(())
-        }
 
         ast::Expression::Block(block) => expect_block_initialized(block, ctx),
 

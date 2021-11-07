@@ -26,6 +26,8 @@ pub fn typecheck_bin_op(
     match &bin_op.op {
         Operator::Member => typecheck_member_of(&bin_op.lhs, &bin_op.rhs, span, expect_ty, ctx),
 
+        Operator::Index => typecheck_indexer(&bin_op.lhs, &bin_op.rhs, &span, ctx),
+
         Operator::And | Operator::Or => {
             let bool_ty = Type::Primitive(Primitive::Boolean);
 
@@ -571,18 +573,19 @@ pub fn typecheck_unary_op(
     })
 }
 
-pub type Indexer = ast::Indexer<TypeAnnotation>;
-
 pub fn typecheck_indexer(
-    indexer: &ast::Indexer<Span>,
+    base: &ast::Expression<Span>,
+    index: &ast::Expression<Span>,
+    span: &Span,
     ctx: &mut Context,
-) -> TypecheckResult<Indexer> {
+) -> TypecheckResult<Expression> {
     // todo: other index types
     let index_ty = Type::Primitive(Primitive::Int32);
-    let index = typecheck_expr(&indexer.index, &index_ty, ctx)?;
+    let index = typecheck_expr(&index, &index_ty, ctx)?;
+
     index.annotation().expect_value(&index_ty)?;
 
-    let base = typecheck_expr(&indexer.base, &Type::Nothing, ctx)?;
+    let base = typecheck_expr(&base, &Type::Nothing, ctx)?;
 
     let (el_ty, value_kind) = base
         .annotation()
@@ -602,19 +605,20 @@ pub fn typecheck_indexer(
         .ok_or_else(|| TypecheckError::InvalidIndexer {
             index_ty: index_ty.clone(),
             base: Box::new(base.clone()),
-            span: indexer.span().clone(),
+            span: span.clone(),
         })?;
 
     let annotation = TypeAnnotation::TypedValue {
         value_kind,
         ty: el_ty,
-        span: indexer.span().clone(),
+        span: span.clone(),
         decl: None,
     };
 
-    Ok(Indexer {
-        base,
-        index,
+    Ok(Expression::from(BinOp {
+        lhs: base,
+        rhs: index,
+        op: Operator::Index,
         annotation,
-    })
+    }))
 }
