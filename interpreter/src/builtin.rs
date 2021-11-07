@@ -140,16 +140,17 @@ pub(super) fn set_length(state: &mut Interpreter) {
 
         let old_array_struct = get_dyn_array_struct(state, array_arg);
         let old_len = old_array_struct[DYNARRAY_LEN_FIELD].as_i32().unwrap();
-        let old_data_addr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
-            .and_then(Pointer::as_heap_addr)
-            .unwrap();
+        let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer();
 
         let mut data_cells = vec![
             state.default_init_cell(dyn_array_el_ty);
             new_len as usize
         ];
-        for i in 0..new_len.min(old_len) {
-            data_cells[i as usize] = state.heap[old_data_addr + i as usize].clone();
+
+        if let Some(old_data_addr) = old_data_ptr.and_then(Pointer::as_heap_addr) {
+            for i in 0..new_len.min(old_len) {
+                data_cells[i as usize] = state.heap[old_data_addr + i as usize].clone();
+            }
         }
 
         Pointer::Heap(state.heap.alloc(data_cells))

@@ -753,7 +753,9 @@ fn translate_bin_op(
 
         syn::Operator::Index => {
             let index_val = translate_expr(&bin_op.rhs, builder);
-            translate_indexer(&out_ty, lhs_val, index_val, bin_op.lhs.annotation().ty(), builder);
+            let element_val = translate_indexer(&out_ty, lhs_val, index_val, bin_op.lhs.annotation().ty(), builder);
+
+            builder.mov(out_val.clone(), element_val);
         }
 
         syn::Operator::NotEquals => {
