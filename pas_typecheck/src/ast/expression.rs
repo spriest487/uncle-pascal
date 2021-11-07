@@ -114,6 +114,12 @@ pub fn typecheck_expr(
             Ok(ast::Expression::Literal(ast::Literal::Nil, annotation))
         }
 
+        ast::Expression::SizeOf(size_of) => {
+            let size_of = typecheck_size_of(size_of, ctx)?;
+
+            Ok(ast::Expression::from(size_of))
+        }
+
         ast::Expression::Ident(ident, _) => {
             let annotation = match ctx.find(&ident) {
                 Some(member) => ns_member_ref_to_annotation(member, ident.span().clone(), ctx),
@@ -328,6 +334,8 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         ast::Expression::Raise(raise) => {
             expect_expr_initialized(&raise.value, ctx)
         },
+
+        ast::Expression::SizeOf(..) => Ok(()),
     }
 }
 

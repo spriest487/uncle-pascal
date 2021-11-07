@@ -39,6 +39,10 @@ impl<A: Annotation> fmt::Display for BinOp<A> {
                 write!(f, "{}{}{}", self.lhs, self.op, self.rhs)
             }
 
+            Operator::Index => {
+                write!(f, "{}[{}]", self.lhs, self.rhs)
+            }
+
             _ => write!(f, "{} {} {}", self.lhs, self.op, self.rhs),
         }
     }

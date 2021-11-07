@@ -15,6 +15,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering, fmt};
+use crate::ast::SizeOf;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal {
@@ -49,6 +50,7 @@ pub enum Expression<A: Annotation> {
     IfCond(Box<IfCond<A>>),
     Block(Box<Block<A>>),
     Raise(Box<Raise<A>>),
+    SizeOf(Box<SizeOf<A>>),
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -106,6 +108,12 @@ impl<A: Annotation> From<Raise<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<SizeOf<A>> for Expression<A> {
+    fn from(size_of: SizeOf<A>) -> Self {
+        Expression::SizeOf(Box::new(size_of))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -119,6 +127,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &ctor.annotation,
             Expression::ObjectCtor(ctor) => &ctor.annotation,
             Expression::Raise(raise) => &raise.annotation,
+            Expression::SizeOf(size_of) => &size_of.annotation,
         }
     }
 
@@ -134,6 +143,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &mut ctor.annotation,
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
             Expression::Raise(raise) => &mut raise.annotation,
+            Expression::SizeOf(size_of) => &mut size_of.annotation,
         }
     }
 
@@ -193,6 +203,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
             Expression::Raise(raise) => write!(f, "{}", raise),
+            Expression::SizeOf(size_of) => write!(f, "{}", size_of),
         }
     }
 }
@@ -222,6 +233,7 @@ pub fn match_operand_start() -> Matcher {
         .or(Matcher::AnyLiteralInteger)
         .or(Matcher::AnyLiteralString)
         .or(Matcher::AnyLiteralReal)
+        .or(Keyword::SizeOf)
         // prefix operator applying to next operand
         .or(Matcher::any_operator_in_position(Position::Prefix))
 }
@@ -580,6 +592,13 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 }
             }
 
+            // operand is an unsafe block
+            Some(TokenTree::Keyword { kw: Keyword::Unsafe, .. }) => {
+                let block = Block::parse(self.tokens)?;
+                let expr = Expression::from(block);
+                self.push_operand(expr);
+            }
+
             // it's an operator, but thanks to the match we know this operator
             // is valid in prefix position, so it's part of this expression
             Some(TokenTree::Operator { .. }) => {
@@ -610,6 +629,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             }) => {
                 let nil_token = self.tokens.next().unwrap();
                 self.push_operand(Expression::Literal(Literal::Nil, nil_token.span().clone()));
+            }
+
+            Some(TokenTree::Keyword { kw: Keyword::SizeOf, .. }) => {
+                let size_of_expr = SizeOf::parse(self.tokens)?;
+                self.push_operand(Expression::from(size_of_expr));
             }
 
             Some(TokenTree::Keyword {

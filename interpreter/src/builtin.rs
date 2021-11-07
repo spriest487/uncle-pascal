@@ -112,13 +112,17 @@ pub(super) fn array_length(state: &mut Interpreter) {
     state.store(&RETURN_REF, MemCell::I32(len));
 }
 
-/// %1: <any dyn array ref>; %2: Integer -> %0: <dyn array ref of same type>
+/// %1: <any dyn array ref>; %2: Integer; %3: ^Element; -> %0: <dyn array ref of same type>
 pub(super) fn set_length(state: &mut Interpreter) {
     let array_arg = Ref::Local(LocalID(1));
 
     let new_len_arg = Ref::Local(LocalID(2));
     let new_len = state.load(&new_len_arg).as_i32()
         .expect("len arg passed to set_length must be i32");
+
+    let default_val_arg = Ref::Local(LocalID(3));
+    let default_val_ptr = state.load(&default_val_arg).as_pointer()
+        .expect("default value arg must be a pointer");
 
     let array_class = state.load(&array_arg)
         .as_pointer()
@@ -147,10 +151,16 @@ pub(super) fn set_length(state: &mut Interpreter) {
             new_len as usize
         ];
 
+        // copy old data (if any) into the new array
         if let Some(old_data_addr) = old_data_ptr.and_then(Pointer::as_heap_addr) {
             for i in 0..new_len.min(old_len) {
                 data_cells[i as usize] = state.heap[old_data_addr + i as usize].clone();
             }
+        }
+
+        // copy default value into any cells beyond the length of the original array
+        for i in old_len..new_len {
+            data_cells[i as usize] = state.deref_ptr(default_val_ptr).clone();
         }
 
         Pointer::Heap(state.heap.alloc(data_cells))

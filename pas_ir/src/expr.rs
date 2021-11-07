@@ -108,6 +108,8 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
+
+        ast::Expression::SizeOf(size_of) => translate_size_of(size_of, builder),
     }
 }
 
@@ -1251,4 +1253,17 @@ pub fn translate_raise(raise: &pas_ty::ast::Raise, builder: &mut Builder) -> Ref
     builder.append(Instruction::Raise { val: val.clone() });
 
     Ref::Discard
+}
+
+pub fn translate_size_of(size_of: &pas_ty::ast::SizeOf, builder: &mut Builder) -> Ref {
+    let val = builder.local_temp(Type::I32);
+
+    let ty = builder.translate_type(&size_of.ty);
+
+    builder.append(Instruction::SizeOf {
+        out: val.clone(),
+        ty,
+    });
+
+    val
 }

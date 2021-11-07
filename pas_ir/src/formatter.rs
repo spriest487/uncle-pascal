@@ -302,6 +302,10 @@ pub trait InstructionFormatter {
             Instruction::Raise { val } => {
                 write!(f, "{:>width$} {}", "raise", val, width = IX_WIDTH)
             }
+
+            Instruction::SizeOf { out, ty } => {
+                write!(f, "{:>width$} {} := sizeof({})", "sizeof", out, ty, width = IX_WIDTH)
+            }
         }
     }
 

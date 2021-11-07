@@ -47,6 +47,7 @@ pub enum Keyword {
     Continue,
     Where,
     Unsafe,
+    SizeOf,
 }
 
 impl Keyword {
@@ -97,6 +98,7 @@ impl Keyword {
             "continue" => Some(Keyword::Continue),
             "where" => Some(Keyword::Where),
             "unsafe" => Some(Keyword::Unsafe),
+            "sizeof" => Some(Keyword::SizeOf),
             _ => None,
         }
     }
@@ -158,6 +160,7 @@ impl fmt::Display for Keyword {
             Keyword::Continue => "continue",
             Keyword::Where => "where",
             Keyword::Unsafe => "unsafe",
+            Keyword::SizeOf => "sizeof",
         })
     }
 }

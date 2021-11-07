@@ -492,28 +492,50 @@ pub fn typecheck_unary_op(
 
     let annotation = match unary_op.op {
         Operator::AddressOf => {
-            let addr_ty = match (operand_ty, operand.annotation().value_kind()) {
-                (Type::Pointer(_), Some(ValueKind::Mutable))
-                | (Type::Record(_), Some(ValueKind::Mutable))
-                | (Type::Primitive(_), Some(ValueKind::Mutable)) => {
-                    operand.annotation().ty().clone().ptr()
+            let ty = operand.annotation().ty();
+            let value_kind = operand.annotation().value_kind();
+
+            let kind_addressable = match operand.annotation().value_kind() {
+                None
+                | Some(ValueKind::Temporary | ValueKind::Immutable | ValueKind::Uninitialized) => {
+                    false
                 }
 
-                (ty, kind) => {
-                    return Err(TypecheckError::NotAddressable {
-                        ty: ty.clone(),
-                        value_kind: kind,
-                        span,
-                    });
+                Some(ValueKind::Mutable | ValueKind::Ref) => {
+                    true
                 }
             };
 
-            TypeAnnotation::TypedValue {
-                ty: addr_ty,
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }
+            match (kind_addressable, ty) {
+                (false, _)
+                | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
+                    Err(TypecheckError::NotAddressable {
+                        ty: ty.clone(),
+                        value_kind,
+                        span,
+                    })
+                }
+
+                (true, Type::Class(..)
+                | Type::Interface(..)
+                | Type::DynArray { .. }
+                | Type::Array { .. }
+                | Type::MethodSelf { .. }
+                | Type::Variant(..)
+                | Type::GenericParam(..)) if !ctx.allow_unsafe() => {
+                    Err(TypecheckError::UnsafeAddressoOfNotAllowed {
+                        ty: ty.clone(),
+                        span,
+                    })
+                },
+
+                _ => Ok(TypeAnnotation::TypedValue {
+                    ty: ty.clone().ptr(),
+                    value_kind: ValueKind::Temporary,
+                    span,
+                    decl: None,
+                }),
+            }?
         }
 
         // unary +, is this always a no-op?

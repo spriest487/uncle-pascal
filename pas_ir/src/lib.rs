@@ -295,6 +295,11 @@ pub enum Instruction {
 
     Raise {
         val: Ref,
+    },
+
+    SizeOf {
+        out: Ref,
+        ty: Type,
     }
 }
 

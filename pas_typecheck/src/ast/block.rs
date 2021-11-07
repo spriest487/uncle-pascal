@@ -70,18 +70,11 @@ pub fn typecheck_block(
     };
 
     if *expect_ty != Type::Nothing {
-        let output_ty = output.as_ref().map(|o| o.annotation().ty());
+        let output_ty = output.as_ref().map(|o| o.annotation().ty())
+            .cloned()
+            .unwrap_or(Type::Nothing);
 
-        if output_ty != Some(expect_ty) {
-            return Err(TypecheckError::TypeMismatch {
-                expected: expect_ty.clone(),
-                actual: output_ty.cloned().unwrap_or(Type::Nothing),
-                span: match &output {
-                    Some(expr) => expr.annotation().span().clone(),
-                    None => block.end.clone(),
-                },
-            });
-        }
+        expect_ty.implicit_conversion_from(&output_ty, &block.end, ctx)?;
     }
 
     let span = block.annotation.span().clone();

@@ -581,21 +581,26 @@ impl Class {
                 writeln!(
                     def,
                     r#"
-                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from) {{
+                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len) {{
+                        {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
+                        int32_t copy_len = copy_from ? copy_arr_res->{len_field} : 0;
+
                         int32_t data_len = (int32_t) sizeof({el_ty}) * len;
                         {el_ty}* data = ({el_ty}*) System_GetMem(data_len);
 
-                        if (copy_from && len) {{
+                        if (copy_from && len != 0) {{
                             if (!copy_from->resource) {{
                                 abort();
                             }}
 
-                            {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
-                            int32_t copy_arr_len = copy_arr_res->{len_field};
-                            int32_t copy_count = len < copy_arr_len ? len : copy_arr_len;
+                            int32_t copy_count = len < old_len ? len : old_len;
                             size_t copy_size = (size_t) copy_count * sizeof({el_ty});
 
                             memcpy(data, copy_arr_res->{data_field}, copy_size);
+                        }}
+
+                        for (int32_t i = old_len; i < len; i += 1) {{
+                            memcpy(data + i, default_val, default_val_len);
                         }}
 
                         {res_ty}* arr_resource = ({res_ty}*) arr->resource;

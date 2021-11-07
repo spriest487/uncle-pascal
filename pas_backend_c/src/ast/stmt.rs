@@ -644,6 +644,17 @@ impl<'a> Builder<'a> {
                 let val_expr = Expr::translate_ref(val, self.module);
                 self.stmts.push(Statement::Expr(Expr::call(raise_func, vec![val_expr])));
             }
+
+            ir::Instruction::SizeOf { ty, out } => {
+                let ty = Type::from_metadata(&ty, self.module);
+                let size_of_expr = Expr::SizeOf(ty);
+
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    size_of_expr,
+                    self.module,
+                )));
+            }
         }
     }
 

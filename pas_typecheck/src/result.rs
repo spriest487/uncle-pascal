@@ -149,6 +149,10 @@ pub enum TypecheckError {
         from: Type,
         to: Type,
         span: Span,
+    },
+    UnsafeAddressoOfNotAllowed {
+        ty: Type,
+        span: Span,
     }
 }
 
@@ -209,6 +213,7 @@ impl Spanned for TypecheckError {
             TypecheckError::Private { span, .. } => span,
             TypecheckError::PrivateConstructor { span, .. } => span,
             TypecheckError::UnsafeConversionNotAllowed { span, .. } => span,
+            TypecheckError::UnsafeAddressoOfNotAllowed { span, .. } => span,
         }
     }
 }
@@ -275,7 +280,8 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::PrivateConstructor { .. } => "Type has private constructor".to_string(),
             TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
-            TypecheckError::UnsafeConversionNotAllowed { .. } => "Unsafe conversion not allowed here".to_string(),
+            TypecheckError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context".to_string(),
+            TypecheckError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
         }
     }
 
@@ -529,6 +535,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnsafeConversionNotAllowed { from, to, .. } => {
                 write!(f, "conversion from `{}` to `{}` is only allowed in an unsafe context", from, to)
+            }
+
+            TypecheckError::UnsafeAddressoOfNotAllowed { ty, .. } => {
+                write!(f, "value of type `{}` can only have its address taken in an unsafe context", ty)
             }
         }
     }

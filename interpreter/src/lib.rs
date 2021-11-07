@@ -518,7 +518,7 @@ impl Interpreter {
 
             Type::Struct(id) => self.init_struct(*id),
 
-            Type::RcPointer(_) => MemCell::Pointer(Pointer::Null),
+            Type::RcPointer(_) => MemCell::Pointer(Pointer::Uninit),
 
             Type::Pointer(_target) => MemCell::Pointer(Pointer::Uninit),
 
@@ -537,7 +537,7 @@ impl Interpreter {
             Type::Variant(id) => MemCell::Variant(Box::new(VariantCell {
                 id: *id,
                 tag: Box::new(MemCell::I32(0)),
-                data: Box::new(MemCell::Pointer(Pointer::Null)),
+                data: Box::new(MemCell::Pointer(Pointer::Uninit)),
             })),
 
             _ => panic!("can't initialize default cell of type `{:?}`", ty),
@@ -664,7 +664,9 @@ impl Interpreter {
                 panic!("dereferencing uninitialized pointer");
             }
 
-            Pointer::Null => panic!("dereferencing null pointer"),
+            Pointer::Null => {
+                panic!("dereferencing null pointer")
+            },
         }
     }
 
@@ -1493,6 +1495,11 @@ impl Interpreter {
                     //todo
                     span: Span::zero("<interpreter>"),
                 });
+            }
+
+            Instruction::SizeOf { out, .. } => {
+                // all value are one cell in the interpreter
+                self.store(out, MemCell::I32(1));
             }
         }
 
