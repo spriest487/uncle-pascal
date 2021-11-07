@@ -10,7 +10,7 @@ pub trait InstructionFormatter {
     ) -> fmt::Result {
         const IX_WIDTH: usize = 8;
         match instruction {
-            Instruction::Comment(comment) => write!(f, "// {}", comment),
+            Instruction::Comment(comment) => write!(f, "{:>width$} {}", "//", comment, width = IX_WIDTH),
 
             Instruction::LocalAlloc(id, ty) => {
                 write!(f, "{:>width$} ", "local", width = IX_WIDTH)?;
