@@ -414,13 +414,17 @@ impl LocalCell {
 
 #[derive(Debug)]
 struct StackFrame {
+    name: String,
+
     locals: Vec<Option<LocalCell>>,
     block_stack: Vec<Block>,
 }
 
 impl StackFrame {
-    pub fn new() -> Self {
+    pub fn new(name: impl Into<String>) -> Self {
         Self {
+            name: name.into(),
+
             locals: Vec::new(),
             block_stack: vec![Block { decls: Vec::new() }],
         }
@@ -746,8 +750,9 @@ impl Interpreter {
         }
     }
 
-    fn push_stack(&mut self) {
-        self.stack.push(StackFrame::new());
+    fn push_stack(&mut self, name: impl Into<String>) {
+        let stack_frame = StackFrame::new(name);
+        self.stack.push(stack_frame);
     }
 
     fn pop_stack(&mut self) {
@@ -805,7 +810,7 @@ impl Interpreter {
     }
 
     fn call(&mut self, func: &Function, args: &[MemCell], out: Option<&Ref>) -> ExecResult<()> {
-        self.push_stack();
+        self.push_stack(func.debug_name());
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
@@ -1346,6 +1351,7 @@ impl Interpreter {
 
             Instruction::AddrOf { out, a } => {
                 let a_ptr = self.addr_of_ref(a);
+
                 self.store(out, MemCell::Pointer(a_ptr));
             }
 
@@ -1612,7 +1618,7 @@ impl Interpreter {
             self.init_stdlib_globals();
         }
 
-        self.push_stack();
+        self.push_stack("<init>");
         self.execute(&module.init)?;
         self.pop_stack();
 

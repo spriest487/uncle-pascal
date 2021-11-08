@@ -124,6 +124,14 @@ pub(super) fn set_length(state: &mut Interpreter) {
     let default_val_ptr = state.load(&default_val_arg).as_pointer()
         .expect("default value arg must be a pointer");
 
+    let default_val_len_arg = Ref::Local(LocalID(4));
+    let _default_val_len = state.load(&default_val_len_arg).as_i32()
+        .expect("default value len arg must be an i32");
+
+    let rc_element_arg = Ref::Local(LocalID(5));
+    let rc_element = state.load(&rc_element_arg).as_bool()
+        .expect("rc element arg must be a bool");
+
     let array_class = state.load(&array_arg)
         .as_pointer()
         .and_then(Pointer::as_heap_addr)
@@ -159,9 +167,14 @@ pub(super) fn set_length(state: &mut Interpreter) {
         }
 
         // copy default value into any cells beyond the length of the original array
-        let default_val = state.deref_ptr(default_val_ptr);
+        let default_val = state.deref_ptr(default_val_ptr).clone();
         for i in old_len..new_len {
             data_cells[i as usize] = default_val.clone();
+
+            // this is an extra reference to the same object
+            if rc_element {
+                state.retain_cell(&data_cells[i as usize]);
+            }
         }
 
         Pointer::Heap(state.heap.alloc(data_cells))

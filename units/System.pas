@@ -226,17 +226,18 @@ begin
     self
 end;
 
-function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer; defaultValLen: Integer): Any; external 'rt';
+function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer; defaultValLen: Integer; rcElement: Boolean): Any; external 'rt';
 
 export function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
 begin
     // must put this in a mutable local variable to take its address (can't address immutable vars)
     var defaultValVar := defaultVal;
 
-    let defaultValSize := sizeof(T);
-
     unsafe begin
-        arr := if ArraySetLengthInternal(arr, len, @defaultValVar, defaultValSize) is array of T newArr
+        let defaultValPtr: Pointer := @defaultValVar;
+        let rcElement := if defaultVal is Any then true else false;
+
+        arr := if ArraySetLengthInternal(arr, len, defaultValPtr, sizeof(T), rcElement) is array of T newArr
             then newArr
             else arr; // unreachable
     end;

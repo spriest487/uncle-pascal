@@ -581,7 +581,7 @@ impl Class {
                 writeln!(
                     def,
                     r#"
-                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len) {{
+                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len, bool rc_element) {{
                         {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
                         int32_t copy_len = copy_from ? copy_arr_res->{len_field} : 0;
 
@@ -600,7 +600,12 @@ impl Class {
                         }}
 
                         for (int32_t i = old_len; i < len; i += 1) {{
-                            memcpy(data + i, default_val, default_val_len);
+                            {el_ty}* el_ptr = data[i];
+                            memcpy(el_ptr, default_val, default_val_len);
+
+                            if (rc_element) {{
+                                RcRetain((struct Rc* rc)el_ptr);
+                            }}
                         }}
 
                         {res_ty}* arr_resource = ({res_ty}*) arr->resource;
