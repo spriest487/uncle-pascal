@@ -225,7 +225,7 @@ fn typecheck_member_of(
                     ty: base_ty,
                     ..
                 } => {
-                    typecheck_typed_value(&lhs, base_ty, *value_kind, &member_ident, span, ctx)?
+                    typecheck_member_value(&lhs, base_ty, *value_kind, &member_ident, span, ctx)?
                 }
 
                 TypeAnnotation::Type(ty, _) => {
@@ -328,7 +328,7 @@ fn typecheck_type_member(
     Ok(annotation)
 }
 
-pub fn typecheck_typed_value(
+pub fn typecheck_member_value(
     lhs: &Expression,
     base_ty: &Type,
     value_kind: ValueKind,
@@ -424,8 +424,7 @@ pub fn typecheck_typed_value(
 
         InstanceMember::Data { ty: member_ty } => {
             /* class members are always mutable because a mutable class ref is only
-            a mutable *reference*. record members inherit their value kind from the
-            record they're part of */
+            a mutable *reference*. record and variant members are accessed by readonly value */
             let value_kind = match base_ty {
                 Type::Class(..) => ValueKind::Mutable,
                 _ => value_kind,
