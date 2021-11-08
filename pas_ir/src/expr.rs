@@ -375,13 +375,11 @@ fn translate_is_variant(
 }
 
 fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) -> Value {
-
-
-    // if the value expression is of a value type, then we can perform the check statically
     if val_ty.is_rc() {
-
         match ty {
             Type::RcPointer(Some(class_id)) => {
+                // checking if one RC type (probably an interface) is an instance of another RC
+                // type (probably a class): this is a runtime check
                 let result = builder.local_temp(Type::Bool);
 
                 builder.append(Instruction::ClassIs {
@@ -393,13 +391,18 @@ fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) ->
                 Value::Ref(result)
             }
 
+            // value is RC and we are testing if it's Any: it always is
+            Type::RcPointer(None) => {
+                Value::LiteralBool(true)
+            }
+
+            // value is a value type, we wanted an RC type
             _ => {
                 Value::LiteralBool(false)
             }
         }
-
-
     } else {
+        // value types must match exactly
         let same_ty = *val_ty == *ty;
         Value::LiteralBool(same_ty)
     }
