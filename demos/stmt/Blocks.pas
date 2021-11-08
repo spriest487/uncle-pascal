@@ -12,11 +12,11 @@ end;
 begin
     let x: Integer := 1;
     let y: Integer := 2;
-    WriteLn(456);
+    WriteLn('456');
 
     DoNothing();
 end;
 
 DoSomething();
 
-WriteLn(123)
+WriteLn(IntToStr(123))
