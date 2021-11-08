@@ -408,6 +408,18 @@ impl Module {
         self.init.extend(unit_init);
     }
 
+    pub fn class_types(&self) -> impl Iterator<Item = &Type> {
+        self.type_cache
+            .iter()
+            .filter_map(|(src_ty, ir_ty)| {
+                if src_ty.as_class().is_ok() {
+                    Some(ir_ty)
+                } else {
+                    None
+                }
+            })
+    }
+
     pub fn insert_func(&mut self, id: FunctionID, function: Function) {
         assert!(
             self.metadata.get_function(id).is_some(),
@@ -834,131 +846,128 @@ fn write_instruction_list(
     Ok(())
 }
 
-fn gen_dyn_array_disposers(module: &mut Module) {
-    for (elem_ty, struct_id) in module.metadata.dyn_array_structs().clone() {
-        let array_class = ClassID::Class(struct_id);
-        let array_ref_ty = Type::RcPointer(Some(array_class));
+fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: StructID) {
+    let array_class = ClassID::Class(struct_id);
+    let array_ref_ty = Type::RcPointer(Some(array_class));
 
-        // the thing we're cleaning up is the internal struct, not the rc object itself,
-        // so the parameter type of the releaser will be a pointer to that struct
-        let array_struct_ty = Type::Struct(struct_id);
+    // the thing we're cleaning up is the internal struct, not the rc object itself,
+    // so the parameter type of the releaser will be a pointer to that struct
+    let array_struct_ty = Type::Struct(struct_id);
 
-        let rc_boilerplate = module.metadata.find_rc_boilerplate(&array_struct_ty)
-            .expect("rc boilerplate function ids for dynarray inner struct must exist");
+    let rc_boilerplate = module.metadata.find_rc_boilerplate(&array_struct_ty)
+        .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
-        let mut releaser_builder = Builder::new(module);
+    let mut releaser_builder = Builder::new(module);
 
-        // %0 is the self arg, the pointer to the inner struct
-        releaser_builder.bind_local(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
-        let self_arg = Ref::Local(LocalID(0)).deref();
+    // %0 is the self arg, the pointer to the inner struct
+    releaser_builder.bind_local(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
+    let self_arg = Ref::Local(LocalID(0)).deref();
 
-        let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
-        releaser_builder.append(Instruction::Field {
-            out: len_field_ptr.clone(),
-            of_ty: array_struct_ty.clone(),
-            field: DYNARRAY_LEN_FIELD,
-            a: self_arg.clone(),
-        });
+    let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
+    releaser_builder.append(Instruction::Field {
+        out: len_field_ptr.clone(),
+        of_ty: array_struct_ty.clone(),
+        field: DYNARRAY_LEN_FIELD,
+        a: self_arg.clone(),
+    });
 
-        let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
-        releaser_builder.append(Instruction::Field {
-            out: arr_field_ptr.clone(),
-            of_ty: array_struct_ty.clone(),
-            field: DYNARRAY_PTR_FIELD,
-            a: self_arg,
-        });
+    let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
+    releaser_builder.append(Instruction::Field {
+        out: arr_field_ptr.clone(),
+        of_ty: array_struct_ty.clone(),
+        field: DYNARRAY_PTR_FIELD,
+        a: self_arg,
+    });
 
-        // release every element
-        let counter = releaser_builder.local_temp(Type::I32);
-        releaser_builder.mov(counter.clone(), Value::LiteralI32(0));
+    // release every element
+    let counter = releaser_builder.local_temp(Type::I32);
+    releaser_builder.mov(counter.clone(), Value::LiteralI32(0));
 
-        // jump to loop end if counter == array len
-        let start_loop_label = releaser_builder.alloc_label();
-        let end_loop_label = releaser_builder.alloc_label();
+    // jump to loop end if counter == array len
+    let start_loop_label = releaser_builder.alloc_label();
+    let end_loop_label = releaser_builder.alloc_label();
 
-        releaser_builder.append(Instruction::Label(start_loop_label));
+    releaser_builder.append(Instruction::Label(start_loop_label));
 
-        let at_end = releaser_builder.local_temp(Type::Bool);
-        releaser_builder.append(Instruction::Eq {
-            out: at_end.clone(),
-            a: Value::Ref(len_field_ptr.clone().deref()),
-            b: Value::Ref(counter.clone()),
-        });
-        releaser_builder.append(Instruction::JumpIf {
-            dest: end_loop_label,
-            test: Value::Ref(at_end),
-        });
+    // at_end := counter eq array.length
+    let at_end = releaser_builder.local_temp(Type::Bool);
+    releaser_builder.eq(at_end.clone(), counter.clone(), len_field_ptr.clone().deref());
 
-        // release arr[counter]
-        let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
-        releaser_builder.append(Instruction::Add {
-            out: el_ptr.clone(),
-            a: Value::Ref(arr_field_ptr.clone().deref()),
-            b: Value::Ref(counter.clone()),
-        });
-        releaser_builder.release(el_ptr.deref(), &elem_ty);
+    // if at_end then break
+    releaser_builder.append(Instruction::JumpIf {
+        dest: end_loop_label,
+        test: Value::Ref(at_end),
+    });
 
-        // counter := counter + 1
-        releaser_builder.append(Instruction::Add {
-            out: counter.clone(),
-            a: Value::Ref(counter),
-            b: Value::LiteralI32(1),
-        });
+    // release arr[counter]
+    let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
+    releaser_builder.append(Instruction::Add {
+        out: el_ptr.clone(),
+        a: Value::Ref(arr_field_ptr.clone().deref()),
+        b: Value::Ref(counter.clone()),
+    });
+    releaser_builder.release(el_ptr.deref(), &elem_ty);
 
-        releaser_builder.append(Instruction::Jump {
-            dest: start_loop_label,
-        });
-        releaser_builder.append(Instruction::Label(end_loop_label));
+    // counter := counter + 1
+    releaser_builder.append(Instruction::Add {
+        out: counter.clone(),
+        a: Value::Ref(counter),
+        b: Value::LiteralI32(1),
+    });
 
-        // free the dynamic-allocated buffer - if len > 0
-        let after_free = releaser_builder.alloc_label();
+    releaser_builder.append(Instruction::Jump {
+        dest: start_loop_label,
+    });
+    releaser_builder.append(Instruction::Label(end_loop_label));
 
-        let zero_elements = releaser_builder.local_temp(Type::Bool);
-        releaser_builder.append(Instruction::Eq {
-            a: Value::Ref(len_field_ptr.clone().deref()),
-            b: Value::LiteralI32(0),
-            out: zero_elements.clone()
-        });
-        releaser_builder.append(Instruction::JumpIf {
-            dest: after_free,
-            test: Value::Ref(zero_elements),
-        });
+    // free the dynamic-allocated buffer - if len > 0
+    let after_free = releaser_builder.alloc_label();
 
-        releaser_builder.append(Instruction::DynFree {
-            at: arr_field_ptr.clone().deref(),
-        });
+    let zero_elements = releaser_builder.local_temp(Type::Bool);
+    releaser_builder.append(Instruction::Eq {
+        a: Value::Ref(len_field_ptr.clone().deref()),
+        b: Value::LiteralI32(0),
+        out: zero_elements.clone()
+    });
+    releaser_builder.append(Instruction::JumpIf {
+        dest: after_free,
+        test: Value::Ref(zero_elements),
+    });
 
-        releaser_builder.append(Instruction::Label(after_free));
+    releaser_builder.append(Instruction::DynFree {
+        at: arr_field_ptr.clone().deref(),
+    });
 
-        releaser_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
-        releaser_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
+    releaser_builder.append(Instruction::Label(after_free));
 
-        let releaser_body = releaser_builder.finish();
+    releaser_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
+    releaser_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
 
-        let array_ref_ty_name = module.metadata.pretty_ty_name(&array_ref_ty)
-            .into_owned();
+    let releaser_body = releaser_builder.finish();
 
-        module.insert_func(
-            rc_boilerplate.release,
-            Function::Local(FunctionDef {
-                debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
-                return_ty: Type::Nothing,
-                params: vec![array_struct_ty.clone().ptr()],
-                body: releaser_body,
-            }),
-        );
+    let array_ref_ty_name = module.metadata.pretty_ty_name(&array_ref_ty)
+        .into_owned();
 
-        // no custom retain behaviour (dynarrays can't be retained!)
-        module.insert_func(
-            rc_boilerplate.retain,
-            Function::Local(FunctionDef {
-                debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
-                return_ty: Type::Nothing,
-                params: vec![array_struct_ty.clone().ptr()],
-                body: Vec::new(),
-            })
-        );
-    }
+    module.insert_func(
+        rc_boilerplate.release,
+        Function::Local(FunctionDef {
+            debug_name: format!("<generated dynarray releaser for {}>", array_ref_ty_name),
+            return_ty: Type::Nothing,
+            params: vec![array_struct_ty.clone().ptr()],
+            body: releaser_body,
+        }),
+    );
+
+    // no custom retain behaviour (dynarrays can't be retained!)
+    module.insert_func(
+        rc_boilerplate.retain,
+        Function::Local(FunctionDef {
+            debug_name: format!("<generated empty retainer for {}>", array_ref_ty_name),
+            return_ty: Type::Nothing,
+            params: vec![array_struct_ty.clone().ptr()],
+            body: Vec::new(),
+        })
+    );
 }
 
 // interface methods may not be statically referenced for every type that implements them due to
@@ -1005,28 +1014,14 @@ fn gen_iface_impls(module: &mut Module) {
 // for example, a class instance maybe be stored behind an `Any` reference,
 // at which point rc instructions must discover the actual class type
 // dynamically from the rc cell's class pointer/class ID
-fn gen_class_rc_boilerplate(module: &mut Module) {
-    let translated_classes: Vec<_> = module
-        .type_cache
-        .iter()
-        .filter_map(|(src_ty, ir_ty)| {
-            if src_ty.as_class().is_ok() {
-                Some(ir_ty.clone())
-            } else {
-                None
-            }
-        })
-        .collect();
+fn gen_class_rc_boilerplate(module: &mut Module, class_ty: &Type) {
+    let resource_struct = class_ty
+        .rc_resource_class_id()
+        .and_then(|class_id| class_id.as_class())
+        .expect("resource class of translated class type was not a struct");
 
-    for class_ty in &translated_classes {
-        let resource_struct = class_ty
-            .rc_resource_class_id()
-            .and_then(|class_id| class_id.as_class())
-            .expect("resource class of translated class type was not a struct");
-
-        let mut builder = Builder::new(module);
-        builder.translate_rc_boilerplate(&Type::Struct(resource_struct));
-    }
+    let mut builder = Builder::new(module);
+    builder.gen_rc_boilerplate(&Type::Struct(resource_struct));
 }
 
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
@@ -1063,7 +1058,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
 
         ir_module.metadata.define_struct(STRING_ID, string_def);
 
-        Builder::new(&mut ir_module).translate_rc_boilerplate(&Type::Struct(STRING_ID));
+        Builder::new(&mut ir_module).gen_rc_boilerplate(&Type::Struct(STRING_ID));
     }
 
     for unit in &module.units {
@@ -1071,8 +1066,12 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     }
 
     gen_iface_impls(&mut ir_module);
-    gen_dyn_array_disposers(&mut ir_module);
-    gen_class_rc_boilerplate(&mut ir_module);
+    for (elem_ty, struct_id) in ir_module.metadata.dyn_array_structs().clone() {
+        gen_dyn_array_rc_boilerplate(&mut ir_module, &elem_ty, struct_id);
+    }
+    for class_ty in ir_module.class_types().cloned().collect::<Vec<_>>() {
+        gen_class_rc_boilerplate(&mut ir_module, &class_ty);
+    }
 
     ir_module.metadata.sort_type_defs_by_deps();
 

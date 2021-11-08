@@ -159,8 +159,9 @@ pub(super) fn set_length(state: &mut Interpreter) {
         }
 
         // copy default value into any cells beyond the length of the original array
+        let default_val = state.deref_ptr(default_val_ptr);
         for i in old_len..new_len {
-            data_cells[i as usize] = state.deref_ptr(default_val_ptr).clone();
+            data_cells[i as usize] = default_val.clone();
         }
 
         Pointer::Heap(state.heap.alloc(data_cells))

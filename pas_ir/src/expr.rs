@@ -246,7 +246,7 @@ pub fn translate_if_cond(
                 let is_not_ty = builder.translate_type(ty);
                 let is = translate_is_ty(cond_val, &cond_ty, &is_not_ty, builder);
 
-                let is_not = builder.not(is);
+                let is_not = builder.not_fast(is);
                 (is_not, Vec::new())
             }
 
@@ -292,7 +292,7 @@ pub fn translate_if_cond(
                 let variant_ty = Type::Variant(struct_id);
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
 
-                let is_not = builder.not(Value::Ref(is));
+                let is_not = builder.not_fast(Value::Ref(is));
 
                 (is_not, Vec::new())
             }

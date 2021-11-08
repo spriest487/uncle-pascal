@@ -1,7 +1,7 @@
 uses System;
 
-let x: array of Integer := [1, 2, 3];
+let x: array of Integer := [];
 WriteLn(Length(x).ToString());
 
-SetLength(x, 2);
+SetLength(x, 2, 0);
 WriteLn(Length(x).ToString());

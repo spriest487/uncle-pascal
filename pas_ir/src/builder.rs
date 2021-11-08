@@ -510,19 +510,99 @@ impl<'m> Builder<'m> {
         });
     }
 
-    pub fn not(&mut self, bool_val: Value) -> Value {
-        match bool_val {
+    pub fn not_fast(&mut self, bool_val: impl Into<Value>) -> Value {
+        match bool_val.into() {
             Value::LiteralBool(b) => Value::LiteralBool(!b),
 
             other_val => {
                 let result = self.local_temp(Type::Bool);
-                self.append(Instruction::Not {
-                    a: other_val,
-                    out: result.clone(),
-                });
+                self.not(result.clone(), other_val);
                 Value::Ref(result)
             }
         }
+    }
+
+    pub fn not(&mut self, out: impl Into<Ref>, bool_val: impl Into<Value>) {
+        self.append(Instruction::Not {
+            a: bool_val.into(),
+            out: out.into(),
+        });
+    }
+
+    #[allow(unused)]
+    pub fn eq(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Eq {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        })
+    }
+
+    #[allow(unused)]
+    pub fn gt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Gt {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        })
+    }
+
+    #[allow(unused)]
+    pub fn lt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        let out = out.into();
+        let a = a.into();
+        let b = b.into();
+
+        // let out := a lte b
+        self.lte(out.clone(), a.clone(), b.clone());
+
+        // let neq := !(a = b)
+        let neq = self.local_temp(Type::Bool);
+        self.eq(neq.clone(), a, b);
+        self.not(neq.clone(), neq.clone());
+
+        // let out := out and neq
+        self.append(Instruction::And {
+            a: Value::Ref(out.clone()),
+            b: Value::Ref(neq),
+            out,
+        })
+    }
+
+    #[allow(unused)]
+    pub fn lte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        let out = out.into();
+
+        // out := a gt b
+        self.gt(out.clone(), a, b);
+
+        // out := not out
+        self.not(out.clone(), out);
+    }
+
+    #[allow(unused)]
+    pub fn gte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        let out = out.into();
+        let a = a.into();
+        let b = b.into();
+
+        // out := a > b
+        self.gt(out.clone(), a.clone(), b.clone());
+
+        // let eq := a = b
+        let eq = self.local_temp(Type::Bool);
+        self.append(Instruction::Eq {
+            a,
+            b,
+            out: eq.clone(),
+        });
+
+        // out := out or eq
+        self.append(Instruction::Or {
+            a: Value::Ref(out.clone()),
+            b: Value::Ref(eq),
+            out,
+        })
     }
 
     pub fn bind_local(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
@@ -752,7 +832,7 @@ impl<'m> Builder<'m> {
     }
 
     // generate deep (retain, release) funcs for complex types
-    pub fn translate_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
+    pub fn gen_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
         if let Some(boilerplate) = self.module.metadata.find_rc_boilerplate(ty) {
             return boilerplate.clone();
         }
@@ -811,7 +891,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.translate_rc_boilerplate(ty);
+                let rc_funcs = self.gen_rc_boilerplate(ty);
 
                 let at_ptr = self.local_temp(ty.clone().ptr());
                 self.append(Instruction::AddrOf {
@@ -843,7 +923,7 @@ impl<'m> Builder<'m> {
 
         match ty {
             Type::Array { .. } | Type::Struct(..) | Type::Variant(..) => {
-                let rc_funcs = self.translate_rc_boilerplate(ty);
+                let rc_funcs = self.gen_rc_boilerplate(ty);
 
                 let at_ptr = self.local_temp(ty.clone().ptr());
                 self.append(Instruction::AddrOf {
