@@ -4,9 +4,10 @@ use pas_ir::{
     metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID},
 };
 
-use crate::ast::{FunctionDecl, FunctionName, Module};
+use crate::ast::{Expr, FunctionDecl, FunctionName, Module};
 use std::fmt::Write;
 use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD};
+use pas_ir::prelude::RcBoilerplatePair;
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -394,14 +395,21 @@ pub struct InterfaceImpl {
 }
 
 #[derive(Clone, Debug)]
+struct DynArrayTypeInfo {
+    el_ty: Type,
+    el_rc: bool,
+    el_type_info: Option<RcBoilerplatePair>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Class {
     struct_id: StructID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
     disposer: Option<FunctionName>,
     cleanup_func: FunctionName,
 
-    // if this class is a dyn array, the element type
-    dyn_array_el_ty: Option<Type>,
+    // if this class is a dyn array, the RTTI for it
+    dyn_array_type_info: Option<DynArrayTypeInfo>,
 }
 
 impl Class {
@@ -455,12 +463,20 @@ impl Class {
                 )
             });
 
-        let dyn_array_el_ty = metadata
+        let dyn_array_type_info = metadata
             .dyn_array_structs()
             .iter()
             .filter_map(|(el_ty, arr_struct_id)| {
                 if *arr_struct_id == struct_id {
-                    Some(Type::from_metadata(el_ty, module))
+                    let el_rc = el_ty.is_rc();
+                    let el_type_info = metadata.find_rc_boilerplate(&el_ty);
+                    let el_ty = Type::from_metadata(el_ty, module);
+
+                    Some(DynArrayTypeInfo {
+                        el_type_info,
+                        el_ty,
+                        el_rc,
+                    })
                 } else {
                     None
                 }
@@ -472,7 +488,7 @@ impl Class {
             impls,
             disposer,
             cleanup_func,
-            dyn_array_el_ty,
+            dyn_array_type_info,
         }
     }
 
@@ -487,7 +503,7 @@ impl Class {
                 .unwrap();
         }
 
-        match self.dyn_array_el_ty {
+        match self.dyn_array_type_info {
             Some(..) => {
                 writeln!(decls, "struct DynArrayClass Class_{};", self.struct_id).unwrap();
             },
@@ -576,8 +592,13 @@ impl Class {
 
         class_init.push_str("}");
 
-        match &self.dyn_array_el_ty {
-            Some(el_ty) => {
+        match &self.dyn_array_type_info {
+            Some(dyn_array_ty_info) => {
+                let el_ty = &dyn_array_ty_info.el_ty;
+                let el_retain_func = dyn_array_ty_info.el_type_info.as_ref()
+                    .map(|type_info| Expr::Function(FunctionName::ID(type_info.retain)))
+                    .unwrap_or(Expr::Null);
+
                 writeln!(
                     def,
                     r#"
@@ -587,6 +608,8 @@ impl Class {
 
                         int32_t data_len = (int32_t) sizeof({el_ty}) * len;
                         {el_ty}* data = ({el_ty}*) System_GetMem(data_len);
+
+                        DynArrayClass* arr_class = (DynArrayClass*) arr->class;
 
                         if (copy_from && len != 0) {{
                             if (!copy_from->resource) {{
@@ -603,8 +626,10 @@ impl Class {
                             {el_ty}* el_ptr = data[i];
                             memcpy(el_ptr, default_val, default_val_len);
 
-                            if (rc_element) {{
+                            if ({el_rc}) {{
                                 RcRetain((struct Rc* rc)el_ptr);
+                            }} else if (arr_class->el_retain_func) {{
+                                arr_class->el_retain_func(el_ptr);
                             }}
                         }}
 
@@ -626,10 +651,13 @@ impl Class {
                         .base = {class_init},
                         .alloc = DynArrayAlloc_{struct_id},
                         .length = DynArrayLength_{struct_id},
+                        .element_retain_func = {el_retain_func},
                     }};"#,
                     struct_id = self.struct_id,
                     res_ty = Type::Struct(StructName::Struct(self.struct_id)).typename(),
                     el_ty = el_ty.typename(),
+                    el_rc = dyn_array_ty_info.el_rc,
+                    el_retain_func = el_retain_func,
                     class_init = class_init,
                     len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
                     data_field = FieldName::ID(DYNARRAY_PTR_FIELD),

@@ -1,8 +1,4 @@
-use pas_ir::{
-    RETURN_REF,
-    metadata::DYNARRAY_LEN_FIELD,
-    LocalID, Ref,
-};
+use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
 use crate::{Interpreter, MemCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
@@ -129,7 +125,7 @@ pub(super) fn set_length(state: &mut Interpreter) {
         .expect("default value len arg must be an i32");
 
     let rc_element_arg = Ref::Local(LocalID(5));
-    let rc_element = state.load(&rc_element_arg).as_bool()
+    let _rc_element = state.load(&rc_element_arg).as_bool()
         .expect("rc element arg must be a bool");
 
     let array_class = state.load(&array_arg)
@@ -141,8 +137,12 @@ pub(super) fn set_length(state: &mut Interpreter) {
         .struct_id;
 
     let new_data = if new_len > 0 {
-        let (dyn_array_el_ty, _) = state.metadata.dyn_array_structs().iter()
-            .filter(|(_el_ty, struct_id)| **struct_id == array_class)
+        let dyn_array_el_ty = state.metadata.dyn_array_structs().iter()
+            .filter_map(|(el_ty, struct_id)| if *struct_id == array_class {
+                Some(el_ty.clone())
+            } else {
+                None
+            })
             .next()
             .unwrap_or_else(|| panic!(
                 "array arg passed set_length must have a matching internal struct def for {} in {:#?}",
@@ -150,12 +150,21 @@ pub(super) fn set_length(state: &mut Interpreter) {
                 state.metadata.dyn_array_structs()
             ));
 
+        let el_retain_func = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
+            .map(|rc_info| {
+                let retain_func_ref = GlobalRef::Function(rc_info.retain);
+                match state.globals.get(&retain_func_ref).map(|c| &c.value) {
+                    Some(MemCell::Function(func)) => func.clone(),
+                    _ => panic!("missing element retain func for dynarray {}", dyn_array_el_ty),
+                }
+            });
+
         let old_array_struct = get_dyn_array_struct(state, array_arg);
         let old_len = old_array_struct[DYNARRAY_LEN_FIELD].as_i32().unwrap();
         let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer();
 
         let mut data_cells = vec![
-            state.default_init_cell(dyn_array_el_ty);
+            state.default_init_cell(&dyn_array_el_ty);
             new_len as usize
         ];
 
@@ -169,15 +178,27 @@ pub(super) fn set_length(state: &mut Interpreter) {
         // copy default value into any cells beyond the length of the original array
         let default_val = state.deref_ptr(default_val_ptr).clone();
         for i in old_len..new_len {
-            data_cells[i as usize] = default_val.clone();
+            let i = i as usize;
+            data_cells[i] = default_val.clone();
+        }
 
-            // this is an extra reference to the same object
-            if rc_element {
-                state.retain_cell(&data_cells[i as usize]);
+        // put the initialized array onto the heap before retaining it because passing pointers
+        // to retain funcs is a lot easier when the target is already on the heap
+        let heap_cells = state.heap.alloc(data_cells);
+
+        // retain any new copies of the default value
+        for i in old_len..new_len {
+            let el_ptr = MemCell::Pointer(Pointer::Heap(heap_cells + i as usize));
+
+            if dyn_array_el_ty.is_rc() {
+                state.retain_cell(&el_ptr);
+            } else if let Some(el_retain_func) = &el_retain_func {
+                state.call(el_retain_func, &[el_ptr], None)
+                    .expect("invoking element retain func failed");
             }
         }
 
-        Pointer::Heap(state.heap.alloc(data_cells))
+        Pointer::Heap(heap_cells)
     } else {
         Pointer::Null
     };

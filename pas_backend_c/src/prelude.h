@@ -7,7 +7,9 @@
 struct Rc;
 
 typedef void (*Disposer)(struct Rc*);
+
 typedef void (*RcCleanupFunc)(void*);
+typedef void (*RcRetainFunc)(void*);
 
 // classes and interfaces runtime support
 
@@ -40,6 +42,8 @@ struct DynArrayClass {
 
     DynArrayAlloc alloc;
     DynArrayLength length;
+
+    RcRetainFunc element_retain_func;
 };
 
 static bool IsImpl(struct Class* class, size_t iface) {
