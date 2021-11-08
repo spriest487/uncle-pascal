@@ -261,6 +261,10 @@ impl<Item> TypeList<Item> {
 
         Self { items, span }
     }
+
+    pub fn iter(&self) -> impl Iterator<Item=&Item> {
+        self.items.iter()
+    }
 }
 
 impl<Item> PartialEq for TypeList<Item>

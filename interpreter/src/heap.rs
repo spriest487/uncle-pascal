@@ -170,7 +170,7 @@ impl Index<HeapAddress> for Heap {
 
         if self.slots.len() <= MAX_DUMP_SIZE {
             self.dump_stderr();
-            panic!("trying to access unallocated heap location {} in heap:", addr)
+            panic!("trying to access unallocated heap location {} in heap", addr)
         } else {
             panic!("trying to access unallocated heap location {}", addr)
         }

@@ -593,7 +593,20 @@ impl Module {
         debug_name: String,
     ) -> FunctionDef {
         let mut body_builder = match type_args {
-            Some(type_args) => Builder::new(self).with_type_args(type_args),
+            Some(type_args) => {
+                let type_params = match &func.decl.type_params {
+                    Some(params) if params.len() == type_args.len() => params,
+                    Some(params) => panic!("type args in function body don't match params! expected {}, got {}", params, type_args),
+                    _ => panic!("type args in function body don't match params! expected nothing, got {}", type_args),
+                };
+
+                let mut builder = Builder::new(self).with_type_args(type_args.clone());
+                builder.comment("function def body with type args:");
+                for (type_param, type_arg) in type_params.iter().zip(type_args.iter()) {
+                    builder.comment(&format!("{} = {}", type_param, type_arg));
+                }
+                builder
+            },
             None => Builder::new(self),
         };
 

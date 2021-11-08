@@ -492,6 +492,10 @@ impl Type {
                 dim,
             },
 
+            Type::Pointer(base_ty) => {
+                base_ty.substitute_type_args(args).ptr()
+            }
+
             other => other,
         }
     }
