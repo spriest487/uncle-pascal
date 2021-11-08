@@ -1063,32 +1063,6 @@ impl Context {
         let methods = ufcs::instance_methods_of(of_ty, self)?;
         let matching_methods: Vec<_> = methods.iter().filter(|m| *m.ident() == *member).collect();
 
-        fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {
-            options
-                .into_iter()
-                .map(|(of_ty, ident)| match of_ty.full_path() {
-                    Some(base) => base.child(ident.clone()),
-                    None => Path::new(ident.clone(), Vec::new()),
-                })
-                .collect()
-        }
-
-        fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident)> {
-            methods
-                .iter()
-                .map(|im| match im {
-                    ufcs::InstanceMethod::Method { iface_ty, decl } => {
-                        (iface_ty.clone(), decl.ident.last().clone())
-                    }
-
-                    ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
-                        let of_ty = sig.params.first().unwrap().ty.clone();
-                        (of_ty.clone(), func_name.last().clone())
-                    }
-                })
-                .collect()
-        }
-
         match (data_member, matching_methods.len()) {
             (Some(data_member), 0) => Ok(InstanceMember::Data { ty: data_member.ty }),
 
@@ -1349,4 +1323,30 @@ fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
             panic!("`{}` cannot be initialized: not found in this scope", ident);
         }
     }
+}
+
+fn ambig_paths<'a>(options: impl IntoIterator<Item = (Type, Ident)>) -> Vec<IdentPath> {
+    options
+        .into_iter()
+        .map(|(of_ty, ident)| match of_ty.full_path() {
+            Some(base) => base.child(ident.clone()),
+            None => Path::new(ident.clone(), Vec::new()),
+        })
+        .collect()
+}
+
+fn ambig_matching_methods(methods: &[&ufcs::InstanceMethod]) -> Vec<(Type, Ident)> {
+    methods
+        .iter()
+        .map(|im| match im {
+            ufcs::InstanceMethod::Method { iface_ty, decl } => {
+                (iface_ty.clone(), decl.ident.last().clone())
+            }
+
+            ufcs::InstanceMethod::FreeFunction { sig, func_name, .. } => {
+                let of_ty = sig.params.first().unwrap().ty.clone();
+                (of_ty.clone(), func_name.last().clone())
+            }
+        })
+        .collect()
 }

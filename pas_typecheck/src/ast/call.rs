@@ -42,7 +42,7 @@ fn invalid_args(
     }
 }
 
-fn typecheck_args(
+fn build_args_for_params(
     expected_args: &[FunctionParamSig],
     actual_args: &[ast::Expression<Span>],
     self_arg: Option<&Expression>,
@@ -52,11 +52,8 @@ fn typecheck_args(
     let mut checked_args = Vec::new();
 
     let rest_args = if let Some(self_arg) = self_arg {
-        let self_param = &expected_args[0];
-
-        self_param
-            .ty
-            .implicit_conversion_from(self_arg.annotation().ty(), span, ctx)?;
+        let self_ty = &expected_args[0].ty;
+        self_ty.implicit_conversion_from(self_arg.annotation().ty(), span, ctx)?;
 
         checked_args.push(self_arg.clone());
 
@@ -67,44 +64,10 @@ fn typecheck_args(
 
     for (arg, expected_param) in actual_args.iter().zip(rest_args.iter()) {
         let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
-
-        let (is_in_ref, is_out_ref) = match &expected_param.modifier {
-            None => (false, false),
-            Some(FunctionParamMod::Out) => (false, true),
-            Some(FunctionParamMod::Var) => (true, true),
-        };
-
-        if is_in_ref || is_out_ref {
-            match arg_expr.annotation().value_kind() {
-                // in-refs shouldn't really allow uninitialized values here but we do init checking
-                // in a separate pass
-                Some(ValueKind::Mutable)
-                | Some(ValueKind::Ref)
-                | Some(ValueKind::Uninitialized) => {}
-                _ => {
-                    return Err(TypecheckError::NotMutable {
-                        expr: Box::new(arg_expr),
-                        decl: None,
-                    });
-                }
-            }
-
-            let ref_name = match &arg_expr {
-                ast::Expression::Ident(ident, ..) => ident,
-                _ => {
-                    return Err(TypecheckError::InvalidRefExpression {
-                        expr: Box::new(arg_expr),
-                    });
-                }
-            };
-
-            if is_out_ref {
-                ctx.initialize(ref_name);
-            }
-        }
-
         checked_args.push(arg_expr);
     }
+
+    typecheck_args(&checked_args, expected_args, ctx)?;
 
     if checked_args.len() != expected_args.len() {
         // arg count doesn't match expected param count
@@ -400,7 +363,7 @@ fn typecheck_iface_method_call(
     let sig = iface_method.sig().with_self(&self_type);
 
     let typechecked_args =
-        typecheck_args(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
+        build_args_for_params(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
 
     Ok(ast::Call::Method(MethodCall {
         annotation: TypeAnnotation::TypedValue {
@@ -436,9 +399,9 @@ fn typecheck_ufcs_call(
         &span,
         ctx,
     )?;
-    check_arg_types(
+    typecheck_args(
         &specialized_call_args.actual_args,
-        &specialized_call_args.sig,
+        &specialized_call_args.sig.params,
         ctx,
     )?;
 
@@ -597,7 +560,7 @@ fn specialize_call_args(
         }
 
         // no type params
-        let actual_args = typecheck_args(&decl_sig.params, args, self_arg, span, ctx)?;
+        let actual_args = build_args_for_params(&decl_sig.params, args, self_arg, span, ctx)?;
 
         return Ok(SpecializedCallArgs {
             sig: decl_sig.clone(),
@@ -612,7 +575,7 @@ fn specialize_call_args(
             .clone()
             .specialize_generic(&explicit_ty_args, span, ctx)?;
 
-        let actual_args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
+        let actual_args = build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
 
         Ok(SpecializedCallArgs {
             sig,
@@ -712,12 +675,47 @@ fn unwrap_inferred_args(
     Ok(TypeList::new(items, span.clone()))
 }
 
-fn check_arg_types(args: &[Expression], sig: &FunctionSig, ctx: &Context) -> TypecheckResult<()> {
-    let args_and_params = args.iter().zip(sig.params.iter());
+fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Context) -> TypecheckResult<()> {
+    let args_and_params = args.iter().zip(params.iter());
     for (arg, param) in args_and_params {
         param
             .ty
             .implicit_conversion_from(arg.annotation().ty(), arg.span(), ctx)?;
+
+        let (is_in_ref, is_out_ref) = match &param.modifier {
+            None => (false, false),
+            Some(FunctionParamMod::Out) => (false, true),
+            Some(FunctionParamMod::Var) => (true, true),
+        };
+
+        if is_in_ref || is_out_ref {
+            match arg.annotation().value_kind() {
+                // in-refs shouldn't really allow uninitialized values here but we do init checking
+                // in a separate pass
+                Some(ValueKind::Mutable)
+                | Some(ValueKind::Ref)
+                | Some(ValueKind::Uninitialized) => {}
+                _ => {
+                    return Err(TypecheckError::NotMutable {
+                        expr: Box::new(arg.clone()),
+                        decl: None,
+                    });
+                }
+            }
+
+            let ref_name = match &arg {
+                ast::Expression::Ident(ident, ..) => ident,
+                _ => {
+                    return Err(TypecheckError::InvalidRefExpression {
+                        expr: Box::new(arg.clone()),
+                    });
+                }
+            };
+
+            if is_out_ref {
+                ctx.initialize(ref_name);
+            }
+        }
     }
 
     Ok(())
@@ -739,9 +737,9 @@ fn typecheck_func_call(
 
     let specialized_call_args =
         specialize_call_args(sig, &func_call.args, None, type_args, &span, ctx)?;
-    check_arg_types(
+    typecheck_args(
         &specialized_call_args.actual_args,
-        &specialized_call_args.sig,
+        &specialized_call_args.sig.params,
         ctx,
     )?;
 
@@ -976,7 +974,7 @@ pub fn resolve_overload(
     if candidates.len() == 1 {
         let sig = &candidate_sigs[0];
 
-        let args = typecheck_args(&sig.params, args, self_arg, span, ctx)?;
+        let args = build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
         let actual_arg_tys: Vec<_> = args
             .iter()
             .map(|arg_expr| arg_expr.annotation().ty().clone())
