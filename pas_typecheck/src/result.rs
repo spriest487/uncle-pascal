@@ -7,6 +7,7 @@ use crate::{
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
 use std::fmt;
+use crate::ast::Statement;
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -55,6 +56,10 @@ pub enum TypecheckError {
         rhs: Type,
         op: Operator,
         span: Span,
+    },
+    BlockOutputIsNotExpression {
+        stmt: Box<Statement>,
+        expected_expr_ty: Type,
     },
     InvalidBlockOutput(Box<Expression>),
     AmbiguousMethod {
@@ -188,6 +193,7 @@ impl Spanned for TypecheckError {
             TypecheckError::NotMatchable { span, .. } => span,
             TypecheckError::InvalidBinOp { span, .. } => span,
             TypecheckError::InvalidUnaryOp { span, .. } => span,
+            TypecheckError::BlockOutputIsNotExpression { stmt, .. } => stmt.annotation().span(),
             TypecheckError::InvalidBlockOutput(expr) => expr.annotation().span(),
             TypecheckError::AmbiguousFunction { span, .. } => span,
             TypecheckError::AmbiguousMethod { span, .. } => span,
@@ -233,6 +239,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::NotMatchable { .. } => "Type is not matchable".to_string(),
             TypecheckError::InvalidBinOp { .. } => "Invalid binary operation".to_string(),
             TypecheckError::InvalidUnaryOp { .. } => "Invalid unary operation".to_string(),
+            TypecheckError::BlockOutputIsNotExpression { .. } => "Expected block output expression".to_string(),
             TypecheckError::InvalidBlockOutput(_) => "Invalid block output expression".to_string(),
             TypecheckError::AmbiguousFunction { .. } => "Function reference is ambiguous".to_string(),
             TypecheckError::AmbiguousMethod { .. } => "Method reference is ambiguous".to_string(),
@@ -434,6 +441,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidUnaryOp { operand, op, .. } => {
                 write!(f, "operator {} cannot be applied to an operand of type {}", op, operand)
+            }
+
+            TypecheckError::BlockOutputIsNotExpression { stmt, expected_expr_ty } => {
+                write!(f, "expected expression of type `{}` but found statement `{}`", expected_expr_ty, stmt)
             }
 
             TypecheckError::InvalidBlockOutput(expr) => {

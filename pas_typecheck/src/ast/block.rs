@@ -37,7 +37,9 @@ pub fn typecheck_block(
                 // the block contains a final expression which returns no value,
                 // so it should just be treated like a statement
                 let last_stmt = Statement::try_from_expr(out_expr)
-                    .map_err(|invalid| TypecheckError::InvalidBlockOutput(Box::new(invalid)))?;
+                    .map_err(|invalid| {
+                        TypecheckError::InvalidBlockOutput(Box::new(invalid))
+                    })?;
                 statements.push(last_stmt);
                 None
             } else {
@@ -54,14 +56,12 @@ pub fn typecheck_block(
             if statements.last().is_some() {
                 let last_stmt = statements.pop().unwrap();
 
-                let output = last_stmt.try_into_expr()
-                    .unwrap_or_else(|not_expr| {
-                        panic!(
-                            "block output expression had type {} but couldn't be converted to an expression: {}",
-                            expect_ty,
-                            not_expr
-                        )
-                    });
+                let output = last_stmt.try_into_expr().map_err(|bad_stmt| {
+                    TypecheckError::BlockOutputIsNotExpression {
+                        stmt: Box::new(bad_stmt),
+                        expected_expr_ty: expect_ty.clone(),
+                    }
+                })?;
 
                 Some(output)
             } else {
