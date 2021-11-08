@@ -110,7 +110,15 @@ fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf
             let file_path = search_path.join(filename);
 
             if file_path.exists() {
-                return Some(file_path);
+                // try to canonicalize the filename (not the rest of the path)
+                let file_path_with_canon_name = file_path.canonicalize().ok()
+                    .and_then(|canon_path| {
+                        let canon_filename = canon_path.file_name()?;
+                        Some(file_path.with_file_name(canon_filename))
+                    })
+                    .unwrap_or(file_path);
+
+                return Some(file_path_with_canon_name);
             }
         }
     }
