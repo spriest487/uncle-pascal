@@ -14,7 +14,10 @@ pub fn typecheck_block(
     let mut statements = Vec::new();
 
     for (i, stmt) in block.statements.iter().enumerate() {
-        let stmt_expect_ty = if i == block.statements.len() - 1 {
+        // could this statement be the output expression (is it the last statement in a block which
+        // we don't already have an output expression from parsing?) - if so give it the same type
+        // hint as the block
+        let stmt_expect_ty = if block.output.is_none() && i == block.statements.len() - 1 {
             expect_ty
         } else {
             &Type::Nothing

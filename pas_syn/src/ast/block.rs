@@ -6,6 +6,14 @@ use std::fmt;
 pub struct Block<A: Annotation> {
     pub statements: Vec<Statement<A>>,
     pub annotation: A,
+
+    // the final expression of the block which determines its value.
+    // we can identify this during parsing if the last "statement" in the block is an
+    // expression which can't be parsed as a valid standalone statement. otherwise, this gets
+    // populated during typechecking.
+    // e.g. a function call at the end a block may be the the block output depending on the return
+    // type of the function, but we don't know that until typechecking. a value on its own, however,
+    // would HAVE to be the block output to be valid!
     pub output: Option<Expression<A>>,
 
     pub unsafe_kw: Option<Span>,
