@@ -4,7 +4,7 @@ use pas_ir::{
     metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID},
 };
 
-use crate::ast::{Expr, FunctionDecl, FunctionName, Module};
+use crate::ast::{FunctionDecl, FunctionName, Module};
 use std::fmt::Write;
 use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD};
 use pas_ir::prelude::RcBoilerplatePair;
@@ -594,43 +594,49 @@ impl Class {
 
         match &self.dyn_array_type_info {
             Some(dyn_array_ty_info) => {
-                let el_ty = &dyn_array_ty_info.el_ty;
+                let el_ty = if dyn_array_ty_info.el_rc {
+                    Type::Struct(StructName::Rc).ptr()
+                } else {
+                    dyn_array_ty_info.el_ty.clone()
+                };
+
                 let el_retain_func = dyn_array_ty_info.el_type_info.as_ref()
-                    .map(|type_info| Expr::Function(FunctionName::ID(type_info.retain)))
-                    .unwrap_or(Expr::Null);
+                    .map(|type_info| FunctionName::ID(type_info.retain));
+
+                let retain_el_proc = if dyn_array_ty_info.el_rc {
+                    format!("{}(*el_ptr);", FunctionName::RcRetain)
+                } else if let Some(el_retain_func) = el_retain_func {
+                    format!("{}(el_ptr);", el_retain_func)
+                } else {
+                    String::new()
+                };
 
                 writeln!(
                     def,
                     r#"
-                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len, bool rc_element) {{
+                    void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len) {{
+                        if (!copy_from || !copy_from->resource) {{
+                            abort();
+                        }}
+
                         {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
-                        int32_t copy_len = copy_from ? copy_arr_res->{len_field} : 0;
+                        int32_t copy_len = copy_arr_res->{len_field};
 
                         int32_t data_len = (int32_t) sizeof({el_ty}) * len;
                         {el_ty}* data = ({el_ty}*) System_GetMem(data_len);
 
-                        DynArrayClass* arr_class = (DynArrayClass*) arr->class;
-
-                        if (copy_from && len != 0) {{
-                            if (!copy_from->resource) {{
-                                abort();
-                            }}
-
-                            int32_t copy_count = len < old_len ? len : old_len;
+                        if (len > 0) {{
+                            int32_t copy_count = len < copy_len ? len : copy_len;
                             size_t copy_size = (size_t) copy_count * sizeof({el_ty});
 
                             memcpy(data, copy_arr_res->{data_field}, copy_size);
                         }}
 
-                        for (int32_t i = old_len; i < len; i += 1) {{
-                            {el_ty}* el_ptr = data[i];
+                        for (int32_t i = copy_len; i < len; i += 1) {{
+                            {el_ty}* el_ptr = &data[i];
                             memcpy(el_ptr, default_val, default_val_len);
 
-                            if ({el_rc}) {{
-                                RcRetain((struct Rc* rc)el_ptr);
-                            }} else if (arr_class->el_retain_func) {{
-                                arr_class->el_retain_func(el_ptr);
-                            }}
+                            {retain_el_proc}
                         }}
 
                         {res_ty}* arr_resource = ({res_ty}*) arr->resource;
@@ -651,13 +657,11 @@ impl Class {
                         .base = {class_init},
                         .alloc = DynArrayAlloc_{struct_id},
                         .length = DynArrayLength_{struct_id},
-                        .element_retain_func = {el_retain_func},
                     }};"#,
                     struct_id = self.struct_id,
                     res_ty = Type::Struct(StructName::Struct(self.struct_id)).typename(),
                     el_ty = el_ty.typename(),
-                    el_rc = dyn_array_ty_info.el_rc,
-                    el_retain_func = el_retain_func,
+                    retain_el_proc = retain_el_proc,
                     class_init = class_init,
                     len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
                     data_field = FieldName::ID(DYNARRAY_PTR_FIELD),

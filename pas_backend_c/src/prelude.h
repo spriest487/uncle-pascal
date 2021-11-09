@@ -34,7 +34,7 @@ struct Rc {
     int count;
 };
 
-typedef void (*DynArrayAlloc)(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len, bool rc_element);
+typedef void (*DynArrayAlloc)(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len);
 typedef int32_t (*DynArrayLength)(struct Rc* arr);
 
 struct DynArrayClass {
@@ -42,8 +42,6 @@ struct DynArrayClass {
 
     DynArrayAlloc alloc;
     DynArrayLength length;
-
-    RcRetainFunc element_retain_func;
 };
 
 static bool IsImpl(struct Class* class, size_t iface) {
@@ -205,7 +203,7 @@ static void System_Write(struct Rc* str_rc);
 static void System_WriteLn(struct Rc* str_rc);
 static struct Rc* System_ReadLn(void);
 static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
-static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len, void* default_val, int32_t default_val_len, bool rc_element);
+static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len, void* default_val, int32_t default_val_len);
 
 // Strings
 

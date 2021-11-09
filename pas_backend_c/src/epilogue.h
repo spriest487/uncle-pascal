@@ -94,8 +94,7 @@ static struct Rc* System_ArraySetLengthInternal(
     struct Rc* arr_rc,
     int32_t new_len,
     void* default_val,
-    int32_t default_val_size,
-    bool rc_element
+    int32_t default_val_size
 ) {
     if (!arr_rc || !arr_rc->resource) {
         abort();
@@ -104,7 +103,7 @@ static struct Rc* System_ArraySetLengthInternal(
     struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
 
     struct Rc* new_arr = RcAlloc(arr_rc->class);
-    array_class->alloc(new_arr, new_len, arr_rc, default_val, default_val_size, rc_element);
+    array_class->alloc(new_arr, new_len, arr_rc, default_val, default_val_size);
 
     return new_arr;
 }
