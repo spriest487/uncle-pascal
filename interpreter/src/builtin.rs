@@ -188,12 +188,13 @@ pub(super) fn set_length(state: &mut Interpreter) {
 
         // retain any new copies of the default value
         for i in old_len..new_len {
-            let el_ptr = MemCell::Pointer(Pointer::Heap(heap_cells + i as usize));
+            let el_ptr = Pointer::Heap(heap_cells + i as usize);
 
             if dyn_array_el_ty.is_rc() {
-                state.retain_cell(&el_ptr);
+                let el_rc_ref = state.deref_ptr(&el_ptr).clone();
+                state.retain_cell(&el_rc_ref);
             } else if let Some(el_retain_func) = &el_retain_func {
-                state.call(el_retain_func, &[el_ptr], None)
+                state.call(el_retain_func, &[MemCell::Pointer(el_ptr)], None)
                     .expect("invoking element retain func failed");
             }
         }
