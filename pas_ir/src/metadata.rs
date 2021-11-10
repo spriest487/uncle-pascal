@@ -1196,6 +1196,14 @@ impl Metadata {
         &self.dyn_array_structs
     }
 
+    pub fn dyn_array_element_ty(&self, array_class_id: StructID) -> Option<&Type> {
+        let (el_ty, _) = self.dyn_array_structs().iter()
+            .filter(|(_el_ty, struct_id)| array_class_id == **struct_id)
+            .next()?;
+
+        Some(el_ty)
+    }
+
     pub fn find_type_decl(&self, name: &NamePath) -> Option<StructID> {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => Some(*id),

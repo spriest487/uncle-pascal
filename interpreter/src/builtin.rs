@@ -133,26 +133,23 @@ pub(super) fn set_length(state: &mut Interpreter) {
         .struct_id;
 
     let new_data = if new_len > 0 {
-        let dyn_array_el_ty = state.metadata.dyn_array_structs().iter()
-            .filter_map(|(el_ty, struct_id)| if *struct_id == array_class {
-                Some(el_ty.clone())
-            } else {
-                None
-            })
-            .next()
-            .unwrap_or_else(|| panic!(
-                "array arg passed set_length must have a matching internal struct def for {} in {:#?}",
-                array_class,
-                state.metadata.dyn_array_structs()
-            ));
+        let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
 
-        let el_retain_func = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
+        let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
             .map(|rc_info| {
                 let retain_func_ref = GlobalRef::Function(rc_info.retain);
-                match state.globals.get(&retain_func_ref).map(|c| &c.value) {
+                let retain_func = match state.globals.get(&retain_func_ref).map(|c| &c.value) {
                     Some(MemCell::Function(func)) => func.clone(),
                     _ => panic!("missing element retain func for dynarray {}", dyn_array_el_ty),
-                }
+                };
+
+                let release_func_ref = GlobalRef::Function(rc_info.release);
+                let release_func = match state.globals.get(&release_func_ref).map(|c| &c.value) {
+                    Some(MemCell::Function(func)) => func.clone(),
+                    _ => panic!("missing element release func for dynarray {}", dyn_array_el_ty),
+                };
+
+                (retain_func, release_func)
             });
 
         let old_array_struct = get_dyn_array_struct(state, array_arg);
@@ -173,23 +170,25 @@ pub(super) fn set_length(state: &mut Interpreter) {
 
         // copy default value into any cells beyond the length of the original array
         let default_val = state.deref_ptr(default_val_ptr).clone();
-        for i in old_len..new_len {
-            let i = i as usize;
-            data_cells[i] = default_val.clone();
-        }
 
         // put the initialized array onto the heap before retaining it because passing pointers
         // to retain funcs is a lot easier when the target is already on the heap
         let heap_cells = state.heap.alloc(data_cells);
 
-        // retain any new copies of the default value
-        for i in old_len..new_len {
+        for i in 0..new_len {
+            let i = i as usize;
+
             let el_ptr = Pointer::Heap(heap_cells + i as usize);
+
+            // assign default val for new elements
+            if i >= old_len as usize {
+                *state.deref_ptr_mut(&el_ptr) = default_val.clone();
+            }
 
             if dyn_array_el_ty.is_rc() {
                 let el_rc_ref = state.deref_ptr(&el_ptr).clone();
                 state.retain_cell(&el_rc_ref);
-            } else if let Some(el_retain_func) = &el_retain_func {
+            } else if let Some((el_retain_func, _)) = &el_rc_funcs {
                 state.call(el_retain_func, &[MemCell::Pointer(el_ptr)], None)
                     .expect("invoking element retain func failed");
             }
@@ -199,6 +198,8 @@ pub(super) fn set_length(state: &mut Interpreter) {
     } else {
         Pointer::Null
     };
+
+    assert_eq!(Pointer::Null == new_data, new_len == 0);
 
     let mut new_struct_fields = Vec::new();
     new_struct_fields.push(MemCell::I32(new_len)); // 0 = len
@@ -218,6 +219,7 @@ pub(super) fn set_length(state: &mut Interpreter) {
         ref_count: 1,
         resource_addr: new_array_resource
     };
+
     let new_array_cell = MemCell::RcCell(Box::new(new_array_rc));
     let new_array_rc_addr = state.heap.alloc(vec![new_array_cell]);
 

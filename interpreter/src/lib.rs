@@ -89,6 +89,10 @@ impl Pointer {
             _ => None,
         }
     }
+
+    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> &'a MemCell {
+        state.deref_ptr(self)
+    }
 }
 
 impl Add<usize> for Pointer {
@@ -330,6 +334,13 @@ impl MemCell {
     pub fn as_struct(&self, struct_id: StructID) -> Option<&StructCell> {
         match self {
             MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
+            _ => None,
+        }
+    }
+
+    pub fn as_array(&self, el_ty: &Type) -> Option<&[MemCell]> {
+        match self {
+            MemCell::Array(arr) if arr.el_ty == *el_ty => Some(&arr.elements),
             _ => None,
         }
     }

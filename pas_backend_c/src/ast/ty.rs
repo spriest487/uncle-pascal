@@ -632,9 +632,12 @@ impl Class {
                             memcpy(data, copy_arr_res->{data_field}, copy_size);
                         }}
 
-                        for (int32_t i = copy_len; i < len; i += 1) {{
+                        for (int32_t i = 0; i < len; i += 1) {{
                             {el_ty}* el_ptr = &data[i];
-                            memcpy(el_ptr, default_val, default_val_len);
+
+                            if (i >= copy_len) {{
+                                memcpy(el_ptr, default_val, default_val_len);
+                            }}
 
                             {retain_el_proc}
                         }}

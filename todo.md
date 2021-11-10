@@ -1,3 +1,6 @@
+* codegen: return bool from visitor func so we can strip out empty instructions in releasers/retainsers
+* error handling in interpreter
+
 # critical
 
 * should only be able to resize an array if the element type is default-initializable
