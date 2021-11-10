@@ -77,13 +77,14 @@ impl Type {
             Type::Pointer(_) => false,
             Type::Function(_) => false,
             Type::Record(_) => false,
-            Type::Class(_) => true,
-            Type::Interface(_) => true,
             Type::Variant(_) => false,
             Type::Array { .. } => false,
+            Type::GenericParam(_) => false,
+
+            Type::Class(_) => true,
+            Type::Interface(_) => true,
             Type::DynArray { .. } => true,
             Type::MethodSelf => true,
-            Type::GenericParam(_) => false,
             Type::Any => true,
         }
     }

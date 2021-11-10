@@ -65,7 +65,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                         .map(|local| {
                             let value_ref = Ref::Local(local.id());
                             if local.by_ref() {
-                                value_ref.deref()
+                                value_ref.to_deref()
                             } else {
                                 value_ref
                             }
@@ -85,7 +85,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                         out: ref_temp.clone(),
                         a: local_ref,
                     });
-                    ref_temp.deref()
+                    ref_temp.to_deref()
                 }
 
                 _ => panic!("wrong kind of node annotation for ident: {:?}", expr),
@@ -125,8 +125,12 @@ fn translate_indexer(
     builder.begin_scope();
 
     match base_ty {
-        pas_ty::Type::Array { element, .. } => {
+        pas_ty::Type::Array { element, dim, .. } => {
             let element = builder.translate_type(element);
+            let len = cast::i32(*dim).expect("array dim must be within range of i32");
+
+            gen_bounds_check(index_ref.clone(), Value::LiteralI32(len), builder);
+
             builder.append(Instruction::Element {
                 out: ptr_into.clone(),
                 a: base_ref,
@@ -136,21 +140,26 @@ fn translate_indexer(
         }
 
         pas_ty::Type::DynArray { element } => {
-            let arr_field = builder.local_temp(val_ty.clone().ptr().ptr());
             let array_struct = builder.translate_dyn_array_struct(&element);
             let array_class = ClassID::Class(array_struct);
+            let array_class_ty = Type::RcPointer(Some(array_class));
 
-            builder.append(Instruction::Field {
-                out: arr_field.clone(),
-                of_ty: Type::RcPointer(Some(array_class)),
-                a: base_ref,
-                field: DYNARRAY_PTR_FIELD,
-            });
+            let index_val = Value::Ref(index_ref);
+
+            // bounds check
+            let len_field_ptr = builder.local_temp(Type::I32.ptr());
+            builder.field(len_field_ptr.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_LEN_FIELD);
+
+            gen_bounds_check(index_val.clone(), Value::Ref(len_field_ptr.to_deref()), builder);
+
+            // offset array pointer to get element pointer
+            let arr_field = builder.local_temp(val_ty.clone().ptr().ptr());
+            builder.field(arr_field.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_PTR_FIELD);
 
             builder.append(Instruction::Add {
                 out: ptr_into.clone(),
-                a: Value::Ref(arr_field.deref()),
-                b: Value::Ref(index_ref),
+                a: Value::Ref(arr_field.to_deref()),
+                b: index_val,
             });
         }
 
@@ -167,7 +176,27 @@ fn translate_indexer(
 
     builder.end_scope();
 
-    ptr_into.deref()
+    ptr_into.to_deref()
+}
+
+fn gen_bounds_check(index_val: impl Into<Value>, len_val: impl Into<Value>, builder: &mut Builder) {
+    let index_val = index_val.into();
+
+    let bounds_ok_label = builder.alloc_label();
+
+    // if index >= 0 and index < arr.len then goto "bounds_ok"
+    let gte_zero = builder.gte_to_val(index_val.clone(), Value::LiteralI32(0));
+    let lt_len = builder.lt_to_val(index_val, len_val);
+    let bounds_check_ok = builder.and_to_val(gte_zero, lt_len);
+    builder.append(Instruction::JumpIf { dest: bounds_ok_label, test: bounds_check_ok });
+
+    // otherwise: raise
+    let err_str = builder.find_or_insert_string("array index out of bounds");
+    builder.append(Instruction::Raise {
+        val: Ref::Global(GlobalRef::StringLiteral(err_str))
+    });
+
+    builder.append(Instruction::Label(bounds_ok_label));
 }
 
 fn translate_branch(
@@ -246,7 +275,7 @@ pub fn translate_if_cond(
                 let is_not_ty = builder.translate_type(ty);
                 let is = translate_is_ty(cond_val, &cond_ty, &is_not_ty, builder);
 
-                let is_not = builder.not_fast(is);
+                let is_not = builder.not_to_val(is);
                 (is_not, Vec::new())
             }
 
@@ -276,7 +305,7 @@ pub fn translate_if_cond(
                             tag: case_index,
                         });
 
-                        vec![(binding_name, case_ty, data_ptr.deref())]
+                        vec![(binding_name, case_ty, data_ptr.to_deref())]
                     }
 
                     None => Vec::new(),
@@ -292,7 +321,7 @@ pub fn translate_if_cond(
                 let variant_ty = Type::Variant(struct_id);
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
 
-                let is_not = builder.not_fast(Value::Ref(is));
+                let is_not = builder.not_to_val(Value::Ref(is));
 
                 (is_not, Vec::new())
             }
@@ -367,7 +396,7 @@ fn translate_is_variant(
     let is = builder.local_temp(Type::Bool);
     builder.append(Instruction::Eq {
         out: is.clone(),
-        a: Value::Ref(tag_ptr.deref()),
+        a: Value::Ref(tag_ptr.to_deref()),
         b: Value::LiteralI32(case_index as i32), //todo: proper size type,
     });
 
@@ -609,7 +638,7 @@ fn translate_variant_ctor_call(
 
     // todo: proper index type
     builder.mov(
-        tag_ptr.deref(),
+        tag_ptr.to_deref(),
         Value::LiteralI32(case_index as i32),
     );
 
@@ -625,8 +654,8 @@ fn translate_variant_ctor_call(
             of_ty: out_ty.clone(),
         });
 
-        builder.mov(field_ptr.clone().deref(), Value::Ref(arg_ref));
-        builder.retain(field_ptr.deref(), &arg_ty);
+        builder.mov(field_ptr.clone().to_deref(), Value::Ref(arg_ref));
+        builder.retain(field_ptr.to_deref(), &arg_ty);
     }
 
     builder.end_scope();
@@ -946,7 +975,7 @@ fn translate_bin_op(
     builder.end_scope();
 
     if out_by_ref {
-        out_val.deref()
+        out_val.to_deref()
     } else {
         out_val
     }
@@ -973,7 +1002,7 @@ fn translate_unary_op(
             out_val
         }
 
-        syn::Operator::Deref => operand_ref.deref(),
+        syn::Operator::Deref => operand_ref.to_deref(),
 
         syn::Operator::Minus => {
             let out_ty = builder.translate_type(out_ty);
@@ -1064,8 +1093,8 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
                 field: field_id,
             });
 
-            builder.mov(field_ptr.clone().deref(), member_val);
-            builder.retain(field_ptr.deref(), &field_def.ty);
+            builder.mov(field_ptr.clone().to_deref(), member_val);
+            builder.retain(field_ptr.to_deref(), &field_def.ty);
         }
     });
 
@@ -1115,7 +1144,7 @@ fn translate_static_array_ctor(
 
         let el_init = translate_expr(el, builder);
 
-        builder.mov(el_ptr.clone().deref(), el_init);
+        builder.mov(el_ptr.clone().to_deref(), el_init);
         builder.end_scope();
     }
 
@@ -1159,7 +1188,7 @@ fn translate_dyn_array_ctor(
         // set length
         let len =
             i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
-        builder.mov(len_ref.clone().deref(), Value::LiteralI32(len));
+        builder.mov(len_ref.clone().to_deref(), Value::LiteralI32(len));
 
         // get pointer to storage pointer
         let arr_ptr = builder.local_temp(elem_ty.clone().ptr().ptr());
@@ -1173,7 +1202,7 @@ fn translate_dyn_array_ctor(
         // allocate array storage
         if len > 0 {
             builder.append(Instruction::DynAlloc {
-                out: arr_ptr.clone().deref(),
+                out: arr_ptr.clone().to_deref(),
                 len: Value::LiteralI32(len),
                 element_ty: elem_ty.clone(),
             });
@@ -1187,23 +1216,23 @@ fn translate_dyn_array_ctor(
 
                     // el_ptr := arr_ptr^ + i
                     builder.append(Instruction::Add {
-                        a: Value::Ref(arr_ptr.clone().deref()),
+                        a: Value::Ref(arr_ptr.clone().to_deref()),
                         b: index,
                         out: el_ptr.clone(),
                     });
 
                     // el_ptr^ := el
                     let el = translate_expr(el, builder);
-                    builder.mov(el_ptr.clone().deref(), el);
+                    builder.mov(el_ptr.clone().to_deref(), el);
 
                     // retain each element. we don't do this for static arrays because retaining
                     // a static array retains all its elements - for dynamic arrays, retaining
                     // the array object itself does not retain the elements
-                    builder.retain(el_ptr.clone().deref(), &elem_ty);
+                    builder.retain(el_ptr.clone().to_deref(), &elem_ty);
                 });
             }
         } else {
-            builder.mov(arr_ptr.deref(), Value::LiteralNull);
+            builder.mov(arr_ptr.to_deref(), Value::LiteralNull);
         }
     });
 

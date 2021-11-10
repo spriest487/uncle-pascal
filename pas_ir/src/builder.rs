@@ -14,84 +14,9 @@ use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use pas_syn::ast::TypeList;
+use self::scope::*;
 
-#[derive(Clone, Debug)]
-pub enum Local {
-    // the builder created this local allocation and must track its lifetime to drop it
-    New {
-        id: LocalID,
-        name: Option<String>,
-        ty: Type,
-    },
-
-    // the builder created this local allocation but we don't want to track its lifetime
-    Temp {
-        id: LocalID,
-        ty: Type,
-    },
-
-    // function parameter slots as established by the calling convention - %1.. if the function
-    // has a return value, otherwise $0..
-
-    // by-value parameter. value is copied into the local by the caller
-    Param {
-        id: LocalID,
-        name: String,
-        ty: Type,
-
-        // by-ref parameter?
-        // if so pointer to the value is copied into the local by the caller, and must
-        // be dereferenced every time it is used
-        by_ref: bool,
-    },
-
-    // return value: always occupies local %0 if present.
-    // the return value is not named and is not cleaned up on scope exit (if it's a
-    // rc type, the reference is owned by the caller after the function exits)
-    Return {
-        ty: Type,
-    },
-}
-
-impl Local {
-    pub fn id(&self) -> LocalID {
-        match self {
-            Local::New { id, .. } | Local::Temp { id, .. } | Local::Param { id, .. } => *id,
-            Local::Return { .. } => LocalID(0),
-        }
-    }
-
-    pub fn name(&self) -> Option<&String> {
-        match self {
-            Local::New { name, .. } => name.as_ref(),
-            Local::Param { name, .. } => Some(&name),
-            Local::Temp { .. } | Local::Return { .. } => None,
-        }
-    }
-
-    /// if a local is by-ref, it's treated in pascal syntax like a value of this type but in the IR
-    /// it's actually a pointer. if this returns true, it's necessary to wrap Ref::Local values
-    /// that reference this local in a Ref::Deref to achieve the same effect as the pascal syntax
-    pub fn by_ref(&self) -> bool {
-        match self {
-            Local::Param { by_ref, .. } => *by_ref,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug)]
-struct Scope {
-    locals: Vec<Local>,
-}
-
-#[derive(Debug)]
-pub struct LoopBlock {
-    pub continue_label: Label,
-    pub break_label: Label,
-
-    pub block_level: usize,
-}
+pub mod scope;
 
 #[derive(Debug)]
 pub struct Builder<'m> {
@@ -104,7 +29,7 @@ pub struct Builder<'m> {
     scopes: Vec<Scope>,
     next_label: Label,
 
-    loop_stack: Vec<LoopBlock>,
+    loop_stack: Vec<LoopScope>,
 }
 
 impl<'m> Builder<'m> {
@@ -118,7 +43,7 @@ impl<'m> Builder<'m> {
             // the EXIT label is always reserved, so start one after that
             next_label: Label(EXIT_LABEL.0 + 1),
 
-            scopes: vec![Scope { locals: Vec::new() }],
+            scopes: vec![Scope::new()],
 
             loop_stack: Vec::new(),
         }
@@ -509,8 +434,28 @@ impl<'m> Builder<'m> {
             new_val: val.into(),
         });
     }
+    
+    pub fn and(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::And {
+            a: a.into(),
+            b: b.into(),
+            out: out.into(),
+        });
+    }
+    
+    pub fn and_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        match (a.into(), b.into()) {
+            (Value::LiteralBool(a), Value::LiteralBool(b)) => Value::LiteralBool(a && b),
 
-    pub fn not_fast(&mut self, bool_val: impl Into<Value>) -> Value {
+            (a, b) => {
+                let result = self.local_temp(Type::Bool);
+                self.and(result.clone(), a, b);
+                Value::Ref(result)
+            }
+        }
+    }
+
+    pub fn not_to_val(&mut self, bool_val: impl Into<Value>) -> Value {
         match bool_val.into() {
             Value::LiteralBool(b) => Value::LiteralBool(!b),
 
@@ -569,6 +514,26 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn lt_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        match (a.into(), b.into()) {
+            (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
+                Value::LiteralBool(lit_a < lit_b)
+            }
+            (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
+                Value::LiteralBool(lit_a < lit_b)
+            }
+            (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
+                Value::LiteralBool(lit_a < lit_b)
+            }
+
+            (a, b) => {
+                let result = self.local_temp(Type::Bool);
+                self.lt(result.clone(), a, b);
+                Value::Ref(result)
+            }
+        }
+    }
+
     #[allow(unused)]
     pub fn lte(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         let out = out.into();
@@ -605,56 +570,48 @@ impl<'m> Builder<'m> {
         })
     }
 
-    pub fn bind_local(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
-        let name = name.into();
-
-        let slot_free = !self
-            .current_scope_mut()
-            .locals
-            .iter()
-            .any(|local| local.id() == id);
-        assert!(
-            slot_free,
-            "scope must not already have a binding for {}: {:?}",
-            Ref::Local(id),
-            self.current_scope_mut()
-        );
-        assert!(!self
-            .current_scope_mut()
-            .locals
-            .iter()
-            .any(|l| l.name() == Some(&name) || l.id() == id));
-
-        if by_ref {
-            let is_ptr = match &ty {
-                Type::Pointer(..) => true,
-                _ => false,
-            };
-            assert!(is_ptr, "by-ref parameters must have pointer type");
+    pub fn gte_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
+        match (a.into(), b.into()) {
+            (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
+                Value::LiteralBool(lit_a >= lit_b)
+            }
+            (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
+                Value::LiteralBool(lit_a >= lit_b)
+            }
+            (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
+                Value::LiteralBool(lit_a >= lit_b)
+            }
+            
+            (a, b) => {
+                let result = self.local_temp(Type::Bool);
+                self.gte(result.clone(), a, b);
+                Value::Ref(result)
+            }
         }
+    }
+    
+    pub fn field(&mut self, out: impl Into<Ref>, base: impl Into<Ref>,base_ty: &Type, field: FieldID) {
+        self.append(Instruction::Field {
+            out: out.into(),
+            a: base.into(),
+            of_ty: base_ty.clone(),
+            field,
+        })
+    }
 
-        self.current_scope_mut().locals.push(Local::Param {
-            id,
-            name,
-            ty,
-            by_ref,
-        });
+    pub fn bind_param(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
+        self.current_scope_mut().bind_param(id, name, ty, by_ref);
     }
 
     // binds a return local in %0 with the indicated type
     pub fn bind_return(&mut self, ty: Type) {
-        let scope = self.current_scope_mut();
-
-        let slot_free = !scope.locals.iter().any(|l| l.id() == LocalID(0));
-        assert!(slot_free, "%0 must not already be bound in bind_return");
-
-        scope.locals.push(Local::Return { ty });
+        self.current_scope_mut().bind_return(ty);
     }
 
     fn find_next_local_id(&self) -> LocalID {
         self.scopes
             .iter()
-            .flat_map(|scope| scope.locals.iter())
+            .flat_map(|scope| scope.locals().iter())
             .map(Local::id)
             .max_by_key(|id| id.0)
             .map(|id| LocalID(id.0 + 1))
@@ -679,12 +636,10 @@ impl<'m> Builder<'m> {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.find_next_local_id();
+        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
 
-        self.current_scope_mut()
-            .locals
-            .push(Local::Temp { id, ty: ty.clone() });
+        self.current_scope_mut().bind_temp(id, ty);
 
-        self.instructions.push(Instruction::LocalAlloc(id, ty));
         Ref::Local(id)
     }
 
@@ -693,13 +648,10 @@ impl<'m> Builder<'m> {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.find_next_local_id();
-        self.current_scope_mut().locals.push(Local::New {
-            id,
-            name,
-            ty: ty.clone(),
-        });
+        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
 
-        self.instructions.push(Instruction::LocalAlloc(id, ty));
+        self.current_scope_mut().bind_new(id, name, ty);
+
         Ref::Local(id)
     }
 
@@ -707,15 +659,7 @@ impl<'m> Builder<'m> {
         self.scopes
             .iter()
             .rev()
-            .filter_map(|scope| {
-                scope.locals.iter().find(|local| {
-                    local
-                        .name()
-                        .map(|local_name| local_name == name)
-                        .unwrap_or(false)
-                })
-            })
-            .next()
+            .find_map(|scope| scope.local_by_name(name))
     }
 
     pub fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor)
@@ -742,7 +686,7 @@ impl<'m> Builder<'m> {
                         field,
                     });
 
-                    self.visit_deep(field_val.deref(), &field_ty, f);
+                    self.visit_deep(field_val.to_deref(), &field_ty, f);
                 }
             }
 
@@ -777,7 +721,7 @@ impl<'m> Builder<'m> {
                         // is_not_case := tag_ptr^ != tag
                         self.append(Instruction::Eq {
                             out: is_not_case.clone(),
-                            a: Value::Ref(tag_ptr.clone().deref()),
+                            a: Value::Ref(tag_ptr.clone().to_deref()),
                             b: Value::LiteralI32(tag as i32), // todo proper size type
                         });
                         self.append(Instruction::Not {
@@ -799,7 +743,7 @@ impl<'m> Builder<'m> {
                             tag,
                         });
 
-                        self.visit_deep(data_ptr.deref(), &data_ty, f);
+                        self.visit_deep(data_ptr.to_deref(), &data_ty, f);
 
                         // break
                         self.append(Instruction::Jump { dest: break_label });
@@ -822,7 +766,7 @@ impl<'m> Builder<'m> {
                         index: Value::LiteralI32(i as i32), // todo: real usize type,
                     });
 
-                    self.visit_deep(element_ptr.clone().deref(), element, f);
+                    self.visit_deep(element_ptr.clone().to_deref(), element, f);
                 }
             }
 
@@ -842,8 +786,8 @@ impl<'m> Builder<'m> {
 
         let release_body = {
             let mut release_builder = Builder::new(&mut self.module);
-            release_builder.bind_local(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).deref();
+            release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).to_deref();
 
             release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
                 builder.release(el_ref, el_ty);
@@ -863,8 +807,8 @@ impl<'m> Builder<'m> {
 
         let retain_body = {
             let mut retain_builder = Builder::new(&mut self.module);
-            retain_builder.bind_local(LocalID(0), ty.clone().ptr(), "target", true);
-            let target_ref = Ref::Local(LocalID(0)).deref();
+            retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
+            let target_ref = Ref::Local(LocalID(0)).to_deref();
             retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
                 builder.retain(el_ref, el_ty);
             });
@@ -949,7 +893,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn begin_loop_body_scope(&mut self, continue_label: Label, break_label: Label) {
-        self.loop_stack.push(LoopBlock {
+        self.loop_stack.push(LoopScope {
             continue_label,
             break_label,
             block_level: self.scopes.len(),
@@ -966,13 +910,13 @@ impl<'m> Builder<'m> {
             .expect("end_loop called without an active loop");
     }
 
-    pub fn current_loop(&self) -> Option<&LoopBlock> {
+    pub fn current_loop(&self) -> Option<&LoopScope> {
         self.loop_stack.last()
     }
 
     pub fn begin_scope(&mut self) {
         self.instructions.push(Instruction::LocalBegin);
-        self.scopes.push(Scope { locals: Vec::new() });
+        self.scopes.push(Scope::new());
 
         if self.opts().annotate_scopes {
             self.comment(&format!("begin scope {}", self.scopes.len()));
@@ -1017,11 +961,7 @@ impl<'m> Builder<'m> {
         let locals: Vec<_> = (to_scope..=last_scope)
             .map(|i| &self.scopes[i])
             .rev()
-            .flat_map(|scope| {
-                let mut locals = scope.locals.to_vec();
-                locals.reverse();
-                locals
-            })
+            .flat_map(|scope| scope.locals().iter().rev().cloned())
             .collect();
 
         // release local bindings that will be lost when the current scope is popped.

@@ -1383,7 +1383,7 @@ impl Interpreter {
                     }
 
                     Type::RcPointer(..) => {
-                        let target = self.load(&a.clone().deref());
+                        let target = self.load(&a.clone().to_deref());
                         let struct_ptr = match target.as_rc() {
                             Some(rc_cell) => Pointer::Heap(rc_cell.resource_addr),
                             None => {
@@ -1506,7 +1506,7 @@ impl Interpreter {
             },
 
             Instruction::Raise { val } => {
-                let msg = self.read_string(&val.clone().deref());
+                let msg = self.read_string(&val.clone().to_deref());
                 return Err(ExecError::Raised {
                     msg,
                     //todo

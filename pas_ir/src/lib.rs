@@ -79,7 +79,7 @@ pub enum Ref {
 }
 
 impl Ref {
-    pub fn deref(self) -> Self {
+    pub fn to_deref(self) -> Self {
         Ref::Deref(Box::new(Value::Ref(self)))
     }
 }
@@ -666,7 +666,7 @@ impl Module {
                 id,
                 body_builder.pretty_ty_name(&param_ty)
             ));
-            body_builder.bind_local(id, param_ty.clone(), param.ident.to_string(), by_ref);
+            body_builder.bind_param(id, param_ty.clone(), param.ident.to_string(), by_ref);
 
             bound_params.push((id, param_ty));
         }
@@ -860,8 +860,8 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     let mut releaser_builder = Builder::new(module);
 
     // %0 is the self arg, the pointer to the inner struct
-    releaser_builder.bind_local(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
-    let self_arg = Ref::Local(LocalID(0)).deref();
+    releaser_builder.bind_param(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
+    let self_arg = Ref::Local(LocalID(0)).to_deref();
 
     let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
     releaser_builder.append(Instruction::Field {
@@ -891,7 +891,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
 
     // at_end := counter eq array.length
     let at_end = releaser_builder.local_temp(Type::Bool);
-    releaser_builder.eq(at_end.clone(), counter.clone(), len_field_ptr.clone().deref());
+    releaser_builder.eq(at_end.clone(), counter.clone(), len_field_ptr.clone().to_deref());
 
     // if at_end then break
     releaser_builder.append(Instruction::JumpIf {
@@ -903,10 +903,10 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
     releaser_builder.append(Instruction::Add {
         out: el_ptr.clone(),
-        a: Value::Ref(arr_field_ptr.clone().deref()),
+        a: Value::Ref(arr_field_ptr.clone().to_deref()),
         b: Value::Ref(counter.clone()),
     });
-    releaser_builder.release(el_ptr.deref(), &elem_ty);
+    releaser_builder.release(el_ptr.to_deref(), &elem_ty);
 
     // counter := counter + 1
     releaser_builder.append(Instruction::Add {
@@ -925,7 +925,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
 
     let zero_elements = releaser_builder.local_temp(Type::Bool);
     releaser_builder.append(Instruction::Eq {
-        a: Value::Ref(len_field_ptr.clone().deref()),
+        a: Value::Ref(len_field_ptr.clone().to_deref()),
         b: Value::LiteralI32(0),
         out: zero_elements.clone()
     });
@@ -935,13 +935,13 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     });
 
     releaser_builder.append(Instruction::DynFree {
-        at: arr_field_ptr.clone().deref(),
+        at: arr_field_ptr.clone().to_deref(),
     });
 
     releaser_builder.append(Instruction::Label(after_free));
 
-    releaser_builder.mov(len_field_ptr.deref(), Value::LiteralI32(0));
-    releaser_builder.mov(arr_field_ptr.deref(), Value::LiteralNull);
+    releaser_builder.mov(len_field_ptr.to_deref(), Value::LiteralI32(0));
+    releaser_builder.mov(arr_field_ptr.to_deref(), Value::LiteralNull);
 
     let releaser_body = releaser_builder.finish();
 
