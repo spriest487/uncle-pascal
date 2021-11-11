@@ -6,12 +6,7 @@ use pas_syn::{
     ident::*,
 };
 
-use crate::{
-    context,
-    result::*,
-    Context, Decl, NameError, Symbol,
-    ty::{Type, Specializable, typecheck_type}
-};
+use crate::{context, result::*, Context, Decl, NameError, Symbol, ty::{Type, Specializable, typecheck_type}, NameContainer};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypePattern {
@@ -78,7 +73,7 @@ impl TypePattern {
                     let err_span = path.first().span.to(&case_ident.span);
 
                     return Err(NameError::MemberNotFound {
-                        base: Type::Variant(Box::new(variant_def.name.clone())),
+                        base: NameContainer::Type(Type::Variant(Box::new(variant_def.name.clone()))),
                         member: case_ident.clone(),
                         span: err_span,
                     }

@@ -1,7 +1,8 @@
-use crate::{context::Decl, Type, FunctionSig};
+use crate::{context::Decl, Type, FunctionSig, TypeAnnotation};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt, path::PathBuf};
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum GenericTarget {
@@ -172,22 +173,46 @@ pub enum ExpectedKind {
 }
 
 #[derive(Debug)]
-pub enum UnexpectedValue {
+pub enum Named {
     Decl(Decl),
-    Namespace(Ident),
+    Namespace(IdentPath),
 }
 
-impl From<Decl> for UnexpectedValue {
+impl From<Decl> for Named {
     fn from(decl: Decl) -> Self {
-        UnexpectedValue::Decl(decl)
+        Named::Decl(decl)
     }
 }
 
-impl fmt::Display for UnexpectedValue {
+impl fmt::Display for Named {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            UnexpectedValue::Decl(decl) => write!(f, "{}", decl),
-            UnexpectedValue::Namespace(ident) => write!(f, "namespace `{}`", ident),
+            Named::Decl(decl) => write!(f, "{}", decl),
+            Named::Namespace(ident_path) => write!(f, "namespace `{}`", ident_path),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum NameContainer {
+    Namespace(IdentPath),
+    Type(Type),
+}
+
+impl NameContainer {
+    pub fn for_annotated(a: &TypeAnnotation) -> Self {
+        match a {
+            TypeAnnotation::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
+            _ => NameContainer::Type(a.ty().clone()),
+        }
+    }
+}
+
+impl fmt::Display for NameContainer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            NameContainer::Namespace(ns) => write!(f, "namespace `{}`", ns),
+            NameContainer::Type(ty) => write!(f, "type `{}`", ty),
         }
     }
 }
@@ -196,7 +221,7 @@ impl fmt::Display for UnexpectedValue {
 pub enum NameError {
     NotFound(Ident),
     MemberNotFound {
-        base: Type,
+        base: NameContainer,
         member: Ident,
         span: Span,
     },
@@ -208,7 +233,7 @@ pub enum NameError {
     Unexpected {
         ident: IdentPath,
         expected: ExpectedKind,
-        actual: UnexpectedValue,
+        actual: Named,
     },
     AlreadyDeclared {
         new: Ident,
@@ -363,7 +388,7 @@ impl fmt::Display for NameError {
         match self {
             NameError::NotFound(ident) => write!(f, "`{}` was not found in this scope", ident),
             NameError::MemberNotFound { base, member, .. } => {
-                write!(f, "type `{}` does not have a member named `{}`", base, member)
+                write!(f, "{} does not have a member named `{}`", base, member)
             }
             NameError::Unexpected {
                 ident,

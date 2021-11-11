@@ -66,7 +66,7 @@ pub fn typecheck_object_ctor(
             Some(member) => member,
             None => {
                 return Err(NameError::MemberNotFound {
-                    base: ty,
+                    base: NameContainer::Type(ty),
                     member: arg.ident.clone(),
                     span: arg.span.clone(),
                 }

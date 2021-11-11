@@ -9,7 +9,7 @@ pub enum Visibility {
 
 #[derive(Clone, Debug)]
 pub struct Unit<A: Annotation> {
-    pub ident: Ident,
+    pub ident: IdentPath,
 
     pub decls: Vec<UnitDecl<A>>,
     pub init: Vec<Statement<A>>,
@@ -40,7 +40,7 @@ impl<A: Annotation> Unit<A> {
 }
 
 impl Unit<Span> {
-    pub fn parse(tokens: &mut TokenStream, ident: Ident) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, ident: IdentPath) -> ParseResult<Self> {
         let mut decls = Vec::new();
 
         // can't use match_separated here because it doesn't play nicely

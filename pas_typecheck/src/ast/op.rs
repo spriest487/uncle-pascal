@@ -242,7 +242,7 @@ fn typecheck_member_of(
                             return Err(NameError::MemberNotFound {
                                 member: member_ident,
                                 span,
-                                base: lhs.annotation().ty().clone(),
+                                base: NameContainer::for_annotated(lhs.annotation()),
                             }
                             .into());
                         }
@@ -253,7 +253,7 @@ fn typecheck_member_of(
                     return Err(NameError::MemberNotFound {
                         member: member_ident,
                         span,
-                        base: lhs.annotation().ty().clone(),
+                        base: NameContainer::for_annotated(lhs.annotation()),
                     }
                     .into());
                 }
@@ -395,7 +395,7 @@ pub fn typecheck_member_value(
 
                     None => return Err(NameError::MemberNotFound {
                         span,
-                        base: base_ty.clone(),
+                        base: NameContainer::Type(base_ty.clone()),
                         member: method,
                     }.into())
                 }
@@ -465,7 +465,7 @@ pub fn typecheck_variant_ctor(
     if !case_exists {
         return Err(NameError::MemberNotFound {
             span: member_ident.span().clone(),
-            base: Type::Variant(Box::new(variant_name.clone())),
+            base: NameContainer::Type(Type::Variant(Box::new(variant_name.clone()))),
             member: member_ident.clone(),
         }.into());
     }

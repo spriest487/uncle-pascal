@@ -158,7 +158,7 @@ impl Namespace for Scope {
 
     fn key(&self) -> Option<&Self::Key> {
         match &self.env {
-            Environment::Module { namespace } => Some(namespace),
+            Environment::Module { namespace } => Some(namespace.last()),
             _ => None,
         }
     }
@@ -234,7 +234,7 @@ impl DefDeclMatch {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Environment {
     Global,
-    Module { namespace: Ident },
+    Module { namespace: IdentPath },
     TypeDecl,
     FunctionDecl,
     FunctionBody { result_ty: Type },
@@ -242,7 +242,7 @@ pub enum Environment {
 }
 
 impl Environment {
-    pub fn namespace(&self) -> Option<&Ident> {
+    pub fn namespace(&self) -> Option<&IdentPath> {
         match self {
             Environment::Module { namespace } => Some(namespace),
             _ => None,
@@ -304,7 +304,7 @@ impl Context {
             let string_name = string_ty.full_path().unwrap();
 
             let unit_env = Environment::Module {
-                namespace: Ident::new("System", builtin_span),
+                namespace: IdentPath::new(Ident::new("System", builtin_span), vec![]),
             };
             let system_scope = root_ctx.push_scope(unit_env);
 
@@ -612,7 +612,7 @@ impl Context {
             Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
 
             Some(MemberRef::Value { value: decl, .. }) => {
-                let unexpected = UnexpectedValue::Decl(decl.clone());
+                let unexpected = Named::Decl(decl.clone());
                 Err(NameError::Unexpected {
                     ident: ns_path.clone(),
                     expected: ExpectedKind::Namespace,
@@ -635,7 +635,7 @@ impl Context {
         if iface.get_method(&method).is_none() {
             return Err(NameError::MemberNotFound {
                 span: method.span.clone(),
-                base: Type::Interface(iface.name.qualified.clone()),
+                base: NameContainer::Type(Type::Interface(iface.name.qualified.clone())),
                 member: method,
             });
         }
@@ -724,7 +724,7 @@ impl Context {
     ) -> NamingResult<()>
     where
         DeclPred: Fn(&Decl) -> DefDeclMatch,
-        MapUnexpected: Fn(IdentPath, UnexpectedValue) -> NameError,
+        MapUnexpected: Fn(IdentPath, Named) -> NameError,
     {
         let full_name = IdentPath::new(name.clone(), self.scopes.current_path().keys().cloned());
 
@@ -759,15 +759,15 @@ impl Context {
                     }
 
                     DefDeclMatch::WrongKind => {
-                        let unexpected = UnexpectedValue::Decl(value.clone());
+                        let unexpected = Named::Decl(value.clone());
                         return Err(map_unexpected(full_name, unexpected));
                     }
                 }
             }
 
             Some(MemberRef::Namespace { path }) => {
-                let name = path.keys().last().unwrap().clone();
-                return Err(map_unexpected(full_name, UnexpectedValue::Namespace(name)));
+                let path = IdentPath::from_parts(path.keys().cloned());
+                return Err(map_unexpected(full_name, Named::Namespace(path)));
             }
         }
 
@@ -827,7 +827,7 @@ impl Context {
 
             Some(MemberRef::Namespace { path }) => Err(NameError::Unexpected {
                 ident: name.clone(),
-                actual: UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone()),
+                actual: Named::Namespace(IdentPath::from_parts(path.keys().cloned())),
                 expected: ExpectedKind::AnyType,
             }),
 
@@ -845,7 +845,7 @@ impl Context {
 
             Some(..) => {
                 let decl = self.resolve(&name);
-                let unexpected = UnexpectedValue::Decl(
+                let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
                         .expect("if def exists it must be a value not a namespace")
@@ -885,7 +885,7 @@ impl Context {
 
             Some(..) => {
                 let decl = self.resolve(&name);
-                let unexpected = UnexpectedValue::Decl(
+                let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
                         .expect("if def exists it must be a value not a namespace")
@@ -945,7 +945,7 @@ impl Context {
 
             Some(MemberRef::Namespace { path }) => {
                 let unexpected =
-                    UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
+                    Named::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -963,7 +963,7 @@ impl Context {
 
             Some(..) => {
                 let decl = self.resolve(&name);
-                let unexpected = UnexpectedValue::Decl(
+                let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
                         .expect("if def exists it must be a value not a namespace")
@@ -1041,7 +1041,7 @@ impl Context {
 
             Some(MemberRef::Namespace { path }) => {
                 let unexpected =
-                    UnexpectedValue::Namespace(path.top().env.namespace().unwrap().clone());
+                    Named::Namespace(path.top().env.namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -1085,7 +1085,7 @@ impl Context {
             (None, 0) => Err(NameError::MemberNotFound {
                 span: member.span.clone(),
                 member: member.clone(),
-                base: of_ty.clone(),
+                base: NameContainer::Type(of_ty.clone()),
             }),
 
             // no data member, multiple methods - we can use overloading to determine which
@@ -1148,7 +1148,7 @@ impl Context {
                 let method_decl = iface_def.get_method(member_ident).ok_or_else(|| {
                     NameError::MemberNotFound {
                         member: member_ident.clone(),
-                        base: ty.clone(),
+                        base: NameContainer::Type(ty.clone()),
                         span: member_ident.span.clone(),
                     }
                 })?;
@@ -1159,7 +1159,7 @@ impl Context {
             }
 
             _ => Err(NameError::MemberNotFound {
-                base: ty.clone(),
+                base: NameContainer::Type(ty.clone()),
                 span: member_ident.span.clone(),
                 member: member_ident.clone(),
             }),

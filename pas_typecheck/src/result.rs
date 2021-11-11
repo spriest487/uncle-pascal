@@ -90,7 +90,7 @@ pub enum TypecheckError {
         span: Span,
     },
     UndefinedSymbols {
-        unit: Ident,
+        unit: IdentPath,
         syms: Vec<Ident>,
     },
     UnableToInferType {

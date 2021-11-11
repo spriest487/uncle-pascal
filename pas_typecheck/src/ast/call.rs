@@ -5,12 +5,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
-use crate::{
-    context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError,
-    GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation,
-    Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult,
-    ValueKind,
-};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer};
 
 #[cfg(test)]
 mod test;
@@ -804,7 +799,7 @@ fn typecheck_variant_ctor_call(
             return Err(NameError::MemberNotFound {
                 span: span.clone(),
                 member: case.clone(),
-                base: Type::Variant(Box::new(variant.clone())),
+                base: NameContainer::Type(Type::Variant(Box::new(variant.clone()))),
             }
             .into())
         }
