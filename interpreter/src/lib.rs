@@ -12,6 +12,7 @@ use pas_ir::{
 
 use self::heap::{Heap, HeapAddress};
 use pas_common::span::Span;
+use pas_ir::metadata::ty::{ClassID, FieldID};
 
 mod builtin;
 mod heap;

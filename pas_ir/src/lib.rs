@@ -9,9 +9,10 @@ use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 
 pub use self::{
     formatter::*,
-    metadata::Type,
+    metadata::ty::Type,
 };
 use linked_hash_map::LinkedHashMap;
+use crate::ty::{ClassID, FieldID, TypeDef};
 
 mod builder;
 
@@ -21,7 +22,7 @@ mod formatter;
 mod stmt;
 
 pub mod prelude {
-    pub use crate::{metadata::*, GlobalRef, Instruction, Label, Ref, Value, RETURN_REF};
+    pub use crate::{metadata::*, metadata::ty::*, GlobalRef, Instruction, Label, Ref, Value, RETURN_REF};
 }
 
 pub mod metadata;

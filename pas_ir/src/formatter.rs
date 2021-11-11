@@ -1,6 +1,8 @@
 use std::{cell::Cell, fmt};
 
-use crate::{metadata::*, GlobalRef, Instruction, Ref, Value};
+use crate::{metadata::*, GlobalRef, Instruction, Ref, Value, Type};
+use crate::name_path::NamePath;
+use crate::ty::{ClassID, FieldID};
 
 pub trait InstructionFormatter {
     fn format_instruction<W: fmt::Write>(

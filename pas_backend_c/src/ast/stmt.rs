@@ -2,7 +2,8 @@ use std::fmt;
 
 use pas_ir::{
     self as ir,
-    metadata::{self, ClassID, StringID, StructID},
+    metadata::ty::ClassID,
+    metadata::{self, StringID, StructID},
     Label, LocalID,
 };
 

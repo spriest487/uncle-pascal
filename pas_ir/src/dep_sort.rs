@@ -1,9 +1,11 @@
-use crate::metadata::{Metadata, Struct, StructID, Type, TypeDef, Variant};
+use crate::metadata::{Metadata, StructID};
 use linked_hash_map::LinkedHashMap;
 use std::{
     cmp::Ordering,
     collections::{HashMap, HashSet},
 };
+use crate::ty::{Struct, TypeDef, Variant};
+use crate::Type;
 
 // sort list of type defs to resolve deep structural dependencies on other defs.
 // struct, variant and static array fields count as structural dependencies (and are
@@ -112,6 +114,7 @@ mod test {
     };
     use crate::metadata::NamePath;
     use crate::dep_sort::find_deps;
+    use crate::ty::TypeDef;
 
     fn defs_from_src(src: &str) -> (HashMap<StructID, TypeDef>, Metadata) {
         let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();

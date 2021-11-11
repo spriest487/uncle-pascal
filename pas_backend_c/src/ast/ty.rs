@@ -1,13 +1,11 @@
 use std::{collections::HashMap, fmt};
 
-use pas_ir::{
-    metadata::{self, ClassID, FieldID, InterfaceID, MethodID, StructID},
-};
+use pas_ir::metadata;
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
 use std::fmt::Write;
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD};
-use pas_ir::prelude::RcBoilerplatePair;
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, StructID, MethodID, RcBoilerplatePair, InterfaceID};
+use pas_ir::prelude::{ClassID, FieldID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

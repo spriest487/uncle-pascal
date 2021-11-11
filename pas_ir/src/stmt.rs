@@ -1,6 +1,4 @@
-use crate::{
-    prelude::*, translate_block, translate_exit, translate_call, translate_expr, translate_if_cond, Builder,
-};
+use crate::{prelude::*, translate_block, translate_exit, translate_call, translate_expr, translate_if_cond, Builder, Type};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 use crate::expr::translate_raise;

@@ -1,10 +1,6 @@
 use pas_typecheck as pas_ty;
 
-use crate::{
-    metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef,
-    GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
-    Value, EXIT_LABEL,
-};
+use crate::{metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value, EXIT_LABEL, Type};
 
 use std::fmt;
 
@@ -14,6 +10,8 @@ use pas_typecheck::{builtin_string_name, Specializable};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use pas_syn::ast::TypeList;
+use crate::name_path::NamePath;
+use crate::ty::{ClassID, FieldID, Interface, Method, Struct, StructFieldDef, Variant, VariantCase};
 use self::scope::*;
 
 pub mod scope;
@@ -144,7 +142,7 @@ impl<'m> Builder<'m> {
             let ty = self.translate_type(&member.ty);
             let rc = member.ty.is_rc_reference();
 
-            fields.insert(FieldID(id), StructField { name, ty, rc });
+            fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
         }
 
         Struct::new(name_path).with_fields(fields)

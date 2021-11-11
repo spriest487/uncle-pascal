@@ -1,13 +1,18 @@
-use std::{collections::hash_map::{HashMap}, fmt};
+use std::{collections::hash_map::HashMap, fmt};
 
-use crate::formatter::{InstructionFormatter, RawInstructionFormatter};
-use pas_syn as syn;
-use pas_syn::{Ident, IdentPath, Path};
-use pas_typecheck as pas_ty;
-
-use linked_hash_map::LinkedHashMap;
-use std::borrow::Cow;
 use crate::dep_sort::sort_defs;
+use crate::formatter::{InstructionFormatter};
+use linked_hash_map::LinkedHashMap;
+use pas_syn as syn;
+use pas_syn::{Ident, IdentPath};
+use pas_typecheck as pas_ty;
+use std::borrow::Cow;
+
+pub mod name_path;
+pub mod ty;
+
+pub use ty::*;
+pub use crate::name_path::*;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -22,15 +27,6 @@ impl fmt::Display for StringID {
 pub struct StructID(pub usize);
 
 impl fmt::Display for StructID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct FieldID(pub usize);
-
-impl fmt::Display for FieldID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
@@ -60,409 +56,6 @@ pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct NamePath {
-    pub path: Path<String>,
-    pub type_args: Option<Vec<Type>>,
-}
-
-impl fmt::Display for NamePath {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        RawInstructionFormatter.format_name(self, f)
-    }
-}
-
-impl NamePath {
-    pub fn from_decl(name: pas_ty::Symbol, metadata: &Metadata) -> Self {
-        let path_parts = name
-            .qualified
-            .into_parts()
-            .into_iter()
-            .map(|ident| ident.to_string());
-
-        let type_args = match name.type_args {
-            Some(name_type_args) => {
-                let types = name_type_args.items.iter()
-                    .map(|arg| metadata.find_type(arg))
-                    .collect();
-
-                Some(types)
-            },
-
-            None => None,
-        };
-
-
-        NamePath {
-            path: Path::from_parts(path_parts),
-            type_args,
-        }
-    }
-
-    pub fn from_ident_path(ident: &syn::IdentPath, type_args: Option<Vec<Type>>) -> Self {
-        let path = Path::from_parts(ident.iter().map(|ident| ident.to_string()));
-
-        NamePath { path, type_args }
-    }
-
-    pub fn from_parts<Iter: IntoIterator<Item = String>>(iter: Iter) -> Self {
-        NamePath {
-            path: Path::from_parts(iter),
-            type_args: None,
-        }
-    }
-
-    pub fn to_pretty_string<'a, TyFormat>(&self, ty_format: TyFormat) -> String
-        where TyFormat: Fn(&Type) -> Cow<'a, str>,
-    {
-        let mut buf = self.path.join("::");
-
-        if let Some(type_args) = self.type_args.as_ref() {
-            buf.push('<');
-            for (i, ty_arg) in type_args.iter().enumerate() {
-                if i > 0 {
-                    buf.push_str(", ");
-                }
-
-                let ty_name = ty_format(ty_arg);
-                buf.push_str(&ty_name);
-            }
-            buf.push('>');
-        }
-
-        buf
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct Method {
-    pub name: String,
-    pub return_ty: Type,
-    pub params: Vec<Type>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Interface {
-    pub name: NamePath,
-    pub methods: Vec<Method>,
-    pub impls: HashMap<Type, InterfaceImpl>,
-}
-
-impl Interface {
-    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<Method>>) -> Self {
-        Self {
-            name: name.into(),
-            methods: methods.into(),
-            impls: HashMap::new(),
-        }
-    }
-
-    pub fn add_impl(&mut self, implementor: Type, method: MethodID, func_id: FunctionID) {
-        assert!(method.0 < self.methods.len());
-
-        let methods_len = self.methods.len();
-        let impl_entry = self
-            .impls
-            .entry(implementor.clone())
-            .or_insert_with(|| InterfaceImpl::new(methods_len));
-        assert!(
-            !impl_entry.methods.contains_key(&method),
-            "adding duplicate impl (func {}) of method {}.{} for {}, already defined as {}",
-            func_id,
-            self.name,
-            method.0,
-            implementor,
-            impl_entry.methods[&method],
-        );
-
-        impl_entry.methods.insert(method, func_id);
-    }
-
-    pub fn method_index(&self, name: &str) -> Option<MethodID> {
-        self.methods
-            .iter()
-            .position(|m| m.name.as_str() == name)
-            .map(MethodID)
-    }
-
-    pub fn get_method(&self, id: MethodID) -> Option<&Method> {
-        self.methods.get(id.0)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct InterfaceImpl {
-    // method index -> method impl
-    pub methods: HashMap<MethodID, FunctionID>,
-}
-
-impl InterfaceImpl {
-    fn new(method_count: usize) -> Self {
-        Self {
-            methods: HashMap::with_capacity(method_count),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct StructField {
-    pub name: String,
-    pub ty: Type,
-    pub rc: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Struct {
-    pub name: NamePath,
-    pub fields: HashMap<FieldID, StructField>,
-}
-
-impl Struct {
-    pub fn find_field(&self, name: &str) -> Option<FieldID> {
-        self.fields.iter().find_map(|(id, field)| {
-            if field.name.as_str() == name {
-                Some(*id)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn get_field(&self, id: FieldID) -> Option<&StructField> {
-        self.fields.get(&id)
-    }
-
-    pub fn new(name: impl Into<NamePath>) -> Self {
-        Self {
-            name: name.into(),
-            fields: HashMap::new(),
-        }
-    }
-
-    pub fn with_field(mut self, name: impl Into<String>, ty: Type, rc: bool) -> Self {
-        let id = self
-            .fields
-            .keys()
-            .max_by_key(|id| id.0)
-            .map(|id| FieldID(id.0 + 1))
-            .unwrap_or(FieldID(0));
-
-        self.fields.insert(
-            id,
-            StructField {
-                name: name.into(),
-                ty,
-                rc,
-            },
-        );
-
-        self
-    }
-
-    pub fn with_fields(mut self, fields: HashMap<FieldID, StructField>) -> Self {
-        self.fields.extend(fields);
-        self
-    }
-}
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum ClassID {
-    Class(StructID),
-    Interface(InterfaceID),
-}
-
-impl ClassID {
-    pub fn as_class(&self) -> Option<StructID> {
-        match self {
-            ClassID::Class(id) => Some(*id),
-            ClassID::Interface(..) => None,
-        }
-    }
-}
-
-impl fmt::Display for ClassID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ClassID::Class(struct_id) => write!(f, "{}", struct_id),
-            ClassID::Interface(iface_id) => write!(f, "{}", iface_id),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct VariantCase {
-    pub name: String,
-    pub ty: Option<Type>,
-    pub rc: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Variant {
-    pub name: NamePath,
-    pub cases: Vec<VariantCase>,
-}
-
-#[derive(Clone, Debug)]
-pub enum TypeDecl {
-    Reserved,
-    Forward(NamePath),
-    Def(TypeDef),
-}
-
-impl TypeDecl {
-    pub fn name(&self) -> Option<&NamePath> {
-        match self {
-            TypeDecl::Reserved => None,
-            TypeDecl::Forward(name) => Some(name),
-            TypeDecl::Def(def) => Some(def.name()),
-        }
-    }
-
-    pub fn is_forward(&self) -> bool {
-        match self {
-            TypeDecl::Def(..) => false,
-            _ => true,
-        }
-    }
-}
-
-impl fmt::Display for TypeDecl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TypeDecl::Reserved => write!(f, "reserved type ID"),
-            TypeDecl::Forward(name) => write!(f, "forward decl of `{}`", name),
-            TypeDecl::Def(def) => write!(f, "defined type `{}`", def.name()),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub enum TypeDef {
-    Struct(Struct),
-    Variant(Variant),
-}
-
-impl TypeDef {
-    pub fn name(&self) -> &NamePath {
-        match self {
-            TypeDef::Struct(s) => &s.name,
-            TypeDef::Variant(v) => &v.name,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum Type {
-    /// no type or unknown type (used for raw pointers like void*)
-    Nothing,
-
-    Pointer(Box<Type>),
-    Struct(StructID),
-    Variant(StructID),
-    Array {
-        element: Box<Type>,
-        dim: usize,
-    },
-
-    /// pointer to an RC object somewhere on the heap, which can be dereferenced to yield a value
-    /// of the inner type. the resource type is Some in the case that the type is known, and
-    /// None for the Any type
-    RcPointer(Option<ClassID>),
-
-    Bool,
-    U8,
-    I32,
-    F32,
-}
-
-impl Type {
-    pub fn ptr(self) -> Self {
-        Type::Pointer(Box::new(self))
-    }
-
-    pub const fn rc_ptr_to(class: ClassID) -> Self {
-        Type::RcPointer(Some(class))
-    }
-
-    pub const fn rc_ptr_any() -> Self {
-        Type::RcPointer(None)
-    }
-
-    pub const fn string_ptr() -> Self {
-        Type::rc_ptr_to(ClassID::Class(STRING_ID))
-    }
-
-    pub fn deref_ty(&self) -> Option<&Self> {
-        match self {
-            Type::Pointer(target) => Some(&target),
-            _ => None,
-        }
-    }
-
-    pub fn array(self, dim: usize) -> Self {
-        Type::Array {
-            dim,
-            element: Box::new(self),
-        }
-    }
-
-    pub fn as_struct(&self) -> Option<StructID> {
-        match self {
-            Type::Struct(struct_id) => Some(*struct_id),
-            _ => None,
-        }
-    }
-
-    pub fn is_struct(&self, id: StructID) -> bool {
-        match self {
-            Type::Struct(ty_id) => *ty_id == id,
-            _ => false,
-        }
-    }
-
-    pub fn as_iface(&self) -> Option<InterfaceID> {
-        match self {
-            Type::RcPointer(Some(ClassID::Interface(id))) => Some(*id),
-            _ => None,
-        }
-    }
-
-    pub fn is_rc(&self) -> bool {
-        match self {
-            Type::RcPointer(..) => true,
-            _ => false,
-        }
-    }
-
-    pub fn rc_resource_class_id(&self) -> Option<ClassID> {
-        match self {
-            Type::RcPointer(Some(class_id)) => Some(*class_id),
-            _ => None,
-        }
-    }
-}
-
-impl fmt::Display for Type {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Type::Nothing => write!(f, "none"),
-            Type::I32 => write!(f, "i32"),
-            Type::F32 => write!(f, "f32"),
-            Type::Bool => write!(f, "bool"),
-            Type::U8 => write!(f, "u8"),
-            Type::Pointer(target) => write!(f, "^{}", target),
-            Type::Struct(id) => write!(f, "{{struct {}}}", id),
-            Type::Variant(id) => write!(f, "{{variant {}}}", id),
-            Type::RcPointer(id) => match id {
-                None => write!(f, "any"),
-                Some(ClassID::Class(id)) => write!(f, "class {}", id),
-                Some(ClassID::Interface(id)) => write!(f, "iface {}", id),
-            },
-            Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct GlobalName {
     path: Vec<String>,
@@ -486,8 +79,7 @@ impl GlobalName {
 
     pub fn with_ty_args(self, args: pas_ty::TypeList) -> Self {
         assert_eq!(
-            None,
-            self.type_args,
+            None, self.type_args,
             "shouldn't already have type args when building a specialized GlobalName"
         );
 
@@ -582,9 +174,7 @@ impl Metadata {
             if let Some(conflict) = self.type_decls.get(id) {
                 panic!(
                     "duplicate struct ID {} in metadata (new: {}, existing: {})",
-                    id,
-                    decl,
-                    conflict,
+                    id, decl, conflict,
                 );
             };
 
@@ -645,7 +235,10 @@ impl Metadata {
 
         for (el_ty, struct_id) in &other.dyn_array_structs {
             if self.dyn_array_structs.contains_key(el_ty) {
-                panic!("duplicate dyn array type definition for element type {}", el_ty);
+                panic!(
+                    "duplicate dyn array type definition for element type {}",
+                    el_ty
+                );
             }
             self.dyn_array_structs.insert(el_ty.clone(), *struct_id);
         }
@@ -655,15 +248,13 @@ impl Metadata {
         self.type_decls.iter().filter_map(|(id, decl)| match decl {
             TypeDecl::Def(def) => Some((*id, def)),
 
-            TypeDecl::Reserved |
-            TypeDecl::Forward(..) => None,
+            TypeDecl::Reserved | TypeDecl::Forward(..) => None,
         })
     }
 
     pub fn get_struct_def(&self, struct_id: StructID) -> Option<&Struct> {
         match self.type_decls.get(&struct_id)? {
-            TypeDecl::Reserved |
-            TypeDecl::Forward(..) => None,
+            TypeDecl::Reserved | TypeDecl::Forward(..) => None,
 
             TypeDecl::Def(TypeDef::Variant(..)) => None,
 
@@ -673,8 +264,7 @@ impl Metadata {
 
     pub fn get_variant_def(&self, struct_id: StructID) -> Option<&Variant> {
         match self.type_decls.get(&struct_id)? {
-            TypeDecl::Reserved |
-            TypeDecl::Forward(..) => None,
+            TypeDecl::Reserved | TypeDecl::Forward(..) => None,
 
             TypeDecl::Def(TypeDef::Struct(..)) => None,
 
@@ -692,16 +282,14 @@ impl Metadata {
     fn next_struct_id(&mut self) -> StructID {
         (0..)
             .map(StructID)
-            .find(|id| !self.type_decls.contains_key(id)
-                && *id != STRING_ID)
+            .find(|id| !self.type_decls.contains_key(id) && *id != STRING_ID)
             .unwrap()
     }
 
     fn next_iface_id(&mut self) -> InterfaceID {
         (0..)
             .map(InterfaceID)
-            .find(|id| !self.ifaces.contains_key(id)
-                && *id != DISPOSABLE_ID)
+            .find(|id| !self.ifaces.contains_key(id) && *id != DISPOSABLE_ID)
             .unwrap()
     }
 
@@ -767,7 +355,7 @@ impl Metadata {
         self.rc_boilerplate_funcs.get(ty).cloned()
     }
 
-    pub fn rc_boilerplate_funcs(&self) -> impl Iterator<Item=(&Type, &RcBoilerplatePair)> {
+    pub fn rc_boilerplate_funcs(&self) -> impl Iterator<Item = (&Type, &RcBoilerplatePair)> {
         self.rc_boilerplate_funcs.iter()
     }
 
@@ -819,11 +407,9 @@ impl Metadata {
                 match name {
                     None => Cow::Owned(id.to_string()),
 
-                    Some(name) => {
-                        Cow::Owned(name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
-                    }
+                    Some(name) => Cow::Owned(name.to_pretty_string(|ty| self.pretty_ty_name(ty))),
                 }
-            },
+            }
 
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
@@ -837,13 +423,11 @@ impl Metadata {
                     Some(ClassID::Interface(iface_id)) => {
                         let iface = self.get_iface_def(*iface_id);
 
-                        Cow::Owned(iface
-                            .map(|def| {
-                                def.name.to_pretty_string(|ty| self.pretty_ty_name(ty))
-                            })
-                            .unwrap_or_else(|| {
-                                format!("<interface {}>", iface_id)
-                            }))
+                        Cow::Owned(
+                            iface
+                                .map(|def| def.name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
+                                .unwrap_or_else(|| format!("<interface {}>", iface_id)),
+                        )
                     }
 
                     Some(ClassID::Class(struct_id)) => {
@@ -879,14 +463,21 @@ impl Metadata {
         match &mut self.type_decls[&id] {
             reserved @ TypeDecl::Reserved => {
                 *reserved = TypeDecl::Forward(name.clone());
-            },
+            }
 
             TypeDecl::Forward(prev_name) => {
-                assert_eq!(prev_name, name, "can't declare same struct multiple times with different names");
+                assert_eq!(
+                    prev_name, name,
+                    "can't declare same struct multiple times with different names"
+                );
             }
 
             TypeDecl::Def(def) => {
-                assert_eq!(def.name(), name, "can't declare same struct multiple times with different names");
+                assert_eq!(
+                    def.name(),
+                    name,
+                    "can't declare same struct multiple times with different names"
+                );
             }
         }
     }
@@ -896,11 +487,15 @@ impl Metadata {
             TypeDecl::Forward(name) => {
                 assert_eq!(*name, struct_def.name);
 
-                self.type_decls.insert(id, TypeDecl::Def(TypeDef::Struct(struct_def)));
+                self.type_decls
+                    .insert(id, TypeDecl::Def(TypeDef::Struct(struct_def)));
             }
 
             _other => {
-                panic!("expected named declaration to exist when defining {}", struct_def.name);
+                panic!(
+                    "expected named declaration to exist when defining {}",
+                    struct_def.name
+                );
             }
         }
     }
@@ -910,11 +505,15 @@ impl Metadata {
             TypeDecl::Forward(name) => {
                 assert_eq!(*name, variant_def.name);
 
-                self.type_decls.insert(id, TypeDecl::Def(TypeDef::Variant(variant_def)));
+                self.type_decls
+                    .insert(id, TypeDecl::Def(TypeDef::Variant(variant_def)));
             }
 
             _other => {
-                panic!("expected named declaration to exist when defining {}", variant_def.name);
+                panic!(
+                    "expected named declaration to exist when defining {}",
+                    variant_def.name
+                );
             }
         }
     }
@@ -934,7 +533,8 @@ impl Metadata {
         let disposable_name =
             NamePath::from_parts(vec!["System".to_string(), "Disposable".to_string()]);
         if *name == disposable_name {
-            self.ifaces.insert(DISPOSABLE_ID, InterfaceDecl::Forward(disposable_name));
+            self.ifaces
+                .insert(DISPOSABLE_ID, InterfaceDecl::Forward(disposable_name));
             return DISPOSABLE_ID;
         }
 
@@ -1019,11 +619,14 @@ impl Metadata {
     }
 
     pub fn impls(&self, ty: &Type) -> Vec<InterfaceID> {
-        self.ifaces.iter()
-            .filter_map(|(id, _decl)| if self.is_impl(ty, *id) {
-                Some(*id)
-            } else {
-                None
+        self.ifaces
+            .iter()
+            .filter_map(|(id, _decl)| {
+                if self.is_impl(ty, *id) {
+                    Some(*id)
+                } else {
+                    None
+                }
             })
             .collect()
     }
@@ -1145,14 +748,13 @@ impl Metadata {
             element
         );
 
-        let name = NamePath::from_parts(vec![
-            format!("array of {}", self.pretty_ty_name(&element))
-        ]);
+        let name =
+            NamePath::from_parts(vec![format!("array of {}", self.pretty_ty_name(&element))]);
 
         let mut fields = HashMap::new();
         fields.insert(
             DYNARRAY_LEN_FIELD,
-            StructField {
+            StructFieldDef {
                 name: "len".to_string(),
                 ty: Type::I32,
                 rc: false,
@@ -1160,7 +762,7 @@ impl Metadata {
         );
         fields.insert(
             DYNARRAY_PTR_FIELD,
-            StructField {
+            StructFieldDef {
                 name: "ptr".to_string(),
                 ty: element.clone().ptr(),
                 rc: false,
@@ -1182,12 +784,12 @@ impl Metadata {
 
         // we know it will have a disposer impl (and trust that the module
         // will generate the code for it if we give it an ID here)
-//        let disposer_id = self.next_function_id();
-//        self.functions
-//            .insert(disposer_id, FunctionDecl { global_name: None });
+        //        let disposer_id = self.next_function_id();
+        //        self.functions
+        //            .insert(disposer_id, FunctionDecl { global_name: None });
 
-//        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
-//        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
+        //        let array_ref_ty = Type::RcPointer(Some(ClassID::Class(struct_id)));
+        //        self.impl_method(DISPOSABLE_ID, array_ref_ty, "Dispose", disposer_id);
 
         struct_id
     }
@@ -1197,7 +799,9 @@ impl Metadata {
     }
 
     pub fn dyn_array_element_ty(&self, array_class_id: StructID) -> Option<&Type> {
-        let (el_ty, _) = self.dyn_array_structs().iter()
+        let (el_ty, _) = self
+            .dyn_array_structs()
+            .iter()
             .filter(|(_el_ty, struct_id)| array_class_id == **struct_id)
             .next()?;
 
@@ -1289,10 +893,16 @@ impl Metadata {
 
         while let Some((id, decl)) = unsorted.pop_front() {
             match decl {
-                TypeDecl::Reserved => { decls.insert(id, TypeDecl::Reserved); },
-                TypeDecl::Forward(name) => { decls.insert(id, TypeDecl::Forward(name)); },
+                TypeDecl::Reserved => {
+                    decls.insert(id, TypeDecl::Reserved);
+                }
+                TypeDecl::Forward(name) => {
+                    decls.insert(id, TypeDecl::Forward(name));
+                }
 
-                TypeDecl::Def(def) => { defs.push((id, def)); }
+                TypeDecl::Def(def) => {
+                    defs.push((id, def));
+                }
             }
         }
 
