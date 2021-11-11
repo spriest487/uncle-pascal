@@ -6,12 +6,10 @@ use std::fmt;
 
 use pas_common::span::{Span, Spanned};
 use pas_syn::Ident;
-use pas_typecheck::{builtin_string_name, Specializable};
+use pas_typecheck::Specializable;
 use std::borrow::Cow;
-use std::collections::HashMap;
 use pas_syn::ast::TypeList;
-use crate::name_path::NamePath;
-use crate::ty::{ClassID, FieldID, Interface, Method, Struct, StructFieldDef, Variant, VariantCase};
+use crate::ty::{FieldID, Interface, Struct, Variant};
 use self::scope::*;
 
 pub mod scope;
@@ -69,16 +67,6 @@ impl<'m> Builder<'m> {
         Self { type_args: Some(type_args), ..self }
     }
 
-    #[allow(unused)]
-    pub fn get_method_decl(
-        &self,
-        ty: &pas_ty::Type,
-        method_ident: &Ident,
-    ) -> Option<pas_ty::ast::FunctionDecl> {
-        ty.get_method(method_ident, &self.module.src_metadata)
-            .unwrap()
-    }
-
     pub fn translate_variant_case<'ty>(
         &'ty mut self,
         variant: &pas_ty::Symbol,
@@ -103,225 +91,28 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &pas_ty::Symbol) -> NamePath {
-        if name.is_unspecialized_generic() {
-            panic!("can't translate unspecialized generic name: {}", name);
-        }
-
-        if let Some(name_type_args) = name.type_args.as_ref() {
-            if let Some(t) = name_type_args.items.iter().find(|t| t.is_generic_param()) {
-                panic!("can't translate name containing generic parameters (found {}): {}", t, name);
-            }
-        }
-
-        let path_parts = name
-            .qualified
-            .clone()
-            .into_parts()
-            .into_iter()
-            .map(|ident| ident.to_string());
-
-        let type_args = name.type_args.as_ref().map(|name_type_args_list| {
-            name_type_args_list.items
-                .iter()
-                .map(|arg| self.translate_type(arg))
-                .collect()
-        });
-
-        NamePath {
-            path: pas_syn::Path::from_parts(path_parts),
-            type_args,
-        }
+        self.module.translate_name(name, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class) -> Struct {
-        let name_path = self.translate_name(&class_def.name);
-
-        let mut fields = HashMap::new();
-        for (id, member) in class_def.members.iter().enumerate() {
-            let name = member.ident.to_string();
-            let ty = self.translate_type(&member.ty);
-            let rc = member.ty.is_rc_reference();
-
-            fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
-        }
-
-        Struct::new(name_path).with_fields(fields)
+        self.module.translate_class(class_def, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> Interface {
-        let name = self.translate_name(&iface_def.name);
-
-        // it needs to be declared to reference its own ID in the Self type
-        let id = self.module.metadata.declare_iface(&name);
-
-        let methods: Vec<_> = iface_def
-            .methods
-            .iter()
-            .map(|method| {
-                let self_ty = Type::RcPointer(Some(ClassID::Interface(id)));
-
-                Method {
-                    name: method.ident.to_string(),
-                    return_ty: match &method.return_ty {
-                        Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
-                        Some(return_ty) => self.translate_type(return_ty),
-                        None => Type::Nothing,
-                    },
-                    params: method
-                        .params
-                        .iter()
-                        .map(|param| match &param.ty {
-                            pas_ty::Type::MethodSelf => self_ty.clone(),
-                            param_ty => self.translate_type(param_ty),
-                        })
-                        .collect(),
-                }
-            })
-            .collect();
-
-        Interface::new(name, methods)
+        self.module.translate_iface(iface_def, self.type_args().cloned().as_ref())
     }
 
-    pub fn translate_variant(&mut self, variant_def: &pas_ty::ast::Variant) -> Variant {
-        let name_path = NamePath::from_decl(variant_def.name.clone(), &self.module.metadata);
-
-        let mut cases = Vec::new();
-        for case in &variant_def.cases {
-            let (case_ty, case_rc) = match &case.data_ty {
-                Some(data_ty) => (Some(self.translate_type(data_ty)), data_ty.is_rc_reference()),
-                None => (None, false),
-            };
-            cases.push(VariantCase {
-                name: case.ident.to_string(),
-                ty: case_ty,
-                rc: case_rc,
-            });
-        }
-
-        Variant {
-            name: name_path,
-            cases,
-        }
+    #[allow(unused)]
+    pub fn translate_variant(&mut self, variant: &pas_ty::ast::Variant) -> Variant {
+        self.module.translate_variant(variant, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        let src_ty = match self.type_args() {
-            Some(current_ty_args) => src_ty.clone().substitute_type_args(&current_ty_args),
-            None => src_ty.clone(),
-        };
-
-        if let Some(cached) = self.module.type_cache.get(&src_ty) {
-            //            println!("{} -> {}", src_ty, cached);
-
-            return cached.clone();
-        }
-
-        //        println!("\ntype cache miss for {}, translating...", src_ty);
-        //        for (cache_ty, _) in &self.module.type_cache {
-        //            println!("{} == {}? {}", src_ty, cache_ty, src_ty == *cache_ty);
-        //        }
-
-        // instantiate types which may contain generic params
-        let ty = match &src_ty {
-            pas_ty::Type::Variant(variant) => {
-                let variant_def = self
-                    .module
-                    .src_metadata
-                    .instantiate_variant(variant)
-                    .unwrap();
-
-                let id = self.module.metadata.reserve_new_struct();
-                let ty = Type::Variant(id);
-                self.module.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
-
-                let name_path = self.translate_name(&variant);
-                self.module.metadata.declare_struct(id, &name_path);
-
-                let variant_meta = self.translate_variant(&variant_def);
-
-                self.module.metadata.define_variant(id, variant_meta);
-                ty
-            }
-
-            pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
-                // handle builtin types
-                if **name == builtin_string_name() {
-                    let string_ty = Type::RcPointer(Some(ClassID::Class(STRING_ID)));
-                    self.module
-                        .type_cache
-                        .insert(src_ty.clone(), string_ty.clone());
-                    return string_ty;
-                }
-
-                let class_def = self.module.src_metadata.instantiate_class(name).unwrap();
-
-                let id = self.module.metadata.reserve_new_struct();
-
-                let ty = match class_def.kind {
-                    pas_syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
-                    pas_syn::ast::ClassKind::Record => Type::Struct(id),
-                };
-
-                self.module.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
-
-                let name_path = self.translate_name(&name);
-
-                self.module.metadata.declare_struct(id, &name_path);
-
-                let struct_meta = self.translate_class(&class_def);
-                self.module.metadata.define_struct(id, struct_meta);
-
-                ty
-            }
-
-            pas_ty::Type::Interface(iface_def) => {
-                let iface_def = self.module.src_metadata.find_iface_def(iface_def).unwrap();
-
-                let iface_name = self.translate_name(&iface_def.name);
-                let id = self.module.metadata.declare_iface(&iface_name);
-                let ty = Type::RcPointer(Some(ClassID::Interface(id)));
-
-                self.module.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
-
-                let iface_meta = self.translate_iface(&iface_def);
-                self.module.metadata.define_iface(iface_meta);
-
-                ty
-            }
-
-            pas_ty::Type::DynArray { element } => {
-                let id = self.translate_dyn_array_struct(&element);
-
-                let ty = Type::RcPointer(Some(ClassID::Class(id)));
-                self.module.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
-
-                ty
-            }
-
-            real_ty => {
-                // nothing to be instantiated
-                let ty = self.module.metadata.find_type(real_ty);
-                self.module.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
-
-                ty
-            }
-        };
-
-        ty
+        self.module.translate_type(src_ty, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
-        let element_ty = self.translate_type(element_ty);
-
-        match self.module.metadata.find_dyn_array_struct(&element_ty) {
-            Some(id) => id,
-            None => self.module.metadata.define_dyn_array_struct(element_ty),
-        }
+        self.module.translate_dyn_array_struct(element_ty, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_method_impl(

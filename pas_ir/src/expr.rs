@@ -79,8 +79,8 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
                             )
                         });
 
-                    let ref_ty = builder.translate_type(annotation.ty()).clone();
-                    let ref_temp = builder.local_temp(ref_ty.clone().ptr());
+                    let ref_ty = builder.translate_type(annotation.ty());
+                    let ref_temp = builder.local_temp(ref_ty.ptr());
 
                     builder.append(Instruction::AddrOf {
                         out: ref_temp.clone(),
@@ -127,7 +127,7 @@ fn translate_indexer(
 
     match base_ty {
         pas_ty::Type::Array { element, dim, .. } => {
-            let element = builder.translate_type(element);
+            let element_ty = builder.translate_type(element);
             let len = cast::i32(*dim).expect("array dim must be within range of i32");
 
             gen_bounds_check(index_ref.clone(), Value::LiteralI32(len), builder);
@@ -136,7 +136,7 @@ fn translate_indexer(
                 out: ptr_into.clone(),
                 a: base_ref,
                 index: Value::Ref(index_ref),
-                element,
+                element: element_ty,
             });
         }
 
@@ -447,8 +447,8 @@ fn translate_call_with_args(
     let out_val = match &sig.return_ty {
         pas_ty::Type::Nothing => None,
         return_ty => {
-            let out_ty = builder.translate_type(return_ty).clone();
-            let out_val = builder.local_new(out_ty, None);
+            let out_ty = builder.translate_type(return_ty);
+            let out_val = builder.local_new(out_ty.clone(), None);
             Some(out_val)
         }
     };
@@ -752,7 +752,6 @@ fn translate_bin_op(
     match &bin_op.op {
         syn::Operator::Member => {
             // auto-deref for rc types
-
             let of_ty = builder.translate_type(bin_op.lhs.annotation().ty());
 
             let struct_id = match &of_ty {

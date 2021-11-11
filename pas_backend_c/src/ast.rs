@@ -1,17 +1,21 @@
+pub use self::{function::*, stmt::*, ty::*};
+use crate::{
+    ast::string_lit::StringLiteral,
+    Options,
+};
+use pas_ir::{
+    self as ir,
+    metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}
+};
 use std::{
     borrow::Cow,
     collections::hash_map::{Entry, HashMap},
     fmt,
 };
 
-use crate::Options;
-use pas_ir::{self as ir, metadata::{FunctionID, Symbol, StringID}};
-
-pub use self::{function::*, stmt::*, ty::*};
-use pas_ir::metadata::{STRING_CHARS_FIELD, STRING_LEN_FIELD};
-
 mod function;
 mod stmt;
+mod string_lit;
 mod ty;
 
 pub struct Module {
@@ -25,7 +29,7 @@ pub struct Module {
 
     builtin_funcs: HashMap<FunctionID, FunctionName>,
 
-    string_literals: HashMap<StringID, String>,
+    string_literals: HashMap<StringID, StringLiteral>,
 
     opts: Options,
 
@@ -42,7 +46,10 @@ impl Module {
             ("WriteLn", FunctionName::WriteLn),
             ("ReadLn", FunctionName::ReadLn),
             ("ArrayLengthInternal", FunctionName::ArrayLengthInternal),
-            ("ArraySetLengthInternal", FunctionName::ArraySetLengthInternal),
+            (
+                "ArraySetLengthInternal",
+                FunctionName::ArraySetLengthInternal,
+            ),
         ];
 
         let mut builtin_funcs = HashMap::new();
@@ -55,11 +62,9 @@ impl Module {
             }
         }
 
-
-
         let string_literals = metadata
             .strings()
-            .map(|(id, str)| (id, str.to_string()))
+            .map(|(id, str)| (id, StringLiteral::from(str.to_string())))
             .collect();
 
         let type_names = metadata
@@ -93,13 +98,10 @@ impl Module {
             type_names,
         };
 
-        let class_defs = metadata.type_defs()
-            .filter_map(|(id, def)| match def {
-                ir::metadata::TypeDef::Struct(struct_def) => {
-                    Some((id, struct_def))
-                }
-                _ => None,
-            });
+        let class_defs = metadata.type_defs().filter_map(|(id, def)| match def {
+            ir::metadata::TypeDef::Struct(struct_def) => Some((id, struct_def)),
+            _ => None,
+        });
 
         for (class_id, class_def) in class_defs {
             let class = Class::translate(class_id, class_def, metadata, &mut module);
@@ -264,8 +266,9 @@ impl fmt::Display for Module {
 
             let string_name = StructName::Struct(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
-            writeln!(f, "  .{} = (unsigned char*) \"{}\",", chars_field, lit)?;
-            writeln!(f, "  .{} = {},", len_field, lit.len())?;
+            write!(f, "  .{} = {}", chars_field, lit)?;
+            writeln!(f, ", ")?;
+            writeln!(f, "  .{} = {},", len_field, lit.as_str().len())?;
             writeln!(f, "}};")?;
 
             writeln!(
