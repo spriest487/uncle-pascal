@@ -7,12 +7,9 @@ use pas_typecheck as pas_ty;
 
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 
-pub use self::{
-    formatter::*,
-    metadata::ty::Type,
-};
-use linked_hash_map::LinkedHashMap;
+pub use self::{formatter::*, metadata::ty::Type};
 use crate::ty::{ClassID, FieldID, TypeDef};
+use linked_hash_map::LinkedHashMap;
 
 mod builder;
 
@@ -22,7 +19,9 @@ mod formatter;
 mod stmt;
 
 pub mod prelude {
-    pub use crate::{metadata::*, metadata::ty::*, GlobalRef, Instruction, Label, Ref, Value, RETURN_REF};
+    pub use crate::{
+        metadata::ty::*, metadata::*, GlobalRef, Instruction, Label, Ref, Value, RETURN_REF,
+    };
 }
 
 pub mod metadata;
@@ -175,12 +174,12 @@ pub enum Instruction {
     Shl {
         out: Ref,
         a: Value,
-        b: Value
+        b: Value,
     },
     Shr {
         out: Ref,
         a: Value,
-        b: Value
+        b: Value,
     },
 
     Eq {
@@ -301,7 +300,7 @@ pub enum Instruction {
     SizeOf {
         out: Ref,
         ty: Type,
-    }
+    },
 }
 
 impl fmt::Display for Instruction {
@@ -326,10 +325,7 @@ pub struct FunctionDef {
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    External {
-        symbol: String,
-        src: String,
-    },
+    External { symbol: String, src: String },
     Local(FunctionDef),
 }
 
@@ -410,15 +406,13 @@ impl Module {
     }
 
     pub fn class_types(&self) -> impl Iterator<Item = &Type> {
-        self.type_cache
-            .iter()
-            .filter_map(|(src_ty, ir_ty)| {
-                if src_ty.as_class().is_ok() {
-                    Some(ir_ty)
-                } else {
-                    None
-                }
-            })
+        self.type_cache.iter().filter_map(|(src_ty, ir_ty)| {
+            if src_ty.as_class().is_ok() {
+                Some(ir_ty)
+            } else {
+                None
+            }
+        })
     }
 
     pub fn insert_func(&mut self, id: FunctionID, function: Function) {
@@ -440,10 +434,13 @@ impl Module {
                 match self.src_metadata.find_def(&name).cloned() {
                     Some(pas_ty::Def::Function(func_def)) => {
                         let specialized_decl = match key.type_args.as_ref() {
-                            Some(key_type_args) => {
-                                specialize_func_decl(&func_def.decl, key_type_args, func_def.span(), &self.src_metadata)
-                                    .expect("function specialization must be valid after typechecking")
-                            },
+                            Some(key_type_args) => specialize_func_decl(
+                                &func_def.decl,
+                                key_type_args,
+                                func_def.span(),
+                                &self.src_metadata,
+                            )
+                            .expect("function specialization must be valid after typechecking"),
                             None => func_def.decl.clone(),
                         };
 
@@ -456,7 +453,8 @@ impl Module {
                         // cache the function before translating the instantiation, because
                         // it may recurse and instantiate itself in its own body
                         let cached_func = FunctionInstance { id, sig };
-                        self.translated_funcs.insert(key.clone(), cached_func.clone());
+                        self.translated_funcs
+                            .insert(key.clone(), cached_func.clone());
 
                         let debug_name = specialized_decl.to_string();
                         let ir_func =
@@ -479,13 +477,17 @@ impl Module {
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
                         let cached_func = FunctionInstance { id, sig };
 
-                        let extern_src = extern_decl.external_src()
+                        let extern_src = extern_decl
+                            .external_src()
                             .expect("function with external def must have an extern src");
 
-                        self.functions.insert(id, Function::External {
-                            src: extern_src.to_string(),
-                            symbol: extern_decl.ident.last().to_string(),
-                        });
+                        self.functions.insert(
+                            id,
+                            Function::External {
+                                src: extern_src.to_string(),
+                                symbol: extern_decl.ident.last().to_string(),
+                            },
+                        );
                         self.translated_funcs.insert(key, cached_func.clone());
 
                         cached_func
@@ -520,18 +522,21 @@ impl Module {
                     .src_metadata
                     .find_method_impl_def(&iface_def.name.qualified, self_ty, method)
                     .cloned()
-                    .unwrap_or_else(|| panic!(
-                        "missing method def: {}.{} for {}",
-                        iface_def.name.qualified,
-                        method,
-                        self_ty,
-                    ));
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing method def: {}.{} for {}",
+                            iface_def.name.qualified, method, self_ty,
+                        )
+                    });
 
                 let specialized_decl = match &key.type_args {
-                    Some(key_type_args) => {
-                        specialize_func_decl(&method_def.decl, &key_type_args, &method_def.span(), &self.src_metadata)
-                            .expect("method specialization failed in codegen")
-                    },
+                    Some(key_type_args) => specialize_func_decl(
+                        &method_def.decl,
+                        &key_type_args,
+                        &method_def.span(),
+                        &self.src_metadata,
+                    )
+                    .expect("method specialization failed in codegen"),
                     None => method_def.decl.clone(),
                 };
 
@@ -550,7 +555,8 @@ impl Module {
                     id,
                     sig: pas_ty::FunctionSig::of_decl(&specialized_decl),
                 };
-                self.translated_funcs.insert(key.clone(), cached_func.clone());
+                self.translated_funcs
+                    .insert(key.clone(), cached_func.clone());
 
                 let debug_name = specialized_decl.to_string();
                 let ir_func =
@@ -609,8 +615,14 @@ impl Module {
             Some(type_args) => {
                 let type_params = match &func.decl.type_params {
                     Some(params) if params.len() == type_args.len() => params,
-                    Some(params) => panic!("type args in function body don't match params! expected {}, got {}", params, type_args),
-                    _ => panic!("type args in function body don't match params! expected nothing, got {}", type_args),
+                    Some(params) => panic!(
+                        "type args in function body don't match params! expected {}, got {}",
+                        params, type_args
+                    ),
+                    _ => panic!(
+                        "type args in function body don't match params! expected nothing, got {}",
+                        type_args
+                    ),
                 };
 
                 let mut builder = Builder::new(self).with_type_args(type_args.clone());
@@ -619,7 +631,7 @@ impl Module {
                     builder.comment(&format!("{} = {}", type_param, type_arg));
                 }
                 builder
-            },
+            }
             None => Builder::new(self),
         };
 
@@ -693,8 +705,17 @@ impl Module {
 
         let mut body = body_builder.finish();
 
-        // all functions finish with the reserved EXIT label
-        body.push(Instruction::Label(EXIT_LABEL));
+        // all functions should finish with the reserved EXIT label but to
+        // avoid writing unused label instructions, if none of the other instructions in the body
+        // are jumps to the exit label, we can elide it
+        let has_exit = body.iter().any(|i| match i {
+            Instruction::Jump { dest } | Instruction::JumpIf { dest, .. } => *dest == EXIT_LABEL,
+            _ => false,
+        });
+
+        if has_exit {
+            body.push(Instruction::Label(EXIT_LABEL));
+        }
 
         FunctionDef {
             body,
@@ -855,7 +876,9 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     // so the parameter type of the releaser will be a pointer to that struct
     let array_struct_ty = Type::Struct(struct_id);
 
-    let rc_boilerplate = module.metadata.find_rc_boilerplate(&array_struct_ty)
+    let rc_boilerplate = module
+        .metadata
+        .find_rc_boilerplate(&array_struct_ty)
         .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
     let mut releaser_builder = Builder::new(module);
@@ -892,7 +915,11 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
 
     // at_end := counter eq array.length
     let at_end = releaser_builder.local_temp(Type::Bool);
-    releaser_builder.eq(at_end.clone(), counter.clone(), len_field_ptr.clone().to_deref());
+    releaser_builder.eq(
+        at_end.clone(),
+        counter.clone(),
+        len_field_ptr.clone().to_deref(),
+    );
 
     // if at_end then break
     releaser_builder.append(Instruction::JumpIf {
@@ -928,7 +955,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     releaser_builder.append(Instruction::Eq {
         a: Value::Ref(len_field_ptr.clone().to_deref()),
         b: Value::LiteralI32(0),
-        out: zero_elements.clone()
+        out: zero_elements.clone(),
     });
     releaser_builder.append(Instruction::JumpIf {
         dest: after_free,
@@ -946,8 +973,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
 
     let releaser_body = releaser_builder.finish();
 
-    let array_ref_ty_name = module.metadata.pretty_ty_name(&array_ref_ty)
-        .into_owned();
+    let array_ref_ty_name = module.metadata.pretty_ty_name(&array_ref_ty).into_owned();
 
     module.insert_func(
         rc_boilerplate.release,
@@ -967,7 +993,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
             return_ty: Type::Nothing,
             params: vec![array_struct_ty.clone().ptr()],
             body: Vec::new(),
-        })
+        }),
     );
 }
 
