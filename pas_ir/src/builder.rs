@@ -921,13 +921,17 @@ impl<'m> Builder<'m> {
         }
     }
 
-    pub fn scope<F>(&mut self, f: F)
+    pub fn scope<F>(&mut self, f: F) -> &[Instruction]
     where
         F: FnOnce(&mut Self),
     {
+        let start_index = self.instructions.len();
+
         self.begin_scope();
         f(self);
         self.end_scope();
+
+        &self.instructions[start_index..]
     }
 
     /// release locals in all scopes after the position indicated by

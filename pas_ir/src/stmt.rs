@@ -86,7 +86,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     let continue_label = builder.alloc_label();
     let break_label = builder.alloc_label();
 
-    builder.scope(|builder| {
+    let loop_instructions = builder.scope(|builder| {
         // counter
         let counter_ty = builder.translate_type(&for_loop.init_binding.val_ty);
         if counter_ty != Type::I32 {
@@ -149,9 +149,11 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         builder.append(Instruction::Jump {
             dest: top_label,
         });
-
-        builder.append(Instruction::Label(break_label));
     });
+
+    if jmp_exists(&loop_instructions, break_label) {
+        builder.append(Instruction::Label(break_label));
+    }
 }
 
 pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut Builder) {
