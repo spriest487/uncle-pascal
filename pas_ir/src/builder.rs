@@ -1,6 +1,6 @@
 use pas_typecheck as pas_ty;
 
-use crate::{metadata::*, CachedFunction, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value, EXIT_LABEL, Type};
+use crate::{metadata::*, FunctionInstance, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value, EXIT_LABEL, Type};
 
 use std::fmt;
 
@@ -329,7 +329,7 @@ impl<'m> Builder<'m> {
         iface: IdentPath,
         method: Ident,
         self_ty: pas_ty::Type,
-    ) -> CachedFunction {
+    ) -> FunctionInstance {
         self.module.translate_method_impl(iface, method, self_ty)
     }
 
@@ -338,7 +338,7 @@ impl<'m> Builder<'m> {
         func_name: IdentPath,
         type_args: Option<pas_ty::TypeList>,
         span: &Span,
-    ) -> CachedFunction {
+    ) -> FunctionInstance {
         // specialize type args for current context
         let instance_type_args = match (type_args, self.type_args.as_ref()) {
             (Some(func_ty_args), Some(current_ty_args)) => {

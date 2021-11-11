@@ -343,7 +343,7 @@ impl Function {
 }
 
 #[derive(Clone, Debug)]
-pub struct CachedFunction {
+pub struct FunctionInstance {
     pub id: FunctionID,
     pub sig: pas_ty::FunctionSig,
 }
@@ -359,7 +359,7 @@ pub struct Module {
     pub metadata: Metadata,
 
     pub functions: HashMap<FunctionID, Function>,
-    translated_funcs: HashMap<FunctionCacheKey, CachedFunction>,
+    translated_funcs: HashMap<FunctionCacheKey, FunctionInstance>,
 
     pub init: Vec<Instruction>,
 }
@@ -430,7 +430,7 @@ impl Module {
         self.functions.insert(id, function);
     }
 
-    fn instantiate_func(&mut self, key: FunctionCacheKey) -> CachedFunction {
+    fn instantiate_func(&mut self, key: FunctionCacheKey) -> FunctionInstance {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
@@ -455,7 +455,7 @@ impl Module {
 
                         // cache the function before translating the instantiation, because
                         // it may recurse and instantiate itself in its own body
-                        let cached_func = CachedFunction { id, sig };
+                        let cached_func = FunctionInstance { id, sig };
                         self.translated_funcs.insert(key.clone(), cached_func.clone());
 
                         let debug_name = specialized_decl.to_string();
@@ -477,7 +477,7 @@ impl Module {
                             .metadata
                             .declare_func(&extern_decl, key.type_args.as_ref());
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
-                        let cached_func = CachedFunction { id, sig };
+                        let cached_func = FunctionInstance { id, sig };
 
                         let extern_src = extern_decl.external_src()
                             .expect("function with external def must have an extern src");
@@ -546,7 +546,7 @@ impl Module {
 
                 // cache the function before translating the instantiation, because
                 // it may recurse and instantiate itself in its own body
-                let cached_func = CachedFunction {
+                let cached_func = FunctionInstance {
                     id,
                     sig: pas_ty::FunctionSig::of_decl(&specialized_decl),
                 };
@@ -570,7 +570,7 @@ impl Module {
         iface: IdentPath,
         method: pas_syn::Ident,
         self_ty: pas_ty::Type,
-    ) -> CachedFunction {
+    ) -> FunctionInstance {
         let key = FunctionCacheKey {
             decl_key: FunctionDeclKey::Method {
                 iface,
@@ -590,7 +590,7 @@ impl Module {
         &mut self,
         func_name: IdentPath,
         type_args: Option<pas_ty::TypeList>,
-    ) -> CachedFunction {
+    ) -> FunctionInstance {
         let key = FunctionCacheKey {
             type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
