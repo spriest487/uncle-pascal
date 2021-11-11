@@ -132,11 +132,13 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
             dest: break_label,
         });
 
-        builder.begin_loop_body_scope(continue_label, break_label);
-        translate_stmt(&for_loop.body, builder);
-        builder.end_loop_body_scope();
+        let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
+            translate_stmt(&for_loop.body, builder);
+        });
 
-        builder.append(Instruction::Label(continue_label));
+        if jmp_exists(body_instructions, continue_label) {
+            builder.append(Instruction::Label(continue_label));
+        }
 
         // counter_val := counter_val + inc_val
         builder.append(Instruction::Add {
@@ -161,7 +163,7 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
     let continue_label = builder.alloc_label();
     let break_label = builder.alloc_label();
 
-    builder.scope(|builder| {
+    let loop_instructions = builder.scope(|builder| {
         let not_cond = builder.local_temp(Type::Bool);
 
         builder.append(Instruction::Label(top_label));
@@ -180,16 +182,21 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         });
 
         // run loop body
-        builder.begin_loop_body_scope(continue_label, break_label);
-        translate_stmt(&while_loop.body, builder);
-        builder.end_loop_body_scope();
+        let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
+            translate_stmt(&while_loop.body, builder);
+        });
 
-        builder.append(Instruction::Label(continue_label));
+        if jmp_exists(body_instructions, continue_label) {
+            builder.append(Instruction::Label(continue_label));
+        }
 
         // start next iteration
         builder.append(Instruction::Jump { dest: top_label });
-        builder.append(Instruction::Label(break_label));
     });
+
+    if jmp_exists(loop_instructions, break_label) {
+        builder.append(Instruction::Label(break_label));
+    }
 }
 
 pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut Builder) {

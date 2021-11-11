@@ -908,6 +908,20 @@ impl<'m> Builder<'m> {
             .expect("end_loop called without an active loop");
     }
 
+    pub fn loop_body_scope<F>(&mut self, continue_label: Label, break_label: Label, f: F) -> &[Instruction]
+        where F: FnOnce(&mut Self)
+    {
+        let start_instruction = self.instructions.len();
+
+        self.begin_loop_body_scope(continue_label, break_label);
+
+        f(self);
+
+        self.end_loop_body_scope();
+
+        &self.instructions[start_instruction..]
+    }
+
     pub fn current_loop(&self) -> Option<&LoopScope> {
         self.loop_stack.last()
     }
