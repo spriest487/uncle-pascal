@@ -10,9 +10,11 @@ use std::borrow::Cow;
 
 pub mod name_path;
 pub mod ty;
+pub mod symbol;
 
 pub use ty::*;
-pub use crate::name_path::*;
+pub use name_path::*;
+pub use symbol::*;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -56,64 +58,6 @@ pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub struct GlobalName {
-    path: Vec<String>,
-    type_args: Option<pas_ty::TypeList>,
-}
-
-impl GlobalName {
-    pub fn new(name: impl Into<String>, ns: impl IntoIterator<Item = impl Into<String>>) -> Self {
-        let mut path: Vec<String> = ns.into_iter().map(Into::into).collect();
-        path.push(name.into());
-
-        Self {
-            path,
-            type_args: None,
-        }
-    }
-
-    pub fn path(&self) -> impl Iterator<Item = &String> {
-        self.path.iter()
-    }
-
-    pub fn with_ty_args(self, args: pas_ty::TypeList) -> Self {
-        assert_eq!(
-            None, self.type_args,
-            "shouldn't already have type args when building a specialized GlobalName"
-        );
-
-        Self {
-            type_args: Some(args),
-            ..self
-        }
-    }
-}
-
-impl fmt::Display for GlobalName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (i, part) in self.path.iter().enumerate() {
-            if i > 0 {
-                write!(f, "::")?;
-            }
-            write!(f, "{}", part)?;
-        }
-
-        if let Some(type_args) = self.type_args.as_ref() {
-            write!(f, "<")?;
-            for (i, arg) in type_args.items.iter().enumerate() {
-                if i > 0 {
-                    write!(f, ", ")?;
-                }
-                write!(f, "{}", arg)?;
-            }
-            write!(f, ">")?;
-        }
-
-        Ok(())
-    }
-}
-
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct FunctionID(pub usize);
 
@@ -125,7 +69,7 @@ impl fmt::Display for FunctionID {
 
 #[derive(Debug, Clone)]
 pub struct FunctionDecl {
-    pub global_name: Option<GlobalName>,
+    pub global_name: Option<Symbol>,
 }
 
 #[derive(Debug, Clone)]
@@ -209,12 +153,12 @@ impl Metadata {
                 let name = func_decl
                     .global_name
                     .as_ref()
-                    .map(GlobalName::to_string)
+                    .map(Symbol::to_string)
                     .unwrap_or_else(|| "<unnamed>".to_string());
                 let existing_name = existing
                     .global_name
                     .as_ref()
-                    .map(GlobalName::to_string)
+                    .map(Symbol::to_string)
                     .unwrap_or_else(|| "<unnamed>".to_string());
 
                 panic!(
@@ -317,7 +261,7 @@ impl Metadata {
                     .collect();
                 let name = func_decl.ident.last().to_string();
 
-                let global_name = GlobalName::new(name, ns);
+                let global_name = Symbol::new(name, ns);
 
                 Some(match type_args {
                     None => global_name,
@@ -329,7 +273,7 @@ impl Metadata {
         self.insert_func(global_name)
     }
 
-    pub fn insert_func(&mut self, global_name: Option<GlobalName>) -> FunctionID {
+    pub fn insert_func(&mut self, global_name: Option<Symbol>) -> FunctionID {
         let id = self.next_function_id();
         self.functions.insert(id, FunctionDecl { global_name });
 
@@ -359,7 +303,7 @@ impl Metadata {
         self.rc_boilerplate_funcs.iter()
     }
 
-    pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
+    pub fn find_function(&self, name: &Symbol) -> Option<FunctionID> {
         self.functions
             .iter()
             .find(|(_id, func)| func.global_name.as_ref() == Some(name))
@@ -374,7 +318,7 @@ impl Metadata {
         self.functions
             .get(&id)
             .and_then(|decl| decl.global_name.as_ref())
-            .map(GlobalName::to_string)
+            .map(Symbol::to_string)
             .or_else(|| {
                 self.ifaces().find_map(|(iface_id, iface)| {
                     iface.impls.iter().find_map(|(impl_ty, iface_impl)| {

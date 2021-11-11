@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::Options;
-use pas_ir::{self as ir, metadata::{FunctionID, GlobalName, StringID}};
+use pas_ir::{self as ir, metadata::{FunctionID, Symbol, StringID}};
 
 pub use self::{function::*, stmt::*, ty::*};
 use pas_ir::metadata::{STRING_CHARS_FIELD, STRING_LEN_FIELD};
@@ -47,7 +47,7 @@ impl Module {
 
         let mut builtin_funcs = HashMap::new();
         for (pas_name, c_name) in system_funcs {
-            let global_name = &GlobalName::new(*pas_name, vec!["System"]);
+            let global_name = &Symbol::new(*pas_name, vec!["System"]);
 
             // if a function isn't used then it won't be included in the metadata
             if let Some(func_id) = metadata.find_function(global_name) {

@@ -1561,7 +1561,7 @@ impl Interpreter {
         Pointer::Heap(addr)
     }
 
-    fn define_builtin(&mut self, name: GlobalName, func: BuiltinFn, ret: Type) {
+    fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type) {
         if let Some(func_id) = self.metadata.find_function(&name) {
             self.globals.insert(
                 GlobalRef::Function(func_id),
@@ -1590,7 +1590,7 @@ impl Interpreter {
         ];
 
         for (ident, func, ret) in system_funcs {
-            let name = GlobalName::new(ident.to_string(), vec!["System"]);
+            let name = Symbol::new(ident.to_string(), vec!["System"]);
             self.define_builtin(name, *func, ret.clone());
         }
     }

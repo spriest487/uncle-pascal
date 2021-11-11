@@ -379,7 +379,7 @@ impl<'m> Builder<'m> {
     }
 
     #[allow(unused)]
-    pub fn find_function(&self, name: &GlobalName) -> Option<FunctionID> {
+    pub fn find_function(&self, name: &Symbol) -> Option<FunctionID> {
         self.module.metadata.find_function(name)
     }
 
