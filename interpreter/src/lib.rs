@@ -658,7 +658,7 @@ impl Interpreter {
                 );
             }
 
-            self.execute_instruction(&instructions[pc], &mut pc, &labels)?;
+            self.exec_instruction(&instructions[pc], &mut pc, &labels)?;
 
             pc += 1;
         }
@@ -666,7 +666,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_instruction(
+    fn exec_instruction(
         &mut self,
         instruction: &Instruction,
         pc: &mut usize,
@@ -693,15 +693,15 @@ impl Interpreter {
             Instruction::Shr { out, a, b } => self.exec_shr(out, a, b),
             Instruction::Eq { out, a, b } => self.exec_eq(out, a, b),
             Instruction::Gt { out, a, b } => self.exec_gt(out, a, b),
-            Instruction::Not { out, a } => self.execute_not(out, a),
-            Instruction::And { out, a, b } => self.execute_and(out, a, b),
-            Instruction::Or { out, a, b } => self.execute_or(out, a, b),
+            Instruction::Not { out, a } => self.exec_not(out, a),
+            Instruction::And { out, a, b } => self.exec_and(out, a, b),
+            Instruction::Or { out, a, b } => self.exec_or(out, a, b),
             Instruction::Move { out, new_val } => self.store(out, self.evaluate(new_val)),
             Instruction::Call {
                 out,
                 function,
                 args,
-            } => self.execute_call(out, function, args)?,
+            } => self.exec_call(out, function, args)?,
 
             Instruction::VirtualCall {
                 out,
@@ -709,9 +709,9 @@ impl Interpreter {
                 method,
                 self_arg,
                 rest_args,
-            } => self.execute_virtual_call(out.as_ref(), *iface_id, *method, &self_arg, rest_args)?,
+            } => self.exec_virtual_call(out.as_ref(), *iface_id, *method, &self_arg, rest_args)?,
 
-            Instruction::ClassIs { out, a, class_id } => self.execute_class_is(out, a, class_id),
+            Instruction::ClassIs { out, a, class_id } => self.exec_class_is(out, a, class_id),
 
             Instruction::AddrOf { out, a } => {
                 let a_ptr = self.addr_of_ref(a);
@@ -723,7 +723,7 @@ impl Interpreter {
                 a,
                 field,
                 of_ty,
-            } => self.execute_field(out, &a, field, of_ty),
+            } => self.exec_field(out, &a, field, of_ty),
 
             Instruction::Element {
                 out,
@@ -980,7 +980,7 @@ impl Interpreter {
         self.store(out, MemCell::Bool(gt));
     }
 
-    fn execute_not(&mut self, out: &Ref, a: &Value) {
+    fn exec_not(&mut self, out: &Ref, a: &Value) {
         let val = self
             .evaluate(a)
             .as_bool()
@@ -989,7 +989,7 @@ impl Interpreter {
         self.store(out, MemCell::Bool(!val));
     }
 
-    fn execute_and(&mut self, out: &Ref, a: &Value, b: &Value) {
+    fn exec_and(&mut self, out: &Ref, a: &Value, b: &Value) {
         let a_val = self
             .evaluate(a)
             .as_bool()
@@ -1003,7 +1003,7 @@ impl Interpreter {
         self.store(out, MemCell::Bool(a_val && b_val));
     }
 
-    fn execute_or(&mut self, out: &Ref, a: &Value, b: &Value) {
+    fn exec_or(&mut self, out: &Ref, a: &Value, b: &Value) {
         let a_val = self
             .evaluate(a)
             .as_bool()
@@ -1017,7 +1017,7 @@ impl Interpreter {
         self.store(out, MemCell::Bool(a_val || b_val));
     }
 
-    fn execute_call(&mut self, out: &Option<Ref>, function: &Value, args: &Vec<Value>) -> ExecResult<()> {
+    fn exec_call(&mut self, out: &Option<Ref>, function: &Value, args: &Vec<Value>) -> ExecResult<()> {
         let arg_cells: Vec<_> = args.iter().map(|arg_val| self.evaluate(arg_val)).collect();
 
         match self.evaluate(function) {
@@ -1029,7 +1029,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_virtual_call(
+    fn exec_virtual_call(
         &mut self,
         out: Option<&Ref>,
         iface_id: InterfaceID,
@@ -1054,7 +1054,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn execute_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) {
+    fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) {
         let rc_addr = self
             .evaluate(a)
             .as_pointer()
@@ -1079,7 +1079,7 @@ impl Interpreter {
         self.store(out, MemCell::Bool(is));
     }
 
-    fn execute_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) {
+    fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) {
         let field_ptr = match of_ty {
             Type::Struct(..) => {
                 let struct_ptr = self.addr_of_ref(a);
