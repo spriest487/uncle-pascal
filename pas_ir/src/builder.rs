@@ -6,7 +6,7 @@ use std::fmt;
 
 use pas_common::span::{Span, Spanned};
 use pas_syn::Ident;
-use pas_typecheck::Specializable;
+use pas_typecheck::{builtin_span, Specializable};
 use std::borrow::Cow;
 use pas_syn::ast::TypeList;
 use crate::ty::{FieldID, Interface, Struct, Variant};
@@ -591,6 +591,7 @@ impl<'m> Builder<'m> {
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("<generated releaser for {}>", self.pretty_ty_name(ty)),
+                src_span: builtin_span(),
             }),
         );
 
@@ -611,6 +612,7 @@ impl<'m> Builder<'m> {
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
+                src_span: builtin_span(),
             }),
         );
 

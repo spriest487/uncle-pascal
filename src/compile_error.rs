@@ -2,7 +2,7 @@ use std::{fmt, io};
 
 use pas_common::span::{Span, Spanned};
 use pas_common::{Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
-use pas_interpreter::ExecError;
+use pas_interpreter::result::ExecError;
 use pas_pp::PreprocessorError;
 use pas_syn::parse::ParseError;
 use pas_syn::TokenizeError;
@@ -75,6 +75,7 @@ impl DiagnosticOutput for CompileError {
                 title: msg.clone(),
                 label: None,
             },
+            CompileError::ExecError(err) => err.main(),
         }
     }
 

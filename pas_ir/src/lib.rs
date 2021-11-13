@@ -1,10 +1,12 @@
 use std::fmt;
+use pas_common::span::Span;
 
 pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*};
 use crate::ty::{ClassID, FieldID, TypeDef};
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 use pas_syn::IdentPath;
 use pas_typecheck as pas_ty;
+use pas_typecheck::builtin_span;
 
 mod builder;
 mod dep_sort;
@@ -43,24 +45,37 @@ impl Default for IROptions {
 }
 
 #[derive(Clone, Debug)]
+pub struct ExternalFunctionRef {
+    pub symbol: String,
+    pub src: String,
+
+    pub return_ty: Type,
+    pub params: Vec<Type>,
+
+    pub src_span: Span,
+}
+
+#[derive(Clone, Debug)]
 pub struct FunctionDef {
     pub debug_name: String,
 
     pub body: Vec<Instruction>,
     pub return_ty: Type,
     pub params: Vec<Type>,
+
+    pub src_span: Span,
 }
 
 #[derive(Clone, Debug)]
 pub enum Function {
-    External { symbol: String, src: String },
+    External(ExternalFunctionRef),
     Local(FunctionDef),
 }
 
 impl Function {
     pub fn debug_name(&self) -> &str {
         match self {
-            Function::External { symbol, .. } => symbol.as_str(),
+            Function::External(ExternalFunctionRef { symbol, .. }) => symbol.as_str(),
             Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
         }
     }
@@ -222,6 +237,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
             return_ty: Type::Nothing,
             params: vec![array_struct_ty.clone().ptr()],
             body: releaser_body,
+            src_span: builtin_span(),
         }),
     );
 
@@ -233,6 +249,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
             return_ty: Type::Nothing,
             params: vec![array_struct_ty.clone().ptr()],
             body: Vec::new(),
+            src_span: builtin_span(),
         }),
     );
 }

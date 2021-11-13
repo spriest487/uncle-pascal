@@ -1,23 +1,22 @@
-use std::{
-    collections::HashMap,
-    f32, fmt,
-    rc::Rc,
-};
-
-use pas_ir::{
-    metadata::*, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter,
-    Label, LocalID, Module, Ref, Type, Value,
-};
-
 pub use self::{
     heap::{Heap, HeapAddress},
     memcell::*,
     ptr::Pointer,
 };
-use crate::func::{BuiltinFn, BuiltinFunctionDef, Function};
+use crate::{
+    func::ffi::FfiCache,
+    func::{BuiltinFn, BuiltinFunction, Function},
+    stack::StackFrame,
+};
+use pas_ir::{
+    metadata::*, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label,
+    LocalID, Module, Ref, Type, Value,
+};
+use std::{collections::HashMap, rc::Rc};
+
+use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
-use crate::stack::{StackFrame};
 
 mod builtin;
 mod func;
@@ -25,6 +24,7 @@ mod heap;
 mod memcell;
 mod ptr;
 mod stack;
+pub mod result;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InterpreterOpts {
@@ -34,29 +34,6 @@ pub struct InterpreterOpts {
 
     pub no_stdlib: bool,
 }
-
-#[derive(Debug)]
-pub enum ExecError {
-    Raised { msg: String, span: Span },
-}
-
-impl fmt::Display for ExecError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ExecError::Raised { msg, .. } => write!(f, "{}", msg),
-        }
-    }
-}
-
-impl ExecError {
-    pub fn span(&self) -> &Span {
-        match self {
-            ExecError::Raised { span, .. } => span,
-        }
-    }
-}
-
-pub type ExecResult<T> = Result<T, ExecError>;
 
 #[derive(Debug, Clone)]
 pub struct GlobalCell {
@@ -70,6 +47,8 @@ pub struct Interpreter {
     stack: Vec<StackFrame>,
     globals: HashMap<GlobalRef, GlobalCell>,
     heap: Heap,
+
+    ffi_cache: FfiCache,
 
     trace_rc: bool,
     trace_ir: bool,
@@ -87,6 +66,8 @@ impl Interpreter {
             globals,
             stack: Vec::new(),
             heap,
+
+            ffi_cache: FfiCache::new(),
 
             trace_rc: opts.trace_rc,
             trace_ir: opts.trace_ir,
@@ -401,23 +382,7 @@ impl Interpreter {
             self.current_frame_mut().push_local(arg_cell);
         }
 
-        match func {
-            Function::Builtin(def) => {
-                if self.trace_ir {
-                    println!("calling {} (interpreter builtin)", def.debug_name);
-                }
-                (def.func)(self)
-            }
-            Function::IR(def) => {
-                if self.trace_ir {
-                    println!("entering {}", def.debug_name);
-                }
-                self.execute(&def.body)?;
-                if self.trace_ir {
-                    println!("exiting {}", def.debug_name);
-                }
-            }
-        };
+        func.invoke(self)?;
 
         let result_cell = match return_ty {
             Type::Nothing => None,
@@ -852,7 +817,13 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_jmpif(&mut self, pc: &mut usize, labels: &HashMap<Label, LabelLocation>, dest: Label, test: &Value) {
+    fn exec_jmpif(
+        &mut self,
+        pc: &mut usize,
+        labels: &HashMap<Label, LabelLocation>,
+        dest: Label,
+        test: &Value,
+    ) {
         match self.evaluate(test) {
             MemCell::Bool(true) => {
                 self.exec_jump(pc, &labels[&dest]);
@@ -1017,7 +988,12 @@ impl Interpreter {
         self.store(out, MemCell::Bool(a_val || b_val));
     }
 
-    fn exec_call(&mut self, out: &Option<Ref>, function: &Value, args: &Vec<Value>) -> ExecResult<()> {
+    fn exec_call(
+        &mut self,
+        out: &Option<Ref>,
+        function: &Value,
+        args: &Vec<Value>,
+    ) -> ExecResult<()> {
         let arg_cells: Vec<_> = args.iter().map(|arg_val| self.evaluate(arg_val)).collect();
 
         match self.evaluate(function) {
@@ -1139,11 +1115,11 @@ impl Interpreter {
             self.globals.insert(
                 GlobalRef::Function(func_id),
                 GlobalCell {
-                    value: MemCell::Function(Function::Builtin(BuiltinFunctionDef {
-                        func: func,
-                        ret,
+                    value: MemCell::Function(Rc::new(Function::Builtin(BuiltinFunction {
+                        func,
+                        return_ty: ret,
                         debug_name: name.to_string(),
-                    })),
+                    }))),
                     ty: Type::Nothing,
                 },
             );
@@ -1175,15 +1151,30 @@ impl Interpreter {
     pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
-        for (func_name, func) in &module.functions {
-            if let IRFunction::Local(func_def) = func {
-                let func_cell = MemCell::Function(Function::IR(Rc::new(func_def.clone())));
-                let func_ref = GlobalRef::Function(*func_name);
+        for (func_name, ir_func) in &module.functions {
+            let func_ref = GlobalRef::Function(*func_name);
 
+            let func = match ir_func {
+                IRFunction::Local(func_def) => {
+                    let ir_func = Function::IR(func_def.clone());
+                    Some(ir_func)
+                },
+
+                IRFunction::External(external_ref) if external_ref.src == "rt" => {
+                    None
+                }
+
+                IRFunction::External(external_ref) => {
+                    let ffi_func = Function::new_ffi(external_ref, &mut self.ffi_cache, &self.metadata)?;
+                    Some(ffi_func)
+                }
+            };
+
+            if let Some(func) = func {
                 self.globals.insert(
                     func_ref,
                     GlobalCell {
-                        value: func_cell,
+                        value: MemCell::Function(Rc::new(func)),
                         ty: Type::Nothing,
                     },
                 );

@@ -1,4 +1,5 @@
 use std::ops::{Index, IndexMut};
+use std::rc::Rc;
 use pas_ir::metadata::{FieldID, StructID};
 use pas_ir::Type;
 use crate::func::Function;
@@ -82,7 +83,7 @@ pub enum MemCell {
     I32(i32),
     F32(f32),
     RcCell(Box<RcCell>),
-    Function(Function),
+    Function(Rc<Function>),
     Structure(Box<StructCell>),
     Variant(Box<VariantCell>),
     Pointer(Pointer),
@@ -177,7 +178,7 @@ impl MemCell {
         }
     }
 
-    pub fn as_function(&self) -> Option<&Function> {
+    pub fn as_function(&self) -> Option<&Rc<Function>> {
         match self {
             MemCell::Function(f) => Some(f),
             _ => None,

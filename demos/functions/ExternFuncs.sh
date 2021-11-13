@@ -1,0 +1,1 @@
+clang -shared ExternFuncs.c -o ExternFuncs.dll

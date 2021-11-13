@@ -1,11 +1,17 @@
-use crate::{metadata::*, jmp_exists, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, ClassID, FieldID, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, FunctionID, FunctionInstance, IROptions, Instruction, LocalID, Metadata, Ref, StructID, Type, TypeDef, Value, EXIT_LABEL, InstructionFormatter};
+use crate::{
+    jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
+    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionCacheKey, FunctionDeclKey,
+    FunctionDef, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
+    LocalID, Metadata, Ref, StructID, Type, TypeDef, Value, EXIT_LABEL,
+};
 use linked_hash_map::LinkedHashMap;
+use pas_common::span::Spanned;
+use pas_syn::ast::FunctionParamMod;
 use pas_syn::{ast, IdentPath};
 use pas_typecheck::ast::specialize_func_decl;
+use pas_typecheck::{builtin_string_name, Specializable, TypeList};
 use std::collections::HashMap;
 use std::fmt;
-use pas_common::span::Spanned;
-use pas_typecheck::{builtin_string_name, Specializable, TypeList};
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -120,6 +126,22 @@ impl Module {
                             .metadata
                             .declare_func(&extern_decl, key.type_args.as_ref());
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
+
+                        let return_ty = self.translate_type(&sig.return_ty, None);
+                        let params: Vec<_> = sig
+                            .params
+                            .iter()
+                            .map(|sig_param| {
+                                let param_ty = self.translate_type(&sig_param.ty, None);
+                                match sig_param.modifier {
+                                    None => param_ty,
+                                    Some(FunctionParamMod::Var | FunctionParamMod::Out) => {
+                                        param_ty.ptr()
+                                    }
+                                }
+                            })
+                            .collect();
+
                         let cached_func = FunctionInstance { id, sig };
 
                         let extern_src = extern_decl
@@ -128,10 +150,15 @@ impl Module {
 
                         self.functions.insert(
                             id,
-                            Function::External {
+                            Function::External(ExternalFunctionRef {
                                 src: extern_src.to_string(),
                                 symbol: extern_decl.ident.last().to_string(),
-                            },
+
+                                return_ty,
+                                params,
+
+                                src_span: extern_decl.span().clone()
+                            }),
                         );
                         self.translated_funcs.insert(key, cached_func.clone());
 
@@ -362,6 +389,7 @@ impl Module {
             params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
             return_ty,
             debug_name,
+            src_span: func.decl.span().clone(),
         }
     }
 
@@ -407,12 +435,16 @@ impl Module {
         }
     }
 
-    pub fn translate_type(&mut self, src_ty: &pas_ty::Type, type_args: Option<&pas_ty::TypeList>) -> Type {
+    pub fn translate_type(
+        &mut self,
+        src_ty: &pas_ty::Type,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> Type {
         let src_ty = match type_args {
             Some(current_ty_args) => {
                 let src_ty = src_ty.clone().substitute_type_args(&current_ty_args);
                 src_ty
-            },
+            }
 
             None => src_ty.clone(),
         };
@@ -509,14 +541,21 @@ impl Module {
         }
     }
 
-    pub fn translate_name(&mut self, name: &pas_ty::Symbol, type_args: Option<&pas_ty::TypeList>) -> NamePath {
+    pub fn translate_name(
+        &mut self,
+        name: &pas_ty::Symbol,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> NamePath {
         if name.is_unspecialized_generic() {
             panic!("can't translate unspecialized generic name: {}", name);
         }
 
         if let Some(name_type_args) = name.type_args.as_ref() {
             if let Some(t) = name_type_args.items.iter().find(|t| t.is_generic_param()) {
-                panic!("can't translate name containing generic parameters (found {}): {}", t, name);
+                panic!(
+                    "can't translate name containing generic parameters (found {}): {}",
+                    t, name
+                );
             }
         }
 
@@ -528,7 +567,8 @@ impl Module {
             .map(|ident| ident.to_string());
 
         let type_args = name.type_args.as_ref().map(|name_type_args_list| {
-            name_type_args_list.items
+            name_type_args_list
+                .items
                 .iter()
                 .map(|arg| self.translate_type(arg, type_args))
                 .collect()
@@ -540,7 +580,11 @@ impl Module {
         }
     }
 
-    pub fn translate_variant(&mut self, variant_def: &pas_ty::ast::Variant, type_args: Option<&pas_ty::TypeList>) -> Variant {
+    pub fn translate_variant(
+        &mut self,
+        variant_def: &pas_ty::ast::Variant,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> Variant {
         let name_path = self.translate_name(&variant_def.name, type_args);
 
         let mut cases = Vec::new();
@@ -549,7 +593,7 @@ impl Module {
                 Some(data_ty) => {
                     let case_ty = self.translate_type(data_ty, type_args);
                     (Some(case_ty), data_ty.is_rc_reference())
-                },
+                }
                 None => (None, false),
             };
 
@@ -566,7 +610,11 @@ impl Module {
         }
     }
 
-    pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface, type_args: Option<&pas_ty::TypeList>) -> Interface {
+    pub fn translate_iface(
+        &mut self,
+        iface_def: &pas_ty::ast::Interface,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> Interface {
         let name = self.translate_name(&iface_def.name, type_args);
 
         // it needs to be declared to reference its own ID in the Self type
@@ -600,7 +648,11 @@ impl Module {
         Interface::new(name, methods)
     }
 
-    pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class, type_args: Option<&pas_ty::TypeList>) -> Struct {
+    pub fn translate_class(
+        &mut self,
+        class_def: &pas_ty::ast::Class,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> Struct {
         let name_path = self.translate_name(&class_def.name, type_args);
 
         let mut fields = HashMap::new();
@@ -615,7 +667,11 @@ impl Module {
         Struct::new(name_path).with_fields(fields)
     }
 
-    pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type, type_args: Option<&TypeList>) -> StructID {
+    pub fn translate_dyn_array_struct(
+        &mut self,
+        element_ty: &pas_ty::Type,
+        type_args: Option<&TypeList>,
+    ) -> StructID {
         let element_ty = self.translate_type(element_ty, type_args);
 
         match self.metadata.find_dyn_array_struct(&element_ty) {
@@ -732,7 +788,7 @@ impl fmt::Display for Module {
                     write_instruction_list(f, &self.metadata, body)?;
                 }
 
-                Function::External { src, symbol } => {
+                Function::External(ExternalFunctionRef { symbol, src, .. }) => {
                     writeln!(f, "<external function '{}' in module '{}'>", symbol, src)?;
                 }
             }
