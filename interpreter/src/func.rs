@@ -7,7 +7,7 @@ use std::fmt;
 use crate::func::ffi::{FfiCache, FfiInvoker};
 use pas_ir::prelude::Metadata;
 
-pub type BuiltinFn = fn(state: &mut Interpreter);
+pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
 
 pub struct BuiltinFunction {
     pub func: BuiltinFn,
@@ -70,10 +70,10 @@ impl Function {
                 if state.trace_ir {
                     println!("calling {} (interpreter builtin)", def.debug_name);
                 }
-                (def.func)(state)
+                (def.func)(state)?
             }
 
-            Function::External(def) => def.invoker.invoke(state),
+            Function::External(def) => def.invoker.invoke(state)?,
 
             Function::IR(def) => {
                 if state.trace_ir {

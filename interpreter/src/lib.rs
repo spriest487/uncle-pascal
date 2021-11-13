@@ -14,7 +14,7 @@ use pas_ir::{
 };
 use std::{collections::HashMap, rc::Rc};
 
-use crate::result::{ExecError, ExecResult};
+use crate::result::{ExecError, ExecResult, IllegalDereference};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 
@@ -74,8 +74,12 @@ impl Interpreter {
         }
     }
 
-    fn init_struct(&self, id: StructID) -> MemCell {
-        let struct_def = self.metadata.get_struct_def(id).unwrap().clone();
+    fn init_struct(&self, id: StructID) -> ExecResult<MemCell> {
+        let struct_def = self.metadata.get_struct_def(id).cloned()
+            .ok_or_else(|| {
+                let msg = format!("missing struct definition in metadata: {}", id);
+                ExecError::illegal_state(msg)
+            })?;
 
         let mut fields = Vec::new();
         for (&id, field) in &struct_def.fields {
@@ -83,20 +87,22 @@ impl Interpreter {
             if id.0 >= fields.len() {
                 fields.resize(id.0 + 1, MemCell::I32(-1));
             }
-            fields[id.0] = self.default_init_cell(&field.ty);
+            fields[id.0] = self.default_init_cell(&field.ty)?;
         }
 
-        MemCell::Structure(Box::new(StructCell { id, fields }))
+        let struct_cell = StructCell { id, fields };
+
+        Ok(MemCell::Structure(Box::new(struct_cell)))
     }
 
-    fn default_init_cell(&self, ty: &Type) -> MemCell {
-        match ty {
+    fn default_init_cell(&self, ty: &Type) -> ExecResult<MemCell> {
+        let cell = match ty {
             Type::I32 => MemCell::I32(-1),
             Type::U8 => MemCell::U8(255),
             Type::Bool => MemCell::Bool(false),
             Type::F32 => MemCell::F32(f32::NAN),
 
-            Type::Struct(id) => self.init_struct(*id),
+            Type::Struct(id) => self.init_struct(*id)?,
 
             Type::RcPointer(_) => MemCell::Pointer(Pointer::Uninit),
 
@@ -105,7 +111,8 @@ impl Interpreter {
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
                 for _ in 0..*dim {
-                    elements.push(self.default_init_cell(element.as_ref()));
+                    let el = self.default_init_cell(element.as_ref())?;
+                    elements.push(el);
                 }
 
                 MemCell::Array(Box::new(ArrayCell {
@@ -120,142 +127,183 @@ impl Interpreter {
                 data: Box::new(MemCell::Pointer(Pointer::Uninit)),
             })),
 
-            _ => panic!("can't initialize default cell of type `{:?}`", ty),
-        }
+            _ => {
+                let msg = format!("can't initialize default cell of type `{:?}`", ty);
+                return Err(ExecError::illegal_state(msg));
+            }
+        };
+
+        Ok(cell)
     }
 
-    fn deref_ptr(&self, ptr: &Pointer) -> &MemCell {
+    fn deref_ptr(&self, ptr: &Pointer) -> ExecResult<&MemCell> {
         match ptr {
-            Pointer::Heap(slot) => self
-                .heap
-                .get(*slot)
-                .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new())),
+            Pointer::Heap(slot) => {
+                let heap_cell = self
+                    .heap
+                    .get(*slot)
+                    .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new()));
+
+                Ok(heap_cell)
+            },
 
             Pointer::Local { frame, id, .. } => {
                 self.stack[*frame].deref_local(*id)
             }
 
             Pointer::IntoArray { array, offset, .. } => {
-                match self.deref_ptr(array) {
+                match self.deref_ptr(array)? {
                     MemCell::Array(array_cell) => {
-                        &array_cell.elements[*offset]
+                        Ok(&array_cell.elements[*offset])
                     }
 
-                    other => panic!("dereferencing array pointer which doesn't point to an array cell (was: {:#?})", other),
+                    invalid => {
+                        let msg = "referencing array element";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Array, invalid.kind()));
+                    },
                 }
             }
 
             Pointer::IntoStruct { structure, field, .. } => {
-                match self.deref_ptr(structure) {
+                match self.deref_ptr(structure)? {
                     MemCell::Structure(struct_cell) => {
-                        &struct_cell[*field]
+                        Ok(&struct_cell[*field])
                     }
 
-                    other => panic!("dereferencing struct member pointer which doesn't point into a struct (was: {:#?})", other)
+                    invalid => {
+                        let msg = "referencing struct field";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Structure, invalid.kind()));
+                    }
                 }
             }
 
             Pointer::VariantTag { variant } => {
-                match self.deref_ptr(variant) {
-                    MemCell::Variant(variant_cell) => variant_cell.tag.as_ref(),
-                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
+                match self.deref_ptr(variant)? {
+                    MemCell::Variant(variant_cell) => Ok(variant_cell.tag.as_ref()),
+                    invalid => {
+                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind()));
+                    },
                 }
             }
 
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
-                match self.deref_ptr(variant) {
+                match self.deref_ptr(variant)? {
                     MemCell::Variant(variant_cell) => {
-                        assert_eq!(variant_cell.tag.as_i32().unwrap(), expect_tag);
-                        variant_cell.data.as_ref()
+                        assert_eq!(variant_cell.tag.as_i32(), Some(expect_tag));
+                        Ok(variant_cell.data.as_ref())
                     },
-                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
+
+                    invalid => {
+                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind()));
+                    },
                 }
             }
 
             Pointer::Null => {
-                panic!("dereferencing null pointer");
+                return Err(ExecError::IllegalDereference(IllegalDereference::Null))
             }
 
             Pointer::Uninit => {
-                panic!("dereferencing uninitialized pointer");
+                return Err(ExecError::IllegalDereference(IllegalDereference::Uninit))
             }
         }
     }
 
-    fn deref_ptr_mut(&mut self, ptr: &Pointer) -> &mut MemCell {
+    fn deref_ptr_mut(&mut self, ptr: &Pointer) -> ExecResult<&mut MemCell> {
         match ptr {
-            Pointer::Heap(slot) => self
-                .heap
-                .get_mut(*slot)
-                .unwrap_or_else(|| panic!("heap cell {} is not allocated", slot)),
+            Pointer::Heap(slot) => {
+                let heap_cell = self
+                    .heap
+                    .get_mut(*slot)
+                    .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new()));
+
+                Ok(heap_cell)
+            },
 
             Pointer::Local { frame, id, .. } => {
                 self.stack[*frame].deref_local_mut(*id)
             }
 
             Pointer::IntoArray { array, offset, .. } => {
-                match self.deref_ptr_mut(array) {
+                match self.deref_ptr_mut(array)? {
                     MemCell::Array(array_cell) => {
-                        &mut array_cell.elements[*offset]
+                        Ok(&mut array_cell.elements[*offset])
                     }
 
-                    other => panic!("dereferencing array pointer which doesn't point to an array cell (was: {:#?})", other),
+                    invalid => {
+                        let msg = "referencing array element";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Array, invalid.kind()));
+                    },
                 }
             }
 
             Pointer::IntoStruct { structure, field, .. } => {
-                match self.deref_ptr_mut(structure) {
+                match self.deref_ptr_mut(structure)? {
                     MemCell::Structure(struct_cell) => {
-                        &mut struct_cell[*field]
+                        Ok(&mut struct_cell[*field])
                     }
 
-                    other => panic!("dereferencing struct member pointer which doesn't point into a struct (was: {:#?})", other),
+                    invalid => {
+                        let msg = "referencing struct field";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Structure, invalid.kind()));
+                    }
                 }
             }
 
             Pointer::VariantTag { variant } => {
-                match self.deref_ptr_mut(variant) {
-                    MemCell::Variant(variant_cell) => variant_cell.tag.as_mut(),
-                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
+                match self.deref_ptr_mut(variant)? {
+                    MemCell::Variant(variant_cell) => Ok(variant_cell.tag.as_mut()),
+                    invalid => {
+                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind()));
+                    },
                 }
             }
 
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
-                match self.deref_ptr_mut(variant) {
+                match self.deref_ptr_mut(variant)? {
                     MemCell::Variant(variant_cell) => {
-                        assert_eq!(variant_cell.tag.as_i32().unwrap(), expect_tag);
-                        variant_cell.data.as_mut()
+                        assert_eq!(variant_cell.tag.as_i32(), Some(expect_tag));
+                        Ok(variant_cell.data.as_mut())
                     },
-                    other => panic!("dereferencing variant tag pointer which doens't point to a variant cell (was: {:#?}", other),
-                }
-            }
 
-            Pointer::Uninit => {
-                panic!("dereferencing uninitialized pointer");
+                    invalid => {
+                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
+                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind()));
+                    },
+                }
             }
 
             Pointer::Null => {
-                panic!("dereferencing null pointer")
-            },
+                return Err(ExecError::IllegalDereference(IllegalDereference::Null))
+            }
+
+            Pointer::Uninit => {
+                return Err(ExecError::IllegalDereference(IllegalDereference::Uninit))
+            }
         }
     }
 
-    fn store(&mut self, at: &Ref, val: MemCell) {
-        //        println!("{} <- {:#?}", at, val);
-
+    fn store(&mut self, at: &Ref, val: MemCell) -> ExecResult<()> {
         match at {
             Ref::Discard => {
                 // do nothing with this value
+                Ok(())
             }
 
-            Ref::Local(id) => self.current_frame_mut().store_local(*id, val),
+            Ref::Local(id) => {
+                self.current_frame_mut()?.store_local(*id, val)
+            },
 
             Ref::Global(name) => {
                 if self.globals.contains_key(name) {
-                    panic!("global cell `{}` is already allocated", name);
+                    return Err(ExecError::illegal_state(format!("global cell `{}` is already allocated", name)));
                 }
+
                 self.globals.insert(
                     name.clone(),
                     GlobalCell {
@@ -264,47 +312,62 @@ impl Interpreter {
                         ty: Type::Nothing,
                     },
                 );
+
+                Ok(())
             }
 
-            Ref::Deref(inner) => match self.evaluate(inner) {
+            Ref::Deref(inner) => match self.evaluate(inner)? {
                 MemCell::Pointer(ptr) => {
-                    *self.deref_ptr_mut(&ptr) = val;
+                    let ptr_deref_cell = self.deref_ptr_mut(&ptr)?;
+                    *ptr_deref_cell = val;
+
+                    Ok(())
                 }
 
-                x => panic!("can't dereference non-pointer cell with value {:?}", x),
+                x => {
+                    let msg = format!("can't dereference non-pointer cell with value {:?}", x);
+                    Err(ExecError::illegal_state(msg))
+                },
             },
         }
     }
 
-    fn load(&self, at: &Ref) -> &MemCell {
+    fn load(&self, at: &Ref) -> ExecResult<&MemCell> {
         match at {
-            Ref::Discard => panic!("can't read value from discard ref"),
+            Ref::Discard => Err(ExecError::illegal_state("can't read value from discard ref")),
 
-            Ref::Local(id) => self.current_frame().load_local(*id),
+            Ref::Local(id) => self.current_frame()?.load_local(*id),
 
             Ref::Global(name) => match self.globals.get(name) {
-                Some(cell) => &cell.value,
+                Some(cell) => Ok(&cell.value),
                 None => {
-                    panic!("global cell `{}` is not allocated", name);
+                    let msg = format!("global cell `{}` is not allocated", name);
+                    Err(ExecError::illegal_state(msg))
                 }
             },
 
-            Ref::Deref(inner) => match self.evaluate(inner) {
+            Ref::Deref(inner) => match self.evaluate(inner)? {
                 MemCell::Pointer(ptr) => self.deref_ptr(&ptr),
-                x => panic!("can't dereference cell {:?}", x),
+                x => {
+                    let msg = format!("can't dereference cell {:?}", x);
+                    Err(ExecError::illegal_state(msg))
+                },
             },
         }
     }
 
-    fn evaluate(&self, val: &Value) -> MemCell {
+    fn evaluate(&self, val: &Value) -> ExecResult<MemCell> {
         match val {
-            Value::Ref(r) => self.load(r).clone(),
+            Value::Ref(r) => {
+                let ref_val = self.load(r)?;
+                Ok(ref_val.clone())
+            },
 
-            Value::LiteralI32(i) => MemCell::I32(*i),
-            Value::LiteralByte(i) => MemCell::U8(*i),
-            Value::LiteralF32(f) => MemCell::F32(*f),
-            Value::LiteralBool(b) => MemCell::Bool(*b),
-            Value::LiteralNull => MemCell::Pointer(Pointer::Null),
+            Value::LiteralI32(i) => Ok(MemCell::I32(*i)),
+            Value::LiteralByte(i) => Ok(MemCell::U8(*i)),
+            Value::LiteralF32(f) => Ok(MemCell::F32(*f)),
+            Value::LiteralBool(b) => Ok(MemCell::Bool(*b)),
+            Value::LiteralNull => Ok(MemCell::Pointer(Pointer::Null)),
         }
     }
 
@@ -313,20 +376,21 @@ impl Interpreter {
         self.stack.push(stack_frame);
     }
 
-    fn pop_stack(&mut self) {
-        self.stack.pop().expect("popped stack with no stackframes");
+    fn pop_stack(&mut self) -> ExecResult<()> {
+        self.stack.pop().ok_or_else(|| ExecError::illegal_state("popped stack with no stackframes"))?;
+        Ok(())
     }
 
-    fn current_frame(&self) -> &StackFrame {
+    fn current_frame(&self) -> ExecResult<&StackFrame> {
         self.stack
             .last()
-            .expect("called current_frame without no stackframes")
+            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
     }
 
-    fn current_frame_mut(&mut self) -> &mut StackFrame {
+    fn current_frame_mut(&mut self) -> ExecResult<&mut StackFrame> {
         self.stack
             .last_mut()
-            .expect("called current_frame without no stackframes")
+            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
     }
 
     fn vcall_lookup(
@@ -334,7 +398,7 @@ impl Interpreter {
         self_cell: &MemCell,
         iface_id: InterfaceID,
         method: MethodID,
-    ) -> FunctionID {
+    ) -> ExecResult<FunctionID> {
         let self_rc = self_cell
             .as_pointer()
             .and_then(|rc_ptr| {
@@ -342,18 +406,18 @@ impl Interpreter {
                 let rc_cell = self.heap.get(rc_addr)?;
                 rc_cell.as_rc()
             })
-            .unwrap_or_else(|| {
-                panic!(
+            .ok_or_else(|| {
+                ExecError::illegal_state(format!(
                     "expected target of virtual call {}.{} to be an rc cell, but found {:?}",
                     iface_id, method.0, self_cell
-                )
-            });
+                ))
+            })?;
 
         let instance_ty = Type::RcPointer(Some(ClassID::Class(self_rc.struct_id)));
 
         self.metadata
             .find_impl(&instance_ty, iface_id, method)
-            .unwrap_or_else(|| {
+            .ok_or_else(|| {
                 let mut err = "virtual call ".to_string();
 
                 let iface_ty = Type::RcPointer(Some(ClassID::Interface(iface_id)));
@@ -363,7 +427,7 @@ impl Interpreter {
                 err.push_str(" missing implementation for ");
                 let _ = self.metadata.format_type(&instance_ty, &mut err);
 
-                panic!("{}", err)
+                ExecError::illegal_state(format!("{}", err))
             })
     }
 
@@ -373,13 +437,13 @@ impl Interpreter {
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
-            let result_cell = self.default_init_cell(return_ty);
-            self.current_frame_mut().push_local(result_cell);
+            let result_cell = self.default_init_cell(return_ty)?;
+            self.current_frame_mut()?.push_local(result_cell);
         }
 
         // store params in either $0.. or $1..
         for arg_cell in args.iter().cloned() {
-            self.current_frame_mut().push_local(arg_cell);
+            self.current_frame_mut()?.push_local(arg_cell);
         }
 
         func.invoke(self)?;
@@ -387,20 +451,22 @@ impl Interpreter {
         let result_cell = match return_ty {
             Type::Nothing => None,
             _ => {
-                let return_val = self.evaluate(&Value::Ref(Ref::Local(LocalID(0))));
+                let ref_local_0 = Ref::Local(LocalID(0));
+                let return_val = self.evaluate(&Value::Ref(ref_local_0))?;
                 Some(return_val)
             }
         };
 
-        self.pop_stack();
+        self.pop_stack()?;
 
         match (result_cell, out) {
             (Some(result_cell), Some(out_at)) => {
-                self.store(&out_at, result_cell);
+                self.store(&out_at, result_cell)?;
             }
 
             (None, Some(_)) => {
-                panic!("called function which has no return type in a context where a return value was expected");
+                let msg = "called function which has no return type in a context where a return value was expected";
+                return Err(ExecError::illegal_state(msg));
             }
 
             // ok, no output expected, ignore result if there is one
@@ -541,13 +607,14 @@ impl Interpreter {
         Ok(())
     }
 
-    fn retain_cell(&mut self, cell: &MemCell) {
+    fn retain_cell(&mut self, cell: &MemCell) -> ExecResult<()> {
         match cell {
             MemCell::Pointer(Pointer::Heap(addr)) => {
                 let rc_cell = match &mut self.heap[*addr] {
                     MemCell::RcCell(rc_cell) => rc_cell.as_mut(),
                     other => {
-                        panic!("retained cell must point to an rc cell, found: {:?}", other)
+                        let msg = format!("retained cell must point to an rc cell, found: {:?}", other);
+                        return Err(ExecError::illegal_state(msg));
                     }
                 };
 
@@ -556,21 +623,25 @@ impl Interpreter {
                 }
 
                 rc_cell.ref_count += 1;
+
+                Ok(())
             }
 
-            _ => panic!("{:?} cannot be retained", cell),
+            _ => {
+                Err(ExecError::illegal_state(format!("{:?} cannot be retained", cell)))
+            },
         }
     }
 
-    fn addr_of_ref(&self, target: &Ref) -> Pointer {
+    fn addr_of_ref(&self, target: &Ref) -> ExecResult<Pointer> {
         match target {
             Ref::Discard => panic!("can't take address of discard ref"),
 
             // let int := 1;
             // let intPtr := @int;
             // @(intPtr^) -> address of int behind intPtr
-            Ref::Deref(val) => match self.evaluate(val) {
-                MemCell::Pointer(ptr) => ptr.clone(),
+            Ref::Deref(val) => match self.evaluate(val)? {
+                MemCell::Pointer(ptr) => Ok(ptr.clone()),
 
                 _ => panic!("deref of non-pointer value @ {}", val),
             },
@@ -592,15 +663,21 @@ impl Interpreter {
                         }
                     })
                     .next()
-                    .unwrap();
+                    .ok_or_else(|| {
+                        let msg = format!("id {} is not allocated in any stack frames", id);
+                        ExecError::illegal_state(msg)
+                    })?;
 
-                Pointer::Local {
+                Ok(Pointer::Local {
                     frame: frame_id,
                     id: *id,
-                }
+                })
             }
 
-            Ref::Global(global) => panic!("can't take address of global ref {:?}", global),
+            Ref::Global(global) => {
+                let msg = format!("can't take address of global ref {:?}", global);
+                Err(ExecError::illegal_state(msg))
+            },
         }
     }
 
@@ -642,26 +719,29 @@ impl Interpreter {
                 // noop
             }
 
-            Instruction::LocalAlloc(id, ty) => self.exec_local_alloc(*pc, *id, ty),
+            Instruction::LocalAlloc(id, ty) => self.exec_local_alloc(*pc, *id, ty)?,
 
-            Instruction::LocalBegin => self.exec_local_begin(),
-            Instruction::LocalEnd => self.exec_local_end(),
+            Instruction::LocalBegin => self.exec_local_begin()?,
+            Instruction::LocalEnd => self.exec_local_end()?,
 
-            Instruction::RcNew { out, struct_id } => self.exec_rc_new(out, struct_id),
+            Instruction::RcNew { out, struct_id } => self.exec_rc_new(out, struct_id)?,
 
-            Instruction::Add { out, a, b } => self.exec_add(out, a, b),
+            Instruction::Add { out, a, b } => self.exec_add(out, a, b)?,
 
-            Instruction::Mul { out, a, b } => self.exec_mul(out, a, b),
-            Instruction::IDiv { out, a, b } => self.exec_idiv(out, a, b),
-            Instruction::Sub { out, a, b } => self.exec_sub(out, a, b),
-            Instruction::Shl { out, a, b } => self.exec_shl(out, a, b),
-            Instruction::Shr { out, a, b } => self.exec_shr(out, a, b),
-            Instruction::Eq { out, a, b } => self.exec_eq(out, a, b),
-            Instruction::Gt { out, a, b } => self.exec_gt(out, a, b),
-            Instruction::Not { out, a } => self.exec_not(out, a),
-            Instruction::And { out, a, b } => self.exec_and(out, a, b),
-            Instruction::Or { out, a, b } => self.exec_or(out, a, b),
-            Instruction::Move { out, new_val } => self.store(out, self.evaluate(new_val)),
+            Instruction::Mul { out, a, b } => self.exec_mul(out, a, b)?,
+            Instruction::IDiv { out, a, b } => self.exec_idiv(out, a, b)?,
+            Instruction::Sub { out, a, b } => self.exec_sub(out, a, b)?,
+            Instruction::Shl { out, a, b } => self.exec_shl(out, a, b)?,
+            Instruction::Shr { out, a, b } => self.exec_shr(out, a, b)?,
+            Instruction::Eq { out, a, b } => self.exec_eq(out, a, b)?,
+            Instruction::Gt { out, a, b } => self.exec_gt(out, a, b)?,
+            Instruction::Not { out, a } => self.exec_not(out, a)?,
+            Instruction::And { out, a, b } => self.exec_and(out, a, b)?,
+            Instruction::Or { out, a, b } => self.exec_or(out, a, b)?,
+            Instruction::Move { out, new_val } => {
+                let val = self.evaluate(new_val)?;
+                self.store(out, val)?
+            },
             Instruction::Call {
                 out,
                 function,
@@ -676,11 +756,11 @@ impl Interpreter {
                 rest_args,
             } => self.exec_virtual_call(out.as_ref(), *iface_id, *method, &self_arg, rest_args)?,
 
-            Instruction::ClassIs { out, a, class_id } => self.exec_class_is(out, a, class_id),
+            Instruction::ClassIs { out, a, class_id } => self.exec_class_is(out, a, class_id)?,
 
             Instruction::AddrOf { out, a } => {
-                let a_ptr = self.addr_of_ref(a);
-                self.store(out, MemCell::Pointer(a_ptr));
+                let a_ptr = self.addr_of_ref(a)?;
+                self.store(out, MemCell::Pointer(a_ptr))?;
             }
 
             Instruction::Field {
@@ -688,7 +768,7 @@ impl Interpreter {
                 a,
                 field,
                 of_ty,
-            } => self.exec_field(out, &a, field, of_ty),
+            } => self.exec_field(out, &a, field, of_ty)?,
 
             Instruction::Element {
                 out,
@@ -698,77 +778,92 @@ impl Interpreter {
                 element: _el,
                 index,
             } => {
-                self.exec_element(out, a, index);
+                self.exec_element(out, a, index)?;
             }
 
-            Instruction::VariantTag { out, a, .. } => self.exec_variant_tag(out, a),
+            Instruction::VariantTag { out, a, .. } => self.exec_variant_tag(out, a)?,
 
-            Instruction::VariantData { out, a, tag, .. } => self.exec_variant_data(out, a, tag),
+            Instruction::VariantData { out, a, tag, .. } => self.exec_variant_data(out, a, tag)?,
 
             Instruction::Label(_) => {
                 // noop
             }
 
-            Instruction::Jump { dest } => self.exec_jump(pc, &labels[dest]),
-            Instruction::JumpIf { dest, test } => self.exec_jmpif(pc, &labels, *dest, test),
+            Instruction::Jump { dest } => self.exec_jump(pc, &labels[dest])?,
+            Instruction::JumpIf { dest, test } => self.exec_jmpif(pc, &labels, *dest, test)?,
 
             Instruction::Release { at } => self.exec_release(at)?,
-            Instruction::Retain { at } => self.exec_retain(at),
+            Instruction::Retain { at } => self.exec_retain(at)?,
 
             Instruction::DynAlloc {
                 out,
                 element_ty,
                 len,
-            } => self.exec_dynalloc(out, element_ty, len),
+            } => self.exec_dynalloc(out, element_ty, len)?,
 
-            Instruction::DynFree { at } => self.exec_dynfree(at),
+            Instruction::DynFree { at } => self.exec_dynfree(at)?,
             Instruction::Raise { val } => self.exec_raise(&val)?,
 
             // all value are one cell in the interpreter
             Instruction::SizeOf { out, .. } => {
-                self.store(out, MemCell::I32(1));
+                self.store(out, MemCell::I32(1))?;
             }
         }
 
         Ok(())
     }
 
-    fn exec_local_alloc(&mut self, pc: usize, id: LocalID, ty: &Type) {
-        let uninit_cell = self.default_init_cell(ty);
+    fn exec_local_alloc(&mut self, pc: usize, id: LocalID, ty: &Type) -> ExecResult<()> {
+        let uninit_cell = self.default_init_cell(ty)?;
 
-        self.current_frame_mut().alloc_local(id, pc, uninit_cell);
+        self.current_frame_mut()?.alloc_local(id, pc, uninit_cell)?;
+
+        Ok(())
     }
 
-    fn exec_local_begin(&mut self) {
-        self.current_frame_mut().push_block();
+    fn exec_local_begin(&mut self) -> ExecResult<()> {
+        self.current_frame_mut()?.push_block();
+
+        Ok(())
     }
 
-    fn exec_local_end(&mut self) {
-        self.current_frame_mut().pop_block();
+    fn exec_local_end(&mut self) -> ExecResult<()> {
+        self.current_frame_mut()?.pop_block()?;
+
+        Ok(())
     }
 
-    fn exec_rc_new(&mut self, out: &Ref, struct_id: &StructID) {
+    fn exec_rc_new(&mut self, out: &Ref, struct_id: &StructID) -> ExecResult<()> {
         let struct_ty = Type::Struct(*struct_id);
-        let init_cells = vec![self.default_init_cell(&struct_ty)];
+
+        let default_vall = self.default_init_cell(&struct_ty)?;
+        let init_cells = vec![default_vall];
 
         let rc_ptr = self.rc_alloc(init_cells, *struct_id);
 
-        self.store(out, MemCell::Pointer(rc_ptr));
+        self.store(out, MemCell::Pointer(rc_ptr))?;
+
+        Ok(())
     }
 
-    fn exec_add(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_add(&self.evaluate(b)) {
-            Some(result) => self.store(out, result),
-            None => panic!(
-                "Add is not valid for {:?} + {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
-            ),
+    fn exec_add(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_add(&b_val) {
+            Some(result) => {
+                self.store(out, result)?;
+                Ok(())
+            },
+            None => {
+                let msg = format!("Add is not valid for {:?} + {:?}", a_val, b_val);
+                Err(ExecError::illegal_state(msg))
+            },
         }
     }
 
     fn exec_raise(&mut self, val: &Ref) -> ExecResult<()> {
-        let msg = self.read_string(&val.clone().to_deref());
+        let msg = self.read_string(&val.clone().to_deref())?;
 
         return Err(ExecError::Raised {
             msg,
@@ -777,41 +872,51 @@ impl Interpreter {
         });
     }
 
-    fn exec_dynfree(&mut self, at: &Ref) {
-        match self.load(at) {
+    fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
+        match self.load(at)? {
             MemCell::Pointer(Pointer::Heap(addr)) => {
                 let addr = *addr;
                 self.heap.free(addr);
+
+                Ok(())
             }
 
-            x => panic!("target of DynFree at {} must be pointer, was: {:?}", at, x),
+            x => {
+                let msg = format!("target of DynFree at {} must be pointer, was: {:?}", at, x);
+                Err(ExecError::illegal_state(msg))
+            },
         }
     }
 
-    fn exec_dynalloc(&mut self, out: &Ref, element_ty: &Type, len: &Value) {
+    fn exec_dynalloc(&mut self, out: &Ref, element_ty: &Type, len: &Value) -> ExecResult<()> {
         let len = self
-            .evaluate(len)
+            .evaluate(len)?
             .as_i32()
-            .expect("len of DynAlloc must be i32");
+            .ok_or_else(|| ExecError::illegal_state("len of DynAlloc must be i32"))?;
 
         let mut cells = Vec::new();
         for _ in 0..len {
-            cells.push(self.default_init_cell(element_ty));
+            let default_val = self.default_init_cell(element_ty)?;
+            cells.push(default_val);
         }
 
         let addr = self.heap.alloc(cells);
         let ptr = Pointer::Heap(addr);
 
-        self.store(out, MemCell::Pointer(ptr));
+        self.store(out, MemCell::Pointer(ptr))?;
+
+        Ok(())
     }
 
-    fn exec_retain(&mut self, at: &Ref) {
-        let cell = self.load(at).clone();
-        self.retain_cell(&cell);
+    fn exec_retain(&mut self, at: &Ref) -> ExecResult<()> {
+        let cell = self.load(at)?.clone();
+        self.retain_cell(&cell)?;
+
+        Ok(())
     }
 
     fn exec_release(&mut self, at: &Ref) -> ExecResult<()> {
-        let cell = self.load(at).clone();
+        let cell = self.load(at)?.clone();
         self.release_cell(&cell)?;
 
         Ok(())
@@ -823,42 +928,54 @@ impl Interpreter {
         labels: &HashMap<Label, LabelLocation>,
         dest: Label,
         test: &Value,
-    ) {
-        match self.evaluate(test) {
+    ) -> ExecResult<()> {
+        match self.evaluate(test)? {
             MemCell::Bool(true) => {
-                self.exec_jump(pc, &labels[&dest]);
+                self.exec_jump(pc, &labels[&dest])
             }
-            MemCell::Bool(false) => {}
-            _ => panic!("JumpIf instruction testing non-boolean cell"),
+            MemCell::Bool(false) => {
+                Ok(())
+            }
+            _ => Err(ExecError::illegal_state("JumpIf instruction testing non-boolean cell")),
         }
     }
 
-    fn exec_variant_data(&mut self, out: &Ref, a: &Ref, tag: &usize) {
-        let a_ptr = self.addr_of_ref(a);
+    fn exec_variant_data(&mut self, out: &Ref, a: &Ref, tag: &usize) -> ExecResult<()> {
+        let a_ptr = self.addr_of_ref(a)?;
         self.store(
             out,
             MemCell::Pointer(Pointer::VariantData {
                 variant: Box::new(a_ptr),
                 tag: *tag,
             }),
-        );
+        )?;
+
+        Ok(())
     }
 
-    fn exec_variant_tag(&mut self, out: &Ref, a: &Ref) {
-        let a_ptr = self.addr_of_ref(a);
+    fn exec_variant_tag(&mut self, out: &Ref, a: &Ref) -> ExecResult<()> {
+        let a_ptr = self.addr_of_ref(a)?;
         self.store(
             out,
             MemCell::Pointer(Pointer::VariantTag {
                 variant: Box::new(a_ptr),
             }),
-        );
+        )?;
+
+        Ok(())
     }
 
-    fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value) {
-        let array = self.addr_of_ref(a);
+    fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value) -> ExecResult<()> {
+        let array = self.addr_of_ref(a)?;
 
         // todo: use a real usize
-        let offset = self.evaluate(index).as_i32().unwrap() as usize;
+        let offset = self.evaluate(index)?
+            .as_i32()
+            .map(|i| i as usize)
+            .ok_or_else(|| {
+                let msg = "element instruction has non-integer illegal index value";
+                ExecError::illegal_state(msg)
+            })?;
 
         self.store(
             out,
@@ -866,126 +983,172 @@ impl Interpreter {
                 offset,
                 array: Box::new(array),
             }),
-        );
+        )?;
+
+        Ok(())
     }
 
-    fn exec_mul(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_mul(&self.evaluate(b)) {
+    fn exec_mul(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_mul(&b_val) {
             Some(result) => self.store(out, result),
             None => panic!(
                 "Mul is not valid for {:?} * {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
+                a_val,
+                b_val,
             ),
         }
     }
 
-    fn exec_idiv(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_idiv(&self.evaluate(b)) {
+    fn exec_idiv(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_idiv(&b_val) {
             Some(result) => self.store(out, result),
             None => panic!(
                 "IDiv is not valid for {:?} div {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
+                a_val,
+                b_val,
             ),
         }
     }
 
-    fn exec_sub(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_sub(&self.evaluate(b)) {
+    fn exec_sub(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_sub(&b_val) {
             Some(result) => self.store(out, result),
             None => panic!(
                 "Sub is not valid for {:?} - {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
+                a_val,
+                b_val,
             ),
         }
     }
 
-    fn exec_shl(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_shl(&self.evaluate(b)) {
+    fn exec_shl(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_shl(&b_val) {
             Some(result) => self.store(out, result),
             None => panic!(
                 "Shl is not valid for {:?} shl {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
+                a_val,
+                b_val,
             ),
         }
     }
 
-    fn exec_shr(&mut self, out: &Ref, a: &Value, b: &Value) {
-        match self.evaluate(a).try_shr(&self.evaluate(b)) {
-            Some(result) => self.store(out, result),
-            None => panic!(
-                "Shr is not valid for {:?} shr {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
-            ),
+    fn exec_shr(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        match a_val.try_shr(&b_val) {
+            Some(result) => self.store(out, result)?,
+            None => {
+                let msg = format!("Shr is not valid for {:?} shr {:?}", a_val, b_val);
+                return Err(ExecError::illegal_state(msg));
+            },
         }
+
+        Ok(())
     }
 
-    fn exec_eq(&mut self, out: &Ref, a: &Value, b: &Value) {
-        let eq = match self.evaluate(a).try_eq(&self.evaluate(b)) {
+    fn exec_eq(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        let eq = match a_val.try_eq(&b_val) {
             Some(eq) => eq,
-            None => panic!(
-                "Eq is not valid for {:?} = {:?}",
-                self.evaluate(a),
-                self.evaluate(b)
-            ),
+            None => {
+                let msg = format!("Eq is not valid for {:?} = {:?}", a_val, b_val);
+                return Err(ExecError::illegal_state(msg));
+            },
         };
 
-        self.store(out, MemCell::Bool(eq))
+        self.store(out, MemCell::Bool(eq))?;
+
+        Ok(())
     }
 
-    fn exec_gt(&mut self, out: &Ref, a: &Value, b: &Value) {
-        let gt = match (self.evaluate(a), self.evaluate(b)) {
-            (MemCell::I32(a), MemCell::I32(b)) => a > b,
-            (MemCell::U8(a), MemCell::U8(b)) => a > b,
-            (MemCell::F32(a), MemCell::F32(b)) => a > b,
-            (cell_a, cell_b) => panic!(
-                "Gt is not valid for {} ({:?}) > {} ({:?})",
-                a, cell_a, b, cell_b
-            ),
+    fn exec_gt(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+        let b_val = self.evaluate(b)?;
+
+        let gt = a_val.try_gt(&b_val)
+            .ok_or_else(|| {
+                let msg = format!("Gt is not valid for {} ({:?}) > {} ({:?})", a, a_val, b, b_val);
+                ExecError::illegal_state(msg)
+            })?;
+
+        self.store(out, MemCell::Bool(gt))?;
+
+        Ok(())
+    }
+
+    fn exec_not(&mut self, out: &Ref, a: &Value) -> ExecResult<()> {
+        let a_val = self.evaluate(a)?;
+
+        let not = match a_val.try_not() {
+            Some(not) => not,
+            None => {
+                let msg = format!("Not instruction is not valid for {:?}", a);
+                return Err(ExecError::illegal_state(msg))
+            }
         };
 
-        self.store(out, MemCell::Bool(gt));
+        self.store(out, MemCell::Bool(not))?;
+
+        Ok(())
     }
 
-    fn exec_not(&mut self, out: &Ref, a: &Value) {
-        let val = self
-            .evaluate(a)
-            .as_bool()
-            .unwrap_or_else(|| panic!("Not instruction is not valid for {:?}", a));
-
-        self.store(out, MemCell::Bool(!val));
-    }
-
-    fn exec_and(&mut self, out: &Ref, a: &Value, b: &Value) {
+    fn exec_and(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self
-            .evaluate(a)
+            .evaluate(a)?
             .as_bool()
-            .unwrap_or_else(|| panic!("operand a of And instruction must be bool, got {:?}", a));
+            .ok_or_else(|| {
+                let msg = format!("operand a of And instruction must be bool, got {:?}", a);
+                ExecError::illegal_state(msg)
+            })?;
 
         let b_val = self
-            .evaluate(b)
+            .evaluate(b)?
             .as_bool()
-            .unwrap_or_else(|| panic!("operand b of And instruction must be bool, got {:?}", b));
+            .ok_or_else(|| {
+                let msg = format!("operand b of And instruction must be bool, got {:?}", b);
+                ExecError::illegal_state(msg)
+            })?;
 
-        self.store(out, MemCell::Bool(a_val && b_val));
+        self.store(out, MemCell::Bool(a_val && b_val))?;
+
+        Ok(())
     }
 
-    fn exec_or(&mut self, out: &Ref, a: &Value, b: &Value) {
+    fn exec_or(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self
-            .evaluate(a)
+            .evaluate(a)?
             .as_bool()
-            .unwrap_or_else(|| panic!("operand a of Or instruction must be bool, got {:?}", a));
+            .ok_or_else(|| {
+                let msg = format!("operand a of Or instruction must be bool, got {:?}", a);
+                ExecError::illegal_state(msg)
+            })?;
 
         let b_val = self
-            .evaluate(b)
+            .evaluate(b)?
             .as_bool()
-            .unwrap_or_else(|| panic!("operand b of Or instruction must be bool, got {:?}", b));
+            .ok_or_else(|| {
+                let msg = format!("operand b of Or instruction must be bool, got {:?}", b);
+                ExecError::illegal_state(msg)
+            })?;
 
-        self.store(out, MemCell::Bool(a_val || b_val));
+        self.store(out, MemCell::Bool(a_val || b_val))?;
+
+        Ok(())
     }
 
     fn exec_call(
@@ -994,12 +1157,18 @@ impl Interpreter {
         function: &Value,
         args: &Vec<Value>,
     ) -> ExecResult<()> {
-        let arg_cells: Vec<_> = args.iter().map(|arg_val| self.evaluate(arg_val)).collect();
+        let arg_cells: Vec<_> = args
+            .iter()
+            .map(|arg_val| self.evaluate(arg_val))
+            .collect::<ExecResult<_>>()?;
 
-        match self.evaluate(function) {
+        match self.evaluate(function)? {
             MemCell::Function(function) => self.call(&function, &arg_cells, out.as_ref())?,
 
-            _ => panic!("{} does not reference a function", function),
+            _ => {
+                let msg = format!("{} does not reference a function", function);
+                return Err(ExecError::illegal_state(msg));
+            }
         }
 
         Ok(())
@@ -1013,16 +1182,22 @@ impl Interpreter {
         self_arg: &Value,
         rest_args: &[Value],
     ) -> ExecResult<()> {
-        let self_cell = self.evaluate(&self_arg);
-        let func = self.vcall_lookup(&self_cell, iface_id, method);
+        let self_cell = self.evaluate(&self_arg)?;
+        let func = self.vcall_lookup(&self_cell, iface_id, method)?;
 
         let mut arg_cells = vec![self_cell];
-        arg_cells.extend(rest_args.iter().map(|arg_val| self.evaluate(arg_val)));
+        for arg_val in rest_args {
+            let arg_cell = self.evaluate(arg_val)?;
+            arg_cells.push(arg_cell);
+        }
 
         let func_ref = Ref::Global(GlobalRef::Function(func));
-        let func = match self.evaluate(&Value::Ref(func_ref)) {
+        let func = match self.evaluate(&Value::Ref(func_ref))? {
             MemCell::Function(func) => func,
-            unexpected => panic!("invalid function cell: {:?}", unexpected),
+            unexpected => {
+                let msg = format!("invalid function cell: {:?}", unexpected);
+                return Err(ExecError::illegal_state(msg));
+            },
         };
 
         self.call(&func, &arg_cells, out)?;
@@ -1030,17 +1205,23 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) {
+    fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) -> ExecResult<()> {
         let rc_addr = self
-            .evaluate(a)
+            .evaluate(a)?
             .as_pointer()
             .and_then(Pointer::as_heap_addr)
-            .expect("argument a of ClassIs instruction must evaluate to a heap pointer");
+            .ok_or_else(|| {
+                let msg = "argument a of ClassIs instruction must evaluate to a heap pointer";
+                ExecError::illegal_state(msg)
+            })?;
         let rc_cell = self
             .heap
             .get(rc_addr)
             .and_then(MemCell::as_rc)
-            .expect("rc pointer target of ClassIs instruction must point to an rc cell");
+            .ok_or_else(|| {
+                let msg = "rc pointer target of ClassIs instruction must point to an rc cell";
+                ExecError::illegal_state(msg)
+            })?;
 
         let is = match class_id {
             ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
@@ -1052,13 +1233,15 @@ impl Interpreter {
             }
         };
 
-        self.store(out, MemCell::Bool(is));
+        self.store(out, MemCell::Bool(is))?;
+
+        Ok(())
     }
 
-    fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) {
+    fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) -> ExecResult<()> {
         let field_ptr = match of_ty {
             Type::Struct(..) => {
-                let struct_ptr = self.addr_of_ref(a);
+                let struct_ptr = self.addr_of_ref(a)?;
 
                 Pointer::IntoStruct {
                     field: *field,
@@ -1067,11 +1250,12 @@ impl Interpreter {
             }
 
             Type::RcPointer(..) => {
-                let target = self.load(&a.clone().to_deref());
+                let target = self.load(&a.clone().to_deref())?;
                 let struct_ptr = match target.as_rc() {
                     Some(rc_cell) => Pointer::Heap(rc_cell.resource_addr),
                     None => {
-                        panic!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
+                        let msg = format!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
+                        return Err(ExecError::illegal_state(msg));
                     }
                 };
 
@@ -1081,20 +1265,27 @@ impl Interpreter {
                 }
             }
 
-            _ => panic!(
-                "invalid base type referenced in Field instruction: {}.{}",
-                of_ty, field
-            ),
+            _ => {
+                let msg = format!(
+                    "invalid base type referenced in Field instruction: {}.{}",
+                    of_ty, field
+                );
+                return Err(ExecError::illegal_state(msg));
+            }
         };
 
-        self.store(out, MemCell::Pointer(field_ptr));
+        self.store(out, MemCell::Pointer(field_ptr))?;
+
+        Ok(())
     }
 
-    fn exec_jump(&mut self, pc: &mut usize, label: &LabelLocation) {
+    fn exec_jump(&mut self, pc: &mut usize, label: &LabelLocation) -> ExecResult<()> {
         *pc = label.pc_offset;
 
         // assume all jumps are either upwards or to the same level
-        self.current_frame_mut().pop_block_to(label.block_depth);
+        self.current_frame_mut()?.pop_block_to(label.block_depth)?;
+
+        Ok(())
     }
 
     fn rc_alloc(&mut self, vals: Vec<MemCell>, ty_id: StructID) -> Pointer {
@@ -1200,20 +1391,21 @@ impl Interpreter {
 
         self.push_stack("<init>");
         self.execute(&module.init)?;
-        self.pop_stack();
+        self.pop_stack()?;
 
         Ok(())
     }
 
-    fn deref_rc(&self, rc_cell: &MemCell) -> &MemCell {
-        let rc = rc_cell.as_rc().unwrap_or_else(|| {
-            panic!(
-                "trying to dereference RC pointer with an invalid value: {:?}",
-                rc_cell
-            )
-        });
+    fn deref_rc(&self, rc_cell: &MemCell) ->  ExecResult<&MemCell> {
+        let rc = rc_cell.as_rc().ok_or_else(|| {
+            ExecError::illegal_state(format!("trying to deref RC ref but value was {}", rc_cell.kind()))
+        })?;
 
-        self.heap.get(rc.resource_addr).unwrap()
+        let res_addr = rc.resource_addr;
+        self.heap.get(res_addr).ok_or_else(|| {
+            let msg = format!("heap address not allocated: {}", res_addr);
+            ExecError::illegal_state(msg)
+        })
     }
 
     fn create_string(&mut self, content: &str) -> MemCell {
@@ -1243,32 +1435,32 @@ impl Interpreter {
         MemCell::Pointer(str_ptr)
     }
 
-    fn read_string(&self, str_ref: &Ref) -> String {
-        let str_cell = self.deref_rc(self.load(str_ref));
+    fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
+        let str_cell = self.deref_rc(self.load(str_ref)?)?;
 
         let str_cell = match str_cell.as_struct(STRING_ID) {
             Some(struct_cell) => struct_cell,
-            None => panic!(
+            None => return Err(ExecError::illegal_state(format!(
                 "tried to read string value from rc cell which didn't contain a string struct: {:?}",
                 str_cell,
-            )
+            ))),
         };
 
         let len = &str_cell[STRING_LEN_FIELD].as_i32().unwrap();
 
         if *len == 0 {
-            return String::new();
+            return Ok(String::new());
         }
 
-        let chars_addr = &str_cell[STRING_CHARS_FIELD]
+        let chars_addr = str_cell[STRING_CHARS_FIELD]
             .as_pointer()
             .and_then(Pointer::as_heap_addr)
-            .unwrap_or_else(|| {
-                panic!(
+            .ok_or_else(|| {
+                ExecError::illegal_state(format!(
                     "string contained non-heap-alloced `chars` pointer: {:?}",
                     str_cell
-                )
-            });
+                ))
+            })?;
 
         let mut chars = Vec::new();
         for i in 0..*len as usize {
@@ -1278,12 +1470,14 @@ impl Interpreter {
                 .get(char_addr)
                 .unwrap()
                 .as_u8()
-                .unwrap_or_else(|| panic!("expected string char @ {}", char_addr));
+                .ok_or_else(|| {
+                    ExecError::illegal_state(format!("expected string char @ {}", char_addr))
+                })?;
 
             chars.push(char_val as char);
         }
 
-        chars.into_iter().collect()
+        Ok(chars.into_iter().collect())
     }
 
     pub fn shutdown(mut self) -> ExecResult<()> {

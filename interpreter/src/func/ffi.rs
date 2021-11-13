@@ -150,7 +150,7 @@ pub struct FfiInvoker {
 }
 
 impl FfiInvoker {
-    pub fn invoke(&self, state: &mut Interpreter) {
+    pub fn invoke(&self, state: &mut Interpreter) -> ExecResult<()> {
         let has_return = self.return_ty != Type::Nothing;
 
         // marshal args into a byte vec
@@ -164,7 +164,7 @@ impl FfiInvoker {
             let arg_start = args.len();
             args.resize(args.len() + arg_foreign_len, 0);
 
-            let arg_val = state.load(&Ref::Local(local_id));
+            let arg_val = state.load(&Ref::Local(local_id))?;
             marshal(arg_val, &mut args[arg_start..]);
         }
 
@@ -191,9 +191,11 @@ impl FfiInvoker {
                 let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty);
 
                 let return_local = Ref::Local(LocalID(0));
-                state.store(&return_local, return_val);
+                state.store(&return_local, return_val)?;
             }
         }
+
+        Ok(())
     }
 }
 

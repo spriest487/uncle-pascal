@@ -1,3 +1,4 @@
+use std::fmt;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
 use pas_ir::metadata::{FieldID, StructID};
@@ -104,6 +105,13 @@ impl MemCell {
         }
     }
 
+    pub fn try_not(&self) -> Option<bool> {
+        match self {
+            MemCell::Bool(b) => Some(!*b),
+            _ => None,
+        }
+    }
+
     pub fn try_add(&self, other: &Self) -> Option<Self> {
         match (self, other) {
             (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a + b)),
@@ -173,6 +181,18 @@ impl MemCell {
         match (self, other) {
             (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a >> b)),
             (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a >> b)),
+
+            _ => None,
+        }
+    }
+
+    pub fn try_gt(&self, other: &Self) -> Option<bool> {
+        match (self, other) {
+            (MemCell::I32(a), MemCell::I32(b)) => Some(a > b),
+            (MemCell::U8(a), MemCell::U8(b)) => Some(a > b),
+            (MemCell::F32(a), MemCell::F32(b)) => Some(a > b),
+            (MemCell::Bool(a), MemCell::Bool(b)) => Some(a > b),
+            (MemCell::Pointer(a), MemCell::Pointer(b)) => Some(a > b),
 
             _ => None,
         }
@@ -253,5 +273,51 @@ impl MemCell {
             MemCell::Pointer(ptr) => Some(ptr),
             _ => None,
         }
+    }
+
+    pub fn kind(&self) -> MemCellKind {
+        match self {
+            MemCell::Bool(..) => MemCellKind::Bool,
+            MemCell::U8(..) => MemCellKind::U8,
+            MemCell::I32(..) => MemCellKind::I32,
+            MemCell::F32(..) => MemCellKind::F32,
+            MemCell::RcCell(..) => MemCellKind::Rc,
+            MemCell::Function(..) => MemCellKind::Function,
+            MemCell::Structure(..) => MemCellKind::Structure,
+            MemCell::Variant(..) => MemCellKind::Variant,
+            MemCell::Pointer(..) => MemCellKind::Pointer,
+            MemCell::Array(..) => MemCellKind::Array,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum MemCellKind {
+    Bool,
+    U8,
+    I32,
+    F32,
+    Rc,
+    Function,
+    Structure,
+    Variant,
+    Pointer,
+    Array,
+}
+
+impl fmt::Display for MemCellKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", match self {
+            MemCellKind::Bool => "Bool",
+            MemCellKind::U8 => "U8",
+            MemCellKind::I32 => "I32",
+            MemCellKind::F32 => "F32",
+            MemCellKind::Rc => "Rc",
+            MemCellKind::Function => "Function",
+            MemCellKind::Structure => "Structure",
+            MemCellKind::Variant => "Variant",
+            MemCellKind::Pointer => "Pointer",
+            MemCellKind::Array => "Array",
+        })
     }
 }

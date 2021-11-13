@@ -11,7 +11,7 @@ use std::{
 
 pub use backtrace::Backtrace;
 
-pub trait DiagnosticOutput: Spanned + fmt::Display {
+pub trait DiagnosticOutput: fmt::Display {
     fn title(&self) -> String {
         self.to_string()
     }

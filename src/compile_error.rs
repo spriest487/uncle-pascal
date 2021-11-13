@@ -1,6 +1,6 @@
 use std::{fmt, io};
 
-use pas_common::span::{Span, Spanned};
+use pas_common::span::Span;
 use pas_common::{Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use pas_interpreter::result::ExecError;
 use pas_pp::PreprocessorError;
@@ -100,20 +100,6 @@ impl DiagnosticOutput for CompileError {
             CompileError::InvalidUnitFilename(_) => None,
             CompileError::OutputFailed(..) => None,
             CompileError::ExecError(..) => None,
-        }
-    }
-}
-
-impl Spanned for CompileError {
-    fn span(&self) -> &Span {
-        match self {
-            CompileError::TokenizeError(err) => err.span(),
-            CompileError::ParseError(err) => err.span(),
-            CompileError::TypecheckError(err) => err.span(),
-            CompileError::PreprocessorError(err) => err.span(),
-            CompileError::InvalidUnitFilename(span) => span,
-            CompileError::OutputFailed(span, ..) => span,
-            CompileError::ExecError(err) => err.span(),
         }
     }
 }

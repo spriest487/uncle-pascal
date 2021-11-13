@@ -1,7 +1,8 @@
+use std::cmp::Ordering;
 use std::ops::{Add, Sub};
 use pas_ir::LocalID;
 use pas_ir::metadata::FieldID;
-use crate::{HeapAddress, Interpreter};
+use crate::{ExecResult, HeapAddress, Interpreter};
 use crate::memcell::MemCell;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
@@ -38,8 +39,53 @@ impl Pointer {
         }
     }
 
-    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> &'a MemCell {
+    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<&'a MemCell> {
         state.deref_ptr(self)
+    }
+
+    fn kind(&self) -> PointerKind {
+        match self {
+            Pointer::Null => PointerKind::Null,
+            Pointer::Uninit => PointerKind::Uninit,
+            Pointer::Heap(_) => PointerKind::Heap,
+            Pointer::Local { .. } => PointerKind::Local,
+            Pointer::IntoArray { .. } => PointerKind::IntoArray,
+            Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
+            Pointer::VariantTag { .. } => PointerKind::VariantTag,
+            Pointer::VariantData { .. } => PointerKind::VariantData,
+        }
+    }
+}
+
+impl PartialOrd for Pointer {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Pointer {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Pointer::Null, Pointer::Null) => Ordering::Equal,
+            (Pointer::Uninit, Pointer::Uninit) => Ordering::Equal,
+
+            (Pointer::Heap(a), Pointer::Heap(b)) => a.0.cmp(&b.0),
+            (
+                Pointer::Local { frame: a_frame, id: a_id },
+                Pointer::Local { frame: b_frame, id: b_id }
+            ) => {
+                a_frame.cmp(b_frame).then_with(|| a_id.cmp(b_id))
+            },
+
+            (
+                Pointer::IntoArray { array: arr_a, offset: off_a },
+                Pointer::IntoArray { array: arr_b, offset: off_b },
+            ) => {
+                arr_a.cmp(&arr_b).then_with(|| off_a.cmp(off_b))
+            },
+
+            (a, b) => a.kind().cmp(&b.kind()),
+        }
     }
 }
 
@@ -91,4 +137,16 @@ impl Sub<usize> for Pointer {
             }
         }
     }
+}
+
+#[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
+enum PointerKind {
+    Null,
+    Uninit,
+    Local,
+    Heap,
+    IntoArray,
+    VariantData,
+    VariantTag,
+    IntoStruct,
 }

@@ -1,5 +1,5 @@
 use pas_ir::LocalID;
-use crate::MemCell;
+use crate::{ExecError, ExecResult, MemCell};
 
 #[derive(Debug)]
 struct Block {
@@ -47,19 +47,26 @@ impl StackFrame {
         }
     }
 
-    pub fn deref_local(&self, id: LocalID) -> &MemCell {
-        self.locals[id.0]
-            .as_ref()
-            .map(|cell| &cell.value)
-            .unwrap_or_else(|| panic!("local cell {} is not allocated in stack frame \"{}\"", id, self.name))
+    pub fn deref_local(&self, id: LocalID) -> ExecResult<&MemCell> {
+        match self.locals[id.0].as_ref() {
+            Some(local_val) => {
+                Ok(&local_val.value)
+            }
+            None => {
+                let msg = format!("local cell {} is not allocated in stack frame \"{}\"", id, self.name);
+                Err(ExecError::illegal_state(msg))
+            }
+        }
     }
 
-    pub fn deref_local_mut(&mut self, id: LocalID) -> &mut MemCell {
-        let cell_val = self.locals[id.0].as_mut().map(|cell| &mut cell.value);
-        match cell_val {
-            Some(cell_val) => cell_val,
+    pub fn deref_local_mut(&mut self, id: LocalID) -> ExecResult<&mut MemCell> {
+        match self.locals[id.0].as_mut() {
+            Some(local_val) => {
+                Ok(&mut local_val.value)
+            }
             None => {
-                panic!("local cell {} is not allocated in stack frame \"{}\"", id, self.name);
+                let msg = format!("local cell {} is not allocated in stack frame \"{}\"", id, self.name);
+                Err(ExecError::illegal_state(msg))
             }
         }
     }
@@ -71,7 +78,7 @@ impl StackFrame {
         }));
     }
 
-    pub fn alloc_local(&mut self, id: LocalID, alloc_pc: usize, value: MemCell) {
+    pub fn alloc_local(&mut self, id: LocalID, alloc_pc: usize, value: MemCell) -> ExecResult<()> {
         while self.locals.len() <= id.0 {
             self.locals.push(None);
         }
@@ -93,27 +100,34 @@ impl StackFrame {
             }
         }
 
-        self.push_block_decl(id);
+        self.push_block_decl(id)?;
+
+        Ok(())
     }
 
     pub fn is_allocated(&self, id: LocalID) -> bool {
         id.0 < self.locals.len()
     }
 
-    pub fn store_local(&mut self, id: LocalID, value: MemCell) {
+    pub fn store_local(&mut self, id: LocalID, value: MemCell) -> ExecResult<()> {
         match self.locals.get_mut(id.0) {
             Some(Some(cell)) => {
                 cell.value = value;
+                Ok(())
             }
-            None | Some(None) => panic!("local cell {} is not allocated", id),
+            None | Some(None) => {
+                let msg = format!("local cell {} is not allocated", id);
+                Err(ExecError::illegal_state(msg))
+            },
         }
     }
 
-    pub fn load_local(&self, id: LocalID) -> &MemCell {
+    pub fn load_local(&self, id: LocalID) -> ExecResult<&MemCell> {
         match self.locals.get(id.0) {
-            Some(Some(cell)) => &cell.value,
+            Some(Some(cell)) => Ok(&cell.value),
             None | Some(None) => {
-                panic!("local cell {} is not allocated", id);
+                let msg = format!("local cell {} is not allocated", id);
+                Err(ExecError::illegal_state(msg))
             }
         }
     }
@@ -124,42 +138,63 @@ impl StackFrame {
         });
     }
 
-    pub fn pop_block(&mut self) {
+    pub fn pop_block(&mut self) -> ExecResult<()> {
         let popped_block = self
             .block_stack
             .pop()
-            .expect("block stack must never be empty");
+            .ok_or_else(|| ExecError::illegal_state("block stack must never be empty"))?;
 
         for id in popped_block.decls {
             if !self.is_allocated(id) {
-                panic!("local cell {} is not allocated", id);
+                let msg = format!("local cell {} is not allocated", id);
+                return Err(ExecError::illegal_state(msg));
             }
             self.locals[id.0] = None;
         }
+
+        Ok(())
     }
 
-    pub fn pop_block_to(&mut self, block_depth: usize) {
+    pub fn pop_block_to(&mut self, block_depth: usize) -> ExecResult<()> {
         let current_block = self.block_stack.len() - 1;
 
-        assert!(
-            current_block >= block_depth,
-            "jmp from block level {} to {} is invalid, can only jmp upwards in the block stack",
-            current_block,
-            block_depth
-        );
+        if current_block < block_depth {
+            let msg = format!(
+                "jmp from block level {} to {} is invalid, can only jmp upwards in the block stack",
+                current_block,
+                block_depth,
+            );
+            return Err(ExecError::illegal_state(msg));
+        }
 
         let pop_blocks = current_block - block_depth;
 
         for _ in 0..pop_blocks {
-            let popped_block = self.block_stack.pop().unwrap();
-            for decl in popped_block.decls {
-                self.locals[decl.0] = None;
+            match self.block_stack.pop() {
+                Some(popped_block) => {
+                    for decl in popped_block.decls {
+                        self.locals[decl.0] = None;
+                    }
+                },
+
+                None => {
+                    return Err(ExecError::illegal_state("not enough blocks"))
+                }
             }
+
         }
+
+        Ok(())
     }
 
-    fn push_block_decl(&mut self, id: LocalID) {
-        let current_block = self.block_stack.last_mut().expect("block stack must never be empty");
-        current_block.decls.push(id);
+    fn push_block_decl(&mut self, id: LocalID) -> ExecResult<()> {
+        match self.block_stack.last_mut() {
+            Some(current_block) => {
+                current_block.decls.push(id);
+                Ok(())
+            }
+
+            None => Err(ExecError::illegal_state("block stack must never be empty"))
+        }
     }
 }
