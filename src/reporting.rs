@@ -1,61 +1,66 @@
-use codespan::{ByteIndex, ByteSpan, CodeMap, ColumnIndex, FileMap, FileName, LineIndex, RawIndex};
-use codespan_reporting::{termcolor, Diagnostic, Label, LabelStyle, Severity};
-use pas_common::{path_relative_to_cwd, span::*, DiagnosticMessage, DiagnosticOutput};
+use codespan_reporting::{
+    files::SimpleFiles,
+    diagnostic::{Diagnostic, Label, LabelStyle, Severity},
+    term::termcolor,
+};
+use pas_common::{path_relative_to_cwd, DiagnosticMessage, DiagnosticOutput};
 use std::{
     fs::File,
-    io::{self, Read as _},
+    io::{Read as _},
 };
+use std::collections::HashMap;
+use codespan_reporting::files::{Files, Error as FileError};
 
-fn find_location_index(file_map: &FileMap, loc: &Location, end: bool) -> io::Result<ByteIndex> {
-    let line = LineIndex(loc.line as RawIndex);
-    let col = if end {
-        // our spans are inclusive, CodeSpan spans are exclusive
-        ColumnIndex(loc.col as RawIndex + 1)
-    } else {
-        ColumnIndex(loc.col as RawIndex)
-    };
-
-    file_map.byte_index(line, col).map_err(|location_err| {
-        io::Error::new(io::ErrorKind::InvalidData, location_err.to_string())
-    })
-}
+type CodeMap = SimpleFiles<String, String>;
 
 fn output_to_report_diag(
     diag: DiagnosticMessage,
     code_map: &mut CodeMap,
     style: LabelStyle,
     severity: Severity,
-) -> io::Result<Diagnostic> {
-    let mut report_diag = Diagnostic::new(severity, diag.title);
+) -> Result<Diagnostic<usize>, FileError> {
+    let mut file_ids = HashMap::new();
+
+    let mut labels = Vec::new();
 
     if let Some(label) = diag.label {
-        let file_map = {
-            let mut src = String::new();
+        let nice_filename = path_relative_to_cwd(&label.span.file);
+        let file_id = match file_ids.get(&nice_filename) {
+            Some(file_id) => *file_id,
+            None => {
+                let mut src = String::new();
 
-            let mut file = File::open(label.span.file.as_ref())?;
-            file.read_to_string(&mut src)?;
+                let mut file = File::open(label.span.file.as_ref())?;
+                file.read_to_string(&mut src)?;
 
-            let nice_filename = path_relative_to_cwd(&label.span.file);
-
-            code_map.add_filemap(FileName::from(nice_filename), src)
+                let file_id = code_map.add(nice_filename.display().to_string(), src);
+                file_ids.insert(nice_filename, file_id);
+                file_id
+            }
         };
 
-        let err_start = find_location_index(file_map.as_ref(), &label.span.start, false)?;
-        let err_end = find_location_index(file_map.as_ref(), &label.span.end, true)?;
+        let start_loc = &label.span.start;
+        let end_loc = &label.span.end;
 
-        let mut report_label = Label::new(ByteSpan::new(err_start, err_end), style);
-        if let Some(text) = label.text {
-            report_label = report_label.with_message(text);
-        }
+        let err_start = code_map.line_range(file_id, start_loc.line)?.start + start_loc.col;
+        let err_end = code_map.line_range(file_id, end_loc.line)?.start + end_loc.col + 1;
 
-        report_diag = report_diag.with_label(report_label);
+        let report_label = Label::new(style, file_id, err_start..err_end);
+
+        labels.push(match label.text {
+            Some(text) => report_label.with_message(text),
+            None => report_label,
+        });
     }
 
-    Ok(report_diag)
+    Ok(Diagnostic::new(severity)
+        .with_labels(labels)
+        .with_message(diag.title))
 }
 
-pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
+pub fn report_err(err: &impl DiagnosticOutput) -> Result<(), FileError> {
     let out = termcolor::StandardStream::stdout(termcolor::ColorChoice::Auto);
+    let config = codespan_reporting::term::Config::default();
 
     let mut code_map = CodeMap::new();
     let main_diag = output_to_report_diag(
@@ -65,7 +70,7 @@ pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
         Severity::Error,
     )?;
 
-    codespan_reporting::emit(out.lock(), &code_map, &main_diag)?;
+    codespan_reporting::term::emit(&mut out.lock(), &config, &code_map, &main_diag)?;
 
     let see_also_diags: Vec<_> = err
         .see_also()
@@ -73,9 +78,10 @@ pub fn report_err(err: &impl DiagnosticOutput) -> io::Result<()> {
         .map(|diag| output_to_report_diag(diag, &mut code_map, LabelStyle::Primary, Severity::Note))
         .collect::<Result<_, _>>()?;
 
+
     for diag in see_also_diags {
         println!();
-        codespan_reporting::emit(out.lock(), &code_map, &diag)?;
+        codespan_reporting::term::emit(&mut out.lock(), &config, &code_map, &diag)?;
     }
 
     Ok(())

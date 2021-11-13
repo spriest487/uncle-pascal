@@ -26,7 +26,7 @@ impl fmt::Display for ExecError {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
             ExecError::MarshallingFailed { .. } => write!(f, "Marshalling failed"),
-            ExecError::ExternSymbolLoadFailed { .. } => write!(f, "Library load failed"),
+            ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => write!(f, "Failed to load {}::{}", lib, symbol),
         }
     }
 }
@@ -52,8 +52,8 @@ impl DiagnosticOutput for ExecError {
                 text: Some(format!("marshalling failed for type: {}", failed_ty)),
                 span: span.clone(),
             }),
-            ExecError::ExternSymbolLoadFailed { lib, symbol, span, msg } => Some(DiagnosticLabel {
-                text: Some(format!("external symbol \"{}::{}\" could not be loaded: {}", lib, symbol, msg)),
+            ExecError::ExternSymbolLoadFailed {  span, msg, .. } => Some(DiagnosticLabel {
+                text: Some(msg.clone()),
                 span: span.clone(),
             })
         }
