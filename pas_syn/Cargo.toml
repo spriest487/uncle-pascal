@@ -7,4 +7,4 @@ edition = "2018"
 [dependencies]
 pas_common = { path = "../pas_common" }
 bigdecimal = "0.0.14"
-cast = "0.2.2"
+cast = "0.3.0"

@@ -119,7 +119,7 @@ impl MemCell {
             (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a + b)),
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
-                Some(MemCell::Pointer(ptr.clone() + *offset as usize))
+                Some(MemCell::Pointer(ptr.clone() + *offset as isize))
             }
 
             (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
@@ -137,7 +137,7 @@ impl MemCell {
             (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a - b)),
 
             (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
-                Some(MemCell::Pointer(ptr.clone() - *offset as usize))
+                Some(MemCell::Pointer(ptr.clone() - *offset as isize))
             }
 
             (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {

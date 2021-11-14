@@ -14,7 +14,7 @@ use pas_ir::{
 };
 use std::{collections::HashMap, rc::Rc};
 
-use crate::result::{ExecError, ExecResult, IllegalDereference};
+use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 
@@ -202,12 +202,8 @@ impl Interpreter {
                 }
             }
 
-            Pointer::Null => {
-                return Err(ExecError::IllegalDereference(IllegalDereference::Null))
-            }
-
-            Pointer::Uninit => {
-                return Err(ExecError::IllegalDereference(IllegalDereference::Uninit))
+            _ => {
+                return Err(ExecError::IllegalDereference(ptr.kind()))
             }
         }
     }
@@ -278,12 +274,8 @@ impl Interpreter {
                 }
             }
 
-            Pointer::Null => {
-                return Err(ExecError::IllegalDereference(IllegalDereference::Null))
-            }
-
-            Pointer::Uninit => {
-                return Err(ExecError::IllegalDereference(IllegalDereference::Uninit))
+            _ => {
+                return Err(ExecError::IllegalDereference(ptr.kind()))
             }
         }
     }

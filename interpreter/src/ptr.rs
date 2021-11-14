@@ -29,6 +29,7 @@ pub enum Pointer {
         variant: Box<Pointer>,
         tag: usize,
     },
+    External(isize),
 }
 
 impl Pointer {
@@ -43,7 +44,7 @@ impl Pointer {
         state.deref_ptr(self)
     }
 
-    fn kind(&self) -> PointerKind {
+    pub fn kind(&self) -> PointerKind {
         match self {
             Pointer::Null => PointerKind::Null,
             Pointer::Uninit => PointerKind::Uninit,
@@ -53,6 +54,7 @@ impl Pointer {
             Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
             Pointer::VariantTag { .. } => PointerKind::VariantTag,
             Pointer::VariantData { .. } => PointerKind::VariantData,
+            Pointer::External( .. ) => PointerKind::External,
         }
     }
 }
@@ -89,58 +91,60 @@ impl Ord for Pointer {
     }
 }
 
-impl Add<usize> for Pointer {
+impl Add<isize> for Pointer {
     type Output = Self;
 
-    fn add(self, rhs: usize) -> Self {
+    fn add(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
             Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
-                id: LocalID(id.0 + rhs),
+                id: LocalID((id.0 as isize + rhs) as usize),
             },
-            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr + rhs)),
+            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress((addr as isize + rhs) as usize)),
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
-                offset: offset + rhs,
+                offset: (offset as isize + rhs) as usize,
             },
             Pointer::VariantData { .. }
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            }
+            },
+            Pointer::External(ptr) => Pointer::External(ptr + rhs),
         }
     }
 }
 
-impl Sub<usize> for Pointer {
+impl Sub<isize> for Pointer {
     type Output = Self;
 
-    fn sub(self, rhs: usize) -> Self {
+    fn sub(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
             Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
-                id: LocalID(id.0 - rhs),
+                id: LocalID((id.0 as isize - rhs) as usize),
             },
-            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress(addr - rhs)),
+            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress((addr as isize - rhs) as usize)),
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
-                offset: offset - rhs,
+                offset: (offset as isize - rhs) as usize,
             },
             Pointer::VariantData { .. }
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            }
+            },
+            Pointer::External(ptr) => Pointer::External(ptr - rhs),
         }
     }
 }
 
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
-enum PointerKind {
+pub enum PointerKind {
     Null,
     Uninit,
     Local,
@@ -149,4 +153,5 @@ enum PointerKind {
     VariantData,
     VariantTag,
     IntoStruct,
+    External,
 }

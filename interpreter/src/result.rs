@@ -3,6 +3,7 @@ use pas_common::span::Span;
 use pas_common::{DiagnosticLabel, DiagnosticOutput};
 use pas_ir::Type;
 use std::fmt;
+use crate::ptr::PointerKind;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -12,7 +13,6 @@ pub enum ExecError {
     },
     MarshallingFailed {
         failed_ty: Type,
-        span: Span,
     },
     ExternSymbolLoadFailed {
         lib: String,
@@ -20,7 +20,7 @@ pub enum ExecError {
         span: Span,
         msg: String,
     },
-    IllegalDereference(IllegalDereference),
+    IllegalDereference(PointerKind),
     IllegalState {
         msg: String,
     },
@@ -43,7 +43,7 @@ impl fmt::Display for ExecError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshallingFailed { .. } => write!(f, "Marshalling failed"),
+            ExecError::MarshallingFailed { failed_ty } => write!(f, "Marshalling failed for type `{}`", failed_ty),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
             }
@@ -61,38 +61,11 @@ impl DiagnosticOutput for ExecError {
                 text: Some(msg.clone()),
                 span: span.clone(),
             }),
-            ExecError::MarshallingFailed { span, failed_ty } => Some(DiagnosticLabel {
-                text: Some(format!("marshalling failed for type: {}", failed_ty)),
-                span: span.clone(),
-            }),
             ExecError::ExternSymbolLoadFailed { span, msg, .. } => Some(DiagnosticLabel {
                 text: Some(msg.clone()),
                 span: span.clone(),
             }),
             _ => None,
-        }
-    }
-}
-
-#[derive(Debug)]
-pub enum IllegalDereference {
-    Null,
-    Uninit,
-    Array,
-    Struct,
-    ExternalPointer,
-}
-
-impl fmt::Display for IllegalDereference {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            IllegalDereference::Array => write!(f, "array pointer does not refer to an array"),
-            IllegalDereference::Struct => write!(f, "struct pointer does not refer to a struct"),
-            IllegalDereference::ExternalPointer => {
-                write!(f, "interpreter cannot dereference external pointer")
-            }
-            IllegalDereference::Null => write!(f, "dereferencing null pointer"),
-            IllegalDereference::Uninit => write!(f, "dereferencing uninitialized pointer"),
         }
     }
 }

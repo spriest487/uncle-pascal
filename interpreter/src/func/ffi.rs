@@ -1,15 +1,14 @@
-use std::{iter, collections::HashMap};
-use std::cmp::max;
-use std::ptr::slice_from_raw_parts;
-use std::rc::Rc;
-use crate::{ExecError, ExecResult, Interpreter, MemCell};
+use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc};
+use std::convert::TryInto;
+use std::ffi::c_void;
+use crate::{ExecError, ExecResult, Interpreter, MemCell, Pointer};
 use ::dlopen::{
     Error as DlopenError,
     raw as dlopen,
 };
 use ::libffi::{
     middle::{Cif, Type as ForeignType, Builder as FfiBuilder},
-    raw::ffi_raw_call as ffi_raw_call,
+    raw::ffi_call as ffi_raw_call,
 };
 use pas_ir::{metadata::Metadata,ExternalFunctionRef, LocalID, Ref, Type};
 
@@ -72,6 +71,7 @@ impl FfiCache {
             symbol,
             ffi_param_tys,
 
+            param_tys: func_ref.params.clone(),
             return_ty: func_ref.return_ty.clone(),
             ffi_return_ty,
         })
@@ -143,6 +143,7 @@ pub struct FfiInvoker {
 
     ffi_param_tys: Vec<ForeignType>,
 
+    param_tys: Vec<Type>,
     return_ty: Type,
 
     symbol: *const (),
@@ -155,17 +156,27 @@ impl FfiInvoker {
 
         // marshal args into a byte vec
         let mut args = Vec::new();
+        let mut args_ptrs = Vec::new();
         let first_param_local = match has_return { true => 1, false => 0 };
 
-        for (i, param_ty) in self.ffi_param_tys.iter().enumerate() {
+        let param_ty_both = self.param_tys.iter().zip(self.ffi_param_tys.iter());
+
+        for (i, (param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
             let local_id = LocalID(first_param_local + i);
-            let arg_foreign_len = foreign_type_size(&param_ty);
+            let arg_foreign_len = foreign_type_size(&ffi_param_ty);
 
             let arg_start = args.len();
             args.resize(args.len() + arg_foreign_len, 0);
 
             let arg_val = state.load(&Ref::Local(local_id))?;
-            marshal(arg_val, &mut args[arg_start..]);
+            let bytes_copied = marshal(arg_val, &mut args[arg_start..], param_ty)?;
+
+            assert_eq!(bytes_copied, foreign_type_size(ffi_param_ty));
+
+            let arg_ptr = unsafe {
+                (args.as_mut_ptr() as *mut c_void).offset(arg_start as isize)
+            };
+            args_ptrs.push(arg_ptr);
         }
 
         let mut result_buf: Vec<u8> = if has_return {
@@ -180,15 +191,15 @@ impl FfiInvoker {
             ffi_raw_call(
                 &self.cif as *const Cif as _,
                 Some(fn_addr),
-                args.as_mut_ptr() as _,
                 result_buf.as_mut_ptr() as _,
+                args_ptrs.as_mut_ptr(),
             );
         }
 
         if has_return {
             unsafe {
                 let result_slice = slice_from_raw_parts(result_buf.as_ptr(), result_buf.len());
-                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty);
+                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)?;
 
                 let return_local = Ref::Local(LocalID(0));
                 state.store(&return_local, return_val)?;
@@ -199,12 +210,68 @@ impl FfiInvoker {
     }
 }
 
-fn marshal(_val: &MemCell, _out_bytes: &mut [u8]) {
-    unimplemented!()
+fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type) -> ExecResult<usize> {
+    let from_bytes = |bytes: &[u8], out_bytes: &mut [u8]| {
+        out_bytes[0..bytes.len()].copy_from_slice(bytes);
+        bytes.len()
+    };
+
+    let size = match val {
+        MemCell::I32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        MemCell::F32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        MemCell::U8(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        MemCell::Bool(x) => {
+            out_bytes[0] = if *x { 1 } else { 0 };
+            1
+        },
+        MemCell::Array(x) => {
+            // let el_foreign_ty = cache.type_to_ffi(&x.el_ty, metadata)?;
+            // let el_size = foreign_type_size(&el_foreign_ty);
+
+            let dim = cast::i32(x.elements.len())
+                .map_err(|_err| ExecError::MarshallingFailed {
+                    failed_ty: Type::Array {
+                        element: Box::new(x.el_ty.clone()),
+                        dim: x.elements.len(),
+                    }
+                })?;
+
+            let mut el_offset = from_bytes(&dim.to_ne_bytes(), out_bytes);
+
+            for i in 0..dim {
+                el_offset += marshal(&x.elements[i as usize], &mut out_bytes[el_offset..], &x.el_ty)?;
+            }
+
+            el_offset
+        }
+
+        MemCell::Pointer(Pointer::External(ptr)) => {
+            let ptr_bytes = (*ptr as isize).to_ne_bytes();
+            from_bytes(&ptr_bytes, out_bytes)
+        }
+
+        _ => {
+            return Err(ExecError::MarshallingFailed { failed_ty: ty.clone() })
+        }
+    };
+
+    Ok(size)
 }
 
-fn unmarshal(_in_bytes: &[u8], _ty: &Type) -> MemCell {
-    unimplemented!()
+fn unmarshal(in_bytes: &[u8], ty: &Type) -> ExecResult<MemCell> {
+    let make_err = || ExecError::MarshallingFailed {failed_ty: ty.clone()};
+
+    match ty {
+        Type::I32 => {
+            let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
+            let val = i32::from_ne_bytes(in_bytes);
+            Ok(MemCell::I32(val))
+        }
+
+        _ => Err(ExecError::MarshallingFailed {
+            failed_ty: ty.clone(),
+        })
+    }
 }
 
 fn foreign_type_size(ty: &ForeignType) -> usize {
