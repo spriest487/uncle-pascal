@@ -6,7 +6,6 @@ use crate::ty::{ClassID, FieldID, TypeDef};
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 use pas_syn::IdentPath;
 use pas_typecheck as pas_ty;
-use pas_typecheck::builtin_span;
 
 mod builder;
 mod dep_sort;
@@ -143,7 +142,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
         .find_rc_boilerplate(&array_struct_ty)
         .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
-    let mut releaser_builder = Builder::new(module, builtin_span());
+    let mut releaser_builder = Builder::new(module);
 
     // %0 is the self arg, the pointer to the inner struct
     releaser_builder.bind_param(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
@@ -244,7 +243,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
             return_ty: Type::Nothing,
             params: vec![array_struct_ty.clone().ptr()],
             body: releaser_body,
-            src_span: builtin_span(),
+            src_span: module.module_span().clone(),
         }),
     );
 
@@ -256,7 +255,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
             return_ty: Type::Nothing,
             params: vec![array_struct_ty.clone().ptr()],
             body: Vec::new(),
-            src_span: builtin_span(),
+            src_span: module.module_span().clone()
         }),
     );
 }
@@ -273,7 +272,7 @@ fn gen_class_rc_boilerplate(module: &mut Module, class_ty: &Type) {
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    let mut builder = Builder::new(module, builtin_span());
+    let mut builder = Builder::new(module);
     builder.gen_rc_boilerplate(&Type::Struct(resource_struct));
 }
 
@@ -286,7 +285,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // make sure compiler builtin types are defined e.g. dynamic array types add implementations
     // to Disposable so need that interface to be defined
     let disposable_iface = {
-        let mut builder = Builder::new(&mut ir_module, builtin_disposable.span.clone());
+        let mut builder = Builder::new(&mut ir_module);
         let disposable_iface = builder.translate_iface(&builtin_disposable);
         builder.finish();
 
@@ -300,7 +299,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let string_name = pas_ty::builtin_string_name();
     if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
         let name = {
-            let mut builder = Builder::new(&mut ir_module, string_class.span.clone());
+            let mut builder = Builder::new(&mut ir_module);
             let name = builder.translate_name(&string_name);
             builder.finish();
             name
@@ -310,7 +309,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         ir_module.metadata.declare_struct(STRING_ID, &name);
 
         let string_def = {
-            let mut builder = Builder::new(&mut ir_module, string_class.span.clone());
+            let mut builder = Builder::new(&mut ir_module);
             let string_def = builder.translate_class(&string_class);
             builder.finish();
             string_def
@@ -318,7 +317,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
 
         ir_module.metadata.define_struct(STRING_ID, string_def);
 
-        let mut rc_builder = Builder::new(&mut ir_module, string_class.span.clone());
+        let mut rc_builder = Builder::new(&mut ir_module);
         rc_builder.gen_rc_boilerplate(&Type::Struct(STRING_ID));
         rc_builder.finish();
     }

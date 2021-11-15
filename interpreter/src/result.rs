@@ -76,7 +76,7 @@ impl DiagnosticOutput for ExecError {
                 span: span.clone(),
             }),
             ExecError::MarshallingFailed { failed_ty, span } => Some(DiagnosticLabel {
-                text: Some(format!("unable to marshal type `{}`", failed_ty)),
+                text: Some(format!("failed to marshal value of type `{}`", failed_ty)),
                 span: span.clone(),
             }),
             ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
@@ -84,7 +84,7 @@ impl DiagnosticOutput for ExecError {
                     Pointer::Null => "dereferenced null pointer",
                     Pointer::Uninit => "dereferenced uninitialized pointer",
                     Pointer::IntoArray { .. } => "dereferenced invalid array element pointer",
-                    Pointer::IntoStruct { .. } => "dereferenced invalid struct memeber pointer",
+                    Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
                     Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
                     Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
                     Pointer::External(..) => "interpreter cannot dereference pointer from external code",

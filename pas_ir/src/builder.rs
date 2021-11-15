@@ -13,7 +13,7 @@ use crate::ty::{FieldID, Interface, Struct, Variant};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::TypeList;
 use pas_syn::Ident;
-use pas_typecheck::{builtin_span, Specializable};
+use pas_typecheck::Specializable;
 use std::borrow::Cow;
 
 pub mod scope;
@@ -30,13 +30,17 @@ pub struct Builder<'m> {
     next_label: Label,
 
     loop_stack: Vec<LoopScope>,
+
+    module_span: Span,
 }
 
 impl<'m> Builder<'m> {
-    pub fn new(module: &'m mut Module, debug_ctx: Span) -> Self {
+    pub fn new(module: &'m mut Module) -> Self {
+        let module_span = module.module_span().clone();
+
         let mut instructions = Vec::new();
         if module.opts.debug_info {
-            instructions.push(Instruction::DebugPush(debug_ctx));
+            instructions.push(Instruction::DebugPush(module_span.clone()));
         }
         instructions.push(Instruction::LocalBegin);
 
@@ -52,6 +56,8 @@ impl<'m> Builder<'m> {
             scopes: vec![Scope::new()],
 
             loop_stack: Vec::new(),
+
+            module_span,
         }
     }
 
@@ -623,7 +629,7 @@ impl<'m> Builder<'m> {
         let funcs = self.module.metadata.declare_rc_boilerplate(ty);
 
         let release_body = {
-            let mut release_builder = Builder::new(&mut self.module, builtin_span());
+            let mut release_builder = Builder::new(&mut self.module);
             release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
 
@@ -640,12 +646,12 @@ impl<'m> Builder<'m> {
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("<generated releaser for {}>", self.pretty_ty_name(ty)),
-                src_span: builtin_span(),
+                src_span: self.module_span.clone(),
             }),
         );
 
         let retain_body = {
-            let mut retain_builder = Builder::new(&mut self.module, builtin_span());
+            let mut retain_builder = Builder::new(&mut self.module);
             retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
             retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
@@ -661,7 +667,7 @@ impl<'m> Builder<'m> {
                 return_ty: Type::Nothing,
                 params: vec![ty.clone().ptr()],
                 debug_name: format!("generated RC retain func for {}", self.pretty_ty_name(ty)),
-                src_span: builtin_span(),
+                src_span: self.module_span.clone(),
             }),
         );
 
@@ -935,7 +941,7 @@ mod test {
     fn break_cleans_up_loop_locals() {
         let ctx = pas_ty::Context::root(true);
         let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
-        let mut builder = Builder::new(&mut module);
+        let mut builder = Builder::new(&mut module, Span::zero("test"));
 
         let continue_label = builder.alloc_label();
         let break_label = builder.alloc_label();

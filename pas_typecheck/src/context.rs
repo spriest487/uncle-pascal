@@ -252,6 +252,9 @@ impl Environment {
 
 #[derive(Clone, Debug)]
 pub struct Context {
+    // span for the whole module, should be position 0 of the primary source file
+    module_span: Span,
+
     next_id: ScopeID,
     scopes: NamespaceStack<Scope>,
 
@@ -265,10 +268,10 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn root(no_stdlib: bool) -> Self {
-        let builtin_span = builtin_span();
-
+    pub fn root(no_stdlib: bool, module_span: Span) -> Self {
         let mut root_ctx = Self {
+            module_span: module_span.clone(),
+
             scopes: NamespaceStack::new(Scope::new(ScopeID(0), Environment::Global)),
             next_id: ScopeID(1),
 
@@ -280,7 +283,7 @@ impl Context {
         };
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
-            let ident = Ident::new(name, builtin_span.clone());
+            let ident = Ident::new(name, module_span.clone());
             ctx.declare_type(ident, ty, Visibility::Exported)
                 .expect("builtin type decl must not fail");
         };
@@ -304,7 +307,7 @@ impl Context {
             let string_name = string_ty.full_path().unwrap();
 
             let unit_env = Environment::Module {
-                namespace: IdentPath::new(Ident::new("System", builtin_span), vec![]),
+                namespace: IdentPath::new(Ident::new("System", module_span), vec![]),
             };
             let system_scope = root_ctx.push_scope(unit_env);
 
@@ -324,6 +327,10 @@ impl Context {
         }
 
         root_ctx
+    }
+
+    pub fn module_span(&self) -> &Span {
+        &self.module_span
     }
 
     pub fn push_scope(&mut self, env: Environment) -> ScopeID {

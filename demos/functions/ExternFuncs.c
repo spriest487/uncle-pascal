@@ -20,3 +20,14 @@ EXPORT_FN void Y(int32_t val) {
 EXPORT_FN int32_t Z() {
     return 123456;
 }
+
+static int int_value = 7654321;
+
+EXPORT_FN int* ReturnsIntPtr() {
+    return &int_value;
+}
+
+EXPORT_FN void PrintIntPtr(int* int_ptr) {
+    printf("native call to PrintIntPtr(%d)\n", *int_ptr);
+    fflush(stdout);
+}

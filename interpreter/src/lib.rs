@@ -82,7 +82,7 @@ impl Interpreter {
     fn debug_ctx(&self) -> Cow<Span> {
         match self.debug_ctx_stack.last() {
             Some(ctx) => Cow::Borrowed(ctx),
-            None => Cow::Owned(Span::zero("<unavailable>")),
+            None => Cow::Owned(Span::zero("")),
         }
     }
 

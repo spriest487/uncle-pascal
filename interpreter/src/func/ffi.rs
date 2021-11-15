@@ -275,6 +275,12 @@ fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<MemCell> {
             Ok(MemCell::I32(val))
         }
 
+        Type::Pointer(..) => {
+            let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
+            let val = isize::from_ne_bytes(in_bytes);
+            Ok(MemCell::Pointer(Pointer::External(val)))
+        }
+
         _ => Err(make_err())
     }
 }
