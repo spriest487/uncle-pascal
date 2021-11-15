@@ -1,7 +1,7 @@
 use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc};
 use std::convert::TryInto;
 use std::ffi::c_void;
-use crate::{ExecError, ExecResult, Interpreter, MemCell, Pointer};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer};
 use ::dlopen::{
     Error as DlopenError,
     raw as dlopen,
@@ -211,21 +211,21 @@ impl FfiInvoker {
     }
 }
 
-fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecResult<usize> {
+fn marshal(val: &ValueCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecResult<usize> {
     let from_bytes = |bytes: &[u8], out_bytes: &mut [u8]| {
         out_bytes[0..bytes.len()].copy_from_slice(bytes);
         bytes.len()
     };
 
     let size = match val {
-        MemCell::I32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
-        MemCell::F32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
-        MemCell::U8(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
-        MemCell::Bool(x) => {
+        ValueCell::I32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        ValueCell::F32(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        ValueCell::U8(x) => from_bytes(&x.to_ne_bytes(), out_bytes),
+        ValueCell::Bool(x) => {
             out_bytes[0] = if *x { 1 } else { 0 };
             1
         },
-        MemCell::Array(x) => {
+        ValueCell::Array(x) => {
             // let el_foreign_ty = cache.type_to_ffi(&x.el_ty, metadata)?;
             // let el_size = foreign_type_size(&el_foreign_ty);
 
@@ -249,7 +249,7 @@ fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecR
             el_offset
         }
 
-        MemCell::Pointer(Pointer::External(ptr)) => {
+        ValueCell::Pointer(Pointer::External(ptr)) => {
             let ptr_bytes = (*ptr as isize).to_ne_bytes();
             from_bytes(&ptr_bytes, out_bytes)
         }
@@ -262,7 +262,7 @@ fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecR
     Ok(size)
 }
 
-fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<MemCell> {
+fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<ValueCell> {
     let make_err = || ExecError::MarshallingFailed {
         failed_ty: ty.clone(),
         span: span.clone(),
@@ -272,13 +272,13 @@ fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<MemCell> {
         Type::I32 => {
             let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
             let val = i32::from_ne_bytes(in_bytes);
-            Ok(MemCell::I32(val))
+            Ok(ValueCell::I32(val))
         }
 
         Type::Pointer(..) => {
             let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
             let val = isize::from_ne_bytes(in_bytes);
-            Ok(MemCell::Pointer(Pointer::External(val)))
+            Ok(ValueCell::Pointer(Pointer::External(val)))
         }
 
         _ => Err(make_err())

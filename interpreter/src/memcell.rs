@@ -10,19 +10,19 @@ use crate::ptr::Pointer;
 #[derive(Debug, Clone)]
 pub struct StructCell {
     pub id: StructID,
-    pub fields: Vec<MemCell>,
+    pub fields: Vec<ValueCell>,
 }
 
 impl Index<FieldID> for StructCell {
-    type Output = MemCell;
+    type Output = ValueCell;
 
-    fn index(&self, index: FieldID) -> &MemCell {
+    fn index(&self, index: FieldID) -> &ValueCell {
         &self.fields[index.0]
     }
 }
 
 impl IndexMut<FieldID> for StructCell {
-    fn index_mut(&mut self, index: FieldID) -> &mut MemCell {
+    fn index_mut(&mut self, index: FieldID) -> &mut ValueCell {
         &mut self.fields[index.0]
     }
 }
@@ -46,8 +46,8 @@ impl PartialEq<Self> for StructCell {
 #[derive(Debug, Clone)]
 pub struct VariantCell {
     pub id: StructID,
-    pub tag: Box<MemCell>,
-    pub data: Box<MemCell>,
+    pub tag: Box<ValueCell>,
+    pub data: Box<ValueCell>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +60,7 @@ pub struct RcCell {
 #[derive(Debug, Clone)]
 pub struct ArrayCell {
     pub el_ty: Type,
-    pub elements: Vec<MemCell>,
+    pub elements: Vec<ValueCell>,
 }
 
 impl ArrayCell {
@@ -78,7 +78,7 @@ impl ArrayCell {
 }
 
 #[derive(Debug, Clone)]
-pub enum MemCell {
+pub enum ValueCell {
     Bool(bool),
     U8(u8),
     I32(i32),
@@ -91,39 +91,39 @@ pub enum MemCell {
     Array(Box<ArrayCell>),
 }
 
-impl MemCell {
+impl ValueCell {
     pub fn try_eq(&self, other: &Self) -> Option<bool> {
         match (self, other) {
-            (MemCell::Bool(a), MemCell::Bool(b)) => Some(a == b),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(a == b),
-            (MemCell::I32(a), MemCell::I32(b)) => Some(a == b),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(a == b),
-            (MemCell::Pointer(a), MemCell::Pointer(b)) => Some(a == b),
-            (MemCell::Structure(a), MemCell::Structure(b)) => Some(a == b),
-            (MemCell::Array(a), MemCell::Array(b)) => a.try_eq(b),
+            (ValueCell::Bool(a), ValueCell::Bool(b)) => Some(a == b),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(a == b),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(a == b),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(a == b),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(a == b),
+            (ValueCell::Structure(a), ValueCell::Structure(b)) => Some(a == b),
+            (ValueCell::Array(a), ValueCell::Array(b)) => a.try_eq(b),
             _ => None,
         }
     }
 
     pub fn try_not(&self) -> Option<bool> {
         match self {
-            MemCell::Bool(b) => Some(!*b),
+            ValueCell::Bool(b) => Some(!*b),
             _ => None,
         }
     }
 
     pub fn try_add(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a + b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a + b)),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a + b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a + b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a + b)),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a + b)),
 
-            (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
-                Some(MemCell::Pointer(ptr.clone() + *offset as isize))
+            (ValueCell::Pointer(ptr), ValueCell::I32(offset)) => {
+                Some(ValueCell::Pointer(ptr.clone() + *offset as isize))
             }
 
-            (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
-                Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0))))
+            (ValueCell::Pointer(Pointer::Heap(ref a)), ValueCell::Pointer(Pointer::Heap(ref b))) => {
+                Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0))))
             }
 
             _ => None,
@@ -132,16 +132,16 @@ impl MemCell {
 
     pub fn try_sub(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a - b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a - b)),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a - b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a - b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a - b)),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a - b)),
 
-            (MemCell::Pointer(ptr), MemCell::I32(offset)) => {
-                Some(MemCell::Pointer(ptr.clone() - *offset as isize))
+            (ValueCell::Pointer(ptr), ValueCell::I32(offset)) => {
+                Some(ValueCell::Pointer(ptr.clone() - *offset as isize))
             }
 
-            (MemCell::Pointer(Pointer::Heap(ref a)), MemCell::Pointer(Pointer::Heap(ref b))) => {
-                Some(MemCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
+            (ValueCell::Pointer(Pointer::Heap(ref a)), ValueCell::Pointer(Pointer::Heap(ref b))) => {
+                Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
             }
 
             _ => None,
@@ -150,9 +150,9 @@ impl MemCell {
 
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a * b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a * b)),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a * b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a * b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a * b)),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a * b)),
 
             _ => None,
         }
@@ -160,9 +160,9 @@ impl MemCell {
 
     pub fn try_idiv(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a / b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a / b)),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(MemCell::F32(a / b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a / b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a / b)),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a / b)),
 
             _ => None,
         }
@@ -170,8 +170,8 @@ impl MemCell {
 
     pub fn try_shl(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a << b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a << b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a << b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a << b)),
 
             _ => None,
         }
@@ -179,8 +179,8 @@ impl MemCell {
 
     pub fn try_shr(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(MemCell::I32(a >> b)),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(MemCell::U8(a >> b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a >> b)),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a >> b)),
 
             _ => None,
         }
@@ -188,11 +188,11 @@ impl MemCell {
 
     pub fn try_gt(&self, other: &Self) -> Option<bool> {
         match (self, other) {
-            (MemCell::I32(a), MemCell::I32(b)) => Some(a > b),
-            (MemCell::U8(a), MemCell::U8(b)) => Some(a > b),
-            (MemCell::F32(a), MemCell::F32(b)) => Some(a > b),
-            (MemCell::Bool(a), MemCell::Bool(b)) => Some(a > b),
-            (MemCell::Pointer(a), MemCell::Pointer(b)) => Some(a > b),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(a > b),
+            (ValueCell::U8(a), ValueCell::U8(b)) => Some(a > b),
+            (ValueCell::F32(a), ValueCell::F32(b)) => Some(a > b),
+            (ValueCell::Bool(a), ValueCell::Bool(b)) => Some(a > b),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(a > b),
 
             _ => None,
         }
@@ -200,93 +200,93 @@ impl MemCell {
 
     pub fn as_function(&self) -> Option<&Rc<Function>> {
         match self {
-            MemCell::Function(f) => Some(f),
+            ValueCell::Function(f) => Some(f),
             _ => None,
         }
     }
 
     pub fn as_struct_mut(&mut self, struct_id: StructID) -> Option<&mut StructCell> {
         match self {
-            MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
+            ValueCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
         }
     }
 
     pub fn as_struct(&self, struct_id: StructID) -> Option<&StructCell> {
         match self {
-            MemCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
+            ValueCell::Structure(struct_cell) if struct_id == struct_cell.id => Some(struct_cell),
             _ => None,
         }
     }
 
-    pub fn as_array(&self, el_ty: &Type) -> Option<&[MemCell]> {
+    pub fn as_array(&self, el_ty: &Type) -> Option<&[ValueCell]> {
         match self {
-            MemCell::Array(arr) if arr.el_ty == *el_ty => Some(&arr.elements),
+            ValueCell::Array(arr) if arr.el_ty == *el_ty => Some(&arr.elements),
             _ => None,
         }
     }
 
     pub fn as_variant(&self, struct_id: StructID) -> Option<&VariantCell> {
         match self {
-            MemCell::Variant(var_cell) if struct_id == var_cell.id => Some(var_cell),
+            ValueCell::Variant(var_cell) if struct_id == var_cell.id => Some(var_cell),
             _ => None,
         }
     }
 
     pub fn as_rc_mut(&mut self) -> Option<&mut RcCell> {
         match self {
-            MemCell::RcCell(rc) => Some(rc),
+            ValueCell::RcCell(rc) => Some(rc),
             _ => None,
         }
     }
 
     pub fn as_rc(&self) -> Option<&RcCell> {
         match self {
-            MemCell::RcCell(rc) => Some(rc),
+            ValueCell::RcCell(rc) => Some(rc),
             _ => None,
         }
     }
 
     pub fn as_bool(&self) -> Option<bool> {
         match self {
-            MemCell::Bool(b) => Some(*b),
+            ValueCell::Bool(b) => Some(*b),
             _ => None,
         }
     }
 
     pub fn as_u8(&self) -> Option<u8> {
         match self {
-            MemCell::U8(x) => Some(*x),
+            ValueCell::U8(x) => Some(*x),
             _ => None,
         }
     }
 
     pub fn as_i32(&self) -> Option<i32> {
         match self {
-            MemCell::I32(i) => Some(*i),
+            ValueCell::I32(i) => Some(*i),
             _ => None,
         }
     }
 
     pub fn as_pointer(&self) -> Option<&Pointer> {
         match self {
-            MemCell::Pointer(ptr) => Some(ptr),
+            ValueCell::Pointer(ptr) => Some(ptr),
             _ => None,
         }
     }
 
     pub fn kind(&self) -> MemCellKind {
         match self {
-            MemCell::Bool(..) => MemCellKind::Bool,
-            MemCell::U8(..) => MemCellKind::U8,
-            MemCell::I32(..) => MemCellKind::I32,
-            MemCell::F32(..) => MemCellKind::F32,
-            MemCell::RcCell(..) => MemCellKind::Rc,
-            MemCell::Function(..) => MemCellKind::Function,
-            MemCell::Structure(..) => MemCellKind::Structure,
-            MemCell::Variant(..) => MemCellKind::Variant,
-            MemCell::Pointer(..) => MemCellKind::Pointer,
-            MemCell::Array(..) => MemCellKind::Array,
+            ValueCell::Bool(..) => MemCellKind::Bool,
+            ValueCell::U8(..) => MemCellKind::U8,
+            ValueCell::I32(..) => MemCellKind::I32,
+            ValueCell::F32(..) => MemCellKind::F32,
+            ValueCell::RcCell(..) => MemCellKind::Rc,
+            ValueCell::Function(..) => MemCellKind::Function,
+            ValueCell::Structure(..) => MemCellKind::Structure,
+            ValueCell::Variant(..) => MemCellKind::Variant,
+            ValueCell::Pointer(..) => MemCellKind::Pointer,
+            ValueCell::Array(..) => MemCellKind::Array,
         }
     }
 }

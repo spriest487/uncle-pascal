@@ -1,5 +1,5 @@
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
-use crate::{ExecError, ExecResult, Interpreter, MemCell, MemCellKind, Pointer, RcCell, StructCell};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, MemCellKind, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 
@@ -28,7 +28,7 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
         panic!("IntToStr failed: could not convert `{}` to int", string);
     });
 
-    state.store(&RETURN_REF, MemCell::I32(int))?;
+    state.store(&RETURN_REF, ValueCell::I32(int))?;
 
     Ok(())
 }
@@ -71,10 +71,10 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
         .as_i32()
         .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument", state.debug_ctx().into_owned()))?;
 
-    let empty_bytes = vec![MemCell::U8(0); len as usize];
+    let empty_bytes = vec![ValueCell::U8(0); len as usize];
     let mem = state.heap.alloc(empty_bytes);
 
-    state.store(&RETURN_REF, MemCell::Pointer(Pointer::Heap(mem)))?;
+    state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(mem)))?;
 
     Ok(())
 }
@@ -103,7 +103,7 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<&StructCell>
     let rc_cell = state.deref_ptr(rc_cell_ptr)?;
 
     match state.deref_rc(rc_cell)? {
-        MemCell::Structure(dyn_array_struct_cell) => Ok(dyn_array_struct_cell.as_ref()),
+        ValueCell::Structure(dyn_array_struct_cell) => Ok(dyn_array_struct_cell.as_ref()),
         _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray", state.debug_ctx().into_owned())),
     }
 }
@@ -119,7 +119,7 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
     let len = len_cell.as_i32()
         .ok_or_else(|| ExecError::expected_ty("array_length argument cell", MemCellKind::I32, len_cell.kind(), state.debug_ctx().into_owned()))?;
 
-    state.store(&RETURN_REF, MemCell::I32(len))?;
+    state.store(&RETURN_REF, ValueCell::I32(len))?;
 
     Ok(())
 }
@@ -144,7 +144,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         .as_pointer()
         .and_then(Pointer::as_heap_addr)
         .and_then(|addr| state.heap.get(addr))
-        .and_then(MemCell::as_rc)
+        .and_then(ValueCell::as_rc)
         .ok_or_else(|| {
             let msg = "array arg passed to set_length must refer to an rc cell on the heap";
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
@@ -158,13 +158,13 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             .map(|rc_info| {
                 let retain_func_ref = GlobalRef::Function(rc_info.retain);
                 let retain_func = match state.globals.get(&retain_func_ref).map(|c| &c.value) {
-                    Some(MemCell::Function(func)) => func.clone(),
+                    Some(ValueCell::Function(func)) => func.clone(),
                     _ => panic!("missing element retain func for dynarray {}", dyn_array_el_ty),
                 };
 
                 let release_func_ref = GlobalRef::Function(rc_info.release);
                 let release_func = match state.globals.get(&release_func_ref).map(|c| &c.value) {
-                    Some(MemCell::Function(func)) => func.clone(),
+                    Some(ValueCell::Function(func)) => func.clone(),
                     _ => panic!("missing element release func for dynarray {}", dyn_array_el_ty),
                 };
 
@@ -224,7 +224,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
                 let el_rc_ref = state.deref_ptr(&el_ptr)?.clone();
                 state.retain_cell(&el_rc_ref)?;
             } else if let Some((el_retain_func, _)) = &el_rc_funcs {
-                state.call(el_retain_func, &[MemCell::Pointer(el_ptr)], None)?;
+                state.call(el_retain_func, &[ValueCell::Pointer(el_ptr)], None)?;
             }
         }
 
@@ -236,8 +236,8 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     assert_eq!(Pointer::Null == new_data, new_len == 0);
 
     let mut new_struct_fields = Vec::new();
-    new_struct_fields.push(MemCell::I32(new_len)); // 0 = len
-    new_struct_fields.push(MemCell::Pointer(new_data)); // 1 = data ptr
+    new_struct_fields.push(ValueCell::I32(new_len)); // 0 = len
+    new_struct_fields.push(ValueCell::Pointer(new_data)); // 1 = data ptr
 
     let new_array_struct = StructCell {
         fields: new_struct_fields,
@@ -245,7 +245,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     };
 
     let new_array_resource = state.heap.alloc(vec![
-        MemCell::Structure(Box::new(new_array_struct)),
+        ValueCell::Structure(Box::new(new_array_struct)),
     ]);
 
     let new_array_rc = RcCell {
@@ -254,9 +254,9 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         resource_addr: new_array_resource
     };
 
-    let new_array_cell = MemCell::RcCell(Box::new(new_array_rc));
+    let new_array_cell = ValueCell::RcCell(Box::new(new_array_rc));
     let new_array_rc_addr = state.heap.alloc(vec![new_array_cell]);
 
-    state.store(&RETURN_REF, MemCell::Pointer(Pointer::Heap(new_array_rc_addr)))?;
+    state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(new_array_rc_addr)))?;
     Ok(())
 }

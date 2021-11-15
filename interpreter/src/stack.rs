@@ -1,6 +1,6 @@
 use std::fmt;
 use pas_ir::LocalID;
-use crate::MemCell;
+use crate::ValueCell;
 
 #[derive(Debug)]
 struct Block {
@@ -18,7 +18,7 @@ struct LocalCell {
     // function param allocs don't have an alloc locatoin
     alloc_pc: Option<usize>,
 
-    value: MemCell,
+    value: ValueCell,
 }
 
 impl LocalCell {
@@ -48,7 +48,7 @@ impl StackFrame {
         }
     }
 
-    pub fn deref_local(&self, id: LocalID) -> StackResult<&MemCell> {
+    pub fn deref_local(&self, id: LocalID) -> StackResult<&ValueCell> {
         match self.locals[id.0].as_ref() {
             Some(local_val) => {
                 Ok(&local_val.value)
@@ -57,7 +57,7 @@ impl StackFrame {
         }
     }
 
-    pub fn deref_local_mut(&mut self, id: LocalID) -> StackResult<&mut MemCell> {
+    pub fn deref_local_mut(&mut self, id: LocalID) -> StackResult<&mut ValueCell> {
         match self.locals[id.0].as_mut() {
             Some(local_val) => {
                 Ok(&mut local_val.value)
@@ -66,14 +66,14 @@ impl StackFrame {
         }
     }
 
-    pub fn push_local(&mut self, value: MemCell) {
+    pub fn push_local(&mut self, value: ValueCell) {
         self.locals.push(Some(LocalCell {
             alloc_pc: None,
             value,
         }));
     }
 
-    pub fn alloc_local(&mut self, id: LocalID, alloc_pc: usize, value: MemCell) -> StackResult<()> {
+    pub fn alloc_local(&mut self, id: LocalID, alloc_pc: usize, value: ValueCell) -> StackResult<()> {
         while self.locals.len() <= id.0 {
             self.locals.push(None);
         }
@@ -104,7 +104,7 @@ impl StackFrame {
         id.0 < self.locals.len()
     }
 
-    pub fn store_local(&mut self, id: LocalID, value: MemCell) -> StackResult<()> {
+    pub fn store_local(&mut self, id: LocalID, value: ValueCell) -> StackResult<()> {
         match self.locals.get_mut(id.0) {
             Some(Some(cell)) => {
                 cell.value = value;
@@ -116,7 +116,7 @@ impl StackFrame {
         }
     }
 
-    pub fn load_local(&self, id: LocalID) -> StackResult<&MemCell> {
+    pub fn load_local(&self, id: LocalID) -> StackResult<&ValueCell> {
         match self.locals.get(id.0) {
             Some(Some(cell)) => Ok(&cell.value),
             None | Some(None) => {

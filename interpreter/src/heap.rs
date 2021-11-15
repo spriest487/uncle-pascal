@@ -1,4 +1,4 @@
-use crate::MemCell;
+use crate::ValueCell;
 use std::{
     collections::HashMap,
     fmt,
@@ -8,7 +8,7 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub struct Heap {
-    slots: Vec<Option<MemCell>>,
+    slots: Vec<Option<ValueCell>>,
     alloc_lens: HashMap<HeapAddress, usize>,
 
     pub trace: bool,
@@ -52,7 +52,7 @@ impl Heap {
         }
     }
 
-    pub fn alloc(&mut self, vals: Vec<MemCell>) -> HeapAddress {
+    pub fn alloc(&mut self, vals: Vec<ValueCell>) -> HeapAddress {
         let count = vals.len();
 
         if count == 0 {
@@ -108,11 +108,11 @@ impl Heap {
         }
     }
 
-    pub fn get(&self, addr: HeapAddress) -> Option<&MemCell> {
+    pub fn get(&self, addr: HeapAddress) -> Option<&ValueCell> {
         self.slots.get(addr.0).and_then(Option::as_ref)
     }
 
-    pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut MemCell> {
+    pub fn get_mut(&mut self, addr: HeapAddress) -> Option<&mut ValueCell> {
         self.slots.get_mut(addr.0).and_then(Option::as_mut)
     }
 
@@ -148,9 +148,9 @@ impl Heap {
 }
 
 impl Index<HeapAddress> for Heap {
-    type Output = MemCell;
+    type Output = ValueCell;
 
-    fn index(&self, addr: HeapAddress) -> &MemCell {
+    fn index(&self, addr: HeapAddress) -> &ValueCell {
         if let Some(cell) = self.get(addr) {
             cell
         } else {
@@ -160,7 +160,7 @@ impl Index<HeapAddress> for Heap {
 }
 
 impl IndexMut<HeapAddress> for Heap {
-    fn index_mut(&mut self, addr: HeapAddress) -> &mut MemCell {
+    fn index_mut(&mut self, addr: HeapAddress) -> &mut ValueCell {
         if self.get_mut(addr).is_none() {
             panic!("trying to mutably access unallocated heap location {}", addr)
         }

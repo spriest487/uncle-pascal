@@ -3,7 +3,7 @@ use std::ops::{Add, Sub};
 use pas_ir::LocalID;
 use pas_ir::metadata::FieldID;
 use crate::{ExecResult, HeapAddress, Interpreter};
-use crate::memcell::MemCell;
+use crate::memcell::ValueCell;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
@@ -40,7 +40,7 @@ impl Pointer {
         }
     }
 
-    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<&'a MemCell> {
+    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<&'a ValueCell> {
         state.deref_ptr(self)
     }
 
