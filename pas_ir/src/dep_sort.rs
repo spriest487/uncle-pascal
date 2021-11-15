@@ -105,7 +105,7 @@ mod test {
         translate, IROptions,
     };
     use pas_common::{span::Span, BuildOptions};
-    use pas_syn::{parse::TokenStream, Ident, TokenTree, ast};
+    use pas_syn::{parse::TokenStream, Ident, TokenTree, ast, IdentPath};
     use pas_typecheck as ty;
     use std::collections::HashMap;
     use crate::{
@@ -114,13 +114,12 @@ mod test {
     };
     use crate::metadata::NamePath;
     use crate::dep_sort::find_deps;
-    use crate::ty::TypeDef;
 
     fn defs_from_src(src: &str) -> (HashMap<StructID, TypeDef>, Metadata) {
         let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero("test"));
 
-        let unit = ast::Unit::parse(&mut stream, Ident::new("test", Span::zero("test"))).unwrap();
+        let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();
 
         let module = ty::Module::typecheck(&[unit], true).unwrap();
         let ir = translate(&module, IROptions::default());

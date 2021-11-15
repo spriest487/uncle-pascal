@@ -3,7 +3,7 @@ use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
 use pas_common::span::Span;
 use pas_common::BuildOptions;
 use pas_syn::parse::TokenStream;
-use pas_syn::{ast, Ident, TokenTree};
+use pas_syn::{ast, Ident, IdentPath, TokenTree};
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -22,8 +22,9 @@ where
         let tokens = TokenTree::tokenize(unit_name, src, &BuildOptions::default()).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
 
-        let unit =
-            ast::Unit::parse(&mut stream, Ident::new(unit_name, Span::zero(unit_name))).unwrap();
+        let unit_ident = Ident::new(unit_name, Span::zero(unit_name));
+
+        let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident])).unwrap();
 
         units.push(unit);
     }
@@ -49,13 +50,13 @@ where
 fn sig_without_self_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: BOOL,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
@@ -66,13 +67,13 @@ fn sig_without_self_is_invalid_impl() {
 fn sig_with_self_return_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
@@ -83,13 +84,13 @@ fn sig_with_self_return_is_valid_impl() {
 fn sig_with_no_params_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
     let impl_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![],
     };
 
@@ -100,13 +101,13 @@ fn sig_with_no_params_is_invalid_impl() {
 fn sig_with_self_param_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: Type::Nothing,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(INT32)],
     };
 
@@ -117,13 +118,13 @@ fn sig_with_self_param_is_valid_impl() {
 fn sig_with_self_param_and_return_is_valid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(INT32)],
     };
 
@@ -134,13 +135,13 @@ fn sig_with_self_param_and_return_is_valid_impl() {
 fn sig_with_mismatched_self_param_and_return_is_invalid_impl() {
     let iface_sig = FunctionSig {
         return_ty: Type::MethodSelf,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(Type::MethodSelf)],
     };
 
     let impl_sig = FunctionSig {
         return_ty: INT32,
-        type_params: Vec::new(),
+        type_params: None,
         params: vec![FunctionParamSig::by_val(BOOL)],
     };
 

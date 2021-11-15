@@ -168,6 +168,13 @@ impl<A: Annotation> Expression<A> {
         }
     }
 
+    pub fn as_bin_op(&self) -> Option<&BinOp<A>> {
+        match self {
+            Expression::BinOp(bin_op) => Some(bin_op.as_ref()),
+            _ => None,
+        }
+    }
+
     pub fn as_call(&self) -> Option<&Call<A>> {
         match self {
             Expression::Call(call) => Some(call),

@@ -35,11 +35,16 @@ fn specialize_class_has_correct_member_types() {
         ",
     );
 
-    let type_args = vec![INT32.clone()];
-    let result = specialize_class_def(&tys[0], type_args, &builtin_span()).unwrap();
+    let span = Span::zero("test");
 
-    assert_eq!(1, result.name.type_args.len());
-    assert_eq!(INT32, result.name.type_args[0]);
+    let type_args = TypeList::new(vec![INT32.clone()], span.clone());
+    let result = specialize_class_def(&tys[0], &type_args, &span).unwrap();
+
+    assert!(result.name.type_args.is_some());
+    let actual_type_args = result.name.type_args.unwrap();
+
+    assert_eq!(1, actual_type_args.len());
+    assert_eq!(INT32, actual_type_args.items[0]);
 
     assert_eq!(INT32, result.members[0].ty);
     assert_eq!(BYTE, result.members[1].ty);
@@ -55,12 +60,17 @@ fn specialize_class_has_multi_correct_member_types() {
         ",
     );
 
-    let type_args = vec![INT32.clone(), BYTE.clone()];
-    let result = specialize_class_def(&tys[0], type_args, &builtin_span()).unwrap();
+    let span = Span::zero("test");
 
-    assert_eq!(2, result.name.type_args.len());
-    assert_eq!(INT32, result.name.type_args[0]);
-    assert_eq!(BYTE, result.name.type_args[1]);
+    let type_args = TypeList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
+    let result = specialize_class_def(&tys[0], &type_args, &span).unwrap();
+
+    assert!(result.name.type_args.is_some());
+    let actual_type_args = result.name.type_args.unwrap();
+
+    assert_eq!(2, actual_type_args.len());
+    assert_eq!(INT32, actual_type_args.items[0]);
+    assert_eq!(BYTE, actual_type_args.items[1]);
 
     assert_eq!(INT32, result.members[0].ty);
     assert_eq!(BYTE, result.members[1].ty);
@@ -81,9 +91,11 @@ fn specialize_class_with_deep_params() {
         ",
     );
 
-    let span = builtin_span();
+    let span = Span::zero("test");
 
-    let result = specialize_class_def(&tys[1], vec![INT32], &span).unwrap();
+    let type_args = TypeList::new(vec![INT32], span.clone());
+
+    let result = specialize_class_def(&tys[1], &type_args, &span).unwrap();
 
     let a_name = result.members[0].ty.as_record().unwrap();
     assert_eq!("test.A of Integer, Integer", a_name.to_string());
@@ -92,7 +104,6 @@ fn specialize_class_with_deep_params() {
 
 #[test]
 fn specialized_fn_has_right_sig() {
-    let span = builtin_span();
     let unit = unit_from_src(
         r"  function A of T(t: T): T
             begin
@@ -101,17 +112,21 @@ fn specialized_fn_has_right_sig() {
         ",
     );
 
-    let ctx = Context::root(true);
+    let span = Span::zero("test");
+
+    let ctx = Context::root(true, span.clone());
 
     let a_func = unit.func_defs().next().unwrap();
     let a_sig = FunctionSig::of_decl(&a_func.decl);
 
+    let type_args = TypeList::new([INT32], span.clone());
+
     let a_int_sig = a_sig
-        .specialize_generic(&[INT32.clone()], &span, &ctx)
+        .specialize_generic(&type_args, &span, &ctx)
         .unwrap();
 
     let expect_sig = FunctionSig {
-        type_params: vec![FunctionSigTypeParam { is_ty: Type::Any }],
+        type_params: Some(ast::TypeList::new([FunctionSigTypeParam { is_ty: Type::Any }], span.clone())),
         return_ty: INT32.clone(),
         params: vec![FunctionParamSig {
             ty: INT32.clone(),
@@ -138,7 +153,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         ",
     );
 
-    let int_params = [INT32.clone()];
+    let int_params = TypeList::new([INT32.clone()], span.clone());
 
     let a_class = unit
         .type_decls()
@@ -149,19 +164,19 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .next()
         .unwrap();
 
-    let a_int = specialize_class_def(&a_class, int_params.to_vec(), &span)
+    let a_int = specialize_class_def(&a_class, &int_params, &span)
         .map(|class| Type::Record(Box::new(class.name)))
         .unwrap();
 
     let b_func = unit.func_defs().next().unwrap();
     let b_sig = FunctionSig::of_decl(&b_func.decl);
 
-    let ctx = Context::root(true);
+    let ctx = Context::root(true, span.clone());
 
     let b_int_sig = b_sig.specialize_generic(&int_params, &span, &ctx).unwrap();
 
     let expect_sig = FunctionSig {
-        type_params: vec![FunctionSigTypeParam { is_ty: Type::Any }],
+        type_params: Some(ast::TypeList::new([FunctionSigTypeParam { is_ty: Type::Any }], span.clone())),
         return_ty: a_int.clone(),
         params: vec![FunctionParamSig {
             ty: a_int,

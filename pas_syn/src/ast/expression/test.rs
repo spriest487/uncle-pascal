@@ -23,8 +23,10 @@ pub fn parse_expr(src: &str) -> Expression<Span> {
 /// for an expression like x := Y() we should read it as x := (Y()) not (x := Y)()
 #[test]
 fn parse_assignment_then_call_in_order() {
-    match parse_expr("x := Y()") {
-        Expression::BinOp(bin_op) => {
+    let expr = parse_expr("x := Y()");
+
+    match expr.as_bin_op() {
+        Some(bin_op) => {
             let lhs_ident = bin_op.lhs.as_ident().unwrap_or_else(|| {
                 panic!(
                     "parsed expr should have ident x on the lhs, found {}",
@@ -34,7 +36,7 @@ fn parse_assignment_then_call_in_order() {
             assert_eq!("x", lhs_ident.name);
         }
 
-        invalid => panic!("expected binary op, got `{:#?}`", invalid),
+        _ => panic!("expected binary op, got `{:#?}`", expr),
     }
 }
 
@@ -103,9 +105,9 @@ fn parse_invocation_with_type_args() {
 fn member_indexer_parse_order() {
     let expr = parse_expr("x.y[1]");
 
-    match expr {
-        Expression::Indexer(indexer) => {
-            match indexer.base {
+    match expr.as_bin_op() {
+        Some(BinOp { op: Operator::Index, lhs: base, rhs: index, .. }) => {
+            match base {
                 Expression::BinOp(bin_op) => {
                     let lhs_ident = bin_op.lhs.as_ident().expect("lhs should be an ident");
                     let rhs_ident = bin_op.rhs.as_ident().expect("rhs should be an ident");
@@ -116,7 +118,7 @@ fn member_indexer_parse_order() {
                 invalid => panic!("expected indexer base expression, got {:#?}", invalid),
             }
 
-            match indexer.index {
+            match index {
                 Expression::Literal(Literal::Integer(int_const), ..) => {
                     assert_eq!(1, int_const.as_i32().unwrap());
                 }
@@ -124,6 +126,6 @@ fn member_indexer_parse_order() {
             }
         }
 
-        invalid => panic!("expected indexer expression, got {:#?}", invalid)
+        _ => panic!("expected indexer expression, got {:#?}", expr)
     }
 }

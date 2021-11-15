@@ -923,7 +923,7 @@ mod test {
 
     #[test]
     fn end_loop_scope_ends_at_right_scope_level() {
-        let ctx = pas_ty::Context::root(true);
+        let ctx = pas_ty::Context::root(true, Span::zero("test"));
         let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
@@ -939,9 +939,9 @@ mod test {
 
     #[test]
     fn break_cleans_up_loop_locals() {
-        let ctx = pas_ty::Context::root(true);
+        let ctx = pas_ty::Context::root(true, Span::zero("test"));
         let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
-        let mut builder = Builder::new(&mut module, Span::zero("test"));
+        let mut builder = Builder::new(&mut module);
 
         let continue_label = builder.alloc_label();
         let break_label = builder.alloc_label();
