@@ -5,7 +5,7 @@ use crate::{
     LocalID, Metadata, Ref, StructID, Type, TypeDef, Value, EXIT_LABEL,
 };
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::Spanned;
+use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;
 use pas_syn::{ast, IdentPath};
 use pas_typecheck::ast::specialize_func_decl;
@@ -47,7 +47,9 @@ impl Module {
     }
 
     pub fn translate_unit(&mut self, unit: &pas_ty::ast::Unit) {
-        let mut init_builder = Builder::new(self);
+        let unit_start_span = Span::zero(unit.ident.span().file.as_ref().clone());
+
+        let mut init_builder = Builder::new(self, unit_start_span);
         for stmt in &unit.init {
             translate_stmt(stmt, &mut init_builder);
         }
@@ -184,7 +186,7 @@ impl Module {
                 let iface_id = match self.metadata.find_iface_decl(&iface_def.name.qualified) {
                     Some(iface_id) => iface_id,
                     None => {
-                        let mut builder = Builder::new(self);
+                        let mut builder = Builder::new(self, iface_def.span().clone());
                         let iface_meta = builder.translate_iface(&iface_def);
                         self.metadata.define_iface(iface_meta)
                     }
@@ -283,6 +285,8 @@ impl Module {
         type_args: Option<pas_ty::TypeList>,
         debug_name: String,
     ) -> FunctionDef {
+        let def_span = func.span().clone();
+
         let mut body_builder = match type_args {
             Some(type_args) => {
                 let type_params = match &func.decl.type_params {
@@ -297,14 +301,14 @@ impl Module {
                     ),
                 };
 
-                let mut builder = Builder::new(self).with_type_args(type_args.clone());
+                let mut builder = Builder::new(self, def_span).with_type_args(type_args.clone());
                 builder.comment("function def body with type args:");
                 for (type_param, type_arg) in type_params.iter().zip(type_args.iter()) {
                     builder.comment(&format!("{} = {}", type_param, type_arg));
                 }
                 builder
             }
-            None => Builder::new(self),
+            None => Builder::new(self, def_span),
         };
 
         let return_ty = match func.decl.return_ty.as_ref() {

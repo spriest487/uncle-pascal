@@ -8,7 +8,9 @@ use std::convert::TryFrom;
 use crate::ty::ClassID;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
-    match expr {
+    builder.push_debug_context(expr.annotation().span().clone());
+
+    let result_ref = match expr {
         ast::Expression::Literal(lit, annotation) => {
             translate_literal(lit, annotation.ty(), builder)
         }
@@ -111,7 +113,11 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
 
         ast::Expression::SizeOf(size_of) => translate_size_of(size_of, builder),
-    }
+    };
+
+    builder.pop_debug_context();
+
+    result_ref
 }
 
 fn translate_indexer(

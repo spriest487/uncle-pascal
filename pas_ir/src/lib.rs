@@ -29,17 +29,24 @@ pub const EXIT_LABEL: Label = Label(0);
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct IROptions {
+    // insert IR comments indicating scoped lifetimes
     pub annotate_scopes: bool,
-    pub annotate_stmts: bool,
+
+    // insert IR comments indicating RC release/retain operations
     pub annotate_rc: bool,
+
+    // insert source spans for statements and expressions for improved error messaging in the
+    // translation/interpreter stage
+    pub debug_info: bool,
 }
 
 impl Default for IROptions {
     fn default() -> Self {
         Self {
             annotate_scopes: false,
-            annotate_stmts: false,
             annotate_rc: false,
+
+            debug_info: true,
         }
     }
 }
@@ -136,7 +143,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
         .find_rc_boilerplate(&array_struct_ty)
         .expect("rc boilerplate function ids for dynarray inner struct must exist");
 
-    let mut releaser_builder = Builder::new(module);
+    let mut releaser_builder = Builder::new(module, builtin_span());
 
     // %0 is the self arg, the pointer to the inner struct
     releaser_builder.bind_param(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
@@ -266,7 +273,7 @@ fn gen_class_rc_boilerplate(module: &mut Module, class_ty: &Type) {
         .and_then(|class_id| class_id.as_class())
         .expect("resource class of translated class type was not a struct");
 
-    let mut builder = Builder::new(module);
+    let mut builder = Builder::new(module, builtin_span());
     builder.gen_rc_boilerplate(&Type::Struct(resource_struct));
 }
 
@@ -279,8 +286,11 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // make sure compiler builtin types are defined e.g. dynamic array types add implementations
     // to Disposable so need that interface to be defined
     let disposable_iface = {
-        let mut builder = Builder::new(&mut ir_module);
-        builder.translate_iface(&builtin_disposable)
+        let mut builder = Builder::new(&mut ir_module, builtin_disposable.span.clone());
+        let disposable_iface = builder.translate_iface(&builtin_disposable);
+        builder.finish();
+
+        disposable_iface
     };
 
     ir_module.metadata.define_iface(disposable_iface);
@@ -290,21 +300,27 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let string_name = pas_ty::builtin_string_name();
     if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
         let name = {
-            let mut builder = Builder::new(&mut ir_module);
-            builder.translate_name(&string_name)
+            let mut builder = Builder::new(&mut ir_module, string_class.span.clone());
+            let name = builder.translate_name(&string_name);
+            builder.finish();
+            name
         };
 
         ir_module.metadata.reserve_struct(STRING_ID);
         ir_module.metadata.declare_struct(STRING_ID, &name);
 
         let string_def = {
-            let mut builder = Builder::new(&mut ir_module);
-            builder.translate_class(&string_class)
+            let mut builder = Builder::new(&mut ir_module, string_class.span.clone());
+            let string_def = builder.translate_class(&string_class);
+            builder.finish();
+            string_def
         };
 
         ir_module.metadata.define_struct(STRING_ID, string_def);
 
-        Builder::new(&mut ir_module).gen_rc_boilerplate(&Type::Struct(STRING_ID));
+        let mut rc_builder = Builder::new(&mut ir_module, string_class.span.clone());
+        rc_builder.gen_rc_boilerplate(&Type::Struct(STRING_ID));
+        rc_builder.finish();
     }
 
     for unit in &module.units {

@@ -1,22 +1,13 @@
+use pas_common::span::Spanned;
 use crate::{prelude::*, translate_block, translate_exit, translate_call, translate_expr, translate_if_cond, Builder, Type};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 use crate::expr::translate_raise;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
-    if stmt.as_block().is_none() && builder.opts().annotate_stmts {
-        // write the first line of the statement as a comment
-        let stmt_str = stmt.to_string();
-        let mut comment = String::new();
-        for (line_num, line) in stmt_str.lines().enumerate() {
-            if line_num > 0 {
-                comment.push_str("...");
-                break;
-            }
-            comment.push_str(line);
-        }
-
-        builder.comment(&comment);
+    builder.push_debug_context(stmt.annotation().span().clone());
+    if builder.opts().debug_info {
+        builder.comment(&stmt);
     }
 
     match stmt {
@@ -64,6 +55,8 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
             builder.continue_loop();
         }
     }
+
+    builder.pop_debug_context()
 }
 
 fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {

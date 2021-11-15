@@ -14,6 +14,14 @@ pub trait InstructionFormatter {
         match instruction {
             Instruction::Comment(comment) => write!(f, "{:>width$} {}", "//", comment, width = IX_WIDTH),
 
+            Instruction::DebugPush(span) => {
+                write!(f, "{:>width$} {}", "dbgpush", span, width = IX_WIDTH)
+            }
+
+            Instruction::DebugPop => {
+                write!(f, "{:>width$}", "dbgpop", width = IX_WIDTH)
+            }
+
             Instruction::LocalAlloc(id, ty) => {
                 write!(f, "{:>width$} ", "local", width = IX_WIDTH)?;
                 self.format_ref(&Ref::Local(*id), f)?;

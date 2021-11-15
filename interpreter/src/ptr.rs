@@ -44,7 +44,7 @@ impl Pointer {
         state.deref_ptr(self)
     }
 
-    pub fn kind(&self) -> PointerKind {
+    fn kind(&self) -> PointerKind {
         match self {
             Pointer::Null => PointerKind::Null,
             Pointer::Uninit => PointerKind::Uninit,
@@ -144,7 +144,7 @@ impl Sub<isize> for Pointer {
 }
 
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
-pub enum PointerKind {
+enum PointerKind {
     Null,
     Uninit,
     Local,

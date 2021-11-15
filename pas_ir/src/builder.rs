@@ -1,16 +1,20 @@
 use pas_typecheck as pas_ty;
 
-use crate::{metadata::*, FunctionInstance, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Value, EXIT_LABEL, Type};
+use crate::{
+    metadata::*, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, FunctionInstance,
+    GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
+    Type, Value, EXIT_LABEL,
+};
 
 use std::fmt;
 
+use self::scope::*;
+use crate::ty::{FieldID, Interface, Struct, Variant};
 use pas_common::span::{Span, Spanned};
+use pas_syn::ast::TypeList;
 use pas_syn::Ident;
 use pas_typecheck::{builtin_span, Specializable};
 use std::borrow::Cow;
-use pas_syn::ast::TypeList;
-use crate::ty::{FieldID, Interface, Struct, Variant};
-use self::scope::*;
 
 pub mod scope;
 
@@ -29,12 +33,18 @@ pub struct Builder<'m> {
 }
 
 impl<'m> Builder<'m> {
-    pub fn new(module: &'m mut Module) -> Self {
+    pub fn new(module: &'m mut Module, debug_ctx: Span) -> Self {
+        let mut instructions = Vec::new();
+        if module.opts.debug_info {
+            instructions.push(Instruction::DebugPush(debug_ctx));
+        }
+        instructions.push(Instruction::LocalBegin);
+
         Self {
             module,
             type_args: None,
 
-            instructions: vec![Instruction::LocalBegin],
+            instructions,
 
             // the EXIT label is always reserved, so start one after that
             next_label: Label(EXIT_LABEL.0 + 1),
@@ -54,7 +64,8 @@ impl<'m> Builder<'m> {
     }
 
     pub fn with_type_args(self, type_args: pas_ty::TypeList) -> Self {
-        let any_generic = type_args.items
+        let any_generic = type_args
+            .items
             .iter()
             .any(|a| a.is_generic_param() || a.is_unspecialized_generic());
         if any_generic {
@@ -64,7 +75,10 @@ impl<'m> Builder<'m> {
             );
         }
 
-        Self { type_args: Some(type_args), ..self }
+        Self {
+            type_args: Some(type_args),
+            ..self
+        }
     }
 
     pub fn translate_variant_case<'ty>(
@@ -91,28 +105,34 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &pas_ty::Symbol) -> NamePath {
-        self.module.translate_name(name, self.type_args().cloned().as_ref())
+        self.module
+            .translate_name(name, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class) -> Struct {
-        self.module.translate_class(class_def, self.type_args().cloned().as_ref())
+        self.module
+            .translate_class(class_def, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> Interface {
-        self.module.translate_iface(iface_def, self.type_args().cloned().as_ref())
+        self.module
+            .translate_iface(iface_def, self.type_args().cloned().as_ref())
     }
 
     #[allow(unused)]
     pub fn translate_variant(&mut self, variant: &pas_ty::ast::Variant) -> Variant {
-        self.module.translate_variant(variant, self.type_args().cloned().as_ref())
+        self.module
+            .translate_variant(variant, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
-        self.module.translate_type(src_ty, self.type_args().cloned().as_ref())
+        self.module
+            .translate_type(src_ty, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
-        self.module.translate_dyn_array_struct(element_ty, self.type_args().cloned().as_ref())
+        self.module
+            .translate_dyn_array_struct(element_ty, self.type_args().cloned().as_ref())
     }
 
     pub fn translate_method_impl(
@@ -133,16 +153,17 @@ impl<'m> Builder<'m> {
         // specialize type args for current context
         let instance_type_args = match (type_args, self.type_args.as_ref()) {
             (Some(func_ty_args), Some(current_ty_args)) => {
-                let items = func_ty_args.items
+                let items = func_ty_args
+                    .items
                     .iter()
                     .map(|arg| arg.specialize_generic(&current_ty_args, span).unwrap());
 
                 Some(TypeList::new(items, func_ty_args.span().clone()))
-            },
+            }
 
             (Some(func_ty_args), None) => Some(func_ty_args),
 
-            (None, ..)  => None,
+            (None, ..) => None,
         };
 
         let key = FunctionCacheKey {
@@ -206,7 +227,27 @@ impl<'m> Builder<'m> {
             self.instructions.remove(pos);
         }
 
+        if self.module.opts.debug_info {
+            self.instructions.push(Instruction::DebugPop);
+        }
+
         self.instructions
+    }
+
+    pub fn push_debug_context(&mut self, ctx: Span) {
+        if !self.opts().debug_info {
+            return;
+        }
+
+        self.append(Instruction::DebugPush(ctx));
+    }
+
+    pub fn pop_debug_context(&mut self) {
+        if !self.opts().debug_info {
+            return;
+        }
+
+        self.append(Instruction::DebugPop);
     }
 
     pub fn append(&mut self, instruction: Instruction) {
@@ -223,7 +264,7 @@ impl<'m> Builder<'m> {
             new_val: val.into(),
         });
     }
-    
+
     pub fn and(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::And {
             a: a.into(),
@@ -231,7 +272,7 @@ impl<'m> Builder<'m> {
             out: out.into(),
         });
     }
-    
+
     pub fn and_to_val(&mut self, a: impl Into<Value>, b: impl Into<Value>) -> Value {
         match (a.into(), b.into()) {
             (Value::LiteralBool(a), Value::LiteralBool(b)) => Value::LiteralBool(a && b),
@@ -370,7 +411,7 @@ impl<'m> Builder<'m> {
             (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
             }
-            
+
             (a, b) => {
                 let result = self.local_temp(Type::Bool);
                 self.gte(result.clone(), a, b);
@@ -378,8 +419,14 @@ impl<'m> Builder<'m> {
             }
         }
     }
-    
-    pub fn field(&mut self, out: impl Into<Ref>, base: impl Into<Ref>,base_ty: &Type, field: FieldID) {
+
+    pub fn field(
+        &mut self,
+        out: impl Into<Ref>,
+        base: impl Into<Ref>,
+        base_ty: &Type,
+        field: FieldID,
+    ) {
         self.append(Instruction::Field {
             out: out.into(),
             a: base.into(),
@@ -425,7 +472,8 @@ impl<'m> Builder<'m> {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.find_next_local_id();
-        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
+        self.instructions
+            .push(Instruction::LocalAlloc(id, ty.clone()));
 
         self.current_scope_mut().bind_temp(id, ty);
 
@@ -437,7 +485,8 @@ impl<'m> Builder<'m> {
         assert_ne!(Type::Nothing, ty);
 
         let id = self.find_next_local_id();
-        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
+        self.instructions
+            .push(Instruction::LocalAlloc(id, ty.clone()));
 
         self.current_scope_mut().bind_new(id, name, ty);
 
@@ -574,7 +623,7 @@ impl<'m> Builder<'m> {
         let funcs = self.module.metadata.declare_rc_boilerplate(ty);
 
         let release_body = {
-            let mut release_builder = Builder::new(&mut self.module);
+            let mut release_builder = Builder::new(&mut self.module, builtin_span());
             release_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
 
@@ -596,7 +645,7 @@ impl<'m> Builder<'m> {
         );
 
         let retain_body = {
-            let mut retain_builder = Builder::new(&mut self.module);
+            let mut retain_builder = Builder::new(&mut self.module, builtin_span());
             retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
             retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
@@ -701,8 +750,14 @@ impl<'m> Builder<'m> {
             .expect("end_loop called without an active loop");
     }
 
-    pub fn loop_body_scope<F>(&mut self, continue_label: Label, break_label: Label, f: F) -> &[Instruction]
-        where F: FnOnce(&mut Self)
+    pub fn loop_body_scope<F>(
+        &mut self,
+        continue_label: Label,
+        break_label: Label,
+        f: F,
+    ) -> &[Instruction]
+    where
+        F: FnOnce(&mut Self),
     {
         let start_instruction = self.instructions.len();
 
@@ -918,7 +973,8 @@ mod test {
 }
 
 fn type_args_to_string(args: &pas_ty::TypeList) -> String {
-    args.items.iter()
+    args.items
+        .iter()
         .map(|a| a.to_string())
         .collect::<Vec<_>>()
         .join(", ")

@@ -356,6 +356,13 @@ impl<'a> Builder<'a> {
                 });
             }
 
+            ir::Instruction::DebugPush(ctx) => {
+                self.stmts.push(Statement::Comment(format!("context: {}", ctx)))
+            }
+            ir::Instruction::DebugPop => {
+                // no-op
+            }
+
             ir::Instruction::LocalBegin => self.stmts.push(Statement::BeginBlock),
             ir::Instruction::LocalEnd => self.stmts.push(Statement::EndBlock),
 

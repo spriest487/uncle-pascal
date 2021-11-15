@@ -97,8 +97,8 @@ struct Args {
     #[structopt(long = "verbose", short = "v")]
     verbose: bool,
 
-    #[structopt(long = "ir-stmts")]
-    ir_annotate_stmts: bool,
+    #[structopt(long = "ir-debug")]
+    ir_debug: bool,
 
     #[structopt(long = "ir-scopes")]
     ir_annotate_scopes: bool,
@@ -257,8 +257,8 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
 
     let ir_opts = IROptions {
         annotate_scopes: args.ir_annotate_scopes,
-        annotate_stmts: args.ir_annotate_stmts,
         annotate_rc: args.trace_rc,
+        debug_info: args.ir_debug,
     };
 
     let module = ir::translate(&typed_module, ir_opts);

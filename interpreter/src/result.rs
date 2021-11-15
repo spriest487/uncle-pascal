@@ -1,9 +1,8 @@
-use crate::{HeapAddress, MemCellKind};
+use crate::{HeapAddress, MemCellKind, Pointer};
 use pas_common::span::Span;
 use pas_common::{DiagnosticLabel, DiagnosticOutput};
 use pas_ir::Type;
 use std::fmt;
-use crate::ptr::PointerKind;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -13,6 +12,7 @@ pub enum ExecError {
     },
     MarshallingFailed {
         failed_ty: Type,
+        span: Span,
     },
     ExternSymbolLoadFailed {
         lib: String,
@@ -20,21 +20,31 @@ pub enum ExecError {
         span: Span,
         msg: String,
     },
-    IllegalDereference(PointerKind),
+    IllegalDereference {
+        ptr: Pointer,
+        span: Span,
+    },
     IllegalState {
         msg: String,
+        span: Span,
     },
-    IllegalHeapAccess(HeapAddress),
+    IllegalHeapAccess{
+        addr: HeapAddress,
+        span: Span,
+    },
 }
 
 impl ExecError {
-    pub fn illegal_state(msg: impl Into<String>) -> Self {
-        Self::IllegalState { msg: msg.into() }
+    pub fn illegal_state(msg: impl Into<String>, span: Span) -> Self {
+        Self::IllegalState {
+            msg: msg.into(),
+            span }
     }
 
-    pub fn expected_ty(msg: &str, expected: MemCellKind, actual: MemCellKind) -> Self {
+    pub fn expected_ty(msg: &str, expected: MemCellKind, actual: MemCellKind, span: Span) -> Self {
         Self::IllegalState {
             msg: format!("{} - expected {} value, got {}", msg, expected, actual),
+            span,
         }
     }
 }
@@ -43,13 +53,13 @@ impl fmt::Display for ExecError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshallingFailed { failed_ty } => write!(f, "Marshalling failed for type `{}`", failed_ty),
+            ExecError::MarshallingFailed { .. } => write!(f, "Marshalling failed"),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
             }
-            ExecError::IllegalDereference(..) => write!(f, "Illegal dereference"),
-            ExecError::IllegalState { msg } => write!(f, "Illegal interpreter state: {}", msg),
-            ExecError::IllegalHeapAccess(addr) => write!(f, "Illegal heap access at address {}", addr),
+            ExecError::IllegalDereference{ .. } => write!(f, "Illegal dereference"),
+            ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
+            ExecError::IllegalHeapAccess{ .. } => write!(f, "Illegal heap access at address"),
         }
     }
 }
@@ -65,7 +75,31 @@ impl DiagnosticOutput for ExecError {
                 text: Some(msg.clone()),
                 span: span.clone(),
             }),
-            _ => None,
+            ExecError::MarshallingFailed { failed_ty, span } => Some(DiagnosticLabel {
+                text: Some(format!("unable to marshal type `{}`", failed_ty)),
+                span: span.clone(),
+            }),
+            ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
+                text: Some(match ptr {
+                    Pointer::Null => "dereferenced null pointer",
+                    Pointer::Uninit => "dereferenced uninitialized pointer",
+                    Pointer::IntoArray { .. } => "dereferenced invalid array element pointer",
+                    Pointer::IntoStruct { .. } => "dereferenced invalid struct memeber pointer",
+                    Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
+                    Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
+                    Pointer::External(..) => "interpreter cannot dereference pointer from external code",
+                    _ => "illegal pointer dereference",
+                }.to_string()),
+                span: span.clone(),
+            }),
+            ExecError::IllegalHeapAccess { addr, span } => Some(DiagnosticLabel {
+                text: Some(format!("illegal access of unallocated heap location {}", addr)),
+                span: span.clone(),
+            }),
+            ExecError::IllegalState { msg, span } => Some(DiagnosticLabel {
+                text: Some(msg.clone()),
+                span: span.clone(),
+            })
         }
     }
 }

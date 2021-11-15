@@ -10,6 +10,7 @@ use ::libffi::{
     middle::{Cif, Type as ForeignType, Builder as FfiBuilder},
     raw::ffi_call as ffi_raw_call,
 };
+use pas_common::span::Span;
 use pas_ir::{metadata::Metadata,ExternalFunctionRef, LocalID, Ref, Type};
 
 #[derive(Debug)]
@@ -169,7 +170,7 @@ impl FfiInvoker {
             args.resize(args.len() + arg_foreign_len, 0);
 
             let arg_val = state.load(&Ref::Local(local_id))?;
-            let bytes_copied = marshal(arg_val, &mut args[arg_start..], param_ty)?;
+            let bytes_copied = marshal(arg_val, &mut args[arg_start..], param_ty, &state.debug_ctx())?;
 
             assert_eq!(bytes_copied, foreign_type_size(ffi_param_ty));
 
@@ -199,7 +200,7 @@ impl FfiInvoker {
         if has_return {
             unsafe {
                 let result_slice = slice_from_raw_parts(result_buf.as_ptr(), result_buf.len());
-                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)?;
+                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty, &state.debug_ctx())?;
 
                 let return_local = Ref::Local(LocalID(0));
                 state.store(&return_local, return_val)?;
@@ -210,7 +211,7 @@ impl FfiInvoker {
     }
 }
 
-fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type) -> ExecResult<usize> {
+fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecResult<usize> {
     let from_bytes = |bytes: &[u8], out_bytes: &mut [u8]| {
         out_bytes[0..bytes.len()].copy_from_slice(bytes);
         bytes.len()
@@ -233,13 +234,16 @@ fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type) -> ExecResult<usize> 
                     failed_ty: Type::Array {
                         element: Box::new(x.el_ty.clone()),
                         dim: x.elements.len(),
-                    }
+                    },
+                    span: span.clone(),
                 })?;
 
             let mut el_offset = from_bytes(&dim.to_ne_bytes(), out_bytes);
 
             for i in 0..dim {
-                el_offset += marshal(&x.elements[i as usize], &mut out_bytes[el_offset..], &x.el_ty)?;
+                let el = &x.elements[i as usize];
+                let el_bytes = &mut out_bytes[el_offset..];
+                el_offset += marshal(el, el_bytes, &x.el_ty, span)?;
             }
 
             el_offset
@@ -251,15 +255,18 @@ fn marshal(val: &MemCell, out_bytes: &mut [u8], ty: &Type) -> ExecResult<usize> 
         }
 
         _ => {
-            return Err(ExecError::MarshallingFailed { failed_ty: ty.clone() })
+            return Err(ExecError::MarshallingFailed { failed_ty: ty.clone(), span: span.clone() })
         }
     };
 
     Ok(size)
 }
 
-fn unmarshal(in_bytes: &[u8], ty: &Type) -> ExecResult<MemCell> {
-    let make_err = || ExecError::MarshallingFailed {failed_ty: ty.clone()};
+fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<MemCell> {
+    let make_err = || ExecError::MarshallingFailed {
+        failed_ty: ty.clone(),
+        span: span.clone(),
+    };
 
     match ty {
         Type::I32 => {
@@ -268,9 +275,7 @@ fn unmarshal(in_bytes: &[u8], ty: &Type) -> ExecResult<MemCell> {
             Ok(MemCell::I32(val))
         }
 
-        _ => Err(ExecError::MarshallingFailed {
-            failed_ty: ty.clone(),
-        })
+        _ => Err(make_err())
     }
 }
 

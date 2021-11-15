@@ -1,9 +1,12 @@
 use std::fmt;
+use pas_common::span::Span;
 use crate::{Ref, Value, Type, LocalID, InterfaceID, MethodID, FieldID, StructID, ClassID, RawInstructionFormatter, InstructionFormatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     Comment(String),
+    DebugPush(Span),
+    DebugPop,
 
     LocalAlloc(LocalID, Type),
     LocalBegin,
