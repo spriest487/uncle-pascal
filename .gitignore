@@ -2,3 +2,6 @@
 **/*.rs.bk
 .vs/
 .idea/
+*.dll
+*.exp
+*.lib
