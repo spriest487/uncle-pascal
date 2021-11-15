@@ -1,27 +1,23 @@
-use std::{
-    borrow::Borrow,
-    collections::hash_map::{Entry, HashMap},
-    fmt,
-    hash::Hash,
-    rc::Rc,
-};
-
-use pas_common::span::*;
-use pas_syn::{ast::Visibility, ident::*};
-
+pub use self::{builtin::*, ns::*, result::*, scope::*, ufcs::InstanceMethod};
 use crate::{
     ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
     context::NamespaceStack,
     specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type,
     TypeParamList, TypeParamType,
 };
-
-pub use self::{builtin::*, ns::*, result::*, ufcs::InstanceMethod};
+use pas_common::span::*;
+use pas_syn::{ast::Visibility, ident::*};
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    fmt,
+    hash::Hash,
+    rc::Rc,
+};
 
 pub mod builtin;
 pub mod ns;
 pub mod result;
-
+pub mod scope;
 mod ufcs;
 
 #[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
@@ -129,66 +125,6 @@ impl InterfaceImpl {
         Self {
             methods: HashMap::new(),
         }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
-pub struct ScopeID(usize);
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Scope {
-    id: ScopeID,
-    env: Environment,
-    decls: HashMap<Ident, Member<Scope>>,
-}
-
-impl Scope {
-    fn new(id: ScopeID, env: Environment) -> Self {
-        Self {
-            id,
-            env,
-            decls: HashMap::new(),
-        }
-    }
-}
-
-impl Namespace for Scope {
-    type Key = Ident;
-    type Value = Decl;
-
-    fn key(&self) -> Option<&Self::Key> {
-        match &self.env {
-            Environment::Module { namespace } => Some(namespace.last()),
-            _ => None,
-        }
-    }
-
-    fn keys(&self) -> Vec<Ident> {
-        self.decls.keys().cloned().collect()
-    }
-
-    fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member<Self>)>
-    where
-        Ident: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
-    {
-        self.decls
-            .iter()
-            .find(|(k, _v)| (*k).borrow() == member_key)
-    }
-
-    fn insert_member(&mut self, key: Ident, member_val: Member<Self>) -> Result<(), Ident> {
-        match self.decls.entry(key.clone()) {
-            Entry::Occupied(entry) => Err(entry.key().clone()),
-            Entry::Vacant(entry) => {
-                entry.insert(member_val);
-                Ok(())
-            }
-        }
-    }
-
-    fn replace_member(&mut self, key: Ident, member_val: Member<Self>) {
-        self.decls.insert(key, member_val);
     }
 }
 
@@ -345,7 +281,7 @@ impl Context {
         assert_ne!(ScopeID(0), id, "can't pop the root scope");
 
         loop {
-            let popped_id = self.scopes.current_path().top().id;
+            let popped_id = self.scopes.current_path().top().id();
 
             self.scopes.pop();
 
@@ -398,7 +334,7 @@ impl Context {
 
     pub fn current_func_return_ty(&self) -> Option<&Type> {
         for scope in self.scopes.iter_up() {
-            if let Environment::FunctionBody { result_ty } = &scope.env {
+            if let Environment::FunctionBody { result_ty } = scope.env() {
                 return Some(result_ty);
             }
         }
@@ -408,7 +344,7 @@ impl Context {
 
     pub fn allow_unsafe(&self) -> bool {
         for scope in self.scopes.iter_up() {
-            if let Environment::Block { allow_unsafe: true } = &scope.env {
+            if let Environment::Block { allow_unsafe: true } = scope.env() {
                 return true;
             }
         }
@@ -951,8 +887,7 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected =
-                    Named::Namespace(path.top().env.namespace().unwrap().clone());
+                let unexpected = Named::Namespace(path.top().env().namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -1047,8 +982,7 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected =
-                    Named::Namespace(path.top().env.namespace().unwrap().clone());
+                let unexpected = Named::Namespace(path.top().env().namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: unexpected,
@@ -1176,7 +1110,7 @@ impl Context {
     pub fn undefined_syms(&self) -> Vec<Ident> {
         let mut syms = Vec::new();
         for scope in self.scopes.current_path().as_slice().iter().rev() {
-            for (ident, decl) in scope.decls.iter() {
+            for (ident, decl) in scope.iter_decls() {
                 // only functions can possibly be undefined
                 if let Member::Value(Decl::Function { .. }) = decl {
                     let decl_path = IdentPath::from_parts(scope.key().cloned())
@@ -1200,7 +1134,7 @@ impl Context {
         let scope = self.scopes.current_mut();
         check_initialize_allowed(scope, local_id);
 
-        match scope.decls.get_mut(local_id) {
+        match scope.get_decl_mut(local_id) {
             Some(Member::Value(Decl::BoundValue(Binding { kind, .. }))) => {
                 if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
                     *kind = ValueKind::Mutable;
@@ -1214,7 +1148,7 @@ impl Context {
 
     pub fn is_local(&self, id: &Ident) -> bool {
         let current = self.scopes.current_path();
-        current.top().decls.contains_key(id)
+        current.top().get_decl(id).is_some()
     }
 
     pub fn consolidate_branches(&mut self, branch_contexts: &[Self]) {
@@ -1222,8 +1156,7 @@ impl Context {
 
         let uninit_names: Vec<_> = scope
             .top()
-            .decls
-            .iter()
+            .iter_decls()
             .filter_map(|(ident, decl)| match decl {
                 Member::Value(Decl::BoundValue(Binding {
                     kind: ValueKind::Uninitialized,
@@ -1300,7 +1233,7 @@ impl Context {
 }
 
 fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
-    match scope.decls.get(ident) {
+    match scope.get_decl(ident) {
         Some(Member::Value(decl)) => match decl {
             Decl::BoundValue(Binding { kind, .. }) => {
                 if !kind.mutable() {

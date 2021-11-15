@@ -28,7 +28,7 @@ fn classes_from_src(src: &'static str) -> Vec<Rc<Class>> {
 #[test]
 fn specialize_class_has_correct_member_types() {
     let tys = classes_from_src(
-        r"  type A of T = class
+        r"  type A[T] = class
                 t: T;
                 x: Byte;
             end;
@@ -53,7 +53,7 @@ fn specialize_class_has_correct_member_types() {
 #[test]
 fn specialize_class_has_multi_correct_member_types() {
     let tys = classes_from_src(
-        r"  type A of T1, T2 = class
+        r"  type A[T1, T2] = class
                 t1: T1;
                 t2: T2;
             end;
@@ -79,13 +79,13 @@ fn specialize_class_has_multi_correct_member_types() {
 #[test]
 fn specialize_class_with_deep_params() {
     let tys = classes_from_src(
-        r"  type A of T1, T2 = record
+        r"  type A[T1, T2] = record
                 t1: T1;
                 t2: T2;
             end;
 
-            type B of T = class
-                a: A of T, T;
+            type B[T] = class
+                a: A[T, T];
                 b: T;
             end;
         ",
@@ -98,14 +98,14 @@ fn specialize_class_with_deep_params() {
     let result = specialize_class_def(&tys[1], &type_args, &span).unwrap();
 
     let a_name = result.members[0].ty.as_record().unwrap();
-    assert_eq!("test.A of Integer, Integer", a_name.to_string());
+    assert_eq!("test.A[Integer, Integer]", a_name.to_string());
     assert_eq!(INT32, result.members[1].ty);
 }
 
 #[test]
 fn specialized_fn_has_right_sig() {
     let unit = unit_from_src(
-        r"  function A of T(t: T): T
+        r"  function A[T](t: T): T
             begin
                 t
             end;
@@ -142,11 +142,11 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let span = builtin_span();
     let unit = unit_from_src(
         r"
-            type A of AT = record
+            type A[AT] = record
                 a: AT;
             end;
 
-            function B of BT(a: A of BT): A of BT
+            function B[BT](a: A[BT]): A[BT]
             begin
                 a
             end;
