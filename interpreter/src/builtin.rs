@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, ValueType, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
@@ -94,7 +95,7 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     Ok(())
 }
 
-fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<&StructCell> {
+fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<Cow<StructCell>> {
     let array_ref_cell = state.load(&at)?;
     let rc_cell_ptr = array_ref_cell
         .as_pointer()
@@ -103,7 +104,8 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<&StructCell>
     let rc_cell = state.load_indirect(rc_cell_ptr)?;
 
     match state.deref_rc(&rc_cell)? {
-        ValueCell::Structure(dyn_array_struct_cell) => Ok(dyn_array_struct_cell.as_ref()),
+        Cow::Borrowed(ValueCell::Structure(dyn_array_struct_cell)) => Ok(Cow::Borrowed(dyn_array_struct_cell.as_ref())),
+        Cow::Owned(ValueCell::Structure(dyn_array_struct_cell)) => Ok(Cow::Owned(*dyn_array_struct_cell)),
         _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray", state.debug_ctx().into_owned())),
     }
 }
@@ -141,16 +143,26 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
         .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32", state.debug_ctx().into_owned()))?;
 
-    let array_class = state.load(&array_arg)?
+    let array_class_addr = state.load(&array_arg)?
         .as_pointer()
         .and_then(Pointer::as_heap_addr)
-        .and_then(|addr| state.heap.get(addr))
-        .and_then(ValueCell::as_rc)
+        .ok_or_else(|| {
+            let msg = "array arg passed to set_length must be a heap pointer";
+            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+        })?;
+
+    let array_class = state.heap.load(array_class_addr)
+        .map_err(|addr| ExecError::IllegalHeapAccess {
+            addr,
+            span: state.debug_ctx().into_owned(),
+        })?
+        .into_owned()
+        .as_rc()
+        .map(|rc_cell| rc_cell.struct_id)
         .ok_or_else(|| {
             let msg = "array arg passed to set_length must refer to an rc cell on the heap";
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
-        })?
-        .struct_id;
+        })?;
 
     let new_data = if new_len > 0 {
         let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
@@ -199,7 +211,9 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         // copy old data (if any) into the new array
         if let Some(old_data_addr) = old_data_addr {
             for i in 0..new_len.min(old_len) {
-                data_cells[i as usize] = state.heap[old_data_addr + i as usize].clone();
+                data_cells[i as usize] = state.heap.load(old_data_addr + i as usize)
+                    .map_err(|_| ExecError::illegal_state("failed to read old array contents in set_length", state.debug_ctx().into_owned()))?
+                    .into_owned();
             }
         }
 

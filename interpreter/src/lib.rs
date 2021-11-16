@@ -1,5 +1,5 @@
 pub use self::{
-    heap::{ValueHeap, HeapAddress},
+    heap::{value_heap::ValueHeap, HeapAddress},
     value_cell::*,
     ptr::Pointer,
 };
@@ -150,14 +150,20 @@ impl Interpreter {
 
     fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
         match ptr {
-            Pointer::Heap(slot) => {
+            Pointer::Heap(addr) => {
                 let heap_cell = self
                     .heap
-                    .get(*slot)
-                    .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new()));
+                    .load(*addr)
+                    .map_err(|addr| {
+                        ExecError::IllegalHeapAccess {
+                            addr,
+                            span: self.debug_ctx().into_owned(),
+                        }
+                    })?
+                    .into_owned();
 
-                Ok(Cow::Owned(heap_cell.clone()))
-            },
+                Ok(Cow::Owned(heap_cell))
+            }
 
             Pointer::Local { frame, id, .. } => {
                 let local_cell = self.stack[*frame].deref_local(*id)
@@ -264,18 +270,7 @@ impl Interpreter {
     fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
         let debug_ctx = self.debug_ctx().into_owned();
         match ptr {
-            Pointer::Heap(addr) => {
-                match self.heap.get_mut(*addr) {
-                    Some(heap_cell) => {
-                        *heap_cell = val;
-                        Ok(())
-                    },
-                    None => Err(ExecError::IllegalHeapAccess {
-                        addr: *addr,
-                        span: debug_ctx.clone(),
-                    }),
-                }
-            }
+            Pointer::Heap(addr) => self.store_heap(*addr, val),
 
             Pointer::Local { frame, id, .. } => {
                 let local_cell = self.stack[*frame].deref_local_mut(*id).map_err(|err| {
@@ -363,6 +358,20 @@ impl Interpreter {
                 })
             }
         }
+    }
+
+    pub fn load_heap(&self, addr: HeapAddress) -> ExecResult<Cow<ValueCell>> {
+        self.heap.load(addr).map_err(|addr| ExecError::IllegalHeapAccess {
+            addr,
+            span: self.debug_ctx().into_owned()
+        })
+    }
+
+    pub fn store_heap(&mut self, addr: HeapAddress, val: ValueCell) -> ExecResult<()> {
+        self.heap.store(addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
+            addr,
+            span: self.debug_ctx().into_owned()
+        })
     }
 
     fn store(&mut self, at: &Ref, val: ValueCell) -> ExecResult<()> {
@@ -487,21 +496,23 @@ impl Interpreter {
         iface_id: InterfaceID,
         method: MethodID,
     ) -> ExecResult<FunctionID> {
-        let self_rc = self_cell
+        let self_rc_addr = self_cell
             .as_pointer()
-            .and_then(|rc_ptr| {
-                let rc_addr = rc_ptr.as_heap_addr()?;
-                let rc_cell = self.heap.get(rc_addr)?;
-                rc_cell.as_rc()
-            })
-            .ok_or_else(|| {
-                ExecError::illegal_state(format!(
-                    "expected target of virtual call {}.{} to be an rc cell, but found {:?}",
-                    iface_id, method.0, self_cell,
-                ), self.debug_ctx().into_owned())
-            })?;
+            .and_then(|ptr| ptr.as_heap_addr())
+            .ok_or_else(|| ExecError::illegal_state("expected target of vcall to be a heap pointer", self.debug_ctx().into_owned()))?;
 
-        let instance_ty = Type::RcPointer(Some(ClassID::Class(self_rc.struct_id)));
+        let self_class_id = match self.load_heap(self_rc_addr)?.as_ref()  {
+            ValueCell::RcCell(rc_cell) => Ok(rc_cell.struct_id),
+            _ => {
+                let msg = format!(
+                    "expected target of vcall {}.{} to be an rc cell, but found {:?}",
+                    iface_id, method.0, self_cell,
+                );
+                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            }
+        }?;
+
+        let instance_ty = Type::RcPointer(Some(ClassID::Class(self_class_id)));
 
         self.metadata
             .find_impl(&instance_ty, iface_id, method)
@@ -608,8 +619,8 @@ impl Interpreter {
             .as_heap_addr()
             .unwrap_or_else(|| panic!("released cell was not a heap pointer, found: {:?}", cell));
 
-        let rc_cell = match &self.heap[rc_addr] {
-            ValueCell::RcCell(rc_cell) => rc_cell.clone(),
+        let rc_cell = match self.load_heap(rc_addr)?.into_owned() {
+            ValueCell::RcCell(rc_cell) => rc_cell,
             other => panic!("released cell was not an rc value, found: {:?}", other),
         };
 
@@ -686,10 +697,10 @@ impl Interpreter {
                 )
             }
 
-            self.heap[rc_addr] = ValueCell::RcCell(Box::new(RcCell {
+            self.store_heap(rc_addr, ValueCell::RcCell(Box::new(RcCell {
                 ref_count: rc_cell.ref_count - 1,
                 ..*rc_cell
-            }));
+            })))?;
         }
 
         Ok(())
@@ -698,19 +709,23 @@ impl Interpreter {
     fn retain_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
         match cell {
             ValueCell::Pointer(Pointer::Heap(addr)) => {
-                let rc_cell = match &mut self.heap[*addr] {
-                    ValueCell::RcCell(rc_cell) => rc_cell.as_mut(),
+                let mut rc_cell = self.load_heap(*addr)?.into_owned();
+                match &mut rc_cell {
+                    ValueCell::RcCell(rc) => {
+                        if self.trace_rc {
+                            eprintln!("rc: retain @ {}", addr);
+                        }
+
+                        rc.ref_count += 1;
+                    }
+
                     other => {
                         let msg = format!("retained cell must point to an rc cell, found: {:?}", other);
                         return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     }
                 };
 
-                if self.trace_rc {
-                    eprintln!("rc: retain @ {}", addr);
-                }
-
-                rc_cell.ref_count += 1;
+                self.store_heap(*addr, rc_cell)?;
 
                 Ok(())
             }
@@ -1318,14 +1333,13 @@ impl Interpreter {
                 let msg = "argument a of ClassIs instruction must evaluate to a heap pointer";
                 ExecError::illegal_state(msg, self.debug_ctx().into_owned())
             })?;
-        let rc_cell = self
-            .heap
-            .get(rc_addr)
-            .and_then(ValueCell::as_rc)
-            .ok_or_else(|| {
+        let rc_cell = match self.load_heap(rc_addr)?.into_owned() {
+            ValueCell::RcCell(rc) => Ok(rc),
+            _ => {
                 let msg = "rc pointer target of ClassIs instruction must point to an rc cell";
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
-            })?;
+                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            }
+        }?;
 
         let is = match class_id {
             ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
@@ -1503,16 +1517,12 @@ impl Interpreter {
         Ok(())
     }
 
-    fn deref_rc(&self, rc_cell: &ValueCell) ->  ExecResult<&ValueCell> {
+    fn deref_rc(&self, rc_cell: &ValueCell) ->  ExecResult<Cow<ValueCell>> {
         let rc = rc_cell.as_rc().ok_or_else(|| {
             ExecError::illegal_state(format!("trying to deref RC ref but value was {}", rc_cell.kind()), self.debug_ctx().into_owned())
         })?;
 
-        let res_addr = rc.resource_addr;
-        self.heap.get(res_addr).ok_or_else(|| {
-            let msg = format!("heap address not allocated: {}", res_addr);
-            ExecError::illegal_state(msg, self.debug_ctx().into_owned())
-        })
+        self.load_heap(rc.resource_addr)
     }
 
     fn create_string(&mut self, content: &str) -> ValueCell {
@@ -1573,11 +1583,7 @@ impl Interpreter {
         let mut chars = Vec::new();
         for i in 0..*len as usize {
             let char_addr = HeapAddress(chars_addr.0 + i);
-            let char_val = self
-                .heap
-                .get(char_addr)
-                .unwrap()
-                .as_u8()
+            let char_val = self.load_heap(char_addr)?.as_u8()
                 .ok_or_else(|| {
                     ExecError::illegal_state(format!("expected string char @ {}", char_addr), self.debug_ctx().into_owned())
                 })?;
