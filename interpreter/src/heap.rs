@@ -7,7 +7,7 @@ use std::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Heap {
+pub struct ValueHeap {
     slots: Vec<Option<ValueCell>>,
     alloc_lens: HashMap<HeapAddress, usize>,
 
@@ -43,7 +43,7 @@ impl HeapAddress {
     }
 }
 
-impl Heap {
+impl ValueHeap {
     pub fn new() -> Self {
         Self {
             slots: Vec::new(),
@@ -147,7 +147,7 @@ impl Heap {
     }
 }
 
-impl Index<HeapAddress> for Heap {
+impl Index<HeapAddress> for ValueHeap {
     type Output = ValueCell;
 
     fn index(&self, addr: HeapAddress) -> &ValueCell {
@@ -159,7 +159,7 @@ impl Index<HeapAddress> for Heap {
     }
 }
 
-impl IndexMut<HeapAddress> for Heap {
+impl IndexMut<HeapAddress> for ValueHeap {
     fn index_mut(&mut self, addr: HeapAddress) -> &mut ValueCell {
         if self.get_mut(addr).is_none() {
             panic!("trying to mutably access unallocated heap location {}", addr)

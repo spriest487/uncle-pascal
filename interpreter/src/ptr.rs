@@ -4,7 +4,7 @@ use std::ops::{Add, Sub};
 use pas_ir::LocalID;
 use pas_ir::metadata::FieldID;
 use crate::{ExecResult, HeapAddress, Interpreter};
-use crate::memcell::ValueCell;
+use crate::value_cell::ValueCell;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {

@@ -1,6 +1,6 @@
 pub use self::{
-    heap::{Heap, HeapAddress},
-    memcell::*,
+    heap::{ValueHeap, HeapAddress},
+    value_cell::*,
     ptr::Pointer,
 };
 use crate::{
@@ -22,7 +22,7 @@ use pas_ir::metadata::ty::{ClassID, FieldID};
 mod builtin;
 mod func;
 mod heap;
-mod memcell;
+mod value_cell;
 mod ptr;
 mod stack;
 pub mod result;
@@ -47,7 +47,7 @@ pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
     globals: HashMap<GlobalRef, GlobalCell>,
-    heap: Heap,
+    heap: ValueHeap,
 
     ffi_cache: FfiCache,
 
@@ -61,7 +61,7 @@ impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
         let globals = HashMap::new();
 
-        let mut heap = Heap::new();
+        let mut heap = ValueHeap::new();
         heap.trace = opts.trace_heap;
 
         Self {
