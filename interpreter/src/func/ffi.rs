@@ -170,7 +170,7 @@ impl FfiInvoker {
             args.resize(args.len() + arg_foreign_len, 0);
 
             let arg_val = state.load(&Ref::Local(local_id))?;
-            let bytes_copied = marshal(arg_val, &mut args[arg_start..], param_ty, &state.debug_ctx())?;
+            let bytes_copied = marshal(&arg_val, &mut args[arg_start..], param_ty, &state.debug_ctx())?;
 
             assert_eq!(bytes_copied, foreign_type_size(ffi_param_ty));
 

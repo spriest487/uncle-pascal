@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
 use pas_ir::LocalID;
@@ -40,8 +41,8 @@ impl Pointer {
         }
     }
 
-    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<&'a ValueCell> {
-        state.deref_ptr(self)
+    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, ValueCell>> {
+        state.load_indirect(self)
     }
 
     fn kind(&self) -> PointerKind {

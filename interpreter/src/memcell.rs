@@ -275,24 +275,24 @@ impl ValueCell {
         }
     }
 
-    pub fn kind(&self) -> MemCellKind {
+    pub fn kind(&self) -> ValueType {
         match self {
-            ValueCell::Bool(..) => MemCellKind::Bool,
-            ValueCell::U8(..) => MemCellKind::U8,
-            ValueCell::I32(..) => MemCellKind::I32,
-            ValueCell::F32(..) => MemCellKind::F32,
-            ValueCell::RcCell(..) => MemCellKind::Rc,
-            ValueCell::Function(..) => MemCellKind::Function,
-            ValueCell::Structure(..) => MemCellKind::Structure,
-            ValueCell::Variant(..) => MemCellKind::Variant,
-            ValueCell::Pointer(..) => MemCellKind::Pointer,
-            ValueCell::Array(..) => MemCellKind::Array,
+            ValueCell::Bool(..) => ValueType::Bool,
+            ValueCell::U8(..) => ValueType::U8,
+            ValueCell::I32(..) => ValueType::I32,
+            ValueCell::F32(..) => ValueType::F32,
+            ValueCell::RcCell(..) => ValueType::Rc,
+            ValueCell::Function(..) => ValueType::Function,
+            ValueCell::Structure(..) => ValueType::Structure,
+            ValueCell::Variant(..) => ValueType::Variant,
+            ValueCell::Pointer(..) => ValueType::Pointer,
+            ValueCell::Array(..) => ValueType::Array,
         }
     }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum MemCellKind {
+pub enum ValueType {
     Bool,
     U8,
     I32,
@@ -305,19 +305,19 @@ pub enum MemCellKind {
     Array,
 }
 
-impl fmt::Display for MemCellKind {
+impl fmt::Display for ValueType {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", match self {
-            MemCellKind::Bool => "Bool",
-            MemCellKind::U8 => "U8",
-            MemCellKind::I32 => "I32",
-            MemCellKind::F32 => "F32",
-            MemCellKind::Rc => "Rc",
-            MemCellKind::Function => "Function",
-            MemCellKind::Structure => "Structure",
-            MemCellKind::Variant => "Variant",
-            MemCellKind::Pointer => "Pointer",
-            MemCellKind::Array => "Array",
+            ValueType::Bool => "Bool",
+            ValueType::U8 => "U8",
+            ValueType::I32 => "I32",
+            ValueType::F32 => "F32",
+            ValueType::Rc => "Rc",
+            ValueType::Function => "Function",
+            ValueType::Structure => "Structure",
+            ValueType::Variant => "Variant",
+            ValueType::Pointer => "Pointer",
+            ValueType::Array => "Array",
         })
     }
 }

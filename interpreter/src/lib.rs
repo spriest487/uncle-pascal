@@ -148,7 +148,7 @@ impl Interpreter {
         Ok(cell)
     }
 
-    fn deref_ptr(&self, ptr: &Pointer) -> ExecResult<&ValueCell> {
+    fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
         match ptr {
             Pointer::Heap(slot) => {
                 let heap_cell = self
@@ -156,63 +156,97 @@ impl Interpreter {
                     .get(*slot)
                     .unwrap_or_else(|| panic!("heap cell {} is not allocated: {:?}", slot, pas_common::Backtrace::new()));
 
-                Ok(heap_cell)
+                Ok(Cow::Owned(heap_cell.clone()))
             },
 
             Pointer::Local { frame, id, .. } => {
-                self.stack[*frame].deref_local(*id)
+                let local_cell = self.stack[*frame].deref_local(*id)
                     .map_err(|err| {
                         ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
-                    })
+                    })?;
+
+                Ok(Cow::Borrowed(local_cell))
             }
 
             Pointer::IntoArray { array, offset, .. } => {
-                match self.deref_ptr(array)? {
-                    ValueCell::Array(array_cell) => {
-                        Ok(&array_cell.elements[*offset])
+                match self.load_indirect(array)? {
+                    Cow::Borrowed(ValueCell::Array(array_cell)) => {
+                        match array_cell.elements.get(*offset) {
+                            Some(el) => Ok(Cow::Borrowed(el)),
+                            None => Err(ExecError::illegal_state("invalid array offset in pointer", self.debug_ctx().into_owned())),
+                        }
+                    }
+
+                    Cow::Owned(ValueCell::Array(array_cell)) => {
+                        match array_cell.elements.into_iter().nth(*offset) {
+                            Some(el) => Ok(Cow::Owned(el)),
+                            None => Err(ExecError::illegal_state("invalid array offset in pointer", self.debug_ctx().into_owned())),
+                        }
                     }
 
                     invalid => {
                         let msg = "referencing array element";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Array, invalid.kind(), self.debug_ctx().into_owned()));
+                        return Err(ExecError::expected_ty(msg, ValueType::Array, invalid.kind(), self.debug_ctx().into_owned()));
                     },
                 }
             }
 
             Pointer::IntoStruct { structure, field, .. } => {
-                match self.deref_ptr(structure)? {
-                    ValueCell::Structure(struct_cell) => {
-                        Ok(&struct_cell[*field])
+                match self.load_indirect(structure)? {
+                    Cow::Borrowed(ValueCell::Structure(struct_cell)) => {
+                        match struct_cell.fields.get(field.0) {
+                            Some(field_val) => Ok(Cow::Borrowed(field_val)),
+                            None => Err(ExecError::illegal_state("invalid field offset in struct pointer", self.debug_ctx().into_owned())),
+                        }
+                    }
+
+                    Cow::Owned(ValueCell::Structure(struct_cell)) => {
+                        match struct_cell.fields.into_iter().nth(field.0) {
+                            Some(field_val) => Ok(Cow::Owned(field_val)),
+                            None => Err(ExecError::illegal_state("invalid field offset in struct pointer", self.debug_ctx().into_owned())),
+                        }
                     }
 
                     invalid => {
                         let msg = "referencing struct field";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Structure, invalid.kind(), self.debug_ctx().into_owned()));
+                        return Err(ExecError::expected_ty(msg, ValueType::Structure, invalid.kind(), self.debug_ctx().into_owned()));
                     }
                 }
             }
 
             Pointer::VariantTag { variant } => {
-                match self.deref_ptr(variant)? {
-                    ValueCell::Variant(variant_cell) => Ok(variant_cell.tag.as_ref()),
+                match self.load_indirect(variant)? {
+                    Cow::Borrowed(ValueCell::Variant(variant_cell)) => Ok(Cow::Borrowed(variant_cell.tag.as_ref())),
+                    Cow::Owned(ValueCell::Variant(variant_cell)) => Ok(Cow::Owned(*variant_cell.tag)),
                     invalid => {
                         let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind(), self.debug_ctx().into_owned()));
+                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), self.debug_ctx().into_owned()));
                     },
                 }
             }
 
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
-                match self.deref_ptr(variant)? {
-                    ValueCell::Variant(variant_cell) => {
-                        assert_eq!(variant_cell.tag.as_i32(), Some(expect_tag));
-                        Ok(variant_cell.data.as_ref())
+                match self.load_indirect(variant)? {
+                    Cow::Borrowed(ValueCell::Variant(variant_cell)) => {
+                        if variant_cell.tag.as_i32() != Some(expect_tag) {
+                            return Err(ExecError::illegal_state("illegal variant tag", self.debug_ctx().into_owned()));
+                        }
+
+                        Ok(Cow::Borrowed(variant_cell.data.as_ref()))
                     },
+
+                    Cow::Owned(ValueCell::Variant(variant_cell)) => {
+                        if variant_cell.tag.as_i32() != Some(expect_tag) {
+                            return Err(ExecError::illegal_state("illegal variant tag", self.debug_ctx().into_owned()));
+                        }
+
+                        Ok(Cow::Owned(*variant_cell.data))
+                    }
 
                     invalid => {
                         let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind(), self.debug_ctx().into_owned()));
+                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), self.debug_ctx().into_owned()));
                     },
                 }
             }
@@ -226,12 +260,16 @@ impl Interpreter {
         }
     }
 
-    fn deref_ptr_mut(&mut self, ptr: &Pointer) -> ExecResult<&mut ValueCell> {
+    /// dereference a pointer and set the value it points to
+    fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
         let debug_ctx = self.debug_ctx().into_owned();
         match ptr {
             Pointer::Heap(addr) => {
                 match self.heap.get_mut(*addr) {
-                    Some(heap_cell) => Ok(heap_cell),
+                    Some(heap_cell) => {
+                        *heap_cell = val;
+                        Ok(())
+                    },
                     None => Err(ExecError::IllegalHeapAccess {
                         addr: *addr,
                         span: debug_ctx.clone(),
@@ -240,58 +278,80 @@ impl Interpreter {
             }
 
             Pointer::Local { frame, id, .. } => {
-                self.stack[*frame].deref_local_mut(*id).map_err(|err| {
+                let local_cell = self.stack[*frame].deref_local_mut(*id).map_err(|err| {
                     ExecError::illegal_state(err.to_string(), debug_ctx)
-                })
+                })?;
+
+                *local_cell = val;
+
+                Ok(())
             }
 
             Pointer::IntoArray { array, offset, .. } => {
-                match self.deref_ptr_mut(array)? {
-                    ValueCell::Array(array_cell) => {
-                        Ok(&mut array_cell.elements[*offset])
+                match self.load_indirect(array)?.into_owned() {
+                    ValueCell::Array(mut array_cell) => {
+                        array_cell.elements[*offset] = val;
+
+                        self.store_indirect(array, ValueCell::Array(array_cell))?;
+                        Ok(())
                     }
 
                     invalid => {
                         let msg = "referencing array element";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Array, invalid.kind(), debug_ctx));
+                        Err(ExecError::expected_ty(msg, ValueType::Array, invalid.kind(), debug_ctx))
                     },
                 }
             }
 
             Pointer::IntoStruct { structure, field, .. } => {
-                match self.deref_ptr_mut(structure)? {
-                    ValueCell::Structure(struct_cell) => {
-                        Ok(&mut struct_cell[*field])
+                match self.load_indirect(structure)?.into_owned() {
+                    ValueCell::Structure(mut struct_cell) => {
+                        struct_cell[*field] = val;
+                        self.store_indirect(structure, ValueCell::Structure(struct_cell))?;
+
+                        Ok(())
                     }
 
                     invalid => {
                         let msg = "referencing struct field";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Structure, invalid.kind(), debug_ctx));
+                        Err(ExecError::expected_ty(msg, ValueType::Structure, invalid.kind(), debug_ctx))
                     }
                 }
             }
 
             Pointer::VariantTag { variant } => {
-                match self.deref_ptr_mut(variant)? {
-                    ValueCell::Variant(variant_cell) => Ok(variant_cell.tag.as_mut()),
+                match self.load_indirect(variant)?.into_owned() {
+                    ValueCell::Variant(mut variant_cell) => {
+                        *variant_cell.tag = val;
+
+                        self.store_indirect(variant, ValueCell::Variant(variant_cell))?;
+                        Ok(())
+                    },
+
                     invalid => {
                         let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind(), debug_ctx));
+                        Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), debug_ctx))
                     },
                 }
             }
 
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
-                match self.deref_ptr_mut(variant)? {
-                    ValueCell::Variant(variant_cell) => {
-                        assert_eq!(variant_cell.tag.as_i32(), Some(expect_tag));
-                        Ok(variant_cell.data.as_mut())
+                match self.load_indirect(variant)?.into_owned() {
+                    ValueCell::Variant(mut variant_cell) => {
+                        if variant_cell.tag.as_i32() != Some(expect_tag) {
+                            return Err(ExecError::illegal_state("illegal variant tag", debug_ctx));
+                        }
+
+                        *variant_cell.data = val;
+                        self.store_indirect(variant, ValueCell::Variant(variant_cell))?;
+
+                        Ok(())
                     },
 
                     invalid => {
                         let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, MemCellKind::Variant, invalid.kind(), debug_ctx));
+                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), debug_ctx));
                     },
                 }
             }
@@ -338,8 +398,7 @@ impl Interpreter {
 
             Ref::Deref(inner) => match self.evaluate(inner)? {
                 ValueCell::Pointer(ptr) => {
-                    let ptr_deref_cell = self.deref_ptr_mut(&ptr)?;
-                    *ptr_deref_cell = val;
+                    self.store_indirect(&ptr, val)?;
 
                     Ok(())
                 }
@@ -352,17 +411,22 @@ impl Interpreter {
         }
     }
 
-    fn load(&self, at: &Ref) -> ExecResult<&ValueCell> {
+    fn load(&self, at: &Ref) -> ExecResult<Cow<ValueCell>> {
         match at {
-            Ref::Discard => Err(ExecError::illegal_state("can't read value from discard ref", self.debug_ctx().into_owned())),
+            Ref::Discard => {
+                let msg = "can't read value from discard ref";
+                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            },
 
-            Ref::Local(id) => self.current_frame()?.load_local(*id)
+            Ref::Local(id) => self.current_frame()?
+                .load_local(*id)
+                .map(Cow::Borrowed)
                 .map_err(|err| {
                     ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
                 }),
 
             Ref::Global(name) => match self.globals.get(name) {
-                Some(cell) => Ok(&cell.value),
+                Some(cell) => Ok(Cow::Borrowed(&cell.value)),
                 None => {
                     let msg = format!("global cell `{}` is not allocated", name);
                     Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
@@ -370,7 +434,7 @@ impl Interpreter {
             },
 
             Ref::Deref(inner) => match self.evaluate(inner)? {
-                ValueCell::Pointer(ptr) => self.deref_ptr(&ptr),
+                ValueCell::Pointer(ptr) => self.load_indirect(&ptr),
                 x => {
                     let msg = format!("can't dereference cell {:?}", x);
                     Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
@@ -383,7 +447,7 @@ impl Interpreter {
         match val {
             Value::Ref(r) => {
                 let ref_val = self.load(r)?;
-                Ok(ref_val.clone())
+                Ok(ref_val.into_owned())
             },
 
             Value::LiteralI32(i) => Ok(ValueCell::I32(*i)),
@@ -913,7 +977,7 @@ impl Interpreter {
     }
 
     fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
-        match self.load(at)? {
+        match self.load(at)?.as_ref() {
             ValueCell::Pointer(Pointer::Heap(addr)) => {
                 let addr = *addr;
                 self.heap.free(addr);
@@ -949,14 +1013,14 @@ impl Interpreter {
     }
 
     fn exec_retain(&mut self, at: &Ref) -> ExecResult<()> {
-        let cell = self.load(at)?.clone();
+        let cell = self.load(at)?.into_owned();
         self.retain_cell(&cell)?;
 
         Ok(())
     }
 
     fn exec_release(&mut self, at: &Ref) -> ExecResult<()> {
-        let cell = self.load(at)?.clone();
+        let cell = self.load(at)?.into_owned();
         self.release_cell(&cell)?;
 
         Ok(())
@@ -1479,7 +1543,8 @@ impl Interpreter {
     }
 
     fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
-        let str_cell = self.deref_rc(self.load(str_ref)?)?;
+        let str_rc_ptr = self.load(str_ref)?;
+        let str_cell = self.deref_rc(&str_rc_ptr)?;
 
         let str_cell = match str_cell.as_struct(STRING_ID) {
             Some(struct_cell) => struct_cell,

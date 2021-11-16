@@ -1,4 +1,4 @@
-use crate::{HeapAddress, MemCellKind, Pointer};
+use crate::{HeapAddress, ValueType, Pointer};
 use pas_common::span::Span;
 use pas_common::{DiagnosticLabel, DiagnosticOutput};
 use pas_ir::Type;
@@ -41,7 +41,7 @@ impl ExecError {
             span }
     }
 
-    pub fn expected_ty(msg: &str, expected: MemCellKind, actual: MemCellKind, span: Span) -> Self {
+    pub fn expected_ty(msg: &str, expected: ValueType, actual: ValueType, span: Span) -> Self {
         Self::IllegalState {
             msg: format!("{} - expected {} value, got {}", msg, expected, actual),
             span,

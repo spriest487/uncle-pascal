@@ -1,5 +1,5 @@
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
-use crate::{ExecError, ExecResult, Interpreter, ValueCell, MemCellKind, Pointer, RcCell, StructCell};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, ValueType, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 
@@ -10,7 +10,7 @@ pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0_cell = state.load(&arg_0)?;
     let int = arg_0_cell.as_i32()
         .ok_or_else(|| {
-            ExecError::expected_ty("IntToStr argument", MemCellKind::I32, arg_0_cell.kind(), state.debug_ctx().into_owned())
+            ExecError::expected_ty("IntToStr argument", ValueType::I32, arg_0_cell.kind(), state.debug_ctx().into_owned())
         })?;
 
     let string = state.create_string(&int.to_string());
@@ -100,9 +100,9 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<&StructCell>
         .as_pointer()
         .ok_or_else(|| ExecError::illegal_state("array_length: argument cell must be pointer", state.debug_ctx().into_owned()))?;
 
-    let rc_cell = state.deref_ptr(rc_cell_ptr)?;
+    let rc_cell = state.load_indirect(rc_cell_ptr)?;
 
-    match state.deref_rc(rc_cell)? {
+    match state.deref_rc(&rc_cell)? {
         ValueCell::Structure(dyn_array_struct_cell) => Ok(dyn_array_struct_cell.as_ref()),
         _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray", state.debug_ctx().into_owned())),
     }
@@ -117,7 +117,7 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
     // the type of %1 should be Any (pointer to an rc cell)
     let len_cell = &array_struct[DYNARRAY_LEN_FIELD];
     let len = len_cell.as_i32()
-        .ok_or_else(|| ExecError::expected_ty("array_length argument cell", MemCellKind::I32, len_cell.kind(), state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::expected_ty("array_length argument cell", ValueType::I32, len_cell.kind(), state.debug_ctx().into_owned()))?;
 
     state.store(&RETURN_REF, ValueCell::I32(len))?;
 
@@ -133,7 +133,8 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         .ok_or_else(|| ExecError::illegal_state("len arg passed to set_length must be i32", state.debug_ctx().into_owned()))?;
 
     let default_val_arg = Ref::Local(LocalID(3));
-    let default_val_ptr = state.load(&default_val_arg)?.as_pointer()
+    let default_val = state.load(&default_val_arg)?.into_owned();
+    let default_val_ptr = default_val.as_pointer()
         .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer", state.debug_ctx().into_owned()))?;
 
     let default_val_len_arg = Ref::Local(LocalID(4));
@@ -175,14 +176,14 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         let len_field_cell = &old_array_struct[DYNARRAY_LEN_FIELD];
         let old_len =  len_field_cell.as_i32().ok_or_else(|| {
             let msg = "accessing dynarray length";
-            ExecError::expected_ty(msg, MemCellKind::I32,  len_field_cell.kind(), state.debug_ctx().into_owned())
+            ExecError::expected_ty(msg, ValueType::I32, len_field_cell.kind(), state.debug_ctx().into_owned())
         })?;
 
         let old_data_ptr_cell = &old_array_struct[DYNARRAY_PTR_FIELD];
         let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
             .ok_or_else(|| {
                 let msg = "accessing dynarray ptr: not a valid heap ptr";
-                ExecError::expected_ty(msg, MemCellKind::Pointer, old_data_ptr_cell.kind(), state.debug_ctx().into_owned())
+                ExecError::expected_ty(msg, ValueType::Pointer, old_data_ptr_cell.kind(), state.debug_ctx().into_owned())
             })?;
         let old_data_addr = match old_data_ptr {
             Pointer::Null => None,
@@ -203,7 +204,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         }
 
         // copy default value into any cells beyond the length of the original array
-        let default_val = state.deref_ptr(default_val_ptr)?.clone();
+        let default_val = state.load_indirect(default_val_ptr)?.into_owned();
 
         // put the initialized array onto the heap before retaining it because passing pointers
         // to retain funcs is a lot easier when the target is already on the heap
@@ -216,12 +217,11 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
             // assign default val for new elements
             if i >= old_len as usize {
-                let el_cell = state.deref_ptr_mut(&el_ptr)?;
-                *el_cell = default_val.clone();
+                state.store_indirect(&el_ptr, default_val.clone())?;
             }
 
             if dyn_array_el_ty.is_rc() {
-                let el_rc_ref = state.deref_ptr(&el_ptr)?.clone();
+                let el_rc_ref = state.load_indirect(&el_ptr)?.into_owned();
                 state.retain_cell(&el_rc_ref)?;
             } else if let Some((el_retain_func, _)) = &el_rc_funcs {
                 state.call(el_retain_func, &[ValueCell::Pointer(el_ptr)], None)?;
