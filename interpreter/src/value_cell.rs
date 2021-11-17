@@ -1,11 +1,10 @@
-use std::fmt;
-use std::ops::{Index, IndexMut};
-use std::rc::Rc;
+use crate::func::Function;
+use crate::ptr::Pointer;
+use crate::HeapAddress;
 use pas_ir::metadata::{FieldID, StructID};
 use pas_ir::Type;
-use crate::func::Function;
-use crate::HeapAddress;
-use crate::ptr::Pointer;
+use std::ops::{Index, IndexMut};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct StructCell {
@@ -75,6 +74,10 @@ impl ArrayCell {
             None
         }
     }
+
+    pub fn array_ty(&self) -> Type {
+        self.el_ty.clone().array(self.elements.len())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -122,9 +125,10 @@ impl ValueCell {
                 Some(ValueCell::Pointer(ptr.clone() + *offset as isize))
             }
 
-            (ValueCell::Pointer(Pointer::Heap(ref a)), ValueCell::Pointer(Pointer::Heap(ref b))) => {
-                Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0))))
-            }
+            (
+                ValueCell::Pointer(Pointer::Heap(ref a)),
+                ValueCell::Pointer(Pointer::Heap(ref b)),
+            ) => Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0)))),
 
             _ => None,
         }
@@ -140,9 +144,10 @@ impl ValueCell {
                 Some(ValueCell::Pointer(ptr.clone() - *offset as isize))
             }
 
-            (ValueCell::Pointer(Pointer::Heap(ref a)), ValueCell::Pointer(Pointer::Heap(ref b))) => {
-                Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0))))
-            }
+            (
+                ValueCell::Pointer(Pointer::Heap(ref a)),
+                ValueCell::Pointer(Pointer::Heap(ref b)),
+            ) => Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0)))),
 
             _ => None,
         }
@@ -275,49 +280,18 @@ impl ValueCell {
         }
     }
 
-    pub fn kind(&self) -> ValueType {
-        match self {
-            ValueCell::Bool(..) => ValueType::Bool,
-            ValueCell::U8(..) => ValueType::U8,
-            ValueCell::I32(..) => ValueType::I32,
-            ValueCell::F32(..) => ValueType::F32,
-            ValueCell::RcCell(..) => ValueType::Rc,
-            ValueCell::Function(..) => ValueType::Function,
-            ValueCell::Structure(..) => ValueType::Structure,
-            ValueCell::Variant(..) => ValueType::Variant,
-            ValueCell::Pointer(..) => ValueType::Pointer,
-            ValueCell::Array(..) => ValueType::Array,
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ValueType {
-    Bool,
-    U8,
-    I32,
-    F32,
-    Rc,
-    Function,
-    Structure,
-    Variant,
-    Pointer,
-    Array,
-}
-
-impl fmt::Display for ValueType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", match self {
-            ValueType::Bool => "Bool",
-            ValueType::U8 => "U8",
-            ValueType::I32 => "I32",
-            ValueType::F32 => "F32",
-            ValueType::Rc => "Rc",
-            ValueType::Function => "Function",
-            ValueType::Structure => "Structure",
-            ValueType::Variant => "Variant",
-            ValueType::Pointer => "Pointer",
-            ValueType::Array => "Array",
-        })
-    }
+    // pub fn marshalled_type(&self) -> Type {
+    //     match self {
+    //         ValueCell::Bool(..) => Type::Bool,
+    //         ValueCell::U8(..) => Type::U8,
+    //         ValueCell::I32(..) => Type::I32,
+    //         ValueCell::F32(..) => Type::F32,
+    //         ValueCell::RcCell(..) => Type::Nothing,
+    //         ValueCell::Function(..) => Type::Nothing.ptr(),
+    //         ValueCell::Structure(..) => Type::Nothing,
+    //         ValueCell::Variant(..) => Type::Nothing,
+    //         ValueCell::Pointer(..) => Type::Nothing.ptr(),
+    //         ValueCell::Array(arr) => arr.el_ty.clone().array(arr.elements.len()),
+    //     }
+    // }
 }

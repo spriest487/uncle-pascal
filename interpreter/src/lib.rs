@@ -174,7 +174,7 @@ impl Interpreter {
                 Ok(Cow::Borrowed(local_cell))
             }
 
-            Pointer::IntoArray { array, offset, .. } => {
+            Pointer::IntoArray { array, offset } => {
                 match self.load_indirect(array)? {
                     Cow::Borrowed(ValueCell::Array(array_cell)) => {
                         match array_cell.elements.get(*offset) {
@@ -191,8 +191,8 @@ impl Interpreter {
                     }
 
                     invalid => {
-                        let msg = "referencing array element";
-                        return Err(ExecError::expected_ty(msg, ValueType::Array, invalid.kind(), self.debug_ctx().into_owned()));
+                        let msg = format!("target of dereferenced array pointer was not an array: {:?}", invalid);
+                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     },
                 }
             }
@@ -214,8 +214,8 @@ impl Interpreter {
                     }
 
                     invalid => {
-                        let msg = "referencing struct field";
-                        return Err(ExecError::expected_ty(msg, ValueType::Structure, invalid.kind(), self.debug_ctx().into_owned()));
+                        let msg = format!("target of dereferenced struct pointer was not a struct: {:?}", invalid);
+                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     }
                 }
             }
@@ -225,8 +225,8 @@ impl Interpreter {
                     Cow::Borrowed(ValueCell::Variant(variant_cell)) => Ok(Cow::Borrowed(variant_cell.tag.as_ref())),
                     Cow::Owned(ValueCell::Variant(variant_cell)) => Ok(Cow::Owned(*variant_cell.tag)),
                     invalid => {
-                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), self.debug_ctx().into_owned()));
+                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
+                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     },
                 }
             }
@@ -251,8 +251,8 @@ impl Interpreter {
                     }
 
                     invalid => {
-                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), self.debug_ctx().into_owned()));
+                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
+                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     },
                 }
             }
@@ -292,8 +292,8 @@ impl Interpreter {
                     }
 
                     invalid => {
-                        let msg = "referencing array element";
-                        Err(ExecError::expected_ty(msg, ValueType::Array, invalid.kind(), debug_ctx))
+                        let msg = format!("dereferenced array element pointed did not point to an array: {:?}", invalid);
+                        Err(ExecError::illegal_state(msg, debug_ctx))
                     },
                 }
             }
@@ -308,8 +308,8 @@ impl Interpreter {
                     }
 
                     invalid => {
-                        let msg = "referencing struct field";
-                        Err(ExecError::expected_ty(msg, ValueType::Structure, invalid.kind(), debug_ctx))
+                        let msg = format!("dereferenced struct field pointer did not point to a struct: {:?}", invalid);
+                        Err(ExecError::illegal_state(msg, debug_ctx))
                     }
                 }
             }
@@ -324,8 +324,8 @@ impl Interpreter {
                     },
 
                     invalid => {
-                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), debug_ctx))
+                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
+                        Err(ExecError::illegal_state(msg, debug_ctx))
                     },
                 }
             }
@@ -345,8 +345,8 @@ impl Interpreter {
                     },
 
                     invalid => {
-                        let msg = "dereferencing variant tag pointer which doesn't point to a variant cell";
-                        return Err(ExecError::expected_ty(msg, ValueType::Variant, invalid.kind(), debug_ctx));
+                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
+                        return Err(ExecError::illegal_state(msg, debug_ctx));
                     },
                 }
             }
@@ -1477,7 +1477,11 @@ impl Interpreter {
                 }
 
                 IRFunction::External(external_ref) => {
-                    let ffi_func = Function::new_ffi(external_ref, &mut self.ffi_cache, &self.metadata)?;
+                    let ffi_func = Function::new_ffi(external_ref, &mut self.ffi_cache, &self.metadata)
+                        .map_err(|err| ExecError::MarshallingFailed {
+                            err,
+                            span: external_ref.src_span.clone(),
+                        })?;
                     Some(ffi_func)
                 }
             };
@@ -1519,7 +1523,8 @@ impl Interpreter {
 
     fn deref_rc(&self, rc_cell: &ValueCell) ->  ExecResult<Cow<ValueCell>> {
         let rc = rc_cell.as_rc().ok_or_else(|| {
-            ExecError::illegal_state(format!("trying to deref RC ref but value was {}", rc_cell.kind()), self.debug_ctx().into_owned())
+            let msg = format!("trying to deref RC ref but value was {:?}", rc_cell);
+            ExecError::illegal_state(msg, self.debug_ctx().into_owned())
         })?;
 
         self.load_heap(rc.resource_addr)

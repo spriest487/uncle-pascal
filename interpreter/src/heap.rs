@@ -3,8 +3,19 @@ use std::{
     mem::size_of,
     ops::Add,
 };
+use crate::ValueCell;
 
 pub mod value_heap;
+
+pub trait Heap {
+    fn alloc(&mut self, vals: Vec<ValueCell>) -> HeapAddress;
+    fn free(&mut self, addr: HeapAddress);
+
+    fn load(&self, addr: HeapAddress) -> Result<ValueCell, HeapAddress>;
+    fn store(&mut self, addr: HeapAddress, val: ValueCell) -> Result<(), HeapAddress>;
+
+    fn finalize(self);
+}
 
 #[derive(Clone, Copy, Eq, PartialEq, Hash)]
 pub struct HeapAddress(pub usize);

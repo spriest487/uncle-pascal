@@ -4,7 +4,7 @@ use crate::{ExecResult, Interpreter};
 use pas_ir::{ExternalFunctionRef, FunctionDef, Type};
 use std::fmt;
 
-use crate::func::ffi::{FfiCache, FfiInvoker};
+use crate::func::ffi::{FfiCache, FfiInvoker, MarshalResult};
 use pas_ir::prelude::Metadata;
 
 pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
@@ -35,7 +35,7 @@ impl Function {
         func_ref: &ExternalFunctionRef,
         ffi_cache: &mut FfiCache,
         metadata: &Metadata,
-    ) -> ExecResult<Self> {
+    ) -> MarshalResult<Self> {
         let invoker = ffi_cache.build_invoker(&func_ref, metadata)?;
 
         let func = Function::External(FfiFunction {

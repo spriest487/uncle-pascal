@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
-use crate::{ExecError, ExecResult, Interpreter, ValueCell, ValueType, Pointer, RcCell, StructCell};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 
@@ -11,7 +11,8 @@ pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0_cell = state.load(&arg_0)?;
     let int = arg_0_cell.as_i32()
         .ok_or_else(|| {
-            ExecError::expected_ty("IntToStr argument", ValueType::I32, arg_0_cell.kind(), state.debug_ctx().into_owned())
+            let msg = format!("IntToStr argument is not an int");
+            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
     let string = state.create_string(&int.to_string());
@@ -119,7 +120,10 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
     // the type of %1 should be Any (pointer to an rc cell)
     let len_cell = &array_struct[DYNARRAY_LEN_FIELD];
     let len = len_cell.as_i32()
-        .ok_or_else(|| ExecError::expected_ty("array_length argument cell", ValueType::I32, len_cell.kind(), state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| {
+            let msg = format!("array_length argument cell not an I32");
+            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+        })?;
 
     state.store(&RETURN_REF, ValueCell::I32(len))?;
 
@@ -187,20 +191,22 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         let old_array_struct = get_dyn_array_struct(state, array_arg)?;
         let len_field_cell = &old_array_struct[DYNARRAY_LEN_FIELD];
         let old_len =  len_field_cell.as_i32().ok_or_else(|| {
-            let msg = "accessing dynarray length";
-            ExecError::expected_ty(msg, ValueType::I32, len_field_cell.kind(), state.debug_ctx().into_owned())
+            let msg = format!("dynarray length is not I32");
+            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
-        let old_data_ptr_cell = &old_array_struct[DYNARRAY_PTR_FIELD];
         let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
             .ok_or_else(|| {
-                let msg = "accessing dynarray ptr: not a valid heap ptr";
-                ExecError::expected_ty(msg, ValueType::Pointer, old_data_ptr_cell.kind(), state.debug_ctx().into_owned())
+                let msg = format!("dynarray ptr is not a valid heap ptr");
+                ExecError::illegal_state(msg, state.debug_ctx().into_owned())
             })?;
         let old_data_addr = match old_data_ptr {
             Pointer::Null => None,
             Pointer::Heap(addr) => Some(*addr),
-            _ => return Err(ExecError::illegal_state("dynarray array pointer is not a heap address", state.debug_ctx().into_owned())),
+            _ => return Err(ExecError::illegal_state(
+                "dynarray array pointer is not a heap address",
+                state.debug_ctx().into_owned()
+            )),
         };
 
         let mut data_cells = vec![

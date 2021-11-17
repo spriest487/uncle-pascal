@@ -1,4 +1,4 @@
-use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc};
+use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc, fmt};
 use std::convert::TryInto;
 use std::ffi::c_void;
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer};
@@ -10,8 +10,9 @@ use ::libffi::{
     middle::{Cif, Type as ForeignType, Builder as FfiBuilder},
     raw::ffi_call as ffi_raw_call,
 };
-use pas_common::span::Span;
-use pas_ir::{metadata::Metadata,ExternalFunctionRef, LocalID, Ref, Type};
+use pas_ir::{metadata::Metadata, ExternalFunctionRef, LocalID, Ref, Type};
+use pas_ir::metadata::Variant;
+use pas_ir::prelude::{Struct, StructID};
 
 #[derive(Debug)]
 pub struct FfiCache {
@@ -19,34 +20,115 @@ pub struct FfiCache {
     libs: HashMap<String, Rc<dlopen::Library>>,
 }
 
+#[derive(Clone, Debug)]
+pub enum MarshalError {
+    UnsupportedType(Type),
+    UnsupportedValue(ValueCell),
+
+    ExternSymbolLoadFailed {
+        lib: String,
+        symbol: String,
+        msg: String,
+    }
+}
+
+impl fmt::Display for MarshalError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            MarshalError::UnsupportedValue(val) => write!(f, "unable to marshal value: {:?}", val),
+            MarshalError::UnsupportedType(ty) => write!(f, "unable to marshal type: {}", ty),
+            MarshalError::ExternSymbolLoadFailed { lib, symbol, msg } => write!(f, "external symbol {}::{} failed to load: {}", lib, symbol, msg),
+        }
+    }
+}
+
+pub type MarshalResult<T> = Result<T, MarshalError>;
+
 impl FfiCache {
     pub fn new() -> Self {
-        Self {
+        let mut ffi_cache = Self {
             types: HashMap::new(),
             libs: HashMap::new(),
+        };
+
+        ffi_cache.types.insert(Type::I32, ForeignType::i32());
+        ffi_cache.types.insert(Type::F32, ForeignType::f32());
+        ffi_cache.types.insert(Type::U8, ForeignType::u8());
+        ffi_cache.types.insert(Type::Bool, ForeignType::u8());
+        ffi_cache.types.insert(Type::Nothing, ForeignType::void());
+
+        ffi_cache
+    }
+
+    pub fn add_struct(&mut self, id: StructID, def: &Struct, metadata: &Metadata) -> MarshalResult<ForeignType> {
+        let struct_ty = Type::Struct(id);
+        if let Some(cached) = self.types.get(&struct_ty) {
+            return Ok(cached.clone());
         }
+
+        let mut def_fields: Vec<_> = def.fields.iter().collect();
+        def_fields.sort_by_key(|(f_id, _)| **f_id);
+
+        let struct_ffi_ty = ForeignType::structure({
+            let mut field_ffi_tys = Vec::new();
+            for (_, def_field) in def_fields {
+                field_ffi_tys.push(self.build_marshalled_type(&def_field.ty, metadata)?);
+            }
+            field_ffi_tys
+        });
+
+        self.types.insert(struct_ty, struct_ffi_ty.clone());
+        Ok(struct_ffi_ty)
+    }
+
+    pub fn add_variant(&mut self, id: StructID, def: &Variant, metadata: &Metadata) -> MarshalResult<ForeignType> {
+        let variant_ty = Type::Variant(id);
+        if let Some(cached) = self.types.get(&variant_ty) {
+            return Ok(cached.clone());
+        }
+
+        let mut max_case_size = 0;
+        for case in &def.cases {
+            let case_size = match case.ty.as_ref() {
+                Some(case_ty) => {
+                    let case_ty = self.build_marshalled_type(case_ty, metadata)?;
+                    foreign_type_size(&case_ty)
+                },
+                None => 0,
+            };
+            max_case_size = max(case_size, max_case_size);
+        }
+
+        let variant_layout: Vec<_> = iter::once(ForeignType::i32())
+            .chain(iter::repeat(ForeignType::u8()).take(max_case_size))
+            .collect();
+
+        let variant_ffi_ty = ForeignType::structure(variant_layout);
+
+        self.types.insert(variant_ty, variant_ffi_ty.clone());
+        Ok(variant_ffi_ty)
     }
 
     pub fn build_invoker(
         &mut self,
         func_ref: &ExternalFunctionRef,
         metadata: &Metadata,
-    ) -> ExecResult<FfiInvoker> {
+    ) -> MarshalResult<FfiInvoker> {
         let sym_load_err = |err: DlopenError| {
-            ExecError::ExternSymbolLoadFailed {
+            MarshalError::ExternSymbolLoadFailed {
                 lib: func_ref.src.clone(),
                 symbol: func_ref.symbol.clone(),
-                span: func_ref.src_span.clone(),
                 msg: err.to_string(),
             }
         };
 
-        let ffi_return_ty = self.type_to_ffi(&func_ref.return_ty, metadata);
+        let ffi_return_ty = self.build_marshalled_type(&func_ref.return_ty, metadata)?;
+
         let ffi_param_tys: Vec<_> = func_ref
             .params
             .iter()
-            .map(|ty| self.type_to_ffi(ty, metadata))
-            .collect();
+            .map(|ty| self.build_marshalled_type(ty, metadata))
+            .collect::<MarshalResult<_>>()?;
 
         let cif = FfiBuilder::new()
             .args(ffi_param_tys.iter().cloned())
@@ -78,63 +160,61 @@ impl FfiCache {
         })
     }
 
-    pub fn type_to_ffi(&mut self, ty: &Type, metadata: &Metadata) -> ForeignType {
-        if let Some(cached_ty) = self.types.get(ty) {
-            return cached_ty.clone();
+    fn build_marshalled_type(&mut self, ty: &Type, metadata: &Metadata) -> MarshalResult<ForeignType> {
+        if let Some(cached) = self.types.get(ty) {
+            return Ok(cached.clone());
         }
 
         match ty {
-            Type::Pointer(..) | Type::RcPointer(..) => ForeignType::pointer(),
-            Type::I32 => ForeignType::i32(),
-            Type::U8 => ForeignType::u8(),
-            Type::F32 => ForeignType::f32(),
+            Type::Variant(id) => {
+                let def = metadata.get_variant_def(*id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
+
+                self.add_variant(*id, def, metadata)
+            }
+
+            Type::Struct(id) => {
+                let def = metadata.get_struct_def(*id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
+
+                self.add_struct(*id, def, metadata)
+            }
+
+            Type::Pointer(..) => {
+                Ok(ForeignType::pointer())
+            }
 
             Type::Array { element, dim } => {
-                // pascal static arrays are treated as a struct of elements laid out sequentially
-                let el_ty = self.type_to_ffi(element, metadata);
+                let el_ty = self.build_marshalled_type(&element, metadata)?;
                 let el_tys = vec![el_ty; *dim];
 
-                ForeignType::structure(el_tys)
+                Ok(ForeignType::structure(el_tys))
             }
-            Type::Struct(id) => match metadata.get_struct_def(*id) {
-                None => ForeignType::void(),
-                Some(struct_def) => {
-                    let mut def_fields: Vec<_> = struct_def.fields.iter().collect();
-                    def_fields.sort_by_key(|(f_id, _)| **f_id);
 
-                    ForeignType::structure(
-                        def_fields
-                            .into_iter()
-                            .map(|(_, field)| self.type_to_ffi(&field.ty, metadata)),
-                    )
-                }
-            },
-            // variants are marshalled as an i32 discriminator + a number of bytes equal to the
-            // foreign size of the largest variant
-            Type::Variant(id) => match metadata.get_variant_def(*id) {
-                None => ForeignType::void(),
-                Some(variant_def) => {
-                    let mut max_case_size = 0;
-                    for case in &variant_def.cases {
-                        let case_size = match case.ty.as_ref() {
-                            Some(case_ty) => {
-                                let case_ty = self.type_to_ffi(case_ty, metadata);
-                                foreign_type_size(&case_ty)
-                            },
-                            None => 0,
-                        };
-                        max_case_size = max(case_size, max_case_size);
-                    }
+            // all primitives/builtins should be in the cache already
+            _ => Err(MarshalError::UnsupportedType(ty.clone()))
+        }
+    }
 
-                    let variant_layout: Vec<_> = iter::once(ForeignType::i32())
-                        .chain(iter::repeat(ForeignType::u8()).take(max_case_size))
-                        .collect();
+    pub fn get_ty(&self, ty: &Type) -> MarshalResult<ForeignType> {
+        match ty {
+            // we can't cache array types so always build them on demand
+            // pascal static arrays are treated as a struct of elements laid out sequentially
+            Type::Array { element, dim } => {
+                let el_ty = self.get_ty(&element)?;
+                let el_tys = vec![el_ty; *dim];
 
-                    ForeignType::structure(variant_layout)
-                },
-            },
-            Type::Bool => ForeignType::c_int(),
-            Type::Nothing => ForeignType::void(),
+                Ok(ForeignType::structure(el_tys))
+            }
+
+            Type::Pointer(..) => {
+                Ok(ForeignType::pointer())
+            }
+
+            ty => match self.types.get(ty) {
+                Some(cached_ty) => Ok(cached_ty.clone()),
+                None => Err(MarshalError::UnsupportedType(ty.clone())),
+            }
         }
     }
 }
@@ -153,16 +233,14 @@ pub struct FfiInvoker {
 
 impl FfiInvoker {
     pub fn invoke(&self, state: &mut Interpreter) -> ExecResult<()> {
-        let has_return = self.return_ty != Type::Nothing;
-
         // marshal args into a byte vec
         let mut args = Vec::new();
         let mut args_ptrs = Vec::new();
-        let first_param_local = match has_return { true => 1, false => 0 };
+        let first_param_local = match self.return_ty { Type::Nothing => 0, _ => 1 };
 
         let param_ty_both = self.param_tys.iter().zip(self.ffi_param_tys.iter());
 
-        for (i, (param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
+        for (i, (_param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
             let local_id = LocalID(first_param_local + i);
             let arg_foreign_len = foreign_type_size(&ffi_param_ty);
 
@@ -170,7 +248,11 @@ impl FfiInvoker {
             args.resize(args.len() + arg_foreign_len, 0);
 
             let arg_val = state.load(&Ref::Local(local_id))?;
-            let bytes_copied = marshal(&arg_val, &mut args[arg_start..], param_ty, &state.debug_ctx())?;
+            let bytes_copied = marshal(&arg_val, &mut args[arg_start..])
+                .map_err(|err| ExecError::MarshallingFailed {
+                    err,
+                    span: state.debug_ctx().into_owned(),
+                })?;
 
             assert_eq!(bytes_copied, foreign_type_size(ffi_param_ty));
 
@@ -180,7 +262,7 @@ impl FfiInvoker {
             args_ptrs.push(arg_ptr);
         }
 
-        let mut result_buf: Vec<u8> = if has_return {
+        let mut result_buf: Vec<u8> = if self.return_ty != Type::Nothing {
             vec![0; foreign_type_size(&self.ffi_return_ty)]
         } else {
             Vec::new()
@@ -197,10 +279,14 @@ impl FfiInvoker {
             );
         }
 
-        if has_return {
+        if self.return_ty != Type::Nothing {
             unsafe {
                 let result_slice = slice_from_raw_parts(result_buf.as_ptr(), result_buf.len());
-                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty, &state.debug_ctx())?;
+                let return_val = unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)
+                    .map_err(|err| ExecError::MarshallingFailed {
+                        err,
+                        span: state.debug_ctx().into_owned(),
+                    })?;
 
                 let return_local = Ref::Local(LocalID(0));
                 state.store(&return_local, return_val)?;
@@ -211,7 +297,7 @@ impl FfiInvoker {
     }
 }
 
-fn marshal(val: &ValueCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> ExecResult<usize> {
+fn marshal(val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
     let from_bytes = |bytes: &[u8], out_bytes: &mut [u8]| {
         out_bytes[0..bytes.len()].copy_from_slice(bytes);
         bytes.len()
@@ -230,12 +316,8 @@ fn marshal(val: &ValueCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> Exe
             // let el_size = foreign_type_size(&el_foreign_ty);
 
             let dim = cast::i32(x.elements.len())
-                .map_err(|_err| ExecError::MarshallingFailed {
-                    failed_ty: Type::Array {
-                        element: Box::new(x.el_ty.clone()),
-                        dim: x.elements.len(),
-                    },
-                    span: span.clone(),
+                .map_err(|_err| {
+                    MarshalError::UnsupportedType(x.array_ty())
                 })?;
 
             let mut el_offset = from_bytes(&dim.to_ne_bytes(), out_bytes);
@@ -243,7 +325,7 @@ fn marshal(val: &ValueCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> Exe
             for i in 0..dim {
                 let el = &x.elements[i as usize];
                 let el_bytes = &mut out_bytes[el_offset..];
-                el_offset += marshal(el, el_bytes, &x.el_ty, span)?;
+                el_offset += marshal(el, el_bytes)?;
             }
 
             el_offset
@@ -254,34 +336,31 @@ fn marshal(val: &ValueCell, out_bytes: &mut [u8], ty: &Type, span: &Span) -> Exe
             from_bytes(&ptr_bytes, out_bytes)
         }
 
-        _ => {
-            return Err(ExecError::MarshallingFailed { failed_ty: ty.clone(), span: span.clone() })
+        unsupported => {
+            return Err(MarshalError::UnsupportedValue(unsupported.clone()))
         }
     };
 
     Ok(size)
 }
 
-fn unmarshal(in_bytes: &[u8], ty: &Type, span: &Span) -> ExecResult<ValueCell> {
-    let make_err = || ExecError::MarshallingFailed {
-        failed_ty: ty.clone(),
-        span: span.clone(),
-    };
-
+fn unmarshal(in_bytes: &[u8], ty: &Type) -> MarshalResult<ValueCell> {
     match ty {
         Type::I32 => {
-            let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
+            let in_bytes = in_bytes.try_into()
+                .map_err(|_| MarshalError::UnsupportedType(ty.clone()))?;
             let val = i32::from_ne_bytes(in_bytes);
             Ok(ValueCell::I32(val))
         }
 
         Type::Pointer(..) => {
-            let in_bytes = in_bytes.try_into().map_err(|_| make_err())?;
+            let in_bytes = in_bytes.try_into()
+                .map_err(|_| MarshalError::UnsupportedType(ty.clone()))?;
             let val = isize::from_ne_bytes(in_bytes);
             Ok(ValueCell::Pointer(Pointer::External(val)))
         }
 
-        _ => Err(make_err())
+        _ => Err(MarshalError::UnsupportedType(ty.clone()))
     }
 }
 
