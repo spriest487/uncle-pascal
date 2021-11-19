@@ -74,7 +74,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
         .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument", state.debug_ctx().into_owned()))?;
 
     let empty_bytes = vec![ValueCell::U8(0); len as usize];
-    let mem = state.heap.alloc(empty_bytes);
+    let mem = state.value_heap.alloc(empty_bytes);
 
     state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(mem)))?;
 
@@ -91,7 +91,7 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
         .and_then(Pointer::as_heap_addr)
         .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument", state.debug_ctx().into_owned()))?;
 
-    state.heap.free(ptr);
+    state.value_heap.free(ptr);
 
     Ok(())
 }
@@ -155,7 +155,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
-    let array_class = state.heap.load(array_class_addr)
+    let array_class = state.value_heap.load(array_class_addr)
         .map_err(|addr| ExecError::IllegalHeapAccess {
             addr,
             span: state.debug_ctx().into_owned(),
@@ -217,7 +217,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         // copy old data (if any) into the new array
         if let Some(old_data_addr) = old_data_addr {
             for i in 0..new_len.min(old_len) {
-                data_cells[i as usize] = state.heap.load(old_data_addr + i as usize)
+                data_cells[i as usize] = state.value_heap.load(old_data_addr + i as usize)
                     .map_err(|_| ExecError::illegal_state("failed to read old array contents in set_length", state.debug_ctx().into_owned()))?
                     .into_owned();
             }
@@ -228,7 +228,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         // put the initialized array onto the heap before retaining it because passing pointers
         // to retain funcs is a lot easier when the target is already on the heap
-        let heap_cells = state.heap.alloc(data_cells);
+        let heap_cells = state.value_heap.alloc(data_cells);
 
         for i in 0..new_len {
             let i = i as usize;
@@ -264,7 +264,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         id: array_class,
     };
 
-    let new_array_resource = state.heap.alloc(vec![
+    let new_array_resource = state.value_heap.alloc(vec![
         ValueCell::Structure(Box::new(new_array_struct)),
     ]);
 
@@ -275,7 +275,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     };
 
     let new_array_cell = ValueCell::RcCell(Box::new(new_array_rc));
-    let new_array_rc_addr = state.heap.alloc(vec![new_array_cell]);
+    let new_array_rc_addr = state.value_heap.alloc(vec![new_array_cell]);
 
     state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(new_array_rc_addr)))?;
     Ok(())

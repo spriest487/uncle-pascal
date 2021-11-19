@@ -1,10 +1,11 @@
+use crate::value_cell::ValueCell;
+use crate::{ExecResult, HeapAddress, Interpreter};
+use pas_ir::metadata::FieldID;
+use pas_ir::{LocalID};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::ops::{Add, Sub};
-use pas_ir::LocalID;
-use pas_ir::metadata::FieldID;
-use crate::{ExecResult, HeapAddress, Interpreter};
-use crate::value_cell::ValueCell;
+use crate::heap::native_heap::NativePointer;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
@@ -30,7 +31,7 @@ pub enum Pointer {
         variant: Box<Pointer>,
         tag: usize,
     },
-    External(isize),
+    Native(NativePointer),
 }
 
 impl Pointer {
@@ -55,7 +56,7 @@ impl Pointer {
             Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
             Pointer::VariantTag { .. } => PointerKind::VariantTag,
             Pointer::VariantData { .. } => PointerKind::VariantData,
-            Pointer::External( .. ) => PointerKind::External,
+            Pointer::Native { .. } => PointerKind::Native,
         }
     }
 }
@@ -74,18 +75,26 @@ impl Ord for Pointer {
 
             (Pointer::Heap(a), Pointer::Heap(b)) => a.0.cmp(&b.0),
             (
-                Pointer::Local { frame: a_frame, id: a_id },
-                Pointer::Local { frame: b_frame, id: b_id }
-            ) => {
-                a_frame.cmp(b_frame).then_with(|| a_id.cmp(b_id))
-            },
+                Pointer::Local {
+                    frame: a_frame,
+                    id: a_id,
+                },
+                Pointer::Local {
+                    frame: b_frame,
+                    id: b_id,
+                },
+            ) => a_frame.cmp(b_frame).then_with(|| a_id.cmp(b_id)),
 
             (
-                Pointer::IntoArray { array: arr_a, offset: off_a },
-                Pointer::IntoArray { array: arr_b, offset: off_b },
-            ) => {
-                arr_a.cmp(&arr_b).then_with(|| off_a.cmp(off_b))
-            },
+                Pointer::IntoArray {
+                    array: arr_a,
+                    offset: off_a,
+                },
+                Pointer::IntoArray {
+                    array: arr_b,
+                    offset: off_b,
+                },
+            ) => arr_a.cmp(&arr_b).then_with(|| off_a.cmp(off_b)),
 
             (a, b) => a.kind().cmp(&b.kind()),
         }
@@ -103,7 +112,9 @@ impl Add<isize> for Pointer {
                 frame,
                 id: LocalID((id.0 as isize + rhs) as usize),
             },
-            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress((addr as isize + rhs) as usize)),
+            Pointer::Heap(HeapAddress(addr)) => {
+                Pointer::Heap(HeapAddress((addr as isize + rhs) as usize))
+            }
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: (offset as isize + rhs) as usize,
@@ -112,8 +123,11 @@ impl Add<isize> for Pointer {
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            },
-            Pointer::External(ptr) => Pointer::External(ptr + rhs),
+            }
+            Pointer::Native(NativePointer { addr, ty }) => Pointer::Native(NativePointer {
+                addr: (addr as isize + rhs) as usize,
+                ty,
+            }),
         }
     }
 }
@@ -129,7 +143,9 @@ impl Sub<isize> for Pointer {
                 frame,
                 id: LocalID((id.0 as isize - rhs) as usize),
             },
-            Pointer::Heap(HeapAddress(addr)) => Pointer::Heap(HeapAddress((addr as isize - rhs) as usize)),
+            Pointer::Heap(HeapAddress(addr)) => {
+                Pointer::Heap(HeapAddress((addr as isize - rhs) as usize))
+            }
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: (offset as isize - rhs) as usize,
@@ -138,8 +154,11 @@ impl Sub<isize> for Pointer {
             | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
-            },
-            Pointer::External(ptr) => Pointer::External(ptr - rhs),
+            }
+            Pointer::Native(NativePointer { addr, ty }) => Pointer::Native(NativePointer {
+                addr: (addr as isize - rhs) as usize,
+                ty,
+            }),
         }
     }
 }
@@ -154,5 +173,5 @@ enum PointerKind {
     VariantData,
     VariantTag,
     IntoStruct,
-    External,
+    Native,
 }

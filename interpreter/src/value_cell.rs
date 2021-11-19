@@ -12,6 +12,12 @@ pub struct StructCell {
     pub fields: Vec<ValueCell>,
 }
 
+impl StructCell {
+    pub fn struct_ty(&self) -> Type {
+        Type::Struct(self.id)
+    }
+}
+
 impl Index<FieldID> for StructCell {
     type Output = ValueCell;
 
@@ -47,6 +53,12 @@ pub struct VariantCell {
     pub id: StructID,
     pub tag: Box<ValueCell>,
     pub data: Box<ValueCell>,
+}
+
+impl VariantCell {
+    pub fn variant_ty(&self) -> Type {
+        Type::Variant(self.id)
+    }
 }
 
 #[derive(Debug, Clone)]

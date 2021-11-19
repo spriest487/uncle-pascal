@@ -18,6 +18,7 @@ use std::borrow::Cow;
 use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
+use crate::heap::native_heap::NativeHeap;
 
 mod builtin;
 mod func;
@@ -47,9 +48,11 @@ pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
     globals: HashMap<GlobalRef, GlobalCell>,
-    heap: ValueHeap,
 
-    ffi_cache: FfiCache,
+    value_heap: ValueHeap,
+    native_heap: NativeHeap,
+
+    ffi_cache: Rc<FfiCache>,
 
     trace_rc: bool,
     trace_ir: bool,
@@ -61,16 +64,22 @@ impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
         let globals = HashMap::new();
 
-        let mut heap = ValueHeap::new();
-        heap.trace = opts.trace_heap;
+        let mut value_heap = ValueHeap::new();
+        value_heap.trace = opts.trace_heap;
+
+        let ffi_cache = Rc::new(FfiCache::new());
+
+        let native_heap = NativeHeap::new(ffi_cache.clone(), opts.trace_heap);
 
         Self {
             metadata: Metadata::default(),
             globals,
             stack: Vec::new(),
-            heap,
 
-            ffi_cache: FfiCache::new(),
+            value_heap,
+            native_heap,
+
+            ffi_cache,
 
             trace_rc: opts.trace_rc,
             trace_ir: opts.trace_ir,
@@ -152,7 +161,7 @@ impl Interpreter {
         match ptr {
             Pointer::Heap(addr) => {
                 let heap_cell = self
-                    .heap
+                    .value_heap
                     .load(*addr)
                     .map_err(|addr| {
                         ExecError::IllegalHeapAccess {
@@ -163,6 +172,15 @@ impl Interpreter {
                     .into_owned();
 
                 Ok(Cow::Owned(heap_cell))
+            }
+
+            Pointer::Native(native_ptr) => {
+                let val = self.native_heap.load(native_ptr)
+                    .map_err(|err| {
+                        ExecError::illegal_state("load from native heap failed", self.debug_ctx().into_owned())
+                    })?;
+
+                Ok(Cow::Owned(val))
             }
 
             Pointer::Local { frame, id, .. } => {
@@ -272,6 +290,14 @@ impl Interpreter {
         match ptr {
             Pointer::Heap(addr) => self.store_heap(*addr, val),
 
+            Pointer::Native(native_ptr) => {
+                self.native_heap.store(native_ptr, val)
+                    .map_err(|_err| {
+                        // todo display error type here
+                        ExecError::illegal_state("native heap store failed", debug_ctx)
+                    })
+            }
+
             Pointer::Local { frame, id, .. } => {
                 let local_cell = self.stack[*frame].deref_local_mut(*id).map_err(|err| {
                     ExecError::illegal_state(err.to_string(), debug_ctx)
@@ -361,14 +387,14 @@ impl Interpreter {
     }
 
     pub fn load_heap(&self, addr: HeapAddress) -> ExecResult<Cow<ValueCell>> {
-        self.heap.load(addr).map_err(|addr| ExecError::IllegalHeapAccess {
+        self.value_heap.load(addr).map_err(|addr| ExecError::IllegalHeapAccess {
             addr,
             span: self.debug_ctx().into_owned()
         })
     }
 
     pub fn store_heap(&mut self, addr: HeapAddress, val: ValueCell) -> ExecResult<()> {
-        self.heap.store(addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
+        self.value_heap.store(addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
             addr,
             span: self.debug_ctx().into_owned()
         })
@@ -684,8 +710,8 @@ impl Interpreter {
                 )
             }
 
-            self.heap.free(rc_cell.resource_addr);
-            self.heap.free(rc_addr);
+            self.value_heap.free(rc_cell.resource_addr);
+            self.value_heap.free(rc_addr);
         } else {
             assert!(rc_cell.ref_count > 1);
             if self.trace_rc {
@@ -995,7 +1021,7 @@ impl Interpreter {
         match self.load(at)?.as_ref() {
             ValueCell::Pointer(Pointer::Heap(addr)) => {
                 let addr = *addr;
-                self.heap.free(addr);
+                self.value_heap.free(addr);
 
                 Ok(())
             }
@@ -1019,7 +1045,7 @@ impl Interpreter {
             cells.push(default_val);
         }
 
-        let addr = self.heap.alloc(cells);
+        let addr = self.value_heap.alloc(cells);
         let ptr = Pointer::Heap(addr);
 
         self.store(out, ValueCell::Pointer(ptr))?;
@@ -1410,7 +1436,7 @@ impl Interpreter {
     }
 
     fn rc_alloc(&mut self, vals: Vec<ValueCell>, ty_id: StructID) -> Pointer {
-        let resource_addr = self.heap.alloc(vals);
+        let resource_addr = self.value_heap.alloc(vals);
 
         let rc_cell = ValueCell::RcCell(Box::new(RcCell {
             ref_count: 1,
@@ -1418,7 +1444,7 @@ impl Interpreter {
             struct_id: ty_id,
         }));
 
-        let addr = self.heap.alloc(vec![rc_cell]);
+        let addr = self.value_heap.alloc(vec![rc_cell]);
         Pointer::Heap(addr)
     }
 
@@ -1463,6 +1489,24 @@ impl Interpreter {
     pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
+        let mut ffi_cache = (*self.ffi_cache).clone();
+
+        for (id, type_def) in module.metadata.type_defs() {
+            let add_result = match type_def {
+                TypeDef::Struct(struct_def) => {
+                    ffi_cache.add_struct(id, struct_def, &module.metadata)
+                },
+                TypeDef::Variant(variant_def) => {
+                    ffi_cache.add_variant(id, variant_def, &module.metadata)
+                }
+            };
+
+            add_result.map_err(|err| ExecError::MarshallingFailed {
+                err,
+                span: module.module_span().clone(),
+            })?;
+        }
+
         for (func_name, ir_func) in &module.functions {
             let func_ref = GlobalRef::Function(*func_name);
 
@@ -1477,7 +1521,7 @@ impl Interpreter {
                 }
 
                 IRFunction::External(external_ref) => {
-                    let ffi_func = Function::new_ffi(external_ref, &mut self.ffi_cache, &self.metadata)
+                    let ffi_func = Function::new_ffi(external_ref, &mut ffi_cache, &self.metadata)
                         .map_err(|err| ExecError::MarshallingFailed {
                             err,
                             span: external_ref.src_span.clone(),
@@ -1496,6 +1540,9 @@ impl Interpreter {
                 );
             }
         }
+
+        self.ffi_cache = Rc::new(ffi_cache);
+        self.native_heap.set_ffi_cache(self.ffi_cache.clone());
 
         for (id, literal) in module.metadata.strings() {
             let str_cell = self.create_string(literal);
@@ -1535,7 +1582,7 @@ impl Interpreter {
         let chars_len = chars.len();
 
         let chars_ptr = if chars_len > 0 {
-            let heap_addr = self.heap.alloc(chars);
+            let heap_addr = self.value_heap.alloc(chars);
             Pointer::Heap(heap_addr)
         } else {
             Pointer::Null
@@ -1608,7 +1655,7 @@ impl Interpreter {
             }
         }
 
-        self.heap.finalize();
+        self.value_heap.finalize();
         Ok(())
     }
 }

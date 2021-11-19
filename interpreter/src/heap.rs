@@ -6,6 +6,7 @@ use std::{
 use crate::ValueCell;
 
 pub mod value_heap;
+pub mod native_heap;
 
 pub trait Heap {
     fn alloc(&mut self, vals: Vec<ValueCell>) -> HeapAddress;

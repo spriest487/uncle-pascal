@@ -82,8 +82,8 @@ impl DiagnosticOutput for ExecError {
                         Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
                         Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
                         Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
-                        Pointer::External(..) => {
-                            "interpreter cannot dereference pointer from external code"
+                        Pointer::Native { .. } => {
+                            "failed to dereference native pointer"
                         }
                         _ => "illegal pointer dereference",
                     }

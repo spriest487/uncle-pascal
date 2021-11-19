@@ -13,8 +13,9 @@ use ::libffi::{
 use pas_ir::{metadata::Metadata, ExternalFunctionRef, LocalID, Ref, Type};
 use pas_ir::metadata::Variant;
 use pas_ir::prelude::{Struct, StructID};
+use crate::heap::native_heap::NativePointer;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FfiCache {
     types: HashMap<Type, ForeignType>,
     libs: HashMap<String, Rc<dlopen::Library>>,
@@ -92,7 +93,7 @@ impl FfiCache {
             let case_size = match case.ty.as_ref() {
                 Some(case_ty) => {
                     let case_ty = self.build_marshalled_type(case_ty, metadata)?;
-                    foreign_type_size(&case_ty)
+                    case_ty.size()
                 },
                 None => 0,
             };
@@ -219,6 +220,25 @@ impl FfiCache {
     }
 }
 
+pub fn get_marshal_ty(value: &ValueCell) -> MarshalResult<Type> {
+    let ty = match value {
+        ValueCell::Bool(_) => Type::Bool,
+        ValueCell::U8(_) => Type::U8,
+        ValueCell::I32(_) => Type::I32,
+        ValueCell::F32(_) => Type::F32,
+        ValueCell::Structure(struct_cell) => struct_cell.struct_ty(),
+        ValueCell::Variant(variant_cell) => variant_cell.variant_ty(),
+        ValueCell::Pointer(..) => Type::Nothing.ptr(),
+        ValueCell::Function(_) => Type::Nothing.ptr(),
+        ValueCell::Array(array_cell) => array_cell.array_ty(),
+        ValueCell::RcCell(_) => {
+            return Err(MarshalError::UnsupportedValue(value.clone()));
+        },
+    };
+
+    Ok(ty)
+}
+
 pub struct FfiInvoker {
     cif: Cif,
 
@@ -242,7 +262,7 @@ impl FfiInvoker {
 
         for (i, (_param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
             let local_id = LocalID(first_param_local + i);
-            let arg_foreign_len = foreign_type_size(&ffi_param_ty);
+            let arg_foreign_len = ffi_param_ty.size();
 
             let arg_start = args.len();
             args.resize(args.len() + arg_foreign_len, 0);
@@ -254,7 +274,7 @@ impl FfiInvoker {
                     span: state.debug_ctx().into_owned(),
                 })?;
 
-            assert_eq!(bytes_copied, foreign_type_size(ffi_param_ty));
+            assert_eq!(bytes_copied, ffi_param_ty.size());
 
             let arg_ptr = unsafe {
                 (args.as_mut_ptr() as *mut c_void).offset(arg_start as isize)
@@ -263,7 +283,7 @@ impl FfiInvoker {
         }
 
         let mut result_buf: Vec<u8> = if self.return_ty != Type::Nothing {
-            vec![0; foreign_type_size(&self.ffi_return_ty)]
+            vec![0; self.ffi_return_ty.size()]
         } else {
             Vec::new()
         };
@@ -297,7 +317,7 @@ impl FfiInvoker {
     }
 }
 
-fn marshal(val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
+pub fn marshal(val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
     let from_bytes = |bytes: &[u8], out_bytes: &mut [u8]| {
         out_bytes[0..bytes.len()].copy_from_slice(bytes);
         bytes.len()
@@ -331,8 +351,8 @@ fn marshal(val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
             el_offset
         }
 
-        ValueCell::Pointer(Pointer::External(ptr)) => {
-            let ptr_bytes = (*ptr as isize).to_ne_bytes();
+        ValueCell::Pointer(Pointer::Native(NativePointer { addr, .. })) => {
+            let ptr_bytes = (*addr).to_ne_bytes();
             from_bytes(&ptr_bytes, out_bytes)
         }
 
@@ -344,7 +364,7 @@ fn marshal(val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
     Ok(size)
 }
 
-fn unmarshal(in_bytes: &[u8], ty: &Type) -> MarshalResult<ValueCell> {
+pub fn unmarshal(in_bytes: &[u8], ty: &Type) -> MarshalResult<ValueCell> {
     match ty {
         Type::I32 => {
             let in_bytes = in_bytes.try_into()
@@ -353,17 +373,26 @@ fn unmarshal(in_bytes: &[u8], ty: &Type) -> MarshalResult<ValueCell> {
             Ok(ValueCell::I32(val))
         }
 
-        Type::Pointer(..) => {
+        Type::Pointer(deref_ty) => {
             let in_bytes = in_bytes.try_into()
                 .map_err(|_| MarshalError::UnsupportedType(ty.clone()))?;
-            let val = isize::from_ne_bytes(in_bytes);
-            Ok(ValueCell::Pointer(Pointer::External(val)))
+            let addr = usize::from_ne_bytes(in_bytes);
+            Ok(ValueCell::Pointer(Pointer::Native(NativePointer {
+                addr,
+                ty: (**deref_ty).clone()
+            })))
         }
 
         _ => Err(MarshalError::UnsupportedType(ty.clone()))
     }
 }
 
-fn foreign_type_size(ty: &ForeignType) -> usize {
-    unsafe { *ty.as_raw_ptr() }.size
+pub trait ForeignTypeExt {
+    fn size(&self) -> usize;
+}
+
+impl ForeignTypeExt for ForeignType {
+    fn size(&self) -> usize {
+        unsafe { *self.as_raw_ptr() }.size
+    }
 }
