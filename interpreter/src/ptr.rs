@@ -4,13 +4,13 @@ use pas_ir::metadata::FieldID;
 use pas_ir::{LocalID};
 use std::borrow::Cow;
 use std::cmp::Ordering;
+use std::fmt;
 use std::ops::{Add, Sub};
 use crate::heap::native_heap::NativePointer;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
     Null,
-    Uninit,
     Heap(HeapAddress),
     Local {
         frame: usize,
@@ -49,7 +49,6 @@ impl Pointer {
     fn kind(&self) -> PointerKind {
         match self {
             Pointer::Null => PointerKind::Null,
-            Pointer::Uninit => PointerKind::Uninit,
             Pointer::Heap(_) => PointerKind::Heap,
             Pointer::Local { .. } => PointerKind::Local,
             Pointer::IntoArray { .. } => PointerKind::IntoArray,
@@ -71,7 +70,6 @@ impl Ord for Pointer {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
             (Pointer::Null, Pointer::Null) => Ordering::Equal,
-            (Pointer::Uninit, Pointer::Uninit) => Ordering::Equal,
 
             (Pointer::Heap(a), Pointer::Heap(b)) => a.0.cmp(&b.0),
             (
@@ -107,7 +105,6 @@ impl Add<isize> for Pointer {
     fn add(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
                 id: LocalID((id.0 as isize + rhs) as usize),
@@ -138,7 +135,6 @@ impl Sub<isize> for Pointer {
     fn sub(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Uninit => Pointer::Uninit,
             Pointer::Local { frame, id } => Pointer::Local {
                 frame,
                 id: LocalID((id.0 as isize - rhs) as usize),
@@ -163,10 +159,24 @@ impl Sub<isize> for Pointer {
     }
 }
 
+impl fmt::Display for Pointer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Pointer::Null => write!(f, "NULL"),
+            Pointer::Heap(heap_addr) => write!(f, "{}", heap_addr),
+            Pointer::Local { frame, id } => write!(f, "{}/{}", frame, id ),
+            Pointer::IntoArray { array, offset } => write!(f, "@({}^ [{}])", array, offset),
+            Pointer::IntoStruct { structure, field } => write!(f, "@({}^.{})", structure, field),
+            Pointer::VariantTag { variant } => write!(f, "@({}^.tag)", variant),
+            Pointer::VariantData { variant, tag } => write!(f, "@({}.{})", variant, tag),
+            Pointer::Native(native_ptr) => write!(f, "{}", native_ptr),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
 enum PointerKind {
     Null,
-    Uninit,
     Local,
     Heap,
     IntoArray,

@@ -30,6 +30,7 @@ impl Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::RcPointer(..) => Type::Struct(StructName::Rc).ptr(),
+            metadata::Type::RcObject(..) => Type::Struct(StructName::Rc),
             metadata::Type::Struct(id) => Type::Struct(StructName::Struct(*id)),
             metadata::Type::Variant(id) => Type::Struct(StructName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,

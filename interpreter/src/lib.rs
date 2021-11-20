@@ -14,10 +14,12 @@ use pas_ir::{
 };
 use std::{collections::HashMap, rc::Rc};
 use std::borrow::Cow;
+use cast::usize;
 
 use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
+use crate::ExecError::NativeHeapError;
 use crate::heap::native_heap::NativeHeap;
 
 mod builtin;
@@ -30,6 +32,8 @@ pub mod result;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InterpreterOpts {
+    pub use_native_mem: bool,
+
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
@@ -58,6 +62,8 @@ pub struct Interpreter {
     trace_ir: bool,
 
     debug_ctx_stack: Vec<Span>,
+
+    use_native_mem: bool,
 }
 
 impl Interpreter {
@@ -85,6 +91,8 @@ impl Interpreter {
             trace_ir: opts.trace_ir,
 
             debug_ctx_stack: Vec::new(),
+
+            use_native_mem: opts.use_native_mem,
         }
     }
 
@@ -93,6 +101,10 @@ impl Interpreter {
             Some(ctx) => Cow::Borrowed(ctx),
             None => Cow::Owned(Span::zero("")),
         }
+    }
+
+    pub fn marshaller(&self) -> &FfiCache {
+        &self.ffi_cache
     }
 
     fn init_struct(&self, id: StructID) -> ExecResult<ValueCell> {
@@ -125,9 +137,9 @@ impl Interpreter {
 
             Type::Struct(id) => self.init_struct(*id)?,
 
-            Type::RcPointer(_) => ValueCell::Pointer(Pointer::Uninit),
+            Type::RcPointer(_) => ValueCell::Pointer(Pointer::Null),
 
-            Type::Pointer(_target) => ValueCell::Pointer(Pointer::Uninit),
+            Type::Pointer(_target) => ValueCell::Pointer(Pointer::Null),
 
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
@@ -145,7 +157,7 @@ impl Interpreter {
             Type::Variant(id) => ValueCell::Variant(Box::new(VariantCell {
                 id: *id,
                 tag: Box::new(ValueCell::I32(0)),
-                data: Box::new(ValueCell::Pointer(Pointer::Uninit)),
+                data: Box::new(ValueCell::Pointer(Pointer::Null)),
             })),
 
             _ => {
@@ -177,7 +189,7 @@ impl Interpreter {
             Pointer::Native(native_ptr) => {
                 let val = self.native_heap.load(native_ptr)
                     .map_err(|err| {
-                        ExecError::illegal_state("load from native heap failed", self.debug_ctx().into_owned())
+                        ExecError::NativeHeapError { err, span: self.debug_ctx().into_owned() }
                     })?;
 
                 Ok(Cow::Owned(val))
@@ -292,9 +304,9 @@ impl Interpreter {
 
             Pointer::Native(native_ptr) => {
                 self.native_heap.store(native_ptr, val)
-                    .map_err(|_err| {
-                        // todo display error type here
-                        ExecError::illegal_state("native heap store failed", debug_ctx)
+                    .map_err(|err| ExecError::NativeHeapError {
+                        err,
+                        span: debug_ctx,
                     })
             }
 
@@ -632,21 +644,17 @@ impl Interpreter {
     }
 
     fn release_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
-        let ptr = cell
+        let rc_ptr = cell
             .as_pointer()
             .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
-        if *ptr == Pointer::Null {
+        if *rc_ptr == Pointer::Null {
             return Ok(());
         }
 
-        let rc_addr = ptr
-            .as_heap_addr()
-            .unwrap_or_else(|| panic!("released cell was not a heap pointer, found: {:?}", cell));
-
-        let rc_cell = match self.load_heap(rc_addr)?.into_owned() {
-            ValueCell::RcCell(rc_cell) => rc_cell,
+        let rc_cell = match self.load_indirect(&rc_ptr)?.into_owned() {
+            ValueCell::RcCell(rc_cell) => *rc_cell,
             other => panic!("released cell was not an rc value, found: {:?}", other),
         };
 
@@ -698,34 +706,33 @@ impl Interpreter {
                 .cloned()
                 .unwrap();
 
-            let release_ptr = ValueCell::Pointer(Pointer::Heap(rc_cell.resource_addr));
-
+            let release_ptr = ValueCell::Pointer(rc_cell.resource_ptr.clone());
             self.call(&release_func, &[release_ptr], None)?;
 
             if self.trace_rc {
                 eprintln!(
                     "rc: free {} @ {}",
                     self.metadata.pretty_ty_name(&resource_ty),
-                    rc_addr
+                    rc_ptr
                 )
             }
 
-            self.value_heap.free(rc_cell.resource_addr);
-            self.value_heap.free(rc_addr);
+            self.dynfree(&rc_cell.resource_ptr)?;
+            self.dynfree(&rc_ptr)?;
         } else {
             assert!(rc_cell.ref_count > 1);
             if self.trace_rc {
                 eprintln!(
                     "rc: release {} @ {} ({} more refs)",
                     self.metadata.pretty_ty_name(&resource_ty),
-                    rc_cell.resource_addr,
+                    rc_cell.resource_ptr,
                     rc_cell.ref_count - 1
                 )
             }
 
-            self.store_heap(rc_addr, ValueCell::RcCell(Box::new(RcCell {
+            self.store_indirect(&rc_ptr, ValueCell::RcCell(Box::new(RcCell {
                 ref_count: rc_cell.ref_count - 1,
-                ..*rc_cell
+                ..rc_cell
             })))?;
         }
 
@@ -734,12 +741,12 @@ impl Interpreter {
 
     fn retain_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
         match cell {
-            ValueCell::Pointer(Pointer::Heap(addr)) => {
-                let mut rc_cell = self.load_heap(*addr)?.into_owned();
+            ValueCell::Pointer(ptr) => {
+                let mut rc_cell = self.load_indirect(ptr)?.into_owned();
                 match &mut rc_cell {
                     ValueCell::RcCell(rc) => {
                         if self.trace_rc {
-                            eprintln!("rc: retain @ {}", addr);
+                            eprintln!("rc: retain @ {}", ptr);
                         }
 
                         rc.ref_count += 1;
@@ -751,7 +758,7 @@ impl Interpreter {
                     }
                 };
 
-                self.store_heap(*addr, rc_cell)?;
+                self.store_indirect(ptr, rc_cell)?;
 
                 Ok(())
             }
@@ -981,10 +988,8 @@ impl Interpreter {
     fn exec_rc_new(&mut self, out: &Ref, struct_id: &StructID) -> ExecResult<()> {
         let struct_ty = Type::Struct(*struct_id);
 
-        let default_vall = self.default_init_cell(&struct_ty)?;
-        let init_cells = vec![default_vall];
-
-        let rc_ptr = self.rc_alloc(init_cells, *struct_id);
+        let default_val = self.default_init_cell(&struct_ty)?;
+        let rc_ptr = self.rc_alloc(default_val, *struct_id)?;
 
         self.store(out, ValueCell::Pointer(rc_ptr))?;
 
@@ -1017,13 +1022,32 @@ impl Interpreter {
         });
     }
 
-    fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
-        match self.load(at)?.as_ref() {
-            ValueCell::Pointer(Pointer::Heap(addr)) => {
-                let addr = *addr;
-                self.value_heap.free(addr);
-
+    pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {
+        match ptr {
+            Pointer::Heap(heap_addr) => {
+                self.value_heap.free(*heap_addr);
                 Ok(())
+            }
+
+            Pointer::Native(native_ptr) => {
+                self.native_heap.free(&native_ptr.clone())
+                    .map_err(|err| NativeHeapError {
+                        err,
+                        span: self.debug_ctx().into_owned(),
+                    })
+            }
+
+            x => {
+                let msg = format!("illegal pointer type provided to DynFree: {:?}", x);
+                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            },
+        }
+    }
+
+    fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
+        match self.load(at)?.into_owned() {
+            ValueCell::Pointer(ptr) => {
+                self.dynfree(&ptr)
             }
 
             x => {
@@ -1033,21 +1057,54 @@ impl Interpreter {
         }
     }
 
-    fn exec_dynalloc(&mut self, out: &Ref, element_ty: &Type, len: &Value) -> ExecResult<()> {
+    pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<ValueCell>) -> ExecResult<Pointer> {
+        if self.use_native_mem {
+            let ptr = self.dynalloc(ty, values.len())?;
+
+            for (i, value) in values.into_iter().enumerate() {
+                let val_dst = ptr.clone() + i as isize;
+                self.store_indirect(&val_dst, value)?;
+            }
+
+            Ok(ptr)
+        } else {
+            let addr = self.value_heap.alloc(values);
+            Ok(Pointer::Heap(addr))
+        }
+    }
+
+    pub fn dynalloc(&mut self, ty: &Type, len: usize) -> ExecResult<Pointer> {
+        let ptr = if self.use_native_mem {
+            let native_ptr = self.native_heap.alloc(ty.clone(), len)
+                .map_err(|heap_err| ExecError::NativeHeapError {
+                    err: heap_err,
+                    span: self.debug_ctx().into_owned(),
+                })?;
+            Pointer::Native(native_ptr)
+        } else {
+            let mut cells = Vec::new();
+            for _ in 0..len {
+                let default_val = self.default_init_cell(ty)?;
+                cells.push(default_val);
+            }
+
+            let addr = self.value_heap.alloc(cells);
+            Pointer::Heap(addr)
+        };
+
+        Ok(ptr)
+    }
+
+    fn exec_dynalloc(&mut self, out: &Ref, ty: &Type, len: &Value) -> ExecResult<()> {
         let len = self
             .evaluate(len)?
             .as_i32()
-            .ok_or_else(|| ExecError::illegal_state("len of DynAlloc must be i32", self.debug_ctx().into_owned()))?;
+            .ok_or_else(|| ExecError::illegal_state("len value of DynAlloc must be i32", self.debug_ctx().into_owned()))?;
 
-        let mut cells = Vec::new();
-        for _ in 0..len {
-            let default_val = self.default_init_cell(element_ty)?;
-            cells.push(default_val);
-        }
+        let len = usize(len)
+            .map_err(|_| ExecError::illegal_state("alloc length must be positive", self.debug_ctx().into_owned()))?;
 
-        let addr = self.value_heap.alloc(cells);
-        let ptr = Pointer::Heap(addr);
-
+        let ptr = self.dynalloc(ty, len)?;
         self.store(out, ValueCell::Pointer(ptr))?;
 
         Ok(())
@@ -1396,7 +1453,7 @@ impl Interpreter {
             Type::RcPointer(..) => {
                 let target = self.load(&a.clone().to_deref())?;
                 let struct_ptr = match target.as_rc() {
-                    Some(rc_cell) => Pointer::Heap(rc_cell.resource_addr),
+                    Some(rc_cell) => rc_cell.resource_ptr.clone(),
                     None => {
                         let msg = format!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
                         return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
@@ -1435,17 +1492,16 @@ impl Interpreter {
         Ok(())
     }
 
-    fn rc_alloc(&mut self, vals: Vec<ValueCell>, ty_id: StructID) -> Pointer {
-        let resource_addr = self.value_heap.alloc(vals);
+    fn rc_alloc(&mut self, resource: ValueCell, ty_id: StructID) -> ExecResult<Pointer> {
+        let resource_ptr = self.dynalloc_init(&Type::Struct(ty_id), vec![resource])?;
 
         let rc_cell = ValueCell::RcCell(Box::new(RcCell {
             ref_count: 1,
-            resource_addr,
+            resource_ptr,
             struct_id: ty_id,
         }));
 
-        let addr = self.value_heap.alloc(vec![rc_cell]);
-        Pointer::Heap(addr)
+        self.dynalloc_init(&Type::RcObject(ty_id), vec![rc_cell])
     }
 
     fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type) {
@@ -1545,7 +1601,7 @@ impl Interpreter {
         self.native_heap.set_ffi_cache(self.ffi_cache.clone());
 
         for (id, literal) in module.metadata.strings() {
-            let str_cell = self.create_string(literal);
+            let str_cell = self.create_string(literal)?;
             let str_ref = GlobalRef::StringLiteral(id);
 
             self.globals.insert(
@@ -1574,19 +1630,14 @@ impl Interpreter {
             ExecError::illegal_state(msg, self.debug_ctx().into_owned())
         })?;
 
-        self.load_heap(rc.resource_addr)
+        self.load_indirect(&rc.resource_ptr)
     }
 
-    fn create_string(&mut self, content: &str) -> ValueCell {
+    fn create_string(&mut self, content: &str) -> ExecResult<ValueCell> {
         let chars: Vec<_> = content.chars().map(|c| ValueCell::U8(c as u8)).collect();
         let chars_len = chars.len();
 
-        let chars_ptr = if chars_len > 0 {
-            let heap_addr = self.value_heap.alloc(chars);
-            Pointer::Heap(heap_addr)
-        } else {
-            Pointer::Null
-        };
+        let chars_ptr = self.dynalloc_init(&Type::U8, chars)?;
 
         let str_fields = vec![
             // field 0: `chars: ^Byte`
@@ -1600,8 +1651,8 @@ impl Interpreter {
             fields: str_fields,
         }));
 
-        let str_ptr = self.rc_alloc(vec![str_cell], STRING_ID);
-        ValueCell::Pointer(str_ptr)
+        let str_ptr = self.rc_alloc(str_cell, STRING_ID)?;
+        Ok(ValueCell::Pointer(str_ptr))
     }
 
     fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
@@ -1622,22 +1673,21 @@ impl Interpreter {
             return Ok(String::new());
         }
 
-        let chars_addr = str_cell[STRING_CHARS_FIELD]
+        let chars_ptr = str_cell[STRING_CHARS_FIELD]
             .as_pointer()
-            .and_then(Pointer::as_heap_addr)
             .ok_or_else(|| {
                 ExecError::illegal_state(format!(
-                    "string contained non-heap-alloced `chars` pointer: {:?}",
+                    "string contained invalid `chars` pointer value: {:?}",
                     str_cell
                 ), self.debug_ctx().into_owned())
             })?;
 
         let mut chars = Vec::new();
-        for i in 0..*len as usize {
-            let char_addr = HeapAddress(chars_addr.0 + i);
-            let char_val = self.load_heap(char_addr)?.as_u8()
+        for i in 0..*len as isize {
+            let char_ptr = chars_ptr.clone() + i;
+            let char_val = self.load_indirect(&char_ptr)?.as_u8()
                 .ok_or_else(|| {
-                    ExecError::illegal_state(format!("expected string char @ {}", char_addr), self.debug_ctx().into_owned())
+                    ExecError::illegal_state(format!("expected string char @ {}", char_ptr), self.debug_ctx().into_owned())
                 })?;
 
             chars.push(char_val as char);

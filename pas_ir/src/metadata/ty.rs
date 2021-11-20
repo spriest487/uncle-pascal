@@ -247,6 +247,9 @@ pub enum Type {
     /// None for the Any type
     RcPointer(Option<ClassID>),
 
+    /// RC shared object struct of known (Some struct ID) or unknown (None struct ID) type
+    RcObject(StructID),
+
     Bool,
     U8,
     I32,
@@ -336,6 +339,7 @@ impl fmt::Display for Type {
                 Some(ClassID::Class(id)) => write!(f, "class {}", id),
                 Some(ClassID::Interface(id)) => write!(f, "iface {}", id),
             },
+            Type::RcObject(id) => write!(f, "{{rc {}}}", id),
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
         }
     }

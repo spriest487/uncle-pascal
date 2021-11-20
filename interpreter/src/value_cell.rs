@@ -63,7 +63,7 @@ impl VariantCell {
 
 #[derive(Debug, Clone)]
 pub struct RcCell {
-    pub resource_addr: HeapAddress,
+    pub resource_ptr: Pointer,
     pub ref_count: usize,
     pub struct_id: StructID,
 }

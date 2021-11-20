@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef};
+use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, Type};
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
@@ -15,7 +15,7 @@ pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
-    let string = state.create_string(&int.to_string());
+    let string = state.create_string(&int.to_string())?;
     state.store(&RETURN_REF, string)?;
 
     Ok(())
@@ -57,7 +57,7 @@ pub(super) fn read_ln(state: &mut Interpreter) -> ExecResult<()> {
     // remove the newline
     line.remove(line.len() - 1);
 
-    let result_str = state.create_string(&line);
+    let result_str = state.create_string(&line)?;
 
     state.store(&RETURN_REF, result_str)?;
 
@@ -73,10 +73,8 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
         .as_i32()
         .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument", state.debug_ctx().into_owned()))?;
 
-    let empty_bytes = vec![ValueCell::U8(0); len as usize];
-    let mem = state.value_heap.alloc(empty_bytes);
-
-    state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(mem)))?;
+    let mem_ptr = state.dynalloc(&Type::U8, len as usize)?;
+    state.store(&RETURN_REF, ValueCell::Pointer(mem_ptr))?;
 
     Ok(())
 }
@@ -85,13 +83,12 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
 pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(0));
 
-    let ptr = state
-        .load(&arg_0)?
-        .as_pointer()
-        .and_then(Pointer::as_heap_addr)
+    let ptr_cell = state.load(&arg_0)?.into_owned();
+
+    let ptr = ptr_cell.as_pointer()
         .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument", state.debug_ctx().into_owned()))?;
 
-    state.value_heap.free(ptr);
+    state.dynfree(ptr)?;
 
     Ok(())
 }
@@ -147,24 +144,20 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
         .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32", state.debug_ctx().into_owned()))?;
 
-    let array_class_addr = state.load(&array_arg)?
+    let array_class_ptr = state.load(&array_arg)?
         .as_pointer()
-        .and_then(Pointer::as_heap_addr)
+        .cloned()
         .ok_or_else(|| {
             let msg = "array arg passed to set_length must be a heap pointer";
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
-    let array_class = state.value_heap.load(array_class_addr)
-        .map_err(|addr| ExecError::IllegalHeapAccess {
-            addr,
-            span: state.debug_ctx().into_owned(),
-        })?
+    let array_class = state.load_indirect(&array_class_ptr)?
         .into_owned()
         .as_rc()
         .map(|rc_cell| rc_cell.struct_id)
         .ok_or_else(|| {
-            let msg = "array arg passed to set_length must refer to an rc cell on the heap";
+            let msg = "array arg passed to set_length must point to an rc cell";
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
@@ -188,7 +181,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
                 (retain_func, release_func)
             });
 
-        let old_array_struct = get_dyn_array_struct(state, array_arg)?;
+        let old_array_struct = get_dyn_array_struct(state, array_arg)?.into_owned();
         let len_field_cell = &old_array_struct[DYNARRAY_LEN_FIELD];
         let old_len =  len_field_cell.as_i32().ok_or_else(|| {
             let msg = format!("dynarray length is not I32");
@@ -197,46 +190,29 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
             .ok_or_else(|| {
-                let msg = format!("dynarray ptr is not a valid heap ptr");
+                let msg = format!("dynarray ptr is not a valid ptr");
                 ExecError::illegal_state(msg, state.debug_ctx().into_owned())
             })?;
-        let old_data_addr = match old_data_ptr {
-            Pointer::Null => None,
-            Pointer::Heap(addr) => Some(*addr),
-            _ => return Err(ExecError::illegal_state(
-                "dynarray array pointer is not a heap address",
-                state.debug_ctx().into_owned()
-            )),
-        };
-
-        let mut data_cells = vec![
-            state.default_init_cell(&dyn_array_el_ty)?;
-            new_len as usize
-        ];
-
-        // copy old data (if any) into the new array
-        if let Some(old_data_addr) = old_data_addr {
-            for i in 0..new_len.min(old_len) {
-                data_cells[i as usize] = state.value_heap.load(old_data_addr + i as usize)
-                    .map_err(|_| ExecError::illegal_state("failed to read old array contents in set_length", state.debug_ctx().into_owned()))?
-                    .into_owned();
-            }
-        }
 
         // copy default value into any cells beyond the length of the original array
         let default_val = state.load_indirect(default_val_ptr)?.into_owned();
 
         // put the initialized array onto the heap before retaining it because passing pointers
         // to retain funcs is a lot easier when the target is already on the heap
-        let heap_cells = state.value_heap.alloc(data_cells);
+        let new_data_ptr = state.dynalloc(&dyn_array_el_ty, new_len as usize)?;
 
         for i in 0..new_len {
             let i = i as usize;
 
-            let el_ptr = Pointer::Heap(heap_cells + i as usize);
+            let el_ptr = new_data_ptr.clone() + i as isize;
 
-            // assign default val for new elements
-            if i >= old_len as usize {
+            if i < old_len as usize {
+                // copy old elements
+                let old_el_ptr = old_data_ptr.clone() + i as isize;
+                let old_el = state.load_indirect(&old_el_ptr)?.into_owned();
+                state.store_indirect(&el_ptr, old_el)?;
+            } else {
+                // assign default val for new elements
                 state.store_indirect(&el_ptr, default_val.clone())?;
             }
 
@@ -248,7 +224,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             }
         }
 
-        Pointer::Heap(heap_cells)
+        new_data_ptr
     } else {
         Pointer::Null
     };
@@ -264,19 +240,19 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         id: array_class,
     };
 
-    let new_array_resource = state.value_heap.alloc(vec![
+    let new_array_resource_ptr = state.dynalloc_init(&Type::Struct(array_class), vec![
         ValueCell::Structure(Box::new(new_array_struct)),
-    ]);
+    ])?;
 
     let new_array_rc = RcCell {
         struct_id: array_class,
         ref_count: 1,
-        resource_addr: new_array_resource
+        resource_ptr: new_array_resource_ptr
     };
 
     let new_array_cell = ValueCell::RcCell(Box::new(new_array_rc));
-    let new_array_rc_addr = state.value_heap.alloc(vec![new_array_cell]);
+    let new_array_ptr = state.dynalloc_init(&Type::RcObject(array_class), vec![new_array_cell])?;
 
-    state.store(&RETURN_REF, ValueCell::Pointer(Pointer::Heap(new_array_rc_addr)))?;
+    state.store(&RETURN_REF, ValueCell::Pointer(new_array_ptr))?;
     Ok(())
 }

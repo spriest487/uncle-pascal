@@ -3,6 +3,7 @@ use pas_common::span::Span;
 use pas_common::{DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
 use crate::func::ffi::MarshalError;
+use crate::heap::native_heap::NativeHeapError;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -32,6 +33,10 @@ pub enum ExecError {
         addr: HeapAddress,
         span: Span,
     },
+    NativeHeapError {
+        err: NativeHeapError,
+        span: Span,
+    }
 }
 
 impl ExecError {
@@ -54,6 +59,7 @@ impl fmt::Display for ExecError {
             ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
             ExecError::IllegalHeapAccess { .. } => write!(f, "Illegal heap access at address"),
+            ExecError::NativeHeapError { err, .. } => write!(f, "{}", err),
         }
     }
 }
@@ -77,7 +83,6 @@ impl DiagnosticOutput for ExecError {
                 text: Some(
                     match ptr {
                         Pointer::Null => "dereferenced null pointer",
-                        Pointer::Uninit => "dereferenced uninitialized pointer",
                         Pointer::IntoArray { .. } => "dereferenced invalid array element pointer",
                         Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
                         Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
@@ -102,6 +107,10 @@ impl DiagnosticOutput for ExecError {
                 text: Some(msg.clone()),
                 span: span.clone(),
             }),
+            ExecError::NativeHeapError { err, span } => Some(DiagnosticLabel {
+                text: Some(err.to_string()),
+                span: span.clone(),
+            })
         }
     }
 }

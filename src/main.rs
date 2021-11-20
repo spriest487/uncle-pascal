@@ -90,6 +90,10 @@ struct Args {
     #[structopt(long = "trace-ir")]
     trace_ir: bool,
 
+    /// interpreter: use native memory instead of internal value stores (slower but FFI-compatible)
+    #[structopt(long = "native-mem")]
+    native_mem: bool,
+
     /// print compiler backtrace on compilation failure
     #[structopt(long = "backtrace", short = "bt")]
     backtrace: bool,
@@ -288,6 +292,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
             trace_heap: args.trace_heap,
             trace_ir: args.trace_ir,
             no_stdlib: args.no_stdlib,
+            use_native_mem: args.native_mem,
         };
 
         let mut interpreter = Interpreter::new(&interpret_opts);
