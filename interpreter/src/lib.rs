@@ -172,18 +172,14 @@ impl Interpreter {
     fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
         match ptr {
             Pointer::Heap(addr) => {
-                let heap_cell = self
-                    .value_heap
+                self.value_heap
                     .load(*addr)
                     .map_err(|addr| {
                         ExecError::IllegalHeapAccess {
                             addr,
                             span: self.debug_ctx().into_owned(),
                         }
-                    })?
-                    .into_owned();
-
-                Ok(Cow::Owned(heap_cell))
+                    })
             }
 
             Pointer::Native(native_ptr) => {
@@ -300,7 +296,12 @@ impl Interpreter {
     fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
         let debug_ctx = self.debug_ctx().into_owned();
         match ptr {
-            Pointer::Heap(addr) => self.store_heap(*addr, val),
+            Pointer::Heap(addr) => {
+                self.value_heap.store(*addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
+                    addr,
+                    span: self.debug_ctx().into_owned()
+                })
+            }
 
             Pointer::Native(native_ptr) => {
                 self.native_heap.store(native_ptr, val)
@@ -396,20 +397,6 @@ impl Interpreter {
                 })
             }
         }
-    }
-
-    pub fn load_heap(&self, addr: HeapAddress) -> ExecResult<Cow<ValueCell>> {
-        self.value_heap.load(addr).map_err(|addr| ExecError::IllegalHeapAccess {
-            addr,
-            span: self.debug_ctx().into_owned()
-        })
-    }
-
-    pub fn store_heap(&mut self, addr: HeapAddress, val: ValueCell) -> ExecResult<()> {
-        self.value_heap.store(addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
-            addr,
-            span: self.debug_ctx().into_owned()
-        })
     }
 
     fn store(&mut self, at: &Ref, val: ValueCell) -> ExecResult<()> {
@@ -534,12 +521,14 @@ impl Interpreter {
         iface_id: InterfaceID,
         method: MethodID,
     ) -> ExecResult<FunctionID> {
-        let self_rc_addr = self_cell
+        let self_ptr = self_cell
             .as_pointer()
-            .and_then(|ptr| ptr.as_heap_addr())
-            .ok_or_else(|| ExecError::illegal_state("expected target of vcall to be a heap pointer", self.debug_ctx().into_owned()))?;
+            .ok_or_else(|| {
+                let msg = "expected target of vcall to be a pointer";
+                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            })?;
 
-        let self_class_id = match self.load_heap(self_rc_addr)?.as_ref()  {
+        let self_class_id = match self.load_indirect(self_ptr)?.as_ref()  {
             ValueCell::RcCell(rc_cell) => Ok(rc_cell.struct_id),
             _ => {
                 let msg = format!(
@@ -1408,15 +1397,15 @@ impl Interpreter {
     }
 
     fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) -> ExecResult<()> {
-        let rc_addr = self
-            .evaluate(a)?
+        let a_ptr = self.evaluate(a)?
             .as_pointer()
-            .and_then(Pointer::as_heap_addr)
+            .cloned()
             .ok_or_else(|| {
-                let msg = "argument a of ClassIs instruction must evaluate to a heap pointer";
+                let msg = "argument a of ClassIs instruction must evaluate to a pointer";
                 ExecError::illegal_state(msg, self.debug_ctx().into_owned())
             })?;
-        let rc_cell = match self.load_heap(rc_addr)?.into_owned() {
+
+        let rc_cell = match self.load_indirect(&a_ptr)?.into_owned() {
             ValueCell::RcCell(rc) => Ok(rc),
             _ => {
                 let msg = "rc pointer target of ClassIs instruction must point to an rc cell";
