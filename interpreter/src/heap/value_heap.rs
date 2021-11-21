@@ -23,7 +23,7 @@ impl ValueHeap {
         let count = vals.len();
 
         if count == 0 {
-            panic!("allocation of length 0");
+            return HeapAddress(0);
         }
 
         let free_addr = self

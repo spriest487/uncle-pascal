@@ -73,7 +73,12 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
         .as_i32()
         .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument", state.debug_ctx().into_owned()))?;
 
-    let mem_ptr = state.dynalloc(&Type::U8, len as usize)?;
+    let mem_ptr = if len != 0 {
+        state.dynalloc(&Type::U8, len as usize)?
+    } else {
+        Pointer::Null
+    };
+
     state.store(&RETURN_REF, ValueCell::Pointer(mem_ptr))?;
 
     Ok(())

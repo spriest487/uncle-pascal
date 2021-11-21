@@ -36,7 +36,8 @@ pub enum ExecError {
     NativeHeapError {
         err: NativeHeapError,
         span: Span,
-    }
+    },
+    ZeroLengthAllocation(Span),
 }
 
 impl ExecError {
@@ -60,6 +61,7 @@ impl fmt::Display for ExecError {
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
             ExecError::IllegalHeapAccess { .. } => write!(f, "Illegal heap access at address"),
             ExecError::NativeHeapError { err, .. } => write!(f, "{}", err),
+            ExecError::ZeroLengthAllocation(..) => write!(f, "Dynamic allocation with length 0"),
         }
     }
 }
@@ -110,7 +112,11 @@ impl DiagnosticOutput for ExecError {
             ExecError::NativeHeapError { err, span } => Some(DiagnosticLabel {
                 text: Some(err.to_string()),
                 span: span.clone(),
-            })
+            }),
+            ExecError::ZeroLengthAllocation(span) => Some(DiagnosticLabel {
+                text: None,
+                span: span.clone(),
+            }),
         }
     }
 }

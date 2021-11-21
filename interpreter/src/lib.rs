@@ -1047,6 +1047,10 @@ impl Interpreter {
     }
 
     pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<ValueCell>) -> ExecResult<Pointer> {
+        if values.len() == 0 {
+            return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
+        }
+
         if self.use_native_mem {
             let ptr = self.dynalloc(ty, values.len())?;
 
@@ -1063,6 +1067,10 @@ impl Interpreter {
     }
 
     pub fn dynalloc(&mut self, ty: &Type, len: usize) -> ExecResult<Pointer> {
+        if len == 0 {
+            return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
+        }
+
         let ptr = if self.use_native_mem {
             let native_ptr = self.native_heap.alloc(ty.clone(), len)
                 .map_err(|heap_err| ExecError::NativeHeapError {
@@ -1624,15 +1632,22 @@ impl Interpreter {
 
     fn create_string(&mut self, content: &str) -> ExecResult<ValueCell> {
         let chars: Vec<_> = content.chars().map(|c| ValueCell::U8(c as u8)).collect();
-        let chars_len = chars.len();
+        let chars_len = cast::i32(chars.len()).map_err(|_| {
+            let msg = format!("string length out of range: {}", chars.len());
+            ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+        })?;
 
-        let chars_ptr = self.dynalloc_init(&Type::U8, chars)?;
+        let chars_ptr = if chars_len > 0 {
+            self.dynalloc_init(&Type::U8, chars)?
+        } else {
+            Pointer::Null
+        };
 
         let str_fields = vec![
             // field 0: `chars: ^Byte`
             ValueCell::Pointer(chars_ptr),
             // field 1: `len: Integer`
-            ValueCell::I32(chars_len as i32),
+            ValueCell::I32(chars_len),
         ];
 
         let str_cell = ValueCell::Structure(Box::new(StructCell {
