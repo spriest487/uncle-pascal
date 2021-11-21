@@ -1,8 +1,7 @@
-* codegen: return bool from visitor func so we can strip out empty instructions in releasers/retainsers
-* error handling in interpreter
 * newlines/escape chars in string literals
-* some type conversions etc should return Cow instead of always cloning
 * "real" memory layout for the interpreter vs the current debug one, so it can interact with FFI + pointers
+* interpreter native stack
+* c ffi
 
 # critical
 
