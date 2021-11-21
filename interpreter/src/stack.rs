@@ -138,9 +138,6 @@ impl StackFrame {
             .ok_or_else(|| StackError::EmptyBlockStack)?;
 
         for id in popped_block.decls {
-            if !self.is_allocated(id) {
-
-            }
             self.locals[id.0] = None;
         }
 
