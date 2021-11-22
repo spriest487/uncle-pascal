@@ -1,14 +1,19 @@
 use std::fmt;
-use pas_ir::LocalID;
-use crate::ValueCell;
+use std::rc::Rc;
+use pas_ir::{LocalID, Type};
+use crate::{FfiCache, ValueCell};
+use crate::func::ffi::{MarshalError, MarshalResult};
+use crate::heap::native_heap::NativePointer;
 
 #[derive(Debug)]
 struct Block {
     decls: Vec<LocalID>,
+
+    initial_stack_offset: usize,
 }
 
 #[derive(Debug)]
-struct LocalCell {
+struct StackAlloc {
     // local cells are allocated on the fly as the interpreter passes LocalAlloc
     // instructions. we want to prevent IR code from alloc-ing two locals with the same
     // ID, but we might also legally run the same alloc instruction more than once if flow control
@@ -18,116 +23,71 @@ struct LocalCell {
     // function param allocs don't have an alloc locatoin
     alloc_pc: Option<usize>,
 
-    value: ValueCell,
-}
+    ty: Type,
 
-impl LocalCell {
-    fn is_alloc_pc(&self, pc: usize) -> bool {
-        match self.alloc_pc {
-            None => false,
-            Some(alloc_pc) => alloc_pc == pc,
-        }
-    }
+    stack_offset: usize,
 }
 
 #[derive(Debug)]
 pub(super) struct StackFrame {
     name: String,
 
-    locals: Vec<Option<LocalCell>>,
+    locals: Vec<StackAlloc>,
     block_stack: Vec<Block>,
+
+    stack_mem: Box<[u8]>,
+    stack_offset: usize,
+
+    marshaller: Rc<FfiCache>,
 }
 
 impl StackFrame {
-    pub fn new(name: impl Into<String>) -> Self {
+    pub fn new(name: impl Into<String>, marshaller: Rc<FfiCache>, stack_size: usize) -> Self {
         Self {
             name: name.into(),
 
             locals: Vec::new(),
-            block_stack: vec![Block { decls: Vec::new() }],
+            block_stack: vec![Block {
+                decls: Vec::new(),
+                initial_stack_offset: 0,
+            }],
+
+            marshaller,
+
+            stack_mem: vec![0; stack_size].into_boxed_slice(),
+            stack_offset: 0,
         }
     }
 
-    pub fn deref_local(&self, id: LocalID) -> StackResult<&ValueCell> {
-        match self.locals[id.0].as_ref() {
-            Some(local_val) => {
-                Ok(&local_val.value)
-            }
-            None => Err(StackError::LocalNotAllocated(id)),
-        }
+    pub fn push_local(&mut self, ty: Type, value: &ValueCell, alloc_pc: Option<usize>) -> MarshalResult<LocalID> {
+        let start_offset = self.stack_offset;
+        let alloc_slice = &mut self.stack_mem[start_offset..];
+        let size = self.marshaller.marshal(value, alloc_slice)?;
+        self.stack_offset += size;
+
+        self.locals.push(StackAlloc {
+            alloc_pc,
+            ty,
+            stack_offset: start_offset,
+        });
+
+        let id = LocalID(self.locals.len() - 1);
+        Ok(id)
     }
 
-    pub fn deref_local_mut(&mut self, id: LocalID) -> StackResult<&mut ValueCell> {
-        match self.locals[id.0].as_mut() {
-            Some(local_val) => {
-                Ok(&mut local_val.value)
-            }
-            None => Err(StackError::LocalNotAllocated(id)),
-        }
-    }
+    pub fn get_local_ptr(&self, id: LocalID) -> StackResult<NativePointer> {
+        let alloc = self.locals.get(id.0).ok_or_else(|| StackError::LocalNotAllocated(id))?;
 
-    pub fn push_local(&mut self, value: ValueCell) {
-        self.locals.push(Some(LocalCell {
-            alloc_pc: None,
-            value,
-        }));
-    }
-
-    pub fn alloc_local(&mut self, id: LocalID, alloc_pc: usize, value: ValueCell) -> StackResult<()> {
-        while self.locals.len() <= id.0 {
-            self.locals.push(None);
-        }
-
-        match &mut self.locals[id.0] {
-            None => {
-                self.locals[id.0] = Some(LocalCell {
-                    value,
-                    alloc_pc: Some(alloc_pc),
-                })
-            }
-            Some(already_allocated) => {
-                // the same ID can only be reused if this is the same instruction that
-                // allocated it in the first place
-                if !already_allocated.is_alloc_pc(alloc_pc) {
-                    panic!("local cell {} is already allocated", id)
-                }
-                already_allocated.value = value;
-            }
-        }
-
-        self.push_block_decl(id)?;
-
-        Ok(())
-    }
-
-    pub fn is_allocated(&self, id: LocalID) -> bool {
-        id.0 < self.locals.len()
-    }
-
-    pub fn store_local(&mut self, id: LocalID, value: ValueCell) -> StackResult<()> {
-        match self.locals.get_mut(id.0) {
-            Some(Some(cell)) => {
-                cell.value = value;
-                Ok(())
-            }
-            None | Some(None) => {
-                Err(StackError::LocalNotAllocated(id))
-            },
-        }
-    }
-
-    pub fn load_local(&self, id: LocalID) -> StackResult<&ValueCell> {
-        match self.locals.get(id.0) {
-            Some(Some(cell)) => Ok(&cell.value),
-            None | Some(None) => {
-                Err(StackError::LocalNotAllocated(id))
-            }
-        }
+        Ok(NativePointer {
+            ty: alloc.ty.clone(),
+            addr: self.stack_mem.as_ptr() as usize + alloc.stack_offset,
+        })
     }
 
     pub fn push_block(&mut self) {
         self.block_stack.push(Block {
             decls: Vec::new(),
+            initial_stack_offset: self.stack_offset,
         });
     }
 
@@ -137,9 +97,9 @@ impl StackFrame {
             .pop()
             .ok_or_else(|| StackError::EmptyBlockStack)?;
 
-        for id in popped_block.decls {
-            self.locals[id.0] = None;
-        }
+        let new_stack_offset = popped_block.initial_stack_offset;
+        self.stack_offset = new_stack_offset;
+        self.locals.retain(|l| l.stack_offset < new_stack_offset);
 
         Ok(())
     }
@@ -154,39 +114,28 @@ impl StackFrame {
             });
         }
 
-        let pop_blocks = current_block - block_depth;
+        let pop_block_count = current_block - block_depth;
 
-        for _ in 0..pop_blocks {
+        for _ in 0..pop_block_count {
             match self.block_stack.pop() {
                 Some(popped_block) => {
-                    for decl in popped_block.decls {
-                        self.locals[decl.0] = None;
-                    }
+                    self.stack_offset = popped_block.initial_stack_offset;
                 },
 
                 None => {
                     return Err(StackError::EmptyBlockStack)
                 }
             }
-
         }
+
+        let new_stack_offset = self.stack_offset;
+        self.locals.retain(|l| l.stack_offset < new_stack_offset);
 
         Ok(())
     }
-
-    fn push_block_decl(&mut self, id: LocalID) -> StackResult<()> {
-        match self.block_stack.last_mut() {
-            Some(current_block) => {
-                current_block.decls.push(id);
-                Ok(())
-            }
-
-            None => Err(StackError::EmptyBlockStack)
-        }
-    }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub enum StackError {
     LocalNotAllocated(LocalID),
     IllegalJmp {
@@ -194,6 +143,13 @@ pub enum StackError {
         dest_block: usize,
     },
     EmptyBlockStack,
+    MarshalError(MarshalError),
+}
+
+impl From<MarshalError> for StackError {
+    fn from(err: MarshalError) -> Self {
+        StackError::MarshalError(err)
+    }
 }
 
 impl fmt::Display for StackError {
@@ -207,6 +163,9 @@ impl fmt::Display for StackError {
             }
             StackError::IllegalJmp { current_block, dest_block } => {
                 write!(f, "illegal jump from block {} to block {}", current_block, dest_block)
+            }
+            StackError::MarshalError(err) => {
+                write!(f, "{}", err)
             }
         }
     }

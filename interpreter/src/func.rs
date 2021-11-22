@@ -4,7 +4,7 @@ use crate::{ExecResult, Interpreter};
 use pas_ir::{ExternalFunctionRef, FunctionDef, Type};
 use std::fmt;
 
-use crate::func::ffi::{FfiCache, FfiInvoker, MarshalResult};
+use crate::func::ffi::{FfiCache, FfiInvoker, MarshalResult, ForeignTypeExt};
 use pas_ir::prelude::Metadata;
 
 pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
@@ -12,6 +12,7 @@ pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
 pub struct BuiltinFunction {
     pub func: BuiltinFn,
     pub return_ty: Type,
+    pub param_tys: Vec<Type>,
 
     pub debug_name: String,
 }
@@ -20,6 +21,7 @@ pub struct FfiFunction {
     debug_name: String,
 
     return_ty: Type,
+    param_tys: Vec<Type>,
 
     invoker: FfiInvoker,
 }
@@ -41,6 +43,7 @@ impl Function {
         let func = Function::External(FfiFunction {
             debug_name: format!("{}::{}", func_ref.src, func_ref.symbol),
             return_ty: func_ref.return_ty.clone(),
+            param_tys: func_ref.params.clone(),
 
             invoker,
         });
@@ -53,6 +56,14 @@ impl Function {
             Function::Builtin(def) => &def.return_ty,
             Function::External(def) => &def.return_ty,
             Function::IR(def) => &def.return_ty,
+        }
+    }
+
+    pub fn param_tys(&self) -> &[Type] {
+        match self {
+            Function::Builtin(builtin_fn) => &builtin_fn.param_tys,
+            Function::External(external_fn) => &external_fn.param_tys,
+            Function::IR(func_def) => &func_def.params,
         }
     }
 
@@ -87,6 +98,27 @@ impl Function {
         };
 
         Ok(())
+    }
+
+    pub fn stack_alloc_size(&self, marshaller: &FfiCache) -> MarshalResult<usize> {
+        let mut args_size = 0;
+        for arg_ty in self.param_tys() {
+            let arg_size = marshaller.get_ty(arg_ty)?.size();
+            args_size += arg_size;
+        }
+
+        let return_size = marshaller.get_ty(self.return_ty())?.size();
+
+        match self {
+            Function::IR(def) => {
+                let body_size = marshaller.stack_alloc_size(&def.body)?;
+                Ok(body_size + args_size + return_size)
+            },
+
+            Function::Builtin(..) | Function::External(..) => {
+                Ok(args_size + return_size)
+            },
+        }
     }
 }
 

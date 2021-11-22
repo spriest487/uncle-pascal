@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt;
 use std::mem::size_of;
-use std::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
 use std::rc::Rc;
 use pas_ir::Type;
 use crate::{FfiCache, ValueCell};
@@ -93,14 +92,9 @@ impl NativeHeap {
             return Err(NativeHeapError::NullPointerDeref);
         }
 
-        let val = unsafe {
-            let marshal_ty = self.marshaller.get_ty(&addr.ty)?;
+        let val = self.marshaller.unmarshal_from_ptr(addr)?;
 
-            let mem_slice = slice_from_raw_parts(addr.addr as *const u8, marshal_ty.size());
-            self.marshaller.unmarshal(&*mem_slice, &addr.ty)?
-        };
-
-        Ok(val.value)
+        Ok(val)
     }
 
     pub fn store(&mut self, addr: &NativePointer, val: ValueCell) -> NativeHeapResult<()> {
@@ -108,17 +102,7 @@ impl NativeHeap {
             return Err(NativeHeapError::NullPointerDeref);
         }
 
-        unsafe {
-            let marshal_ty = self.marshaller.get_ty(&addr.ty)?;
-            let marshalled_size = marshal_ty.size();
-
-            if marshalled_size > 0 {
-                let mem_slice = slice_from_raw_parts_mut(addr.addr as *mut u8, marshalled_size)
-                    .as_mut()
-                    .unwrap();
-                self.marshaller.marshal(&val, mem_slice)?;
-            }
-        };
+        self.marshaller.marshal_into(&val, addr)?;
 
         Ok(())
     }

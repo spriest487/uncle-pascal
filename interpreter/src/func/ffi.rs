@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::ffi::c_void;
 use std::mem::{size_of, transmute};
+use std::ptr::slice_from_raw_parts_mut;
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, ArrayCell, VariantCell, StructCell, RcCell};
 use ::dlopen::{
     Error as DlopenError,
@@ -15,7 +16,7 @@ use ::libffi::{
 };
 use libffi::low::ffi_type;
 use libffi::raw::FFI_TYPE_STRUCT;
-use pas_ir::{metadata::Metadata, ExternalFunctionRef, LocalID, Ref, Type};
+use pas_ir::{metadata::Metadata, ExternalFunctionRef, LocalID, Ref, Type, Instruction};
 use pas_ir::metadata::Variant;
 use pas_ir::prelude::{Struct, StructID};
 use crate::heap::native_heap::NativePointer;
@@ -273,7 +274,7 @@ impl FfiCache {
                 Ok(ForeignType::structure(el_tys))
             }
 
-            Type::Pointer(..) => {
+            Type::Pointer(..) | Type::RcPointer(..) => {
                 Ok(ForeignType::pointer())
             }
 
@@ -441,6 +442,36 @@ impl FfiCache {
         }
     }
 
+    pub fn unmarshal_from_ptr(&self, into_ptr: &NativePointer) -> MarshalResult<ValueCell> {
+        if into_ptr.addr == 0 {
+            return Err(MarshalError::InvalidData);
+        }
+
+        let marshal_ty = self.get_ty(&into_ptr.ty)?;
+
+        let mem_slice = slice_from_raw_parts(into_ptr.addr as *const u8, marshal_ty.size());
+        let result = unsafe {
+            self.unmarshal(mem_slice.as_ref().unwrap(), &into_ptr.ty)?
+        };
+
+        Ok(result.value)
+    }
+
+    pub fn marshal_into(&self, val: &ValueCell, into_ptr: &NativePointer) -> MarshalResult<usize> {
+        if into_ptr.addr == 0 {
+            return Err(MarshalError::InvalidData);
+        }
+
+        let marshal_ty = self.get_ty(&into_ptr.ty)?;
+
+        let mem_slice = slice_from_raw_parts_mut(into_ptr.addr as *mut u8, marshal_ty.size());
+        let size = unsafe {
+            self.marshal(val, mem_slice.as_mut().unwrap())?
+        };
+
+        Ok(size)
+    }
+
     pub fn unmarshal(&self, in_bytes: &[u8], ty: &Type) -> MarshalResult<UnmarshalledValue> {
         match ty {
             Type::I32 => {
@@ -494,7 +525,7 @@ impl FfiCache {
                 let struct_id_offset = rc_cell_fields[0].size() + rc_cell_fields[1].size();
 
                 let rc_struct_bytes = unsafe {
-                    slice_from_raw_parts(rc_struct_bytes_ptr, rc_cell_fields[2].size())
+                    slice_from_raw_parts(rc_struct_bytes_ptr, self.rc_cell_type.size())
                         .as_ref()
                         .unwrap()
                 };
@@ -631,6 +662,24 @@ impl FfiCache {
                 Err(MarshalError::UnsupportedType(ty.clone()))
             }
         }
+    }
+
+    pub fn stack_alloc_size(&self, instructions: &[Instruction]) -> MarshalResult<usize> {
+        let mut local_sizes = Vec::new();
+        for instruction in instructions {
+            if let Instruction::LocalAlloc(id, ty) = instruction {
+                while local_sizes.len() <= id.0 {
+                    local_sizes.push(0);
+                }
+
+                let ty_size = self.get_ty(ty)?.size();
+                let local_size = &mut local_sizes[id.0];
+                *local_size = max(ty_size, *local_size);
+            }
+        }
+
+        let size_sum = local_sizes.into_iter().sum();
+        Ok(size_sum)
     }
 }
 

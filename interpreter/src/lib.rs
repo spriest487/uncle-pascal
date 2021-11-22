@@ -191,15 +191,6 @@ impl Interpreter {
                 Ok(Cow::Owned(val))
             }
 
-            Pointer::Local { frame, id, .. } => {
-                let local_cell = self.stack[*frame].deref_local(*id)
-                    .map_err(|err| {
-                        ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
-                    })?;
-
-                Ok(Cow::Borrowed(local_cell))
-            }
-
             Pointer::IntoArray { array, offset } => {
                 match self.load_indirect(array)? {
                     Cow::Borrowed(ValueCell::Array(array_cell)) => {
@@ -311,16 +302,6 @@ impl Interpreter {
                     })
             }
 
-            Pointer::Local { frame, id, .. } => {
-                let local_cell = self.stack[*frame].deref_local_mut(*id).map_err(|err| {
-                    ExecError::illegal_state(err.to_string(), debug_ctx)
-                })?;
-
-                *local_cell = val;
-
-                Ok(())
-            }
-
             Pointer::IntoArray { array, offset, .. } => {
                 match self.load_indirect(array)?.into_owned() {
                     ValueCell::Array(mut array_cell) => {
@@ -399,6 +380,42 @@ impl Interpreter {
         }
     }
 
+    fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
+        let current_frame = self.current_frame_mut()?;
+        let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
+            // todo: proper error
+            ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+        })?;
+
+        self.ffi_cache.marshal_into(&val, &local_ptr)
+            .map_err(|err| {
+                ExecError::MarshallingFailed {
+                    err,
+                    span: self.debug_ctx().into_owned(),
+                }
+            })?;
+
+        Ok(())
+    }
+
+    fn load_local(&self, id: LocalID) -> ExecResult<ValueCell> {
+        let current_frame = self.current_frame()?;
+        let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
+            // todo: proper error
+            ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+        })?;
+
+        let value = self.ffi_cache.unmarshal_from_ptr(&local_ptr)
+            .map_err(|err| {
+                ExecError::MarshallingFailed {
+                    err,
+                    span: self.debug_ctx().into_owned(),
+                }
+            })?;
+
+        Ok(value)
+    }
+
     fn store(&mut self, at: &Ref, val: ValueCell) -> ExecResult<()> {
         match at {
             Ref::Discard => {
@@ -407,10 +424,7 @@ impl Interpreter {
             }
 
             Ref::Local(id) => {
-                self.current_frame_mut()?.store_local(*id, val)
-                    .map_err(|err| {
-                        ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
-                    })
+                self.store_local(*id, val)
             },
 
             Ref::Global(name) => {
@@ -452,9 +466,8 @@ impl Interpreter {
                 Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
             },
 
-            Ref::Local(id) => self.current_frame()?
-                .load_local(*id)
-                .map(Cow::Borrowed)
+            Ref::Local(id) => self.load_local(*id)
+                .map(Cow::Owned)
                 .map_err(|err| {
                     ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
                 }),
@@ -492,8 +505,8 @@ impl Interpreter {
         }
     }
 
-    fn push_stack(&mut self, name: impl Into<String>) {
-        let stack_frame = StackFrame::new(name);
+    fn push_stack(&mut self, name: impl Into<String>, stack_size: usize) {
+        let stack_frame = StackFrame::new(name, self.ffi_cache.clone(), stack_size);
         self.stack.push(stack_frame);
     }
 
@@ -558,18 +571,39 @@ impl Interpreter {
     }
 
     fn call(&mut self, func: &Function, args: &[ValueCell], out: Option<&Ref>) -> ExecResult<()> {
-        self.push_stack(func.debug_name());
+        let stack_size = func.stack_alloc_size(self.marshaller())
+            .map_err(|err| ExecError::MarshallingFailed {
+                err,
+                span: self.debug_ctx().into_owned()
+            })?;
+        self.push_stack(func.debug_name(), stack_size);
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
             let result_cell = self.default_init_cell(return_ty)?;
-            self.current_frame_mut()?.push_local(result_cell);
+            self.current_frame_mut()?.push_local(return_ty.clone(), &result_cell, None)
+                .map_err(|err| ExecError::MarshallingFailed {
+                    err,
+                    span: self.debug_ctx().into_owned(),
+                })?;
+        }
+
+        if args.len() != func.param_tys().len() {
+            let msg = format!(
+                "arguments provided for function call are invalid (expected {} args, got {}",
+                func.param_tys().len(),
+                args.len()
+            );
+            return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
         }
 
         // store params in either $0.. or $1..
-        for arg_cell in args.iter().cloned() {
-            self.current_frame_mut()?.push_local(arg_cell);
+        for (arg_cell, param_ty) in args.iter().zip(func.param_tys()) {
+            self.current_frame_mut()?.push_local(param_ty.clone(), arg_cell, None)
+                .map_err(|err| {
+                    ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                })?;
         }
 
         func.invoke(self)?;
@@ -774,29 +808,12 @@ impl Interpreter {
             // let int := 1;
             // @int -> stack address of int cell
             Ref::Local(id) => {
-                // find the highest frame in which this cell id is allocated
-                let frame_id = self
-                    .stack
-                    .iter()
-                    .enumerate()
-                    .rev()
-                    .filter_map(|(frame_id, stack_frame)| {
-                        if stack_frame.is_allocated(*id) {
-                            Some(frame_id)
-                        } else {
-                            None
-                        }
-                    })
-                    .next()
-                    .ok_or_else(|| {
-                        let msg = format!("id {} is not allocated in any stack frames", id);
+                self.current_frame()?.get_local_ptr(*id)
+                    .map_err(|err| {
+                        let msg = err.to_string();
                         ExecError::illegal_state(msg, self.debug_ctx().into_owned())
-                    })?;
-
-                Ok(Pointer::Local {
-                    frame: frame_id,
-                    id: *id,
-                })
+                    })
+                    .map(Pointer::Native)
             }
 
             Ref::Global(global) => {
@@ -854,7 +871,10 @@ impl Interpreter {
                 }
             }
 
-            Instruction::LocalAlloc(id, ty) => self.exec_local_alloc(*pc, *id, ty)?,
+            Instruction::LocalAlloc(id, ty) => {
+                let alloc_id = self.exec_local_alloc(*pc, ty)?;
+                assert_eq!(*id, alloc_id)
+            },
 
             Instruction::LocalBegin => self.exec_local_begin()?,
             Instruction::LocalEnd => self.exec_local_end()?,
@@ -948,15 +968,16 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_local_alloc(&mut self, pc: usize, id: LocalID, ty: &Type) -> ExecResult<()> {
+    fn exec_local_alloc(&mut self, pc: usize, ty: &Type) -> ExecResult<LocalID> {
         let uninit_cell = self.default_init_cell(ty)?;
 
-        self.current_frame_mut()?.alloc_local(id, pc, uninit_cell)
+        let current_frame = self.current_frame_mut()?;
+        let id = current_frame.push_local(ty.clone(), &uninit_cell, Some(pc))
             .map_err(|err| {
                 ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
             })?;
 
-        Ok(())
+        Ok(id)
     }
 
     fn exec_local_begin(&mut self) -> ExecResult<()> {
@@ -1501,7 +1522,7 @@ impl Interpreter {
         self.dynalloc_init(&Type::RcObject(ty_id), vec![rc_cell])
     }
 
-    fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type) {
+    fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type, params: Vec<Type>) {
         if let Some(func_id) = self.metadata.find_function(&name) {
             self.globals.insert(
                 GlobalRef::Function(func_id),
@@ -1509,6 +1530,7 @@ impl Interpreter {
                     value: ValueCell::Function(Rc::new(Function::Builtin(BuiltinFunction {
                         func,
                         return_ty: ret,
+                        param_tys: params,
                         debug_name: name.to_string(),
                     }))),
                     ty: Type::Nothing,
@@ -1518,29 +1540,38 @@ impl Interpreter {
     }
 
     fn init_stdlib_globals(&mut self) {
-        let system_funcs: &[(&str, BuiltinFn, Type)] = &[
-            ("IntToStr", builtin::int_to_str, Type::string_ptr()),
-            ("StrToInt", builtin::str_to_int, Type::I32),
-            ("WriteLn", builtin::write_ln, Type::Nothing),
-            ("ReadLn", builtin::read_ln, Type::string_ptr()),
-            ("GetMem", builtin::get_mem, Type::U8.ptr()),
-            ("FreeMem", builtin::free_mem, Type::Nothing),
-            ("ArrayLengthInternal", builtin::array_length, Type::I32),
+        let system_funcs: &[(&str, BuiltinFn, Type, Vec<Type>)] = &[
+            ("IntToStr", builtin::int_to_str, Type::string_ptr(), vec![Type::I32]),
+            ("StrToInt", builtin::str_to_int, Type::I32, vec![STRING_TYPE]),
+            ("WriteLn", builtin::write_ln, Type::Nothing, vec![STRING_TYPE]),
+            ("ReadLn", builtin::read_ln, Type::string_ptr(), vec![]),
+            ("GetMem", builtin::get_mem, Type::U8.ptr(), vec![Type::I32]),
+            ("FreeMem", builtin::free_mem, Type::Nothing, vec![Type::Nothing.ptr()]),
+            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(None).ptr()]),
             (
+                //
                 "ArraySetLengthInternal",
                 builtin::set_length,
                 Type::RcPointer(None),
+                vec![
+                    Type::RcPointer(None).ptr(),
+                    Type::I32,
+                    Type::Nothing.ptr(),
+                    Type::I32,
+                ]
             ),
         ];
 
-        for (ident, func, ret) in system_funcs {
+        for (ident, func, ret, params) in system_funcs {
             let name = Symbol::new(ident.to_string(), vec!["System"]);
-            self.define_builtin(name, *func, ret.clone());
+            self.define_builtin(name, *func, ret.clone(), params.to_vec());
         }
     }
 
     pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
+
+        self.debug_ctx_stack.push(module.module_span().clone());
 
         let mut ffi_cache = (*self.ffi_cache).clone();
 
@@ -1554,9 +1585,11 @@ impl Interpreter {
                 }
             };
 
-            add_result.map_err(|err| ExecError::MarshallingFailed {
-                err,
-                span: module.module_span().clone(),
+            add_result.map_err(|err| {
+                ExecError::MarshallingFailed {
+                    err,
+                    span: module.module_span().clone(),
+                }
             })?;
         }
 
@@ -1614,9 +1647,17 @@ impl Interpreter {
             self.init_stdlib_globals();
         }
 
-        self.push_stack("<init>");
+        let init_stack_size = self.ffi_cache.stack_alloc_size(&module.init)
+            .map_err(|err| ExecError::MarshallingFailed {
+                err,
+                span: self.debug_ctx().into_owned(),
+            })?;
+
+        self.push_stack("<init>", init_stack_size);
         self.execute(&module.init)?;
         self.pop_stack()?;
+
+        self.debug_ctx_stack.pop();
 
         Ok(())
     }

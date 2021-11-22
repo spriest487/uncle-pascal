@@ -1,7 +1,6 @@
 use crate::value_cell::ValueCell;
 use crate::{ExecResult, HeapAddress, Interpreter};
 use pas_ir::metadata::FieldID;
-use pas_ir::{LocalID};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
@@ -12,10 +11,6 @@ use crate::heap::native_heap::NativePointer;
 pub enum Pointer {
     Null,
     Heap(HeapAddress),
-    Local {
-        frame: usize,
-        id: LocalID,
-    },
     IntoArray {
         array: Box<Pointer>,
         offset: usize,
@@ -50,7 +45,6 @@ impl Pointer {
         match self {
             Pointer::Null => PointerKind::Null,
             Pointer::Heap(_) => PointerKind::Heap,
-            Pointer::Local { .. } => PointerKind::Local,
             Pointer::IntoArray { .. } => PointerKind::IntoArray,
             Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
             Pointer::VariantTag { .. } => PointerKind::VariantTag,
@@ -73,17 +67,6 @@ impl Ord for Pointer {
 
             (Pointer::Heap(a), Pointer::Heap(b)) => a.0.cmp(&b.0),
             (
-                Pointer::Local {
-                    frame: a_frame,
-                    id: a_id,
-                },
-                Pointer::Local {
-                    frame: b_frame,
-                    id: b_id,
-                },
-            ) => a_frame.cmp(b_frame).then_with(|| a_id.cmp(b_id)),
-
-            (
                 Pointer::IntoArray {
                     array: arr_a,
                     offset: off_a,
@@ -105,10 +88,6 @@ impl Add<isize> for Pointer {
     fn add(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Local { frame, id } => Pointer::Local {
-                frame,
-                id: LocalID((id.0 as isize + rhs) as usize),
-            },
             Pointer::Heap(HeapAddress(addr)) => {
                 Pointer::Heap(HeapAddress((addr as isize + rhs) as usize))
             }
@@ -135,10 +114,6 @@ impl Sub<isize> for Pointer {
     fn sub(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Local { frame, id } => Pointer::Local {
-                frame,
-                id: LocalID((id.0 as isize - rhs) as usize),
-            },
             Pointer::Heap(HeapAddress(addr)) => {
                 Pointer::Heap(HeapAddress((addr as isize - rhs) as usize))
             }
@@ -164,7 +139,6 @@ impl fmt::Display for Pointer {
         match self {
             Pointer::Null => write!(f, "NULL"),
             Pointer::Heap(heap_addr) => write!(f, "{}", heap_addr),
-            Pointer::Local { frame, id } => write!(f, "{}/{}", frame, id ),
             Pointer::IntoArray { array, offset } => write!(f, "@({}^ [{}])", array, offset),
             Pointer::IntoStruct { structure, field } => write!(f, "@({}^.{})", structure, field),
             Pointer::VariantTag { variant } => write!(f, "@({}^.tag)", variant),
@@ -177,7 +151,6 @@ impl fmt::Display for Pointer {
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
 enum PointerKind {
     Null,
-    Local,
     Heap,
     IntoArray,
     VariantData,

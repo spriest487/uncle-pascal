@@ -52,8 +52,11 @@ pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
 pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
 
 pub const STRING_ID: StructID = StructID(1);
+pub const STRING_CLASS_ID: ClassID = ClassID::Class(STRING_ID);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
+
+pub const STRING_TYPE: Type = Type::RcPointer(Some(STRING_CLASS_ID));
 
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
