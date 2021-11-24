@@ -486,11 +486,6 @@ impl Marshaller {
                 None
             },
 
-            Pointer::VariantTag { variant } => {
-                // variant tag is the first member of the variant
-                self.flatten_ptr(variant)
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let variant_ptr = self.flatten_ptr(variant)?;
                 let variant_id = match &variant_ptr.ty {

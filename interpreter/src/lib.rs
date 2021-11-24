@@ -215,17 +215,6 @@ impl Interpreter {
                 }
             }
 
-            Pointer::VariantTag { variant } => {
-                match self.load_indirect(variant)? {
-                    Cow::Borrowed(ValueCell::Variant(variant_cell)) => Ok(Cow::Borrowed(variant_cell.tag.as_ref())),
-                    Cow::Owned(ValueCell::Variant(variant_cell)) => Ok(Cow::Owned(*variant_cell.tag)),
-                    invalid => {
-                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
-                    },
-                }
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.load_indirect(variant)? {
@@ -302,22 +291,6 @@ impl Interpreter {
                         let msg = format!("dereferenced struct field pointer did not point to a struct: {:?}", invalid);
                         Err(ExecError::illegal_state(msg, debug_ctx))
                     }
-                }
-            }
-
-            Pointer::VariantTag { variant } => {
-                match self.load_indirect(variant)?.into_owned() {
-                    ValueCell::Variant(mut variant_cell) => {
-                        *variant_cell.tag = val;
-
-                        self.store_indirect(variant, ValueCell::Variant(variant_cell))?;
-                        Ok(())
-                    },
-
-                    invalid => {
-                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
-                        Err(ExecError::illegal_state(msg, debug_ctx))
-                    },
                 }
             }
 
@@ -765,7 +738,10 @@ impl Interpreter {
 
     fn addr_of_ref(&self, target: &Ref) -> ExecResult<Pointer> {
         match target {
-            Ref::Discard => panic!("can't take address of discard ref"),
+            Ref::Discard => {
+                let msg = "can't take address of discard ref";
+                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            },
 
             // let int := 1;
             // let intPtr := @int;
@@ -773,7 +749,10 @@ impl Interpreter {
             Ref::Deref(val) => match self.evaluate(val)? {
                 ValueCell::Pointer(ptr) => Ok(ptr.clone()),
 
-                _ => panic!("deref of non-pointer value @ {}", val),
+                _ => {
+                    let msg = format!("deref of non-pointer value @ {}", val);
+                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                },
             },
 
             // let int := 1;
@@ -1128,13 +1107,11 @@ impl Interpreter {
     }
 
     fn exec_variant_tag(&mut self, out: &Ref, a: &Ref) -> ExecResult<()> {
-        let a_ptr = self.addr_of_ref(a)?;
-        self.store(
-            out,
-            ValueCell::Pointer(Pointer::VariantTag {
-                variant: Box::new(a_ptr),
-            }),
-        )?;
+        // the variant tag is actually just the first member of the variant, so we just need to
+        // output a pointer ot hte variant
+        let tag_ptr = self.addr_of_ref(a)?;
+
+        self.store(out, ValueCell::Pointer(tag_ptr))?;
 
         Ok(())
     }

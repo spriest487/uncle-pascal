@@ -18,9 +18,6 @@ pub enum Pointer {
         structure: Box<Pointer>,
         field: FieldID,
     },
-    VariantTag {
-        variant: Box<Pointer>,
-    },
     VariantData {
         variant: Box<Pointer>,
         tag: usize,
@@ -38,7 +35,6 @@ impl Pointer {
             Pointer::Null => PointerKind::Null,
             Pointer::IntoArray { .. } => PointerKind::IntoArray,
             Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
-            Pointer::VariantTag { .. } => PointerKind::VariantTag,
             Pointer::VariantData { .. } => PointerKind::VariantData,
             Pointer::Native { .. } => PointerKind::Native,
         }
@@ -83,7 +79,6 @@ impl Add<isize> for Pointer {
                 offset: (offset as isize + rhs) as usize,
             },
             Pointer::VariantData { .. }
-            | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
@@ -106,7 +101,6 @@ impl Sub<isize> for Pointer {
                 offset: (offset as isize - rhs) as usize,
             },
             Pointer::VariantData { .. }
-            | Pointer::VariantTag { .. }
             | Pointer::IntoStruct { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
@@ -124,7 +118,6 @@ impl fmt::Display for Pointer {
             Pointer::Null => write!(f, "NULL"),
             Pointer::IntoArray { array, offset } => write!(f, "@({}^ [{}])", array, offset),
             Pointer::IntoStruct { structure, field } => write!(f, "@({}^.{})", structure, field),
-            Pointer::VariantTag { variant } => write!(f, "@({}^.tag)", variant),
             Pointer::VariantData { variant, tag } => write!(f, "@({}.{})", variant, tag),
             Pointer::Native(native_ptr) => write!(f, "{}", native_ptr),
         }
@@ -136,7 +129,6 @@ enum PointerKind {
     Null,
     IntoArray,
     VariantData,
-    VariantTag,
     IntoStruct,
     Native,
 }

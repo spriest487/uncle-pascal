@@ -79,7 +79,6 @@ impl DiagnosticOutput for ExecError {
                         Pointer::Null => "dereferenced null pointer",
                         Pointer::IntoArray { .. } => "dereferenced invalid array element pointer",
                         Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
-                        Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
                         Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
                         Pointer::Native { .. } => "failed to dereference native pointer",
                     }
