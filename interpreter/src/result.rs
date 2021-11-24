@@ -76,13 +76,10 @@ impl DiagnosticOutput for ExecError {
             ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
                 text: Some(
                     match ptr {
-                        Pointer::Null => "dereferenced null pointer",
-                        Pointer::IntoArray { .. } => "dereferenced invalid array element pointer",
-                        Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
-                        Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
-                        Pointer::Native { .. } => "failed to dereference native pointer",
+                        Pointer::IntoArray { .. } => "dereferenced invalid array element pointer".to_string(),
+                        Pointer::VariantData { .. } => "dereferenced invalid variant data pointer".to_string(),
+                        Pointer::Native { .. } => format!("failed to dereference native pointer {}", ptr),
                     }
-                    .to_string(),
                 ),
                 span: span.clone(),
             }),

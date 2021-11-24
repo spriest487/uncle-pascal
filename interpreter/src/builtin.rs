@@ -77,7 +77,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
     let mem_ptr = if len != 0 {
         state.dynalloc(&Type::U8, len as usize)?
     } else {
-        Pointer::Null
+        Pointer::null(Type::U8)
     };
 
     state.store(&RETURN_REF, ValueCell::Pointer(mem_ptr))?;
@@ -167,8 +167,9 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg, state.debug_ctx().into_owned())
         })?;
 
+    let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
+
     let new_data = if new_len > 0 {
-        let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
         let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)
             .map_err(|err| ExecError::MarshallingFailed {
                 err,
@@ -248,10 +249,10 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         new_data_ptr
     } else {
-        Pointer::Null
+        Pointer::null(dyn_array_el_ty)
     };
 
-    assert_eq!(Pointer::Null == new_data, new_len == 0);
+    assert_eq!(new_data.is_null(), new_len == 0);
 
     let mut new_struct_fields = Vec::new();
     new_struct_fields.push(ValueCell::I32(new_len)); // 0 = len

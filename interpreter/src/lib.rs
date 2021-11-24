@@ -19,7 +19,7 @@ use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 use crate::ExecError::NativeHeapError;
-use crate::heap::NativeHeap;
+use crate::heap::{NativeHeap, NativePointer};
 
 mod builtin;
 mod func;
@@ -126,9 +126,12 @@ impl Interpreter {
 
             Type::Struct(id) => self.init_struct(*id)?,
 
-            Type::RcPointer(_) => ValueCell::Pointer(Pointer::Null),
+            Type::RcPointer(class_id) => ValueCell::Pointer(Pointer::null(match class_id {
+                Some(ClassID::Class(struct_id)) => Type::RcObject(*struct_id),
+                _ => Type::Nothing,
+            })),
 
-            Type::Pointer(_target) => ValueCell::Pointer(Pointer::Null),
+            Type::Pointer(target) => ValueCell::Pointer(Pointer::null((**target).clone())),
 
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
@@ -146,7 +149,7 @@ impl Interpreter {
             Type::Variant(id) => ValueCell::Variant(Box::new(VariantCell {
                 id: *id,
                 tag: Box::new(ValueCell::I32(0)),
-                data: Box::new(ValueCell::Pointer(Pointer::Null)),
+                data: Box::new(ValueCell::Pointer(Pointer::null(Type::Nothing))),
             })),
 
             _ => {
@@ -192,29 +195,6 @@ impl Interpreter {
                 }
             }
 
-            Pointer::IntoStruct { structure, field, .. } => {
-                match self.load_indirect(structure)? {
-                    Cow::Borrowed(ValueCell::Structure(struct_cell)) => {
-                        match struct_cell.fields.get(field.0) {
-                            Some(field_val) => Ok(Cow::Borrowed(field_val)),
-                            None => Err(ExecError::illegal_state("invalid field offset in struct pointer", self.debug_ctx().into_owned())),
-                        }
-                    }
-
-                    Cow::Owned(ValueCell::Structure(struct_cell)) => {
-                        match struct_cell.fields.into_iter().nth(field.0) {
-                            Some(field_val) => Ok(Cow::Owned(field_val)),
-                            None => Err(ExecError::illegal_state("invalid field offset in struct pointer", self.debug_ctx().into_owned())),
-                        }
-                    }
-
-                    invalid => {
-                        let msg = format!("target of dereferenced struct pointer was not a struct: {:?}", invalid);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
-                    }
-                }
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.load_indirect(variant)? {
@@ -239,13 +219,6 @@ impl Interpreter {
                         return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     },
                 }
-            }
-
-            _ => {
-                return Err(ExecError::IllegalDereference {
-                    ptr: ptr.clone(),
-                    span: self.debug_ctx().into_owned()
-                })
             }
         }
     }
@@ -278,22 +251,6 @@ impl Interpreter {
                 }
             }
 
-            Pointer::IntoStruct { structure, field, .. } => {
-                match self.load_indirect(structure)?.into_owned() {
-                    ValueCell::Structure(mut struct_cell) => {
-                        struct_cell[*field] = val;
-                        self.store_indirect(structure, ValueCell::Structure(struct_cell))?;
-
-                        Ok(())
-                    }
-
-                    invalid => {
-                        let msg = format!("dereferenced struct field pointer did not point to a struct: {:?}", invalid);
-                        Err(ExecError::illegal_state(msg, debug_ctx))
-                    }
-                }
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.load_indirect(variant)?.into_owned() {
@@ -313,13 +270,6 @@ impl Interpreter {
                         return Err(ExecError::illegal_state(msg, debug_ctx));
                     },
                 }
-            }
-
-            _ => {
-                return Err(ExecError::IllegalDereference {
-                    ptr: ptr.clone(),
-                    span: debug_ctx,
-                })
             }
         }
     }
@@ -445,7 +395,7 @@ impl Interpreter {
             Value::LiteralByte(i) => Ok(ValueCell::U8(*i)),
             Value::LiteralF32(f) => Ok(ValueCell::F32(*f)),
             Value::LiteralBool(b) => Ok(ValueCell::Bool(*b)),
-            Value::LiteralNull => Ok(ValueCell::Pointer(Pointer::Null)),
+            Value::LiteralNull => Ok(ValueCell::Pointer(Pointer::null(Type::Nothing))),
         }
     }
 
@@ -616,7 +566,7 @@ impl Interpreter {
             .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
-        if *rc_ptr == Pointer::Null {
+        if rc_ptr.is_null() {
             return Ok(());
         }
 
@@ -1388,31 +1338,63 @@ impl Interpreter {
         Ok(())
     }
 
+    fn get_field_offset_and_ty(&self, struct_id: StructID, field: FieldID) -> ExecResult<(usize, Type)> {
+        let field_def = self.metadata.get_struct_def(struct_id)
+            .and_then(|def| def.fields.get(&field))
+            .ok_or_else(|| {
+                let msg = format!("missing definition for struct field {}.{}", struct_id, field.0);
+                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            })?;
+
+        let struct_marshal_ty = self.marshaller.get_ty(&Type::Struct(struct_id))
+            .map_err(|err| ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() })?;
+
+        let field_offset = struct_marshal_ty.elements()
+            .iter()
+            .take(field.0)
+            .map(|field_ty| field_ty.size())
+            .sum();
+
+        Ok((field_offset, field_def.ty.clone()))
+    }
+
     fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) -> ExecResult<()> {
         let field_ptr = match of_ty {
-            Type::Struct(..) => {
-                let struct_ptr = self.addr_of_ref(a)?;
+            Type::Struct(struct_id) => {
+                let struct_ptr = match self.addr_of_ref(a)? {
+                    Pointer::Native(native_ptr) => native_ptr,
+                    _ => unimplemented!()
+                };
 
-                Pointer::IntoStruct {
-                    field: *field,
-                    structure: Box::new(struct_ptr),
-                }
+                let (field_offset, field_ty) = self.get_field_offset_and_ty(*struct_id, *field)?;
+
+                Pointer::Native(NativePointer {
+                    ty: field_ty,
+                    addr: struct_ptr.addr + field_offset,
+                })
             }
 
             Type::RcPointer(..) => {
                 let target = self.load(&a.clone().to_deref())?;
-                let struct_ptr = match target.as_rc() {
-                    Some(rc_cell) => rc_cell.resource_ptr.clone(),
+                let rc_cell = match target.as_rc() {
+                    Some(rc_cell) => rc_cell,
                     None => {
                         let msg = format!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
                         return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
                     }
                 };
 
-                Pointer::IntoStruct {
-                    field: *field,
-                    structure: Box::new(struct_ptr),
-                }
+                let struct_ptr = match rc_cell.resource_ptr.clone() {
+                    Pointer::Native(native_ptr) => native_ptr,
+                    _ => unimplemented!(),
+                };
+
+                let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_cell.struct_id, *field)?;
+
+                Pointer::Native(NativePointer {
+                    ty: field_ty,
+                    addr: struct_ptr.addr + field_offset,
+                })
             }
 
             _ => {
@@ -1612,7 +1594,7 @@ impl Interpreter {
         let chars_ptr = if chars_len > 0 {
             self.dynalloc_init(&Type::U8, chars)?
         } else {
-            Pointer::Null
+            Pointer::null(Type::U8)
         };
 
         let str_fields = vec![

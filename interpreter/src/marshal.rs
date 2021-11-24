@@ -444,11 +444,6 @@ impl Marshaller {
 
     fn flatten_ptr<'a>(&self, ptr: &'a Pointer) -> Option<Cow<'a, NativePointer>> {
         match ptr {
-            Pointer::Null => Some(Cow::Owned(NativePointer {
-                addr: 0,
-                ty: Type::Nothing,
-            })),
-
             Pointer::Native(native_ptr) => Some(Cow::Borrowed(native_ptr)),
 
             Pointer::IntoArray { array, offset } => {
@@ -463,28 +458,6 @@ impl Marshaller {
                     ty: element_ty,
                 }))
             }
-
-            Pointer::IntoStruct { structure, field } => {
-                let struct_ptr = self.flatten_ptr(structure)?;
-                let struct_id = struct_ptr.ty.as_struct()?;
-                let struct_fields = self.struct_field_types.get(&struct_id)?;
-
-                let mut offset = 0;
-                for (field_id, field_ty) in struct_fields.iter().enumerate() {
-                    if field_id == field.0 {
-                        let field_addr = struct_ptr.addr + offset;
-                        return Some(Cow::Owned(NativePointer {
-                            addr: field_addr,
-                            ty: field_ty.clone(),
-                        }));
-                    } else {
-                        let field_ffi_ty = self.get_ty(&field_ty).ok()?;
-                        offset += field_ffi_ty.size();
-                    }
-                }
-
-                None
-            },
 
             Pointer::VariantData { variant, tag } => {
                 let variant_ptr = self.flatten_ptr(variant)?;
@@ -707,7 +680,7 @@ impl Marshaller {
                         self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?
                     }
                     None => UnmarshalledValue {
-                        value: ValueCell::Pointer(Pointer::Null),
+                        value: ValueCell::Pointer(Pointer::null(Type::Nothing)),
                         byte_count: 0,
                     }
                 };
