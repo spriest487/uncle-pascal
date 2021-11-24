@@ -43,16 +43,16 @@ pub struct NativeHeap {
 }
 
 impl NativeHeap {
-    pub fn new(ffi_cache: Rc<Marshaller>, trace_allocs: bool) -> Self {
+    pub fn new(marshaller: Rc<Marshaller>, trace_allocs: bool) -> Self {
         Self {
-            marshaller: ffi_cache,
+            marshaller: marshaller,
             trace_allocs,
             allocs: BTreeMap::new(),
         }
     }
 
-    pub fn set_ffi_cache(&mut self, ffi_cache: Rc<Marshaller>) {
-        self.marshaller = ffi_cache;
+    pub fn set_marshaller(&mut self, marshaller: Rc<Marshaller>) {
+        self.marshaller = marshaller;
     }
 
     pub fn alloc(&mut self, ty: Type, count: usize) -> NativeHeapResult<NativePointer> {

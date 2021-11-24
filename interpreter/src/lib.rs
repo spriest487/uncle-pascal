@@ -53,7 +53,7 @@ pub struct Interpreter {
 
     native_heap: NativeHeap,
 
-    ffi_cache: Rc<Marshaller>,
+    marshaller: Rc<Marshaller>,
 
     trace_rc: bool,
     trace_ir: bool,
@@ -65,9 +65,9 @@ impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
         let globals = HashMap::new();
 
-        let ffi_cache = Rc::new(Marshaller::new());
+        let marshaller = Rc::new(Marshaller::new());
 
-        let native_heap = NativeHeap::new(ffi_cache.clone(), opts.trace_heap);
+        let native_heap = NativeHeap::new(marshaller.clone(), opts.trace_heap);
 
         Self {
             metadata: Metadata::default(),
@@ -76,7 +76,7 @@ impl Interpreter {
 
             native_heap,
 
-            ffi_cache,
+            marshaller,
 
             trace_rc: opts.trace_rc,
             trace_ir: opts.trace_ir,
@@ -93,7 +93,7 @@ impl Interpreter {
     }
 
     pub fn marshaller(&self) -> &Marshaller {
-        &self.ffi_cache
+        &self.marshaller
     }
 
     fn init_struct(&self, id: StructID) -> ExecResult<ValueCell> {
@@ -358,7 +358,7 @@ impl Interpreter {
             ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
         })?;
 
-        self.ffi_cache.marshal_into(&val, &local_ptr)
+        self.marshaller.marshal_into(&val, &local_ptr)
             .map_err(|err| {
                 ExecError::MarshallingFailed {
                     err,
@@ -376,7 +376,7 @@ impl Interpreter {
             ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
         })?;
 
-        let value = self.ffi_cache.unmarshal_from_ptr(&local_ptr)
+        let value = self.marshaller.unmarshal_from_ptr(&local_ptr)
             .map_err(|err| {
                 ExecError::MarshallingFailed {
                     err,
@@ -477,7 +477,7 @@ impl Interpreter {
     }
 
     fn push_stack(&mut self, name: impl Into<String>, stack_size: usize) {
-        let stack_frame = StackFrame::new(name, self.ffi_cache.clone(), stack_size);
+        let stack_frame = StackFrame::new(name, self.marshaller.clone(), stack_size);
         self.stack.push(stack_frame);
     }
 
@@ -1039,7 +1039,7 @@ impl Interpreter {
         }
 
         let ptr = self.dynalloc(ty, values.len())?;
-        let marshal_ty = self.ffi_cache.get_ty(&ty).map_err(|err| {
+        let marshal_ty = self.marshaller.get_ty(&ty).map_err(|err| {
             ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() }
         })?;
 
@@ -1527,15 +1527,15 @@ impl Interpreter {
 
         self.debug_ctx_stack.push(module.module_span().clone());
 
-        let mut ffi_cache = (*self.ffi_cache).clone();
+        let mut marshaller = (*self.marshaller).clone();
 
         for (id, type_def) in module.metadata.type_defs() {
             let add_result = match type_def {
                 TypeDef::Struct(struct_def) => {
-                    ffi_cache.add_struct(id, struct_def, &module.metadata)
+                    marshaller.add_struct(id, struct_def, &module.metadata)
                 },
                 TypeDef::Variant(variant_def) => {
-                    ffi_cache.add_variant(id, variant_def, &module.metadata)
+                    marshaller.add_variant(id, variant_def, &module.metadata)
                 }
             };
 
@@ -1561,7 +1561,7 @@ impl Interpreter {
                 }
 
                 IRFunction::External(external_ref) => {
-                    let ffi_func = Function::new_ffi(external_ref, &mut ffi_cache, &self.metadata)
+                    let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
                         .map_err(|err| ExecError::MarshallingFailed {
                             err,
                             span: external_ref.src_span.clone(),
@@ -1581,8 +1581,8 @@ impl Interpreter {
             }
         }
 
-        self.ffi_cache = Rc::new(ffi_cache);
-        self.native_heap.set_ffi_cache(self.ffi_cache.clone());
+        self.marshaller = Rc::new(marshaller);
+        self.native_heap.set_marshaller(self.marshaller.clone());
 
         for (id, literal) in module.metadata.strings() {
             let str_cell = self.create_string(literal)?;
@@ -1601,7 +1601,7 @@ impl Interpreter {
             self.init_stdlib_globals();
         }
 
-        let init_stack_size = self.ffi_cache.stack_alloc_size(&module.init)
+        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
             .map_err(|err| ExecError::MarshallingFailed {
                 err,
                 span: self.debug_ctx().into_owned(),

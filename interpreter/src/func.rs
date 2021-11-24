@@ -37,10 +37,10 @@ pub enum Function {
 impl Function {
     pub fn new_ffi(
         func_ref: &ExternalFunctionRef,
-        ffi_cache: &mut Marshaller,
+        marshaller: &mut Marshaller,
         metadata: &Metadata,
     ) -> MarshalResult<Self> {
-        let invoker = ffi_cache.build_invoker(&func_ref, metadata)?;
+        let invoker = marshaller.build_invoker(&func_ref, metadata)?;
 
         let func = Function::External(FfiFunction {
             debug_name: format!("{}::{}", func_ref.src, func_ref.symbol),

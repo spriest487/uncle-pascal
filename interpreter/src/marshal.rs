@@ -161,7 +161,7 @@ impl Marshaller {
             ForeignType::usize(), // struct ID
         ]);
 
-        let mut ffi_cache = Self {
+        let mut marshaller = Self {
             types: HashMap::new(),
             libs: HashMap::new(),
 
@@ -171,13 +171,13 @@ impl Marshaller {
             rc_cell_type,
         };
 
-        ffi_cache.types.insert(Type::I32, ForeignType::i32());
-        ffi_cache.types.insert(Type::F32, ForeignType::f32());
-        ffi_cache.types.insert(Type::U8, ForeignType::u8());
-        ffi_cache.types.insert(Type::Bool, ForeignType::u8());
-        ffi_cache.types.insert(Type::Nothing, ForeignType::void());
+        marshaller.types.insert(Type::I32, ForeignType::i32());
+        marshaller.types.insert(Type::F32, ForeignType::f32());
+        marshaller.types.insert(Type::U8, ForeignType::u8());
+        marshaller.types.insert(Type::Bool, ForeignType::u8());
+        marshaller.types.insert(Type::Nothing, ForeignType::void());
 
-        ffi_cache
+        marshaller
     }
 
     pub fn add_struct(&mut self, id: StructID, def: &Struct, metadata: &Metadata) -> MarshalResult<ForeignType> {

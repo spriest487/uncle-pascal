@@ -169,7 +169,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     let new_data = if new_len > 0 {
         let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
-        let dyn_array_el_marshal_ty = state.ffi_cache.get_ty(&dyn_array_el_ty)
+        let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)
             .map_err(|err| ExecError::MarshallingFailed {
                 err,
                 span: state.debug_ctx().into_owned(),
