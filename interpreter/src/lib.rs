@@ -1,15 +1,15 @@
 pub use self::{
-    value_cell::*,
     ptr::Pointer,
+    value_cell::*,
 };
 use crate::{
-    func::ffi::{FfiCache, ForeignTypeExt},
     func::{BuiltinFn, BuiltinFunction, Function},
+    marshal::Marshaller,
     stack::StackFrame,
 };
 use pas_ir::{
-    metadata::*, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label,
-    LocalID, Module, Ref, Type, Value,
+    Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label, LocalID,
+    metadata::*, Module, Ref, Type, Value,
 };
 use std::{collections::HashMap, rc::Rc};
 use std::borrow::Cow;
@@ -27,6 +27,7 @@ mod heap;
 mod value_cell;
 mod ptr;
 mod stack;
+mod marshal;
 pub mod result;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -52,7 +53,7 @@ pub struct Interpreter {
 
     native_heap: NativeHeap,
 
-    ffi_cache: Rc<FfiCache>,
+    ffi_cache: Rc<Marshaller>,
 
     trace_rc: bool,
     trace_ir: bool,
@@ -64,7 +65,7 @@ impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
         let globals = HashMap::new();
 
-        let ffi_cache = Rc::new(FfiCache::new());
+        let ffi_cache = Rc::new(Marshaller::new());
 
         let native_heap = NativeHeap::new(ffi_cache.clone(), opts.trace_heap);
 
@@ -91,7 +92,7 @@ impl Interpreter {
         }
     }
 
-    pub fn marshaller(&self) -> &FfiCache {
+    pub fn marshaller(&self) -> &Marshaller {
         &self.ffi_cache
     }
 

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, Type};
-use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell, ForeignTypeExt};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 use crate::heap::NativePointer;

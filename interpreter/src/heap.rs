@@ -3,8 +3,10 @@ use std::fmt;
 use std::mem::size_of;
 use std::rc::Rc;
 use pas_ir::Type;
-use crate::{FfiCache, ValueCell};
-use crate::func::ffi::{MarshalError, ForeignTypeExt};
+use crate::{
+    ValueCell,
+    marshal::{Marshaller, MarshalError}
+};
 
 #[derive(Clone, Debug)]
 pub enum NativeHeapError {
@@ -33,7 +35,7 @@ pub type NativeHeapResult<T> = Result<T, NativeHeapError>;
 
 #[derive(Debug)]
 pub struct NativeHeap {
-    marshaller: Rc<FfiCache>,
+    marshaller: Rc<Marshaller>,
 
     allocs: BTreeMap<usize, Box<[u8]>>,
 
@@ -41,7 +43,7 @@ pub struct NativeHeap {
 }
 
 impl NativeHeap {
-    pub fn new(ffi_cache: Rc<FfiCache>, trace_allocs: bool) -> Self {
+    pub fn new(ffi_cache: Rc<Marshaller>, trace_allocs: bool) -> Self {
         Self {
             marshaller: ffi_cache,
             trace_allocs,
@@ -49,7 +51,7 @@ impl NativeHeap {
         }
     }
 
-    pub fn set_ffi_cache(&mut self, ffi_cache: Rc<FfiCache>) {
+    pub fn set_ffi_cache(&mut self, ffi_cache: Rc<Marshaller>) {
         self.marshaller = ffi_cache;
     }
 

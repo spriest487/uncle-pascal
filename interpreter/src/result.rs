@@ -1,9 +1,6 @@
-use crate::Pointer;
-use pas_common::span::Span;
-use pas_common::{DiagnosticLabel, DiagnosticOutput};
+use crate::{heap::NativeHeapError, marshal::MarshalError, Pointer};
+use pas_common::{span::Span, DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
-use crate::func::ffi::MarshalError;
-use crate::heap::NativeHeapError;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -84,9 +81,7 @@ impl DiagnosticOutput for ExecError {
                         Pointer::IntoStruct { .. } => "dereferenced invalid struct member pointer",
                         Pointer::VariantTag { .. } => "dereferenced invalid variant tag pointer",
                         Pointer::VariantData { .. } => "dereferenced invalid variant data pointer",
-                        Pointer::Native { .. } => {
-                            "failed to dereference native pointer"
-                        }
+                        Pointer::Native { .. } => "failed to dereference native pointer",
                     }
                     .to_string(),
                 ),

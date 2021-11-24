@@ -1,11 +1,13 @@
-pub mod ffi;
-
-use crate::{ExecResult, Interpreter};
+use crate::{
+    marshal::{MarshalResult, Marshaller},
+    func::ffi::FfiInvoker,
+    ExecResult, Interpreter,
+};
+use pas_ir::prelude::Metadata;
 use pas_ir::{ExternalFunctionRef, FunctionDef, Type};
 use std::fmt;
 
-use crate::func::ffi::{FfiCache, FfiInvoker, MarshalResult, ForeignTypeExt};
-use pas_ir::prelude::Metadata;
+pub mod ffi;
 
 pub type BuiltinFn = fn(state: &mut Interpreter) -> ExecResult<()>;
 
@@ -35,7 +37,7 @@ pub enum Function {
 impl Function {
     pub fn new_ffi(
         func_ref: &ExternalFunctionRef,
-        ffi_cache: &mut FfiCache,
+        ffi_cache: &mut Marshaller,
         metadata: &Metadata,
     ) -> MarshalResult<Self> {
         let invoker = ffi_cache.build_invoker(&func_ref, metadata)?;
@@ -100,7 +102,7 @@ impl Function {
         Ok(())
     }
 
-    pub fn stack_alloc_size(&self, marshaller: &FfiCache) -> MarshalResult<usize> {
+    pub fn stack_alloc_size(&self, marshaller: &Marshaller) -> MarshalResult<usize> {
         let mut args_size = 0;
         for arg_ty in self.param_tys() {
             let arg_size = marshaller.get_ty(arg_ty)?.size();
@@ -113,11 +115,9 @@ impl Function {
             Function::IR(def) => {
                 let body_size = marshaller.stack_alloc_size(&def.body)?;
                 Ok(body_size + args_size + return_size)
-            },
+            }
 
-            Function::Builtin(..) | Function::External(..) => {
-                Ok(args_size + return_size)
-            },
+            Function::Builtin(..) | Function::External(..) => Ok(args_size + return_size),
         }
     }
 }

@@ -1,3 +1,10 @@
+* Fix pointer arithemetic!!
+  * native pointers need to be offset by multiples of element ffi size
+  * make interpreter type obj - Type + FFI type
+  * build ffi types at type translation time so we don't need to keep looking them up from a cache
+  * get rid of fficache? make it marshaller only?
+* marshalled globals
+* rework namespaces/at least the find() logic so it does imports better
 * newlines/escape chars in string literals
 * "real" memory layout for the interpreter vs the current debug one, so it can interact with FFI + pointers
 * interpreter native stack

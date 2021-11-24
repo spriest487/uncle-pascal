@@ -1,9 +1,11 @@
 use std::fmt;
 use std::rc::Rc;
 use pas_ir::{LocalID, Type};
-use crate::{FfiCache, ValueCell};
-use crate::func::ffi::{MarshalError, MarshalResult};
-use crate::heap::NativePointer;
+use crate::{
+    ValueCell,
+    marshal::{Marshaller, MarshalError, MarshalResult},
+    heap::NativePointer
+};
 
 #[derive(Debug)]
 struct Block {
@@ -38,11 +40,11 @@ pub(super) struct StackFrame {
     stack_mem: Box<[u8]>,
     stack_offset: usize,
 
-    marshaller: Rc<FfiCache>,
+    marshaller: Rc<Marshaller>,
 }
 
 impl StackFrame {
-    pub fn new(name: impl Into<String>, marshaller: Rc<FfiCache>, stack_size: usize) -> Self {
+    pub fn new(name: impl Into<String>, marshaller: Rc<Marshaller>, stack_size: usize) -> Self {
         Self {
             name: name.into(),
 
