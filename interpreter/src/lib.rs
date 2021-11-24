@@ -172,29 +172,6 @@ impl Interpreter {
                 Ok(Cow::Owned(val))
             }
 
-            Pointer::IntoArray { array, offset } => {
-                match self.load_indirect(array)? {
-                    Cow::Borrowed(ValueCell::Array(array_cell)) => {
-                        match array_cell.elements.get(*offset) {
-                            Some(el) => Ok(Cow::Borrowed(el)),
-                            None => Err(ExecError::illegal_state("invalid array offset in pointer", self.debug_ctx().into_owned())),
-                        }
-                    }
-
-                    Cow::Owned(ValueCell::Array(array_cell)) => {
-                        match array_cell.elements.into_iter().nth(*offset) {
-                            Some(el) => Ok(Cow::Owned(el)),
-                            None => Err(ExecError::illegal_state("invalid array offset in pointer", self.debug_ctx().into_owned())),
-                        }
-                    }
-
-                    invalid => {
-                        let msg = format!("target of dereferenced array pointer was not an array: {:?}", invalid);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
-                    },
-                }
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let expect_tag = *tag as i32; //todo proper size type
                 match self.load_indirect(variant)? {
@@ -233,22 +210,6 @@ impl Interpreter {
                         err,
                         span: debug_ctx,
                     })
-            }
-
-            Pointer::IntoArray { array, offset, .. } => {
-                match self.load_indirect(array)?.into_owned() {
-                    ValueCell::Array(mut array_cell) => {
-                        array_cell.elements[*offset] = val;
-
-                        self.store_indirect(array, ValueCell::Array(array_cell))?;
-                        Ok(())
-                    }
-
-                    invalid => {
-                        let msg = format!("dereferenced array element pointed did not point to an array: {:?}", invalid);
-                        Err(ExecError::illegal_state(msg, debug_ctx))
-                    },
-                }
             }
 
             Pointer::VariantData { variant, tag } => {
@@ -830,10 +791,10 @@ impl Interpreter {
                 a,
                 // not used because the interpreter doesn't need to know element type to
                 // calculate the pointer offset
-                element: _el,
+                element,
                 index,
             } => {
-                self.exec_element(out, a, index)?;
+                self.exec_element(out, a, index, element)?;
             }
 
             Instruction::VariantTag { out, a, .. } => self.exec_variant_tag(out, a)?,
@@ -1066,11 +1027,18 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value) -> ExecResult<()> {
-        let array = self.addr_of_ref(a)?;
+    fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value, element: &Type) -> ExecResult<()> {
+        let array_ptr = match self.addr_of_ref(a)? {
+            Pointer::Native(native_ptr) => native_ptr,
+            _ => unimplemented!(),
+        };
 
-        // todo: use a real usize
-        let offset = self.evaluate(index)?
+        let el_marshal_ty = self.marshaller.get_ty(element)
+            .map_err(|err| ExecError::MarshallingFailed {
+                err, span: self.debug_ctx().into_owned()
+            })?;
+
+        let index_value = self.evaluate(index)?
             .as_i32()
             .map(|i| i as usize)
             .ok_or_else(|| {
@@ -1078,12 +1046,14 @@ impl Interpreter {
                 ExecError::illegal_state(msg, self.debug_ctx().into_owned())
             })?;
 
+        let index_offset = el_marshal_ty.size() * index_value;
+
         self.store(
             out,
-            ValueCell::Pointer(Pointer::IntoArray {
-                offset,
-                array: Box::new(array),
-            }),
+            ValueCell::Pointer(Pointer::Native(NativePointer{
+                addr: array_ptr.addr + index_offset,
+                ty: element.clone(),
+            })),
         )?;
 
         Ok(())

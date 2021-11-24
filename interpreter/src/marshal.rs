@@ -446,19 +446,6 @@ impl Marshaller {
         match ptr {
             Pointer::Native(native_ptr) => Some(Cow::Borrowed(native_ptr)),
 
-            Pointer::IntoArray { array, offset } => {
-                let array = self.flatten_ptr(array)?;
-                let element_ty = match &array.ty {
-                    Type::Array { element, .. } => Some(*element.clone()),
-                    _ => None,
-                }?;
-
-                Some(Cow::Owned(NativePointer {
-                    addr: array.addr + *offset,
-                    ty: element_ty,
-                }))
-            }
-
             Pointer::VariantData { variant, tag } => {
                 let variant_ptr = self.flatten_ptr(variant)?;
                 let variant_id = match &variant_ptr.ty {

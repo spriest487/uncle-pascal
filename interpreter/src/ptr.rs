@@ -9,10 +9,6 @@ use crate::heap::NativePointer;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
-    IntoArray {
-        array: Box<Pointer>,
-        offset: usize,
-    },
     VariantData {
         variant: Box<Pointer>,
         tag: usize,
@@ -41,7 +37,6 @@ impl Pointer {
 
     fn kind(&self) -> PointerKind {
         match self {
-            Pointer::IntoArray { .. } => PointerKind::IntoArray,
             Pointer::VariantData { .. } => PointerKind::VariantData,
             Pointer::Native { .. } => PointerKind::Native,
         }
@@ -57,17 +52,6 @@ impl PartialOrd for Pointer {
 impl Ord for Pointer {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (
-                Pointer::IntoArray {
-                    array: arr_a,
-                    offset: off_a,
-                },
-                Pointer::IntoArray {
-                    array: arr_b,
-                    offset: off_b,
-                },
-            ) => arr_a.cmp(&arr_b).then_with(|| off_a.cmp(off_b)),
-
             (a, b) => a.kind().cmp(&b.kind()),
         }
     }
@@ -78,10 +62,6 @@ impl Add<isize> for Pointer {
 
     fn add(self, rhs: isize) -> Self {
         match self {
-            Pointer::IntoArray { array, offset } => Pointer::IntoArray {
-                array,
-                offset: (offset as isize + rhs) as usize,
-            },
             Pointer::VariantData { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
@@ -98,10 +78,6 @@ impl Sub<isize> for Pointer {
 
     fn sub(self, rhs: isize) -> Self {
         match self {
-            Pointer::IntoArray { array, offset } => Pointer::IntoArray {
-                array,
-                offset: (offset as isize - rhs) as usize,
-            },
             Pointer::VariantData { .. } => {
                 panic!("pointer arithmetic on struct pointers is illegal")
             }
@@ -116,7 +92,6 @@ impl Sub<isize> for Pointer {
 impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Pointer::IntoArray { array, offset } => write!(f, "@({}^ [{}])", array, offset),
             Pointer::VariantData { variant, tag } => write!(f, "@({}.{})", variant, tag),
             Pointer::Native(native_ptr) => write!(f, "{}", native_ptr),
         }
@@ -125,7 +100,6 @@ impl fmt::Display for Pointer {
 
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
 enum PointerKind {
-    IntoArray,
     VariantData,
     Native,
 }
