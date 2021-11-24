@@ -183,7 +183,6 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
                 ty: dyn_array_el_ty.clone(),
                 addr: native_ptr.addr,
             }),
-            _ => default_val_ptr.clone(),
         };
 
         let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)

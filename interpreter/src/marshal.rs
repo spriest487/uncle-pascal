@@ -180,6 +180,10 @@ impl Marshaller {
         marshaller
     }
 
+    pub fn variant_tag_type(&self) -> ForeignType {
+        ForeignType::i32()
+    }
+
     pub fn add_struct(&mut self, id: StructID, def: &Struct, metadata: &Metadata) -> MarshalResult<ForeignType> {
         let struct_ty = Type::Struct(id);
         if let Some(cached) = self.types.get(&struct_ty) {
@@ -225,7 +229,7 @@ impl Marshaller {
             case_ffi_tys.push(case_ffi_ty);
         }
 
-        let variant_layout: Vec<_> = iter::once(ForeignType::i32())
+        let variant_layout: Vec<_> = iter::once(self.variant_tag_type())
             .chain(iter::repeat(ForeignType::u8()).take(max_case_size))
             .collect();
 
@@ -445,24 +449,6 @@ impl Marshaller {
     fn flatten_ptr<'a>(&self, ptr: &'a Pointer) -> Option<Cow<'a, NativePointer>> {
         match ptr {
             Pointer::Native(native_ptr) => Some(Cow::Borrowed(native_ptr)),
-
-            Pointer::VariantData { variant, tag } => {
-                let variant_ptr = self.flatten_ptr(variant)?;
-                let variant_id = match &variant_ptr.ty {
-                    Type::Variant(id) => Some(*id),
-                    _ => None,
-                }?;
-
-                let variant_cases = self.variant_case_types.get(&variant_id)?;
-
-                // double ? because the variant must have this case AND this case must not be empty
-                let case_ty = variant_cases.get(*tag)?.as_ref()?;
-
-                Some(Cow::Owned(NativePointer {
-                    addr: variant_ptr.addr + ForeignType::i32().size(),
-                    ty: case_ty.clone(),
-                }))
-            }
         }
     }
 

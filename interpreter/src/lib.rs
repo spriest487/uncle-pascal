@@ -18,7 +18,6 @@ use cast::usize;
 use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
-use crate::ExecError::NativeHeapError;
 use crate::heap::{NativeHeap, NativePointer};
 
 mod builtin;
@@ -171,32 +170,6 @@ impl Interpreter {
 
                 Ok(Cow::Owned(val))
             }
-
-            Pointer::VariantData { variant, tag } => {
-                let expect_tag = *tag as i32; //todo proper size type
-                match self.load_indirect(variant)? {
-                    Cow::Borrowed(ValueCell::Variant(variant_cell)) => {
-                        if variant_cell.tag.as_i32() != Some(expect_tag) {
-                            return Err(ExecError::illegal_state("illegal variant tag", self.debug_ctx().into_owned()));
-                        }
-
-                        Ok(Cow::Borrowed(variant_cell.data.as_ref()))
-                    },
-
-                    Cow::Owned(ValueCell::Variant(variant_cell)) => {
-                        if variant_cell.tag.as_i32() != Some(expect_tag) {
-                            return Err(ExecError::illegal_state("illegal variant tag", self.debug_ctx().into_owned()));
-                        }
-
-                        Ok(Cow::Owned(*variant_cell.data))
-                    }
-
-                    invalid => {
-                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
-                    },
-                }
-            }
         }
     }
 
@@ -210,27 +183,6 @@ impl Interpreter {
                         err,
                         span: debug_ctx,
                     })
-            }
-
-            Pointer::VariantData { variant, tag } => {
-                let expect_tag = *tag as i32; //todo proper size type
-                match self.load_indirect(variant)?.into_owned() {
-                    ValueCell::Variant(mut variant_cell) => {
-                        if variant_cell.tag.as_i32() != Some(expect_tag) {
-                            return Err(ExecError::illegal_state("illegal variant tag", debug_ctx));
-                        }
-
-                        *variant_cell.data = val;
-                        self.store_indirect(variant, ValueCell::Variant(variant_cell))?;
-
-                        Ok(())
-                    },
-
-                    invalid => {
-                        let msg = format!("dereferencing variant tag pointer which doesn't point to a variant cell: {:?}", invalid);
-                        return Err(ExecError::illegal_state(msg, debug_ctx));
-                    },
-                }
             }
         }
     }
@@ -799,7 +751,7 @@ impl Interpreter {
 
             Instruction::VariantTag { out, a, .. } => self.exec_variant_tag(out, a)?,
 
-            Instruction::VariantData { out, a, tag, .. } => self.exec_variant_data(out, a, tag)?,
+            Instruction::VariantData { out, a, tag, of_ty } => self.exec_variant_data(out, a, tag, of_ty)?,
 
             Instruction::Label(_) => {
                 // noop
@@ -897,16 +849,11 @@ impl Interpreter {
         match ptr {
             Pointer::Native(native_ptr) => {
                 self.native_heap.free(&native_ptr.clone())
-                    .map_err(|err| NativeHeapError {
+                    .map_err(|err| ExecError::NativeHeapError {
                         err,
                         span: self.debug_ctx().into_owned(),
                     })
             }
-
-            x => {
-                let msg = format!("illegal pointer type provided to DynFree: {:?}", x);
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
-            },
         }
     }
 
@@ -1004,14 +951,37 @@ impl Interpreter {
         }
     }
 
-    fn exec_variant_data(&mut self, out: &Ref, a: &Ref, tag: &usize) -> ExecResult<()> {
-        let a_ptr = self.addr_of_ref(a)?;
+    fn exec_variant_data(&mut self, out: &Ref, a: &Ref, tag: &usize, of_ty: &Type) -> ExecResult<()> {
+        let variant_id = match of_ty {
+            Type::Variant(id) => *id,
+            other => {
+                let msg = format!("cannot execute variant data instruction for non-variant type: {}", other);
+                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+            }
+        };
+
+        let a_ptr = match self.addr_of_ref(a)? {
+            Pointer::Native(native_ptr) => native_ptr,
+        };
+
+        let case_def = self.metadata.get_variant_def(variant_id)
+            .and_then(|def| def.cases.get(*tag))
+            .ok_or_else(|| {
+                let msg = format!("missing definition for variant case {}.{}", variant_id, *tag);
+                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            })?;
+        let case_ty = case_def.ty.clone().unwrap_or(Type::Nothing);
+
+        // we don't need to actually look this up, the variant data always appears right
+        // after the fixed-size tag
+        let data_offset = self.marshaller.variant_tag_type().size();
+
         self.store(
             out,
-            ValueCell::Pointer(Pointer::VariantData {
-                variant: Box::new(a_ptr),
-                tag: *tag,
-            }),
+            ValueCell::Pointer(Pointer::Native(NativePointer {
+                addr: a_ptr.addr + data_offset,
+                ty: case_ty,
+            })),
         )?;
 
         Ok(())
@@ -1030,7 +1000,6 @@ impl Interpreter {
     fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value, element: &Type) -> ExecResult<()> {
         let array_ptr = match self.addr_of_ref(a)? {
             Pointer::Native(native_ptr) => native_ptr,
-            _ => unimplemented!(),
         };
 
         let el_marshal_ty = self.marshaller.get_ty(element)
@@ -1333,7 +1302,6 @@ impl Interpreter {
             Type::Struct(struct_id) => {
                 let struct_ptr = match self.addr_of_ref(a)? {
                     Pointer::Native(native_ptr) => native_ptr,
-                    _ => unimplemented!()
                 };
 
                 let (field_offset, field_ty) = self.get_field_offset_and_ty(*struct_id, *field)?;
@@ -1356,7 +1324,6 @@ impl Interpreter {
 
                 let struct_ptr = match rc_cell.resource_ptr.clone() {
                     Pointer::Native(native_ptr) => native_ptr,
-                    _ => unimplemented!(),
                 };
 
                 let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_cell.struct_id, *field)?;

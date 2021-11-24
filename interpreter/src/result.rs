@@ -76,7 +76,6 @@ impl DiagnosticOutput for ExecError {
             ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
                 text: Some(
                     match ptr {
-                        Pointer::VariantData { .. } => "dereferenced invalid variant data pointer".to_string(),
                         Pointer::Native { .. } => format!("failed to dereference native pointer {}", ptr),
                     }
                 ),
