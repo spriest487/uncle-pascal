@@ -11,8 +11,7 @@ pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0_cell = state.load(&arg_0)?;
     let int = arg_0_cell.as_i32()
         .ok_or_else(|| {
-            let msg = format!("IntToStr argument is not an int");
-            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+            ExecError::illegal_state(format!("IntToStr argument is not an int"))
         })?;
 
     let string = state.create_string(&int.to_string())?;
@@ -71,7 +70,7 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
     let len = state
         .load(&arg_0)?
         .as_i32()
-        .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument", state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::illegal_state("GetMem expected I32 argument"))?;
 
     let mem_ptr = if len != 0 {
         state.dynalloc(&Type::U8, len as usize)?
@@ -91,7 +90,7 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     let ptr_cell = state.load(&arg_0)?.into_owned();
 
     let ptr = ptr_cell.as_pointer()
-        .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument", state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument"))?;
 
     state.dynfree(ptr)?;
 
@@ -102,14 +101,14 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<Cow<StructCe
     let array_ref_cell = state.load(&at)?;
     let rc_cell_ptr = array_ref_cell
         .as_pointer()
-        .ok_or_else(|| ExecError::illegal_state("array_length: argument cell must be pointer", state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::illegal_state("array_length: argument cell must be pointer"))?;
 
     let rc_cell = state.load_indirect(rc_cell_ptr)?;
 
     match state.deref_rc(&rc_cell)? {
         Cow::Borrowed(ValueCell::Structure(dyn_array_struct_cell)) => Ok(Cow::Borrowed(dyn_array_struct_cell.as_ref())),
         Cow::Owned(ValueCell::Structure(dyn_array_struct_cell)) => Ok(Cow::Owned(*dyn_array_struct_cell)),
-        _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray", state.debug_ctx().into_owned())),
+        _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray")),
     }
 }
 
@@ -124,7 +123,7 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
     let len = len_cell.as_i32()
         .ok_or_else(|| {
             let msg = format!("array_length argument cell not an I32");
-            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
     state.store(&RETURN_REF, ValueCell::I32(len))?;
@@ -140,14 +139,14 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let default_val_len_arg = Ref::Local(LocalID(4));
 
     let new_len = state.load(&new_len_arg)?.as_i32()
-        .ok_or_else(|| ExecError::illegal_state("len arg passed to set_length must be i32", state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::illegal_state("len arg passed to set_length must be i32"))?;
 
     let array_class_ptr = state.load(&array_arg)?
         .as_pointer()
         .cloned()
         .ok_or_else(|| {
             let msg = "array arg passed to set_length must be a heap pointer";
-            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
     let array_class = state.load_indirect(&array_class_ptr)?
@@ -156,24 +155,20 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         .map(|rc_cell| rc_cell.struct_id)
         .ok_or_else(|| {
             let msg = "array arg passed to set_length must point to an rc cell";
-            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
     let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
 
     let default_val = state.load(&default_val_arg)?.into_owned();
     let default_val_ptr = default_val.as_pointer()
-        .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer", state.debug_ctx().into_owned()))?
+        .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer"))?
         .reinterpret(dyn_array_el_ty.clone());
     let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
-        .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32", state.debug_ctx().into_owned()))?;
+        .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32"))?;
 
     let new_data = if new_len > 0 {
-        let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)
-            .map_err(|err| ExecError::MarshallingFailed {
-                err,
-                span: state.debug_ctx().into_owned(),
-            })?;
+        let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)?;
 
         let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
             .map(|rc_info| {
@@ -196,13 +191,13 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         let len_field_cell = &old_array_struct[DYNARRAY_LEN_FIELD];
         let old_len =  len_field_cell.as_i32().ok_or_else(|| {
             let msg = format!("dynarray length is not I32");
-            ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
         let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
             .ok_or_else(|| {
                 let msg = format!("dynarray ptr is not a valid ptr");
-                ExecError::illegal_state(msg, state.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         // copy default value into any cells beyond the length of the original array

@@ -1,7 +1,7 @@
 use std::{ptr::slice_from_raw_parts};
 use std::ffi::c_void;
 use crate::{
-    ExecError, ExecResult, Interpreter,
+    ExecResult, Interpreter,
     marshal::ForeignType,
 };
 use ::libffi::{
@@ -59,11 +59,7 @@ impl FfiInvoker {
             args.resize(args.len() + arg_foreign_len, 0);
 
             let arg_val = state.load(&Ref::Local(local_id))?;
-            let bytes_copied = state.marshaller().marshal(&arg_val, &mut args[arg_start..])
-                .map_err(|err| ExecError::MarshallingFailed {
-                    err,
-                    span: state.debug_ctx().into_owned(),
-                })?;
+            let bytes_copied = state.marshaller().marshal(&arg_val, &mut args[arg_start..])?;
 
             assert_eq!(bytes_copied, ffi_param_ty.size());
 
@@ -93,11 +89,7 @@ impl FfiInvoker {
         if self.return_ty != Type::Nothing {
             unsafe {
                 let result_slice = slice_from_raw_parts(result_buf.as_ptr(), result_buf.len());
-                let return_val = state.marshaller().unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)
-                    .map_err(|err| ExecError::MarshallingFailed {
-                        err,
-                        span: state.debug_ctx().into_owned(),
-                    })?;
+                let return_val = state.marshaller().unmarshal(result_slice.as_ref().unwrap(), &self.return_ty)?;
 
                 let return_local = Ref::Local(LocalID(0));
                 state.store(&return_local, return_val.value)?;

@@ -91,6 +91,16 @@ impl Interpreter {
         }
     }
 
+    fn add_debug_ctx(&self, err: ExecError) -> ExecError {
+        match err {
+            err @ ExecError::WithDebugContext { .. } => err,
+            err => ExecError::WithDebugContext {
+                err: Box::new(err),
+                span: self.debug_ctx().into_owned(),
+            }
+        }
+    }
+
     pub fn marshaller(&self) -> &Marshaller {
         &self.marshaller
     }
@@ -99,7 +109,7 @@ impl Interpreter {
         let struct_def = self.metadata.get_struct_def(id).cloned()
             .ok_or_else(|| {
                 let msg = format!("missing struct definition in metadata: {}", id);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let mut fields = Vec::new();
@@ -153,7 +163,7 @@ impl Interpreter {
 
             _ => {
                 let msg = format!("can't initialize default cell of type `{:?}`", ty);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             }
         };
 
@@ -161,39 +171,24 @@ impl Interpreter {
     }
 
     fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
-        let val = self.native_heap.load(ptr)
-            .map_err(|err| {
-                ExecError::NativeHeapError { err, span: self.debug_ctx().into_owned() }
-            })?;
-
+        let val = self.native_heap.load(ptr)?;
         Ok(Cow::Owned(val))
     }
 
     /// dereference a pointer and set the value it points to
     fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
-        let debug_ctx = self.debug_ctx().into_owned();
-
-        self.native_heap.store(ptr, val)
-            .map_err(|err| ExecError::NativeHeapError {
-                err,
-                span: debug_ctx,
-            })
+        self.native_heap.store(ptr, val)?;
+        Ok(())
     }
 
     fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
         let current_frame = self.current_frame_mut()?;
         let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
             // todo: proper error
-            ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+            ExecError::illegal_state(err.to_string())
         })?;
 
-        self.marshaller.marshal_into(&val, &local_ptr)
-            .map_err(|err| {
-                ExecError::MarshallingFailed {
-                    err,
-                    span: self.debug_ctx().into_owned(),
-                }
-            })?;
+        self.marshaller.marshal_into(&val, &local_ptr)?;
 
         Ok(())
     }
@@ -202,16 +197,10 @@ impl Interpreter {
         let current_frame = self.current_frame()?;
         let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
             // todo: proper error
-            ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+            ExecError::illegal_state(err.to_string())
         })?;
 
-        let value = self.marshaller.unmarshal_from_ptr(&local_ptr)
-            .map_err(|err| {
-                ExecError::MarshallingFailed {
-                    err,
-                    span: self.debug_ctx().into_owned(),
-                }
-            })?;
+        let value = self.marshaller.unmarshal_from_ptr(&local_ptr)?;
 
         Ok(value)
     }
@@ -229,7 +218,7 @@ impl Interpreter {
 
             Ref::Global(name) => {
                 if self.globals.contains_key(name) {
-                    return Err(ExecError::illegal_state(format!("global cell `{}` is already allocated", name), self.debug_ctx().into_owned()));
+                    return Err(ExecError::illegal_state(format!("global cell `{}` is already allocated", name)));
                 }
 
                 self.globals.insert(
@@ -253,7 +242,7 @@ impl Interpreter {
 
                 x => {
                     let msg = format!("can't dereference non-pointer cell with value {:?}", x);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 },
             },
         }
@@ -263,20 +252,20 @@ impl Interpreter {
         match at {
             Ref::Discard => {
                 let msg = "can't read value from discard ref";
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             },
 
             Ref::Local(id) => self.load_local(*id)
                 .map(Cow::Owned)
                 .map_err(|err| {
-                    ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                    ExecError::illegal_state(err.to_string())
                 }),
 
             Ref::Global(name) => match self.globals.get(name) {
                 Some(cell) => Ok(Cow::Borrowed(&cell.value)),
                 None => {
                     let msg = format!("global cell `{}` is not allocated", name);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 }
             },
 
@@ -284,7 +273,7 @@ impl Interpreter {
                 ValueCell::Pointer(ptr) => self.load_indirect(&ptr),
                 x => {
                     let msg = format!("can't dereference cell {:?}", x);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 },
             },
         }
@@ -311,21 +300,20 @@ impl Interpreter {
     }
 
     fn pop_stack(&mut self) -> ExecResult<()> {
-        self.stack.pop().ok_or_else(|| ExecError::illegal_state("popped stack with no stackframes", self.debug_ctx().into_owned()))?;
+        self.stack.pop().ok_or_else(|| ExecError::illegal_state("popped stack with no stackframes"))?;
         Ok(())
     }
 
     fn current_frame(&self) -> ExecResult<&StackFrame> {
         self.stack
             .last()
-            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes", self.debug_ctx().into_owned()))
+            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
     }
 
     fn current_frame_mut(&mut self) -> ExecResult<&mut StackFrame> {
-        let debug_ctx = self.debug_ctx().into_owned();
         self.stack
             .last_mut()
-            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes", debug_ctx))
+            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
     }
 
     fn vcall_lookup(
@@ -338,7 +326,7 @@ impl Interpreter {
             .as_pointer()
             .ok_or_else(|| {
                 let msg = "expected target of vcall to be a pointer";
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let self_class_id = match self.load_indirect(self_ptr)?.as_ref()  {
@@ -348,7 +336,7 @@ impl Interpreter {
                     "expected target of vcall {}.{} to be an rc cell, but found {:?}",
                     iface_id, method.0, self_cell,
                 );
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             }
         }?;
 
@@ -366,27 +354,19 @@ impl Interpreter {
                 err.push_str(" missing implementation for ");
                 let _ = self.metadata.format_type(&instance_ty, &mut err);
 
-                ExecError::illegal_state(format!("{}", err), self.debug_ctx().into_owned())
+                ExecError::illegal_state(format!("{}", err))
             })
     }
 
     fn call(&mut self, func: &Function, args: &[ValueCell], out: Option<&Ref>) -> ExecResult<()> {
-        let stack_size = func.stack_alloc_size(self.marshaller())
-            .map_err(|err| ExecError::MarshallingFailed {
-                err,
-                span: self.debug_ctx().into_owned()
-            })?;
+        let stack_size = func.stack_alloc_size(self.marshaller())?;
         self.push_stack(func.debug_name(), stack_size);
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
             let result_cell = self.default_init_cell(return_ty)?;
-            self.current_frame_mut()?.push_local(return_ty.clone(), &result_cell, None)
-                .map_err(|err| ExecError::MarshallingFailed {
-                    err,
-                    span: self.debug_ctx().into_owned(),
-                })?;
+            self.current_frame_mut()?.push_local(return_ty.clone(), &result_cell, None)?;
         }
 
         if args.len() != func.param_tys().len() {
@@ -395,14 +375,14 @@ impl Interpreter {
                 func.param_tys().len(),
                 args.len()
             );
-            return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+            return Err(ExecError::illegal_state(msg));
         }
 
         // store params in either $0.. or $1..
         for (arg_cell, param_ty) in args.iter().zip(func.param_tys()) {
             self.current_frame_mut()?.push_local(param_ty.clone(), arg_cell, None)
                 .map_err(|err| {
-                    ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                    ExecError::illegal_state(err.to_string())
                 })?;
         }
 
@@ -426,7 +406,7 @@ impl Interpreter {
 
             (None, Some(_)) => {
                 let msg = "called function which has no return type in a context where a return value was expected";
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             }
 
             // ok, no output expected, ignore result if there is one
@@ -577,7 +557,7 @@ impl Interpreter {
 
                     other => {
                         let msg = format!("retained cell must point to an rc cell, found: {:?}", other);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                        return Err(ExecError::illegal_state(msg));
                     }
                 };
 
@@ -587,7 +567,7 @@ impl Interpreter {
             }
 
             _ => {
-                Err(ExecError::illegal_state(format!("{:?} cannot be retained", cell), self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(format!("{:?} cannot be retained", cell)))
             },
         }
     }
@@ -596,7 +576,7 @@ impl Interpreter {
         match target {
             Ref::Discard => {
                 let msg = "can't take address of discard ref";
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             },
 
             // let int := 1;
@@ -607,7 +587,7 @@ impl Interpreter {
 
                 _ => {
                     let msg = format!("deref of non-pointer value @ {}", val);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 },
             },
 
@@ -617,13 +597,13 @@ impl Interpreter {
                 self.current_frame()?.get_local_ptr(*id)
                     .map_err(|err| {
                         let msg = err.to_string();
-                        ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                        ExecError::illegal_state(msg)
                     })
             }
 
             Ref::Global(global) => {
                 let msg = format!("can't take address of global ref {:?}", global);
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             },
         }
     }
@@ -647,7 +627,8 @@ impl Interpreter {
                 );
             }
 
-            self.exec_instruction(&instructions[pc], &mut pc, &labels)?;
+            self.exec_instruction(&instructions[pc], &mut pc, &labels)
+                .map_err(|err| self.add_debug_ctx(err))?;
 
             pc += 1;
         }
@@ -779,7 +760,7 @@ impl Interpreter {
         let current_frame = self.current_frame_mut()?;
         let id = current_frame.push_local(ty.clone(), &uninit_cell, Some(pc))
             .map_err(|err| {
-                ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                ExecError::illegal_state(err.to_string())
             })?;
 
         Ok(id)
@@ -794,7 +775,7 @@ impl Interpreter {
     fn exec_local_end(&mut self) -> ExecResult<()> {
         self.current_frame_mut()?.pop_block()
             .map_err(|err| {
-                ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                ExecError::illegal_state(err.to_string())
             })?;
 
         Ok(())
@@ -829,7 +810,7 @@ impl Interpreter {
                 Some(result) => Ok(result),
                 None => {
                     let msg = format!("Add is not valid for {:?} + {:?}", a_val, b_val);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 },
             }
         }?;
@@ -839,11 +820,7 @@ impl Interpreter {
     }
 
     fn offset_ptr(&self, ptr: Pointer, offset: isize) -> ExecResult<Pointer> {
-        let marshal_ty = self.marshaller.get_ty(&ptr.ty)
-            .map_err(|err| ExecError::MarshallingFailed {
-                err,
-                span: self.debug_ctx().into_owned(),
-            })?;
+        let marshal_ty = self.marshaller.get_ty(&ptr.ty)?;
 
         Ok(Pointer {
             ty: ptr.ty,
@@ -856,17 +833,12 @@ impl Interpreter {
 
         return Err(ExecError::Raised {
             msg,
-            //todo
-            span: Span::zero("<interpreter>"),
         });
     }
 
     pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {
-        self.native_heap.free(&ptr.clone())
-            .map_err(|err| ExecError::NativeHeapError {
-                err,
-                span: self.debug_ctx().into_owned(),
-            })
+        self.native_heap.free(&ptr.clone())?;
+        Ok(())
     }
 
     fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
@@ -877,20 +849,18 @@ impl Interpreter {
 
             x => {
                 let msg = format!("target of DynFree at {} must be pointer, was: {:?}", at, x);
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             },
         }
     }
 
     pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<ValueCell>) -> ExecResult<Pointer> {
         if values.len() == 0 {
-            return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
+            return Err(ExecError::ZeroLengthAllocation);
         }
 
         let alloc_ptr = self.dynalloc(ty, values.len())?;
-        let marshal_ty = self.marshaller.get_ty(&ty).map_err(|err| {
-            ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() }
-        })?;
+        let marshal_ty = self.marshaller.get_ty(&ty)?;
 
         for (i, value) in values.into_iter().enumerate() {
             let element_offset = i * marshal_ty.size();
@@ -906,14 +876,10 @@ impl Interpreter {
 
     pub fn dynalloc(&mut self, ty: &Type, len: usize) -> ExecResult<Pointer> {
         if len == 0 {
-            return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
+            return Err(ExecError::ZeroLengthAllocation);
         }
 
-        let ptr = self.native_heap.alloc(ty.clone(), len)
-            .map_err(|heap_err| ExecError::NativeHeapError {
-                err: heap_err,
-                span: self.debug_ctx().into_owned(),
-            })?;
+        let ptr = self.native_heap.alloc(ty.clone(), len)?;
 
         Ok(ptr)
     }
@@ -922,10 +888,10 @@ impl Interpreter {
         let len = self
             .evaluate(len)?
             .as_i32()
-            .ok_or_else(|| ExecError::illegal_state("len value of DynAlloc must be i32", self.debug_ctx().into_owned()))?;
+            .ok_or_else(|| ExecError::illegal_state("len value of DynAlloc must be i32"))?;
 
         let len = usize(len)
-            .map_err(|_| ExecError::illegal_state("alloc length must be positive", self.debug_ctx().into_owned()))?;
+            .map_err(|_| ExecError::illegal_state("alloc length must be positive"))?;
 
         let ptr = self.dynalloc(ty, len)?;
         self.store(out, ValueCell::Pointer(ptr))?;
@@ -961,7 +927,7 @@ impl Interpreter {
             ValueCell::Bool(false) => {
                 Ok(())
             }
-            _ => Err(ExecError::illegal_state("JumpIf instruction testing non-boolean cell", self.debug_ctx().into_owned())),
+            _ => Err(ExecError::illegal_state("JumpIf instruction testing non-boolean cell")),
         }
     }
 
@@ -970,7 +936,7 @@ impl Interpreter {
             Type::Variant(id) => *id,
             other => {
                 let msg = format!("cannot execute variant data instruction for non-variant type: {}", other);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             }
         };
 
@@ -980,7 +946,7 @@ impl Interpreter {
             .and_then(|def| def.cases.get(*tag))
             .ok_or_else(|| {
                 let msg = format!("missing definition for variant case {}.{}", variant_id, *tag);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
         let case_ty = case_def.ty.clone().unwrap_or(Type::Nothing);
 
@@ -1012,17 +978,14 @@ impl Interpreter {
     fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value, element: &Type) -> ExecResult<()> {
         let array_ptr = self.addr_of_ref(a)?;
 
-        let el_marshal_ty = self.marshaller.get_ty(element)
-            .map_err(|err| ExecError::MarshallingFailed {
-                err, span: self.debug_ctx().into_owned()
-            })?;
+        let el_marshal_ty = self.marshaller.get_ty(element)?;
 
         let index_value = self.evaluate(index)?
             .as_i32()
             .map(|i| i as usize)
             .ok_or_else(|| {
                 let msg = "element instruction has non-integer illegal index value";
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let index_offset = el_marshal_ty.size() * index_value;
@@ -1084,7 +1047,7 @@ impl Interpreter {
                 Some(result) => Ok(result),
                 None => {
                     let msg = format!("Sub is not valid for {:?} + {:?}", a_val, b_val);
-                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                    Err(ExecError::illegal_state(msg))
                 },
             }
         }?;
@@ -1115,7 +1078,7 @@ impl Interpreter {
             Some(result) => self.store(out, result)?,
             None => {
                 let msg = format!("Shr is not valid for {:?} shr {:?}", a_val, b_val);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             },
         }
 
@@ -1130,7 +1093,7 @@ impl Interpreter {
             Some(eq) => eq,
             None => {
                 let msg = format!("Eq is not valid for {:?} = {:?}", a_val, b_val);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             },
         };
 
@@ -1146,7 +1109,7 @@ impl Interpreter {
         let gt = a_val.try_gt(&b_val)
             .ok_or_else(|| {
                 let msg = format!("Gt is not valid for {} ({:?}) > {} ({:?})", a, a_val, b, b_val);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         self.store(out, ValueCell::Bool(gt))?;
@@ -1161,7 +1124,7 @@ impl Interpreter {
             Some(not) => not,
             None => {
                 let msg = format!("Not instruction is not valid for {:?}", a);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                return Err(ExecError::illegal_state(msg))
             }
         };
 
@@ -1176,7 +1139,7 @@ impl Interpreter {
             .as_bool()
             .ok_or_else(|| {
                 let msg = format!("operand a of And instruction must be bool, got {:?}", a);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let b_val = self
@@ -1184,7 +1147,7 @@ impl Interpreter {
             .as_bool()
             .ok_or_else(|| {
                 let msg = format!("operand b of And instruction must be bool, got {:?}", b);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         self.store(out, ValueCell::Bool(a_val && b_val))?;
@@ -1198,7 +1161,7 @@ impl Interpreter {
             .as_bool()
             .ok_or_else(|| {
                 let msg = format!("operand a of Or instruction must be bool, got {:?}", a);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let b_val = self
@@ -1206,7 +1169,7 @@ impl Interpreter {
             .as_bool()
             .ok_or_else(|| {
                 let msg = format!("operand b of Or instruction must be bool, got {:?}", b);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         self.store(out, ValueCell::Bool(a_val || b_val))?;
@@ -1230,7 +1193,7 @@ impl Interpreter {
 
             _ => {
                 let msg = format!("{} does not reference a function", function);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             }
         }
 
@@ -1259,7 +1222,7 @@ impl Interpreter {
             ValueCell::Function(func) => func,
             unexpected => {
                 let msg = format!("invalid function cell: {:?}", unexpected);
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             },
         };
 
@@ -1274,14 +1237,14 @@ impl Interpreter {
             .cloned()
             .ok_or_else(|| {
                 let msg = "argument a of ClassIs instruction must evaluate to a pointer";
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         let rc_cell = match self.load_indirect(&a_ptr)?.into_owned() {
             ValueCell::RcCell(rc) => Ok(rc),
             _ => {
                 let msg = "rc pointer target of ClassIs instruction must point to an rc cell";
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                Err(ExecError::illegal_state(msg))
             }
         }?;
 
@@ -1305,11 +1268,10 @@ impl Interpreter {
             .and_then(|def| def.fields.get(&field))
             .ok_or_else(|| {
                 let msg = format!("missing definition for struct field {}.{}", struct_id, field.0);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
-        let struct_marshal_ty = self.marshaller.get_ty(&Type::Struct(struct_id))
-            .map_err(|err| ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() })?;
+        let struct_marshal_ty = self.marshaller.get_ty(&Type::Struct(struct_id))?;
 
         let field_offset = struct_marshal_ty.elements()
             .iter()
@@ -1339,7 +1301,7 @@ impl Interpreter {
                     Some(rc_cell) => rc_cell,
                     None => {
                         let msg = format!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
-                        return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                        return Err(ExecError::illegal_state(msg));
                     }
                 };
 
@@ -1358,7 +1320,7 @@ impl Interpreter {
                     "invalid base type referenced in Field instruction: {}.{}",
                     of_ty, field
                 );
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()));
+                return Err(ExecError::illegal_state(msg));
             }
         };
 
@@ -1373,7 +1335,7 @@ impl Interpreter {
         // assume all jumps are either upwards or to the same level
         self.current_frame_mut()?.pop_block_to(label.block_depth)
             .map_err(|err| {
-                ExecError::illegal_state(err.to_string(), self.debug_ctx().into_owned())
+                ExecError::illegal_state(err.to_string())
             })?;
 
         Ok(())
@@ -1445,21 +1407,14 @@ impl Interpreter {
         let mut marshaller = (*self.marshaller).clone();
 
         for (id, type_def) in module.metadata.type_defs() {
-            let add_result = match type_def {
+            match type_def {
                 TypeDef::Struct(struct_def) => {
-                    marshaller.add_struct(id, struct_def, &module.metadata)
+                    marshaller.add_struct(id, struct_def, &module.metadata)?;
                 },
                 TypeDef::Variant(variant_def) => {
-                    marshaller.add_variant(id, variant_def, &module.metadata)
+                    marshaller.add_variant(id, variant_def, &module.metadata)?;
                 }
-            };
-
-            add_result.map_err(|err| {
-                ExecError::MarshallingFailed {
-                    err,
-                    span: module.module_span().clone(),
-                }
-            })?;
+            }
         }
 
         for (func_name, ir_func) in &module.functions {
@@ -1476,11 +1431,7 @@ impl Interpreter {
                 }
 
                 IRFunction::External(external_ref) => {
-                    let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
-                        .map_err(|err| ExecError::MarshallingFailed {
-                            err,
-                            span: external_ref.src_span.clone(),
-                        })?;
+                    let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)?;
                     Some(ffi_func)
                 }
             };
@@ -1516,11 +1467,7 @@ impl Interpreter {
             self.init_stdlib_globals();
         }
 
-        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
-            .map_err(|err| ExecError::MarshallingFailed {
-                err,
-                span: self.debug_ctx().into_owned(),
-            })?;
+        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)?;
 
         self.push_stack("<init>", init_stack_size);
         self.execute(&module.init)?;
@@ -1534,7 +1481,7 @@ impl Interpreter {
     fn deref_rc(&self, rc_cell: &ValueCell) ->  ExecResult<Cow<ValueCell>> {
         let rc = rc_cell.as_rc().ok_or_else(|| {
             let msg = format!("trying to deref RC ref but value was {:?}", rc_cell);
-            ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
         self.load_indirect(&rc.resource_ptr)
@@ -1544,7 +1491,7 @@ impl Interpreter {
         let chars: Vec<_> = content.chars().map(|c| ValueCell::U8(c as u8)).collect();
         let chars_len = cast::i32(chars.len()).map_err(|_| {
             let msg = format!("string length out of range: {}", chars.len());
-            ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            ExecError::illegal_state(msg)
         })?;
 
         let chars_ptr = if chars_len > 0 {
@@ -1580,7 +1527,7 @@ impl Interpreter {
                     "tried to read string value from rc cell which didn't contain a string struct: {:?}",
                     str_cell,
                 );
-                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                return Err(ExecError::illegal_state(msg))
             },
         };
 
@@ -1589,7 +1536,7 @@ impl Interpreter {
             .and_then(|len| cast::usize(len).ok())
             .ok_or_else(|| {
                 let msg = format!("string length cell contained invalid value: {:?}", len_cell);
-                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+                ExecError::illegal_state(msg)
             })?;
 
         if len == 0 {
@@ -1602,7 +1549,7 @@ impl Interpreter {
                 ExecError::illegal_state(format!(
                     "string contained invalid `chars` pointer value: {:?}",
                     str_cell
-                ), self.debug_ctx().into_owned())
+                ))
             })?;
 
         let mut chars = Vec::new();
@@ -1614,7 +1561,7 @@ impl Interpreter {
 
             let char_val = self.load_indirect(&char_ptr)?.as_u8()
                 .ok_or_else(|| {
-                    ExecError::illegal_state(format!("expected string char @ {}", char_ptr), self.debug_ctx().into_owned())
+                    ExecError::illegal_state(format!("expected string char @ {}", char_ptr))
                 })?;
 
             chars.push(char_val as char);

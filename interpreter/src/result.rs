@@ -6,38 +6,44 @@ use std::fmt;
 pub enum ExecError {
     Raised {
         msg: String,
-        span: Span,
     },
-    MarshallingFailed {
-        err: MarshalError,
-        span: Span,
-    },
+    MarshalError(MarshalError),
     ExternSymbolLoadFailed {
+        msg: String,
         lib: String,
         symbol: String,
-        span: Span,
-        msg: String,
     },
     IllegalDereference {
         ptr: Pointer,
-        span: Span,
     },
     IllegalState {
         msg: String,
-        span: Span,
     },
-    NativeHeapError {
-        err: NativeHeapError,
+    NativeHeapError(NativeHeapError),
+    ZeroLengthAllocation,
+    WithDebugContext {
+        err: Box<ExecError>,
         span: Span,
-    },
-    ZeroLengthAllocation(Span),
+    }
 }
 
 impl ExecError {
-    pub fn illegal_state(msg: impl Into<String>, span: Span) -> Self {
+    pub fn illegal_state(msg: impl Into<String>) -> Self {
         Self::IllegalState {
             msg: msg.into(),
-            span,
+        }
+    }
+
+    fn label_text(&self) -> Option<String> {
+        match self {
+            ExecError::Raised { msg } => Some(msg.clone()),
+            ExecError::ExternSymbolLoadFailed { msg, .. } => Some(msg.clone()),
+            ExecError::MarshalError(err) => Some(err.to_string()),
+            ExecError::IllegalDereference { ptr } => Some(format!("failed to dereference pointer: {}", ptr)),
+            ExecError::IllegalState { msg } => Some(msg.clone()),
+            ExecError::NativeHeapError(err) => Some(err.to_string()),
+            ExecError::ZeroLengthAllocation => None,
+            _ => None,
         }
     }
 }
@@ -46,14 +52,15 @@ impl fmt::Display for ExecError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshallingFailed { .. } => write!(f, "Marshalling failed"),
+            ExecError::MarshalError { .. } => write!(f, "Marshalling failed"),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
             }
             ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
-            ExecError::NativeHeapError { err, .. } => write!(f, "{}", err),
-            ExecError::ZeroLengthAllocation(..) => write!(f, "Dynamic allocation with length 0"),
+            ExecError::NativeHeapError(err) => write!(f, "{}", err),
+            ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
+            ExecError::WithDebugContext { err, .. } => write!(f, "{}", err),
         }
     }
 }
@@ -61,35 +68,25 @@ impl fmt::Display for ExecError {
 impl DiagnosticOutput for ExecError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            ExecError::Raised { msg, span } => Some(DiagnosticLabel {
-                text: Some(msg.clone()),
-                span: span.clone(),
+            ExecError::WithDebugContext { err, span } => Some(DiagnosticLabel {
+                text: err.label_text(),
+                span: span.clone()
             }),
-            ExecError::ExternSymbolLoadFailed { span, msg, .. } => Some(DiagnosticLabel {
-                text: Some(msg.clone()),
-                span: span.clone(),
-            }),
-            ExecError::MarshallingFailed { err, span } => Some(DiagnosticLabel {
-                text: Some(err.to_string()),
-                span: span.clone(),
-            }),
-            ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
-                text: Some(format!("failed to dereference pointer: {}", ptr)),
-                span: span.clone(),
-            }),
-            ExecError::IllegalState { msg, span } => Some(DiagnosticLabel {
-                text: Some(msg.clone()),
-                span: span.clone(),
-            }),
-            ExecError::NativeHeapError { err, span } => Some(DiagnosticLabel {
-                text: Some(err.to_string()),
-                span: span.clone(),
-            }),
-            ExecError::ZeroLengthAllocation(span) => Some(DiagnosticLabel {
-                text: None,
-                span: span.clone(),
-            }),
+
+            _ => None,
         }
+    }
+}
+
+impl From<NativeHeapError> for ExecError {
+    fn from(err: NativeHeapError) -> Self {
+        ExecError::NativeHeapError(err)
+    }
+}
+
+impl From<MarshalError> for ExecError {
+    fn from(err: MarshalError) -> Self {
+        ExecError::MarshalError(err)
     }
 }
 
