@@ -1,18 +1,14 @@
 use std::collections::BTreeMap;
 use std::fmt;
-use std::mem::size_of;
 use std::rc::Rc;
 use pas_ir::Type;
-use crate::{
-    ValueCell,
-    marshal::{Marshaller, MarshalError}
-};
+use crate::{ValueCell, marshal::{Marshaller, MarshalError}, Pointer};
 
 #[derive(Clone, Debug)]
 pub enum NativeHeapError {
     MarshallingError(MarshalError),
     NullPointerDeref,
-    BadFree(NativePointer),
+    BadFree(Pointer),
 }
 
 impl fmt::Display for NativeHeapError {
@@ -55,9 +51,9 @@ impl NativeHeap {
         self.marshaller = marshaller;
     }
 
-    pub fn alloc(&mut self, ty: Type, count: usize) -> NativeHeapResult<NativePointer> {
+    pub fn alloc(&mut self, ty: Type, count: usize) -> NativeHeapResult<Pointer> {
         if count == 0 {
-            return Ok(NativePointer {
+            return Ok(Pointer {
                 ty: Type::Nothing,
                 addr: 0,
             });
@@ -74,10 +70,10 @@ impl NativeHeap {
             eprintln!("NativeHeap: alloc {} bytes @ {}", total_len, addr);
         }
 
-        Ok(NativePointer { addr, ty })
+        Ok(Pointer { addr, ty })
     }
 
-    pub fn free(&mut self, ptr: &NativePointer) -> NativeHeapResult<()> {
+    pub fn free(&mut self, ptr: &Pointer) -> NativeHeapResult<()> {
         if self.trace_allocs {
             eprintln!("NativeHeap: free @ {}", ptr);
         }
@@ -89,7 +85,7 @@ impl NativeHeap {
         Ok(())
     }
 
-    pub fn load(&self, addr: &NativePointer) -> NativeHeapResult<ValueCell> {
+    pub fn load(&self, addr: &Pointer) -> NativeHeapResult<ValueCell> {
         if addr.addr == 0 {
             return Err(NativeHeapError::NullPointerDeref);
         }
@@ -99,7 +95,7 @@ impl NativeHeap {
         Ok(val)
     }
 
-    pub fn store(&mut self, addr: &NativePointer, val: ValueCell) -> NativeHeapResult<()> {
+    pub fn store(&mut self, addr: &Pointer, val: ValueCell) -> NativeHeapResult<()> {
         if addr.addr == 0 {
             return Err(NativeHeapError::NullPointerDeref);
         }
@@ -107,18 +103,5 @@ impl NativeHeap {
         self.marshaller.marshal_into(&val, addr)?;
 
         Ok(())
-    }
-}
-
-/// pointer to native memory that is marshalled to/from value cells when accessed
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct NativePointer {
-    pub addr: usize,
-    pub ty: Type,
-}
-
-impl fmt::Display for NativePointer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = (size_of::<usize>() * 2))
     }
 }

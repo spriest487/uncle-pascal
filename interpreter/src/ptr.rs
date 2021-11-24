@@ -3,36 +3,42 @@ use crate::{ExecResult, Interpreter};
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
-use std::ops::{Add, Sub};
+use std::mem::size_of;
 use pas_ir::Type;
-use crate::heap::NativePointer;
 
+/// pointer to native memory that is marshalled to/from value cells when accessed
 #[derive(Debug, Clone, Eq, PartialEq)]
-pub enum Pointer {
-    Native(NativePointer),
+pub struct Pointer {
+    pub addr: usize,
+    pub ty: Type,
+}
+
+impl fmt::Display for Pointer {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "0x{:0width$x} ({})", self.addr, self.ty, width = (size_of::<usize>() * 2))
+    }
 }
 
 impl Pointer {
     pub fn null(ty: Type) -> Self {
-        Pointer::Native(NativePointer {
+        Self {
             addr: 0,
             ty
-        })
+        }
     }
 
     pub fn is_null(&self) -> bool {
-        match self {
-            Pointer::Native(ptr) => ptr.addr == 0,
-        }
+        self.addr == 0
     }
 
     pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, ValueCell>> {
         state.load_indirect(self)
     }
 
-    fn kind(&self) -> PointerKind {
-        match self {
-            Pointer::Native { .. } => PointerKind::Native,
+    pub fn reinterpret(&self, ty: Type) -> Self {
+        Self {
+            addr: self.addr,
+            ty,
         }
     }
 }
@@ -46,46 +52,7 @@ impl PartialOrd for Pointer {
 impl Ord for Pointer {
     fn cmp(&self, other: &Self) -> Ordering {
         match (self, other) {
-            (a, b) => a.kind().cmp(&b.kind()),
+            (a, b) => a.addr.cmp(&b.addr),
         }
     }
-}
-
-impl Add<isize> for Pointer {
-    type Output = Self;
-
-    fn add(self, rhs: isize) -> Self {
-        match self {
-            Pointer::Native(NativePointer { addr, ty }) => Pointer::Native(NativePointer {
-                addr: (addr as isize + rhs) as usize,
-                ty,
-            }),
-        }
-    }
-}
-
-impl Sub<isize> for Pointer {
-    type Output = Self;
-
-    fn sub(self, rhs: isize) -> Self {
-        match self {
-            Pointer::Native(NativePointer { addr, ty }) => Pointer::Native(NativePointer {
-                addr: (addr as isize - rhs) as usize,
-                ty,
-            }),
-        }
-    }
-}
-
-impl fmt::Display for Pointer {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Pointer::Native(native_ptr) => write!(f, "{}", native_ptr),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
-enum PointerKind {
-    Native,
 }

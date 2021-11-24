@@ -3,7 +3,6 @@ use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, 
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
-use crate::heap::NativePointer;
 
 /// %1: Integer -> %0: String
 pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
@@ -136,19 +135,12 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
 /// %1: <any dyn array ref>; %2: Integer; %3: ^Element; -> %0: <dyn array ref of same type>
 pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let array_arg = Ref::Local(LocalID(1));
-
     let new_len_arg = Ref::Local(LocalID(2));
+    let default_val_arg = Ref::Local(LocalID(3));
+    let default_val_len_arg = Ref::Local(LocalID(4));
+
     let new_len = state.load(&new_len_arg)?.as_i32()
         .ok_or_else(|| ExecError::illegal_state("len arg passed to set_length must be i32", state.debug_ctx().into_owned()))?;
-
-    let default_val_arg = Ref::Local(LocalID(3));
-    let default_val = state.load(&default_val_arg)?.into_owned();
-    let default_val_ptr = default_val.as_pointer()
-        .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer", state.debug_ctx().into_owned()))?;
-
-    let default_val_len_arg = Ref::Local(LocalID(4));
-    let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
-        .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32", state.debug_ctx().into_owned()))?;
 
     let array_class_ptr = state.load(&array_arg)?
         .as_pointer()
@@ -169,21 +161,19 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
 
+    let default_val = state.load(&default_val_arg)?.into_owned();
+    let default_val_ptr = default_val.as_pointer()
+        .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer", state.debug_ctx().into_owned()))?
+        .reinterpret(dyn_array_el_ty.clone());
+    let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
+        .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32", state.debug_ctx().into_owned()))?;
+
     let new_data = if new_len > 0 {
         let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)
             .map_err(|err| ExecError::MarshallingFailed {
                 err,
                 span: state.debug_ctx().into_owned(),
             })?;
-
-        // the actual default value pointer from the declaration is an untyped `Pointer`, but we know
-        // it should point to a default element value, so "cast" it now
-        let default_val_ptr = match default_val_ptr {
-            Pointer::Native(native_ptr) => Pointer::Native(NativePointer {
-                ty: dyn_array_el_ty.clone(),
-                addr: native_ptr.addr,
-            }),
-        };
 
         let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
             .map(|rc_info| {
@@ -224,13 +214,20 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         for i in 0..new_len {
             let i = i as usize;
-            let el_offset = (i * dyn_array_el_marshal_ty.size()) as isize;
+            let el_offset = i * dyn_array_el_marshal_ty.size();
 
-            let el_ptr = new_data_ptr.clone() + el_offset;
+            let el_ptr = Pointer {
+                addr: new_data_ptr.addr + el_offset,
+                ty: dyn_array_el_ty.clone(),
+            };
 
             if i < old_len as usize {
                 // copy old elements
-                let old_el_ptr = old_data_ptr.clone() + el_offset;
+                let old_el_ptr = Pointer {
+                    addr: old_data_ptr.addr + el_offset,
+                    ty: dyn_array_el_ty.clone(),
+                };
+
                 let old_el = state.load_indirect(&old_el_ptr)?.into_owned();
                 state.store_indirect(&el_ptr, old_el)?;
             } else {

@@ -132,10 +132,6 @@ impl ValueCell {
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a + b)),
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a + b)),
 
-            (ValueCell::Pointer(ptr), ValueCell::I32(offset)) => {
-                Some(ValueCell::Pointer(ptr.clone() + *offset as isize))
-            }
-
             _ => None,
         }
     }
@@ -145,10 +141,6 @@ impl ValueCell {
             (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a - b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a - b)),
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a - b)),
-
-            (ValueCell::Pointer(ptr), ValueCell::I32(offset)) => {
-                Some(ValueCell::Pointer(ptr.clone() - *offset as isize))
-            }
 
             _ => None,
         }

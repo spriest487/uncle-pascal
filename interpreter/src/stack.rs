@@ -1,11 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use pas_ir::{LocalID, Type};
-use crate::{
-    ValueCell,
-    marshal::{Marshaller, MarshalError, MarshalResult},
-    heap::NativePointer
-};
+use crate::{ValueCell, marshal::{Marshaller, MarshalError, MarshalResult}, Pointer};
 
 #[derive(Debug)]
 struct Block {
@@ -77,10 +73,10 @@ impl StackFrame {
         Ok(id)
     }
 
-    pub fn get_local_ptr(&self, id: LocalID) -> StackResult<NativePointer> {
+    pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
         let alloc = self.locals.get(id.0).ok_or_else(|| StackError::LocalNotAllocated(id))?;
 
-        Ok(NativePointer {
+        Ok(Pointer {
             ty: alloc.ty.clone(),
             addr: self.stack_mem.as_ptr() as usize + alloc.stack_offset,
         })

@@ -1,5 +1,4 @@
 use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc, fmt};
-use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::convert::TryInto;
 use std::mem::{size_of, transmute};
@@ -18,7 +17,6 @@ use pas_ir::{metadata::Metadata, ExternalFunctionRef, Type, Instruction};
 use pas_ir::metadata::Variant;
 use pas_ir::prelude::{Struct, StructID};
 use crate::func::ffi::FfiInvoker;
-use crate::heap::NativePointer;
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -427,18 +425,14 @@ impl Marshaller {
     }
 
     fn marshal_ptr(&self, ptr: &Pointer, out_bytes: &mut [u8]) -> MarshalResult<usize> {
-        let native_ptr = self.flatten_ptr(ptr).ok_or_else(|| {
-            MarshalError::UnsupportedValue(ValueCell::Pointer(ptr.clone()))
-        })?;
-
-        let ptr_bytes = native_ptr.addr.to_ne_bytes();
+        let ptr_bytes = ptr.addr.to_ne_bytes();
         let len = marshal_bytes(&ptr_bytes, out_bytes);
         Ok(len)
     }
 
-    fn unmarshal_ptr(&self, deref_ty: &Type, in_bytes: &[u8]) -> MarshalResult<(NativePointer, usize)> {
+    fn unmarshal_ptr(&self, deref_ty: &Type, in_bytes: &[u8]) -> MarshalResult<(Pointer, usize)> {
         let addr = usize::from_ne_bytes(unmarshal_bytes(in_bytes)?);
-        let ptr = NativePointer {
+        let ptr = Pointer {
             addr,
             ty: deref_ty.clone(),
         };
@@ -446,13 +440,7 @@ impl Marshaller {
         Ok((ptr, size_of::<usize>()))
     }
 
-    fn flatten_ptr<'a>(&self, ptr: &'a Pointer) -> Option<Cow<'a, NativePointer>> {
-        match ptr {
-            Pointer::Native(native_ptr) => Some(Cow::Borrowed(native_ptr)),
-        }
-    }
-
-    pub fn unmarshal_from_ptr(&self, into_ptr: &NativePointer) -> MarshalResult<ValueCell> {
+    pub fn unmarshal_from_ptr(&self, into_ptr: &Pointer) -> MarshalResult<ValueCell> {
         if into_ptr.addr == 0 {
             return Err(MarshalError::InvalidData);
         }
@@ -467,7 +455,7 @@ impl Marshaller {
         Ok(result.value)
     }
 
-    pub fn marshal_into(&self, val: &ValueCell, into_ptr: &NativePointer) -> MarshalResult<usize> {
+    pub fn marshal_into(&self, val: &ValueCell, into_ptr: &Pointer) -> MarshalResult<usize> {
         if into_ptr.addr == 0 {
             return Err(MarshalError::InvalidData);
         }
@@ -544,10 +532,10 @@ impl Marshaller {
                 let struct_id = usize::from_ne_bytes(unmarshal_bytes(struct_id_bytes)?);
 
                 Ok(UnmarshalledValue {
-                    value: ValueCell::Pointer(Pointer::Native(NativePointer {
+                    value: ValueCell::Pointer(Pointer {
                         addr: raw_ptr.addr,
                         ty: Type::RcObject(StructID(struct_id)),
-                    })),
+                    }),
                     byte_count: size,
                 })
             }
@@ -564,7 +552,7 @@ impl Marshaller {
 
                 Ok(UnmarshalledValue {
                     value: ValueCell::RcCell(Box::new(RcCell {
-                        resource_ptr: Pointer::Native(resource_ptr),
+                        resource_ptr,
                         struct_id: *id,
                         ref_count,
                     })),
@@ -576,7 +564,7 @@ impl Marshaller {
                 let (ptr, size) = self.unmarshal_ptr(deref_ty, in_bytes)?;
 
                 Ok(UnmarshalledValue {
-                    value: ValueCell::Pointer(Pointer::Native(ptr)),
+                    value: ValueCell::Pointer(ptr),
                     byte_count: size,
                 })
             }

@@ -18,7 +18,7 @@ use cast::usize;
 use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
-use crate::heap::{NativeHeap, NativePointer};
+use crate::heap::NativeHeap;
 
 mod builtin;
 mod func;
@@ -161,30 +161,23 @@ impl Interpreter {
     }
 
     fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
-        match ptr {
-            Pointer::Native(native_ptr) => {
-                let val = self.native_heap.load(native_ptr)
-                    .map_err(|err| {
-                        ExecError::NativeHeapError { err, span: self.debug_ctx().into_owned() }
-                    })?;
+        let val = self.native_heap.load(ptr)
+            .map_err(|err| {
+                ExecError::NativeHeapError { err, span: self.debug_ctx().into_owned() }
+            })?;
 
-                Ok(Cow::Owned(val))
-            }
-        }
+        Ok(Cow::Owned(val))
     }
 
     /// dereference a pointer and set the value it points to
     fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
         let debug_ctx = self.debug_ctx().into_owned();
-        match ptr {
-            Pointer::Native(native_ptr) => {
-                self.native_heap.store(native_ptr, val)
-                    .map_err(|err| ExecError::NativeHeapError {
-                        err,
-                        span: debug_ctx,
-                    })
-            }
-        }
+
+        self.native_heap.store(ptr, val)
+            .map_err(|err| ExecError::NativeHeapError {
+                err,
+                span: debug_ctx,
+            })
     }
 
     fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
@@ -626,7 +619,6 @@ impl Interpreter {
                         let msg = err.to_string();
                         ExecError::illegal_state(msg, self.debug_ctx().into_owned())
                     })
-                    .map(Pointer::Native)
             }
 
             Ref::Global(global) => {
@@ -823,16 +815,40 @@ impl Interpreter {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        match a_val.try_add(&b_val) {
-            Some(result) => {
-                self.store(out, result)?;
-                Ok(())
+        let result = match (a_val, b_val) {
+            // pointer arithmetic
+            (ValueCell::Pointer(ptr), ValueCell::I32(offset))
+            | (ValueCell::I32(offset), ValueCell::Pointer(ptr)) => {
+                let ptr = self.offset_ptr(ptr, offset as isize)?;
+
+                Ok(ValueCell::Pointer(ptr))
             },
-            None => {
-                let msg = format!("Add is not valid for {:?} + {:?}", a_val, b_val);
-                Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
-            },
-        }
+
+            // value addition
+            (a_val, b_val) => match a_val.try_add(&b_val) {
+                Some(result) => Ok(result),
+                None => {
+                    let msg = format!("Add is not valid for {:?} + {:?}", a_val, b_val);
+                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                },
+            }
+        }?;
+
+        self.store(out, result)?;
+        Ok(())
+    }
+
+    fn offset_ptr(&self, ptr: Pointer, offset: isize) -> ExecResult<Pointer> {
+        let marshal_ty = self.marshaller.get_ty(&ptr.ty)
+            .map_err(|err| ExecError::MarshallingFailed {
+                err,
+                span: self.debug_ctx().into_owned(),
+            })?;
+
+        Ok(Pointer {
+            ty: ptr.ty,
+            addr: (ptr.addr as isize + offset * marshal_ty.size() as isize) as usize,
+        })
     }
 
     fn exec_raise(&mut self, val: &Ref) -> ExecResult<()> {
@@ -846,15 +862,11 @@ impl Interpreter {
     }
 
     pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {
-        match ptr {
-            Pointer::Native(native_ptr) => {
-                self.native_heap.free(&native_ptr.clone())
-                    .map_err(|err| ExecError::NativeHeapError {
-                        err,
-                        span: self.debug_ctx().into_owned(),
-                    })
-            }
-        }
+        self.native_heap.free(&ptr.clone())
+            .map_err(|err| ExecError::NativeHeapError {
+                err,
+                span: self.debug_ctx().into_owned(),
+            })
     }
 
     fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
@@ -875,18 +887,21 @@ impl Interpreter {
             return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
         }
 
-        let ptr = self.dynalloc(ty, values.len())?;
+        let alloc_ptr = self.dynalloc(ty, values.len())?;
         let marshal_ty = self.marshaller.get_ty(&ty).map_err(|err| {
             ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() }
         })?;
 
         for (i, value) in values.into_iter().enumerate() {
-            let element_offset = (i * marshal_ty.size()) as isize;
-            let val_dst = ptr.clone() + element_offset;
+            let element_offset = i * marshal_ty.size();
+            let val_dst = Pointer {
+                addr: alloc_ptr.addr + element_offset,
+                ty: ty.clone(),
+            };
             self.store_indirect(&val_dst, value)?;
         }
 
-        Ok(ptr)
+        Ok(alloc_ptr)
     }
 
     pub fn dynalloc(&mut self, ty: &Type, len: usize) -> ExecResult<Pointer> {
@@ -894,12 +909,11 @@ impl Interpreter {
             return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
         }
 
-        let native_ptr = self.native_heap.alloc(ty.clone(), len)
+        let ptr = self.native_heap.alloc(ty.clone(), len)
             .map_err(|heap_err| ExecError::NativeHeapError {
                 err: heap_err,
                 span: self.debug_ctx().into_owned(),
             })?;
-        let ptr = Pointer::Native(native_ptr);
 
         Ok(ptr)
     }
@@ -960,9 +974,7 @@ impl Interpreter {
             }
         };
 
-        let a_ptr = match self.addr_of_ref(a)? {
-            Pointer::Native(native_ptr) => native_ptr,
-        };
+        let a_ptr = self.addr_of_ref(a)?;
 
         let case_def = self.metadata.get_variant_def(variant_id)
             .and_then(|def| def.cases.get(*tag))
@@ -978,10 +990,10 @@ impl Interpreter {
 
         self.store(
             out,
-            ValueCell::Pointer(Pointer::Native(NativePointer {
+            ValueCell::Pointer(Pointer {
                 addr: a_ptr.addr + data_offset,
                 ty: case_ty,
-            })),
+            }),
         )?;
 
         Ok(())
@@ -998,9 +1010,7 @@ impl Interpreter {
     }
 
     fn exec_element(&mut self, out: &Ref, a: &Ref, index: &Value, element: &Type) -> ExecResult<()> {
-        let array_ptr = match self.addr_of_ref(a)? {
-            Pointer::Native(native_ptr) => native_ptr,
-        };
+        let array_ptr = self.addr_of_ref(a)?;
 
         let el_marshal_ty = self.marshaller.get_ty(element)
             .map_err(|err| ExecError::MarshallingFailed {
@@ -1019,10 +1029,10 @@ impl Interpreter {
 
         self.store(
             out,
-            ValueCell::Pointer(Pointer::Native(NativePointer{
+            ValueCell::Pointer(Pointer{
                 addr: array_ptr.addr + index_offset,
                 ty: element.clone(),
-            })),
+            }),
         )?;
 
         Ok(())
@@ -1060,14 +1070,27 @@ impl Interpreter {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        match a_val.try_sub(&b_val) {
-            Some(result) => self.store(out, result),
-            None => panic!(
-                "Sub is not valid for {:?} - {:?}",
-                a_val,
-                b_val,
-            ),
-        }
+        let result = match (a_val, b_val) {
+            // pointer arithmetic
+            (ValueCell::Pointer(ptr), ValueCell::I32(offset))
+            | (ValueCell::I32(offset), ValueCell::Pointer(ptr)) => {
+                let ptr = self.offset_ptr(ptr, -offset as isize)?;
+
+                Ok(ValueCell::Pointer(ptr))
+            },
+
+            // value addition
+            (a_val, b_val) => match a_val.try_sub(&b_val) {
+                Some(result) => Ok(result),
+                None => {
+                    let msg = format!("Sub is not valid for {:?} + {:?}", a_val, b_val);
+                    Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+                },
+            }
+        }?;
+
+        self.store(out, result)?;
+        Ok(())
     }
 
     fn exec_shl(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
@@ -1300,16 +1323,14 @@ impl Interpreter {
     fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) -> ExecResult<()> {
         let field_ptr = match of_ty {
             Type::Struct(struct_id) => {
-                let struct_ptr = match self.addr_of_ref(a)? {
-                    Pointer::Native(native_ptr) => native_ptr,
-                };
+                let struct_ptr = self.addr_of_ref(a)?;
 
                 let (field_offset, field_ty) = self.get_field_offset_and_ty(*struct_id, *field)?;
 
-                Pointer::Native(NativePointer {
+                Pointer {
                     ty: field_ty,
                     addr: struct_ptr.addr + field_offset,
-                })
+                }
             }
 
             Type::RcPointer(..) => {
@@ -1322,16 +1343,14 @@ impl Interpreter {
                     }
                 };
 
-                let struct_ptr = match rc_cell.resource_ptr.clone() {
-                    Pointer::Native(native_ptr) => native_ptr,
-                };
+                let struct_ptr = rc_cell.resource_ptr.clone();
 
                 let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_cell.struct_id, *field)?;
 
-                Pointer::Native(NativePointer {
+                Pointer {
                     ty: field_ty,
                     addr: struct_ptr.addr + field_offset,
-                })
+                }
             }
 
             _ => {
@@ -1556,15 +1575,24 @@ impl Interpreter {
 
         let str_cell = match str_cell.as_struct(STRING_ID) {
             Some(struct_cell) => struct_cell,
-            None => return Err(ExecError::illegal_state(format!(
-                "tried to read string value from rc cell which didn't contain a string struct: {:?}",
-                str_cell,
-            ), self.debug_ctx().into_owned())),
+            None => {
+                let msg = format!(
+                    "tried to read string value from rc cell which didn't contain a string struct: {:?}",
+                    str_cell,
+                );
+                return Err(ExecError::illegal_state(msg, self.debug_ctx().into_owned()))
+            },
         };
 
-        let len = &str_cell[STRING_LEN_FIELD].as_i32().unwrap();
+        let len_cell = &str_cell[STRING_LEN_FIELD];
+        let len = len_cell.as_i32()
+            .and_then(|len| cast::usize(len).ok())
+            .ok_or_else(|| {
+                let msg = format!("string length cell contained invalid value: {:?}", len_cell);
+                ExecError::illegal_state(msg, self.debug_ctx().into_owned())
+            })?;
 
-        if *len == 0 {
+        if len == 0 {
             return Ok(String::new());
         }
 
@@ -1578,8 +1606,12 @@ impl Interpreter {
             })?;
 
         let mut chars = Vec::new();
-        for i in 0..*len as isize {
-            let char_ptr = chars_ptr.clone() + i;
+        for i in 0..len {
+            let char_ptr = Pointer {
+                addr: chars_ptr.addr + i,
+                ty: chars_ptr.ty.clone(),
+            };
+
             let char_val = self.load_indirect(&char_ptr)?.as_u8()
                 .ok_or_else(|| {
                     ExecError::illegal_state(format!("expected string char @ {}", char_ptr), self.debug_ctx().into_owned())

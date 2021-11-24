@@ -74,11 +74,7 @@ impl DiagnosticOutput for ExecError {
                 span: span.clone(),
             }),
             ExecError::IllegalDereference { ptr, span } => Some(DiagnosticLabel {
-                text: Some(
-                    match ptr {
-                        Pointer::Native { .. } => format!("failed to dereference native pointer {}", ptr),
-                    }
-                ),
+                text: Some(format!("failed to dereference pointer: {}", ptr)),
                 span: span.clone(),
             }),
             ExecError::IllegalState { msg, span } => Some(DiagnosticLabel {
