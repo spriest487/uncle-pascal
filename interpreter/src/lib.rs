@@ -3,7 +3,7 @@ pub use self::{
     ptr::Pointer,
 };
 use crate::{
-    func::ffi::FfiCache,
+    func::ffi::{FfiCache, ForeignTypeExt},
     func::{BuiltinFn, BuiltinFunction, Function},
     stack::StackFrame,
 };
@@ -1038,9 +1038,13 @@ impl Interpreter {
         }
 
         let ptr = self.dynalloc(ty, values.len())?;
+        let marshal_ty = self.ffi_cache.get_ty(&ty).map_err(|err| {
+            ExecError::MarshallingFailed { err, span: self.debug_ctx().into_owned() }
+        })?;
 
         for (i, value) in values.into_iter().enumerate() {
-            let val_dst = ptr.clone() + i as isize;
+            let element_offset = (i * marshal_ty.size()) as isize;
+            let val_dst = ptr.clone() + element_offset;
             self.store_indirect(&val_dst, value)?;
         }
 
@@ -1496,14 +1500,14 @@ impl Interpreter {
             ("ReadLn", builtin::read_ln, Type::string_ptr(), vec![]),
             ("GetMem", builtin::get_mem, Type::U8.ptr(), vec![Type::I32]),
             ("FreeMem", builtin::free_mem, Type::Nothing, vec![Type::Nothing.ptr()]),
-            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(None).ptr()]),
+            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(None)]),
             (
                 //
                 "ArraySetLengthInternal",
                 builtin::set_length,
                 Type::RcPointer(None),
                 vec![
-                    Type::RcPointer(None).ptr(),
+                    Type::RcPointer(None),
                     Type::I32,
                     Type::Nothing.ptr(),
                     Type::I32,

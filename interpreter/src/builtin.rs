@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, Type};
-use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
+use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell, ForeignTypeExt};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
+use crate::heap::NativePointer;
 
 /// %1: Integer -> %0: String
 pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
@@ -115,9 +116,9 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<Cow<StructCe
 
 /// %1: <any dyn array ref> -> %0: Integer
 pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
-    let array_ref = Ref::Local(LocalID(1));
+    let array_arg_ref = Ref::Local(LocalID(1));
 
-    let array_struct = get_dyn_array_struct(state, array_ref)?;
+    let array_struct = get_dyn_array_struct(state, array_arg_ref)?;
 
     // the type of %1 should be Any (pointer to an rc cell)
     let len_cell = &array_struct[DYNARRAY_LEN_FIELD];
@@ -168,6 +169,21 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     let new_data = if new_len > 0 {
         let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
+        let dyn_array_el_marshal_ty = state.ffi_cache.get_ty(&dyn_array_el_ty)
+            .map_err(|err| ExecError::MarshallingFailed {
+                err,
+                span: state.debug_ctx().into_owned(),
+            })?;
+
+        // the actual default value pointer from the declaration is an untyped `Pointer`, but we know
+        // it should point to a default element value, so "cast" it now
+        let default_val_ptr = match default_val_ptr {
+            Pointer::Native(native_ptr) => Pointer::Native(NativePointer {
+                ty: dyn_array_el_ty.clone(),
+                addr: native_ptr.addr,
+            }),
+            _ => default_val_ptr.clone(),
+        };
 
         let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
             .map(|rc_info| {
@@ -200,7 +216,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             })?;
 
         // copy default value into any cells beyond the length of the original array
-        let default_val = state.load_indirect(default_val_ptr)?.into_owned();
+        let default_val = state.load_indirect(&default_val_ptr)?.into_owned();
 
         // put the initialized array onto the heap before retaining it because passing pointers
         // to retain funcs is a lot easier when the target is already on the heap
@@ -208,12 +224,13 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         for i in 0..new_len {
             let i = i as usize;
+            let el_offset = (i * dyn_array_el_marshal_ty.size()) as isize;
 
-            let el_ptr = new_data_ptr.clone() + i as isize;
+            let el_ptr = new_data_ptr.clone() + el_offset;
 
             if i < old_len as usize {
                 // copy old elements
-                let old_el_ptr = old_data_ptr.clone() + i as isize;
+                let old_el_ptr = old_data_ptr.clone() + el_offset;
                 let old_el = state.load_indirect(&old_el_ptr)?.into_owned();
                 state.store_indirect(&el_ptr, old_el)?;
             } else {
