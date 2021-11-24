@@ -1,17 +1,41 @@
 use std::{borrow::Borrow, fmt, hash::Hash};
 
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum NameKind {
+    Namespace,
+    Name,
+}
+
+impl fmt::Display for NameKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            NameKind::Namespace => write!(f, "Namespace"),
+            NameKind::Name => write!(f, "Name"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Member<NS: Namespace> {
     Namespace(NS),
-    Value(NS::Value),
+    Name(NS::Name),
+}
+
+impl<NS: Namespace> Member<NS> {
+    pub fn kind(&self) -> NameKind {
+        match self {
+            Member::Namespace(_) => NameKind::Namespace,
+            Member::Name(_) => NameKind::Name,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum MemberRef<'s, NS: Namespace> {
-    Value {
+    Name {
         parent_path: PathRef<'s, NS>,
         key: &'s NS::Key,
-        value: &'s NS::Value,
+        value: &'s NS::Name,
     },
     Namespace {
         // todo: separate this into parent_path and key
@@ -22,17 +46,24 @@ pub enum MemberRef<'s, NS: Namespace> {
 }
 
 impl<'s, NS: Namespace> MemberRef<'s, NS> {
-    pub fn as_value(&self) -> Option<&'s NS::Value> {
+    pub fn as_value(&self) -> Option<&'s NS::Name> {
         match self {
-            MemberRef::Value { value, .. } => Some(value),
+            MemberRef::Name { value, .. } => Some(value),
             MemberRef::Namespace { .. } => None,
+        }
+    }
+
+    pub fn kind(&self) -> NameKind {
+        match self {
+            MemberRef::Name { .. } => NameKind::Name,
+            MemberRef::Namespace { .. } => NameKind::Namespace,
         }
     }
 }
 
 pub trait Namespace: Sized {
     type Key: Eq + PartialEq + Hash + Clone;
-    type Value;
+    type Name;
 
     fn key(&self) -> Option<&Self::Key>;
     fn keys(&self) -> Vec<Self::Key>;
@@ -42,7 +73,7 @@ pub trait Namespace: Sized {
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 
-    fn insert_member(&mut self, key: Self::Key, member_val: Member<Self>) -> Result<(), Self::Key>;
+    fn insert_member(&mut self, key: Self::Key, member_val: Member<Self>) -> Result<(), AlreadyDeclared<Self::Key>>;
     fn replace_member(&mut self, key: Self::Key, member_val: Member<Self>);
 }
 
@@ -79,7 +110,7 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
                             }
                         }
 
-                        Member::Value(value) => MemberRef::Value {
+                        Member::Name(value) => MemberRef::Name {
                             key,
                             value,
                             parent_path: PathRef { namespaces: path },
@@ -125,7 +156,7 @@ pub struct NamespaceStack<NS: Namespace> {
 }
 
 #[derive(Debug)]
-pub struct AlreadyDeclared<Key>(pub Vec<Key>);
+pub struct AlreadyDeclared<Key>(pub Vec<Key>, pub NameKind);
 
 #[derive(Debug)]
 pub struct NotDefinedHere<Key>(pub Key);
@@ -167,35 +198,31 @@ impl<NS: Namespace> NamespaceStack<NS> {
     pub fn insert(
         &mut self,
         member_key: impl Into<NS::Key>,
-        member: NS::Value,
+        member: NS::Name,
     ) -> Result<(), AlreadyDeclared<NS::Key>> {
         let member_key = member_key.into();
         let top = self.current_mut();
 
+        // trying to insert a key with the same name as the namespace
         if top.key() == Some(&member_key) {
-            return Err(AlreadyDeclared(top.keys()));
+            return Err(AlreadyDeclared(top.keys(), NameKind::Namespace));
         }
 
-        top.insert_member(member_key.clone(), Member::Value(member))
-            .map_err(|key| {
-                let mut path = top.keys();
-                path.push(key);
-                AlreadyDeclared(path)
-            })
+        top.insert_member(member_key.clone(), Member::Name(member))
     }
 
     // todo: different error codes for "not defined at all" vs "defined but not in the current scope"
     pub fn replace(
         &mut self,
         member_key: impl Into<NS::Key>,
-        member: NS::Value,
+        member: NS::Name,
     ) -> Result<(), NotDefinedHere<NS::Key>> {
         let member_key = member_key.into();
         let top = self.current_mut();
 
         match top.get_member(&member_key) {
             Some(_) => {
-                top.replace_member(member_key, Member::Value(member));
+                top.replace_member(member_key, Member::Name(member));
                 Ok(())
             }
 
@@ -225,7 +252,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
             current = match current.find(part)? {
                 MemberRef::Namespace { path } => path,
 
-                MemberRef::Value {
+                MemberRef::Name {
                     key,
                     value,
                     parent_path,
@@ -233,7 +260,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
                     let is_last = i == path.len() - 1;
 
                     return if is_last {
-                        Some(MemberRef::Value {
+                        Some(MemberRef::Name {
                             key,
                             value,
                             parent_path,
@@ -279,7 +306,7 @@ impl<NS: Namespace> NamespaceStack<NS> {
 fn print_ns<NS: Namespace>(ns: &NS, indent: usize, f: &mut fmt::Formatter) -> fmt::Result
 where
     NS::Key: fmt::Display,
-    NS::Value: fmt::Display,
+    NS::Name: fmt::Display,
 {
     for _ in 0..indent {
         write!(f, " ")?;
@@ -302,7 +329,7 @@ where
                 print_ns(child, member_indent, f)?;
             }
 
-            Member::Value(val) => {
+            Member::Name(val) => {
                 for _ in 0..member_indent {
                     write!(f, " ")?;
                 }
@@ -321,7 +348,7 @@ where
 impl<NS: Namespace> fmt::Display for NamespaceStack<NS>
 where
     NS::Key: fmt::Display,
-    NS::Value: fmt::Display,
+    NS::Name: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "[")?;
@@ -347,7 +374,7 @@ mod test {
 
     impl Namespace for TestNamespace {
         type Key = String;
-        type Value = usize;
+        type Name = usize;
 
         fn key(&self) -> Option<&Self::Key> {
             self.key.as_ref()
@@ -402,7 +429,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -422,7 +449,7 @@ mod test {
         namespaces.push(ns("B"));
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -445,7 +472,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -468,7 +495,7 @@ mod test {
         namespaces.push(ns("B"));
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(None, parent_path.as_slice().last().unwrap().key);
@@ -489,7 +516,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -519,7 +546,7 @@ mod test {
         };
 
         match b.find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -541,7 +568,7 @@ mod test {
         namespaces.pop();
 
         match namespaces.resolve(&["B".to_string(), "x".to_string()]) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -561,7 +588,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.resolve(&["A".to_string(), "x".to_string()]) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -581,7 +608,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.resolve(&["x".to_string()]) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -602,7 +629,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.resolve(&["B".to_string(), "x".to_string()]) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -623,7 +650,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
 
         match namespaces.resolve(&["x".to_string()]) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -643,7 +670,7 @@ mod test {
         namespaces.replace("x".to_string(), 321).unwrap();
 
         match namespaces.current_path().find("x") {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value, parent_path, ..
             }) => {
                 assert_eq!(
@@ -686,7 +713,7 @@ mod test {
         let mut visited = Vec::new();
         namespaces.visit_all(|path, member| {
             match member {
-                Member::Value(val) => {
+                Member::Name(val) => {
                     visited.push((path.join("::"), *val));
                 }
 

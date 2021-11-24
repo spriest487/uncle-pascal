@@ -1,9 +1,9 @@
-use crate::{HeapAddress, Pointer};
+use crate::Pointer;
 use pas_common::span::Span;
 use pas_common::{DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
 use crate::func::ffi::MarshalError;
-use crate::heap::native_heap::NativeHeapError;
+use crate::heap::NativeHeapError;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -27,10 +27,6 @@ pub enum ExecError {
     },
     IllegalState {
         msg: String,
-        span: Span,
-    },
-    IllegalHeapAccess {
-        addr: HeapAddress,
         span: Span,
     },
     NativeHeapError {
@@ -59,7 +55,6 @@ impl fmt::Display for ExecError {
             }
             ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
-            ExecError::IllegalHeapAccess { .. } => write!(f, "Illegal heap access at address"),
             ExecError::NativeHeapError { err, .. } => write!(f, "{}", err),
             ExecError::ZeroLengthAllocation(..) => write!(f, "Dynamic allocation with length 0"),
         }
@@ -92,17 +87,9 @@ impl DiagnosticOutput for ExecError {
                         Pointer::Native { .. } => {
                             "failed to dereference native pointer"
                         }
-                        _ => "illegal pointer dereference",
                     }
                     .to_string(),
                 ),
-                span: span.clone(),
-            }),
-            ExecError::IllegalHeapAccess { addr, span } => Some(DiagnosticLabel {
-                text: Some(format!(
-                    "illegal access of unallocated heap location {}",
-                    addr
-                )),
                 span: span.clone(),
             }),
             ExecError::IllegalState { msg, span } => Some(DiagnosticLabel {

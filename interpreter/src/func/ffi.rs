@@ -19,7 +19,7 @@ use libffi::raw::FFI_TYPE_STRUCT;
 use pas_ir::{metadata::Metadata, ExternalFunctionRef, LocalID, Ref, Type, Instruction};
 use pas_ir::metadata::Variant;
 use pas_ir::prelude::{Struct, StructID};
-use crate::heap::native_heap::NativePointer;
+use crate::heap::NativePointer;
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -436,9 +436,6 @@ impl FfiCache {
                     ty: case_ty.clone(),
                 }))
             }
-
-            // unsupported
-            _ => None,
         }
     }
 

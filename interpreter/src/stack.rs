@@ -3,7 +3,7 @@ use std::rc::Rc;
 use pas_ir::{LocalID, Type};
 use crate::{FfiCache, ValueCell};
 use crate::func::ffi::{MarshalError, MarshalResult};
-use crate::heap::native_heap::NativePointer;
+use crate::heap::NativePointer;
 
 #[derive(Debug)]
 struct Block {

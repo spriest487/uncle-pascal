@@ -183,7 +183,7 @@ pub fn ns_member_ref_to_annotation(
     ctx: &Context,
 ) -> TypeAnnotation {
     match member {
-        MemberRef::Value {
+        MemberRef::Name {
             value: Decl::Alias(aliased),
             ..
         } => {
@@ -194,7 +194,7 @@ pub fn ns_member_ref_to_annotation(
             ns_member_ref_to_annotation(alias_ref, span, ctx)
         }
 
-        MemberRef::Value {
+        MemberRef::Name {
             value: Decl::BoundValue(binding),
             ..
         } => TypeAnnotation::TypedValue {
@@ -204,7 +204,7 @@ pub fn ns_member_ref_to_annotation(
             decl: binding.def.clone(),
         },
 
-        MemberRef::Value {
+        MemberRef::Name {
             value: Decl::Function { sig, .. },
             ref parent_path,
             key,
@@ -224,7 +224,7 @@ pub fn ns_member_ref_to_annotation(
             }
         }
 
-        MemberRef::Value {
+        MemberRef::Name {
             value: Decl::Type { ty, .. },
             ..
         } => TypeAnnotation::Type(ty.clone(), span),

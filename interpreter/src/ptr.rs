@@ -1,16 +1,15 @@
 use crate::value_cell::ValueCell;
-use crate::{ExecResult, HeapAddress, Interpreter};
+use crate::{ExecResult, Interpreter};
 use pas_ir::metadata::FieldID;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::ops::{Add, Sub};
-use crate::heap::native_heap::NativePointer;
+use crate::heap::NativePointer;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub enum Pointer {
     Null,
-    Heap(HeapAddress),
     IntoArray {
         array: Box<Pointer>,
         offset: usize,
@@ -30,13 +29,6 @@ pub enum Pointer {
 }
 
 impl Pointer {
-    pub fn as_heap_addr(&self) -> Option<HeapAddress> {
-        match self {
-            Pointer::Heap(addr) => Some(*addr),
-            _ => None,
-        }
-    }
-
     pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, ValueCell>> {
         state.load_indirect(self)
     }
@@ -44,7 +36,6 @@ impl Pointer {
     fn kind(&self) -> PointerKind {
         match self {
             Pointer::Null => PointerKind::Null,
-            Pointer::Heap(_) => PointerKind::Heap,
             Pointer::IntoArray { .. } => PointerKind::IntoArray,
             Pointer::IntoStruct { .. } => PointerKind::IntoStruct,
             Pointer::VariantTag { .. } => PointerKind::VariantTag,
@@ -65,7 +56,6 @@ impl Ord for Pointer {
         match (self, other) {
             (Pointer::Null, Pointer::Null) => Ordering::Equal,
 
-            (Pointer::Heap(a), Pointer::Heap(b)) => a.0.cmp(&b.0),
             (
                 Pointer::IntoArray {
                     array: arr_a,
@@ -88,9 +78,6 @@ impl Add<isize> for Pointer {
     fn add(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Heap(HeapAddress(addr)) => {
-                Pointer::Heap(HeapAddress((addr as isize + rhs) as usize))
-            }
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: (offset as isize + rhs) as usize,
@@ -114,9 +101,6 @@ impl Sub<isize> for Pointer {
     fn sub(self, rhs: isize) -> Self {
         match self {
             Pointer::Null => Pointer::Null,
-            Pointer::Heap(HeapAddress(addr)) => {
-                Pointer::Heap(HeapAddress((addr as isize - rhs) as usize))
-            }
             Pointer::IntoArray { array, offset } => Pointer::IntoArray {
                 array,
                 offset: (offset as isize - rhs) as usize,
@@ -138,7 +122,6 @@ impl fmt::Display for Pointer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Pointer::Null => write!(f, "NULL"),
-            Pointer::Heap(heap_addr) => write!(f, "{}", heap_addr),
             Pointer::IntoArray { array, offset } => write!(f, "@({}^ [{}])", array, offset),
             Pointer::IntoStruct { structure, field } => write!(f, "@({}^.{})", structure, field),
             Pointer::VariantTag { variant } => write!(f, "@({}^.tag)", variant),
@@ -151,7 +134,6 @@ impl fmt::Display for Pointer {
 #[derive(Copy, Clone, Eq, Ord, PartialOrd, PartialEq, Debug, Hash)]
 enum PointerKind {
     Null,
-    Heap,
     IntoArray,
     VariantData,
     VariantTag,

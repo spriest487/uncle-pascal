@@ -1,5 +1,4 @@
 pub use self::{
-    heap::{value_heap::ValueHeap, HeapAddress},
     value_cell::*,
     ptr::Pointer,
 };
@@ -20,7 +19,7 @@ use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 use crate::ExecError::NativeHeapError;
-use crate::heap::native_heap::NativeHeap;
+use crate::heap::NativeHeap;
 
 mod builtin;
 mod func;
@@ -32,8 +31,6 @@ pub mod result;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InterpreterOpts {
-    pub use_native_mem: bool,
-
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
@@ -53,7 +50,6 @@ pub struct Interpreter {
     stack: Vec<StackFrame>,
     globals: HashMap<GlobalRef, GlobalCell>,
 
-    value_heap: ValueHeap,
     native_heap: NativeHeap,
 
     ffi_cache: Rc<FfiCache>,
@@ -62,16 +58,11 @@ pub struct Interpreter {
     trace_ir: bool,
 
     debug_ctx_stack: Vec<Span>,
-
-    use_native_mem: bool,
 }
 
 impl Interpreter {
     pub fn new(opts: &InterpreterOpts) -> Self {
         let globals = HashMap::new();
-
-        let mut value_heap = ValueHeap::new();
-        value_heap.trace = opts.trace_heap;
 
         let ffi_cache = Rc::new(FfiCache::new());
 
@@ -82,7 +73,6 @@ impl Interpreter {
             globals,
             stack: Vec::new(),
 
-            value_heap,
             native_heap,
 
             ffi_cache,
@@ -91,8 +81,6 @@ impl Interpreter {
             trace_ir: opts.trace_ir,
 
             debug_ctx_stack: Vec::new(),
-
-            use_native_mem: opts.use_native_mem,
         }
     }
 
@@ -171,17 +159,6 @@ impl Interpreter {
 
     fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
         match ptr {
-            Pointer::Heap(addr) => {
-                self.value_heap
-                    .load(*addr)
-                    .map_err(|addr| {
-                        ExecError::IllegalHeapAccess {
-                            addr,
-                            span: self.debug_ctx().into_owned(),
-                        }
-                    })
-            }
-
             Pointer::Native(native_ptr) => {
                 let val = self.native_heap.load(native_ptr)
                     .map_err(|err| {
@@ -287,13 +264,6 @@ impl Interpreter {
     fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
         let debug_ctx = self.debug_ctx().into_owned();
         match ptr {
-            Pointer::Heap(addr) => {
-                self.value_heap.store(*addr, val).map_err(|addr| ExecError::IllegalHeapAccess {
-                    addr,
-                    span: self.debug_ctx().into_owned()
-                })
-            }
-
             Pointer::Native(native_ptr) => {
                 self.native_heap.store(native_ptr, val)
                     .map_err(|err| ExecError::NativeHeapError {
@@ -1034,11 +1004,6 @@ impl Interpreter {
 
     pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {
         match ptr {
-            Pointer::Heap(heap_addr) => {
-                self.value_heap.free(*heap_addr);
-                Ok(())
-            }
-
             Pointer::Native(native_ptr) => {
                 self.native_heap.free(&native_ptr.clone())
                     .map_err(|err| NativeHeapError {
@@ -1072,19 +1037,14 @@ impl Interpreter {
             return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
         }
 
-        if self.use_native_mem {
-            let ptr = self.dynalloc(ty, values.len())?;
+        let ptr = self.dynalloc(ty, values.len())?;
 
-            for (i, value) in values.into_iter().enumerate() {
-                let val_dst = ptr.clone() + i as isize;
-                self.store_indirect(&val_dst, value)?;
-            }
-
-            Ok(ptr)
-        } else {
-            let addr = self.value_heap.alloc(values);
-            Ok(Pointer::Heap(addr))
+        for (i, value) in values.into_iter().enumerate() {
+            let val_dst = ptr.clone() + i as isize;
+            self.store_indirect(&val_dst, value)?;
         }
+
+        Ok(ptr)
     }
 
     pub fn dynalloc(&mut self, ty: &Type, len: usize) -> ExecResult<Pointer> {
@@ -1092,23 +1052,12 @@ impl Interpreter {
             return Err(ExecError::ZeroLengthAllocation(self.debug_ctx().into_owned()));
         }
 
-        let ptr = if self.use_native_mem {
-            let native_ptr = self.native_heap.alloc(ty.clone(), len)
-                .map_err(|heap_err| ExecError::NativeHeapError {
-                    err: heap_err,
-                    span: self.debug_ctx().into_owned(),
-                })?;
-            Pointer::Native(native_ptr)
-        } else {
-            let mut cells = Vec::new();
-            for _ in 0..len {
-                let default_val = self.default_init_cell(ty)?;
-                cells.push(default_val);
-            }
-
-            let addr = self.value_heap.alloc(cells);
-            Pointer::Heap(addr)
-        };
+        let native_ptr = self.native_heap.alloc(ty.clone(), len)
+            .map_err(|heap_err| ExecError::NativeHeapError {
+                err: heap_err,
+                span: self.debug_ctx().into_owned(),
+            })?;
+        let ptr = Pointer::Native(native_ptr);
 
         Ok(ptr)
     }
@@ -1750,7 +1699,6 @@ impl Interpreter {
             }
         }
 
-        self.value_heap.finalize();
         Ok(())
     }
 }

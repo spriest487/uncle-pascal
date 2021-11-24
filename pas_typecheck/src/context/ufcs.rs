@@ -79,7 +79,7 @@ fn find_ufcs_methods(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     let methods = members.into_iter()
         .filter_map(|member| {
             match member {
-                MemberRef::Value {
+                MemberRef::Name {
                     value: Decl::Function { sig, visibility: _ },
                     ref parent_path,
                     key,

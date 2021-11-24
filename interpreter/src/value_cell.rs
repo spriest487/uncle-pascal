@@ -1,6 +1,5 @@
 use crate::func::Function;
 use crate::ptr::Pointer;
-use crate::HeapAddress;
 use pas_ir::metadata::{FieldID, StructID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
@@ -137,11 +136,6 @@ impl ValueCell {
                 Some(ValueCell::Pointer(ptr.clone() + *offset as isize))
             }
 
-            (
-                ValueCell::Pointer(Pointer::Heap(ref a)),
-                ValueCell::Pointer(Pointer::Heap(ref b)),
-            ) => Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 + b.0)))),
-
             _ => None,
         }
     }
@@ -155,11 +149,6 @@ impl ValueCell {
             (ValueCell::Pointer(ptr), ValueCell::I32(offset)) => {
                 Some(ValueCell::Pointer(ptr.clone() - *offset as isize))
             }
-
-            (
-                ValueCell::Pointer(Pointer::Heap(ref a)),
-                ValueCell::Pointer(Pointer::Heap(ref b)),
-            ) => Some(ValueCell::Pointer(Pointer::Heap(HeapAddress(a.0 - b.0)))),
 
             _ => None,
         }

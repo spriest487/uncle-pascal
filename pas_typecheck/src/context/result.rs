@@ -1,4 +1,4 @@
-use crate::{context::Decl, Type, FunctionSig, TypeAnnotation};
+use crate::{context::Decl, Type, FunctionSig, TypeAnnotation, NameKind};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt, path::PathBuf};
@@ -238,6 +238,7 @@ pub enum NameError {
     AlreadyDeclared {
         new: Ident,
         existing: IdentPath,
+        existing_kind: NameKind,
     },
     AlreadyDefined {
         ident: IdentPath,
@@ -308,13 +309,13 @@ impl DiagnosticOutput for NameError {
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
-            NameError::AlreadyDeclared { new, existing } => {
+            NameError::AlreadyDeclared { new, existing, existing_kind } => {
                 if *existing.span().file.as_ref() == PathBuf::from("<builtin>") {
                     // don't show this message for conflicts with builtin identifiers
                     Vec::new()
                 } else {
                     vec![DiagnosticMessage {
-                        title: format!("`{}` previously declared here", new),
+                        title: format!("{} `{}` previously declared here", existing_kind, new),
                         label: Some(DiagnosticLabel {
                             text: None,
                             span: existing.span().clone(),

@@ -27,7 +27,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                         }
                     }
 
-                    Some(MemberRef::Value { value, .. }) => {
+                    Some(MemberRef::Name { value, .. }) => {
                         let unexpected = Named::Decl(value.clone());
                         let err = NameError::Unexpected {
                             ident: unit.clone().into(),

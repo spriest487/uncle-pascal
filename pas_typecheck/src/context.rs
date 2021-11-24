@@ -307,7 +307,7 @@ impl Context {
 
     pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
         match self.scopes.current_path().find(name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value: Decl::Alias(aliased),
                 ..
             }) => self.resolve(aliased),
@@ -317,14 +317,14 @@ impl Context {
 
     pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
         match self.find(name)? {
-            MemberRef::Value { key, .. } => Some(key),
+            MemberRef::Name { key, .. } => Some(key),
             _ => None,
         }
     }
 
     pub fn resolve(&self, path: &IdentPath) -> Option<MemberRef<Scope>> {
         match self.scopes.resolve(path.as_slice()) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value: Decl::Alias(aliased),
                 ..
             }) => self.resolve(aliased),
@@ -354,7 +354,7 @@ impl Context {
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
         match self.find(&name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value: Decl::Alias(aliased),
                 key,
                 ref parent_path,
@@ -368,11 +368,12 @@ impl Context {
 
                     // new name replaces an existing alias and doesn't match the old alias
                     _ => {
-                        let old_ident =
-                            IdentPath::from_parts(parent_path.keys().cloned()).child(key.clone());
+                        let old_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                        let old_ident = old_ns.child(key.clone());
 
                         Err(NameError::AlreadyDeclared {
                             new: name.clone(),
+                            existing_kind: NameKind::Name,
                             existing: old_ident,
                         })
                     }
@@ -380,8 +381,9 @@ impl Context {
             }
 
             Some(old_ref) => {
+                let old_kind = old_ref.kind();
                 let old_ident = match old_ref {
-                    MemberRef::Value {
+                    MemberRef::Name {
                         key, parent_path, ..
                     } => Path::new(key.clone(), parent_path.keys().cloned()),
                     MemberRef::Namespace { path } => Path::from_parts(path.keys().cloned()),
@@ -389,17 +391,23 @@ impl Context {
 
                 Err(NameError::AlreadyDeclared {
                     new: name.clone(),
+                    existing_kind: old_kind,
                     existing: old_ident,
                 })
             }
 
-            None => self
-                .scopes
-                .insert(name.clone(), decl)
-                .map_err(|AlreadyDeclared(existing)| NameError::AlreadyDeclared {
-                    existing: Path::from_parts(existing),
-                    new: name,
-                }),
+            None => {
+                self
+                    .scopes
+                    .insert(name.clone(), decl)
+                    .map_err(|AlreadyDeclared(existing, kind)| {
+                        NameError::AlreadyDeclared {
+                            existing: Path::from_parts(existing),
+                            existing_kind: kind,
+                            new: name,
+                        }
+                    })
+            },
         }
     }
 
@@ -537,7 +545,7 @@ impl Context {
         let member = self.resolve(path)?;
 
         match member {
-            MemberRef::Value {
+            MemberRef::Name {
                 value,
                 parent_path,
                 key,
@@ -554,7 +562,7 @@ impl Context {
         match self.resolve(ns_path) {
             Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
 
-            Some(MemberRef::Value { value: decl, .. }) => {
+            Some(MemberRef::Name { value: decl, .. }) => {
                 let unexpected = Named::Decl(decl.clone());
                 Err(NameError::Unexpected {
                     ident: ns_path.clone(),
@@ -683,7 +691,7 @@ impl Context {
                 return Err(NameError::NotFound(name.clone()));
             }
 
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value,
                 parent_path: _,
                 key,
@@ -752,7 +760,7 @@ impl Context {
 
     pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
         match self.resolve(name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value: Decl::Type { ty, .. },
                 key,
                 ref parent_path,
@@ -762,7 +770,7 @@ impl Context {
                 Ok((parent_path, ty))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(MemberRef::Name { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 expected: ExpectedKind::AnyType,
                 actual: other.clone().into(),
@@ -865,7 +873,7 @@ impl Context {
 
     pub fn find_iface(&self, name: &IdentPath) -> NamingResult<IdentPath> {
         match self.resolve(name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value:
                     Decl::Type {
                         ty: Type::Interface(..),
@@ -880,7 +888,7 @@ impl Context {
                 Ok(parent_path)
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(MemberRef::Name { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 actual: other.clone().into(),
                 expected: ExpectedKind::Interface,
@@ -965,7 +973,7 @@ impl Context {
 
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.resolve(name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 value: Decl::Function { sig, .. },
                 key,
                 ref parent_path,
@@ -975,7 +983,7 @@ impl Context {
                 Ok((func_path, sig.clone()))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(MemberRef::Name { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 actual: other.clone().into(),
                 expected: ExpectedKind::Function,
@@ -1112,7 +1120,7 @@ impl Context {
         for scope in self.scopes.current_path().as_slice().iter().rev() {
             for (ident, decl) in scope.iter_decls() {
                 // only functions can possibly be undefined
-                if let Member::Value(Decl::Function { .. }) = decl {
+                if let Member::Name(Decl::Function { .. }) = decl {
                     let decl_path = IdentPath::from_parts(scope.key().cloned())
                         .clone()
                         .child(ident.clone());
@@ -1135,7 +1143,7 @@ impl Context {
         check_initialize_allowed(scope, local_id);
 
         match scope.get_decl_mut(local_id) {
-            Some(Member::Value(Decl::BoundValue(Binding { kind, .. }))) => {
+            Some(Member::Name(Decl::BoundValue(Binding { kind, .. }))) => {
                 if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
                     *kind = ValueKind::Mutable;
                 } else {
@@ -1158,7 +1166,7 @@ impl Context {
             .top()
             .iter_decls()
             .filter_map(|(ident, decl)| match decl {
-                Member::Value(Decl::BoundValue(Binding {
+                Member::Name(Decl::BoundValue(Binding {
                     kind: ValueKind::Uninitialized,
                     ..
                 })) => Some(ident),
@@ -1174,7 +1182,7 @@ impl Context {
                 branch_contexts
                     .iter()
                     .all(|ctx| match ctx.find(uninit_name).unwrap() {
-                        MemberRef::Value {
+                        MemberRef::Name {
                             value, parent_path, ..
                         } => match value {
                             Decl::BoundValue(binding) => {
@@ -1200,7 +1208,7 @@ impl Context {
 
     pub fn is_accessible(&self, name: &IdentPath) -> bool {
         match self.resolve(name) {
-            Some(MemberRef::Value {
+            Some(MemberRef::Name {
                 parent_path, value, ..
             }) => match value {
                 Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
@@ -1234,7 +1242,7 @@ impl Context {
 
 fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
     match scope.get_decl(ident) {
-        Some(Member::Value(decl)) => match decl {
+        Some(Member::Name(decl)) => match decl {
             Decl::BoundValue(Binding { kind, .. }) => {
                 if !kind.mutable() {
                     panic!(

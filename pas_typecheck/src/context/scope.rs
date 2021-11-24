@@ -1,9 +1,8 @@
 use std::borrow::Borrow;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
 use pas_syn::Ident;
-use crate::{Decl, Environment, Member, Namespace};
+use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
 pub struct ScopeID(pub usize);
@@ -47,7 +46,7 @@ impl Scope {
 
 impl Namespace for Scope {
     type Key = Ident;
-    type Value = Decl;
+    type Name = Decl;
 
     fn key(&self) -> Option<&Self::Key> {
         match &self.env {
@@ -70,14 +69,17 @@ impl Namespace for Scope {
             .find(|(k, _v)| (*k).borrow() == member_key)
     }
 
-    fn insert_member(&mut self, key: Ident, member_val: Member<Self>) -> Result<(), Ident> {
-        match self.decls.entry(key.clone()) {
-            Entry::Occupied(entry) => Err(entry.key().clone()),
-            Entry::Vacant(entry) => {
-                entry.insert(member_val);
-                Ok(())
-            }
+    fn insert_member(&mut self, key: Ident, member_val: Member<Self>) -> Result<(), AlreadyDeclared<Ident>> {
+        if let Some(existing) = self.decls.get(&key) {
+            let kind = existing.kind();
+            let mut path = self.keys();
+            path.push(key.clone());
+
+            return Err(AlreadyDeclared(path, kind));
         }
+
+        self.decls.insert(key.clone(), member_val);
+        Ok(())
     }
 
     fn replace_member(&mut self, key: Ident, member_val: Member<Self>) {
