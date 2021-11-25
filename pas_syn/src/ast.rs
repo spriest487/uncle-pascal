@@ -11,11 +11,10 @@ pub mod statement;
 pub mod type_constraint;
 pub mod typedecl;
 pub mod unit;
-pub mod sizeof;
 
 pub use self::{
     block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, raise::*,
-    statement::*, type_constraint::*, typedecl::*, unit::*, sizeof::*,
+    statement::*, type_constraint::*, typedecl::*, unit::*,
 };
 
 use crate::parse::prelude::*;

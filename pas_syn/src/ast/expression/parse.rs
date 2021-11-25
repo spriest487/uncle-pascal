@@ -10,7 +10,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering};
-use crate::ast::{Expression, Literal, SizeOf};
+use crate::ast::{Expression, Literal};
 
 // anything which can appear at the start of an operand subexpr (not let bindings
 // or flow control statements)
@@ -250,6 +250,26 @@ fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expression<Span>>
     Ok(expr)
 }
 
+fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+    let kw = tokens.match_one(Keyword::SizeOf)?;
+
+    let (ty_tokens, close_bracket) = match tokens.match_one(DelimiterPair::Bracket)? {
+        TokenTree::Delimited { inner, close, .. } =>  (inner, close),
+        _ => unreachable!(),
+    };
+
+    let mut ty_token_stream = TokenStream::new(ty_tokens, kw.span().clone());
+    let ty = TypeName::parse(&mut ty_token_stream)?;
+    ty_token_stream.finish()?;
+
+    let span = kw.span().to(close_bracket.span());
+
+    Ok(Expression::Literal(
+        Literal::SizeOf(Box::new(ty)),
+        span,
+    ))
+}
+
 #[derive(Debug, Clone)]
 struct SymbolOperator {
     op: Operator,
@@ -430,8 +450,8 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             }
 
             Some(TokenTree::Keyword { kw: Keyword::SizeOf, .. }) => {
-                let size_of_expr = SizeOf::parse(self.tokens)?;
-                self.push_operand(Expression::from(size_of_expr));
+                let size_of_expr = parse_size_of(self.tokens)?;
+                self.push_operand(size_of_expr);
             }
 
             Some(TokenTree::Keyword {

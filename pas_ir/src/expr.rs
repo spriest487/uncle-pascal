@@ -111,8 +111,6 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
-
-        ast::Expression::SizeOf(size_of) => translate_size_of(size_of, builder),
     };
 
     builder.pop_debug_context();
@@ -674,7 +672,7 @@ fn is_string_class(class: &pas_ty::Symbol) -> bool {
         && class.qualified.last().name.as_str() == "String"
 }
 
-fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builder) -> Ref {
+fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builder: &mut Builder) -> Ref {
     let out_ty = builder.translate_type(ty);
     let out = builder.local_temp(out_ty);
 
@@ -729,6 +727,14 @@ fn translate_literal(lit: &ast::Literal, ty: &pas_ty::Type, builder: &mut Builde
             }
             _ => panic!("bad type for string literal: {}", ty),
         },
+
+        ast::Literal::SizeOf(ty) => {
+            let ty = builder.translate_type(ty);
+            builder.append(Instruction::SizeOf {
+                out: out.clone(),
+                ty,
+            });
+        }
     }
 
     out
@@ -1291,17 +1297,4 @@ pub fn translate_raise(raise: &pas_ty::ast::Raise, builder: &mut Builder) -> Ref
     builder.append(Instruction::Raise { val: val.clone() });
 
     Ref::Discard
-}
-
-pub fn translate_size_of(size_of: &pas_ty::ast::SizeOf, builder: &mut Builder) -> Ref {
-    let val = builder.local_temp(Type::I32);
-
-    let ty = builder.translate_type(&size_of.ty);
-
-    builder.append(Instruction::SizeOf {
-        out: val.clone(),
-        ty,
-    });
-
-    val
 }

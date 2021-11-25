@@ -5,6 +5,7 @@ pub mod keyword;
 pub mod operators;
 pub mod parse;
 pub mod token_tree;
+pub mod const_eval;
 
 pub use self::{
     consts::{EnumConstant, IntConstant, RealConstant, SetConstant},

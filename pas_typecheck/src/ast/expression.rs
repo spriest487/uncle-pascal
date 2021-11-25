@@ -6,6 +6,7 @@ use crate::{ast::prelude::*, ty::FunctionParamSig};
 pub type Expression = ast::Expression<TypeAnnotation>;
 
 pub use call::{typecheck_call, Call, Invocation, FunctionCall, MethodCall, VariantCtorCall};
+use pas_syn::ast::Literal;
 
 pub fn typecheck_expr(
     expr_node: &ast::Expression<Span>,
@@ -114,10 +115,18 @@ pub fn typecheck_expr(
             Ok(ast::Expression::Literal(ast::Literal::Nil, annotation))
         }
 
-        ast::Expression::SizeOf(size_of) => {
-            let size_of = typecheck_size_of(size_of, ctx)?;
+        ast::Expression::Literal(ast::Literal::SizeOf(size_of_ty), span) => {
+            let ty = typecheck_type(&size_of_ty, ctx)?;
 
-            Ok(ast::Expression::from(size_of))
+            Ok(Expression::Literal(
+                Literal::SizeOf(Box::new(ty)),
+                TypeAnnotation::TypedValue {
+                    ty: Type::Primitive(Primitive::Int32),
+                    span: span.clone(),
+                    decl: None,
+                    value_kind: ValueKind::Temporary,
+                },
+            ))
         }
 
         ast::Expression::Ident(ident, _) => {
@@ -334,8 +343,6 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         ast::Expression::Raise(raise) => {
             expect_expr_initialized(&raise.value, ctx)
         },
-
-        ast::Expression::SizeOf(..) => Ok(()),
     }
 }
 

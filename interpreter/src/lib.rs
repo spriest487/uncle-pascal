@@ -746,8 +746,8 @@ impl Interpreter {
             Instruction::Raise { val } => self.exec_raise(&val)?,
 
             // all value are one cell in the interpreter
-            Instruction::SizeOf { out, .. } => {
-                self.store(out, ValueCell::I32(1))?;
+            Instruction::SizeOf { out, ty } => {
+                self.exec_size_of(out, ty)?;
             }
         }
 
@@ -834,6 +834,17 @@ impl Interpreter {
         return Err(ExecError::Raised {
             msg,
         });
+    }
+
+    fn exec_size_of(&mut self, out: &Ref, ty: &Type) -> ExecResult<()> {
+        let marshal_ty = self.marshaller.get_ty(ty)?;
+        let size = cast::i32(marshal_ty.size()).map_err(|_| {
+            ExecError::illegal_state(format!("type has illegal size: {}", marshal_ty.size()))
+        })?;
+
+        self.store(out, ValueCell::I32(size))?;
+
+        Ok(())
     }
 
     pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {

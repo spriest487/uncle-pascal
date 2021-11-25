@@ -4,7 +4,7 @@ pub(crate) mod test;
 
 pub use self::parse::match_operand_start;
 use crate::ast::expression::parse::CompoundExpressionParser;
-use crate::ast::SizeOf;
+use crate::ast::Typed;
 use crate::{
     ast::{Annotation, BinOp, Block, Call, CollectionCtor, IfCond, ObjectCtor, Raise, UnaryOp},
     consts::*,
@@ -15,15 +15,16 @@ use pas_common::span::*;
 use std::fmt;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub enum Literal {
+pub enum Literal<T: Typed> {
     Nil,
     Integer(IntConstant),
     Real(RealConstant),
     String(String),
     Boolean(bool),
+    SizeOf(Box<T>),
 }
 
-impl fmt::Display for Literal {
+impl<T: Typed> fmt::Display for Literal<T> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Literal::Nil => write!(f, "nil"),
@@ -31,6 +32,7 @@ impl fmt::Display for Literal {
             Literal::Real(x) => write!(f, "{}", x),
             Literal::String(s) => write!(f, "'{}'", s),
             Literal::Boolean(b) => write!(f, "{}", b),
+            Literal::SizeOf(ty) => write!(f, "sizeof({})", ty),
         }
     }
 }
@@ -39,7 +41,7 @@ impl fmt::Display for Literal {
 pub enum Expression<A: Annotation> {
     BinOp(Box<BinOp<A>>),
     UnaryOp(Box<UnaryOp<A>>),
-    Literal(Literal, A),
+    Literal(Literal<A::Type>, A),
     Ident(Ident, A),
     Call(Box<Call<A>>),
     ObjectCtor(Box<ObjectCtor<A>>),
@@ -47,7 +49,6 @@ pub enum Expression<A: Annotation> {
     IfCond(Box<IfCond<A>>),
     Block(Box<Block<A>>),
     Raise(Box<Raise<A>>),
-    SizeOf(Box<SizeOf<A>>),
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -105,12 +106,6 @@ impl<A: Annotation> From<Raise<A>> for Expression<A> {
     }
 }
 
-impl<A: Annotation> From<SizeOf<A>> for Expression<A> {
-    fn from(size_of: SizeOf<A>) -> Self {
-        Expression::SizeOf(Box::new(size_of))
-    }
-}
-
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -124,7 +119,6 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &ctor.annotation,
             Expression::ObjectCtor(ctor) => &ctor.annotation,
             Expression::Raise(raise) => &raise.annotation,
-            Expression::SizeOf(size_of) => &size_of.annotation,
         }
     }
 
@@ -140,7 +134,6 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &mut ctor.annotation,
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
             Expression::Raise(raise) => &mut raise.annotation,
-            Expression::SizeOf(size_of) => &mut size_of.annotation,
         }
     }
 
@@ -179,7 +172,7 @@ impl<A: Annotation> Expression<A> {
         }
     }
 
-    pub fn as_literal(&self) -> Option<&Literal> {
+    pub fn as_literal(&self) -> Option<&Literal<A::Type>> {
         match self {
             Expression::Literal(lit, _) => Some(lit),
             _ => None,
@@ -207,7 +200,6 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
             Expression::Raise(raise) => write!(f, "{}", raise),
-            Expression::SizeOf(size_of) => write!(f, "{}", size_of),
         }
     }
 }
