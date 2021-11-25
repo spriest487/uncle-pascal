@@ -630,9 +630,11 @@ impl Marshaller {
                     })?;
 
                 let case_ty = case_tys.get(case_index)
-                    .ok_or_else(|| MarshalError::VariantTagOutOfRange {
-                        variant_id: *variant_id,
-                        tag: tag_val.value.clone(),
+                    .ok_or_else(|| {
+                        MarshalError::VariantTagOutOfRange {
+                            variant_id: *variant_id,
+                            tag: tag_val.value.clone(),
+                        }
                     })?
                     .as_ref();
 
@@ -691,5 +693,8 @@ fn unmarshal_bytes<const COUNT: usize>(in_bytes: &[u8]) -> MarshalResult<[u8; CO
         return Err(MarshalError::InvalidData);
     }
 
-    in_bytes[0..COUNT].try_into().map_err(|_| MarshalError::InvalidData)
+    match in_bytes[0..COUNT].try_into() {
+        Ok(bytes) => Ok(bytes),
+        Err(..) => Err(MarshalError::InvalidData),
+    }
 }

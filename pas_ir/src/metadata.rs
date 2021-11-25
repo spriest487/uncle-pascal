@@ -719,7 +719,7 @@ impl Metadata {
         let struct_id = self.next_struct_id();
         self.type_decls.insert(
             struct_id,
-            TypeDecl::Def(TypeDef::Struct(Struct { name, fields })),
+            TypeDecl::Def(TypeDef::Struct(Struct { name, fields, src_span: None })),
         );
 
         self.dyn_array_structs.insert(element, struct_id);

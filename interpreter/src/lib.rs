@@ -1407,14 +1407,21 @@ impl Interpreter {
         let mut marshaller = (*self.marshaller).clone();
 
         for (id, type_def) in module.metadata.type_defs() {
-            match type_def {
+            let def_result = match type_def {
                 TypeDef::Struct(struct_def) => {
-                    marshaller.add_struct(id, struct_def, &module.metadata)?;
+                    marshaller.add_struct(id, struct_def, &module.metadata)
                 },
                 TypeDef::Variant(variant_def) => {
-                    marshaller.add_variant(id, variant_def, &module.metadata)?;
+                    marshaller.add_variant(id, variant_def, &module.metadata)
                 }
-            }
+            };
+
+            def_result.map_err(|err| {
+                match type_def.src_span() {
+                    Some(src_span) => ExecError::from(err).with_debug_ctx(src_span.clone()),
+                    None => ExecError::from(err),
+                }
+            })?;
         }
 
         for (func_name, ir_func) in &module.functions {
@@ -1431,7 +1438,10 @@ impl Interpreter {
                 }
 
                 IRFunction::External(external_ref) => {
-                    let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)?;
+                    let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
+                        .map_err(|err| {
+                            ExecError::from(err).with_debug_ctx(external_ref.src_span.clone())
+                        })?;
                     Some(ffi_func)
                 }
             };
@@ -1451,7 +1461,12 @@ impl Interpreter {
         self.native_heap.set_marshaller(self.marshaller.clone());
 
         for (id, literal) in module.metadata.strings() {
-            let str_cell = self.create_string(literal)?;
+            let str_cell = self.create_string(literal)
+                .map_err(|err| ExecError::WithDebugContext {
+                    err: err.into(),
+                    span: module.module_span().clone(),
+                })?;
+
             let str_ref = GlobalRef::StringLiteral(id);
 
             self.globals.insert(
@@ -1467,7 +1482,8 @@ impl Interpreter {
             self.init_stdlib_globals();
         }
 
-        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)?;
+        let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
+            .map_err(|err| self.add_debug_ctx(err.into()))?;
 
         self.push_stack("<init>", init_stack_size);
         self.execute(&module.init)?;

@@ -19,11 +19,16 @@ begin
     WriteLn('printing value of intPtr^: ' + intPtr^.ToString());
 end;
 
-// cast the hard way
-{unsafe begin
+// pass pointer to stack value
+begin
+    var one := 1;
+    PrintIntPtr(@one);
+end;
+
+// pass pointer to heap value
+unsafe begin
     var intBytes: Pointer := GetMem(sizeof(Integer));
     var intPtr: ^Integer := intBytes;
     intPtr^ := 999888777;
     PrintIntPtr(intPtr);
 end;
-}

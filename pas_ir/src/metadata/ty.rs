@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use pas_common::span::Span;
 use crate::name_path::NamePath;
 use crate::{FunctionID, InterfaceID, MethodID, STRING_ID, StructID};
 
@@ -84,6 +85,8 @@ pub struct StructFieldDef {
 pub struct Struct {
     pub name: NamePath,
     pub fields: HashMap<FieldID, StructFieldDef>,
+
+    pub src_span: Option<Span>,
 }
 
 impl Struct {
@@ -101,10 +104,11 @@ impl Struct {
         self.fields.get(&id)
     }
 
-    pub fn new(name: impl Into<NamePath>) -> Self {
+    pub fn new(name: impl Into<NamePath>, src_span: Option<Span>) -> Self {
         Self {
             name: name.into(),
             fields: HashMap::new(),
+            src_span,
         }
     }
 
@@ -178,6 +182,8 @@ pub struct VariantCase {
 pub struct Variant {
     pub name: NamePath,
     pub cases: Vec<VariantCase>,
+
+    pub src_span: Option<Span>,
 }
 
 #[derive(Clone, Debug)]
@@ -225,6 +231,13 @@ impl TypeDef {
         match self {
             TypeDef::Struct(s) => &s.name,
             TypeDef::Variant(v) => &v.name,
+        }
+    }
+
+    pub fn src_span(&self) -> Option<&Span> {
+        match self {
+            TypeDef::Struct(def) => def.src_span.as_ref(),
+            TypeDef::Variant(def) => def.src_span.as_ref(),
         }
     }
 }

@@ -46,6 +46,13 @@ impl ExecError {
             _ => None,
         }
     }
+
+    pub fn with_debug_ctx(self, context: Span) -> Self {
+        ExecError::WithDebugContext {
+            err: Box::new(self),
+            span: context,
+        }
+    }
 }
 
 impl fmt::Display for ExecError {

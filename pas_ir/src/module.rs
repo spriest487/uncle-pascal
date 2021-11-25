@@ -610,6 +610,7 @@ impl Module {
 
         Variant {
             name: name_path,
+            src_span: Some(variant_def.span().clone()),
             cases,
         }
     }
@@ -668,7 +669,9 @@ impl Module {
             fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
         }
 
-        Struct::new(name_path).with_fields(fields)
+        let src_span = class_def.span().clone();
+
+        Struct::new(name_path, Some(src_span)).with_fields(fields)
     }
 
     pub fn translate_dyn_array_struct(
