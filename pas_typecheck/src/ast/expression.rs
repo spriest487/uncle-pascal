@@ -130,15 +130,25 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Ident(ident, _) => {
-            let annotation = match ctx.find(&ident) {
-                Some(member) => ns_member_ref_to_annotation(member, ident.span().clone(), ctx),
+            match ctx.find(&ident) {
+                Some(MemberRef::Name { value: Decl::Const { ty, val, span, .. }, ..}) => {
+                    Ok(ast::Expression::Literal(val.clone(), TypeAnnotation::TypedValue {
+                        ty: ty.clone(),
+                        decl: Some(span.clone()),
+                        span: expr_node.span().clone(),
+                        value_kind: ValueKind::Immutable,
+                    }))
+                }
+
+                Some(member) => {
+                    let annotation = ns_member_ref_to_annotation(member, ident.span().clone(), ctx);
+                    Ok(ast::Expression::Ident(ident.clone(), annotation))
+                },
 
                 _ => {
-                    return Err(NameError::NotFound(ident.clone()).into());
+                    Err(NameError::NotFound(ident.clone()).into())
                 }
-            };
-
-            Ok(ast::Expression::Ident(ident.clone(), annotation))
+            }
         }
 
         ast::Expression::BinOp(bin_op) => {
@@ -230,6 +240,18 @@ pub fn ns_member_ref_to_annotation(
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expression to add some
                 type_args: None,
+            }
+        }
+
+        MemberRef::Name {
+            value: Decl::Const { ty, .. },
+            ..
+        } => {
+            TypeAnnotation::TypedValue {
+                ty: ty.clone(),
+                decl: Some(span.clone()),
+                span,
+                value_kind: ValueKind::Immutable,
             }
         }
 

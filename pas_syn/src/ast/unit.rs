@@ -1,5 +1,8 @@
+mod const_decl;
+
 use crate::{ast::*, parse::prelude::*};
 use std::fmt;
+pub use self::const_decl::ConstDecl;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {
@@ -52,7 +55,9 @@ impl Unit<Span> {
                 None => Visibility::Private,
             };
 
-            let exportable_decl_kw = Keyword::Function.or(Keyword::Type);
+            let exportable_decl_kw = Keyword::Function
+                .or(Keyword::Type)
+                .or(Keyword::Const);
 
             let decl_start = match export_kw {
                 Some(..) => exportable_decl_kw,
@@ -104,6 +109,16 @@ impl Unit<Span> {
                 }) => {
                     let uses_decl = UseDecl::parse(tokens)?;
                     decls.push(UnitDecl::Uses { decl: uses_decl });
+                }
+
+                Some(TokenTree::Keyword {
+                    kw: Keyword::Const, ..
+                 }) => {
+                    let const_decl = ConstDecl::parse(tokens)?;
+                    decls.push(UnitDecl::Const {
+                        decl: const_decl,
+                        visibility,
+                    });
                 }
 
                 _ => break,
@@ -164,6 +179,10 @@ pub enum UnitDecl<A: Annotation> {
     Uses {
         decl: UseDecl,
     },
+    Const {
+        decl: ConstDecl<A>,
+        visibility: Visibility,
+    },
 }
 
 impl<A: Annotation> Spanned for UnitDecl<A> {
@@ -177,6 +196,7 @@ impl<A: Annotation> Spanned for UnitDecl<A> {
                 decl: type_decl, ..
             } => type_decl.span(),
             UnitDecl::Uses { decl: use_decl } => use_decl.span(),
+            UnitDecl::Const { decl, .. } => decl.span(),
         }
     }
 }
@@ -190,6 +210,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
             UnitDecl::FunctionDef { decl: func_def, .. } => write!(f, "{}", func_def),
             UnitDecl::Type { decl: ty_decl, .. } => write!(f, "{}", ty_decl),
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),
+            UnitDecl::Const { decl, .. } => write!(f, "{}", decl),
         }
     }
 }

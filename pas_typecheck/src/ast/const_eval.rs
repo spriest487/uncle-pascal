@@ -1,30 +1,31 @@
-use pas_syn::{Operator};
+use pas_syn::Operator;
 use crate::ast::{BinOp, Expression, Literal};
+use crate::Context;
 
 pub trait ConstEval {
-    fn const_eval(&self) -> Option<Literal>;
+    fn const_eval(&self, ctx: &Context) -> Option<Literal>;
 }
 
 impl ConstEval for Literal {
-    fn const_eval(&self) -> Option<Literal> {
+    fn const_eval(&self, _ctx: &Context) -> Option<Literal> {
         Some(self.clone())
     }
 }
 
 impl ConstEval for Expression {
-    fn const_eval(&self) -> Option<Literal> {
+    fn const_eval(&self, ctx: &Context) -> Option<Literal> {
         match self {
             Expression::Literal(lit, ..) => Some(lit.clone()),
-            Expression::BinOp(bin_op) => bin_op.const_eval(),
+            Expression::BinOp(bin_op) => bin_op.const_eval(ctx),
             _ => None,
         }
     }
 }
 
 impl ConstEval for BinOp {
-    fn const_eval(&self) -> Option<Literal> {
-        let lhs = self.lhs.const_eval()?;
-        let rhs = self.rhs.const_eval()?;
+    fn const_eval(&self, ctx: &Context) -> Option<Literal> {
+        let lhs = self.lhs.const_eval(ctx)?;
+        let rhs = self.rhs.const_eval(ctx)?;
 
         match self.op {
             Operator::Assignment => None,

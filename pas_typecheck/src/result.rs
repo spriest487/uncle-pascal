@@ -158,6 +158,9 @@ pub enum TypecheckError {
     UnsafeAddressoOfNotAllowed {
         ty: Type,
         span: Span,
+    },
+    InvalidConstExpr {
+        expr: Box<Expression>,
     }
 }
 
@@ -220,6 +223,7 @@ impl Spanned for TypecheckError {
             TypecheckError::PrivateConstructor { span, .. } => span,
             TypecheckError::UnsafeConversionNotAllowed { span, .. } => span,
             TypecheckError::UnsafeAddressoOfNotAllowed { span, .. } => span,
+            TypecheckError::InvalidConstExpr { expr } => expr.span(),
         }
     }
 }
@@ -289,6 +293,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::DuplicateNamedArg { .. } => "Duplicate named argument".to_string(),
             TypecheckError::UnsafeConversionNotAllowed { .. } => "Conversion not allowed in a safe context".to_string(),
             TypecheckError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
+
+            TypecheckError::InvalidConstExpr { .. } => "Invalid constant expression".to_string(),
         }
     }
 
@@ -550,6 +556,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnsafeAddressoOfNotAllowed { ty, .. } => {
                 write!(f, "value of type `{}` can only have its address taken in an unsafe context", ty)
+            }
+
+            TypecheckError::InvalidConstExpr { expr } => {
+                write!(f, "expression `{}` is not a constant value", expr)
             }
         }
     }

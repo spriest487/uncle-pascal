@@ -1,8 +1,10 @@
+use crate::ast::const_eval::ConstEval;
 use crate::ast::prelude::*;
 use crate::ModuleUnit;
 
 pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
+pub type ConstDecl = ast::ConstDecl<TypeAnnotation>;
 
 fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> TypecheckResult<UnitDecl> {
     match decl {
@@ -157,7 +159,45 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
                 visibility: *visibility,
             })
         }
+
+        ast::UnitDecl::Const { decl, visibility } => {
+            let decl = typecheck_const_decl(decl, *visibility, ctx)?;
+
+            Ok(ast::UnitDecl::Const {
+                decl,
+                visibility: *visibility,
+            })
+        }
     }
+}
+
+fn typecheck_const_decl(decl: &ast::ConstDecl<Span>, visibility: Visibility, ctx: &mut Context) -> TypecheckResult<ConstDecl> {
+    let span = decl.span().clone();
+    let ty = typecheck_type(&decl.ty, ctx)?;
+    let const_val_expr = typecheck_expr(&decl.val, &ty, ctx)?;
+
+    let const_val_literal = match const_val_expr.const_eval(ctx) {
+        Some(const_val) => Ok(const_val),
+        None => Err(TypecheckError::InvalidConstExpr {
+            expr: Box::new(const_val_expr),
+        }),
+    }?;
+
+    ctx.declare_const(decl.ident.clone(), const_val_literal.clone(), ty.clone(), visibility, span.clone())?;
+
+    let const_val = Expression::Literal(const_val_literal.clone(), TypeAnnotation::Const {
+        value: const_val_literal.clone(),
+        span: span.clone(),
+        decl: Some(span.clone()),
+        ty: ty.clone(),
+    });
+
+    Ok(ast::ConstDecl {
+        ty,
+        ident: decl.ident.clone(),
+        val: Box::new(const_val),
+        span,
+    })
 }
 
 pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<ModuleUnit> {

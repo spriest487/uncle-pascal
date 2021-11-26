@@ -13,6 +13,7 @@ use std::{
     hash::Hash,
     rc::Rc,
 };
+use crate::ast::Literal;
 
 pub mod builtin;
 pub mod ns;
@@ -102,12 +103,19 @@ pub enum Decl {
         visibility: Visibility,
     },
     Alias(IdentPath),
+    Const {
+        ty: Type,
+        val: Literal,
+        visibility: Visibility,
+        span: Span,
+    },
 }
 
 impl fmt::Display for Decl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Decl::Type { ty, .. } => write!(f, "type `{}`", ty),
+            Decl::Const { ty, val, .. } => write!(f, "const {}: {}", ty, val),
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
             Decl::Function { sig, .. } => write!(f, "{}", sig),
             Decl::Alias(aliased) => write!(f, "{}", aliased),
@@ -539,6 +547,15 @@ impl Context {
 
     pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
         self.declare(name, Decl::Alias(aliased))
+    }
+
+    pub fn declare_const(&mut self, name: Ident, val: Literal, ty: Type, visibility: Visibility, span: Span) -> NamingResult<()> {
+        self.declare(name, Decl::Const {
+            visibility,
+            val,
+            ty,
+            span,
+        })
     }
 
     pub fn resolve_alias(&self, path: &IdentPath) -> Option<IdentPath> {

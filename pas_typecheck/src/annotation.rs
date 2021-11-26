@@ -9,7 +9,7 @@ use pas_syn::{
 use pas_syn::ast::TypeList;
 
 use crate::{ast::{Expression, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
-use crate::ast::OverloadCandidate;
+use crate::ast::{Literal, OverloadCandidate};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct VariantCtorAnnotation {
@@ -138,6 +138,14 @@ pub enum TypeAnnotation {
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
     // or free functions)
     Overload(OverloadAnnotation),
+
+    Const {
+        span: Span,
+        decl: Option<Span>,
+
+        ty: Type,
+        value: Literal,
+    },
 }
 
 impl TypeAnnotation {
@@ -148,13 +156,15 @@ impl TypeAnnotation {
             TypeAnnotation::Function { func_ty: ty, .. }
             | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { method_func_ty: ty, .. })
             | TypeAnnotation::TypedValue { ty, .. }
+            | TypeAnnotation::Const { ty, .. }
             | TypeAnnotation::Overload(OverloadAnnotation { func_ty: ty, .. })
                 if ty == expect_ty =>
             {
                 Ok(())
             }
 
-            TypeAnnotation::TypedValue { ty, span, .. } => Err(TypecheckError::TypeMismatch {
+            TypeAnnotation::Const { ty, span, .. }
+            | TypeAnnotation::TypedValue { ty, span, .. } => Err(TypecheckError::TypeMismatch {
                 span: span.clone(),
                 expected: expect_ty.clone(),
                 actual: ty.clone(),
@@ -190,7 +200,7 @@ impl TypeAnnotation {
                     expected: expect_ty.clone(),
                     actual: variant_ty,
                 })
-            }
+            },
         }
     }
 
@@ -204,6 +214,7 @@ impl TypeAnnotation {
             TypeAnnotation::UFCSCall { func_ty: ty, .. }
             | TypeAnnotation::Function { func_ty: ty, .. }
             | TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation { method_func_ty: ty, .. })
+            | TypeAnnotation::Const { ty, .. }
             | TypeAnnotation::TypedValue { ty, .. } => ty,
 
             TypeAnnotation::Overload(overload) => &overload.func_ty,
@@ -222,6 +233,8 @@ impl TypeAnnotation {
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
 
+            TypeAnnotation::Const { decl, .. } => decl.as_ref(),
+
             TypeAnnotation::VariantCtor(ctor) => Some(ctor.variant_name.span()),
         }
     }
@@ -229,6 +242,7 @@ impl TypeAnnotation {
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
             TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
+            TypeAnnotation::Const { .. } => Some(ValueKind::Immutable),
             _ => None,
         }
     }
@@ -259,6 +273,7 @@ impl Spanned for TypeAnnotation {
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
             | TypeAnnotation::Overload(overload) => &overload.span,
+            | TypeAnnotation::Const { span, .. } => span,
         }
     }
 }
