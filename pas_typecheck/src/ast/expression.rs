@@ -4,9 +4,9 @@ use pas_syn::ast;
 use crate::{ast::prelude::*, ty::FunctionParamSig};
 
 pub type Expression = ast::Expression<TypeAnnotation>;
+pub type Literal = ast::Literal<Type>;
 
 pub use call::{typecheck_call, Call, Invocation, FunctionCall, MethodCall, VariantCtorCall};
-use pas_syn::ast::Literal;
 
 pub fn typecheck_expr(
     expr_node: &ast::Expression<Span>,

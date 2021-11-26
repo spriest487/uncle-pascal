@@ -6,8 +6,8 @@ mod result;
 
 pub mod ast {
     pub use self::{
-        block::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, statement::*,
-        typedecl::*, unit::*, call::*, raise::*,
+        block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*,
+        raise::*, statement::*, typedecl::*, unit::*,
     };
 
     mod block;
@@ -22,6 +22,7 @@ pub mod ast {
     mod unit;
     mod call;
     mod raise;
+    pub mod const_eval;
 
     mod prelude {
         pub use pas_common::span::*;
@@ -35,6 +36,7 @@ pub mod ast {
         pub use std::rc::Rc;
     }
 }
+
 
 pub mod ty;
 

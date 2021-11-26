@@ -6,6 +6,8 @@ use std::{
     i32,
     ops::{Add, Sub},
 };
+use std::cmp::Ordering;
+use std::ops::{Div, Mul};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum IntConstant {
@@ -199,6 +201,18 @@ impl IntConstant {
     }
 }
 
+impl Ord for IntConstant {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.as_i128().cmp(&other.as_i128())
+    }
+}
+
+impl PartialOrd for IntConstant {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl From<u8> for IntConstant {
     fn from(val: u8) -> Self {
         IntConstant::Char(val)
@@ -256,7 +270,7 @@ impl From<u64> for IntConstant {
 
 impl From<i128> for IntConstant {
     fn from(val: i128) -> Self {
-        if val > i128::from(i64::max_value()) {
+        if val > i128::from(i64::MAX) {
             IntConstant::U64(val as u64)
         } else {
             IntConstant::from(val as i64)
@@ -280,8 +294,24 @@ impl Sub for IntConstant {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct RealConstant(BigDecimal);
+impl Mul for IntConstant {
+    type Output = IntConstant;
+
+    fn mul(self, rhs: IntConstant) -> IntConstant {
+        Self::from(self.as_i128() * rhs.as_i128())
+    }
+}
+
+impl Div for IntConstant {
+    type Output = IntConstant;
+
+    fn div(self, rhs: IntConstant) -> IntConstant {
+        Self::from(self.as_i128() / rhs.as_i128())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash, Ord, PartialOrd)]
+pub struct RealConstant(pub BigDecimal);
 
 impl RealConstant {
     pub fn parse_str(s: &str) -> Option<Self> {
@@ -317,6 +347,22 @@ impl Add for RealConstant {
 
     fn add(self, rhs: RealConstant) -> RealConstant {
         RealConstant(self.0 + rhs.0)
+    }
+}
+
+impl Mul for RealConstant {
+    type Output = RealConstant;
+
+    fn mul(self, rhs: RealConstant) -> RealConstant {
+        RealConstant(self.0 * rhs.0)
+    }
+}
+
+impl Div for RealConstant {
+    type Output = RealConstant;
+
+    fn div(self, rhs: RealConstant) -> RealConstant {
+        RealConstant(self.0 / rhs.0)
     }
 }
 

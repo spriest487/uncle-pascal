@@ -15,7 +15,9 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             translate_literal(lit, annotation.ty(), builder)
         }
 
-        ast::Expression::BinOp(bin_op) => translate_bin_op(bin_op, bin_op.annotation.ty(), builder),
+        ast::Expression::BinOp(bin_op) => {
+            translate_bin_op(bin_op, bin_op.annotation.ty(), builder)
+        },
 
         ast::Expression::UnaryOp(unary_op) => {
             translate_unary_op(unary_op, unary_op.annotation.ty(), builder)
