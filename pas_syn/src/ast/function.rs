@@ -63,7 +63,7 @@ pub struct FunctionDecl<A: Annotation> {
 
     pub impl_iface: Option<InterfaceImpl<A>>,
 
-    pub mods: Vec<DeclMod>,
+    pub mods: Vec<DeclMod<A>>,
 }
 
 impl FunctionDecl<Span> {
@@ -248,11 +248,11 @@ impl FunctionDecl<Span> {
 }
 
 impl<A: Annotation> FunctionDecl<A> {
-    pub fn external_src(&self) -> Option<&str> {
+    pub fn external_src(&self) -> Option<&A::ConstStringExpr> {
         self.mods
             .iter()
             .map(|decl_mod| match decl_mod {
-                DeclMod::External { src, .. } => src.as_str(),
+                DeclMod::External { src, .. } => src,
             })
             .next()
     }

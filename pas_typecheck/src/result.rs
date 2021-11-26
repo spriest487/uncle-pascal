@@ -7,7 +7,7 @@ use crate::{
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
 use std::fmt;
-use crate::ast::Statement;
+use crate::ast::{DeclMod, Statement};
 
 #[derive(Debug)]
 pub enum TypecheckError {
@@ -470,7 +470,7 @@ impl fmt::Display for TypecheckError {
             }
 
             TypecheckError::ExternalGenericFunction { func, .. } => {
-                write!(f, "`{}` is generic but is declared with the `{}` modifier", func, ast::DeclMod::EXTERNAL_WORD)
+                write!(f, "`{}` is generic but is declared with the `{}` modifier", func, DeclMod::EXTERNAL_WORD)
             }
 
             TypecheckError::InvalidCtorType { ty, .. } => {

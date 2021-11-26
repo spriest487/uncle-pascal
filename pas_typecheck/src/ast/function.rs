@@ -3,10 +3,10 @@ use pas_syn::Ident;
 use crate::ast::prelude::*;
 
 use std::rc::Rc;
-use pas_syn::ast::DeclMod;
 use crate::ast::prelude::ast::TypeList;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
+pub type DeclMod = ast::DeclMod<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
@@ -90,6 +90,8 @@ pub fn typecheck_func_decl(
 
     ctx.pop_scope(decl_scope);
 
+    let decl_mods = typecheck_decl_mods(&decl.mods, ctx)?;
+
     Ok(FunctionDecl {
         ident,
         impl_iface,
@@ -97,8 +99,32 @@ pub fn typecheck_func_decl(
         type_params: type_params.clone(),
         return_ty: Some(return_ty),
         span: decl.span.clone(),
-        mods: decl.mods.clone(),
+        mods: decl_mods,
     })
+}
+
+fn typecheck_decl_mods(decl_mods: &[ast::DeclMod<Span>], ctx: &mut Context) -> TypecheckResult<Vec<DeclMod>> {
+    let mut results = Vec::new();
+
+    for decl_mod in decl_mods {
+        let result = match decl_mod {
+            ast::DeclMod::External { src, span } => {
+                let string_ty = string_type(ctx)?;
+
+                let src = typecheck_expr(src, &string_ty, ctx)?;
+                let src_str = const_eval_string(&src, ctx)?;
+
+                DeclMod::External {
+                    src: src_str,
+                    span: span.clone(),
+                }
+            }
+        };
+
+        results.push(result);
+    }
+
+    Ok(results)
 }
 
 fn find_iface_impl(

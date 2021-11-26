@@ -262,11 +262,11 @@ impl UseDecl {
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
-pub enum DeclMod {
-    External { src: String, span: Span },
+pub enum DeclMod<A: Annotation> {
+    External { src: A::ConstStringExpr, span: Span },
 }
 
-impl DeclMod {
+impl<A: Annotation> DeclMod<A> {
     pub const EXTERNAL_WORD: &'static str = "external";
 
     pub fn keyword(&self) -> &str {
@@ -274,19 +274,21 @@ impl DeclMod {
             DeclMod::External { .. } => Self::EXTERNAL_WORD,
         }
     }
+}
 
-    fn parse_external(tokens: &mut TokenStream) -> ParseResult<DeclMod> {
+impl DeclMod<Span> {
+    fn parse_external(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw = tokens.match_one(Self::EXTERNAL_WORD)?.into_ident().unwrap();
-        let src = tokens.match_one(Matcher::AnyLiteralString)?;
+        let src = Expression::parse(tokens)?;
 
         Ok(DeclMod::External {
             span: kw.span().to(src.span()),
-            src: src.as_literal_string().unwrap().to_string(),
+            src: Box::new(src),
         })
     }
 
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<DeclMod>> {
-        let mut mods: Vec<DeclMod> = Vec::new();
+    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        let mut mods: Vec<Self> = Vec::new();
 
         let mod_seq = Separator::Semicolon.and_then(Self::EXTERNAL_WORD);
 
@@ -316,7 +318,7 @@ impl DeclMod {
     }
 }
 
-impl fmt::Display for DeclMod {
+impl<A: Annotation> fmt::Display for DeclMod<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             DeclMod::External { src, .. } => write!(f, "external '{}'", src),
@@ -324,7 +326,7 @@ impl fmt::Display for DeclMod {
     }
 }
 
-impl Spanned for DeclMod {
+impl<A: Annotation> Spanned for DeclMod<A> {
     fn span(&self) -> &Span {
         match self {
             DeclMod::External { span, .. } => span,

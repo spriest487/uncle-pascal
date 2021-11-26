@@ -1,10 +1,12 @@
 uses System;
 
-function X(); external 'ExternFuncs.dll';
-function Y(val: Integer); external 'ExternFuncs.dll';
-function Z(): Integer; external 'ExternFuncs.dll';
-function ReturnsIntPtr(): ^Integer; external 'ExternFuncs.dll';
-function PrintIntPtr(ptr: ^Integer); external 'ExternFuncs.dll';
+const ExternFuncsLib: String = 'ExternFuncs.dll';
+
+function X(); external ExternFuncsLib;
+function Y(val: Integer); external ExternFuncsLib;
+function Z(): Integer; external ExternFuncsLib;
+function ReturnsIntPtr(): ^Integer; external ExternFuncsLib;
+function PrintIntPtr(ptr: ^Integer); external ExternFuncsLib;
 
 X();
 Y(1);

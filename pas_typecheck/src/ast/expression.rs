@@ -1,12 +1,20 @@
+use crate::{ast::prelude::*, ty::FunctionParamSig};
+pub use call::{typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall};
 use pas_common::span::*;
 use pas_syn::ast;
-
-use crate::{ast::prelude::*, ty::FunctionParamSig};
 
 pub type Expression = ast::Expression<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
 
-pub use call::{typecheck_call, Call, Invocation, FunctionCall, MethodCall, VariantCtorCall};
+pub fn const_eval_string(expr: &Expression, ctx: &Context) -> TypecheckResult<String> {
+    match expr.const_eval(ctx) {
+        Some(Literal::String(src_str)) => Ok(src_str),
+
+        _ => Err(TypecheckError::InvalidConstExpr {
+            expr: Box::new(expr.clone()),
+        }),
+    }
+}
 
 pub fn typecheck_expr(
     expr_node: &ast::Expression<Span>,
@@ -47,24 +55,18 @@ pub fn typecheck_expr(
 
         ast::Expression::Literal(ast::Literal::Integer(i), _) => {
             let ty = match expect_ty {
-                Type::Primitive(Primitive::Byte) => {
-                    match i.as_u8() {
-                        Some(_) => Type::from(Primitive::Byte),
-                        None => Type::Primitive(Primitive::Int32),
-                    }
+                Type::Primitive(Primitive::Byte) => match i.as_u8() {
+                    Some(_) => Type::from(Primitive::Byte),
+                    None => Type::Primitive(Primitive::Int32),
                 },
-                Type::Primitive(Primitive::Real32) => {
-                    match i.as_f32() {
-                        Some(_) => Type::from(Primitive::Real32),
-                        None => Type::Primitive(Primitive::Int32),
-                    }
+                Type::Primitive(Primitive::Real32) => match i.as_f32() {
+                    Some(_) => Type::from(Primitive::Real32),
+                    None => Type::Primitive(Primitive::Int32),
                 },
-                _ => {
-                    match i.as_f32() {
-                        Some(_) => Type::from(Primitive::Int32),
-                        None => unimplemented!("integer literals outside range of i32"),
-                    }
-                }
+                _ => match i.as_f32() {
+                    Some(_) => Type::from(Primitive::Int32),
+                    None => unimplemented!("integer literals outside range of i32"),
+                },
             };
 
             let annotation = TypeAnnotation::TypedValue {
@@ -129,31 +131,29 @@ pub fn typecheck_expr(
             ))
         }
 
-        ast::Expression::Ident(ident, _) => {
-            match ctx.find(&ident) {
-                Some(MemberRef::Name { value: Decl::Const { ty, val, span, .. }, ..}) => {
-                    Ok(ast::Expression::Literal(val.clone(), TypeAnnotation::TypedValue {
-                        ty: ty.clone(),
-                        decl: Some(span.clone()),
-                        span: expr_node.span().clone(),
-                        value_kind: ValueKind::Immutable,
-                    }))
-                }
-
-                Some(member) => {
-                    let annotation = ns_member_ref_to_annotation(member, ident.span().clone(), ctx);
-                    Ok(ast::Expression::Ident(ident.clone(), annotation))
+        ast::Expression::Ident(ident, _) => match ctx.find(&ident) {
+            Some(MemberRef::Name {
+                value: Decl::Const { ty, val, span, .. },
+                ..
+            }) => Ok(ast::Expression::Literal(
+                val.clone(),
+                TypeAnnotation::TypedValue {
+                    ty: ty.clone(),
+                    decl: Some(span.clone()),
+                    span: expr_node.span().clone(),
+                    value_kind: ValueKind::Immutable,
                 },
+            )),
 
-                _ => {
-                    Err(NameError::NotFound(ident.clone()).into())
-                }
+            Some(member) => {
+                let annotation = ns_member_ref_to_annotation(member, ident.span().clone(), ctx);
+                Ok(ast::Expression::Ident(ident.clone(), annotation))
             }
-        }
 
-        ast::Expression::BinOp(bin_op) => {
-            typecheck_bin_op(bin_op, expect_ty, ctx)
+            _ => Err(NameError::NotFound(ident.clone()).into()),
         },
+
+        ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
 
         ast::Expression::UnaryOp(unary_op) => {
             let unary_op = typecheck_unary_op(unary_op, ctx)?;
@@ -246,14 +246,12 @@ pub fn ns_member_ref_to_annotation(
         MemberRef::Name {
             value: Decl::Const { ty, .. },
             ..
-        } => {
-            TypeAnnotation::TypedValue {
-                ty: ty.clone(),
-                decl: Some(span.clone()),
-                span,
-                value_kind: ValueKind::Immutable,
-            }
-        }
+        } => TypeAnnotation::TypedValue {
+            ty: ty.clone(),
+            decl: Some(span.clone()),
+            span,
+            value_kind: ValueKind::Immutable,
+        },
 
         MemberRef::Name {
             value: Decl::Type { ty, .. },
@@ -305,9 +303,7 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
 
         ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(()),
 
-        ast::Statement::Raise(raise) => {
-            expect_expr_initialized(&raise.value, ctx)
-        }
+        ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
     }
 }
 
@@ -362,9 +358,7 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
 
         ast::Expression::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
 
-        ast::Expression::Raise(raise) => {
-            expect_expr_initialized(&raise.value, ctx)
-        },
+        ast::Expression::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
     }
 }
 

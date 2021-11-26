@@ -282,6 +282,7 @@ impl Annotation for TypeAnnotation {
     type Type = Type;
     type Name = Symbol;
     type Pattern = TypePattern;
+    type ConstStringExpr = String;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

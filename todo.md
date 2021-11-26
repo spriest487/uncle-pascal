@@ -1,3 +1,6 @@
+* things that expect literals that should use expressions + const eval:
+  * lib srcs
+  * array bounds/indices
 * const eval
 * @-syntax attributes
 * marshalled globals

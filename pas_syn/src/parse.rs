@@ -49,7 +49,7 @@ pub enum ParseError {
     EmptyOperand { operator: Span, before: bool },
     UnexpectedOperator { operator: Span },
     InvalidStatement(InvalidStatement<Span>),
-    DuplicateModifier { new: DeclMod, existing: DeclMod },
+    DuplicateModifier { new: DeclMod<Span>, existing: DeclMod<Span> },
     CtorWithTypeArgs { span: Span },
     EmptyTypeParamList(TypeList<Ident>),
     EmptyTypeArgList(TypeList<TypeName>),

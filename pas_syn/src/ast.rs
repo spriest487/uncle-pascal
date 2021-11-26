@@ -35,12 +35,14 @@ pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
     type Name: DeclNamed;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+    type ConstStringExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
     type Type = TypeName;
     type Name = TypeDeclName;
     type Pattern = TypeNamePattern;
+    type ConstStringExpr = Box<Expression<Span>>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

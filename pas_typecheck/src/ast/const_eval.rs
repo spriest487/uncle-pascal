@@ -1,6 +1,6 @@
-use pas_syn::Operator;
 use crate::ast::{BinOp, Expression, Literal};
 use crate::Context;
+use pas_syn::Operator;
 
 pub trait ConstEval {
     fn const_eval(&self, ctx: &Context) -> Option<Literal>;
@@ -66,9 +66,7 @@ fn const_eq(a: Literal, b: Literal) -> Option<Literal> {
 
 fn const_add(a: Literal, b: Literal) -> Option<Literal> {
     match (a, b) {
-        (Literal::String(a), Literal::String(b)) => {
-            Some(Literal::String(a + &b))
-        },
+        (Literal::String(a), Literal::String(b)) => Some(Literal::String(a + &b)),
         (Literal::Real(a), Literal::Real(b)) => Some(Literal::Real(a + b)),
         (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Integer(a + b)),
         _ => None,
