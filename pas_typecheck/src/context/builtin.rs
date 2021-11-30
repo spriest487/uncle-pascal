@@ -1,5 +1,5 @@
-use crate::Symbol;
-use crate::{ast, Primitive, Type};
+use crate::{Primitive, Symbol};
+use crate::{ast, Type};
 use pas_common::span::*;
 use pas_syn::ast::{ClassKind, TypeDeclName};
 use pas_syn::ident::*;

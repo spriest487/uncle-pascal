@@ -1,10 +1,6 @@
 pub use self::{builtin::*, ns::*, result::*, scope::*, ufcs::InstanceMethod};
-use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
-    context::NamespaceStack,
-    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type,
-    TypeParamList, TypeParamType,
-};
+use crate::ast::Literal;
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, context::NamespaceStack, specialize_class_def, specialize_generic_variant, FunctionSig, Symbol, Type, TypeParamList, TypeParamType, Primitive};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -13,7 +9,6 @@ use std::{
     hash::Hash,
     rc::Rc,
 };
-use crate::ast::Literal;
 
 pub mod builtin;
 pub mod ns;
@@ -405,17 +400,16 @@ impl Context {
             }
 
             None => {
-                self
-                    .scopes
+                self.scopes
                     .insert(name.clone(), decl)
-                    .map_err(|AlreadyDeclared(existing, kind)| {
-                        NameError::AlreadyDeclared {
+                    .map_err(
+                        |AlreadyDeclared(existing, kind)| NameError::AlreadyDeclared {
                             existing: Path::from_parts(existing),
                             existing_kind: kind,
                             new: name,
-                        }
-                    })
-            },
+                        },
+                    )
+            }
         }
     }
 
@@ -549,13 +543,23 @@ impl Context {
         self.declare(name, Decl::Alias(aliased))
     }
 
-    pub fn declare_const(&mut self, name: Ident, val: Literal, ty: Type, visibility: Visibility, span: Span) -> NamingResult<()> {
-        self.declare(name, Decl::Const {
-            visibility,
-            val,
-            ty,
-            span,
-        })
+    pub fn declare_const(
+        &mut self,
+        name: Ident,
+        val: Literal,
+        ty: Type,
+        visibility: Visibility,
+        span: Span,
+    ) -> NamingResult<()> {
+        self.declare(
+            name,
+            Decl::Const {
+                visibility,
+                val,
+                ty,
+                span,
+            },
+        )
     }
 
     pub fn resolve_alias(&self, path: &IdentPath) -> Option<IdentPath> {

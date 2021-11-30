@@ -1,5 +1,5 @@
 use crate::{annotation::VariantCtorAnnotation, ast::prelude::*};
-use pas_syn::Operator;
+use pas_syn::{IntConstant, Operator};
 
 pub type BinOp = ast::BinOp<TypeAnnotation>;
 
@@ -608,6 +608,8 @@ pub fn typecheck_indexer(
 
     let base = typecheck_expr(&base, &Type::Nothing, ctx)?;
 
+    check_array_bound_static(&base, &index, ctx)?;
+
     let (el_ty, value_kind) = base
         .annotation()
         .ty()
@@ -642,4 +644,22 @@ pub fn typecheck_indexer(
         op: Operator::Index,
         annotation,
     }))
+}
+
+fn check_array_bound_static(base: &Expression, index: &Expression, ctx: &mut Context) -> TypecheckResult<()>  {
+    fn out_of_range(dim: usize, index: IntConstant) -> bool {
+        index.as_i128() < 0 || index.as_i128() >= dim as i128
+    }
+
+    match (base.annotation().ty(), const_eval_integer(index, ctx)) {
+        (Type::Array { dim, .. }, Ok(index_const)) if out_of_range(*dim, index_const) => Err(
+            TypecheckError::IndexOutOfBounds {
+                index: index_const,
+                base_ty: Box::new(base.annotation().ty().clone()),
+                span: index.span().clone(),
+            }
+        ),
+
+        _ => Ok(()),
+    }
 }

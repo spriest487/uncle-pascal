@@ -1,22 +1,19 @@
-use std::{fmt, rc::Rc};
-
+pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
+use crate::ast::{const_eval_integer, typecheck_expr};
+use crate::TypeArgsResult::NotGeneric;
+use crate::{
+    ast::{Class, FunctionDecl, Member, Variant},
+    context,
+    result::*,
+    Context, GenericError, GenericResult, GenericTarget, NamingResult, Symbol, TypeAnnotation,
+};
 use pas_common::span::*;
 use pas_syn::{
     ast::{self, ClassKind, Typed},
     ident::*,
     Operator,
 };
-
-use crate::{
-    ast::{Class, FunctionDecl, Variant, Member},
-    context,
-    result::*,
-    Context, GenericError, GenericResult, GenericTarget, NamingResult,
-    Symbol, TypeAnnotation,
-};
-use crate::TypeArgsResult::NotGeneric;
-
-pub use self::{pattern::*, primitive::*, sig::*, ty_param::* };
+use std::{fmt, rc::Rc};
 
 #[cfg(test)]
 mod test;
@@ -176,9 +173,7 @@ impl Type {
 
     pub fn same_array_dim(&self, other: &Self) -> bool {
         match (self, other) {
-            (Type::Array { dim, .. }, Type::Array { dim: other_dim, .. }) => {
-                *dim == *other_dim
-            }
+            (Type::Array { dim, .. }, Type::Array { dim: other_dim, .. }) => *dim == *other_dim,
 
             _ => false,
         }
@@ -221,8 +216,7 @@ impl Type {
 
     pub fn array_element_ty(&self) -> Option<&Type> {
         match self {
-            Type::DynArray { element }
-            | Type::Array { element, .. } => Some(element),
+            Type::DynArray { element } | Type::Array { element, .. } => Some(element),
 
             _ => None,
         }
@@ -286,7 +280,12 @@ impl Type {
         }
     }
 
-    pub fn implicit_conversion_from(&self, from: &Self, span: &Span, ctx: &Context) -> TypecheckResult<()> {
+    pub fn implicit_conversion_from(
+        &self,
+        from: &Self,
+        span: &Span,
+        ctx: &Context,
+    ) -> TypecheckResult<()> {
         if *self == *from {
             return Ok(());
         }
@@ -300,13 +299,16 @@ impl Type {
         let conversion = match self {
             Type::Primitive(Primitive::Pointer) if *from == Type::Nil => Conversion::Blittable,
 
-            Type::Primitive(Primitive::Pointer) if from.is_rc_reference() => Conversion::UnsafeBlittable,
+            Type::Primitive(Primitive::Pointer) if from.is_rc_reference() => {
+                Conversion::UnsafeBlittable
+            }
             Type::Primitive(Primitive::Pointer) if from.is_pointer() => Conversion::UnsafeBlittable,
 
-            Type::Pointer(..)
-            | Type::Class(..)
-            | Type::Interface(..)
-            | Type::DynArray { .. } if *from == Type::Primitive(Primitive::Pointer) => Conversion::UnsafeBlittable,
+            Type::Pointer(..) | Type::Class(..) | Type::Interface(..) | Type::DynArray { .. }
+                if *from == Type::Primitive(Primitive::Pointer) =>
+            {
+                Conversion::UnsafeBlittable
+            }
 
             Type::Pointer(_) if *self == *from || *from == Type::Nil => Conversion::Blittable,
 
@@ -317,13 +319,13 @@ impl Type {
             },
 
             Type::Any => match from {
-                Type::DynArray { .. } | Type::Class(..) | Type::Interface(..) => Conversion::Blittable,
+                Type::DynArray { .. } | Type::Class(..) | Type::Interface(..) => {
+                    Conversion::Blittable
+                }
                 _ => Conversion::Illegal,
             },
 
-            _ => {
-                Conversion::Illegal
-            },
+            _ => Conversion::Illegal,
         };
 
         match conversion {
@@ -340,7 +342,7 @@ impl Type {
                 expected: self.clone(),
                 actual: from.clone(),
                 span: span.clone(),
-            })
+            }),
         }
     }
 
@@ -358,13 +360,11 @@ impl Type {
             | (Type::Primitive(a), Operator::IntegerDivide, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
 
-            (_, Operator::Shl, _) | (_, Operator::Shr, _) if *self == *rhs => {
-                match self {
-                    Type::Primitive(Primitive::Byte) => true,
-                    Type::Primitive(Primitive::Int32) => true,
-                    _ => false,
-                }
-            }
+            (_, Operator::Shl, _) | (_, Operator::Shr, _) if *self == *rhs => match self {
+                Type::Primitive(Primitive::Byte) => true,
+                Type::Primitive(Primitive::Int32) => true,
+                _ => false,
+            },
 
             _ => false,
         }
@@ -450,7 +450,9 @@ impl Type {
         }
 
         let new_args = name.type_args.as_ref().and_then(|name_type_args| {
-            let items = name_type_args.items.iter()
+            let items = name_type_args
+                .items
+                .iter()
                 .cloned()
                 .map(|arg| arg.substitute_type_args(args));
 
@@ -474,15 +476,15 @@ impl Type {
 
             Type::Class(name) if name.decl_name.type_params.is_some() => {
                 Type::Class(Box::new(Self::new_class_name(&name, args)))
-            },
+            }
 
-            Type::Record(name)  if name.decl_name.type_params.is_some() => {
+            Type::Record(name) if name.decl_name.type_params.is_some() => {
                 Type::Record(Box::new(Self::new_class_name(&name, args)))
-            },
+            }
 
-            Type::Variant(name)  if name.decl_name.type_params.is_some() => {
+            Type::Variant(name) if name.decl_name.type_params.is_some() => {
                 Type::Variant(Box::new(Self::new_class_name(&name, args)))
-            },
+            }
 
             Type::DynArray { element } => Type::DynArray {
                 element: element.substitute_type_args(args).into(),
@@ -493,9 +495,7 @@ impl Type {
                 dim,
             },
 
-            Type::Pointer(base_ty) => {
-                base_ty.substitute_type_args(args).ptr()
-            }
+            Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
 
             other => other,
         }
@@ -573,7 +573,7 @@ pub struct TypeMemberRef<'ty> {
     pub ty: &'ty Type,
 }
 
-pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type> {
+pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
     match ty {
         ast::TypeName::Ident {
             ident,
@@ -592,7 +592,8 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
                         checked_type_arg_items.push(arg_ty);
                     }
 
-                    let checked_type_args = TypeList::new(checked_type_arg_items, type_args.span().clone());
+                    let checked_type_args =
+                        TypeList::new(checked_type_arg_items, type_args.span().clone());
 
                     Type::specialize_generic(&raw_ty, &checked_type_args, span)?
                 }
@@ -607,10 +608,22 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &Context) -> TypecheckResult<Type
             let element = typecheck_type(element.as_ref(), ctx)?;
 
             match dim {
-                Some(dim) => Ok(Type::Array {
-                    element: Box::new(element),
-                    dim: *dim,
-                }),
+                Some(dim_expr) => {
+                    let dim_expr =
+                        typecheck_expr(dim_expr, &Type::Primitive(Primitive::Int32), ctx)?;
+                    let dim_val = const_eval_integer(&dim_expr, ctx)?;
+
+                    let dim = dim_val.as_usize().ok_or_else(|| TypecheckError::TypeMismatch {
+                        span: dim_expr.span().clone(),
+                        actual: dim_expr.annotation().ty().clone(),
+                        expected: Type::Primitive(Primitive::Int32),
+                    })?;
+
+                    Ok(Type::Array {
+                        element: Box::new(element),
+                        dim,
+                    })
+                }
 
                 None => Ok(Type::DynArray {
                     element: Box::new(element),
@@ -654,14 +667,18 @@ pub fn specialize_generic_name(
     Ok(name)
 }
 
-pub fn specialize_class_def(class: &Class, ty_args: &TypeList, span: &Span) -> GenericResult<Class> {
+pub fn specialize_class_def(
+    class: &Class,
+    ty_args: &TypeList,
+    span: &Span,
+) -> GenericResult<Class> {
     let parameterized_name = specialize_generic_name(&class.name, &ty_args, span)?;
 
     let members: Vec<_> = class
         .members
         .iter()
         .map(|member| {
-//            let ty = specialize_member(&member.ty, &args, span)?;
+            //            let ty = specialize_member(&member.ty, &args, span)?;
             let ty = member.ty.clone().substitute_type_args(&ty_args);
 
             Ok(ast::Member {
@@ -719,7 +736,9 @@ pub trait Specializable {
     fn name(&self) -> Self::GenericID;
 
     fn is_specialization_of(&self, generic: &Self) -> bool {
-        generic.is_unspecialized_generic() && !self.is_unspecialized_generic() && self.name() == generic.name()
+        generic.is_unspecialized_generic()
+            && !self.is_unspecialized_generic()
+            && self.name() == generic.name()
     }
 
     fn infer_specialized_from_hint<'out, 'a: 'out, 'b: 'out>(
@@ -761,7 +780,7 @@ impl Specializable for Type {
     }
 }
 
-pub fn string_type(ctx: &Context) -> TypecheckResult<Type> {
+pub fn string_type(ctx: &mut Context) -> TypecheckResult<Type> {
     let span = context::builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
     let str_class_name = ast::TypeName::Ident {

@@ -97,7 +97,7 @@ impl TypePattern {
         name: &ast::TypeName,
         span: &Span,
         expect_ty: &Type,
-        ctx: &Context,
+        ctx: &mut Context,
     ) -> TypecheckResult<Type> {
         let raw_ty = match name {
             ast::TypeName::Ident { ident, .. } => ctx.find_type(ident)?.1.clone(),

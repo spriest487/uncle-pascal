@@ -35,14 +35,18 @@ pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
     type Type: Typed;
     type Name: DeclNamed;
     type Pattern: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+
     type ConstStringExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+    type ConstIntegerExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
     type Type = TypeName;
     type Name = TypeDeclName;
     type Pattern = TypeNamePattern;
+
     type ConstStringExpr = Box<Expression<Span>>;
+    type ConstIntegerExpr = Box<Expression<Span>>;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -57,7 +61,7 @@ pub enum TypeName {
     },
     Array {
         element: Box<TypeName>,
-        dim: Option<usize>,
+        dim: Option<Box<Expression<Span>>>,
         indirection: usize,
         span: Span,
     },
@@ -124,15 +128,12 @@ impl TypeName {
             None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
                 TokenTree::Delimited { inner, open, .. } => {
                     let mut dim_tokens = TokenStream::new(inner, open);
-                    let dim = dim_tokens
-                        .match_one(Matcher::AnyLiteralInteger)?
-                        .as_literal_int()
-                        .and_then(IntConstant::as_usize)
-                        .unwrap();
+                    let dim_expr = Expression::parse(&mut dim_tokens)?;
                     dim_tokens.finish()?;
 
-                    Some(dim)
+                    Some(Box::new(dim_expr))
                 }
+
                 _ => unreachable!("match failed"),
             },
         };

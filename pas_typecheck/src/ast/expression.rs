@@ -1,7 +1,7 @@
 use crate::{ast::prelude::*, ty::FunctionParamSig};
 pub use call::{typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall};
 use pas_common::span::*;
-use pas_syn::ast;
+use pas_syn::{ast, IntConstant};
 
 pub type Expression = ast::Expression<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -9,6 +9,16 @@ pub type Literal = ast::Literal<Type>;
 pub fn const_eval_string(expr: &Expression, ctx: &Context) -> TypecheckResult<String> {
     match expr.const_eval(ctx) {
         Some(Literal::String(src_str)) => Ok(src_str),
+
+        _ => Err(TypecheckError::InvalidConstExpr {
+            expr: Box::new(expr.clone()),
+        }),
+    }
+}
+
+pub fn const_eval_integer(expr: &Expression, ctx: &Context) -> TypecheckResult<IntConstant> {
+    match expr.const_eval(ctx) {
+        Some(Literal::Integer(int_const)) => Ok(int_const),
 
         _ => Err(TypecheckError::InvalidConstExpr {
             expr: Box::new(expr.clone()),

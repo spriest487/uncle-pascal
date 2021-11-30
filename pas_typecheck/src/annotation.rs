@@ -1,11 +1,7 @@
 use std::{fmt, rc::Rc};
 
 use pas_common::span::*;
-use pas_syn::{
-    ast::{Annotation, DeclNamed, TypeDeclName},
-    ident::IdentPath,
-    Ident,
-};
+use pas_syn::{ast::{Annotation, DeclNamed, TypeDeclName}, ident::IdentPath, Ident, IntConstant};
 use pas_syn::ast::TypeList;
 
 use crate::{ast::{Expression, FunctionDecl}, GenericError, GenericResult, result::*, ty::*, ValueKind};
@@ -283,6 +279,7 @@ impl Annotation for TypeAnnotation {
     type Name = Symbol;
     type Pattern = TypePattern;
     type ConstStringExpr = String;
+    type ConstIntegerExpr = IntConstant;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

@@ -1,3 +1,4 @@
+* x[2].ToString() parses wrong!
 * things that expect literals that should use expressions + const eval:
   * lib srcs
   * array bounds/indices

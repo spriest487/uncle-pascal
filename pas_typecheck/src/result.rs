@@ -5,7 +5,7 @@ use crate::{
     GenericError, Type, ValueKind,
 };
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
-use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator};
+use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator, IntConstant};
 use std::fmt;
 use crate::ast::{DeclMod, Statement};
 
@@ -22,6 +22,11 @@ pub enum TypecheckError {
     InvalidIndexer {
         base: Box<Expression>,
         index_ty: Type,
+        span: Span,
+    },
+    IndexOutOfBounds {
+        base_ty: Box<Type>,
+        index: IntConstant,
         span: Span,
     },
     TypeMismatch {
@@ -189,6 +194,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
             TypecheckError::InvalidIndexer { span, .. } => span,
+            TypecheckError::IndexOutOfBounds { span, .. } => span,
             TypecheckError::TypeMismatch { span, .. } => span,
             TypecheckError::NotMutable { expr, .. } => expr.annotation().span(),
             TypecheckError::NotAddressable { span, .. } => span,
@@ -236,6 +242,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidArgs { .. } => "Invalid arguments".to_string(),
             TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
             TypecheckError::InvalidIndexer { .. } => "Invalid indexer expression".to_string(),
+            TypecheckError::IndexOutOfBounds { .. } => "Index out of bounds".to_string(),
             TypecheckError::TypeMismatch { .. } => "Type mismatch".to_string(),
             TypecheckError::NotMutable { .. } => "Value not mutable".to_string(),
             TypecheckError::NotAddressable { .. } => "Value not addressable".to_string(),
@@ -409,6 +416,10 @@ impl fmt::Display for TypecheckError {
             TypecheckError::InvalidIndexer { base, index_ty, .. } => {
                 let base_ty = base.annotation().ty();
                 write!(f, "`{}` cannot be used as an index for `{}` of type `{}`", index_ty, base, base_ty)
+            }
+
+            TypecheckError::IndexOutOfBounds { base_ty, index, .. } => {
+                write!(f, "index value `{}` is out of range for type `{}`", index, base_ty)
             }
 
             TypecheckError::TypeMismatch { expected, actual, .. } => {
