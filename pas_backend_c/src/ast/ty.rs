@@ -12,12 +12,20 @@ use pas_ir::prelude::{ClassID, FieldID};
 pub enum Type {
     Void,
     Int,
+    Int16,
+    UInt16,
     Int32,
+    UInt32,
+    Int64,
+    UInt64,
+    PtrDiffType,
+    SizeType,
     Struct(StructName),
     Pointer(Box<Type>),
     Bool,
     Float,
     UChar,
+    SChar,
     SizedArray(Box<Type>, usize),
     FunctionPointer {
         return_ty: Box<Type>,
@@ -34,10 +42,19 @@ impl Type {
             metadata::Type::Struct(id) => Type::Struct(StructName::Struct(*id)),
             metadata::Type::Variant(id) => Type::Struct(StructName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
-            metadata::Type::I32 => Type::Int32,
             metadata::Type::Bool => Type::Bool,
             metadata::Type::F32 => Type::Float,
             metadata::Type::U8 => Type::UChar,
+            metadata::Type::I8 => Type::SChar,
+            metadata::Type::I16 => Type::Int16,
+            metadata::Type::U16 => Type::UInt16,
+            metadata::Type::I32 => Type::Int32,
+            metadata::Type::U32 => Type::UInt32,
+            metadata::Type::I64 => Type::Int64,
+            metadata::Type::U64 => Type::UInt64,
+            metadata::Type::ISize => Type::PtrDiffType,
+            metadata::Type::USize => Type::SizeType,
+
             metadata::Type::Array { element, dim } => {
                 let element = Type::from_metadata(element, module);
                 module.make_array_type(element, *dim)
@@ -65,8 +82,23 @@ impl Type {
             Type::Int => {
                 left.push_str("int");
             }
+            Type::Int16 => {
+                left.push_str("int16_t");
+            }
+            Type::UInt16 => {
+                left.push_str("uint16_t");
+            }
             Type::Int32 => {
                 left.push_str("int32_t");
+            }
+            Type::UInt32 => {
+                left.push_str("uint32_t");
+            }
+            Type::Int64 => {
+                left.push_str("int64_t");
+            }
+            Type::UInt64 => {
+                left.push_str("uint64_t");
             }
             Type::Bool => {
                 left.push_str("bool");
@@ -76,6 +108,15 @@ impl Type {
             }
             Type::UChar => {
                 left.push_str("unsigned char");
+            }
+            Type::SChar => {
+                left.push_str("signed char");
+            }
+            Type::SizeType => {
+                left.push_str("size_t");
+            }
+            Type::PtrDiffType => {
+                left.push_str("ptrdiff_t");
             }
 
             Type::Struct(name) => {
@@ -122,12 +163,20 @@ impl Type {
         match self {
             Type::Void => "void".to_string(),
             Type::Int => "int".to_string(),
+            Type::Int16 => "int16_t".to_string(),
+            Type::UInt16 => "uint16_t".to_string(),
             Type::Int32 => "int32_t".to_string(),
+            Type::UInt32 => "uint32_t".to_string(),
+            Type::Int64 => "int64_t".to_string(),
+            Type::UInt64 => "uint64_t".to_string(),
+            Type::PtrDiffType => "ptrdiff_t".to_string(),
+            Type::SizeType => "size_t".to_string(),
             Type::Struct(name) => format!("struct {}", name),
             Type::SizedArray(ty, ..) | Type::Pointer(ty) => format!("{}*", ty.typename()),
             Type::Bool => "bool".to_string(),
             Type::Float => "float".to_string(),
             Type::UChar => "unsigned char".to_string(),
+            Type::SChar => "signed char".to_string(),
             Type::FunctionPointer { return_ty, params } => {
                 let mut name = format!("{} (*)(", return_ty.typename());
                 for (i, param) in params.iter().enumerate() {

@@ -5,7 +5,6 @@
 
 # critical
 
-* calculator.pas crashes the interpreter
 * x[2].ToString() parses wrong!
 * c codegen: escaping! can't do ""
 * better message when iface impl doens't match decl sig

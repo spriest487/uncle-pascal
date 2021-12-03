@@ -606,10 +606,21 @@ impl Metadata {
                 Type::RcPointer(Some(ClassID::Interface(iface_id)))
             }
 
-            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
+
+            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => Type::I8,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => Type::I16,
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => Type::U16,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => Type::U32,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => Type::I64,
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => Type::U64,
+            pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => Type::ISize,
+            pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => Type::USize,
+
             pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Type::F32,
+
             pas_ty::Type::Primitive(pas_ty::Primitive::Pointer) => Type::Nothing.ptr(),
 
             pas_ty::Type::Pointer(target) => self.find_type(target).ptr(),

@@ -265,7 +265,15 @@ pub enum Type {
 
     Bool,
     U8,
+    I8,
+    I16,
+    U16,
     I32,
+    U32,
+    I64,
+    U64,
+    USize,
+    ISize,
     F32,
 }
 
@@ -340,10 +348,18 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nothing => write!(f, "none"),
-            Type::I32 => write!(f, "i32"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),
+            Type::I8 => write!(f, "i8"),
+            Type::I16 => write!(f, "i16"),
+            Type::U16 => write!(f, "u16"),
+            Type::I32 => write!(f, "i32"),
+            Type::U32 => write!(f, "u32"),
+            Type::I64 => write!(f, "i64"),
+            Type::U64 => write!(f, "u64"),
+            Type::ISize => write!(f, "isize"),
+            Type::USize => write!(f, "usize"),
             Type::Pointer(target) => write!(f, "^{}", target),
             Type::Struct(id) => write!(f, "{{struct {}}}", id),
             Type::Variant(id) => write!(f, "{{variant {}}}", id),
