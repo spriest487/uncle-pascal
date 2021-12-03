@@ -1,6 +1,7 @@
 use crate::{heap::NativeHeapError, marshal::MarshalError, Pointer};
 use pas_common::{span::Span, DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
+use crate::stack::StackError;
 
 #[derive(Debug)]
 pub enum ExecError {
@@ -8,6 +9,7 @@ pub enum ExecError {
         msg: String,
     },
     MarshalError(MarshalError),
+    StackError(StackError),
     ExternSymbolLoadFailed {
         msg: String,
         lib: String,
@@ -60,6 +62,7 @@ impl fmt::Display for ExecError {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
             ExecError::MarshalError { .. } => write!(f, "Marshalling failed"),
+            ExecError::StackError(..) => write!(f, "Stack operation failed"),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
             }
@@ -95,6 +98,10 @@ impl From<MarshalError> for ExecError {
     fn from(err: MarshalError) -> Self {
         ExecError::MarshalError(err)
     }
+}
+
+impl From<StackError> for ExecError {
+    fn from(err: StackError) -> Self { ExecError::StackError(err) }
 }
 
 pub type ExecResult<T> = Result<T, ExecError>;

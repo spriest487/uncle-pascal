@@ -19,7 +19,6 @@ use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 use crate::heap::NativeHeap;
-
 mod builtin;
 mod func;
 mod heap;
@@ -366,7 +365,7 @@ impl Interpreter {
         let return_ty = func.return_ty();
         if *return_ty != Type::Nothing {
             let result_cell = self.default_init_cell(return_ty)?;
-            self.current_frame_mut()?.push_local(return_ty.clone(), &result_cell, None)?;
+            self.current_frame_mut()?.add_undeclared_local(return_ty.clone(), &result_cell)?;
         }
 
         if args.len() != func.param_tys().len() {
@@ -380,7 +379,7 @@ impl Interpreter {
 
         // store params in either $0.. or $1..
         for (arg_cell, param_ty) in args.iter().zip(func.param_tys()) {
-            self.current_frame_mut()?.push_local(param_ty.clone(), arg_cell, None)
+            self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)
                 .map_err(|err| {
                     ExecError::illegal_state(err.to_string())
                 })?;
@@ -658,8 +657,7 @@ impl Interpreter {
             }
 
             Instruction::LocalAlloc(id, ty) => {
-                let alloc_id = self.exec_local_alloc(*pc, ty)?;
-                assert_eq!(*id, alloc_id)
+                self.exec_local_alloc(*id, *pc, ty)?;
             },
 
             Instruction::LocalBegin => self.exec_local_begin()?,
@@ -754,16 +752,14 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_local_alloc(&mut self, pc: usize, ty: &Type) -> ExecResult<LocalID> {
+    fn exec_local_alloc(&mut self, id: LocalID, pc: usize, ty: &Type) -> ExecResult<()> {
         let uninit_cell = self.default_init_cell(ty)?;
 
         let current_frame = self.current_frame_mut()?;
-        let id = current_frame.push_local(ty.clone(), &uninit_cell, Some(pc))
-            .map_err(|err| {
-                ExecError::illegal_state(err.to_string())
-            })?;
+        current_frame.declare_local(id, ty.clone(), &uninit_cell, pc)
+            .map_err(|err| self.add_debug_ctx(err.into()))?;
 
-        Ok(id)
+        Ok(())
     }
 
     fn exec_local_begin(&mut self) -> ExecResult<()> {

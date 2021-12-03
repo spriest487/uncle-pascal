@@ -57,20 +57,60 @@ impl StackFrame {
         }
     }
 
-    pub fn push_local(&mut self, ty: Type, value: &ValueCell, alloc_pc: Option<usize>) -> MarshalResult<LocalID> {
+    /// add a local to the stack without a local variable declaration. function params and return
+    /// values get allocated by this mechanism because they aren't ever declared as locals in the
+    /// body of the function
+    pub fn add_undeclared_local(&mut self, ty: Type, value: &ValueCell) -> MarshalResult<LocalID> {
+        let stack_offset = self.stack_alloc(value)?;
+
+        self.locals.push(StackAlloc {
+            alloc_pc: None,
+            ty,
+            stack_offset,
+        });
+
+        let id = LocalID(self.locals.len() - 1);
+        Ok(id)
+    }
+
+    pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &ValueCell, alloc_pc: usize) -> StackResult<()> {
+        // we only need to allocate new variables the first time the block is executed, so if
+        // we try to allocate twice from the same instruction, just do nothing
+        // todo: this could be cleaned up by allocating everything at the start of the block
+        // instead of doing it as we encounter new locals
+        for (existing_id, local) in self.locals.iter().enumerate() {
+            if local.alloc_pc == Some(alloc_pc) {
+                if existing_id != id.0 {
+                    return Err(StackError::DuplicateLocalAlloc {
+                        stack_frame: self.name.clone(),
+                        id,
+                        first_pc: local.alloc_pc,
+                        next_pc: alloc_pc,
+                    });
+                }
+
+                return Ok(());
+            }
+        }
+
+        let stack_offset = self.stack_alloc(value)?;
+
+        self.locals.push(StackAlloc {
+            alloc_pc: Some(alloc_pc),
+            ty,
+            stack_offset,
+        });
+
+        Ok(())
+    }
+
+    fn stack_alloc(&mut self, value: &ValueCell) -> MarshalResult<usize> {
         let start_offset = self.stack_offset;
         let alloc_slice = &mut self.stack_mem[start_offset..];
         let size = self.marshaller.marshal(value, alloc_slice)?;
         self.stack_offset += size;
 
-        self.locals.push(StackAlloc {
-            alloc_pc,
-            ty,
-            stack_offset: start_offset,
-        });
-
-        let id = LocalID(self.locals.len() - 1);
-        Ok(id)
+        Ok(start_offset)
     }
 
     pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
@@ -136,6 +176,12 @@ impl StackFrame {
 #[derive(Debug, Clone)]
 pub enum StackError {
     LocalNotAllocated(LocalID),
+    DuplicateLocalAlloc {
+        stack_frame: String,
+        id: LocalID,
+        first_pc: Option<usize>,
+        next_pc: usize,
+    },
     IllegalJmp {
         current_block: usize,
         dest_block: usize,
@@ -155,6 +201,16 @@ impl fmt::Display for StackError {
         match self {
             StackError::LocalNotAllocated(id) => {
                 write!(f, "local is not allocated: {}", id)
+            }
+            StackError::DuplicateLocalAlloc { id, first_pc, next_pc, stack_frame } => {
+                write!(f, "{}: local {} was reallocated by a separate instruction (", stack_frame, id)?;
+
+                match first_pc {
+                    Some(first_pc) => write!(f, "first alloc @ instruction {}, next alloc @ instruction {}", first_pc, next_pc)?,
+                    None => write!(f, " (reallocation @ instruction {})", next_pc)?,
+                }
+
+                write!(f, ")")
             }
             StackError::EmptyBlockStack => {
                 write!(f, "unbalanced block delimiters: popping empty block stack")
