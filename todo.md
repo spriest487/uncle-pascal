@@ -1,24 +1,17 @@
-* x[2].ToString() parses wrong!
-* things that expect literals that should use expressions + const eval:
-  * lib srcs
-  * array bounds/indices
-* const eval
-* @-syntax attributes
-* marshalled globals
-* rework namespaces/at least the find() logic so it does imports better
-* newlines/escape chars in string literals
-* c ffi
+* interpreter: marshalled globals
+* typechecker: rework namespaces/at least the find() logic so it does imports better
+* parser: newlines/escape chars in string literals
+* backend: c ffi
 
 # critical
 
+* calculator.pas crashes the interpreter
+* x[2].ToString() parses wrong!
 * c codegen: escaping! can't do ""
-* better message when unit name conflicts with a member name (or make this not an error)
 * better message when iface impl doens't match decl sig
 * add `NativeUInt` type
 * unique compiler error codes
-* module privacy/exported functions and impls (so you can't call `String.Dispose` explicitly)
 * does symbol with same name declared in branch scope confuse the initialization consolidation?
-* interpreter should disallow overwriting cells on stack/heap with cells of different types (by dtor)
 * indexing into something not indexable throws wrong error (e.g. string.chars[i])
 
 # type inference
@@ -26,9 +19,12 @@
 
 # big features
 
-* const evaluation
 * enums/sets/range types
+* switch statement
+* match expression
 * generic interfaces/generic methods
+* @-attributes - replace `export`, `external` with these (eventually make them available at runtime but not now)
+* proper function overloads (one declared name, multiple signatures)
 
 # todos
 
