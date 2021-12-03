@@ -32,6 +32,44 @@ impl Primitive {
         Primitive::Pointer,
     ];
 
+    pub fn is_numeric(&self) -> bool {
+        match self {
+            Primitive::Boolean => false,
+            _ => true,
+        }
+    }
+
+    pub fn is_signed(&self) -> bool {
+        match self {
+            Primitive::Int8
+            | Primitive::Int16
+            | Primitive::Int32
+            | Primitive::Int64
+            | Primitive::NativeInt
+            | Primitive::Real32 => true,
+
+            _ => false,
+        }
+    }
+
+    pub fn is_integer(&self) -> bool {
+        match self {
+            | Primitive::Byte
+            | Primitive::Int8
+            | Primitive::Int16
+            | Primitive::UInt16
+            | Primitive::Int32
+            | Primitive::UInt32
+            | Primitive::Int64
+            | Primitive::UInt64
+            | Primitive::NativeInt
+            | Primitive::NativeUInt
+            | Primitive::Pointer => true,
+
+            | _ => false,
+        }
+    }
+
     pub fn name(&self) -> &str {
         match self {
             Primitive::Boolean => "Boolean",

@@ -285,8 +285,16 @@ impl Interpreter {
                 Ok(ref_val.into_owned())
             },
 
-            Value::LiteralI32(i) => Ok(ValueCell::I32(*i)),
             Value::LiteralByte(i) => Ok(ValueCell::U8(*i)),
+            Value::LiteralI8(i) => Ok(ValueCell::I8(*i)),
+            Value::LiteralI16(i) => Ok(ValueCell::I16(*i)),
+            Value::LiteralU16(i) => Ok(ValueCell::U16(*i)),
+            Value::LiteralI32(i) => Ok(ValueCell::I32(*i)),
+            Value::LiteralU32(i) => Ok(ValueCell::U32(*i)),
+            Value::LiteralI64(i) => Ok(ValueCell::I64(*i)),
+            Value::LiteralU64(i) => Ok(ValueCell::U64(*i)),
+            Value::LiteralISize(i) => Ok(ValueCell::ISize(*i)),
+            Value::LiteralUSize(i) => Ok(ValueCell::USize(*i)),
             Value::LiteralF32(f) => Ok(ValueCell::F32(*f)),
             Value::LiteralBool(b) => Ok(ValueCell::Bool(*b)),
             Value::LiteralNull => Ok(ValueCell::Pointer(Pointer::null(Type::Nothing))),

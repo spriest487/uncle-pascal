@@ -694,6 +694,12 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
                     .expect("Int32-typed constant must be within range of i32");
                 builder.mov(out.clone(), Value::LiteralI32(val));
             }
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => {
+                let val = i
+                    .as_u32()
+                    .expect("Int32-typed constant must be within range of u32");
+                builder.mov(out.clone(), Value::LiteralU32(val));
+            }
             pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
                 let val = i
                     .as_u8()

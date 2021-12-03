@@ -272,9 +272,7 @@ impl Type {
 
     pub fn self_orderable(&self) -> bool {
         match self {
-            Type::Primitive(Primitive::Real32) => true,
-            Type::Primitive(Primitive::Int32) => true,
-            Type::Primitive(Primitive::Byte) => true,
+            Type::Primitive(primitive) if primitive.is_numeric() => true,
 
             _ => false,
         }
@@ -297,12 +295,18 @@ impl Type {
         }
 
         let conversion = match self {
-            Type::Primitive(Primitive::Pointer) if *from == Type::Nil => Conversion::Blittable,
+            Type::Primitive(primitive_ty) => {
+                match primitive_ty {
+                    Primitive::Pointer if *from == Type::Nil => Conversion::Blittable,
 
-            Type::Primitive(Primitive::Pointer) if from.is_rc_reference() => {
-                Conversion::UnsafeBlittable
+                    Primitive::Pointer if from.is_rc_reference() => {
+                        Conversion::UnsafeBlittable
+                    }
+                    Primitive::Pointer if from.is_pointer() => Conversion::UnsafeBlittable,
+
+                    _ => Conversion::Illegal,
+                }
             }
-            Type::Primitive(Primitive::Pointer) if from.is_pointer() => Conversion::UnsafeBlittable,
 
             Type::Pointer(..) | Type::Class(..) | Type::Interface(..) | Type::DynArray { .. }
                 if *from == Type::Primitive(Primitive::Pointer) =>
@@ -358,11 +362,16 @@ impl Type {
             (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Minus, Type::Primitive(b))
             | (Type::Primitive(a), Operator::IntegerDivide, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => *a == *b,
+            | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => {
+                if a.is_numeric() && b.is_numeric() {
+                    *a == *b
+                } else {
+                    false
+                }
+            },
 
             (_, Operator::Shl, _) | (_, Operator::Shr, _) if *self == *rhs => match self {
-                Type::Primitive(Primitive::Byte) => true,
-                Type::Primitive(Primitive::Int32) => true,
+                Type::Primitive(p) if p.is_integer() && !p.is_signed() => true,
                 _ => false,
             },
 

@@ -1,11 +1,6 @@
 use std::fmt;
 
-use pas_ir::{
-    self as ir,
-    metadata::ty::ClassID,
-    metadata::{self, StringID, StructID},
-    Label, LocalID,
-};
+use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, StructID}, Label, LocalID};
 
 use crate::ast::{ty::FieldName, FunctionName, Module, StructName, Type};
 
@@ -64,7 +59,7 @@ pub enum Expr {
     Deref(Box<Expr>),
     LitString(StringID),
     LitBool(bool),
-    LitInt(i64),
+    LitInt(i128),
     LitFloat(f64),
     Null,
     InfixOp {
@@ -102,8 +97,16 @@ impl Expr {
         match v {
             ir::Value::LiteralBool(b) => Expr::LitBool(*b),
             ir::Value::LiteralNull => Expr::Null,
-            ir::Value::LiteralI32(i) => Expr::LitInt(i64::from(*i)),
-            ir::Value::LiteralByte(i) => Expr::LitInt(i64::from(*i)),
+            ir::Value::LiteralI8(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralByte(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralI16(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralU16(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralI32(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralU32(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralI64(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralU64(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralISize(i) => Expr::LitInt(*i as i128),
+            ir::Value::LiteralUSize(i) => Expr::LitInt(*i as i128),
             ir::Value::LiteralF32(f) => Expr::LitFloat(f64::from(*f)),
             ir::Value::Ref(r) => Expr::translate_ref(r, module),
         }
@@ -686,7 +689,7 @@ impl<'a> Builder<'a> {
 
                 Expr::call(
                     is_impl_func,
-                    vec![actual_class_ptr, Expr::LitInt(iface_id.0 as i64)],
+                    vec![actual_class_ptr, Expr::LitInt(iface_id.0 as i128)],
                 )
             }
         };

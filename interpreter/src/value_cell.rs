@@ -94,8 +94,16 @@ impl ArrayCell {
 #[derive(Debug, Clone)]
 pub enum ValueCell {
     Bool(bool),
+    I8(i8),
     U8(u8),
+    I16(i16),
+    U16(u16),
     I32(i32),
+    U32(u32),
+    I64(i64),
+    U64(u64),
+    ISize(isize),
+    USize(usize),
     F32(f32),
     RcCell(Box<RcCell>),
     Function(Rc<Function>),
