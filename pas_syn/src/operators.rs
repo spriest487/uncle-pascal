@@ -53,10 +53,10 @@ pub enum Operator {
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-pub static PRECEDENCE: [(Operator, Position); 25] = [
+static PRECEDENCE: [(Operator, Position); 25] = [
+    (Operator::Index, Position::Binary),
     (Operator::Member, Position::Binary),
     (Operator::Call, Position::Postfix),
-    (Operator::Index, Position::Binary),
     (Operator::Deref, Position::Postfix),
     (Operator::AddressOf, Position::Prefix),
     (Operator::Plus, Position::Prefix),
@@ -89,17 +89,21 @@ impl Operator {
     }
 
     pub fn precedence(self, in_pos: Position) -> usize {
-        PRECEDENCE
-            .iter()
-            .enumerate()
-            .find(|(_, (op, pos))| *op == self && *pos == in_pos)
-            .map(|(index, _)| index)
-            .unwrap_or_else(|| {
-                panic!(
-                    "operator {} must have a precedence value in position {}",
-                    self, in_pos
-                )
-            })
+        match self {
+            Operator::Member | Operator::Index | Operator::Call => 0,
+
+            _ => PRECEDENCE
+                .iter()
+                .enumerate()
+                .find(|(_, (op, pos))| *op == self && *pos == in_pos)
+                .map(|(index, _)| index)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "operator {} must have a precedence value in position {}",
+                        self, in_pos
+                    )
+                })
+        }
     }
 
     pub fn is_valid_in_pos(self, in_pos: Position) -> bool {
