@@ -25,9 +25,11 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));
 
     let string = state.read_string(&arg_0.to_deref())?;
-    let int: i32 = string.parse().unwrap_or_else(|_| {
-        panic!("IntToStr failed: could not convert `{}` to int", string);
-    });
+    let int: i32 = string.parse().map_err(|_| {
+        ExecError::Raised {
+            msg: format!("could not convert `{}` to Integer", string),
+        }
+    })?;
 
     state.store(&RETURN_REF, ValueCell::I32(int))?;
 
