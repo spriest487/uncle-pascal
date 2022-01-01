@@ -1,3 +1,5 @@
+* CASE: fix separators - should allow optional ; before end/else
+* 
 * interpreter: marshalled globals
 * typechecker: rework namespaces/at least the find() logic so it does imports better
 * parser: newlines/escape chars in string literals

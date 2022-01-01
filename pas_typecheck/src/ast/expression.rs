@@ -278,14 +278,7 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
     match stmt {
         ast::Statement::Call(call) => expect_call_initialized(call, ctx),
 
-        ast::Statement::If(if_stmt) => {
-            expect_expr_initialized(&if_stmt.cond, ctx)?;
-            expect_expr_initialized(&if_stmt.then_branch, ctx)?;
-            if let Some(else_branch) = &if_stmt.else_branch {
-                expect_expr_initialized(else_branch, ctx)?;
-            }
-            Ok(())
-        }
+        ast::Statement::If(if_stmt) => expect_if_initialized(if_stmt, ctx),
 
         ast::Statement::Block(block) => expect_block_initialized(block, ctx),
 
@@ -314,6 +307,8 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
         ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(()),
 
         ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
+
+        ast::Statement::Case(case) => expect_case_initialized(case, ctx),
     }
 }
 
@@ -438,6 +433,15 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     Ok(())
 }
 
+fn expect_if_initialized(if_stmt: &IfCond, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&if_stmt.cond, ctx)?;
+    expect_expr_initialized(&if_stmt.then_branch, ctx)?;
+    if let Some(else_branch) = &if_stmt.else_branch {
+        expect_expr_initialized(else_branch, ctx)?;
+    }
+    Ok(())
+}
+
 fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()> {
     for stmt in &block.statements {
         expect_stmt_initialized(stmt, ctx)?;
@@ -445,5 +449,20 @@ fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()>
     if let Some(output) = &block.output {
         expect_expr_initialized(output, ctx)?;
     }
+    Ok(())
+}
+
+fn expect_case_initialized(case: &Case, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&case.cond_expr, ctx)?;
+
+    for branch in &case.branches {
+        expect_expr_initialized(&branch.value, ctx)?;
+        expect_stmt_initialized(&branch.stmt, ctx)?;
+    }
+
+    if let Some(else_branch) = &case.else_branch {
+        expect_stmt_initialized(else_branch, ctx)?;
+    }
+
     Ok(())
 }

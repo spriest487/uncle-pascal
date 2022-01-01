@@ -132,7 +132,7 @@ impl Unit<Span> {
         let init = tokens.match_separated(Separator::Semicolon, |_, tokens| {
             let stmt_next = tokens
                 .look_ahead()
-                .match_one(statement_start_matcher())
+                .match_one(stmt_start_matcher())
                 .is_some();
 
             if !stmt_next {

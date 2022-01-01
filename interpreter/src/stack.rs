@@ -114,12 +114,18 @@ impl StackFrame {
     }
 
     pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
-        let alloc = self.locals.get(id.0).ok_or_else(|| StackError::LocalNotAllocated(id))?;
+        match self.locals.get(id.0) {
+            Some(alloc) => {
+                Ok(Pointer {
+                    ty: alloc.ty.clone(),
+                    addr: self.stack_mem.as_ptr() as usize + alloc.stack_offset,
+                })
+            }
 
-        Ok(Pointer {
-            ty: alloc.ty.clone(),
-            addr: self.stack_mem.as_ptr() as usize + alloc.stack_offset,
-        })
+            None => {
+                Err(StackError::LocalNotAllocated(id))
+            }
+        }
     }
 
     pub fn push_block(&mut self) {

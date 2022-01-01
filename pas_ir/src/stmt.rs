@@ -54,6 +54,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         ast::Statement::Continue(_) => {
             builder.continue_loop();
         }
+
+        ast::Statement::Case(case) => {
+            translate_case(case, builder);
+        }
     }
 
     builder.pop_debug_context()
@@ -214,5 +218,55 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.append(Instruction::Move {
         out: lhs,
         new_val: rhs.into(),
+    });
+}
+
+fn translate_case(case: &pas_ty::ast::Case, builder: &mut Builder) {
+    builder.scope(|builder| {
+        let cond_expr_val = translate_expr(&case.cond_expr, builder);
+
+        let break_label = builder.alloc_label();
+
+        let mut branch_labels = Vec::new();
+        for _ in 0..case.branches.len() {
+            branch_labels.push(builder.alloc_label());
+        }
+
+        let else_label = match &case.else_branch {
+            Some(_) => Some(builder.alloc_label()),
+            _ => None,
+        };
+
+        // jump to the branch statement where the actual value is equal to the branch value
+        for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
+            builder.scope(|builder| {
+                let branch_val = translate_expr(&branch.value, builder);
+
+                let cond_eq = builder.local_temp(Type::Bool);
+
+                builder.eq(cond_eq.clone(), branch_val, cond_expr_val.clone());
+                builder.jmp_if(*branch_label, cond_eq);
+            });
+        }
+
+        if let Some(else_label) = else_label {
+            builder.jmp(else_label);
+        } else {
+            builder.jmp(break_label);
+        }
+
+        // write the branch statements after their respective labels
+        for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
+            builder.label(*branch_label);
+            translate_stmt(&branch.stmt, builder);
+            builder.jmp(break_label);
+        }
+        if let (Some(else_stmt), Some(else_label)) = (&case.else_branch, else_label) {
+            builder.label(else_label);
+            translate_stmt(else_stmt, builder);
+            builder.jmp(break_label);
+        }
+
+        builder.label(break_label);
     });
 }

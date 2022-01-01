@@ -5,6 +5,7 @@ use syn::ast;
 use pas_typecheck as pas_ty;
 use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
+
 use crate::ty::ClassID;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {

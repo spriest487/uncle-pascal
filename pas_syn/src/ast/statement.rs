@@ -1,76 +1,17 @@
+mod local_binding;
+mod case;
+
 use crate::ast::Raise;
 use crate::{
     ast::{
-        expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, Typed, WhileLoop,
+        expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, WhileLoop,
     },
     parse::prelude::*,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LocalBinding<A: Annotation> {
-    pub name: Ident,
-    pub val_ty: A::Type,
-    pub val: Option<Expression<A>>,
-    pub mutable: bool,
-    pub annotation: A,
-}
-
-impl LocalBinding<Span> {
-    pub fn parse(tokens: &mut TokenStream, allow_mutable: bool) -> ParseResult<Self> {
-        let kw_matcher = if allow_mutable {
-            Keyword::Let.or(Keyword::Var)
-        } else {
-            Keyword::Let.into()
-        };
-
-        let let_kw = tokens.match_one(kw_matcher)?;
-        let mutable = match let_kw {
-            TokenTree::Keyword {
-                kw: Keyword::Var, ..
-            } => true,
-            _ => false,
-        };
-
-        let name_token = tokens.match_one(Matcher::AnyIdent)?;
-
-        let val_ty = match tokens.match_one_maybe(Separator::Colon) {
-            Some(_) => TypeName::parse(tokens)?,
-            None => TypeName::Unknown(name_token.span().clone()),
-        };
-
-        let (val, span) = match tokens.match_one_maybe(Operator::Assignment) {
-            Some(_) => {
-                let val = Expression::parse(tokens)?;
-                let span = let_kw.span().to(val.annotation());
-                (Some(val), span)
-            }
-            None => (None, let_kw.span().to(val_ty.span())),
-        };
-
-        Ok(LocalBinding {
-            name: name_token.as_ident().cloned().unwrap(),
-            val_ty,
-            mutable,
-            val,
-            annotation: span,
-        })
-    }
-}
-
-impl<A: Annotation> fmt::Display for LocalBinding<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let kw = if self.mutable { "var" } else { "let" };
-
-        write!(f, "{} {}", kw, self.name)?;
-        if self.val_ty.is_known() {
-            write!(f, ": {}", self.val_ty)?;
-        }
-        if let Some(val) = &self.val {
-            write!(f, " := {}", val)?;
-        }
-        Ok(())
-    }
-}
+pub use self::{
+    local_binding::LocalBinding,
+    case::{Case, CaseBranch},
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
@@ -131,6 +72,7 @@ pub enum Statement<A: Annotation> {
     Break(A),
     Continue(A),
     Raise(Box<Raise<A>>),
+    Case(Box<Case<A>>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -150,6 +92,7 @@ impl<A: Annotation> Statement<A> {
             Statement::Break(a) => a,
             Statement::Continue(a) => a,
             Statement::Raise(raise) => &raise.annotation,
+            Statement::Case(case) => &case.annotation,
         }
     }
 
@@ -251,7 +194,7 @@ impl<A: Annotation> Statement<A> {
     }
 }
 
-pub fn statement_start_matcher() -> Matcher {
+pub fn stmt_start_matcher() -> Matcher {
     Matcher::Keyword(Keyword::Let)
         .or(Keyword::Var)
         .or(Keyword::For)
@@ -259,12 +202,13 @@ pub fn statement_start_matcher() -> Matcher {
         .or(Keyword::Break)
         .or(Keyword::Continue)
         .or(Keyword::Exit)
+        .or(Keyword::Case)
         .or(match_operand_start())
 }
 
 impl Statement<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Statement<Span>> {
-        let stmt_start = statement_start_matcher();
+        let stmt_start = stmt_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
             Some(TokenTree::Keyword {
@@ -326,6 +270,12 @@ impl Statement<Span> {
                 }
             }
 
+            Some(TokenTree::Keyword { kw: Keyword::Case, .. }) => {
+                let case = Case::parse(tokens)?;
+
+                Ok(Statement::Case(Box::new(case)))
+            }
+
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
                 let expr = Expression::parse(tokens)?;
@@ -362,6 +312,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::Break(..) => write!(f, "{}", Keyword::Break),
             Statement::Continue(..) => write!(f, "{}", Keyword::Continue),
             Statement::Raise(raise) => write!(f, "{}", raise),
+            Statement::Case(case) => write!(f, "{}", case),
         }
     }
 }

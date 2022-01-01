@@ -56,6 +56,7 @@ pub enum ParseError {
     EmptyWhereClause(WhereClause<TypeName>),
     TypeConstraintAlreadySpecified(TypeConstraint<TypeName>),
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
+    UnterminatedStatement { span: Span },
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -75,6 +76,7 @@ impl Spanned for ParseError {
             ParseError::EmptyTypeParamList(tl) => tl.span(),
             ParseError::EmptyTypeArgList(tl) => tl.span(),
             ParseError::EmptyWhereClause(c) => c.span(),
+            ParseError::UnterminatedStatement { span } => span,
         }
     }
 }
@@ -94,6 +96,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyTypeParamList { .. } => write!(f, "Empty type parameter list"),
             ParseError::EmptyTypeArgList { .. } => write!(f, "Empty type argument list"),
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
+            ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated statement"),
         }
     }
 }
@@ -147,6 +150,10 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::NoMatchingParamForTypeConstraint(c) => {
                 format!("type constraint was specified for parameter `{}` which does not exist", c.param_ident)
+            }
+
+            ParseError::UnterminatedStatement { .. } => {
+                format!("statement here is unterminated")
             }
         };
 

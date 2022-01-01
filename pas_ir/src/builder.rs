@@ -441,6 +441,21 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn label(&mut self, label: Label) {
+        self.append(Instruction::Label(label))
+    }
+
+    pub fn jmp(&mut self, dest: Label) {
+        self.append(Instruction::Jump { dest })
+    }
+
+    pub fn jmp_if(&mut self, dest: Label, cond: impl Into<Value>) {
+        self.append(Instruction::JumpIf {
+            dest,
+            test: cond.into(),
+        })
+    }
+
     pub fn bind_param(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
         self.current_scope_mut().bind_param(id, name, ty, by_ref);
     }
