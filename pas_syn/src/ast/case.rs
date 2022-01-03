@@ -91,13 +91,13 @@ where
                 break (end_tt, None);
             } else if branches.len() > 0 {
                 if let Some(..) = tokens.match_one_maybe(Keyword::Else) {
-                    let else_stmt = B::parse(tokens)?;
+                    let else_item = B::parse(tokens)?;
 
                     // allow a semicolon separator between the "else" statement and the end keyword
                     tokens.match_one_maybe(Separator::Semicolon);
 
                     let end_tt = tokens.match_one(Keyword::End)?;
-                    break (end_tt, Some(else_stmt));
+                    break (end_tt, Some(else_item));
                 }
             } else if !prev_sep {
                 // just let this match fail - there was no separator after the last branch,
@@ -148,26 +148,26 @@ impl CaseItemParse for Statement<Span> {
 }
 
 #[derive(Debug, Clone, Eq)]
-pub struct CaseBranch<A: Annotation, B> {
+pub struct CaseBranch<A: Annotation, Item> {
     pub value: Box<Expression<A>>,
-    pub item: Box<B>,
+    pub item: Box<Item>,
     pub span: Span,
 }
 
-impl<A, B> PartialEq for CaseBranch<A, B>
+impl<A, Item> PartialEq for CaseBranch<A, Item>
 where
     A: Annotation,
-    B: PartialEq,
+    Item: PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         self.value == other.value && self.item == other.item
     }
 }
 
-impl<A, B> Hash for CaseBranch<A, B>
+impl<A, Item> Hash for CaseBranch<A, Item>
 where
     A: Annotation,
-    B: Hash,
+    Item: Hash,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
@@ -175,7 +175,7 @@ where
     }
 }
 
-impl<A, B> Spanned for CaseBranch<A, B>
+impl<A, Item> Spanned for CaseBranch<A, Item>
 where
     A: Annotation,
 {
@@ -184,10 +184,10 @@ where
     }
 }
 
-impl<A, B> fmt::Display for CaseBranch<A, B>
+impl<A, Item> fmt::Display for CaseBranch<A, Item>
 where
     A: Annotation,
-    B: fmt::Display,
+    Item: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}: {}", self.value, self.item)

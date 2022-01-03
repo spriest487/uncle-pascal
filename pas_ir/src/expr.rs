@@ -1,10 +1,11 @@
-use crate::{prelude::*, translate_stmt, Builder, Type};
+use crate::{prelude::*, translate_stmt, Builder, Type, build_case_block};
 use pas_common::span::*;
 use pas_syn as syn;
 use syn::ast;
 use pas_typecheck as pas_ty;
 use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
 use std::convert::TryFrom;
+use pas_syn::Ident;
 
 use crate::ty::ClassID;
 
@@ -25,77 +26,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Ident(ident, annotation) => {
-            match annotation {
-                TypeAnnotation::TypedValue {
-                    value_kind: ValueKind::Temporary,
-                    ty,
-                    ..
-                } => panic!(
-                    "expr `{}` of type `{}` is referenced by ident `{}` but is of temporary value kind",
-                    expr,
-                    ty,
-                    ident,
-                ),
-
-                TypeAnnotation::Function {
-                    name,
-                    ns,
-                    type_args,
-                    span,
-                    ..
-                } => {
-                    let func_name = ns.clone().child(name.clone());
-                    let func = builder.translate_func(func_name, type_args.clone(), span);
-                    let func_ref = GlobalRef::Function(func.id);
-
-                    Ref::Global(func_ref)
-                }
-
-                // ident lvalues are evaluated as pointers to the original values. they don't need
-                // to be refcounted separately, because if they have a name, they must exist
-                // in a scope at least as wide as the current one
-                TypeAnnotation::TypedValue {
-                    value_kind: ValueKind::Immutable,
-                    ..
-                }
-                | TypeAnnotation::TypedValue {
-                    value_kind: ValueKind::Mutable,
-                    ..
-                }
-                | TypeAnnotation::TypedValue {
-                    value_kind: ValueKind::Uninitialized,
-                    ..
-                } => {
-                    let local_ref = builder
-                        .find_local(&ident.to_string())
-                        .map(|local| {
-                            let value_ref = Ref::Local(local.id());
-                            if local.by_ref() {
-                                value_ref.to_deref()
-                            } else {
-                                value_ref
-                            }
-                        })
-                        .unwrap_or_else(|| {
-                            panic!(
-                                "identifier not found in local scope @ {}: {}",
-                                annotation.span(),
-                                ident
-                            )
-                        });
-
-                    let ref_ty = builder.translate_type(annotation.ty());
-                    let ref_temp = builder.local_temp(ref_ty.ptr());
-
-                    builder.append(Instruction::AddrOf {
-                        out: ref_temp.clone(),
-                        a: local_ref,
-                    });
-                    ref_temp.to_deref()
-                }
-
-                _ => panic!("wrong kind of node annotation for ident: {:?}", expr),
-            }
+            translate_ident(ident, annotation, builder)
         }
 
         ast::Expression::Call(call) => {
@@ -114,6 +45,8 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
+
+        ast::Expression::Case(case) => translate_case_expr(case, builder),
     };
 
     builder.pop_debug_context();
@@ -1260,6 +1193,82 @@ fn translate_dyn_array_ctor(
     arr
 }
 
+fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Builder) -> Ref {
+    match annotation {
+        TypeAnnotation::TypedValue {
+            value_kind: ValueKind::Temporary,
+            ty,
+            ..
+        } => {
+            // this is illegal because temporary values shouldn't have names
+            panic!(
+                "translated expression `{}` of type `{}` is of temporary value kind",
+                ident,
+                ty,
+            )
+        },
+
+        TypeAnnotation::Function {
+            name,
+            ns,
+            type_args,
+            span,
+            ..
+        } => {
+            let func_name = ns.clone().child(name.clone());
+            let func = builder.translate_func(func_name, type_args.clone(), span);
+            let func_ref = GlobalRef::Function(func.id);
+
+            Ref::Global(func_ref)
+        }
+
+        // ident lvalues are evaluated as pointers to the original values. they don't need
+        // to be refcounted separately, because if they have a name, they must exist
+        // in a scope at least as wide as the current one
+        TypeAnnotation::TypedValue {
+            value_kind: ValueKind::Immutable,
+            ..
+        }
+        | TypeAnnotation::TypedValue {
+            value_kind: ValueKind::Mutable,
+            ..
+        }
+        | TypeAnnotation::TypedValue {
+            value_kind: ValueKind::Uninitialized,
+            ..
+        } => {
+            let local_ref = builder
+                .find_local(&ident.to_string())
+                .map(|local| {
+                    let value_ref = Ref::Local(local.id());
+                    if local.by_ref() {
+                        value_ref.to_deref()
+                    } else {
+                        value_ref
+                    }
+                })
+                .unwrap_or_else(|| {
+                    panic!(
+                        "identifier not found in local scope @ {}: {}",
+                        annotation.span(),
+                        ident
+                    )
+                });
+
+            let ref_ty = builder.translate_type(annotation.ty());
+            let ref_temp = builder.local_temp(ref_ty.ptr());
+
+            builder.append(Instruction::AddrOf {
+                out: ref_temp.clone(),
+                a: local_ref,
+            });
+            ref_temp.to_deref()
+        }
+
+        _ => panic!("wrong kind of node annotation for ident: {:?}", ident),
+    }
+}
+
 pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Ref> {
     let (out_val, out_ty) = match &block.output {
         Some(out_expr) => {
@@ -1306,4 +1315,16 @@ pub fn translate_raise(raise: &pas_ty::ast::Raise, builder: &mut Builder) -> Ref
     builder.append(Instruction::Raise { val: val.clone() });
 
     Ref::Discard
+}
+
+fn translate_case_expr(case: &pas_ty::ast::CaseExpr, builder: &mut Builder) -> Ref {
+    let out_ty = builder.translate_type(case.annotation.ty());
+    let out_ref = builder.local_temp(out_ty);
+
+    build_case_block(case, builder, |item, builder| {
+        let branch_result = translate_expr(item, builder);
+        builder.mov(out_ref.clone(), branch_result);
+    });
+
+    out_ref
 }

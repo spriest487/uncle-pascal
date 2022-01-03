@@ -10,7 +10,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering};
-use crate::ast::{Expression, Literal};
+use crate::ast::{CaseExpr, Expression, Literal};
 
 // anything which can appear at the start of an operand subexpr (not let bindings
 // or flow control statements)
@@ -25,6 +25,7 @@ pub fn match_operand_start() -> Matcher {
         .or(Keyword::Unsafe)
         .or(Keyword::If)
         .or(Keyword::Raise)
+        .or(Keyword::Case)
         // literals
         .or(Keyword::Nil)
         .or(Matcher::AnyLiteralBoolean)
@@ -270,6 +271,13 @@ fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
     ))
 }
 
+pub fn parse_case_expr(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
+    let case = CaseExpr::parse(tokens)?;
+    let expr = Expression::Case(Box::new(case));
+
+    Ok(expr)
+}
+
 #[derive(Debug, Clone)]
 struct SymbolOperator {
     op: Operator,
@@ -411,7 +419,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             }
 
             // operand is an unsafe block
-            Some(TokenTree::Keyword { kw: Keyword::Unsafe, .. }) => {
+            Some(tt) if tt.is_keyword(Keyword::Unsafe) => {
                 let block = Block::parse(self.tokens)?;
                 let expr = Expression::from(block);
                 self.push_operand(expr);
@@ -442,39 +450,35 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 self.push_operand(expr);
             }
 
-            Some(TokenTree::Keyword {
-                     kw: Keyword::Nil, ..
-                 }) => {
+            Some(tt) if tt.is_keyword(Keyword::Nil) => {
                 let nil_token = self.tokens.next().unwrap();
                 self.push_operand(Expression::Literal(Literal::Nil, nil_token.span().clone()));
             }
 
-            Some(TokenTree::Keyword { kw: Keyword::SizeOf, .. }) => {
+            Some(tt) if tt.is_keyword(Keyword::SizeOf) => {
                 let size_of_expr = parse_size_of(self.tokens)?;
                 self.push_operand(size_of_expr);
             }
 
-            Some(TokenTree::Keyword {
-                     kw: Keyword::If, ..
-                 }) => {
+            Some(tt) if tt.is_keyword(Keyword::If) => {
                 let cond = IfCond::parse(self.tokens)?;
                 let expr = Expression::from(cond);
                 self.push_operand(expr);
             }
 
-            Some(TokenTree::Keyword {
-                     kw: Keyword::False, ..
-                 })
-            | Some(TokenTree::Keyword {
-                       kw: Keyword::True, ..
-                   }) => {
+            Some(tt) if tt.is_keyword(Keyword::True) || tt.is_keyword(Keyword::False) => {
                 let expr = parse_literal_bool(self.tokens)?;
                 self.push_operand(expr);
             }
 
-            Some(TokenTree::Keyword { kw: Keyword::Raise, .. }) => {
+            Some(tt) if tt.is_keyword(Keyword::Raise) => {
                 let raise = Raise::parse(self.tokens)?;
                 let expr = Expression::from(raise);
+                self.push_operand(expr);
+            }
+
+            Some(tt) if tt.is_keyword(Keyword::Case) => {
+                let expr = parse_case_expr(self.tokens)?;
                 self.push_operand(expr);
             }
 

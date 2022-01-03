@@ -56,7 +56,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::Case(case) => {
-            translate_case(case, builder);
+            translate_case_stmt(case, builder);
         }
     }
 
@@ -221,7 +221,20 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     });
 }
 
-fn translate_case(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
+fn translate_case_stmt(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
+    build_case_block(case, builder, |item, builder| {
+        translate_stmt(item, builder)
+    })
+}
+
+pub fn build_case_block<Item, ItemFn>(
+    case: &pas_ty::ast::CaseBlock<Item>,
+    builder: &mut Builder,
+    mut translate_item: ItemFn
+)
+where
+    ItemFn: FnMut(&Item, &mut Builder)
+{
     builder.scope(|builder| {
         let cond_expr_val = translate_expr(&case.cond_expr, builder);
 
@@ -258,12 +271,20 @@ fn translate_case(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
         // write the branch statements after their respective labels
         for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
             builder.label(*branch_label);
-            translate_stmt(&branch.item, builder);
+
+            builder.scope(|builder| {
+                translate_item(&branch.item, builder);
+            });
+
             builder.jmp(break_label);
         }
-        if let (Some(else_stmt), Some(else_label)) = (&case.else_branch, else_label) {
+        if let (Some(else_item), Some(else_label)) = (&case.else_branch, else_label) {
             builder.label(else_label);
-            translate_stmt(else_stmt, builder);
+
+            builder.scope(|builder| {
+                translate_item(&else_item, builder);
+            });
+
             builder.jmp(break_label);
         }
 

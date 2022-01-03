@@ -4,7 +4,7 @@ pub(crate) mod test;
 
 pub use self::parse::match_operand_start;
 use crate::ast::expression::parse::CompoundExpressionParser;
-use crate::ast::Typed;
+use crate::ast::{CaseExpr, Typed};
 use crate::{
     ast::{Annotation, BinOp, Block, Call, CollectionCtor, IfCond, ObjectCtor, Raise, UnaryOp},
     consts::*,
@@ -49,6 +49,7 @@ pub enum Expression<A: Annotation> {
     IfCond(Box<IfCond<A>>),
     Block(Box<Block<A>>),
     Raise(Box<Raise<A>>),
+    Case(Box<CaseExpr<A>>),
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -106,6 +107,12 @@ impl<A: Annotation> From<Raise<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<CaseExpr<A>> for Expression<A> {
+    fn from(case: CaseExpr<A>) -> Self {
+        Expression::Case(Box::new(case))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -119,6 +126,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &ctor.annotation,
             Expression::ObjectCtor(ctor) => &ctor.annotation,
             Expression::Raise(raise) => &raise.annotation,
+            Expression::Case(case) => &case.annotation,
         }
     }
 
@@ -134,6 +142,7 @@ impl<A: Annotation> Expression<A> {
             Expression::CollectionCtor(ctor) => &mut ctor.annotation,
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
             Expression::Raise(raise) => &mut raise.annotation,
+            Expression::Case(case) => &mut case.annotation,
         }
     }
 
@@ -200,6 +209,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Block(block) => write!(f, "{}", block),
             Expression::UnaryOp(op) => write!(f, "{}", op),
             Expression::Raise(raise) => write!(f, "{}", raise),
+            Expression::Case(case) => write!(f, "{}", case),
         }
     }
 }

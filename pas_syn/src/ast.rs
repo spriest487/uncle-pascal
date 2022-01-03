@@ -16,7 +16,7 @@ pub mod unit;
 pub use self::{
     block::*,
     call::*,
-    case::{CaseBranch, CaseExpr, CaseStatement},
+    case::{CaseBranch, CaseExpr, CaseStatement, CaseBlock},
     cond::*,
     ctor::*,
     expression::*,

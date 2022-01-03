@@ -203,6 +203,11 @@ pub fn typecheck_expr(
             let raise = typecheck_raise(raise, expect_ty, ctx)?;
             Ok(ast::Expression::from(raise))
         }
+
+        ast::Expression::Case(case) => {
+            let case = typecheck_case_expr(case, expect_ty, ctx)?;
+            Ok(ast::Expression::from(case))
+        }
     }
 }
 
@@ -308,7 +313,7 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
 
         ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
-        ast::Statement::Case(case) => expect_case_initialized(case, ctx),
+        ast::Statement::Case(case) => expect_case_stmt_initialized(case, ctx),
     }
 }
 
@@ -364,6 +369,8 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         ast::Expression::UnaryOp(unary_op) => expect_expr_initialized(&unary_op.operand, ctx),
 
         ast::Expression::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
+
+        ast::Expression::Case(case) => expect_case_expr_initialized(&case, ctx),
     }
 }
 
@@ -452,7 +459,7 @@ fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()>
     Ok(())
 }
 
-fn expect_case_initialized(case: &CaseStatement, ctx: &Context) -> TypecheckResult<()> {
+fn expect_case_stmt_initialized(case: &CaseStatement, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
@@ -462,6 +469,21 @@ fn expect_case_initialized(case: &CaseStatement, ctx: &Context) -> TypecheckResu
 
     if let Some(else_branch) = &case.else_branch {
         expect_stmt_initialized(else_branch, ctx)?;
+    }
+
+    Ok(())
+}
+
+fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&case.cond_expr, ctx)?;
+
+    for branch in &case.branches {
+        expect_expr_initialized(&branch.value, ctx)?;
+        expect_expr_initialized(&branch.item, ctx)?;
+    }
+
+    if let Some(else_branch) = &case.else_branch {
+        expect_expr_initialized(else_branch, ctx)?;
     }
 
     Ok(())

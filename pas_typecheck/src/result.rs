@@ -166,6 +166,10 @@ pub enum TypecheckError {
     },
     InvalidConstExpr {
         expr: Box<Expression>,
+    },
+
+    InvalidCaseExprBlock {
+        span: Span,
     }
 }
 
@@ -230,6 +234,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnsafeConversionNotAllowed { span, .. } => span,
             TypecheckError::UnsafeAddressoOfNotAllowed { span, .. } => span,
             TypecheckError::InvalidConstExpr { expr } => expr.span(),
+            TypecheckError::InvalidCaseExprBlock { span } => span,
         }
     }
 }
@@ -302,6 +307,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::UnsafeAddressoOfNotAllowed { .. } => "Address operator not allowed on this type in a safe context".to_string(),
 
             TypecheckError::InvalidConstExpr { .. } => "Invalid constant expression".to_string(),
+
+            TypecheckError::InvalidCaseExprBlock { .. } => "Case block invalid as expression".to_string(),
         }
     }
 
@@ -571,6 +578,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidConstExpr { expr } => {
                 write!(f, "expression `{}` is not a constant value", expr)
+            }
+
+            TypecheckError::InvalidCaseExprBlock { .. } => {
+                write!(f, "case expression must contain at least one branch and an `else` branch")
             }
         }
     }

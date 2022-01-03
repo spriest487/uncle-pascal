@@ -227,8 +227,8 @@ impl Context {
                 .expect("builtin type decl must not fail");
         };
 
-        declare_builtin(&mut root_ctx, "Nothing", Type::Nothing);
-        declare_builtin(&mut root_ctx, "Any", Type::Any);
+        declare_builtin(&mut root_ctx, NOTHING_TYPE_NAME, Type::Nothing);
+        declare_builtin(&mut root_ctx, ANY_TYPE_NAME, Type::Any);
 
         for primitive in &Primitive::ALL {
             declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
@@ -238,34 +238,26 @@ impl Context {
         root_ctx.push_scope(Environment::Global);
 
         if no_stdlib {
-            // declare things normally declared in System.pas that the compiler needs to function
-            let disposable_ty = Type::Interface(builtin_disposable_name().qualified);
-            let disposable_name = disposable_ty.full_path().unwrap();
-
-            let string_ty = Type::Class(Box::new(builtin_string_name()));
-            let string_name = string_ty.full_path().unwrap();
-
-            let unit_env = Environment::Module {
-                namespace: IdentPath::new(Ident::new("System", module_span), vec![]),
-            };
-            let system_scope = root_ctx.push_scope(unit_env);
-
-            root_ctx
-                .declare_type(
-                    disposable_name.last().clone(),
-                    disposable_ty,
-                    Visibility::Exported,
-                )
-                .expect("builtin System.Disposable type decl must not fail");
-
-            root_ctx
-                .declare_type(string_name.last().clone(), string_ty, Visibility::Exported)
-                .expect("builtin System.String type decl must not fail");
-
-            root_ctx.pop_scope(system_scope);
+            root_ctx.def_no_stdlib_types(module_span);
         }
 
         root_ctx
+    }
+
+    fn def_no_stdlib_types(&mut self, module_span: Span) {
+        let unit_env = Environment::Module {
+            namespace: IdentPath::new(Ident::new(SYSTEM_UNIT_NAME, module_span), vec![]),
+        };
+        let system_scope = self.push_scope(unit_env);
+
+        // declare things normally declared in System.pas that the compiler needs to function
+        self.declare_class(Rc::new(builtin_string_class()), Visibility::Exported)
+            .expect("builtin System.String definition must not fail");
+
+        self.declare_iface(Rc::new(builtin_disposable_iface()), Visibility::Exported)
+            .expect("builtin System.Disposable definition must not fail");
+
+        self.pop_scope(system_scope);
     }
 
     pub fn module_span(&self) -> &Span {

@@ -1,14 +1,15 @@
 mod local_binding;
 
+pub use self::local_binding::LocalBinding;
 use crate::ast::Raise;
 use crate::{
     ast::{
-        Block, Call, Expression, expression::match_operand_start, ForLoop, IfCond, WhileLoop,
+        case::{CaseBlock, CaseStatement},
+        expression::match_operand_start,
+        Block, Call, Expression, ForLoop, IfCond, WhileLoop,
     },
     parse::prelude::*,
 };
-pub use crate::ast::case::{CaseBlock, CaseBranch};
-pub use self::local_binding::LocalBinding;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
@@ -69,7 +70,7 @@ pub enum Statement<A: Annotation> {
     Break(A),
     Continue(A),
     Raise(Box<Raise<A>>),
-    Case(Box<CaseBlock<A, Statement<A>>>),
+    Case(Box<CaseStatement<A>>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -273,7 +274,9 @@ impl Statement<Span> {
                 }
             }
 
-            Some(TokenTree::Keyword { kw: Keyword::Case, .. }) => {
+            Some(TokenTree::Keyword {
+                kw: Keyword::Case, ..
+            }) => {
                 let case = CaseBlock::parse(tokens)?;
 
                 Ok(Statement::Case(Box::new(case)))

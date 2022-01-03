@@ -182,10 +182,7 @@ impl Interpreter {
 
     fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
         let current_frame = self.current_frame_mut()?;
-        let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
-            // todo: proper error
-            ExecError::illegal_state(err.to_string())
-        })?;
+        let local_ptr = current_frame.get_local_ptr(id)?;
 
         self.marshaller.marshal_into(&val, &local_ptr)?;
 
@@ -194,10 +191,7 @@ impl Interpreter {
 
     fn load_local(&self, id: LocalID) -> ExecResult<ValueCell> {
         let current_frame = self.current_frame()?;
-        let local_ptr = current_frame.get_local_ptr(id).map_err(|err| {
-            // todo: proper error
-            ExecError::illegal_state(err.to_string())
-        })?;
+        let local_ptr = current_frame.get_local_ptr(id)?;
 
         let value = self.marshaller.unmarshal_from_ptr(&local_ptr)?;
 
@@ -254,11 +248,7 @@ impl Interpreter {
                 Err(ExecError::illegal_state(msg))
             },
 
-            Ref::Local(id) => self.load_local(*id)
-                .map(Cow::Owned)
-                .map_err(|err| {
-                    ExecError::illegal_state(err.to_string())
-                }),
+            Ref::Local(id) => self.load_local(*id).map(Cow::Owned),
 
             Ref::Global(name) => match self.globals.get(name) {
                 Some(cell) => Ok(Cow::Borrowed(&cell.value)),
@@ -387,10 +377,7 @@ impl Interpreter {
 
         // store params in either $0.. or $1..
         for (arg_cell, param_ty) in args.iter().zip(func.param_tys()) {
-            self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)
-                .map_err(|err| {
-                    ExecError::illegal_state(err.to_string())
-                })?;
+            self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)?;
         }
 
         func.invoke(self)?;
@@ -777,10 +764,7 @@ impl Interpreter {
     }
 
     fn exec_local_end(&mut self) -> ExecResult<()> {
-        self.current_frame_mut()?.pop_block()
-            .map_err(|err| {
-                ExecError::illegal_state(err.to_string())
-            })?;
+        self.current_frame_mut()?.pop_block()?;
 
         Ok(())
     }
@@ -1348,10 +1332,7 @@ impl Interpreter {
         *pc = label.pc_offset;
 
         // assume all jumps are either upwards or to the same level
-        self.current_frame_mut()?.pop_block_to(label.block_depth)
-            .map_err(|err| {
-                ExecError::illegal_state(err.to_string())
-            })?;
+        self.current_frame_mut()?.pop_block_to(label.block_depth)?;
 
         Ok(())
     }

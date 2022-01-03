@@ -5,6 +5,17 @@ use pas_syn::ast::{ClassKind, TypeDeclName};
 use pas_syn::ident::*;
 use std::rc::Rc;
 
+pub const SYSTEM_UNIT_NAME: &str = "System";
+pub const NOTHING_TYPE_NAME: &str = "Nothing";
+pub const ANY_TYPE_NAME: &str = "Any";
+
+pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
+pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
+
+pub const STRING_TYPE_NAME: &str = "String";
+const STRING_CHARS_FIELD: &str = "chars";
+const STRING_LEN_FIELD: &str = "len";
+
 pub fn builtin_span() -> Span {
     Span {
         file: Rc::new("<builtin>".into()),
@@ -16,8 +27,8 @@ pub fn builtin_span() -> Span {
 pub fn builtin_string_name() -> Symbol {
     let builtin_span = builtin_span();
 
-    let system_ident = Ident::new("System", builtin_span.clone());
-    let string_ident = Ident::new("String", builtin_span.clone());
+    let system_ident = Ident::new(SYSTEM_UNIT_NAME, builtin_span.clone());
+    let string_ident = Ident::new(STRING_TYPE_NAME, builtin_span.clone());
 
     Symbol {
         decl_name: TypeDeclName {
@@ -37,12 +48,12 @@ pub fn builtin_string_class() -> ast::Class {
         name: builtin_string_name(),
         members: vec![
             ast::Member {
-                ident: Ident::new("chars", builtin_span.clone()),
+                ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::Byte).ptr(),
                 span: builtin_span.clone(),
             },
             ast::Member {
-                ident: Ident::new("len", builtin_span.clone()),
+                ident: Ident::new(STRING_LEN_FIELD, builtin_span.clone()),
                 ty: Type::from(Primitive::Int32),
                 span: builtin_span.clone(),
             },
@@ -55,7 +66,7 @@ pub fn builtin_string_class() -> ast::Class {
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name() -> Ident {
     Ident {
-        name: "Dispose".to_string(),
+        name: DISPOSABLE_DISPOSE_METHOD.to_string(),
         span: builtin_span(),
     }
 }
@@ -63,8 +74,8 @@ pub fn builtin_disposable_dispose_name() -> Ident {
 pub fn builtin_disposable_name() -> Symbol {
     let builtin_span = builtin_span();
 
-    let system_ident = Ident::new("System", builtin_span.clone());
-    let disposable_ident = Ident::new("Disposable", builtin_span.clone());
+    let system_ident = Ident::new(SYSTEM_UNIT_NAME, builtin_span.clone());
+    let disposable_ident = Ident::new(DISPOSABLE_IFACE_NAME, builtin_span.clone());
 
     Symbol {
         decl_name: TypeDeclName {
