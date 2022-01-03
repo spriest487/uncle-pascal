@@ -1,20 +1,27 @@
-use std::fmt;
-use std::hash::{Hash, Hasher};
-use pas_common::span::{Span, Spanned};
 use crate::ast::{Annotation, Expression, Statement};
 use crate::parse::{MatchOneOf, ParseResult, TokenStream};
 use crate::{Keyword, Separator};
+use pas_common::span::{Span, Spanned};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+
+pub type CaseStatement<A> = CaseBlock<A, Statement<A>>;
+pub type CaseExpr<A> = CaseBlock<A, Expression<A>>;
 
 #[derive(Debug, Clone, Eq)]
-pub struct Case<A: Annotation> {
+pub struct CaseBlock<A: Annotation, B> {
     pub cond_expr: Box<Expression<A>>,
-    pub branches: Vec<CaseBranch<A>>,
-    pub else_branch: Option<Box<Statement<A>>>,
+    pub branches: Vec<CaseBranch<A, B>>,
+    pub else_branch: Option<Box<B>>,
 
     pub annotation: A,
 }
 
-impl<A: Annotation> PartialEq for Case<A> {
+impl<A, B> PartialEq for CaseBlock<A, B>
+where
+    A: Annotation,
+    B: PartialEq
+{
     fn eq(&self, other: &Self) -> bool {
         self.branches == other.branches
             && self.cond_expr == other.cond_expr
@@ -22,7 +29,11 @@ impl<A: Annotation> PartialEq for Case<A> {
     }
 }
 
-impl<A: Annotation> Hash for Case<A> {
+impl<A, B> Hash for CaseBlock<A, B>
+where
+    A: Annotation,
+    B: Hash
+{
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.branches.hash(state);
         self.cond_expr.hash(state);
@@ -30,13 +41,20 @@ impl<A: Annotation> Hash for Case<A> {
     }
 }
 
-impl<A: Annotation> Spanned for Case<A> {
+impl<A, B> Spanned for CaseBlock<A, B>
+where
+    A: Annotation,
+{
     fn span(&self) -> &Span {
         self.annotation.span()
     }
 }
 
-impl<A: Annotation> fmt::Display for Case<A> {
+impl<A, B> fmt::Display for CaseBlock<A, B>
+where
+    A: Annotation,
+    B: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "case {} of", self.cond_expr)?;
 
@@ -52,7 +70,10 @@ impl<A: Annotation> fmt::Display for Case<A> {
     }
 }
 
-impl Case<Span> {
+impl<B> CaseBlock<Span, B>
+where
+    B: CaseItemParse
+{
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let case_kw = tokens.match_one(Keyword::Case)?;
 
@@ -70,7 +91,7 @@ impl Case<Span> {
                 break (end_tt, None);
             } else if branches.len() > 0 {
                 if let Some(..) = tokens.match_one_maybe(Keyword::Else) {
-                    let else_stmt = Statement::parse(tokens)?;
+                    let else_stmt = B::parse(tokens)?;
 
                     // allow a semicolon separator between the "else" statement and the end keyword
                     tokens.match_one_maybe(Separator::Semicolon);
@@ -101,7 +122,7 @@ impl Case<Span> {
 
         let span = case_kw.span().to(end_tt.span());
 
-        Ok(Case {
+        Ok(CaseBlock {
             cond_expr: Box::new(cond_expr),
             annotation: span,
             branches,
@@ -110,49 +131,83 @@ impl Case<Span> {
     }
 }
 
+pub trait CaseItemParse: Sized + Spanned {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
+}
+
+impl CaseItemParse for Expression<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        Expression::parse(tokens)
+    }
+}
+
+impl CaseItemParse for Statement<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        Statement::parse(tokens)
+    }
+}
+
 #[derive(Debug, Clone, Eq)]
-pub struct CaseBranch<A: Annotation> {
+pub struct CaseBranch<A: Annotation, B> {
     pub value: Box<Expression<A>>,
-    pub stmt: Box<Statement<A>>,
+    pub item: Box<B>,
     pub span: Span,
 }
 
-impl<A: Annotation> PartialEq for CaseBranch<A> {
+impl<A, B> PartialEq for CaseBranch<A, B>
+where
+    A: Annotation,
+    B: PartialEq,
+{
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value && self.stmt == other.stmt
+        self.value == other.value && self.item == other.item
     }
 }
 
-impl<A: Annotation> Hash for CaseBranch<A> {
+impl<A, B> Hash for CaseBranch<A, B>
+where
+    A: Annotation,
+    B: Hash,
+{
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.value.hash(state);
-        self.stmt.hash(state);
+        self.item.hash(state);
     }
 }
 
-impl<A: Annotation> Spanned for CaseBranch<A> {
+impl<A, B> Spanned for CaseBranch<A, B>
+where
+    A: Annotation,
+{
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for CaseBranch<A> {
+impl<A, B> fmt::Display for CaseBranch<A, B>
+where
+    A: Annotation,
+    B: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}: {}", self.value, self.stmt)
+        write!(f, "{}: {}", self.value, self.item)
     }
 }
 
-impl CaseBranch<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+impl<Item> CaseBranch<Span, Item>
+where
+    Item: CaseItemParse,
+{
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let value = Expression::parse(tokens)?;
         tokens.match_one(Separator::Colon)?;
-        let stmt = Statement::parse(tokens)?;
+        let item = Item::parse(tokens)?;
 
-        let span = value.span().to(stmt.annotation());
+        let span = value.span().to(item.span());
 
         Ok(CaseBranch {
             value: Box::new(value),
-            stmt: Box::new(stmt),
+            item: Box::new(item),
             span,
         })
     }
@@ -160,11 +215,14 @@ impl CaseBranch<Span> {
 
 #[cfg(test)]
 mod test {
-    use pas_common::BuildOptions;
-    use crate::TokenTree;
     use super::*;
+    use crate::TokenTree;
+    use pas_common::BuildOptions;
 
-    fn parse_case(s: &str) -> Case<Span> {
+    fn parse_case<Item>(s: &str) -> CaseBlock<Span, Item>
+        where
+            Item: CaseItemParse
+    {
         let src_tokens = TokenTree::tokenize("test", s, &BuildOptions::default()).unwrap();
         let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));
 
@@ -172,7 +230,7 @@ mod test {
             Statement::Case(case) => {
                 token_stream.finish().unwrap();
                 *case
-            },
+            }
             _ => panic!("test source is not a case statement"),
         }
     }

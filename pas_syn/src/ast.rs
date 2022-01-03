@@ -1,5 +1,6 @@
 pub mod block;
 pub mod call;
+mod case;
 pub mod cond;
 pub mod ctor;
 pub mod expression;
@@ -13,8 +14,20 @@ pub mod typedecl;
 pub mod unit;
 
 pub use self::{
-    block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*, raise::*,
-    statement::*, type_constraint::*, typedecl::*, unit::*,
+    block::*,
+    call::*,
+    case::{CaseBranch, CaseExpr, CaseStatement},
+    cond::*,
+    ctor::*,
+    expression::*,
+    function::*,
+    iter::*,
+    op::*,
+    raise::*,
+    statement::*,
+    type_constraint::*,
+    typedecl::*,
+    unit::*,
 };
 
 use crate::parse::prelude::*;
@@ -264,7 +277,7 @@ impl<Item> TypeList<Item> {
         Self { items, span }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&Item> {
+    pub fn iter(&self) -> impl Iterator<Item = &Item> {
         self.items.iter()
     }
 }

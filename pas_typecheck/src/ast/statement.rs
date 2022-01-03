@@ -5,7 +5,7 @@ use crate::ast::expression::{Invocation, typecheck_call};
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
 pub type Exit = ast::Exit<TypeAnnotation>;
-pub type Case = ast::Case<TypeAnnotation>;
+pub type CaseStatement = ast::CaseBlock<TypeAnnotation, Statement>;
 
 pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
@@ -272,7 +272,7 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
     Ok(exit)
 }
 
-fn typecheck_case(case: &ast::Case<Span>, ctx: &mut Context) -> TypecheckResult<Case> {
+fn typecheck_case(case: &ast::CaseStatement<Span>, ctx: &mut Context) -> TypecheckResult<CaseStatement> {
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
     let cond_ty = cond_expr.annotation().ty();
 
@@ -281,11 +281,11 @@ fn typecheck_case(case: &ast::Case<Span>, ctx: &mut Context) -> TypecheckResult<
         let branch_value = typecheck_expr(&branch.value, cond_ty, ctx)?;
         branch_value.annotation().expect_value(cond_ty)?;
 
-        let branch_stmt = typecheck_stmt(&branch.stmt, &Type::Nothing, ctx)?;
+        let branch_stmt = typecheck_stmt(&branch.item, &Type::Nothing, ctx)?;
 
         branches.push(ast::CaseBranch {
             value: Box::new(branch_value),
-            stmt: Box::new(branch_stmt),
+            item: Box::new(branch_stmt),
             span: branch.span.clone(),
         })
     }
@@ -301,7 +301,7 @@ fn typecheck_case(case: &ast::Case<Span>, ctx: &mut Context) -> TypecheckResult<
 
     let annotation = TypeAnnotation::Untyped(case.span().clone());
 
-    Ok(Case {
+    Ok(CaseStatement {
         cond_expr: Box::new(cond_expr),
         branches,
         else_branch: else_branch.map(Box::new),

@@ -221,7 +221,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     });
 }
 
-fn translate_case(case: &pas_ty::ast::Case, builder: &mut Builder) {
+fn translate_case(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
     builder.scope(|builder| {
         let cond_expr_val = translate_expr(&case.cond_expr, builder);
 
@@ -258,7 +258,7 @@ fn translate_case(case: &pas_ty::ast::Case, builder: &mut Builder) {
         // write the branch statements after their respective labels
         for (branch, branch_label) in case.branches.iter().zip(branch_labels.iter()) {
             builder.label(*branch_label);
-            translate_stmt(&branch.stmt, builder);
+            translate_stmt(&branch.item, builder);
             builder.jmp(break_label);
         }
         if let (Some(else_stmt), Some(else_label)) = (&case.else_branch, else_label) {

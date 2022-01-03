@@ -452,12 +452,12 @@ fn expect_block_initialized(block: &Block, ctx: &Context) -> TypecheckResult<()>
     Ok(())
 }
 
-fn expect_case_initialized(case: &Case, ctx: &Context) -> TypecheckResult<()> {
+fn expect_case_initialized(case: &CaseStatement, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&case.cond_expr, ctx)?;
 
     for branch in &case.branches {
         expect_expr_initialized(&branch.value, ctx)?;
-        expect_stmt_initialized(&branch.stmt, ctx)?;
+        expect_stmt_initialized(&branch.item, ctx)?;
     }
 
     if let Some(else_branch) = &case.else_branch {

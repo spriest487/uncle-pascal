@@ -1,17 +1,14 @@
 mod local_binding;
-mod case;
 
 use crate::ast::Raise;
 use crate::{
     ast::{
-        expression::match_operand_start, Block, Call, Expression, ForLoop, IfCond, WhileLoop,
+        Block, Call, Expression, expression::match_operand_start, ForLoop, IfCond, WhileLoop,
     },
     parse::prelude::*,
 };
-pub use self::{
-    local_binding::LocalBinding,
-    case::{Case, CaseBranch},
-};
+pub use crate::ast::case::{CaseBlock, CaseBranch};
+pub use self::local_binding::LocalBinding;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
@@ -72,7 +69,7 @@ pub enum Statement<A: Annotation> {
     Break(A),
     Continue(A),
     Raise(Box<Raise<A>>),
-    Case(Box<Case<A>>),
+    Case(Box<CaseBlock<A, Statement<A>>>),
 }
 
 impl<A: Annotation> Statement<A> {
@@ -206,6 +203,12 @@ pub fn stmt_start_matcher() -> Matcher {
         .or(match_operand_start())
 }
 
+impl<A: Annotation> Spanned for Statement<A> {
+    fn span(&self) -> &Span {
+        self.annotation().span()
+    }
+}
+
 impl Statement<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Statement<Span>> {
         let stmt_start = stmt_start_matcher();
@@ -271,7 +274,7 @@ impl Statement<Span> {
             }
 
             Some(TokenTree::Keyword { kw: Keyword::Case, .. }) => {
-                let case = Case::parse(tokens)?;
+                let case = CaseBlock::parse(tokens)?;
 
                 Ok(Statement::Case(Box::new(case)))
             }
