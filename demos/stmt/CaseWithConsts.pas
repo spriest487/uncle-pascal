@@ -9,5 +9,5 @@ case x of
     else begin
         WriteLn('It''s not five!');
         raise 'bad value'
-    end
+    end;
 end;

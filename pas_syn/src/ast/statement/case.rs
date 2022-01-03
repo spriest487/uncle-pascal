@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use pas_common::span::{Span, Spanned};
 use crate::ast::{Annotation, Expression, Statement};
 use crate::parse::{MatchOneOf, ParseResult, TokenStream};
-use crate::{Keyword, Separator, TokenTree};
+use crate::{Keyword, Separator};
 
 #[derive(Debug, Clone, Eq)]
 pub struct Case<A: Annotation> {
@@ -60,37 +60,46 @@ impl Case<Span> {
 
         tokens.match_one(Keyword::Of)?;
 
-        let sep_matcher = Separator::Semicolon
-            .or(Keyword::End)
-            .or(Keyword::Else);
-
         let mut branches = Vec::new();
 
-        let (end_kw, else_branch) = loop {
+        // is there a valid separator between the last and current statements?
+        let mut prev_sep = true;
+
+        let (end_tt, else_branch) = loop {
+            if let Some(end_tt) = tokens.match_one_maybe(Keyword::End) {
+                break (end_tt, None);
+            } else if branches.len() > 0 {
+                if let Some(..) = tokens.match_one_maybe(Keyword::Else) {
+                    let else_stmt = Statement::parse(tokens)?;
+
+                    // allow a semicolon separator between the "else" statement and the end keyword
+                    tokens.match_one_maybe(Separator::Semicolon);
+
+                    let end_tt = tokens.match_one(Keyword::End)?;
+                    break (end_tt, Some(else_stmt));
+                }
+            } else if !prev_sep {
+                // just let this match fail - there was no separator after the last branch,
+                // so we expected the end
+                if branches.len() > 0 {
+                    tokens.match_one(Keyword::End.or(Keyword::Else))?;
+                } else {
+                    tokens.match_one(Keyword::End)?;
+                };
+
+                unreachable!("previous match will always fail");
+            }
+
             let case_branch = CaseBranch::parse(tokens)?;
             branches.push(case_branch);
 
-            match tokens.match_one(sep_matcher.clone())? {
-                end_kw @ TokenTree::Keyword { kw: Keyword::End, .. } => {
-                    break (end_kw, None);
-                }
-
-                TokenTree::Keyword { kw: Keyword::Else, .. } => {
-                    let else_stmt = Statement::parse(tokens)?;
-
-                    let end_kw = tokens.match_one(Keyword::End)?;
-                    break (end_kw, Some(else_stmt));
-                }
-
-                TokenTree::Separator { sep: Separator::Semicolon, .. } => {
-                    // continue reading case branches
-                }
-
-                _ => unreachable!(),
-            }
+            // a semicolon is required to separate branches, but not before the final "end"
+            // or "else" keywords. if a statement isn't followed by the separator, it must be the
+            // last one, and if not we'll get a parse error
+            prev_sep = tokens.match_one_maybe(Separator::Semicolon).is_some();
         };
 
-        let span = case_kw.span().to(end_kw.span());
+        let span = case_kw.span().to(end_tt.span());
 
         Ok(Case {
             cond_expr: Box::new(cond_expr),
@@ -146,5 +155,87 @@ impl CaseBranch<Span> {
             stmt: Box::new(stmt),
             span,
         })
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use pas_common::BuildOptions;
+    use crate::TokenTree;
+    use super::*;
+
+    fn parse_case(s: &str) -> Case<Span> {
+        let src_tokens = TokenTree::tokenize("test", s, &BuildOptions::default()).unwrap();
+        let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));
+
+        match Statement::parse(&mut token_stream).unwrap() {
+            Statement::Case(case) => {
+                token_stream.finish().unwrap();
+                *case
+            },
+            _ => panic!("test source is not a case statement"),
+        }
+    }
+
+    #[test]
+    fn empty_case_parses() {
+        let case = parse_case("case 1 of end");
+
+        assert_eq!(0, case.branches.len());
+        assert_eq!(None, case.else_branch);
+    }
+
+    #[test]
+    #[should_panic]
+    fn case_with_garbage_is_err() {
+        parse_case("case 1 of cat dog horse end");
+    }
+
+    #[test]
+    #[should_panic]
+    fn case_unterminated_is_err() {
+        parse_case("case 1 of 1: a()");
+    }
+
+    #[test]
+    fn case_with_single_branch() {
+        let case = parse_case("case 1 of 1: a() end");
+        assert_eq!(1, case.branches.len());
+        assert_eq!(None, case.else_branch);
+    }
+
+    #[test]
+    fn case_with_single_branch_and_separator() {
+        let case = parse_case("case 1 of 1: a(); end");
+        assert_eq!(1, case.branches.len());
+        assert_eq!(None, case.else_branch);
+    }
+
+    #[test]
+    fn case_with_separated_branches() {
+        let case = parse_case("case 1 of 1: a(); 2: b(); 3: c() end");
+        assert_eq!(3, case.branches.len());
+        assert_eq!(None, case.else_branch);
+    }
+
+    #[test]
+    fn case_with_unseparated_else() {
+        let case = parse_case("case 1 of 1: a() else b() end");
+        assert_eq!(1, case.branches.len());
+        assert!(case.else_branch.is_some());
+    }
+
+    #[test]
+    fn case_with_else_and_separator_after_final_branch() {
+        let case = parse_case("case 1 of 1: a(); 2: b(); else c() end");
+        assert_eq!(2, case.branches.len());
+        assert!(case.else_branch.is_some());
+    }
+
+    #[test]
+    fn case_with_separator_after_final_branch_and_else_stmt() {
+        let case = parse_case("case 1 of 1: a(); 2: b(); else c(); end");
+        assert_eq!(2, case.branches.len());
+        assert!(case.else_branch.is_some());
     }
 }

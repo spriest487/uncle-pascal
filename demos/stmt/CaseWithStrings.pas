@@ -9,6 +9,6 @@ case fruit of
     apple: WriteLn('It''s an apple!!')
 
     else begin
-        WriteLn('it''s ' + fruit);
+        WriteLn('it''s something else: ' + fruit);
     end
 end;
