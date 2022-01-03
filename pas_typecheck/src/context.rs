@@ -1,60 +1,28 @@
-pub use self::{builtin::*, ns::*, result::*, scope::*, ufcs::InstanceMethod};
-use crate::ast::Literal;
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, context::NamespaceStack, specialize_class_def, specialize_generic_variant, FunctionSig, Symbol, Type, TypeParamList, TypeParamType, Primitive};
-use pas_common::span::*;
-use pas_syn::{ast::Visibility, ident::*};
-use std::{
-    collections::hash_map::{Entry, HashMap},
-    fmt,
-    hash::Hash,
-    rc::Rc,
-};
-
 pub mod builtin;
 pub mod ns;
 pub mod result;
 pub mod scope;
+pub mod value_kind;
+
 mod ufcs;
+mod decl;
+mod def;
 
-#[derive(Clone, Debug, PartialEq, Copy, Eq, Hash)]
-pub enum ValueKind {
-    /// local value in an immutable location
-    Immutable,
-
-    /// uninitialized mutable location
-    Uninitialized,
-
-    /// local value in mutable location
-    Mutable,
-
-    /// rvalue, e.g. value returned from function, result of operation,
-    /// with no binding
-    Temporary,
-
-    /// reference to a mutable location somewhere else
-    Ref,
-}
-
-impl fmt::Display for ValueKind {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            ValueKind::Uninitialized => write!(f, "Uninitialized binding"),
-            ValueKind::Immutable => write!(f, "Immutable binding"),
-            ValueKind::Mutable => write!(f, "Mutable binding"),
-            ValueKind::Temporary => write!(f, "Temporary value"),
-            ValueKind::Ref => write!(f, "Reference"),
-        }
-    }
-}
-
-impl ValueKind {
-    pub fn mutable(self) -> bool {
-        match self {
-            ValueKind::Mutable | ValueKind::Uninitialized => true,
-            _ => false,
-        }
-    }
-}
+pub use self::{
+    builtin::*, decl::*, def::*, ns::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
+};
+use crate::ast::Literal;
+use crate::{
+    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
+    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type,
+    TypeParamList, TypeParamType,
+};
+use pas_common::span::*;
+use pas_syn::{ast::Visibility, ident::*};
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    rc::Rc,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
@@ -87,38 +55,6 @@ pub enum TypeMember {
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum Decl {
-    Type {
-        ty: Type,
-        visibility: Visibility,
-    },
-    BoundValue(Binding),
-    Function {
-        sig: Rc<FunctionSig>,
-        visibility: Visibility,
-    },
-    Alias(IdentPath),
-    Const {
-        ty: Type,
-        val: Literal,
-        visibility: Visibility,
-        span: Span,
-    },
-}
-
-impl fmt::Display for Decl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Decl::Type { ty, .. } => write!(f, "type `{}`", ty),
-            Decl::Const { ty, val, .. } => write!(f, "const {}: {}", ty, val),
-            Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
-            Decl::Function { sig, .. } => write!(f, "{}", sig),
-            Decl::Alias(aliased) => write!(f, "{}", aliased),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
 struct InterfaceImpl {
     methods: HashMap<Ident, Option<FunctionDef>>,
 }
@@ -129,39 +65,6 @@ impl InterfaceImpl {
             methods: HashMap::new(),
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub enum Def {
-    External(FunctionDecl),
-    Function(FunctionDef),
-    Class(Rc<Class>),
-    Interface(Rc<Interface>),
-    Variant(Rc<Variant>),
-}
-
-impl Def {
-    fn ident(&self) -> &Ident {
-        match self {
-            Def::External(func_decl) => func_decl.ident.last(),
-            Def::Function(func_def) => func_def.decl.ident.last(),
-            Def::Class(class) => &class.name.decl_name.ident,
-            Def::Interface(iface) => &iface.name.decl_name.ident,
-            Def::Variant(variant) => &variant.name.decl_name.ident,
-        }
-    }
-}
-
-// result of comparing a defined name with its previous decl
-enum DefDeclMatch {
-    // the def matches the decl
-    Match,
-
-    // the def is the right kind but doesn't match, e.g. function with wrong signature
-    Mismatch,
-
-    // the decl with the same name as this def is the wrong kind
-    WrongKind,
 }
 
 impl DefDeclMatch {
