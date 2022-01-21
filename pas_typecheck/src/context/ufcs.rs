@@ -121,41 +121,28 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
     let mut methods = Vec::new();
 
     for (iface_ident, iface_impls) in &ctx.iface_impls {
-        let iface_decl = ctx
-            .resolve(iface_ident)
-            .and_then(|member| member.as_value())
-            .unwrap();
+        let iface_def = ctx.find_iface_def(iface_ident)?;
+        let iface_ty = Type::Interface(iface_ident.clone());
 
-        let (iface_ty, iface) = match iface_decl {
-            Decl::Type {
-                ty: iface_ty @ Type::Interface(..),
-                ..
-            } => match iface_ty {
-                Type::Interface(iface) => (iface_ty, iface),
-                _ => unreachable!(),
-            },
+        if !(iface_impls.contains_key(ty)) {
+            continue;
+        }
 
-            _ => panic!("invalid kind of decl referenced in iface impl"),
-        };
+        let iface_instance_methods = iface_def.methods.iter().filter(|method_decl| {
+            method_decl
+                .params
+                .get(0)
+                .map(|arg_0| arg_0.ty == Type::MethodSelf)
+                .unwrap_or(false)
+        });
 
-        if iface_impls.contains_key(ty) {
-            let iface_def = ctx.find_iface_def(iface)?;
-            let iface_instance_methods = iface_def.methods.iter().filter(|method_decl| {
-                method_decl
-                    .params
-                    .get(0)
-                    .map(|arg_0| arg_0.ty == Type::MethodSelf)
-                    .unwrap_or(false)
+        // add all the methods, we don't need to check if they're actually defined
+        // or implemented - we should check that elsewhere
+        for method in iface_instance_methods {
+            methods.push(InstanceMethod::Method {
+                iface_ty: iface_ty.clone(),
+                decl: method.clone(),
             });
-
-            // add all the methods, we don't need to check if they're actually defined
-            // or implemented - we should check that elsewhere
-            for method in iface_instance_methods {
-                methods.push(InstanceMethod::Method {
-                    iface_ty: iface_ty.clone(),
-                    decl: method.clone(),
-                });
-            }
         }
     }
 

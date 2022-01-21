@@ -394,13 +394,17 @@ mod test {
                 .find(|(k, _v)| (*k).borrow() == member_key)
         }
 
-        fn insert_member(&mut self, key: Self::Key, member: Member<Self>) -> Result<(), String> {
+        fn insert_member(&mut self, key: Self::Key, member: Member<Self>) -> Result<(), AlreadyDeclared<String>> {
             match self.members.entry(key.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(member);
                     Ok(())
                 }
-                Entry::Occupied(entry) => Err(entry.key().clone()),
+
+                Entry::Occupied(entry) => {
+                    let existing = entry.get();
+                    Err(AlreadyDeclared(vec![key.clone()], existing.kind()))
+                },
             }
         }
 
