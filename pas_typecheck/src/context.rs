@@ -76,7 +76,7 @@ impl DefDeclMatch {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Environment {
     Global,
-    Module { namespace: IdentPath },
+    Namespace { namespace: IdentPath },
     TypeDecl,
     FunctionDecl,
     FunctionBody { result_ty: Type },
@@ -86,7 +86,7 @@ pub enum Environment {
 impl Environment {
     pub fn namespace(&self) -> Option<&IdentPath> {
         match self {
-            Environment::Module { namespace } => Some(namespace),
+            Environment::Namespace { namespace } => Some(namespace),
             _ => None,
         }
     }
@@ -137,9 +137,6 @@ impl Context {
             declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
         }
 
-        // builtins are in scope 0, unit is scope 1
-        root_ctx.push_scope(Environment::Global);
-
         if no_stdlib {
             root_ctx.def_no_stdlib_types(module_span);
         }
@@ -148,10 +145,9 @@ impl Context {
     }
 
     fn def_no_stdlib_types(&mut self, module_span: Span) {
-        let unit_env = Environment::Module {
+        let system_scope = self.push_scope(Environment::Namespace {
             namespace: IdentPath::new(Ident::new(SYSTEM_UNIT_NAME, module_span), vec![]),
-        };
-        let system_scope = self.push_scope(unit_env);
+        });
 
         // declare things normally declared in System.pas that the compiler needs to function
         self.declare_class(Rc::new(builtin_string_class()), Visibility::Exported)
@@ -171,6 +167,8 @@ impl Context {
         let new_id = self.next_id;
         self.next_id = ScopeID(self.next_id.0 + 1);
 
+        // self.scopes.current_mut().insert_member()
+
         self.scopes.push(Scope::new(new_id, env));
         new_id
     }
@@ -189,6 +187,45 @@ impl Context {
         }
     }
 
+    pub fn unit_scope<T, E, F>(&mut self, unit_path: IdentPath, f: F) -> Result<T, E>
+        where F: FnOnce(&mut Context) -> Result<T, E>,
+        E: From<NameError>
+    {
+        let path_len = unit_path.as_slice().len();
+        let mut path_parts = unit_path.into_parts();
+
+        let mut unit_scopes = Vec::with_capacity(path_len);
+        let mut part_path = Vec::with_capacity(path_len);
+
+        path_parts.reverse();
+
+        for _ in 0..path_len {
+            let part = path_parts.pop().unwrap();
+            part_path.push(part.clone());
+
+            let part_ns = IdentPath::from_parts(part_path.clone());
+
+            // if let Err(e) = self.declare(part, Decl::Namespace(part_ns.clone())) {
+            //     for unit_scope in unit_scopes.into_iter().rev() {
+            //         self.pop_scope(unit_scope);
+            //     }
+            //     return Err(e.into());
+            // }
+
+            let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
+
+            unit_scopes.push(scope);
+        }
+
+        let result = f(self);
+
+        for unit_scope in unit_scopes.into_iter().rev() {
+            self.pop_scope(unit_scope);
+        }
+
+        result
+    }
+
     pub fn push_loop(&mut self, at: Span) {
         self.loop_stack.push(at);
     }
@@ -203,13 +240,65 @@ impl Context {
         self.loop_stack.last()
     }
 
+    pub fn use_unit(&mut self, unit: IdentPath) {
+        let mut current_path = self.scopes.current_path_mut();
+        current_path.top().add_use_unit(unit);
+    }
+
+    pub fn all_used_units(&self) -> Vec<IdentPath> {
+        let mut unit_paths = Vec::new();
+
+        for scope in self.scopes.current_path().as_slice().iter().rev() {
+            for used_unit in scope.use_units() {
+                if !unit_paths.contains(used_unit) {
+                    unit_paths.push(used_unit.clone());
+                }
+            }
+        }
+
+        unit_paths
+    }
+
     pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
-        match self.scopes.current_path().find(name) {
+        let current_path = self.scopes.current_path();
+
+        match current_path.find(name) {
             Some(MemberRef::Name {
                 value: Decl::Alias(aliased),
                 ..
             }) => self.resolve(aliased),
-            result => result,
+
+            Some(result) => Some(result),
+
+            None => {
+                // collect the used units for the current scope
+                let mut current_use_units = Vec::new();
+                for scope in current_path.as_slice().iter().rev() {
+                    for use_unit in scope.use_units() {
+                        if !current_use_units.contains(use_unit) {
+                            current_use_units.push(use_unit.clone());
+                        }
+                    }
+                }
+
+                // there can be multiple used units that declare the same name - if there's one
+                // result, we use that, otherwise it's ambiguous
+                let results: Vec<_> = current_use_units.into_iter()
+                    .filter_map(|use_unit| {
+                        let path_in_unit = IdentPath::new(name.clone(), use_unit.into_parts());
+                        self.resolve(&path_in_unit)
+                    })
+                    .collect();
+
+                match results.len() {
+                    0 => None,
+                    1 => Some(results.into_iter().next().unwrap()),
+                    _ => {
+                        // todo: error for ambiguous resolve
+                        None
+                    }
+                }
+            }
         }
     }
 
@@ -811,10 +900,9 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = Named::Namespace(path.top().env().namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
-                    actual: unexpected,
+                    actual: Named::Namespace(path.to_namespace()),
                     expected: ExpectedKind::Interface,
                 })
             }
@@ -906,10 +994,9 @@ impl Context {
             }),
 
             Some(MemberRef::Namespace { path }) => {
-                let unexpected = Named::Namespace(path.top().env().namespace().unwrap().clone());
                 Err(NameError::Unexpected {
                     ident: name.clone(),
-                    actual: unexpected,
+                    actual: Named::Namespace(path.to_namespace()),
                     expected: ExpectedKind::Function,
                 })
             }

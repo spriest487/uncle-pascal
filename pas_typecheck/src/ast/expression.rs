@@ -273,6 +273,9 @@ pub fn ns_member_ref_to_annotation(
             ..
         } => TypeAnnotation::Type(ty.clone(), span),
 
+        MemberRef::Name { value: Decl::Namespace(path), .. } => {
+            TypeAnnotation::Namespace(path.clone(), span)
+        }
         MemberRef::Namespace { path } => {
             TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         }

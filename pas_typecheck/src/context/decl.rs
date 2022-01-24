@@ -22,6 +22,7 @@ pub enum Decl {
         visibility: Visibility,
         span: Span,
     },
+    Namespace(IdentPath),
 }
 
 impl fmt::Display for Decl {
@@ -32,6 +33,7 @@ impl fmt::Display for Decl {
             Decl::BoundValue(binding) => write!(f, "{} of `{}`", binding.kind, binding.ty),
             Decl::Function { sig, .. } => write!(f, "{}", sig),
             Decl::Alias(aliased) => write!(f, "{}", aliased),
+            Decl::Namespace(namespace) => write!(f, "{}", namespace)
         }
     }
 }

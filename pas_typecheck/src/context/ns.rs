@@ -161,7 +161,9 @@ pub struct AlreadyDeclared<Key>(pub Vec<Key>, pub NameKind);
 #[derive(Debug)]
 pub struct NotDefinedHere<Key>(pub Key);
 
-impl<NS: Namespace> NamespaceStack<NS> {
+impl<NS: Namespace> NamespaceStack<NS>
+    where NS: Namespace
+{
     pub fn new(root: NS) -> Self {
         Self {
             namespaces: vec![root],
@@ -280,10 +282,10 @@ impl<NS: Namespace> NamespaceStack<NS> {
     }
 
     #[allow(unused)]
-    pub fn visit_all<Visitor>(&self, mut visitor: Visitor)
+    pub fn visit_members<Visitor>(&self, mut visitor: Visitor)
         where Visitor: FnMut(&[NS::Key], &Member<NS>)
     {
-        let mut path = Vec::new();
+        let mut path = Vec::with_capacity(8);
 
         for ns_index in (0..self.namespaces.len()).rev() {
             path.clear();
@@ -292,12 +294,14 @@ impl<NS: Namespace> NamespaceStack<NS> {
                 .cloned());
 
             let ns = &self.namespaces[ns_index];
-            for key in ns.keys() {
-                if let Some((key, member)) = ns.get_member(&key) {
-                    path.push(key.clone());
-                    visitor(&path, member);
-                    path.pop();
-                }
+            let ns_keys = ns.keys()
+                .into_iter()
+                .filter_map(|k| ns.get_member(&k));
+
+            for (key, member) in ns_keys {
+                path.push(key.clone());
+                visitor(&path, member);
+                path.pop();
             }
         }
     }
@@ -715,7 +719,7 @@ mod test {
 
     fn visit_all_to_vec(namespaces: &NamespaceStack<TestNamespace>) -> Vec<(String, usize)> {
         let mut visited = Vec::new();
-        namespaces.visit_all(|path, member| {
+        namespaces.visit_members(|path, member| {
             match member {
                 Member::Name(val) => {
                     visited.push((path.join("::"), *val));

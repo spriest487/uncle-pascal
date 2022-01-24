@@ -3,7 +3,7 @@ use std::rc::Rc;
 use pas_syn::{Ident, IdentPath};
 
 use crate::ast::FunctionDecl;
-use crate::{Context, Decl, FunctionSig, MemberRef, NamingResult, Type};
+use crate::{Context, Decl, FunctionSig, Member, Namespace, NamingResult, Scope, Type};
 
 #[derive(Clone, Debug)]
 pub enum InstanceMethod {
@@ -47,17 +47,15 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
             Ok(methods)
         }
 
-        Type::GenericParam(generic_param_ty) => {
-            match &generic_param_ty.is_iface {
-                Some(is_iface) => instance_methods_of(is_iface, ctx),
-                None => Ok(Vec::new()),
-            }
+        Type::GenericParam(generic_param_ty) => match &generic_param_ty.is_iface {
+            Some(is_iface) => instance_methods_of(is_iface, ctx),
+            None => Ok(Vec::new()),
         },
 
         _ => {
             let mut methods = Vec::new();
 
-            methods.extend(find_ufcs_methods(ty, ctx));
+            methods.extend(find_ufcs_free_functions(ty, ctx));
             methods.extend(find_iface_impl_methods(ty, ctx)?);
 
             Ok(methods)
@@ -65,56 +63,72 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
     }
 }
 
-fn find_ufcs_methods(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
-    let mut members = Vec::new();
+fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
+    // the namespaces we look for UFCS methods in - the current NS and any used NSs
+    let mut namespaces = vec![ctx.namespace()];
+    namespaces.extend(ctx.all_used_units());
 
-    let current_ns = ctx.namespace();
-    ctx.scopes.visit_all(|path, _| {
-        let path = IdentPath::from_parts(path.to_vec());
-        if path.parent().as_ref() == Some(&current_ns) {
-            members.push(ctx.find(path.last()).unwrap());
-        }
+    let mut methods = Vec::new();
+
+    ctx.scopes.visit_members(|name_parts, member| {
+        // eprintln!("visiting {}", IdentPath::from_parts(name_parts.to_vec()));
+        member_to_ufcs_free_functions(
+            ty,
+            name_parts,
+            member,
+            &namespaces,
+            &mut methods,
+        )
     });
 
-    let methods = members.into_iter()
-        .filter_map(|member| {
-            match member {
-                MemberRef::Name {
-                    value: Decl::Function { sig, visibility: _ },
-                    ref parent_path,
-                    key,
-                } => {
-                    let path =
-                        IdentPath::from_parts(parent_path.keys().cloned()).child(key.clone());
-
-                    if sig.params.is_empty() {
-                        return None;
-                    }
-
-                    let self_param = &sig.params[0];
-
-                    if self_param.ty == *ty
-                        || (self_param.ty.contains_generic_params()
-                            && self_param.ty.same_decl_type(ty))
-                    {
-                        Some(InstanceMethod::FreeFunction {
-                            func_name: path,
-                            sig: sig.clone(),
-                        })
-                    } else {
-                        None
-                    }
-                }
-
-                _ => {
-                    // name is not a function
-                    None
-                }
-            }
-        })
-        .collect();
-
     methods
+}
+
+fn member_to_ufcs_free_functions(
+    ty: &Type,
+    name_parts: &[Ident],
+    member: &Member<Scope>,
+    namespaces: &[IdentPath],
+    methods: &mut Vec<InstanceMethod>,
+) {
+    match member {
+        Member::Name(Decl::Function { sig, visibility: _ }) if !sig.params.is_empty() => {
+            if name_parts.len() <= 1 {
+                return;
+            }
+
+            let name_parent_ns = &name_parts[0..name_parts.len() - 1];
+            if !namespaces.iter().any(|ns| ns.as_slice() == name_parent_ns) {
+                return;
+            }
+
+            let self_param = &sig.params[0];
+
+            if self_param.ty == *ty
+                || (self_param.ty.contains_generic_params() && self_param.ty.same_decl_type(ty))
+            {
+                methods.push(InstanceMethod::FreeFunction {
+                    func_name: IdentPath::from_parts(name_parts.to_vec()),
+                    sig: sig.clone(),
+                })
+            }
+        }
+
+        Member::Namespace(ns) => {
+            let nested_ns_keys = ns.keys();
+
+            let nested_ns_members = nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
+
+            for (key, member) in nested_ns_members {
+                let mut member_name = name_parts.to_vec();
+                member_name.push(key.clone());
+
+                member_to_ufcs_free_functions(ty, &member_name, member, namespaces, methods);
+            }
+        }
+
+        _ => {}
+    }
 }
 
 fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
@@ -151,7 +165,7 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
 
 #[cfg(test)]
 mod test {
-    use crate::context::ufcs::find_ufcs_methods;
+    use crate::context::ufcs::find_ufcs_free_functions;
     use crate::test::{unit_from_src, units_from_src};
     use crate::Type;
 
@@ -170,7 +184,7 @@ mod test {
         let target = Type::of_decl(&unit.unit.type_decls().next().unwrap());
         assert_eq!(target.full_path().unwrap().last().name, "UFCSTarget");
 
-        let methods = find_ufcs_methods(&target, &unit.context);
+        let methods = find_ufcs_free_functions(&target, &unit.context);
 
         assert_eq!(methods.len(), 1);
         assert_eq!(methods[0].ident().name, "TargetMethod");
@@ -193,7 +207,7 @@ mod test {
         let c = &units[2];
 
         let target = Type::of_decl(&a.unit.type_decls().next().unwrap());
-        let methods = find_ufcs_methods(&target, &c.context);
+        let methods = find_ufcs_free_functions(&target, &c.context);
 
         assert_eq!(methods.len(), 1);
         assert_eq!(methods[0].ident().name, "TargetMethod");

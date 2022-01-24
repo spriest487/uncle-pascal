@@ -1,8 +1,8 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
-use pas_syn::Ident;
-use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace};
+use pas_syn::{Ident, IdentPath};
+use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace, PathRef};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
 pub struct ScopeID(pub usize);
@@ -12,6 +12,8 @@ pub struct Scope {
     id: ScopeID,
     env: Environment,
     decls: HashMap<Ident, Member<Scope>>,
+
+    use_units: Vec<IdentPath>,
 }
 
 impl Scope {
@@ -20,7 +22,19 @@ impl Scope {
             id,
             env,
             decls: HashMap::new(),
+
+            use_units: Vec::new(),
         }
+    }
+
+    pub fn add_use_unit(&mut self, use_unit: IdentPath) {
+        if !self.use_units.contains(&use_unit) {
+            self.use_units.push(use_unit);
+        }
+    }
+
+    pub fn use_units(&self) -> &[IdentPath] {
+        &self.use_units
     }
 
     pub fn id(&self) -> ScopeID {
@@ -50,7 +64,7 @@ impl Namespace for Scope {
 
     fn key(&self) -> Option<&Self::Key> {
         match &self.env {
-            Environment::Module { namespace } => Some(namespace.last()),
+            Environment::Namespace { namespace } => Some(namespace.last()),
             _ => None,
         }
     }
@@ -84,5 +98,12 @@ impl Namespace for Scope {
 
     fn replace_member(&mut self, key: Ident, member_val: Member<Self>) {
         self.decls.insert(key, member_val);
+    }
+}
+
+impl<'a> PathRef<'a, Scope> {
+    pub fn to_namespace(&self) -> IdentPath {
+        let namespace = self.as_slice().iter().filter_map(|s| s.key().cloned());
+        IdentPath::from_parts(namespace)
     }
 }
