@@ -118,6 +118,20 @@ begin
     (s.chars + at)^
 end;
 
+export function StringToBytes(s: String; bytes: ^Byte; len: Integer)
+begin
+    if len = 0 or bytes = nil then
+        exit;
+
+    let sLen := StringLen(s);
+    let max := (if len < sLen then len else sLen) - 1;
+
+    for let i := 0 to max do begin
+        var charPtr := bytes + i;
+        charPtr^ := StringCharAt(s, i);
+    end;
+end;
+
 export function CompareStr(a, b: String): Integer
 begin
     if a.len = 0 and b.len = 0 then begin
