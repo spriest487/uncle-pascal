@@ -192,8 +192,23 @@ fn typecheck_const_decl(
     ctx: &mut Context,
 ) -> TypecheckResult<ConstDecl> {
     let span = decl.span().clone();
-    let ty = typecheck_type(&decl.ty, ctx)?;
-    let const_val_expr = typecheck_expr(&decl.val, &ty, ctx)?;
+
+    let (ty, const_val_expr) = match &decl.ty {
+        Some(explicit_ty) => {
+            // use explicitly provided type
+            let ty = typecheck_type(explicit_ty, ctx)?;
+            let const_val_expr = typecheck_expr(&decl.val, &ty, ctx)?;
+
+            (ty, const_val_expr)
+        }
+        None => {
+            // infer from provided value expression
+            let const_val_expr = typecheck_expr(&decl.val, &Type::Nothing, ctx)?;
+            let ty = const_val_expr.annotation().ty().clone();
+
+            (ty, const_val_expr)
+        }
+    };
 
     let const_val_literal = match const_val_expr.const_eval(ctx) {
         Some(const_val) => Ok(const_val),
@@ -221,7 +236,7 @@ fn typecheck_const_decl(
     );
 
     Ok(ast::ConstDecl {
-        ty,
+        ty: Some(ty),
         ident: decl.ident.clone(),
         val: Box::new(const_val),
         span,

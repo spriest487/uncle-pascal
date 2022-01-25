@@ -61,8 +61,8 @@ impl fmt::Display for ExecError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshalError { .. } => write!(f, "Marshalling failed"),
-            ExecError::StackError(..) => write!(f, "Stack operation failed"),
+            ExecError::MarshalError(err) => write!(f, "{}", err),
+            ExecError::StackError(err) => write!(f, "{}", err),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
             }

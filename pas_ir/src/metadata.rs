@@ -608,8 +608,8 @@ impl Metadata {
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
 
-            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => Type::I8,
+            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Type::U8,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => Type::I16,
             pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => Type::U16,
             pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Type::I32,

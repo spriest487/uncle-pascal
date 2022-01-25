@@ -8,7 +8,7 @@ use crate::parse::{ParseResult, TokenStream};
 #[derive(Clone, Debug, Eq)]
 pub struct ConstDecl<A: Annotation> {
     pub ident: Ident,
-    pub ty: A::Type,
+    pub ty: Option<A::Type>,
 
     pub val: Box<Expression<A>>,
 
@@ -36,7 +36,12 @@ impl<A: Annotation> Hash for ConstDecl<A> {
 
 impl<A: Annotation> fmt::Display for ConstDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "const {}: {} = {}", self.ident, self.ty, self.val)
+        write!(f, "const {}", self.ident)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {}", ty)?;
+        }
+
+        write!(f, " = {}", self.val)
     }
 }
 
@@ -44,15 +49,22 @@ impl ConstDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw_token = tokens.match_one(Keyword::Const)?;
         let ident = Ident::parse(tokens)?;
-        tokens.match_one(Separator::Colon)?;
-        let ty_name = TypeName::parse(tokens)?;
+
+        let explicit_ty = match tokens.match_one_maybe(Separator::Colon) {
+            Some(..) => {
+                let ty_name = TypeName::parse(tokens)?;
+                Some(ty_name)
+            }
+            None => None,
+        };
+
         tokens.match_one(Operator::Equals)?;
 
         let val = Expression::parse(tokens)?;
 
         Ok(ConstDecl {
             span: kw_token.span().to(val.span()),
-            ty: ty_name,
+            ty: explicit_ty,
             val: Box::new(val),
             ident,
         })

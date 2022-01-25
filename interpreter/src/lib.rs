@@ -127,8 +127,17 @@ impl Interpreter {
 
     fn default_init_cell(&self, ty: &Type) -> ExecResult<ValueCell> {
         let cell = match ty {
-            Type::I32 => ValueCell::I32(-1),
-            Type::U8 => ValueCell::U8(255),
+            Type::I8 => ValueCell::I8(i8::MIN),
+            Type::U8 => ValueCell::U8(u8::MAX),
+            Type::I16 => ValueCell::I16(i16::MIN),
+            Type::U16 => ValueCell::U16(u16::MAX),
+            Type::I32 => ValueCell::I32(i32::MIN),
+            Type::U32 => ValueCell::U32(u32::MAX),
+            Type::I64 => ValueCell::I64(i64::MIN),
+            Type::U64 => ValueCell::U64(u64::MAX),
+            Type::ISize => ValueCell::ISize(isize::MIN),
+            Type::USize => ValueCell::USize(usize::MAX),
+
             Type::Bool => ValueCell::Bool(false),
             Type::F32 => ValueCell::F32(f32::NAN),
 
@@ -182,7 +191,8 @@ impl Interpreter {
 
     fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
         let current_frame = self.current_frame_mut()?;
-        let local_ptr = current_frame.get_local_ptr(id)?;
+        let local_ptr = current_frame.get_local_ptr(id)
+            .map_err(|err| self.add_debug_ctx(err.into()))?;
 
         self.marshaller.marshal_into(&val, &local_ptr)?;
 
@@ -191,7 +201,8 @@ impl Interpreter {
 
     fn load_local(&self, id: LocalID) -> ExecResult<ValueCell> {
         let current_frame = self.current_frame()?;
-        let local_ptr = current_frame.get_local_ptr(id)?;
+        let local_ptr = current_frame.get_local_ptr(id)
+            .map_err(|err| self.add_debug_ctx(err.into()))?;
 
         let value = self.marshaller.unmarshal_from_ptr(&local_ptr)?;
 
@@ -304,13 +315,18 @@ impl Interpreter {
     fn current_frame(&self) -> ExecResult<&StackFrame> {
         self.stack
             .last()
-            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
+            .ok_or_else(|| ExecError::illegal_state(
+                "called current_frame without no stackframes"
+            ))
     }
 
     fn current_frame_mut(&mut self) -> ExecResult<&mut StackFrame> {
-        self.stack
-            .last_mut()
-            .ok_or_else(|| ExecError::illegal_state("called current_frame without no stackframes"))
+        match self.stack.last_mut() {
+            Some(frame) => Ok(frame),
+            None => Err(ExecError::illegal_state(
+                "called current_frame without no stackframes"
+            ))
+        }
     }
 
     fn vcall_lookup(
@@ -764,7 +780,11 @@ impl Interpreter {
     }
 
     fn exec_local_end(&mut self) -> ExecResult<()> {
-        self.current_frame_mut()?.pop_block()?;
+        self.current_frame_mut().and_then(|f| {
+            f.pop_block()?;
+            Ok(())
+        })
+            .map_err(|err| self.add_debug_ctx(err.into()))?;
 
         Ok(())
     }

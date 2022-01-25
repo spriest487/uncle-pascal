@@ -160,7 +160,10 @@ pub fn typecheck_expr(
                 Ok(ast::Expression::Ident(ident.clone(), annotation))
             }
 
-            _ => Err(NameError::NotFound(ident.clone()).into()),
+            _ => {
+                let not_found_ident = ident.clone();
+                Err(NameError::NotFound(not_found_ident).into())
+            },
         },
 
         ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),

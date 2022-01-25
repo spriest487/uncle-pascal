@@ -272,6 +272,7 @@ impl Context {
                 let results: Vec<_> = current_use_units.into_iter()
                     .filter_map(|use_unit| {
                         let path_in_unit = IdentPath::new(name.clone(), use_unit.into_parts());
+
                         self.resolve(&path_in_unit)
                     })
                     .collect();

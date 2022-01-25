@@ -82,20 +82,48 @@ impl ForeignType {
         Self(FfiType::pointer())
     }
 
-    pub fn usize() -> Self {
-        Self(FfiType::usize())
+    pub fn i8() -> Self {
+        Self(FfiType::i8())
+    }
+
+    pub fn u8() -> Self {
+        Self(FfiType::u8())
+    }
+
+    pub fn i16() -> Self {
+        Self(FfiType::i16())
+    }
+
+    pub fn u16() -> Self {
+        Self(FfiType::u16())
     }
 
     pub fn i32() -> Self {
         Self(FfiType::i32())
     }
 
-    pub fn f32() -> Self {
-        Self(FfiType::f32())
+    pub fn u32() -> Self {
+        Self(FfiType::u32())
     }
 
-    pub fn u8() -> Self {
-        Self(FfiType::u8())
+    pub fn i64() -> Self {
+        Self(FfiType::i64())
+    }
+
+    pub fn u64() -> Self {
+        Self(FfiType::u64())
+    }
+
+    pub fn isize() -> Self {
+        Self(FfiType::isize())
+    }
+
+    pub fn usize() -> Self {
+        Self(FfiType::usize())
+    }
+
+    pub fn f32() -> Self {
+        Self(FfiType::f32())
     }
 
     pub fn void() -> Self {
@@ -169,9 +197,17 @@ impl Marshaller {
             rc_cell_type,
         };
 
-        marshaller.types.insert(Type::I32, ForeignType::i32());
-        marshaller.types.insert(Type::F32, ForeignType::f32());
+        marshaller.types.insert(Type::I8, ForeignType::i8());
         marshaller.types.insert(Type::U8, ForeignType::u8());
+        marshaller.types.insert(Type::I16, ForeignType::i16());
+        marshaller.types.insert(Type::U16, ForeignType::u16());
+        marshaller.types.insert(Type::I32, ForeignType::i32());
+        marshaller.types.insert(Type::U32, ForeignType::u32());
+        marshaller.types.insert(Type::I64, ForeignType::i64());
+        marshaller.types.insert(Type::U64, ForeignType::u64());
+        marshaller.types.insert(Type::ISize, ForeignType::isize());
+        marshaller.types.insert(Type::USize, ForeignType::usize());
+        marshaller.types.insert(Type::F32, ForeignType::f32());
         marshaller.types.insert(Type::Bool, ForeignType::u8());
         marshaller.types.insert(Type::Nothing, ForeignType::void());
 
@@ -365,9 +401,17 @@ impl Marshaller {
 
     pub fn marshal(&self, val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
         let size = match val {
-            ValueCell::I32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::F32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::I8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
             ValueCell::U8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::I16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::U16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::I32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::U32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::I64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::U64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::ISize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::USize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            ValueCell::F32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
             ValueCell::Bool(x) => {
                 out_bytes[0] = if *x { 1 } else { 0 };
                 1
@@ -472,30 +516,18 @@ impl Marshaller {
 
     pub fn unmarshal(&self, in_bytes: &[u8], ty: &Type) -> MarshalResult<UnmarshalledValue> {
         match ty {
-            Type::I32 => {
-                let value = ValueCell::I32(i32::from_ne_bytes(unmarshal_bytes(in_bytes)?));
-                Ok(UnmarshalledValue {
-                    value,
-                    byte_count: size_of::<i32>(),
-                })
-            }
+            Type::I8 => unmarshal_from_ne_bytes(in_bytes, i8::from_ne_bytes, ValueCell::I8),
+            Type::U8 => unmarshal_from_ne_bytes(in_bytes, u8::from_ne_bytes, ValueCell::U8),
+            Type::I16 => unmarshal_from_ne_bytes(in_bytes, i16::from_ne_bytes, ValueCell::I16),
+            Type::U16 => unmarshal_from_ne_bytes(in_bytes, u16::from_ne_bytes, ValueCell::U16),
+            Type::I32 => unmarshal_from_ne_bytes(in_bytes, i32::from_ne_bytes, ValueCell::I32),
+            Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes, ValueCell::U32),
+            Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes, ValueCell::I64),
+            Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes, ValueCell::U64),
+            Type::ISize => unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes, ValueCell::ISize),
+            Type::USize => unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes, ValueCell::USize),
 
-            Type::F32 => {
-                let value = ValueCell::F32(f32::from_ne_bytes(unmarshal_bytes(in_bytes)?));
-                Ok(UnmarshalledValue {
-                    value,
-                    byte_count: size_of::<f32>(),
-                })
-            }
-
-            Type::U8 => {
-                let value = ValueCell::U8(u8::from_ne_bytes(unmarshal_bytes(in_bytes)?));
-
-                Ok(UnmarshalledValue {
-                    value,
-                    byte_count: size_of::<u8>(),
-                })
-            }
+            Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes, ValueCell::F32),
 
             Type::Bool => {
                 if in_bytes.len() == 0 {
@@ -697,4 +729,23 @@ fn unmarshal_bytes<const COUNT: usize>(in_bytes: &[u8]) -> MarshalResult<[u8; CO
         Ok(bytes) => Ok(bytes),
         Err(..) => Err(MarshalError::InvalidData),
     }
+}
+
+fn unmarshal_from_ne_bytes<T, FUn, FCell, const COUNT: usize>(
+    in_bytes: &[u8],
+    f_un: FUn,
+    f_cell: FCell
+) -> MarshalResult<UnmarshalledValue>
+    where
+        FUn: Fn([u8; COUNT]) -> T,
+        FCell: Fn(T) -> ValueCell
+{
+    let bytes = unmarshal_bytes(in_bytes)?;
+    let val = f_un(bytes);
+    let cell = f_cell(val);
+
+    Ok(UnmarshalledValue {
+        value: cell,
+        byte_count: size_of::<T>(),
+    })
 }
