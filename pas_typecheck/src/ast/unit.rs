@@ -54,7 +54,7 @@ fn typecheck_unit_uses_decl(unit: &Ident, ctx: &mut Context) -> TypecheckResult<
         }
 
         // path refers to some other decl
-        Some(MemberRef::Name { value, .. }) => {
+        Some(MemberRef::Value { value, .. }) => {
             let unexpected = Named::Decl(value.clone());
             let err = NameError::Unexpected {
                 ident: unit.clone().into(),

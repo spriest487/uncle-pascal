@@ -61,7 +61,7 @@ impl TypePattern {
         let case_ident = path.last();
 
         match ctx.resolve(&stem_name) {
-            Some(context::MemberRef::Name {
+            Some(context::MemberRef::Value {
                      value: Decl::Type { ty, .. },
                      ..
                  }) if ty.as_variant().is_ok() => {

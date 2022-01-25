@@ -61,7 +61,7 @@ impl Scope {
 
 impl Namespace for Scope {
     type Key = Ident;
-    type Name = Decl;
+    type Value = Decl;
 
     fn key(&self) -> Option<&Self::Key> {
         match &self.env {
@@ -139,7 +139,7 @@ impl NamespaceStack<Scope> {
         self.visit_members(
             |ns_path, key, member| {
                 let visible = match member {
-                    Member::Name(decl) => match decl.visibility() {
+                    Member::Value(decl) => match decl.visibility() {
                         Visibility::Exported => true,
                         Visibility::Private => current_ns.as_slice() == ns_path,
                     },

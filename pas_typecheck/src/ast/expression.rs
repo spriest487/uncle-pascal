@@ -142,7 +142,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Ident(ident, _) => match ctx.find(&ident) {
-            Some(MemberRef::Name {
+            Some(MemberRef::Value {
                 value: Decl::Const { ty, val, span, .. },
                 ..
             }) => Ok(ast::Expression::Literal(
@@ -217,7 +217,7 @@ pub fn ns_member_ref_to_annotation(
     ctx: &Context,
 ) -> TypeAnnotation {
     match member {
-        MemberRef::Name {
+        MemberRef::Value {
             value: Decl::Alias(aliased),
             ..
         } => {
@@ -228,7 +228,7 @@ pub fn ns_member_ref_to_annotation(
             ns_member_ref_to_annotation(alias_ref, span, ctx)
         }
 
-        MemberRef::Name {
+        MemberRef::Value {
             value: Decl::BoundValue(binding),
             ..
         } => TypeAnnotation::TypedValue {
@@ -238,7 +238,7 @@ pub fn ns_member_ref_to_annotation(
             decl: binding.def.clone(),
         },
 
-        MemberRef::Name {
+        MemberRef::Value {
             value: Decl::Function { sig, .. },
             ref parent_path,
             key,
@@ -258,7 +258,7 @@ pub fn ns_member_ref_to_annotation(
             }
         }
 
-        MemberRef::Name {
+        MemberRef::Value {
             value: Decl::Const { ty, .. },
             ..
         } => TypeAnnotation::TypedValue {
@@ -268,12 +268,12 @@ pub fn ns_member_ref_to_annotation(
             value_kind: ValueKind::Immutable,
         },
 
-        MemberRef::Name {
+        MemberRef::Value {
             value: Decl::Type { ty, .. },
             ..
         } => TypeAnnotation::Type(ty.clone(), span),
 
-        MemberRef::Name { value: Decl::Namespace(path), .. } => {
+        MemberRef::Value { value: Decl::Namespace(path), .. } => {
             TypeAnnotation::Namespace(path.clone(), span)
         }
         MemberRef::Namespace { path } => {
