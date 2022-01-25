@@ -1196,29 +1196,7 @@ impl Context {
     }
 
     pub fn is_accessible(&self, name: &IdentPath) -> bool {
-        match self.resolve(name) {
-            Some(MemberRef::Value {
-                parent_path, value, ..
-            }) => match value {
-                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
-                    match visibility {
-                        Visibility::Exported => true,
-                        Visibility::Private => {
-                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
-                            let current_ns = self.namespace();
-
-                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
-                        }
-                    }
-                }
-
-                Decl::Alias(..) => false,
-
-                _ => true,
-            },
-
-            _ => true,
-        }
+        self.scopes.is_accessible(name)
     }
 
     pub fn is_constructor_accessible(&self, ty: &Type) -> bool {

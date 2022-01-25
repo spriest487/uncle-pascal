@@ -1,4 +1,4 @@
-use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace, NamespaceStack, PathRef};
+use crate::{AlreadyDeclared, Decl, Environment, Member, MemberRef, Namespace, NamespaceStack, PathRef};
 use pas_syn::ast::Visibility;
 use pas_syn::{Ident, IdentPath};
 use std::borrow::Borrow;
@@ -132,49 +132,45 @@ impl NamespaceStack<Scope> {
     where
         Visitor: FnMut(&[Ident], &Ident, &Decl),
     {
+        self.visit_members(
+            |ns_path, key, _member| {
+                let member_path = IdentPath::new(key.clone(), ns_path.to_vec());
+                self.is_accessible(&member_path)
+            },
+            visitor,
+        );
+    }
+
+    pub fn is_accessible(&self, name: &IdentPath) -> bool {
         let current_path = self.current_path();
         let current_ns = current_path.to_namespace();
         let current_uses = current_path.all_used_units();
 
-        self.visit_members(
-            |ns_path, key, member| {
-                let visible = match member {
-                    Member::Value(decl) => match decl.visibility() {
+        match self.resolve(name.as_slice()) {
+            Some(MemberRef::Value {
+                     parent_path, value, ..
+                 }) => match value {
+                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
+                    match visibility {
                         Visibility::Exported => true,
-                        Visibility::Private => current_ns.as_slice() == ns_path,
-                    },
+                        Visibility::Private => {
+                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
 
-                    Member::Namespace(..) => {
-                        // slightly elaborate check to avoid allocating the whole path
-                        current_uses.iter().any(|used_ns| {
-                            let used_ns_parts = used_ns.as_slice();
-
-                            used_ns_parts.len() == ns_path.len() + 1
-                                && used_ns_parts[0..used_ns_parts.len() - 1] == *ns_path
-                                && used_ns_parts[used_ns_parts.len() - 1] == *key
-                        })
+                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
+                        }
                     }
-                };
+                }
 
-                // eprintln!(
-                //     "{}::{} visible from {}? (current uses: {}) {}",
-                //     ns_path
-                //         .into_iter()
-                //         .map(|p| p.to_string())
-                //         .collect::<Vec<_>>()
-                //         .join("::"),
-                //     key,
-                //     current_ns,
-                //     current_uses.iter()
-                //         .map(|ns| ns.to_string())
-                //         .collect::<Vec<_>>()
-                //         .join(", "),
-                //     visible
-                // );
+                Decl::Alias(..) => false,
 
-                visible
+                _ => true,
             },
-            visitor,
-        );
+
+            Some(MemberRef::Namespace { .. }) => {
+                current_uses.contains(name)
+            }
+
+            _ => true,
+        }
     }
 }

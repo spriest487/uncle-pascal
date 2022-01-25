@@ -81,9 +81,19 @@ pub trait Namespace: Sized {
     fn replace_member(&mut self, key: Self::Key, member_val: Member<Self>);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PathRef<'s, NS: Namespace> {
     namespaces: Vec<&'s NS>,
+}
+
+impl<'s, NS> Clone for PathRef<'s, NS>
+    where NS: Namespace
+{
+    fn clone(&self) -> Self {
+        PathRef {
+            namespaces: self.namespaces.clone()
+        }
+    }
 }
 
 impl<'s, NS: Namespace> PathRef<'s, NS> {
