@@ -245,20 +245,6 @@ impl Context {
         current_path.top().add_use_unit(unit);
     }
 
-    pub fn all_used_units(&self) -> Vec<IdentPath> {
-        let mut unit_paths = Vec::new();
-
-        for scope in self.scopes.current_path().as_slice().iter().rev() {
-            for used_unit in scope.use_units() {
-                if !unit_paths.contains(used_unit) {
-                    unit_paths.push(used_unit.clone());
-                }
-            }
-        }
-
-        unit_paths
-    }
-
     pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
         let current_path = self.scopes.current_path();
 

@@ -1,8 +1,9 @@
+use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace, NamespaceStack, PathRef};
+use pas_syn::ast::Visibility;
+use pas_syn::{Ident, IdentPath};
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::hash::Hash;
-use pas_syn::{Ident, IdentPath};
-use crate::{AlreadyDeclared, Decl, Environment, Member, Namespace, PathRef};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
 pub struct ScopeID(pub usize);
@@ -45,7 +46,7 @@ impl Scope {
         &self.env
     }
 
-    pub fn iter_decls(&self) -> impl Iterator<Item=(&Ident, &Member<Scope>)> {
+    pub fn iter_decls(&self) -> impl Iterator<Item = (&Ident, &Member<Scope>)> {
         self.decls.iter()
     }
 
@@ -74,16 +75,20 @@ impl Namespace for Scope {
     }
 
     fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member<Self>)>
-        where
-            Ident: Borrow<Q>,
-            Q: Hash + Eq + ?Sized,
+    where
+        Ident: Borrow<Q>,
+        Q: Hash + Eq + ?Sized,
     {
         self.decls
             .iter()
             .find(|(k, _v)| (*k).borrow() == member_key)
     }
 
-    fn insert_member(&mut self, key: Ident, member_val: Member<Self>) -> Result<(), AlreadyDeclared<Ident>> {
+    fn insert_member(
+        &mut self,
+        key: Ident,
+        member_val: Member<Self>,
+    ) -> Result<(), AlreadyDeclared<Ident>> {
         if let Some(existing) = self.decls.get(&key) {
             let kind = existing.kind();
             let mut path = self.keys();
@@ -105,5 +110,71 @@ impl<'a> PathRef<'a, Scope> {
     pub fn to_namespace(&self) -> IdentPath {
         let namespace = self.as_slice().iter().filter_map(|s| s.key().cloned());
         IdentPath::from_parts(namespace)
+    }
+
+    pub fn all_used_units(&self) -> Vec<IdentPath> {
+        let mut unit_paths = Vec::new();
+
+        for scope in self.as_slice().iter().rev() {
+            for used_unit in scope.use_units() {
+                if !unit_paths.contains(used_unit) {
+                    unit_paths.push(used_unit.clone());
+                }
+            }
+        }
+
+        unit_paths
+    }
+}
+
+impl NamespaceStack<Scope> {
+    pub fn visit_visible<Visitor>(&self, visitor: Visitor)
+    where
+        Visitor: FnMut(&[Ident], &Ident, &Decl),
+    {
+        let current_path = self.current_path();
+        let current_ns = current_path.to_namespace();
+        let current_uses = current_path.all_used_units();
+
+        self.visit_members(
+            |ns_path, key, member| {
+                let visible = match member {
+                    Member::Name(decl) => match decl.visibility() {
+                        Visibility::Exported => true,
+                        Visibility::Private => current_ns.as_slice() == ns_path,
+                    },
+
+                    Member::Namespace(..) => {
+                        // slightly elaborate check to avoid allocating the whole path
+                        current_uses.iter().any(|used_ns| {
+                            let used_ns_parts = used_ns.as_slice();
+
+                            used_ns_parts.len() == ns_path.len() + 1
+                                && used_ns_parts[0..used_ns_parts.len() - 1] == *ns_path
+                                && used_ns_parts[used_ns_parts.len() - 1] == *key
+                        })
+                    }
+                };
+
+                // eprintln!(
+                //     "{}::{} visible from {}? (current uses: {}) {}",
+                //     ns_path
+                //         .into_iter()
+                //         .map(|p| p.to_string())
+                //         .collect::<Vec<_>>()
+                //         .join("::"),
+                //     key,
+                //     current_ns,
+                //     current_uses.iter()
+                //         .map(|ns| ns.to_string())
+                //         .collect::<Vec<_>>()
+                //         .join(", "),
+                //     visible
+                // );
+
+                visible
+            },
+            visitor,
+        );
     }
 }

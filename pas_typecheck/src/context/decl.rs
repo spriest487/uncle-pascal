@@ -25,6 +25,19 @@ pub enum Decl {
     Namespace(IdentPath),
 }
 
+impl Decl {
+    pub fn visibility(&self) -> Visibility {
+        match self {
+            Decl::Type { visibility, .. } => *visibility,
+            Decl::Const { visibility, .. } => *visibility,
+            Decl::Function { visibility, .. } => *visibility,
+            Decl::Namespace(..) => Visibility::Exported,
+            Decl::Alias(..) => Visibility::Private,
+            Decl::BoundValue(..) => Visibility::Private,
+        }
+    }
+}
+
 impl fmt::Display for Decl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {

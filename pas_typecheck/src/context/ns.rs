@@ -73,7 +73,11 @@ pub trait Namespace: Sized {
         Self::Key: Borrow<Q>,
         Q: Hash + Eq + ?Sized;
 
-    fn insert_member(&mut self, key: Self::Key, member_val: Member<Self>) -> Result<(), AlreadyDeclared<Self::Key>>;
+    fn insert_member(
+        &mut self,
+        key: Self::Key,
+        member_val: Member<Self>,
+    ) -> Result<(), AlreadyDeclared<Self::Key>>;
     fn replace_member(&mut self, key: Self::Key, member_val: Member<Self>);
 }
 
@@ -162,7 +166,8 @@ pub struct AlreadyDeclared<Key>(pub Vec<Key>, pub NameKind);
 pub struct NotDefinedHere<Key>(pub Key);
 
 impl<NS: Namespace> NamespaceStack<NS>
-    where NS: Namespace
+where
+    NS: Namespace,
 {
     pub fn new(root: NS) -> Self {
         Self {
@@ -277,32 +282,66 @@ impl<NS: Namespace> NamespaceStack<NS>
         Some(MemberRef::Namespace { path: current })
     }
 
-    pub fn iter_up(&self) -> impl Iterator<Item=&NS> {
+    pub fn iter_up(&self) -> impl Iterator<Item = &NS> {
         self.namespaces.iter().rev()
     }
 
-    #[allow(unused)]
-    pub fn visit_members<Visitor>(&self, mut visitor: Visitor)
-        where Visitor: FnMut(&[NS::Key], &Member<NS>)
+    pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)
+    where
+        Visitor: FnMut(&[NS::Key], &NS::Key, &NS::Name),
+        Predicate: Fn(&[NS::Key], &NS::Key, &Member<NS>) -> bool,
     {
-        let mut path = Vec::with_capacity(8);
+        let mut ns_path = Vec::with_capacity(8);
 
         for ns_index in (0..self.namespaces.len()).rev() {
-            path.clear();
-            path.extend(self.namespaces[0..=ns_index].iter()
-                .filter_map(|ns| ns.key())
-                .cloned());
+            ns_path.clear();
+            ns_path.extend(
+                self.namespaces[0..=ns_index]
+                    .iter()
+                    .filter_map(|ns| ns.key())
+                    .cloned(),
+            );
 
             let ns = &self.namespaces[ns_index];
-            let ns_keys = ns.keys()
-                .into_iter()
-                .filter_map(|k| ns.get_member(&k));
+            let ns_keys = ns.keys().into_iter().filter_map(|k| ns.get_member(&k));
 
             for (key, member) in ns_keys {
-                path.push(key.clone());
-                visitor(&path, member);
-                path.pop();
+                visit_member(key, member, &mut ns_path, &predicate, &mut visitor);
             }
+        }
+    }
+}
+
+fn visit_member<NS, Predicate, Visitor>(
+    key: &NS::Key,
+    member: &Member<NS>,
+    ns_path: &mut Vec<NS::Key>,
+    predicate: &Predicate,
+    visitor: &mut Visitor,
+) where
+    NS: Namespace,
+    Visitor: FnMut(&[NS::Key], &NS::Key, &NS::Name),
+    Predicate: Fn(&[NS::Key], &NS::Key, &Member<NS>) -> bool,
+{
+    if !predicate(ns_path, key, member) {
+        return;
+    }
+
+    match member {
+        Member::Name(value) => {
+            visitor(ns_path, key, value);
+        }
+
+        Member::Namespace(ns) => {
+            let nested_ns_keys = ns.keys();
+            let nested_ns_members =
+                nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
+
+            ns_path.push(key.clone());
+            for (key, member) in nested_ns_members {
+                visit_member(key, member, ns_path, predicate, visitor);
+            }
+            ns_path.pop();
         }
     }
 }
@@ -398,7 +437,11 @@ mod test {
                 .find(|(k, _v)| (*k).borrow() == member_key)
         }
 
-        fn insert_member(&mut self, key: Self::Key, member: Member<Self>) -> Result<(), AlreadyDeclared<String>> {
+        fn insert_member(
+            &mut self,
+            key: Self::Key,
+            member: Member<Self>,
+        ) -> Result<(), AlreadyDeclared<String>> {
             match self.members.entry(key.clone()) {
                 Entry::Vacant(entry) => {
                     entry.insert(member);
@@ -408,7 +451,7 @@ mod test {
                 Entry::Occupied(entry) => {
                     let existing = entry.get();
                     Err(AlreadyDeclared(vec![key.clone()], existing.kind()))
-                },
+                }
             }
         }
 
@@ -719,14 +762,9 @@ mod test {
 
     fn visit_all_to_vec(namespaces: &NamespaceStack<TestNamespace>) -> Vec<(String, usize)> {
         let mut visited = Vec::new();
-        namespaces.visit_members(|path, member| {
-            match member {
-                Member::Name(val) => {
-                    visited.push((path.join("::"), *val));
-                }
 
-                _ => {}
-            }
+        namespaces.visit_members(|_ns_path, _key, _member| true, |path, _, val| {
+            visited.push((path.join("::"), *val));
         });
 
         visited
