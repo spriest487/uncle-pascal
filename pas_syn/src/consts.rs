@@ -86,6 +86,16 @@ impl IntConstant {
         }
     }
 
+    pub fn as_i8(&self) -> Option<i8> {
+        match self {
+            IntConstant::Char(i) => cast::i8(*i).ok(),
+            IntConstant::I32(i) => cast::i8(*i).ok(),
+            IntConstant::U32(i) => cast::i8(*i).ok(),
+            IntConstant::I64(i) => cast::i8(*i).ok(),
+            IntConstant::U64(i) => cast::i8(*i).ok(),
+        }
+    }
+
     pub fn as_u8(&self) -> Option<u8> {
         match self {
             IntConstant::Char(i) => Some(*i),
@@ -93,6 +103,26 @@ impl IntConstant {
             IntConstant::U32(i) => cast::u8(*i).ok(),
             IntConstant::I64(i) => cast::u8(*i).ok(),
             IntConstant::U64(i) => cast::u8(*i).ok(),
+        }
+    }
+
+    pub fn as_i16(&self) -> Option<i16> {
+        match self {
+            IntConstant::Char(i) => Some(cast::i16(*i)),
+            IntConstant::I32(i) => cast::i16(*i).ok(),
+            IntConstant::U32(i) => cast::i16(*i).ok(),
+            IntConstant::I64(i) => cast::i16(*i).ok(),
+            IntConstant::U64(i) => cast::i16(*i).ok(),
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        match self {
+            IntConstant::Char(i) => Some(cast::u16(*i)),
+            IntConstant::I32(i) => cast::u16(*i).ok(),
+            IntConstant::U32(i) => cast::u16(*i).ok(),
+            IntConstant::I64(i) => cast::u16(*i).ok(),
+            IntConstant::U64(i) => cast::u16(*i).ok(),
         }
     }
 

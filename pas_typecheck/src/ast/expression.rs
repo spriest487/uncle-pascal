@@ -64,32 +64,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Literal(ast::Literal::Integer(i), _) => {
-            let ty = match expect_ty {
-                Type::Primitive(Primitive::Byte) => match i.as_u8() {
-                    Some(_) => Type::from(Primitive::Byte),
-                    None => Type::Primitive(Primitive::Int32),
-                },
-                Type::Primitive(Primitive::Real32) => match i.as_f32() {
-                    Some(_) => Type::from(Primitive::Real32),
-                    None => Type::Primitive(Primitive::Int32),
-                },
-                _ => match i.as_f32() {
-                    Some(_) => Type::from(Primitive::Int32),
-                    None => unimplemented!("integer literals outside range of i32"),
-                },
-            };
-
-            let annotation = TypeAnnotation::TypedValue {
-                ty,
-                value_kind: ValueKind::Immutable,
-                span,
-                decl: None,
-            };
-
-            Ok(ast::Expression::Literal(
-                ast::Literal::Integer(*i),
-                annotation,
-            ))
+            typecheck_literal_int(i, expect_ty, span)
         }
 
         ast::Expression::Literal(ast::Literal::Real(x), _) => {
@@ -211,6 +186,49 @@ pub fn typecheck_expr(
             let case = typecheck_case_expr(case, expect_ty, ctx)?;
             Ok(ast::Expression::from(case))
         }
+    }
+}
+
+fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expression> {
+    let ty = match expect_ty {
+        Type::Primitive(Primitive::Byte) => try_map_primitive_int(i, Primitive::Byte, IntConstant::as_u8),
+        Type::Primitive(Primitive::Int8) => try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8),
+        Type::Primitive(Primitive::Int16) => try_map_primitive_int(i, Primitive::Int16, IntConstant::as_i16),
+        Type::Primitive(Primitive::UInt16) => try_map_primitive_int(i, Primitive::UInt16, IntConstant::as_u16),
+        Type::Primitive(Primitive::Int32) => try_map_primitive_int(i, Primitive::Int32, IntConstant::as_i32),
+        Type::Primitive(Primitive::UInt32) => try_map_primitive_int(i, Primitive::UInt32, IntConstant::as_u32),
+        Type::Primitive(Primitive::Int64) => try_map_primitive_int(i, Primitive::Int64, IntConstant::as_i64),
+        Type::Primitive(Primitive::UInt64) => try_map_primitive_int(i, Primitive::UInt64, IntConstant::as_u64),
+        Type::Primitive(Primitive::NativeInt) => try_map_primitive_int(i, Primitive::NativeInt, IntConstant::as_isize),
+        Type::Primitive(Primitive::NativeUInt) => try_map_primitive_int(i, Primitive::NativeUInt, IntConstant::as_usize),
+
+        Type::Primitive(Primitive::Real32) => try_map_primitive_int(i, Primitive::Real32, IntConstant::as_f32),
+
+        _ => match i.as_i32() {
+            Some(_) => Type::from(Primitive::Int32),
+            None => unimplemented!("integer literals outside range of i32"),
+        },
+    };
+
+    let annotation = TypeAnnotation::TypedValue {
+        ty,
+        value_kind: ValueKind::Immutable,
+        span,
+        decl: None,
+    };
+
+    Ok(ast::Expression::Literal(
+        ast::Literal::Integer(*i),
+        annotation,
+    ))
+}
+
+fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -> Type
+    where F: Fn(&IntConstant) -> Option<T>
+{
+    match f(&i) {
+        Some(..) => Type::Primitive(primitive_ty),
+        None => Type::Primitive(Primitive::Int32),
     }
 }
 
