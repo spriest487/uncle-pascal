@@ -5,6 +5,7 @@ use pas_syn::{
     ast,
     ident::*,
 };
+use pas_syn::ast::IdentTypeName;
 
 use crate::{context, result::*, Context, Decl, NameError, Symbol, ty::{Type, Specializable, typecheck_type}, NameContainer};
 
@@ -100,7 +101,7 @@ impl TypePattern {
         ctx: &mut Context,
     ) -> TypecheckResult<Type> {
         let raw_ty = match name {
-            ast::TypeName::Ident { ident, .. } => ctx.find_type(ident)?.1.clone(),
+            ast::TypeName::Ident(IdentTypeName { ident, .. }) => ctx.find_type(ident)?.1.clone(),
             _ => typecheck_type(name, ctx)?,
         };
 
@@ -183,12 +184,12 @@ impl TypePattern {
                     }
 
                     None => {
-                        let ty_name = ast::TypeName::Ident {
+                        let ty_name = ast::TypeName::Ident(IdentTypeName {
                             span: name.span().clone(),
                             indirection: 0,
                             type_args: None,
                             ident: name.clone(),
-                        };
+                        });
 
                         let ty = Self::find_pattern_ty(&ty_name, pattern.span(), expect_ty, ctx)?;
 

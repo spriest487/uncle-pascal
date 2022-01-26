@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::{
     ast::{Block, DeclMod, TypeList, TypeParam, WhereClause},
     parse::prelude::*,
@@ -70,16 +73,15 @@ impl FunctionDecl<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let func_kw = tokens.match_one(Keyword::Function)?;
 
-        let mut impl_iface = None;
-        let mut ident_token = tokens.match_one(Matcher::AnyIdent)?;
-
-        if tokens.match_one_maybe(Operator::Member).is_some() {
-            impl_iface = Some(ident_token);
-            ident_token = tokens.match_one(Matcher::AnyIdent)?;
-        }
+        let func_ident = Ident::parse(tokens)?;
 
         let type_params_list = match tokens.look_ahead().match_one(DelimiterPair::SquareBracket) {
             Some(..) => Some(TypeList::parse_type_params(tokens)?),
+            None => None,
+        };
+
+        let iface_ty = match tokens.match_one_maybe(Keyword::Of) {
+            Some(..) => TypeName::parse(tokens).map(Some)?,
             None => None,
         };
 
@@ -221,22 +223,15 @@ impl FunctionDecl<Span> {
             sig_span.to(mods[mods.len() - 1].span())
         };
 
-        // todo: we only allow one ident here for the iface type, it should parse a whole typename
-        let impl_iface = impl_iface.map(|tt| {
-            let for_ty = TypeName::Unknown(tt.span().clone());
+        let impl_iface = iface_ty.map(|ty| {
+            // we'll fill this in during typechecking, the parser doesn't care
+            let for_ty = TypeName::Unknown(ty.span().clone());
 
-            let iface = TypeName::Ident {
-                span: tt.span().clone(),
-                indirection: 0,
-                ident: tt.into_ident().unwrap().into(),
-                type_args: None,
-            };
-
-            InterfaceImpl { for_ty, iface }
+            InterfaceImpl { for_ty, iface: ty }
         });
 
         Ok(FunctionDecl {
-            ident: IdentPath::from(ident_token.into_ident().unwrap()),
+            ident: IdentPath::from(func_ident),
             impl_iface,
             span,
             return_ty,

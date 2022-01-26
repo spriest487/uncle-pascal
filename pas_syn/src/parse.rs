@@ -3,7 +3,7 @@ mod token_stream;
 
 pub mod prelude {
     pub use crate::{
-        ast::{Annotation, DeclNamed, TypeName, TypeNamePattern},
+        ast::{Annotation, DeclNamed, TypeName, IdentTypeName, ArrayTypeName, TypeNamePattern},
         consts::*,
         ident::*,
         keyword::*,
@@ -57,6 +57,7 @@ pub enum ParseError {
     TypeConstraintAlreadySpecified(TypeConstraint<TypeName>),
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
     UnterminatedStatement { span: Span },
+    InvalidFunctionImplType(TypeName),
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -77,6 +78,7 @@ impl Spanned for ParseError {
             ParseError::EmptyTypeArgList(tl) => tl.span(),
             ParseError::EmptyWhereClause(c) => c.span(),
             ParseError::UnterminatedStatement { span } => span,
+            ParseError::InvalidFunctionImplType(tn) => tn.span(),
         }
     }
 }
@@ -97,6 +99,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyTypeArgList { .. } => write!(f, "Empty type argument list"),
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
             ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated statement"),
+            ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
         }
     }
 }
@@ -154,6 +157,10 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::UnterminatedStatement { .. } => {
                 format!("statement here is unterminated")
+            }
+
+            ParseError::InvalidFunctionImplType(ty) => {
+                format!("type {} cannot have interface implementation functions declared for it", ty)
             }
         };
 

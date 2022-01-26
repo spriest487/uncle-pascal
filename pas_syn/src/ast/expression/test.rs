@@ -1,7 +1,7 @@
 use super::*;
 use crate::token_tree::TokenTree;
 use pas_common::{BuildOptions, TracedError};
-use crate::ast::TypeName;
+use crate::ast::{IdentTypeName, TypeName};
 use crate::Operator;
 
 fn tokenize(src: &str) -> TokenStream {
@@ -88,7 +88,7 @@ fn parse_invocation_with_type_args() {
 
                 for (&expected, actual) in expect_args.iter().zip(type_args.items.iter()) {
                     match actual {
-                        TypeName::Ident { ident, .. } => {
+                        TypeName::Ident(IdentTypeName { ident, .. }) => {
                             assert_eq!(None, ident.parent());
                             assert_eq!(expected, ident.last().name.as_str());
                         }

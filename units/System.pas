@@ -37,7 +37,7 @@ export type Disposable = interface
     function Dispose(self: Self);
 end;
 
-export function Disposable.Dispose(self: String)
+export function Dispose of Disposable(self: String)
 begin
     if self.len > 0 then FreeMem(self.chars);
 
@@ -211,12 +211,12 @@ begin
     if a.Compare(b) < 0 then a else b
 end;
 
-export function Comparable.Compare(self: String; other: String): Integer
+export function Compare of Comparable(self: String; other: String): Integer
 begin
     CompareStr(self, other)
 end;
 
-export function Comparable.Compare(self: Integer; other: Integer): Integer
+export function Compare of Comparable(self: Integer; other: Integer): Integer
 begin
     self - other
 end;
@@ -225,17 +225,17 @@ export type Displayable = interface
     function ToString(self: Self): String;
 end;
 
-export function Displayable.ToString(self: Integer): String
+export function ToString of Displayable(self: Integer): String
 begin
     IntToStr(self)
 end;
 
-export function Displayable.ToString(self: Boolean): String
+export function ToString of Displayable(self: Boolean): String
 begin
     if self then 'true' else 'false'
 end;
 
-export function Displayable.ToString(self: String): String
+export function ToString of Displayable(self: String): String
 begin
     self
 end;
@@ -253,6 +253,6 @@ begin
 
         arr := if ArraySetLengthInternal(arr, len, defaultValPtr, defaultValSize) is array of T newArr
             then newArr
-            else arr; // unreachable
+            else raise 'unreachable';
     end;
 end;

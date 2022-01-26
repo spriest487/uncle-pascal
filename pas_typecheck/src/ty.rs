@@ -14,6 +14,7 @@ use pas_syn::{
     Operator,
 };
 use std::{fmt, rc::Rc};
+use pas_syn::ast::{ArrayTypeName, IdentTypeName};
 
 #[cfg(test)]
 mod test;
@@ -256,7 +257,7 @@ impl Type {
         (0..indirection).fold(self, |ty, _| ty.ptr())
     }
 
-    pub fn self_comparable(&self) -> bool {
+    pub fn self_equatable(&self) -> bool {
         match self {
             Type::Nothing
             | Type::Interface(..)
@@ -267,6 +268,15 @@ impl Type {
             | Type::MethodSelf => false,
 
             _ => true,
+        }
+    }
+
+    pub fn equatable(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Type::Nil, Type::Pointer(..) | Type::Primitive(Primitive::Pointer)) => true,
+            (Type::Pointer(..) | Type::Primitive(Primitive::Pointer), Type::Nil) => true,
+            (a, b) if a == b => a.self_equatable(),
+            _ => false,
         }
     }
 
@@ -354,7 +364,13 @@ impl Type {
         match (self, op, rhs) {
             // pointer arithmetic
             (Type::Pointer(_), Operator::Plus, Type::Pointer(_))
-            | (Type::Pointer(_), Operator::Minus, Type::Pointer(_))
+            | (Type::Pointer(_), Operator::Minus, Type::Pointer(_)) => true,
+            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::NativeInt))
+            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::NativeInt))
+            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int8))
+            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int8))
+            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int16))
+            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int16))
             | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32))
             | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
 
@@ -584,12 +600,12 @@ pub struct TypeMemberRef<'ty> {
 
 pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<Type> {
     match ty {
-        ast::TypeName::Ident {
+        ast::TypeName::Ident(IdentTypeName {
             ident,
             indirection,
             type_args,
             span,
-        } => {
+        }) => {
             let (_, raw_ty) = ctx.find_type(ident)?;
             let raw_ty = raw_ty.clone();
 
@@ -613,7 +629,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             Ok(ty.indirect_by(*indirection))
         }
 
-        ast::TypeName::Array { element, dim, .. } => {
+        ast::TypeName::Array(ArrayTypeName { element, dim, .. }) => {
             let element = typecheck_type(element.as_ref(), ctx)?;
 
             match dim {
@@ -792,12 +808,12 @@ impl Specializable for Type {
 pub fn string_type(ctx: &mut Context) -> TypecheckResult<Type> {
     let span = context::builtin_span();
     let ns = IdentPath::from(Ident::new("System", span.clone()));
-    let str_class_name = ast::TypeName::Ident {
+    let str_class_name = ast::TypeName::Ident(IdentTypeName {
         ident: ns.child(Ident::new("String", span.clone())),
         indirection: 0,
         type_args: None,
         span,
-    };
+    });
 
     typecheck_type(&str_class_name, ctx)
 }

@@ -226,18 +226,16 @@ mod test {
         let src_tokens = TokenTree::tokenize("test", s, &BuildOptions::default()).unwrap();
         let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));
 
-        match Statement::parse(&mut token_stream).unwrap() {
-            Statement::Case(case) => {
-                token_stream.finish().unwrap();
-                *case
-            }
-            _ => panic!("test source is not a case statement"),
-        }
+        CaseBlock::parse(&mut token_stream).unwrap()
+    }
+
+    fn parse_case_stmt(s: &str) -> CaseStatement<Span> {
+        parse_case::<Statement<Span>>(s)
     }
 
     #[test]
     fn empty_case_parses() {
-        let case = parse_case("case 1 of end");
+        let case = parse_case_stmt("case 1 of end");
 
         assert_eq!(0, case.branches.len());
         assert_eq!(None, case.else_branch);
@@ -246,53 +244,53 @@ mod test {
     #[test]
     #[should_panic]
     fn case_with_garbage_is_err() {
-        parse_case("case 1 of cat dog horse end");
+        parse_case_stmt("case 1 of cat dog horse end");
     }
 
     #[test]
     #[should_panic]
     fn case_unterminated_is_err() {
-        parse_case("case 1 of 1: a()");
+        parse_case_stmt("case 1 of 1: a()");
     }
 
     #[test]
     fn case_with_single_branch() {
-        let case = parse_case("case 1 of 1: a() end");
+        let case = parse_case_stmt("case 1 of 1: a() end");
         assert_eq!(1, case.branches.len());
         assert_eq!(None, case.else_branch);
     }
 
     #[test]
     fn case_with_single_branch_and_separator() {
-        let case = parse_case("case 1 of 1: a(); end");
+        let case = parse_case_stmt("case 1 of 1: a(); end");
         assert_eq!(1, case.branches.len());
         assert_eq!(None, case.else_branch);
     }
 
     #[test]
     fn case_with_separated_branches() {
-        let case = parse_case("case 1 of 1: a(); 2: b(); 3: c() end");
+        let case = parse_case_stmt("case 1 of 1: a(); 2: b(); 3: c() end");
         assert_eq!(3, case.branches.len());
         assert_eq!(None, case.else_branch);
     }
 
     #[test]
     fn case_with_unseparated_else() {
-        let case = parse_case("case 1 of 1: a() else b() end");
+        let case = parse_case_stmt("case 1 of 1: a() else b() end");
         assert_eq!(1, case.branches.len());
         assert!(case.else_branch.is_some());
     }
 
     #[test]
     fn case_with_else_and_separator_after_final_branch() {
-        let case = parse_case("case 1 of 1: a(); 2: b(); else c() end");
+        let case = parse_case_stmt("case 1 of 1: a(); 2: b(); else c() end");
         assert_eq!(2, case.branches.len());
         assert!(case.else_branch.is_some());
     }
 
     #[test]
     fn case_with_separator_after_final_branch_and_else_stmt() {
-        let case = parse_case("case 1 of 1: a(); 2: b(); else c(); end");
+        let case = parse_case_stmt("case 1 of 1: a(); 2: b(); else c(); end");
         assert_eq!(2, case.branches.len());
         assert!(case.else_branch.is_some());
     }

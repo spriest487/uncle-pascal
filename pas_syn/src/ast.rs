@@ -29,7 +29,6 @@ pub use self::{
     typedecl::*,
     unit::*,
 };
-
 use crate::parse::prelude::*;
 use pas_common::TracedError;
 use std::hash::Hasher;
@@ -62,29 +61,95 @@ impl Annotation for Span {
     type ConstIntegerExpr = Box<Expression<Span>>;
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Eq, Hash)]
+pub struct IdentTypeName {
+    pub ident: IdentPath,
+    pub type_args: Option<TypeList<TypeName>>,
+    pub indirection: usize,
+    pub span: Span,
+}
+
+impl PartialEq for IdentTypeName {
+    fn eq(&self, other: &Self) -> bool {
+        self.ident == other.ident
+            && self.type_args == other.type_args
+            && self.indirection == other.indirection
+    }
+}
+
+impl Spanned for IdentTypeName {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for IdentTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for _ in 0..self.indirection {
+            write!(f, "^")?;
+        }
+        write!(f, "{}", self.ident)?;
+
+        if let Some(type_args) = &self.type_args {
+            write!(f, "<")?;
+            for (i, arg) in type_args.items.iter().enumerate() {
+                if i > 0 {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", arg)?;
+            }
+            write!(f, ">")?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, Hash)]
+pub struct ArrayTypeName {
+    pub element: Box<TypeName>,
+    pub dim: Option<Box<Expression<Span>>>,
+    pub indirection: usize,
+    pub span: Span,
+}
+
+impl PartialEq for ArrayTypeName {
+    fn eq(&self, other: &Self) -> bool {
+        self.element == other.element
+            && self.dim == other.dim
+            && self.indirection == other.indirection
+    }
+}
+
+impl Spanned for ArrayTypeName {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for ArrayTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.dim {
+            Some(dim) => write!(f, "array[{}] of {}", dim, self.element),
+            None => write!(f, "array of {}", self.element),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeName {
     /// type is unknown or unnamed at parse time
     Unknown(Span),
-    Ident {
-        ident: IdentPath,
-        type_args: Option<TypeList<TypeName>>,
-        indirection: usize,
-        span: Span,
-    },
-    Array {
-        element: Box<TypeName>,
-        dim: Option<Box<Expression<Span>>>,
-        indirection: usize,
-        span: Span,
-    },
+
+    Ident(IdentTypeName),
+    Array(ArrayTypeName),
 }
 
 impl Spanned for TypeName {
     fn span(&self) -> &Span {
         match self {
-            TypeName::Ident { span, .. } => span,
-            TypeName::Array { span, .. } => span,
+            TypeName::Ident(i) => i.span(),
+            TypeName::Array(a) => a.span(),
             TypeName::Unknown(span) => span,
         }
     }
@@ -161,12 +226,12 @@ impl TypeName {
             None => array_span,
         };
 
-        Ok(TypeName::Array {
+        Ok(TypeName::Array(ArrayTypeName {
             dim,
             span,
             indirection,
             element: Box::new(element),
-        })
+        }))
     }
 
     fn parse_named_type(
@@ -195,55 +260,20 @@ impl TypeName {
             None => name_span,
         };
 
-        Ok(TypeName::Ident {
+        Ok(TypeName::Ident(IdentTypeName {
             ident,
             indirection,
             type_args,
             span,
-        })
+        }))
     }
 }
 
 impl fmt::Display for TypeName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeName::Ident {
-                ident,
-                indirection,
-                type_args,
-                ..
-            } => {
-                for _ in 0..*indirection {
-                    write!(f, "^")?;
-                }
-                write!(f, "{}", ident)?;
-
-                if let Some(type_args) = type_args {
-                    write!(f, "<")?;
-                    for (i, arg) in type_args.items.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
-                        write!(f, "{}", arg)?;
-                    }
-                    write!(f, ">")?;
-                }
-
-                Ok(())
-            }
-
-            TypeName::Array {
-                element,
-                dim: Option::Some(dim),
-                ..
-            } => write!(f, "array[{}] of {}", dim, element),
-
-            TypeName::Array {
-                element,
-                dim: Option::None,
-                ..
-            } => write!(f, "array of {}", element),
-
+            TypeName::Ident(ident_type_name) => write!(f, "{}", ident_type_name),
+            TypeName::Array(array_type_name) => write!(f, "{}", array_type_name),
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }
     }
@@ -437,12 +467,12 @@ impl TypeNamePattern {
         let name = TypeName::parse(tokens)?;
 
         let pattern_path = match &name {
-            TypeName::Ident {
+            TypeName::Ident(IdentTypeName {
                 ident,
                 type_args,
                 indirection,
                 ..
-            } => {
+            }) => {
                 if ident.as_slice().len() >= 2 && type_args.is_none() && *indirection == 0 {
                     Some(ident)
                 } else {

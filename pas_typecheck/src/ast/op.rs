@@ -56,9 +56,7 @@ pub fn typecheck_bin_op(
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
 
-            rhs.annotation().expect_value(lhs.annotation().ty())?;
-
-            if !lhs.annotation().ty().self_comparable() {
+            if !lhs.annotation().ty().equatable(rhs.annotation().ty()) {
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 

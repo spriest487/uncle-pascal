@@ -58,12 +58,12 @@ impl WhereClause<TypeName> {
             tokens.match_one(Keyword::Is)?;
             let is_ty_path = IdentPath::parse(tokens)?;
 
-            let is_ty = TypeName::Ident {
+            let is_ty = TypeName::Ident(IdentTypeName {
                 span: is_ty_path.span().clone(),
                 type_args: None,
                 ident: is_ty_path,
                 indirection: 0,
-            };
+            });
 
             Ok(Generate::Yield(TypeConstraint {
                 span: param.span().to(is_ty.span()),
