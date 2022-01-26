@@ -22,10 +22,10 @@ pub fn match_operand_start() -> Matcher {
         .or(DelimiterPair::SquareBracket)
         // block/control flow
         .or(DelimiterPair::BeginEnd)
+        .or(DelimiterPair::CaseEnd)
         .or(Keyword::Unsafe)
         .or(Keyword::If)
         .or(Keyword::Raise)
-        .or(Keyword::Case)
         // literals
         .or(Keyword::Nil)
         .or(Matcher::AnyLiteralBoolean)
@@ -391,15 +391,15 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             Some(TokenTree::Delimited {
                      delim, inner, open, ..
                  }) => {
-                let mut group_tokens = TokenStream::new(inner.clone(), open);
 
                 match delim {
                     // operand is a () group: must be a sub-expression
                     DelimiterPair::Bracket => {
-                        let subexpr = Expression::parse(&mut group_tokens)?;
+                        let mut group_tokens = TokenStream::new(inner.clone(), open.clone());
+                        let sub_expr = Expression::parse(&mut group_tokens)?;
                         group_tokens.finish()?;
                         self.tokens.advance(1);
-                        self.push_operand(subexpr);
+                        self.push_operand(sub_expr);
                     }
 
                     // operand is a [] group: must be a collection ctor
@@ -414,6 +414,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                         let block = Block::parse(self.tokens)?;
                         let expr = Expression::from(block);
                         self.push_operand(expr);
+                    }
+
+                    DelimiterPair::CaseEnd => {
+                        let case = CaseExpr::parse(&mut self.tokens)?;
+                        self.push_operand(Expression::from(case))
                     }
                 }
             }

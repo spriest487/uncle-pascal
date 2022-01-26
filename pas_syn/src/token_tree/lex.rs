@@ -465,11 +465,24 @@ impl Lexer {
                         None
                     }
 
-                    // keyword "end" can appear on its own in other contexts
+                    // keyword "acse" always signals the start of a begin..end delimited group
+                    TokenTree::Keyword {
+                        kw: Keyword::Case, ..
+                    } => {
+                        self.begin_delim_group(DelimiterPair::CaseEnd, 0);
+                        None
+                    }
+
                     TokenTree::Keyword {
                         kw: Keyword::End, ..
-                    } if self.in_begin_end() => {
+                    } if self.in_begin_block() => {
                         Some(self.end_delim_group(DelimiterPair::BeginEnd, 0)?)
+                    }
+
+                    TokenTree::Keyword {
+                        kw: Keyword::End, ..
+                    } if self.in_case_block() => {
+                        Some(self.end_delim_group(DelimiterPair::CaseEnd, 0)?)
                     }
 
                     tt => Some(tt),
@@ -497,8 +510,13 @@ impl Lexer {
         Ok(true)
     }
 
-    fn in_begin_end(&self) -> bool {
+    fn in_begin_block(&self) -> bool {
         let current_delim = self.delim_stack.last().map(|group| group.delim);
         current_delim == Some(DelimiterPair::BeginEnd)
+    }
+
+    fn in_case_block(&self) -> bool {
+        let current_delim = self.delim_stack.last().map(|group| group.delim);
+        current_delim == Some(DelimiterPair::CaseEnd)
     }
 }

@@ -1,6 +1,6 @@
 use crate::ast::{Annotation, Expression, Statement};
 use crate::parse::{MatchOneOf, ParseResult, TokenStream};
-use crate::{Keyword, Separator};
+use crate::{DelimiterPair, Keyword, Separator, TokenTree};
 use pas_common::span::{Span, Spanned};
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -75,8 +75,21 @@ where
     B: CaseItemParse
 {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let case_kw = tokens.match_one(Keyword::Case)?;
+        let (case_kw, case_inner, end_kw) = match tokens.match_one(DelimiterPair::CaseEnd)? {
+            TokenTree::Delimited { open, inner, close, .. } => { (open, inner, close) },
+            _ => unreachable!("matcher failed"),
+        };
 
+        let mut group_tokens = TokenStream::new(case_inner, case_kw.clone());
+
+        let result = Self::parse_group(&mut group_tokens, case_kw, end_kw)?;
+
+        group_tokens.finish()?;
+
+        Ok(result)
+    }
+
+    fn parse_group(tokens: &mut TokenStream, case_kw: Span, end_kw: Span) -> ParseResult<Self> {
         let cond_expr = Expression::parse(tokens)?;
 
         tokens.match_one(Keyword::Of)?;
@@ -86,21 +99,22 @@ where
         // is there a valid separator between the last and current statements?
         let mut prev_sep = true;
 
-        let (end_tt, else_branch) = loop {
-            if let Some(end_tt) = tokens.match_one_maybe(Keyword::End) {
-                break (end_tt, None);
-            } else if branches.len() > 0 {
+        let else_branch = loop {
+            if tokens.look_ahead().next().is_none() {
+                break None;
+            }
+
+            if branches.len() > 0 {
                 if let Some(..) = tokens.match_one_maybe(Keyword::Else) {
                     let else_item = B::parse(tokens)?;
 
                     // allow a semicolon separator between the "else" statement and the end keyword
                     tokens.match_one_maybe(Separator::Semicolon);
 
-                    let end_tt = tokens.match_one(Keyword::End)?;
-                    break (end_tt, Some(else_item));
+                    break Some(else_item);
                 }
             } else if !prev_sep {
-                // just let this match fail - there was no separator after the last branch,
+                // this match will fail - there was no separator after the last branch,
                 // so we expected the end
                 if branches.len() > 0 {
                     tokens.match_one(Keyword::End.or(Keyword::Else))?;
@@ -120,7 +134,7 @@ where
             prev_sep = tokens.match_one_maybe(Separator::Semicolon).is_some();
         };
 
-        let span = case_kw.span().to(end_tt.span());
+        let span = case_kw.to(&end_kw);
 
         Ok(CaseBlock {
             cond_expr: Box::new(cond_expr),

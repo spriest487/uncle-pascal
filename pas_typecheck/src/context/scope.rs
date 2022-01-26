@@ -3,6 +3,7 @@ use pas_syn::ast::Visibility;
 use pas_syn::{Ident, IdentPath};
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fmt;
 use std::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
@@ -77,7 +78,7 @@ impl Namespace for Scope {
     fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member<Self>)>
     where
         Ident: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Hash + Eq + ?Sized + fmt::Debug,
     {
         self.decls
             .iter()

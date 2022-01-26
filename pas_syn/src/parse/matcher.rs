@@ -82,7 +82,7 @@ impl fmt::Display for Matcher {
             Matcher::Operator(op) => write!(f, "{}", op),
             Matcher::Separator(sep) => write!(f, "{}", sep),
             Matcher::Ident(name) => f.write_str(name),
-            Matcher::Delimited(delim) => write!(f, "{}-delimited list", delim),
+            Matcher::Delimited(delim) => write!(f, "{}-delimited group", delim),
             Matcher::AnyKeyword => write!(f, "keyword"),
             Matcher::AnyIdent => write!(f, "identifier"),
             Matcher::AnyOperator => write!(f, "binary operator"),

@@ -15,6 +15,7 @@ use std::{
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
     BeginEnd,
+    CaseEnd,
     Bracket,
     SquareBracket,
 }
@@ -23,6 +24,7 @@ impl DelimiterPair {
     pub fn tokens(self) -> (&'static str, &'static str) {
         match self {
             DelimiterPair::BeginEnd => ("begin", "end"),
+            DelimiterPair::CaseEnd => ("case", "end"),
             DelimiterPair::Bracket => ("(", ")"),
             DelimiterPair::SquareBracket => ("[", "]"),
         }
@@ -36,6 +38,7 @@ impl fmt::Display for DelimiterPair {
             "{}",
             match self {
                 DelimiterPair::BeginEnd => "begin/end",
+                DelimiterPair::CaseEnd => "case/end",
                 DelimiterPair::SquareBracket => "[]",
                 DelimiterPair::Bracket => "()",
             }
@@ -234,15 +237,8 @@ impl TokenTree {
             TokenTree::IntNumber { value, .. } => write!(f, "integer number `{}`", value)?,
             TokenTree::String { value, .. } => write!(f, "string '{}'", value)?,
 
-            TokenTree::Delimited { delim, inner, .. } => {
-                let (open, close) = delim.tokens();
-                writeln!(f, "{} ", open)?;
-                for inner_token in inner {
-                    inner_token.fmt_indented(f, indent + 1)?;
-                    writeln!(f)?;
-                }
-                write_indent(f, indent)?;
-                write!(f, "{}", close)?;
+            TokenTree::Delimited { delim, .. } => {
+                write!(f, "{}-delimited group", delim)?;
             }
         }
 

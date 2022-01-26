@@ -200,7 +200,6 @@ pub fn stmt_start_matcher() -> Matcher {
         .or(Keyword::Break)
         .or(Keyword::Continue)
         .or(Keyword::Exit)
-        .or(Keyword::Case)
         .or(match_operand_start())
 }
 

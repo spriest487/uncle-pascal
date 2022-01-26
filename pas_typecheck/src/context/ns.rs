@@ -62,7 +62,7 @@ impl<'s, NS: Namespace> MemberRef<'s, NS> {
 }
 
 pub trait Namespace: Sized {
-    type Key: Eq + PartialEq + Hash + Clone;
+    type Key: Eq + PartialEq + Hash + Clone + fmt::Debug;
     type Value;
 
     fn key(&self) -> Option<&Self::Key>;
@@ -71,7 +71,7 @@ pub trait Namespace: Sized {
     fn get_member<Q>(&self, member_key: &Q) -> Option<(&Self::Key, &Member<Self>)>
     where
         Self::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized;
+        Q: Hash + Eq + ?Sized + fmt::Debug;
 
     fn insert_member(
         &mut self,
@@ -87,11 +87,12 @@ pub struct PathRef<'s, NS: Namespace> {
 }
 
 impl<'s, NS> Clone for PathRef<'s, NS>
-    where NS: Namespace
+where
+    NS: Namespace,
 {
     fn clone(&self) -> Self {
         PathRef {
-            namespaces: self.namespaces.clone()
+            namespaces: self.namespaces.clone(),
         }
     }
 }
@@ -100,24 +101,27 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
     pub fn find<Q>(&self, key: &Q) -> Option<MemberRef<'s, NS>>
     where
         NS::Key: Borrow<Q>,
-        Q: Hash + Eq + ?Sized,
+        Q: Hash + Eq + ?Sized + fmt::Debug,
     {
         self.namespaces
             .iter()
             .enumerate()
             .rev()
             .find_map(|(i, ns)| {
-                let mut path: Vec<_> = self.namespaces[0..=i].to_vec();
+                let path = &self.namespaces[0..=i];
 
                 let member_ref = if ns.key().map(Borrow::borrow) == Some(key) {
                     MemberRef::Namespace {
-                        path: PathRef { namespaces: path },
+                        path: PathRef { namespaces: path.to_vec() },
                     }
                 } else {
-                    let (key, member) = ns.get_member(key.borrow())?;
+                    let key = key.borrow();
+
+                    let (key, member) = ns.get_member(key)?;
 
                     match member {
                         Member::Namespace(ns) => {
+                            let mut path = path.to_vec();
                             path.push(ns);
                             MemberRef::Namespace {
                                 path: PathRef { namespaces: path },
@@ -127,7 +131,7 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
                         Member::Value(value) => MemberRef::Value {
                             key,
                             value,
-                            parent_path: PathRef { namespaces: path },
+                            parent_path: PathRef { namespaces: path.to_vec() },
                         },
                     }
                 };
@@ -146,6 +150,21 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
 
     pub fn keys(&self) -> impl Iterator<Item = &NS::Key> {
         self.namespaces.iter().cloned().filter_map(NS::key)
+    }
+}
+
+impl<'s, NS> PathRef<'s, NS>
+where
+    NS: Namespace,
+    NS::Key: fmt::Display,
+{
+    pub fn join(&self, sep: &str) -> String {
+        self.namespaces
+            .iter()
+            .filter_map(|ns| ns.key())
+            .map(|k| k.to_string())
+            .collect::<Vec<_>>()
+            .join(sep)
     }
 }
 
@@ -278,9 +297,9 @@ where
 
                     return if is_last {
                         Some(MemberRef::Value {
+                            parent_path,
                             key,
                             value,
-                            parent_path,
                         })
                     } else {
                         None
@@ -344,8 +363,7 @@ fn visit_member<NS, Predicate, Visitor>(
 
         Member::Namespace(ns) => {
             let nested_ns_keys = ns.keys();
-            let nested_ns_members =
-                nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
+            let nested_ns_members = nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
 
             ns_path.push(key.clone());
             for (key, member) in nested_ns_members {
@@ -773,9 +791,12 @@ mod test {
     fn visit_all_to_vec(namespaces: &NamespaceStack<TestNamespace>) -> Vec<(String, usize)> {
         let mut visited = Vec::new();
 
-        namespaces.visit_members(|_ns_path, _key, _member| true, |path, _, val| {
-            visited.push((path.join("::"), *val));
-        });
+        namespaces.visit_members(
+            |_ns_path, _key, _member| true,
+            |path, _, val| {
+                visited.push((path.join("::"), *val));
+            },
+        );
 
         visited
     }
