@@ -282,7 +282,7 @@ where
         self.namespaces.last_mut().unwrap()
     }
 
-    pub fn resolve(&self, path: &[NS::Key]) -> Option<MemberRef<NS>> {
+    pub fn resolve_path(&self, path: &[NS::Key]) -> Option<MemberRef<NS>> {
         let mut current = self.current_path();
         for (i, part) in path.iter().enumerate() {
             current = match current.find(part)? {
@@ -646,7 +646,7 @@ mod test {
         namespaces.insert("x", 123).unwrap();
         namespaces.pop();
 
-        match namespaces.resolve(&["B".to_string(), "x".to_string()]) {
+        match namespaces.resolve_path(&["B".to_string(), "x".to_string()]) {
             Some(MemberRef::Value {
                 value, parent_path, ..
             }) => {
@@ -666,7 +666,7 @@ mod test {
 
         namespaces.insert("x", 123).unwrap();
 
-        match namespaces.resolve(&["A".to_string(), "x".to_string()]) {
+        match namespaces.resolve_path(&["A".to_string(), "x".to_string()]) {
             Some(MemberRef::Value {
                 value, parent_path, ..
             }) => {
@@ -686,7 +686,7 @@ mod test {
 
         namespaces.insert("x", 123).unwrap();
 
-        match namespaces.resolve(&["x".to_string()]) {
+        match namespaces.resolve_path(&["x".to_string()]) {
             Some(MemberRef::Value {
                 value, parent_path, ..
             }) => {
@@ -707,7 +707,7 @@ mod test {
         namespaces.push(ns("B"));
         namespaces.insert("x", 123).unwrap();
 
-        match namespaces.resolve(&["B".to_string(), "x".to_string()]) {
+        match namespaces.resolve_path(&["B".to_string(), "x".to_string()]) {
             Some(MemberRef::Value {
                 value, parent_path, ..
             }) => {
@@ -728,7 +728,7 @@ mod test {
         namespaces.push(ns("B"));
         namespaces.insert("x", 123).unwrap();
 
-        match namespaces.resolve(&["x".to_string()]) {
+        match namespaces.resolve_path(&["x".to_string()]) {
             Some(MemberRef::Value {
                 value, parent_path, ..
             }) => {

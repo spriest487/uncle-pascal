@@ -61,7 +61,7 @@ impl TypePattern {
         let stem_name = IdentPath::from_parts(variant_parts);
         let case_ident = path.last();
 
-        match ctx.resolve(&stem_name) {
+        match ctx.find_path(&stem_name) {
             Some(context::MemberRef::Value {
                      value: Decl::Type { ty, .. },
                      ..

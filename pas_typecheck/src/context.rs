@@ -245,35 +245,42 @@ impl Context {
         current_path.top().add_use_unit(unit);
     }
 
+    pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
+        match self.find(name)? {
+            MemberRef::Value { key, .. } => Some(key),
+            _ => None,
+        }
+    }
+
     pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
-        let current_path = self.scopes.current_path();
+        self.find_path_slice(&[name.clone()])
+    }
 
-        match current_path.find(name) {
+    pub fn find_path(&self, path: &IdentPath) -> Option<MemberRef<Scope>> {
+        self.find_path_slice(path.as_slice())
+    }
+
+    fn find_path_slice(&self, path: &[Ident]) -> Option<MemberRef<Scope>> {
+        match self.scopes.resolve_path(path) {
             Some(MemberRef::Value {
-                value: Decl::Alias(aliased),
-                ..
-            }) => self.resolve(aliased),
+                     value: Decl::Alias(aliased),
+                     ..
+                 }) => self.find_path(aliased),
 
-            Some(result) => Some(result),
+            Some(member_ref) => Some(member_ref),
 
-            None => {
-                // collect the used units for the current scope
-                let mut current_use_units = Vec::new();
-                for scope in current_path.as_slice().iter().rev() {
-                    for use_unit in scope.use_units() {
-                        if !current_use_units.contains(use_unit) {
-                            current_use_units.push(use_unit.clone());
-                        }
-                    }
-                }
+            None if path.len() == 1 => {
+                // try it as a qualified name in a used namespaces
+                let current_use_units = self.scopes.current_used_units();
 
                 // there can be multiple used units that declare the same name - if there's one
                 // result, we use that, otherwise it's ambiguous
                 let results: Vec<_> = current_use_units.into_iter()
                     .filter_map(|use_unit| {
-                        let path_in_unit = IdentPath::new(name.clone(), use_unit.into_parts());
+                        let mut path_in_unit = use_unit;
+                        path_in_unit.extend(path.iter().cloned());
 
-                        self.resolve(&path_in_unit)
+                        self.find_path_slice(path_in_unit.as_slice())
                     })
                     .collect();
 
@@ -286,23 +293,8 @@ impl Context {
                     }
                 }
             }
-        }
-    }
 
-    pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
-        match self.find(name)? {
-            MemberRef::Value { key, .. } => Some(key),
-            _ => None,
-        }
-    }
-
-    pub fn resolve(&self, path: &IdentPath) -> Option<MemberRef<Scope>> {
-        match self.scopes.resolve(path.as_slice()) {
-            Some(MemberRef::Value {
-                value: Decl::Alias(aliased),
-                ..
-            }) => self.resolve(aliased),
-            result => result,
+            None => None,
         }
     }
 
@@ -534,7 +526,7 @@ impl Context {
     }
 
     pub fn resolve_alias(&self, path: &IdentPath) -> Option<IdentPath> {
-        let member = self.resolve(path)?;
+        let member = self.find_path(path)?;
 
         match member {
             MemberRef::Value {
@@ -551,7 +543,7 @@ impl Context {
     }
 
     pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
-        match self.resolve(ns_path) {
+        match self.find_path(ns_path) {
             Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
 
             Some(MemberRef::Value { value: decl, .. }) => {
@@ -751,7 +743,7 @@ impl Context {
     }
 
     pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
-        match self.resolve(name) {
+        match self.find_path(name) {
             Some(MemberRef::Value {
                 value: Decl::Type { ty, .. },
                 key,
@@ -787,7 +779,7 @@ impl Context {
             Some(Def::Class(class_def)) => Ok(class_def.clone()),
 
             Some(..) => {
-                let decl = self.resolve(&name);
+                let decl = self.find_path(&name);
                 let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
@@ -827,7 +819,7 @@ impl Context {
             Some(Def::Variant(variant_def)) => Ok(variant_def.clone()),
 
             Some(..) => {
-                let decl = self.resolve(&name);
+                let decl = self.find_path(&name);
                 let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
@@ -864,7 +856,7 @@ impl Context {
     }
 
     pub fn find_iface(&self, name: &IdentPath) -> NamingResult<IdentPath> {
-        match self.resolve(name) {
+        match self.find_path(name) {
             Some(MemberRef::Value {
                 value:
                     Decl::Type {
@@ -903,7 +895,7 @@ impl Context {
             Some(Def::Interface(iface_def)) => Ok(iface_def.clone()),
 
             Some(..) => {
-                let decl = self.resolve(&name);
+                let decl = self.find_path(&name);
                 let unexpected = Named::Decl(
                     decl.expect("found def so decl must exist")
                         .as_value()
@@ -963,7 +955,7 @@ impl Context {
     }
 
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
-        match self.resolve(name) {
+        match self.find_path(name) {
             Some(MemberRef::Value {
                 value: Decl::Function { sig, .. },
                 key,

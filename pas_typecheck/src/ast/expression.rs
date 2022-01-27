@@ -243,7 +243,7 @@ pub fn ns_member_ref_to_annotation(
             ..
         } => {
             let alias_ref = ctx
-                .resolve(aliased)
+                .find_path(aliased)
                 .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
 
             ns_member_ref_to_annotation(alias_ref, span, ctx)

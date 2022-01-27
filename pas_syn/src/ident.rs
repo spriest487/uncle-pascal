@@ -103,6 +103,10 @@ impl<Part: fmt::Debug> Path<Part> {
         self.parts.push(part);
     }
 
+    pub fn extend(&mut self, parts: impl IntoIterator<Item=Part>) {
+        self.parts.extend(parts)
+    }
+
     pub fn first(&self) -> &Part {
         self.parts.first().unwrap()
     }

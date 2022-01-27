@@ -45,7 +45,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 fn typecheck_unit_uses_decl(unit: &Ident, ctx: &mut Context) -> TypecheckResult<()> {
     let unit_path = IdentPath::from(unit.clone());
 
-    match ctx.resolve(&unit_path) {
+    match ctx.find_path(&unit_path) {
         // path refers to a known unit path (by alias or directly by its canon name)
         Some(MemberRef::Namespace { path }) => {
             let unit_canon_ident = IdentPath::from_parts(path.keys().cloned());
