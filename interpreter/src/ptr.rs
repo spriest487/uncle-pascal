@@ -41,6 +41,30 @@ impl Pointer {
             ty,
         }
     }
+
+    pub fn addr_add(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr + rhs }
+    }
+
+    pub fn addr_sub(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr - rhs }
+    }
+
+    pub fn addr_mul(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr * rhs }
+    }
+
+    pub fn addr_div(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr / rhs }
+    }
+
+    pub fn addr_shl(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr << rhs }
+    }
+
+    pub fn addr_shr(&self, rhs: usize) -> Self {
+        Self { ty: self.ty.clone(), addr: self.addr >> rhs }
+    }
 }
 
 impl PartialOrd for Pointer {

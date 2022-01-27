@@ -117,9 +117,19 @@ impl ValueCell {
     pub fn try_eq(&self, other: &Self) -> Option<bool> {
         match (self, other) {
             (ValueCell::Bool(a), ValueCell::Bool(b)) => Some(a == b),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(a == b),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(a == b),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(a == b),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(a == b),
             (ValueCell::I32(a), ValueCell::I32(b)) => Some(a == b),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(a == b),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(a == b),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(a == b),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(a == b),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(a == b),
+
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(a == b),
+
             (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(a == b),
             (ValueCell::Structure(a), ValueCell::Structure(b)) => Some(a == b),
             (ValueCell::Array(a), ValueCell::Array(b)) => a.try_eq(b),
@@ -136,8 +146,18 @@ impl ValueCell {
 
     pub fn try_add(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a + b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a + b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a + b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a + b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a + b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a + b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a + b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a + b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a + b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a + b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a + b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_add(b.addr))),
+
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a + b)),
 
             _ => None,
@@ -146,8 +166,18 @@ impl ValueCell {
 
     pub fn try_sub(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a - b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a - b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a - b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a - b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a - b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a - b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a - b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a - b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a - b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a - b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a - b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_sub(b.addr))),
+
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a - b)),
 
             _ => None,
@@ -156,8 +186,18 @@ impl ValueCell {
 
     pub fn try_mul(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a * b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a * b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a * b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a * b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a * b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a * b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a * b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a * b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a * b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a * b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a * b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_mul(b.addr))),
+
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a * b)),
 
             _ => None,
@@ -166,8 +206,18 @@ impl ValueCell {
 
     pub fn try_idiv(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a / b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a / b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a / b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a / b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a / b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a / b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a / b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a / b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a / b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a / b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a / b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_div(b.addr))),
+
             (ValueCell::F32(a), ValueCell::F32(b)) => Some(ValueCell::F32(a / b)),
 
             _ => None,
@@ -176,8 +226,17 @@ impl ValueCell {
 
     pub fn try_shl(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a << b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a << b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a << b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a << b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a << b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a << b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a << b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a << b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a << b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a << b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a << b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_shl(b.addr))),
 
             _ => None,
         }
@@ -185,8 +244,17 @@ impl ValueCell {
 
     pub fn try_shr(&self, other: &Self) -> Option<Self> {
         match (self, other) {
-            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a >> b)),
+            (ValueCell::I8(a), ValueCell::I8(b)) => Some(ValueCell::I8(a >> b)),
             (ValueCell::U8(a), ValueCell::U8(b)) => Some(ValueCell::U8(a >> b)),
+            (ValueCell::I16(a), ValueCell::I16(b)) => Some(ValueCell::I16(a >> b)),
+            (ValueCell::U16(a), ValueCell::U16(b)) => Some(ValueCell::U16(a >> b)),
+            (ValueCell::I32(a), ValueCell::I32(b)) => Some(ValueCell::I32(a >> b)),
+            (ValueCell::U32(a), ValueCell::U32(b)) => Some(ValueCell::U32(a >> b)),
+            (ValueCell::I64(a), ValueCell::I64(b)) => Some(ValueCell::I64(a >> b)),
+            (ValueCell::U64(a), ValueCell::U64(b)) => Some(ValueCell::U64(a >> b)),
+            (ValueCell::ISize(a), ValueCell::ISize(b)) => Some(ValueCell::ISize(a >> b)),
+            (ValueCell::USize(a), ValueCell::USize(b)) => Some(ValueCell::USize(a >> b)),
+            (ValueCell::Pointer(a), ValueCell::Pointer(b)) => Some(ValueCell::Pointer(a.addr_shr(b.addr))),
 
             _ => None,
         }
@@ -280,19 +348,4 @@ impl ValueCell {
             _ => None,
         }
     }
-
-    // pub fn marshalled_type(&self) -> Type {
-    //     match self {
-    //         ValueCell::Bool(..) => Type::Bool,
-    //         ValueCell::U8(..) => Type::U8,
-    //         ValueCell::I32(..) => Type::I32,
-    //         ValueCell::F32(..) => Type::F32,
-    //         ValueCell::RcCell(..) => Type::Nothing,
-    //         ValueCell::Function(..) => Type::Nothing.ptr(),
-    //         ValueCell::Structure(..) => Type::Nothing,
-    //         ValueCell::Variant(..) => Type::Nothing,
-    //         ValueCell::Pointer(..) => Type::Nothing.ptr(),
-    //         ValueCell::Array(arr) => arr.el_ty.clone().array(arr.elements.len()),
-    //     }
-    // }
 }
