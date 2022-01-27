@@ -576,6 +576,17 @@ pub fn typecheck_unary_op(
             }
         }
 
+        Operator::Not => {
+            operand.annotation().expect_value(&Type::Primitive(Primitive::Boolean))?;
+
+            TypeAnnotation::TypedValue {
+                ty: Type::Primitive(Primitive::Boolean),
+                value_kind: ValueKind::Temporary,
+                span,
+                decl: operand.annotation().decl().cloned(),
+            }
+        }
+
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
                 op: unary_op.op,
