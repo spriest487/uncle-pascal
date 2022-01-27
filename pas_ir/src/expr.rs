@@ -987,6 +987,14 @@ fn translate_unary_op(
             out_val
         }
 
+        syn::Operator::Not => {
+            let out_val = builder.local_new(Type::Bool, None);
+
+            builder.not(out_val.clone(), operand_ref);
+
+            out_val
+        }
+
         op => unimplemented!("IR translation of unary operator {}", op),
     }
 }
