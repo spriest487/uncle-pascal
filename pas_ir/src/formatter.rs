@@ -294,7 +294,7 @@ pub trait InstructionFormatter {
             Instruction::DynAlloc {
                 out,
                 element_ty,
-                len,
+                count: len,
             } => write!(
                 f,
                 "{:>width$} {} := {}[{}]",

@@ -1165,7 +1165,7 @@ fn translate_dyn_array_ctor(
         if len > 0 {
             builder.append(Instruction::DynAlloc {
                 out: arr_ptr.clone().to_deref(),
-                len: Value::LiteralI32(len),
+                count: Value::LiteralI32(len),
                 element_ty: elem_ty.clone(),
             });
 

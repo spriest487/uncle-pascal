@@ -6,14 +6,14 @@ end;
 
 type Cat = class end;
 
-function Animal.Speak(self: Cat)
+function Speak of Animal(self: Cat)
 begin
     WriteLn('nya');
 end;
 
 type Dog = class end;
 
-function Animal.Speak(self: Dog)
+function Speak of Animal(self: Dog)
 begin
     WriteLn('wan');
 end;
@@ -26,7 +26,6 @@ end;
 let cat: Animal := Cat();
 if cat is Cat then cat.Speak();
 
-{
 let dog: Animal := Dog();
 if dog is not Cat then dog.Speak();
 
@@ -34,4 +33,4 @@ if dog is Dog d then Fetch(d);
 
 if dog is Animal then WriteLn('yes, a dog is an animal');
 if dog is not Disposable then WriteLn('a dog is not just for christmas');
-}
+

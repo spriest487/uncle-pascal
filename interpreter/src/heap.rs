@@ -9,6 +9,10 @@ pub enum NativeHeapError {
     MarshallingError(MarshalError),
     NullPointerDeref,
     BadFree(Pointer),
+    ZeroSizedAllocation {
+        ty: Type,
+        count: usize,
+    },
 }
 
 impl fmt::Display for NativeHeapError {
@@ -17,6 +21,7 @@ impl fmt::Display for NativeHeapError {
             NativeHeapError::MarshallingError(err) => write!(f, "{}", err),
             NativeHeapError::NullPointerDeref => write!(f, "null pointer dereference"),
             NativeHeapError::BadFree(ptr) => write!(f, "freeing value at {} which wasn't allocated on this heap", ptr),
+            NativeHeapError::ZeroSizedAllocation { ty, count } => write!(f, "zero-sized allocation of {} elements of type {}", count, ty),
         }
     }
 }
@@ -41,7 +46,7 @@ pub struct NativeHeap {
 impl NativeHeap {
     pub fn new(marshaller: Rc<Marshaller>, trace_allocs: bool) -> Self {
         Self {
-            marshaller: marshaller,
+            marshaller,
             trace_allocs,
             allocs: BTreeMap::new(),
         }
@@ -52,14 +57,12 @@ impl NativeHeap {
     }
 
     pub fn alloc(&mut self, ty: Type, count: usize) -> NativeHeapResult<Pointer> {
-        if count == 0 {
-            return Ok(Pointer {
-                ty: Type::Nothing,
-                addr: 0,
-            });
+        let ty_size = self.marshaller.get_ty(&ty)?.size();
+        if ty_size == 0 || count == 0 {
+            return Err(NativeHeapError::ZeroSizedAllocation { ty, count });
         }
 
-        let total_len = self.marshaller.get_ty(&ty)?.size() * count;
+        let total_len = ty_size * count;
 
         let alloc_mem = vec![0; total_len];
         let addr = alloc_mem.as_ptr() as usize;

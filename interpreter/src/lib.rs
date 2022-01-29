@@ -469,6 +469,31 @@ impl Interpreter {
         Ok(())
     }
 
+    fn find_rc_boilerplate(&self, resource_ty: &Type) -> ExecResult<RcBoilerplatePair> {
+        self
+            .metadata
+            .find_rc_boilerplate(&resource_ty)
+            .ok_or_else(|| {
+                let name = self.metadata.pretty_ty_name(&resource_ty);
+                let funcs = self
+                    .metadata
+                    .rc_boilerplate_funcs()
+                    .map(|(ty, funcs)| {
+                        format!(
+                            "  {}: release={}, retain={}",
+                            self.metadata.pretty_ty_name(ty),
+                            funcs.release,
+                            funcs.retain,
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                let msg = format!("missing rc boilerplate for {} in:\n{}", name, funcs);
+                ExecError::illegal_state(msg)
+            })
+    }
+
     fn release_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
         let rc_ptr = cell
             .as_pointer()
@@ -503,46 +528,33 @@ impl Interpreter {
             // Now release the fields of the resource struct as if it was a normal record.
             // This could technically invoke another disposer, but it won't, because there's
             // no way to declare a disposer for the inner resource type of an RC type
-            let rc_funcs = self
-                .metadata
-                .find_rc_boilerplate(&resource_ty)
-                .unwrap_or_else(|| {
-                    let name = self.metadata.pretty_ty_name(&resource_ty);
-                    let funcs = self
-                        .metadata
-                        .rc_boilerplate_funcs()
-                        .map(|(ty, funcs)| {
-                            format!(
-                                "  {}: release={}, retain={}",
-                                self.metadata.pretty_ty_name(ty),
-                                funcs.release,
-                                funcs.retain,
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join("\n");
 
-                    panic!("missing rc boilerplate for {} in:\n{}", name, funcs);
-                });
+            // resource structs can be zero-sized, in which case there's nothing allocated,
+            // so we can skip the rc cleanup and dynfree in that case
+            if !rc_cell.resource_ptr.is_null() {
+                let rc_funcs = self.find_rc_boilerplate(&resource_ty)?;
 
-            // todo: should function cells be Rc<Function> so we don't need to clone them here?
-            let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
-                .value
-                .as_function()
-                .cloned()
-                .unwrap();
+                let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
+                    .value
+                    .as_function()
+                    .cloned()
+                    .unwrap();
 
-            let release_ptr = ValueCell::Pointer(rc_cell.resource_ptr.clone());
-            self.call(&release_func, &[release_ptr], None)?;
+                let release_ptr = ValueCell::Pointer(rc_cell.resource_ptr.clone());
+                self.call(&release_func, &[release_ptr], None)?;
 
-            if self.trace_rc {
-                eprintln!(
-                    "rc: free {} @ {}",
-                    self.metadata.pretty_ty_name(&resource_ty),
-                    rc_cell.resource_ptr
-                )
+                if self.trace_rc {
+                    eprintln!(
+                        "rc: free {} @ {}",
+                        self.metadata.pretty_ty_name(&resource_ty),
+                        rc_cell.resource_ptr
+                    )
+                }
+
+                // zero-sized resource types will never have actually allocated anything as the resource
+                // pointer
+                self.dynfree(&rc_cell.resource_ptr)?;
             }
-            self.dynfree(&rc_cell.resource_ptr)?;
 
             if self.trace_rc {
                 eprintln!(
@@ -767,7 +779,7 @@ impl Interpreter {
             Instruction::DynAlloc {
                 out,
                 element_ty,
-                len,
+                count: len,
             } => self.exec_dynalloc(out, element_ty, len)?,
 
             Instruction::DynFree { at } => self.exec_dynfree(at)?,
@@ -922,16 +934,16 @@ impl Interpreter {
         Ok(ptr)
     }
 
-    fn exec_dynalloc(&mut self, out: &Ref, ty: &Type, len: &Value) -> ExecResult<()> {
-        let len = self
-            .evaluate(len)?
+    fn exec_dynalloc(&mut self, out: &Ref, ty: &Type, count_val: &Value) -> ExecResult<()> {
+        let count = self
+            .evaluate(count_val)?
             .as_i32()
-            .ok_or_else(|| ExecError::illegal_state("len value of DynAlloc must be i32"))?;
+            .ok_or_else(|| ExecError::illegal_state("count value of DynAlloc must be i32"))?;
 
-        let len = usize(len)
+        let count = usize(count)
             .map_err(|_| ExecError::illegal_state("alloc length must be positive"))?;
 
-        let ptr = self.dynalloc(ty, len)?;
+        let ptr = self.dynalloc(ty, count)?;
         self.store(out, ValueCell::Pointer(ptr))?;
 
         Ok(())
@@ -1377,7 +1389,13 @@ impl Interpreter {
     }
 
     fn rc_alloc(&mut self, resource: ValueCell, ty_id: StructID) -> ExecResult<Pointer> {
-        let resource_ptr = self.dynalloc_init(&Type::Struct(ty_id), vec![resource])?;
+        // if the resource is a zero-sized class, we don't need to allocate a resource at all
+        let res_ty = Type::Struct(ty_id);
+        let res_size = self.marshaller.get_ty(&res_ty)?.size();
+        let resource_ptr = match res_size {
+            0 => Pointer::null(res_ty),
+            _ => self.dynalloc_init(&res_ty, vec![resource])?,
+        };
 
         let rc_cell = ValueCell::RcCell(Box::new(RcCell {
             ref_count: 1,

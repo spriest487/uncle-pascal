@@ -152,7 +152,7 @@ pub enum Instruction {
     DynAlloc {
         out: Ref,
         element_ty: Type,
-        len: Value,
+        count: Value,
     },
     DynFree {
         at: Ref,

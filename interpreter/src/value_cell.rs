@@ -349,3 +349,9 @@ impl ValueCell {
         }
     }
 }
+
+impl From<RcCell> for ValueCell {
+    fn from(rc_cell: RcCell) -> Self {
+        ValueCell::RcCell(Box::new(rc_cell))
+    }
+}

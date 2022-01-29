@@ -8,7 +8,7 @@ type NumberHolder = class
     number: Integer;
 end;
 
-function NumberSource.GetNumber(self: NumberHolder): Integer
+function GetNumber of NumberSource(self: NumberHolder): Integer
 begin
     self.number
 end;

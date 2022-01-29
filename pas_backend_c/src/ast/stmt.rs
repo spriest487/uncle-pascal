@@ -596,7 +596,7 @@ impl<'a> Builder<'a> {
             ir::Instruction::DynAlloc {
                 out,
                 element_ty,
-                len,
+                count: len,
             } => {
                 let get_mem = Expr::Function(FunctionName::GetMem);
 
