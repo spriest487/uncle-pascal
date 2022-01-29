@@ -148,7 +148,26 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     releaser_builder.bind_param(LocalID(0), array_struct_ty.clone().ptr(), "self", true);
     let self_arg = Ref::Local(LocalID(0)).to_deref();
 
+    // pointer to the length field of the dynarray object
     let len_field_ptr = releaser_builder.local_temp(Type::I32.ptr());
+
+    // pointer to the pointer field of the dynarray object
+    let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
+
+    // iteration vars
+    let counter = releaser_builder.local_temp(Type::I32);
+    let at_end = releaser_builder.local_temp(Type::Bool);
+    let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
+
+    let zero_elements = releaser_builder.local_temp(Type::Bool);
+
+    // jump to loop end if counter == array len
+    let start_loop_label = releaser_builder.alloc_label();
+    let end_loop_label = releaser_builder.alloc_label();
+
+
+    let after_free = releaser_builder.alloc_label();
+
     releaser_builder.append(Instruction::Field {
         out: len_field_ptr.clone(),
         of_ty: array_struct_ty.clone(),
@@ -156,7 +175,6 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
         a: self_arg.clone(),
     });
 
-    let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
     releaser_builder.append(Instruction::Field {
         out: arr_field_ptr.clone(),
         of_ty: array_struct_ty.clone(),
@@ -165,17 +183,12 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     });
 
     // release every element
-    let counter = releaser_builder.local_temp(Type::I32);
     releaser_builder.mov(counter.clone(), Value::LiteralI32(0));
 
-    // jump to loop end if counter == array len
-    let start_loop_label = releaser_builder.alloc_label();
-    let end_loop_label = releaser_builder.alloc_label();
-
-    releaser_builder.append(Instruction::Label(start_loop_label));
+    releaser_builder.label(start_loop_label);
 
     // at_end := counter eq array.length
-    let at_end = releaser_builder.local_temp(Type::Bool);
+
     releaser_builder.eq(
         at_end.clone(),
         counter.clone(),
@@ -183,45 +196,21 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     );
 
     // if at_end then break
-    releaser_builder.append(Instruction::JumpIf {
-        dest: end_loop_label,
-        test: Value::Ref(at_end),
-    });
+    releaser_builder.jmp_if(end_loop_label, at_end);
 
     // release arr[counter]
-    let el_ptr = releaser_builder.local_temp(elem_ty.clone().ptr());
-    releaser_builder.append(Instruction::Add {
-        out: el_ptr.clone(),
-        a: Value::Ref(arr_field_ptr.clone().to_deref()),
-        b: Value::Ref(counter.clone()),
-    });
+    releaser_builder.add(el_ptr.clone(), arr_field_ptr.clone().to_deref(), counter.clone());
     releaser_builder.release(el_ptr.to_deref(), &elem_ty);
 
     // counter := counter + 1
-    releaser_builder.append(Instruction::Add {
-        out: counter.clone(),
-        a: Value::Ref(counter),
-        b: Value::LiteralI32(1),
-    });
+    releaser_builder.add(counter.clone(), counter, Value::LiteralI32(1));
 
-    releaser_builder.append(Instruction::Jump {
-        dest: start_loop_label,
-    });
-    releaser_builder.append(Instruction::Label(end_loop_label));
+    releaser_builder.jmp(start_loop_label);
+    releaser_builder.label(end_loop_label);
 
     // free the dynamic-allocated buffer - if len > 0
-    let after_free = releaser_builder.alloc_label();
-
-    let zero_elements = releaser_builder.local_temp(Type::Bool);
-    releaser_builder.append(Instruction::Eq {
-        a: Value::Ref(len_field_ptr.clone().to_deref()),
-        b: Value::LiteralI32(0),
-        out: zero_elements.clone(),
-    });
-    releaser_builder.append(Instruction::JumpIf {
-        dest: after_free,
-        test: Value::Ref(zero_elements),
-    });
+    releaser_builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), Value::LiteralI32(0));
+    releaser_builder.jmp_if(after_free, zero_elements);
 
     releaser_builder.append(Instruction::DynFree {
         at: arr_field_ptr.clone().to_deref(),

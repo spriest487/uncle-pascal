@@ -264,10 +264,47 @@ impl<'m> Builder<'m> {
         self.append(Instruction::Comment(content.to_string()));
     }
 
+    #[allow(unused)]
     pub fn mov(&mut self, out: impl Into<Ref>, val: impl Into<Value>) {
         self.append(Instruction::Move {
             out: out.into(),
             new_val: val.into(),
+        });
+    }
+
+    #[allow(unused)]
+    pub fn add(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Add {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        });
+    }
+
+    #[allow(unused)]
+    pub fn sub(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Sub {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        });
+    }
+
+    #[allow(unused)]
+    pub fn mul(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::Mul {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
+        });
+    }
+
+    #[allow(unused)]
+    pub fn idiv(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
+        self.append(Instruction::IDiv {
+            out: out.into(),
+            a: a.into(),
+            b: b.into(),
         });
     }
 

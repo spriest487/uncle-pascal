@@ -1,7 +1,11 @@
+use std::convert::TryInto;
 use std::fmt;
+use std::mem::size_of;
 use std::rc::Rc;
 use pas_ir::{LocalID, Type};
 use crate::{ValueCell, marshal::{Marshaller, MarshalError, MarshalResult}, Pointer};
+
+const SENTINEL: usize = 12345678;
 
 #[derive(Debug)]
 struct Block {
@@ -41,6 +45,10 @@ pub(super) struct StackFrame {
 
 impl StackFrame {
     pub fn new(name: impl Into<String>, marshaller: Rc<Marshaller>, stack_size: usize) -> Self {
+        let sentinel_size = size_of::<usize>();
+        let mut stack_mem = vec![0; stack_size + sentinel_size];
+        stack_mem[stack_size..].copy_from_slice(&SENTINEL.to_ne_bytes());
+
         Self {
             name: name.into(),
 
@@ -52,7 +60,7 @@ impl StackFrame {
 
             marshaller,
 
-            stack_mem: vec![0; stack_size].into_boxed_slice(),
+            stack_mem: stack_mem.into_boxed_slice(),
             stack_offset: 0,
         }
     }
@@ -62,6 +70,8 @@ impl StackFrame {
     /// body of the function
     pub fn add_undeclared_local(&mut self, ty: Type, value: &ValueCell) -> MarshalResult<LocalID> {
         let stack_offset = self.stack_alloc(value)?;
+
+        assert_eq!(self.marshaller.get_ty(&ty)?.size(), self.stack_offset - stack_offset);
 
         self.locals.push(StackAlloc {
             alloc_pc: None,
@@ -74,13 +84,17 @@ impl StackFrame {
     }
 
     pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &ValueCell, alloc_pc: usize) -> StackResult<()> {
+        if self.locals.len() != id.0 {
+            return Err(StackError::IllegalAlloc(id));
+        }
+
         // we only need to allocate new variables the first time the block is executed, so if
         // we try to allocate twice from the same instruction, just do nothing
         // todo: this could be cleaned up by allocating everything at the start of the block
         // instead of doing it as we encounter new locals
         for (existing_id, local) in self.locals.iter().enumerate() {
-            if local.alloc_pc == Some(alloc_pc) {
-                if existing_id != id.0 {
+            if existing_id == id.0 {
+                if local.alloc_pc != Some(alloc_pc) {
                     return Err(StackError::DuplicateLocalAlloc {
                         stack_frame: self.name.clone(),
                         id,
@@ -102,6 +116,20 @@ impl StackFrame {
         });
 
         Ok(())
+    }
+
+    pub fn check_sentinel(&self) -> StackResult<()> {
+        let sentinel_bytes = self.stack_mem[self.stack_mem.len() - size_of::<usize>()..]
+            .try_into()
+            .unwrap();
+
+        let sentinel = usize::from_ne_bytes(sentinel_bytes);
+
+        if sentinel == SENTINEL {
+            Ok(())
+        } else {
+            Err(StackError::BadSentinel(sentinel))
+        }
     }
 
     fn stack_alloc(&mut self, value: &ValueCell) -> MarshalResult<usize> {
@@ -192,8 +220,10 @@ pub enum StackError {
         current_block: usize,
         dest_block: usize,
     },
+    IllegalAlloc(LocalID),
     EmptyBlockStack,
     MarshalError(MarshalError),
+    BadSentinel(usize),
 }
 
 impl From<MarshalError> for StackError {
@@ -224,8 +254,14 @@ impl fmt::Display for StackError {
             StackError::IllegalJmp { current_block, dest_block } => {
                 write!(f, "illegal jump from block {} to block {}", current_block, dest_block)
             }
+            StackError::IllegalAlloc(id) => {
+                write!(f, "allocation of local cell {} is not legal here", id)
+            }
             StackError::MarshalError(err) => {
                 write!(f, "{}", err)
+            }
+            StackError::BadSentinel(sentinel) => {
+                write!(f, "bad sentinel value: {}", sentinel)
             }
         }
     }

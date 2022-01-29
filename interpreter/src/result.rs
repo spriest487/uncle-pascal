@@ -45,6 +45,7 @@ impl ExecError {
             ExecError::IllegalState { msg } => Some(msg.clone()),
             ExecError::NativeHeapError(err) => Some(err.to_string()),
             ExecError::ZeroLengthAllocation => None,
+            ExecError::StackError(err) => Some(err.to_string()),
             _ => None,
         }
     }
@@ -70,7 +71,7 @@ impl fmt::Display for ExecError {
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
             ExecError::NativeHeapError(err) => write!(f, "{}", err),
             ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
-            ExecError::WithDebugContext { err, .. } => write!(f, "{}", err),
+            ExecError::WithDebugContext { .. } => write!(f, "Execution error"),
         }
     }
 }
@@ -78,10 +79,14 @@ impl fmt::Display for ExecError {
 impl DiagnosticOutput for ExecError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            ExecError::WithDebugContext { err, span } => Some(DiagnosticLabel {
-                text: err.label_text(),
-                span: span.clone()
-            }),
+            ExecError::WithDebugContext { err, span } => {
+                let label_text = err.label_text();
+
+                Some(DiagnosticLabel {
+                    text: label_text,
+                    span: span.clone()
+                })
+            },
 
             _ => None,
         }

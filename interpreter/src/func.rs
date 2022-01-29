@@ -109,7 +109,10 @@ impl Function {
             args_size += arg_size;
         }
 
-        let return_size = marshaller.get_ty(self.return_ty())?.size();
+        let return_size = match self.return_ty() {
+            Type::Nothing => 0,
+            return_ty => marshaller.get_ty(return_ty)?.size(),
+        };
 
         match self {
             Function::IR(def) => {

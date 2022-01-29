@@ -60,7 +60,7 @@ impl VariantCell {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RcCell {
     pub resource_ptr: Pointer,
     pub ref_count: usize,

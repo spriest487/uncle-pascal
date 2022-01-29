@@ -308,7 +308,8 @@ impl Interpreter {
     }
 
     fn pop_stack(&mut self) -> ExecResult<()> {
-        self.stack.pop().ok_or_else(|| ExecError::illegal_state("popped stack with no stackframes"))?;
+        let popped = self.stack.pop().ok_or_else(|| ExecError::illegal_state("popped stack with no stackframes"))?;
+        popped.check_sentinel()?;
         Ok(())
     }
 
@@ -377,10 +378,15 @@ impl Interpreter {
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
-        if *return_ty != Type::Nothing {
+        let ret_id = if *return_ty != Type::Nothing {
             let result_cell = self.default_init_cell(return_ty)?;
-            self.current_frame_mut()?.add_undeclared_local(return_ty.clone(), &result_cell)?;
-        }
+
+            let ret_id = self.current_frame_mut()?.add_undeclared_local(return_ty.clone(), &result_cell)?;
+            assert_eq!(ret_id, LocalID(0));
+            Some(ret_id)
+        } else {
+            None
+        };
 
         if args.len() != func.param_tys().len() {
             let msg = format!(
@@ -392,17 +398,24 @@ impl Interpreter {
         }
 
         // store params in either $0.. or $1..
-        for (arg_cell, param_ty) in args.iter().zip(func.param_tys()) {
-            self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)?;
+        let first_arg_id = match ret_id {
+            Some(ret_id) => LocalID(ret_id.0 + 1),
+            None => LocalID(0),
+        };
+
+        for (arg_index, (arg_cell, param_ty)) in args.iter().zip(func.param_tys()).enumerate() {
+            let arg_id = self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)?;
+
+            assert_eq!(LocalID(first_arg_id.0 + arg_index), arg_id);
         }
 
         func.invoke(self)?;
 
-        let result_cell = match return_ty {
-            Type::Nothing => None,
-            _ => {
-                let ref_local_0 = Ref::Local(LocalID(0));
-                let return_val = self.evaluate(&Value::Ref(ref_local_0))?;
+        let result_cell = match ret_id {
+            None => None,
+            Some(ret_id) => {
+                let ret_ref = Ref::Local(ret_id);
+                let return_val = self.evaluate(&Value::Ref(ret_ref))?;
                 Some(return_val)
             }
         };
@@ -476,9 +489,9 @@ impl Interpreter {
         if rc_cell.ref_count == 1 {
             if self.trace_rc {
                 println!(
-                    "rc: delete cell {:?} of resource ty {}",
-                    cell,
-                    self.metadata.pretty_ty_name(&resource_ty)
+                    "rc: no more refs to {}, delete resource of type {}",
+                    rc_ptr,
+                    self.metadata.pretty_ty_name(&resource_ty),
                 );
             }
 
@@ -526,27 +539,32 @@ impl Interpreter {
                 eprintln!(
                     "rc: free {} @ {}",
                     self.metadata.pretty_ty_name(&resource_ty),
+                    rc_cell.resource_ptr
+                )
+            }
+            self.dynfree(&rc_cell.resource_ptr)?;
+
+            if self.trace_rc {
+                eprintln!(
+                    "rc: free rc object @ {}",
                     rc_ptr
                 )
             }
-
-            self.dynfree(&rc_cell.resource_ptr)?;
             self.dynfree(&rc_ptr)?;
         } else {
-            assert!(rc_cell.ref_count > 1);
+            let ref_count = rc_cell.ref_count - 1;
+            assert!(ref_count > 0);
+
             if self.trace_rc {
                 eprintln!(
                     "rc: release {} @ {} ({} more refs)",
                     self.metadata.pretty_ty_name(&resource_ty),
                     rc_cell.resource_ptr,
-                    rc_cell.ref_count - 1
+                    ref_count,
                 )
             }
 
-            self.store_indirect(&rc_ptr, ValueCell::RcCell(Box::new(RcCell {
-                ref_count: rc_cell.ref_count - 1,
-                ..rc_cell
-            })))?;
+            self.store_indirect(&rc_ptr, ValueCell::RcCell(Box::new(RcCell { ref_count, ..rc_cell })))?;
         }
 
         Ok(())
@@ -556,13 +574,14 @@ impl Interpreter {
         match cell {
             ValueCell::Pointer(ptr) => {
                 let mut rc_cell = self.load_indirect(ptr)?.into_owned();
+
                 match &mut rc_cell {
                     ValueCell::RcCell(rc) => {
-                        if self.trace_rc {
-                            eprintln!("rc: retain @ {}", ptr);
-                        }
-
                         rc.ref_count += 1;
+
+                        if self.trace_rc {
+                            eprintln!("rc: retain @ {} (ref count: {})", ptr, rc.ref_count);
+                        }
                     }
 
                     other => {

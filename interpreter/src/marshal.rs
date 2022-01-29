@@ -1,22 +1,24 @@
-use std::{iter, collections::HashMap, cmp::max, ptr::slice_from_raw_parts, rc::Rc, fmt};
+#[cfg(test)]
+mod test;
+
+use crate::func::ffi::FfiInvoker;
+use crate::{ArrayCell, Pointer, RcCell, StructCell, ValueCell, VariantCell};
+use ::dlopen::{raw as dlopen, Error as DlopenError};
+use libffi::{
+    low::ffi_type,
+    raw::FFI_TYPE_STRUCT,
+    middle::{Builder as FfiBuilder, Type as FfiType},
+};
+use pas_ir::{
+    metadata::{Metadata, Variant},
+    prelude::{Struct, StructID},
+    ExternalFunctionRef, Instruction, Type,
+};
 use std::collections::BTreeMap;
 use std::convert::TryInto;
-use std::mem::{size_of, transmute};
+use std::mem::transmute;
 use std::ptr::slice_from_raw_parts_mut;
-use crate::{ValueCell, Pointer, ArrayCell, VariantCell, StructCell, RcCell};
-use ::dlopen::{
-    Error as DlopenError,
-    raw as dlopen,
-};
-use ::libffi::{
-    middle::{Type as FfiType, Builder as FfiBuilder},
-};
-use libffi::low::ffi_type;
-use libffi::raw::FFI_TYPE_STRUCT;
-use pas_ir::{metadata::Metadata, ExternalFunctionRef, Type, Instruction};
-use pas_ir::metadata::Variant;
-use pas_ir::prelude::{Struct, StructID};
-use crate::func::ffi::FfiInvoker;
+use std::{cmp::max, collections::HashMap, fmt, iter, ptr::slice_from_raw_parts, rc::Rc};
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -30,24 +32,42 @@ pub enum MarshalError {
         tag: ValueCell,
     },
 
+    InvalidStructID {
+        expected: StructID,
+        actual: StructID,
+    },
+
     InvalidRefCountValue(ValueCell),
 
     ExternSymbolLoadFailed {
         lib: String,
         symbol: String,
         msg: String,
-    }
+    },
 }
 
 impl fmt::Display for MarshalError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             MarshalError::InvalidData => write!(f, "invalid data"),
+            MarshalError::InvalidStructID { expected, actual } => {
+                write!(f, "expected struct ID {}, got {}", expected, actual)
+            }
             MarshalError::UnsupportedValue(val) => write!(f, "unable to marshal value: {:?}", val),
             MarshalError::UnsupportedType(ty) => write!(f, "unable to marshal type: {}", ty),
-            MarshalError::ExternSymbolLoadFailed { lib, symbol, msg } => write!(f, "external symbol {}::{} failed to load: {}", lib, symbol, msg),
-            MarshalError::VariantTagOutOfRange { variant_id, tag } => write!(f, "tag {:?} for variant {} was out of range", tag, variant_id),
-            MarshalError::InvalidRefCountValue(val) => write!(f, "value is not a valid ref count: {:?}", val),
+            MarshalError::ExternSymbolLoadFailed { lib, symbol, msg } => write!(
+                f,
+                "external symbol {}::{} failed to load: {}",
+                lib, symbol, msg
+            ),
+            MarshalError::VariantTagOutOfRange { variant_id, tag } => write!(
+                f,
+                "tag {:?} for variant {} was out of range",
+                tag, variant_id
+            ),
+            MarshalError::InvalidRefCountValue(val) => {
+                write!(f, "value is not a valid ref count: {:?}", val)
+            }
         }
     }
 }
@@ -72,8 +92,9 @@ pub struct ForeignType(FfiType);
 
 impl ForeignType {
     pub fn structure<I>(fields: I) -> Self
-    where I: IntoIterator<Item = ForeignType>,
-          I::IntoIter: ExactSizeIterator<Item = ForeignType>
+    where
+        I: IntoIterator<Item = ForeignType>,
+        I::IntoIter: ExactSizeIterator<Item = ForeignType>,
     {
         Self(FfiType::structure(fields.into_iter().map(|t| t.0)))
     }
@@ -124,10 +145,6 @@ impl ForeignType {
 
     pub fn f32() -> Self {
         Self(FfiType::f32())
-    }
-
-    pub fn void() -> Self {
-        Self(FfiType::void())
     }
 
     pub fn size(&self) -> usize {
@@ -183,8 +200,8 @@ impl Marshaller {
     pub fn new() -> Self {
         let rc_cell_type = ForeignType::structure(vec![
             ForeignType::pointer(), // resource address
-            ForeignType::usize(), // ref count
-            ForeignType::usize(), // struct ID
+            ForeignType::usize(),   // ref count
+            ForeignType::usize(),   // struct ID
         ]);
 
         let mut marshaller = Self {
@@ -209,7 +226,6 @@ impl Marshaller {
         marshaller.types.insert(Type::USize, ForeignType::usize());
         marshaller.types.insert(Type::F32, ForeignType::f32());
         marshaller.types.insert(Type::Bool, ForeignType::u8());
-        marshaller.types.insert(Type::Nothing, ForeignType::void());
 
         marshaller
     }
@@ -218,7 +234,12 @@ impl Marshaller {
         ForeignType::i32()
     }
 
-    pub fn add_struct(&mut self, id: StructID, def: &Struct, metadata: &Metadata) -> MarshalResult<ForeignType> {
+    pub fn add_struct(
+        &mut self,
+        id: StructID,
+        def: &Struct,
+        metadata: &Metadata,
+    ) -> MarshalResult<ForeignType> {
         let struct_ty = Type::Struct(id);
         if let Some(cached) = self.types.get(&struct_ty) {
             return Ok(cached.clone());
@@ -226,7 +247,10 @@ impl Marshaller {
 
         let mut def_fields: Vec<_> = def.fields.iter().collect();
         def_fields.sort_by_key(|(f_id, _)| **f_id);
-        let def_field_tys: Vec<_> = def_fields.into_iter().map(|(_, field)| field.ty.clone()).collect();
+        let def_field_tys: Vec<_> = def_fields
+            .into_iter()
+            .map(|(_, field)| field.ty.clone())
+            .collect();
 
         let mut field_ffi_tys = Vec::with_capacity(def_field_tys.len());
         for def_field_ty in &def_field_tys {
@@ -241,7 +265,12 @@ impl Marshaller {
         Ok(struct_ffi_ty)
     }
 
-    pub fn add_variant(&mut self, id: StructID, def: &Variant, metadata: &Metadata) -> MarshalResult<ForeignType> {
+    pub fn add_variant(
+        &mut self,
+        id: StructID,
+        def: &Variant,
+        metadata: &Metadata,
+    ) -> MarshalResult<ForeignType> {
         let variant_ty = Type::Variant(id);
         if let Some(cached) = self.types.get(&variant_ty) {
             return Ok(cached.clone());
@@ -253,14 +282,13 @@ impl Marshaller {
         let mut max_case_size = 0;
 
         for case_ty in &case_tys {
-            let case_ffi_ty = match case_ty.as_ref() {
-                Some(case_ty) => self.build_marshalled_type(case_ty, metadata)?,
-                None => ForeignType::void(),
+            if let Some(case_ty) = case_ty.as_ref() {
+                let case_ffi_ty = self.build_marshalled_type(case_ty, metadata)?;
+
+                max_case_size = max(case_ffi_ty.size(), max_case_size);
+
+                case_ffi_tys.push(case_ffi_ty);
             };
-
-            max_case_size = max(case_ffi_ty.size(), max_case_size);
-
-            case_ffi_tys.push(case_ffi_ty);
         }
 
         let variant_layout: Vec<_> = iter::once(self.variant_tag_type())
@@ -281,12 +309,10 @@ impl Marshaller {
         func_ref: &ExternalFunctionRef,
         metadata: &Metadata,
     ) -> MarshalResult<FfiInvoker> {
-        let sym_load_err = |err: DlopenError| {
-            MarshalError::ExternSymbolLoadFailed {
-                lib: func_ref.src.clone(),
-                symbol: func_ref.symbol.clone(),
-                msg: err.to_string(),
-            }
+        let sym_load_err = |err: DlopenError| MarshalError::ExternSymbolLoadFailed {
+            lib: func_ref.src.clone(),
+            symbol: func_ref.symbol.clone(),
+            msg: err.to_string(),
         };
 
         let ffi_return_ty = self.build_marshalled_type(&func_ref.return_ty, metadata)?;
@@ -313,7 +339,8 @@ impl Marshaller {
         };
 
         let symbol = unsafe {
-            lib.symbol::<*const ()>(&func_ref.symbol).map_err(sym_load_err)?
+            lib.symbol::<*const ()>(&func_ref.symbol)
+                .map_err(sym_load_err)?
         };
 
         Ok(FfiInvoker::new(
@@ -322,38 +349,37 @@ impl Marshaller {
             func_ref.params.clone(),
             ffi_param_tys,
             func_ref.return_ty.clone(),
-            ffi_return_ty
+            ffi_return_ty,
         ))
     }
 
-    fn build_marshalled_type(&mut self, ty: &Type, metadata: &Metadata) -> MarshalResult<ForeignType> {
+    fn build_marshalled_type(
+        &mut self,
+        ty: &Type,
+        metadata: &Metadata,
+    ) -> MarshalResult<ForeignType> {
         if let Some(cached) = self.types.get(ty) {
             return Ok(cached.clone());
         }
 
         match ty {
             Type::Variant(id) => {
-                let def = metadata.get_variant_def(*id)
-                    .ok_or_else(|| {
-                        MarshalError::UnsupportedType(ty.clone())
-                    })?;
+                let def = metadata
+                    .get_variant_def(*id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
 
                 self.add_variant(*id, def, metadata)
             }
 
             Type::Struct(id) => {
-                let def = metadata.get_struct_def(*id)
-                    .ok_or_else(|| {
-                        MarshalError::UnsupportedType(ty.clone())
-                    })?;
+                let def = metadata
+                    .get_struct_def(*id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
 
                 self.add_struct(*id, def, metadata)
             }
 
-            Type::RcPointer(..)
-            | Type::Pointer(..) => {
-                Ok(ForeignType::pointer())
-            }
+            Type::RcPointer(..) | Type::Pointer(..) => Ok(ForeignType::pointer()),
 
             Type::Array { element, dim } => {
                 let el_ty = self.build_marshalled_type(&element, metadata)?;
@@ -362,19 +388,20 @@ impl Marshaller {
                 Ok(ForeignType::structure(el_tys))
             }
 
-            Type::RcObject(..) => {
-                Ok(self.rc_cell_type.clone())
-            }
+            Type::RcObject(..) => Ok(self.rc_cell_type.clone()),
 
             // all primitives/builtins should be in the cache already
-            _ => {
-                Err(MarshalError::UnsupportedType(ty.clone()))
-            }
+            _ => Err(MarshalError::UnsupportedType(ty.clone())),
         }
     }
 
     pub fn get_ty(&self, ty: &Type) -> MarshalResult<ForeignType> {
         match ty {
+            Type::Nothing => {
+                // "nothing" is not a marshallable type!
+                Err(MarshalError::UnsupportedType(Type::Nothing))
+            }
+
             // we can't cache array types so always build them on demand
             // pascal static arrays are treated as a struct of elements laid out sequentially
             Type::Array { element, dim } => {
@@ -384,18 +411,14 @@ impl Marshaller {
                 Ok(ForeignType::structure(el_tys))
             }
 
-            Type::Pointer(..) | Type::RcPointer(..) => {
-                Ok(ForeignType::pointer())
-            }
+            Type::Pointer(..) | Type::RcPointer(..) => Ok(ForeignType::pointer()),
 
-            Type::RcObject(..) => {
-                Ok(self.rc_cell_type.clone())
-            }
+            Type::RcObject(..) => Ok(self.rc_cell_type.clone()),
 
             ty => match self.types.get(ty) {
                 Some(cached_ty) => Ok(cached_ty.clone()),
                 None => Err(MarshalError::UnsupportedType(ty.clone())),
-            }
+            },
         }
     }
 
@@ -415,7 +438,7 @@ impl Marshaller {
             ValueCell::Bool(x) => {
                 out_bytes[0] = if *x { 1 } else { 0 };
                 1
-            },
+            }
 
             ValueCell::Array(x) => {
                 let mut el_offset = 0;
@@ -446,23 +469,11 @@ impl Marshaller {
                 tag_size + data_size
             }
 
-            ValueCell::Pointer(ptr) => {
-                self.marshal_ptr(ptr, out_bytes)?
-            }
+            ValueCell::Pointer(ptr) => self.marshal_ptr(ptr, out_bytes)?,
 
-            ValueCell::RcCell(rc_cell) => {
-                let mut offset = self.marshal_ptr(&rc_cell.resource_ptr, out_bytes)?;
+            ValueCell::RcCell(rc_cell) => self.marshal_rc_cell(rc_cell, out_bytes)?,
 
-                let ref_count_bytes = rc_cell.ref_count.to_ne_bytes();
-                offset += marshal_bytes(&ref_count_bytes, &mut out_bytes[offset..]);
-
-                let struct_id_bytes = rc_cell.struct_id.0.to_ne_bytes();
-                marshal_bytes(&struct_id_bytes, &mut out_bytes[offset..])
-            }
-
-            unsupported => {
-                return Err(MarshalError::UnsupportedValue(unsupported.clone()))
-            }
+            unsupported => return Err(MarshalError::UnsupportedValue(unsupported.clone())),
         };
 
         Ok(size)
@@ -474,14 +485,15 @@ impl Marshaller {
         Ok(len)
     }
 
-    fn unmarshal_ptr(&self, deref_ty: &Type, in_bytes: &[u8]) -> MarshalResult<(Pointer, usize)> {
-        let addr = usize::from_ne_bytes(unmarshal_bytes(in_bytes)?);
+    fn unmarshal_ptr(&self, deref_ty: Type, in_bytes: &[u8]) -> MarshalResult<(Pointer, usize)> {
+        let addr_bytes = unmarshal_bytes(in_bytes)?;
+        let addr = usize::from_ne_bytes(addr_bytes);
         let ptr = Pointer {
             addr,
             ty: deref_ty.clone(),
         };
 
-        Ok((ptr, size_of::<usize>()))
+        Ok((ptr, addr_bytes.len()))
     }
 
     pub fn unmarshal_from_ptr(&self, into_ptr: &Pointer) -> MarshalResult<ValueCell> {
@@ -492,9 +504,7 @@ impl Marshaller {
         let marshal_ty = self.get_ty(&into_ptr.ty)?;
 
         let mem_slice = slice_from_raw_parts(into_ptr.addr as *const u8, marshal_ty.size());
-        let result = unsafe {
-            self.unmarshal(mem_slice.as_ref().unwrap(), &into_ptr.ty)?
-        };
+        let result = unsafe { self.unmarshal(mem_slice.as_ref().unwrap(), &into_ptr.ty)? };
 
         Ok(result.value)
     }
@@ -507,9 +517,7 @@ impl Marshaller {
         let marshal_ty = self.get_ty(&into_ptr.ty)?;
 
         let mem_slice = slice_from_raw_parts_mut(into_ptr.addr as *mut u8, marshal_ty.size());
-        let size = unsafe {
-            self.marshal(val, mem_slice.as_mut().unwrap())?
-        };
+        let size = unsafe { self.marshal(val, mem_slice.as_mut().unwrap())? };
 
         Ok(size)
     }
@@ -524,8 +532,12 @@ impl Marshaller {
             Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes, ValueCell::U32),
             Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes, ValueCell::I64),
             Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes, ValueCell::U64),
-            Type::ISize => unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes, ValueCell::ISize),
-            Type::USize => unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes, ValueCell::USize),
+            Type::ISize => {
+                unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes, ValueCell::ISize)
+            }
+            Type::USize => {
+                unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes, ValueCell::USize)
+            }
 
             Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes, ValueCell::F32),
 
@@ -542,7 +554,7 @@ impl Marshaller {
             }
 
             Type::RcPointer(..) => {
-                let (raw_ptr, size) = self.unmarshal_ptr(&Type::Nothing, in_bytes)?;
+                let (raw_ptr, size) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
 
                 // deref the object to get its struct ID for the type
                 let rc_struct_bytes_ptr = raw_ptr.addr as *const u8;
@@ -573,27 +585,23 @@ impl Marshaller {
             }
 
             Type::RcObject(id) => {
-                let (resource_ptr, mut offset) = self.unmarshal_ptr(&Type::Struct(*id), in_bytes)?;
+                let (rc_cell, size) = self.unmarshal_rc_cell(in_bytes)?;
 
-                let ref_count_bytes = unmarshal_bytes(in_bytes)?;
-                let ref_count = usize::from_ne_bytes(ref_count_bytes);
-                offset += ref_count_bytes.len();
-
-                // we don't need to read the struct ID, but include it in the byte count
-                offset += ForeignType::usize().size();
+                if rc_cell.struct_id != *id {
+                    return Err(MarshalError::InvalidStructID {
+                        expected: *id,
+                        actual: rc_cell.struct_id,
+                    });
+                }
 
                 Ok(UnmarshalledValue {
-                    value: ValueCell::RcCell(Box::new(RcCell {
-                        resource_ptr,
-                        struct_id: *id,
-                        ref_count,
-                    })),
-                    byte_count: offset,
+                    value: ValueCell::RcCell(Box::new(rc_cell)),
+                    byte_count: size,
                 })
             }
 
             Type::Pointer(deref_ty) => {
-                let (ptr, size) = self.unmarshal_ptr(deref_ty, in_bytes)?;
+                let (ptr, size) = self.unmarshal_ptr((**deref_ty).clone(), in_bytes)?;
 
                 Ok(UnmarshalledValue {
                     value: ValueCell::Pointer(ptr),
@@ -614,18 +622,18 @@ impl Marshaller {
                     byte_count: offset,
                     value: ValueCell::Array(Box::new(ArrayCell {
                         el_ty: *element.clone(),
-                        elements
-                    }))
+                        elements,
+                    })),
                 })
             }
 
             // these need field offset/tag type info from the ffi cache so marshal/unmarshla should
             // be members
             Type::Struct(struct_id) => {
-                let field_tys = self.struct_field_types.get(struct_id)
-                    .ok_or_else(|| {
-                        MarshalError::UnsupportedType(ty.clone())
-                    })?;
+                let field_tys = self
+                    .struct_field_types
+                    .get(struct_id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
 
                 let mut offset = 0;
                 let mut fields = Vec::new();
@@ -643,41 +651,37 @@ impl Marshaller {
                     })),
                     byte_count: offset,
                 })
-            },
+            }
 
             Type::Variant(variant_id) => {
                 let tag_val = self.unmarshal(in_bytes, &Type::I32)?;
                 let tag = tag_val.value.as_i32().unwrap();
 
-                let case_index = cast::usize(tag).map_err(|_| {
-                    MarshalError::VariantTagOutOfRange {
+                let case_index =
+                    cast::usize(tag).map_err(|_| MarshalError::VariantTagOutOfRange {
                         variant_id: *variant_id,
                         tag: tag_val.value.clone(),
-                    }
-                })?;
-
-                let case_tys = self.variant_case_types.get(variant_id)
-                    .ok_or_else(|| {
-                        MarshalError::UnsupportedType(ty.clone())
                     })?;
 
-                let case_ty = case_tys.get(case_index)
-                    .ok_or_else(|| {
-                        MarshalError::VariantTagOutOfRange {
-                            variant_id: *variant_id,
-                            tag: tag_val.value.clone(),
-                        }
+                let case_tys = self
+                    .variant_case_types
+                    .get(variant_id)
+                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
+
+                let case_ty = case_tys
+                    .get(case_index)
+                    .ok_or_else(|| MarshalError::VariantTagOutOfRange {
+                        variant_id: *variant_id,
+                        tag: tag_val.value.clone(),
                     })?
                     .as_ref();
 
                 let data_val = match case_ty {
-                    Some(case_ty) => {
-                        self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?
-                    }
+                    Some(case_ty) => self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?,
                     None => UnmarshalledValue {
                         value: ValueCell::Pointer(Pointer::null(Type::Nothing)),
                         byte_count: 0,
-                    }
+                    },
                 };
 
                 Ok(UnmarshalledValue {
@@ -686,13 +690,11 @@ impl Marshaller {
                         id: *variant_id,
                         tag: Box::new(ValueCell::I32(tag as i32)),
                         data: Box::new(data_val.value),
-                    }))
+                    })),
                 })
             }
 
-            _ => {
-                Err(MarshalError::UnsupportedType(ty.clone()))
-            }
+            _ => Err(MarshalError::UnsupportedType(ty.clone())),
         }
     }
 
@@ -712,6 +714,42 @@ impl Marshaller {
 
         let size_sum = local_sizes.into_iter().sum();
         Ok(size_sum)
+    }
+
+    fn marshal_rc_cell(&self, rc_cell: &RcCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
+        let mut offset = self.marshal_ptr(&rc_cell.resource_ptr, out_bytes)?;
+
+        let ref_count_bytes = rc_cell.ref_count.to_ne_bytes();
+        offset += marshal_bytes(&ref_count_bytes, &mut out_bytes[offset..]);
+
+        let struct_id_bytes = rc_cell.struct_id.0.to_ne_bytes();
+        offset += marshal_bytes(&struct_id_bytes, &mut out_bytes[offset..]);
+
+        Ok(offset)
+    }
+
+    fn unmarshal_rc_cell(&self, in_bytes: &[u8]) -> MarshalResult<(RcCell, usize)> {
+        let (resource_ptr, mut offset) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
+
+        let ref_count_bytes = unmarshal_bytes(&in_bytes[offset..])?;
+        offset += ref_count_bytes.len();
+
+        let ref_count = usize::from_ne_bytes(ref_count_bytes);
+
+        let struct_id_bytes = unmarshal_bytes(&in_bytes[offset..])?;
+        offset += struct_id_bytes.len();
+
+        let struct_id = StructID(usize::from_ne_bytes(struct_id_bytes));
+        let resource_ptr = resource_ptr.reinterpret(Type::Struct(struct_id));
+
+        Ok((
+            RcCell {
+                resource_ptr,
+                struct_id,
+                ref_count,
+            },
+            offset,
+        ))
     }
 }
 
@@ -734,11 +772,11 @@ fn unmarshal_bytes<const COUNT: usize>(in_bytes: &[u8]) -> MarshalResult<[u8; CO
 fn unmarshal_from_ne_bytes<T, FUn, FCell, const COUNT: usize>(
     in_bytes: &[u8],
     f_un: FUn,
-    f_cell: FCell
+    f_cell: FCell,
 ) -> MarshalResult<UnmarshalledValue>
-    where
-        FUn: Fn([u8; COUNT]) -> T,
-        FCell: Fn(T) -> ValueCell
+where
+    FUn: Fn([u8; COUNT]) -> T,
+    FCell: Fn(T) -> ValueCell,
 {
     let bytes = unmarshal_bytes(in_bytes)?;
     let val = f_un(bytes);
@@ -746,6 +784,6 @@ fn unmarshal_from_ne_bytes<T, FUn, FCell, const COUNT: usize>(
 
     Ok(UnmarshalledValue {
         value: cell,
-        byte_count: size_of::<T>(),
+        byte_count: bytes.len(),
     })
 }

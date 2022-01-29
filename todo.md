@@ -1,3 +1,4 @@
+* fmt_pretty in interpreter to format with debug type info - can default impl with Display::fmt
 * CASE: fix separators - should allow optional ; before end/else
 * 
 * interpreter: marshalled globals
