@@ -234,7 +234,7 @@ impl<'m> Builder<'m> {
         }
 
         if self.module.opts.debug_info {
-            self.instructions.push(Instruction::DebugPop);
+            self.append(Instruction::DebugPop);
         }
 
         self.instructions

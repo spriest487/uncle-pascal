@@ -194,4 +194,3 @@ pub fn jmp_exists(instructions: &[Instruction], to_label: Label) -> bool {
         _ => false,
     })
 }
-
