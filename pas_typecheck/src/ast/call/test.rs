@@ -83,11 +83,11 @@ fn resolves_method_by_args() {
 
         type C = class end;
 
-        function I1.M(self: C; i: Integer)
+        function M of I1(self: C; i: Integer)
         begin
         end;
 
-        function I2.M(self: C; b: Boolean)
+        function M of I2(self: C; b: Boolean)
         begin
         end;
 

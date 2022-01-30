@@ -163,11 +163,26 @@ impl Interpreter {
                 }))
             }
 
-            Type::Variant(id) => ValueCell::Variant(Box::new(VariantCell {
-                id: *id,
-                tag: Box::new(ValueCell::I32(0)),
-                data: Box::new(ValueCell::Pointer(Pointer::null(Type::Nothing))),
-            })),
+            Type::Variant(id) => {
+                let default_tag = 0;
+                let cases = &self.metadata.get_variant_def(*id)
+                    .ok_or_else(|| ExecError::illegal_state(format!("missing variant definition {}", *id)))?
+                    .cases;
+                let case_ty = &cases.get(default_tag as usize)
+                    .ok_or_else(|| ExecError::illegal_state(format!("missing default case definition for variant {}", *id)))?
+                    .ty;
+
+                let default_val = match case_ty {
+                    Some(case_ty) => self.default_init_cell(case_ty)?,
+                    None => ValueCell::Pointer(Pointer::null(Type::Nothing)),
+                };
+
+                ValueCell::Variant(Box::new(VariantCell {
+                    id: *id,
+                    tag: Box::new(ValueCell::I32(default_tag)),
+                    data: Box::new(default_val),
+                }))
+            },
 
             _ => {
                 let msg = format!("can't initialize default cell of type `{:?}`", ty);

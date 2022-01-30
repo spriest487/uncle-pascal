@@ -71,7 +71,11 @@ impl StackFrame {
     pub fn add_undeclared_local(&mut self, ty: Type, value: &ValueCell) -> MarshalResult<LocalID> {
         let stack_offset = self.stack_alloc(value)?;
 
-        assert_eq!(self.marshaller.get_ty(&ty)?.size(), self.stack_offset - stack_offset);
+        if cfg!(debug_assertions) {
+            let marshalled_size = self.stack_offset - stack_offset;
+            let ty_size = self.marshaller.get_ty(&ty)?.size();
+            assert_eq!(marshalled_size, ty_size, "stack space allocated ({}) did not match expected size {} for type {}", marshalled_size, ty_size, ty);
+        }
 
         self.locals.push(StackAlloc {
             alloc_pc: None,
