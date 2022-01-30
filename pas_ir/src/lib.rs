@@ -267,7 +267,7 @@ fn gen_class_rc_boilerplate(module: &mut Module, class_ty: &Type) {
 
 pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     let metadata = Metadata::new();
-    let mut ir_module = Module::new(module.root_ctx.clone(), metadata, opts);
+    let mut ir_module = Module::new((*module.root_ctx).clone(), metadata, opts);
 
     let builtin_disposable = pas_ty::builtin_disposable_iface();
 

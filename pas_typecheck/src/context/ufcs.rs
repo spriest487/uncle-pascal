@@ -102,7 +102,7 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
 
     for (iface_ident, iface_impls) in &ctx.iface_impls {
         let iface_def = ctx.find_iface_def(iface_ident)?;
-        let iface_ty = Type::Interface(iface_ident.clone());
+        let iface_ty = Type::Interface(Box::new(iface_ident.clone()));
 
         if !(iface_impls.contains_key(ty)) {
             continue;

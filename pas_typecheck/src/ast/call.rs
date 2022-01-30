@@ -481,21 +481,12 @@ fn infer_from_structural_ty_args(
     inferred_ty_args: &mut Vec<Option<Type>>,
 ) {
     let (param_ty_args, actual_ty_args) = match (param_ty, actual_ty) {
-        (
-            Type::Array {
-                element: param_el,
-                dim: param_dim,
-            },
-            Type::Array {
-                element: actual_el,
-                dim: actual_dim,
-            },
-        ) => {
-            if *actual_dim != *param_dim {
+        (Type::Array(param_array_ty), Type::Array(actual_array_ty)) => {
+            if actual_array_ty.dim != param_array_ty.dim {
                 return;
             }
 
-            (vec![*param_el.clone()], vec![*actual_el.clone()])
+            (vec![param_array_ty.element_ty.clone()], vec![actual_array_ty.element_ty.clone()])
         }
 
         (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {

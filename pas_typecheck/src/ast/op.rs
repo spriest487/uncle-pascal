@@ -661,7 +661,7 @@ fn check_array_bound_static(base: &Expression, index: &Expression, ctx: &mut Con
     }
 
     match (base.annotation().ty(), const_eval_integer(index, ctx)) {
-        (Type::Array { dim, .. }, Ok(index_const)) if out_of_range(*dim, index_const) => Err(
+        (Type::Array(array_ty), Ok(index_const)) if out_of_range(array_ty.dim, index_const) => Err(
             TypecheckError::IndexOutOfBounds {
                 index: index_const,
                 base_ty: Box::new(base.annotation().ty().clone()),

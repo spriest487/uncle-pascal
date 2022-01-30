@@ -73,9 +73,9 @@ fn translate_indexer(
     builder.begin_scope();
 
     match base_ty {
-        pas_ty::Type::Array { element, dim, .. } => {
-            let element_ty = builder.translate_type(element);
-            let len = cast::i32(*dim).expect("array dim must be within range of i32");
+        pas_ty::Type::Array(array_ty) => {
+            let element_ty = builder.translate_type(&array_ty.element_ty);
+            let len = cast::i32(array_ty.dim).expect("array dim must be within range of i32");
 
             gen_bounds_check(index_ref.clone(), Value::LiteralI32(len), builder);
 
@@ -1072,8 +1072,8 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
 
 fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut Builder) -> Ref {
     match &ctor.annotation.ty() {
-        pas_ty::Type::Array { element, dim } => {
-            translate_static_array_ctor(ctor, element, *dim, builder)
+        pas_ty::Type::Array(array_ty) => {
+            translate_static_array_ctor(ctor, &array_ty.element_ty, array_ty.dim, builder)
         }
 
         pas_ty::Type::DynArray { element } => {

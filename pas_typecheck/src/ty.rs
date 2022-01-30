@@ -33,9 +33,9 @@ pub enum Type {
     Function(Rc<FunctionSig>),
     Record(Box<Symbol>),
     Class(Box<Symbol>),
-    Interface(IdentPath),
+    Interface(Box<IdentPath>),
     Variant(Box<Symbol>),
-    Array { element: Box<Type>, dim: usize },
+    Array(Rc<ArrayType>),
     DynArray { element: Box<Type> },
     MethodSelf,
     GenericParam(Box<TypeParamType>),
@@ -45,6 +45,12 @@ pub enum Type {
 impl From<Primitive> for Type {
     fn from(primitive: Primitive) -> Self {
         Type::Primitive(primitive)
+    }
+}
+
+impl From<ArrayType> for Type {
+    fn from(array_ty: ArrayType) -> Self {
+        Type::Array(Rc::new(array_ty))
     }
 }
 
@@ -60,7 +66,7 @@ impl Type {
             Type::Any => Some(builtin_path("Any")),
             Type::MethodSelf => Some(builtin_path("Self")),
             Type::Primitive(p) => Some(builtin_path(p.name())),
-            Type::Interface(iface) => Some(iface.clone()),
+            Type::Interface(iface) => Some((**iface).clone()),
             Type::Record(class) | Type::Class(class) => Some(class.qualified.clone()),
             Type::Variant(variant) => Some(variant.qualified.clone()),
             _ => None,
@@ -97,7 +103,7 @@ impl Type {
 
             ast::TypeDecl::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 
-            ast::TypeDecl::Interface(iface) => Type::Interface(iface.name.qualified.clone()),
+            ast::TypeDecl::Interface(iface) => Type::Interface(Box::new(iface.name.qualified.clone())),
         }
     }
 
@@ -174,7 +180,7 @@ impl Type {
 
     pub fn same_array_dim(&self, other: &Self) -> bool {
         match (self, other) {
-            (Type::Array { dim, .. }, Type::Array { dim: other_dim, .. }) => *dim == *other_dim,
+            (Type::Array(a), Type::Array(b)) => a.dim == b.dim,
 
             _ => false,
         }
@@ -217,7 +223,8 @@ impl Type {
 
     pub fn array_element_ty(&self) -> Option<&Type> {
         match self {
-            Type::DynArray { element } | Type::Array { element, .. } => Some(element),
+            Type::DynArray { element } => Some(element),
+            Type::Array(array_ty) => Some(&array_ty.element_ty),
 
             _ => None,
         }
@@ -421,7 +428,7 @@ impl Type {
 
     pub fn collection_element_ty(&self) -> Option<&Type> {
         match self {
-            Type::Array { element, .. } => Some(element.as_ref()),
+            Type::Array(array_ty) => Some(&array_ty.element_ty),
             Type::DynArray { element } => Some(element.as_ref()),
             _ => None,
         }
@@ -515,9 +522,12 @@ impl Type {
                 element: element.substitute_type_args(args).into(),
             },
 
-            Type::Array { element, dim } => Type::Array {
-                element: element.substitute_type_args(args).into(),
-                dim,
+            Type::Array(array_ty) => {
+                let array_ty = (*array_ty).clone();
+                ArrayType {
+                    element_ty: array_ty.element_ty.substitute_type_args(args).into(),
+                    dim: array_ty.dim,
+                }.into()
             },
 
             Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
@@ -551,10 +561,9 @@ impl Type {
                 .map(Box::new)
                 .map(Type::Variant),
 
-            Type::Array { element, dim } => element
+            Type::Array(array_ty) => array_ty.element_ty
                 .specialize_generic(args, span)
-                .map(Box::new)
-                .map(|element| Type::Array { element, dim: *dim }),
+                .map(|element_ty| ArrayType { element_ty, dim: array_ty.dim }.into()),
 
             Type::DynArray { element } => element
                 .specialize_generic(args, span)
@@ -573,7 +582,7 @@ impl fmt::Display for Type {
             Type::Class(name) | Type::Record(name) => write!(f, "{}", name),
             Type::Interface(iface) => write!(f, "{}", iface),
             Type::Pointer(target_ty) => write!(f, "^{}", target_ty),
-            Type::Array { element, dim } => write!(f, "array[{}] of {}", dim, element),
+            Type::Array(array_ty) => write!(f, "{}", array_ty),
             Type::DynArray { element } => write!(f, "array of {}", element),
             Type::GenericParam(ident) => write!(f, "{}", ident),
             Type::Nothing => write!(f, "Nothing"),
@@ -589,6 +598,18 @@ impl fmt::Display for Type {
 impl Typed for Type {
     fn is_known(&self) -> bool {
         true
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct ArrayType {
+    pub element_ty: Type,
+    pub dim: usize,
+}
+
+impl fmt::Display for ArrayType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "array[{}] of {}", self.dim, self.element_ty)
     }
 }
 
@@ -630,7 +651,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
         }
 
         ast::TypeName::Array(ArrayTypeName { element, dim, .. }) => {
-            let element = typecheck_type(element.as_ref(), ctx)?;
+            let element_ty = typecheck_type(element.as_ref(), ctx)?;
 
             match dim {
                 Some(dim_expr) => {
@@ -644,14 +665,14 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                         expected: Type::Primitive(Primitive::Int32),
                     })?;
 
-                    Ok(Type::Array {
-                        element: Box::new(element),
+                    Ok(ArrayType {
+                        element_ty,
                         dim,
-                    })
+                    }.into())
                 }
 
                 None => Ok(Type::DynArray {
-                    element: Box::new(element),
+                    element: Box::new(element_ty),
                 }),
             }
         }
@@ -791,7 +812,7 @@ impl Specializable for Type {
 
             Type::Variant(variant) => variant.is_unspecialized_generic(),
 
-            Type::Array { element, .. } => element.is_unspecialized_generic(),
+            Type::Array(array_ty) => array_ty.element_ty.is_unspecialized_generic(),
 
             Type::DynArray { element } => element.is_unspecialized_generic(),
 

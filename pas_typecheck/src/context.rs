@@ -387,7 +387,7 @@ impl Context {
         visibility: Visibility,
     ) -> NamingResult<()> {
         let name = iface.name.decl_name.ident.clone();
-        let iface_ty = Type::Interface(iface.name.qualified.clone());
+        let iface_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
 
         let map_unexpected = |_, _| unreachable!();
@@ -568,9 +568,10 @@ impl Context {
         // check the method exists
         let iface = self.find_iface_def(&iface_ident)?;
         if iface.get_method(&method).is_none() {
+            let base_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
             return Err(NameError::MemberNotFound {
                 span: method.span.clone(),
-                base: NameContainer::Type(Type::Interface(iface.name.qualified.clone())),
+                base: NameContainer::Type(base_ty),
                 member: method,
             });
         }
@@ -1059,7 +1060,7 @@ impl Context {
                 Err(err) => Err(err.into()),
             },
 
-            Type::Array { element, .. } => self.is_unsized_ty(element),
+            Type::Array(array_ty) => self.is_unsized_ty(&array_ty.element_ty),
 
             Type::Any
             | Type::GenericParam(_)

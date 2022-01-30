@@ -141,14 +141,14 @@ fn find_iface_impl(
 
     match impl_for_types.len() {
         0 => Err(NameError::MemberNotFound {
-            base: NameContainer::Type(Type::Interface(iface_def.name.qualified.clone())),
+            base: NameContainer::Type(Type::Interface(Box::new(iface_def.name.qualified.clone()))),
             span: method_ident.span().clone(),
             member: method_ident.clone(),
         }
         .into()),
 
         1 => Ok(InterfaceImpl {
-            iface: Type::Interface(iface_def.name.qualified.clone()),
+            iface: Type::Interface(Box::new(iface_def.name.qualified.clone())),
             for_ty: impl_for_types[0].clone(),
         }),
 

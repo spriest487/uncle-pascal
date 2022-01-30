@@ -646,11 +646,11 @@ impl Metadata {
                 }
             }
 
-            pas_ty::Type::Array { element, dim } => {
-                let element = self.find_type(element.as_ref());
+            pas_ty::Type::Array(array_ty) => {
+                let element = self.find_type(&array_ty.element_ty);
                 Type::Array {
                     element: Box::new(element),
-                    dim: *dim,
+                    dim: array_ty.dim,
                 }
             }
 

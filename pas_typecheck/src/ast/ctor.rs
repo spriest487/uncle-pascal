@@ -151,10 +151,10 @@ pub fn typecheck_collection_ctor(
             element: Box::new(elem_ty),
         },
 
-        _ => Type::Array {
-            element: Box::new(elem_ty),
+        _ => Type::Array(Rc::new(ArrayType {
+            element_ty: elem_ty,
             dim: elements.len(),
-        },
+        })),
     };
 
     let annotation = TypeAnnotation::TypedValue {
