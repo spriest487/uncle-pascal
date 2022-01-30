@@ -268,7 +268,7 @@ pub fn ns_member_ref_to_annotation(
                 panic!("empty path for decl {}", key);
             }
 
-            TypeAnnotation::Function {
+            FunctionAnnotation {
                 span,
                 ns: IdentPath::from_parts(parent_path.keys().cloned()),
                 name: key.clone(),
@@ -276,7 +276,7 @@ pub fn ns_member_ref_to_annotation(
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expression to add some
                 type_args: None,
-            }
+            }.into()
         }
 
         MemberRef::Value {

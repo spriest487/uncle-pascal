@@ -132,7 +132,7 @@ impl TokenTree {
 
     pub fn is_ident(&self, word: &str) -> bool {
         match self {
-            TokenTree::Ident(ident) => ident.name == word,
+            TokenTree::Ident(ident) => *ident.name == word,
             _ => false,
         }
     }

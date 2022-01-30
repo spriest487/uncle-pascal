@@ -31,10 +31,14 @@ pub struct Module {
 
 impl Module {
     pub fn typecheck(units: &[pas_syn::ast::Unit<Span>], no_stdlib: bool) -> TypecheckResult<Self> {
+        eprintln!("function sig size: {}", std::mem::size_of::<sig::FunctionSig>());
         eprintln!("type size: {}", std::mem::size_of::<Type>());
         eprintln!("type annotation size: {}", std::mem::size_of::<TypeAnnotation>());
         eprintln!("expr size: {}", std::mem::size_of::<ast::Expression>());
         eprintln!("stmt size: {}", std::mem::size_of::<ast::Statement>());
+        eprintln!("type list size: {}", std::mem::size_of::<TypeList>());
+        eprintln!("ident size: {}", std::mem::size_of::<pas_syn::Ident>());
+        eprintln!("ident path size: {}", std::mem::size_of::<IdentPath>());
 
         let module_span = Span::zero(units[0].ident.span().file.as_ref().clone());
 

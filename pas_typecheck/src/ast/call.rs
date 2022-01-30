@@ -5,7 +5,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation};
 
 #[cfg(test)]
 mod test;
@@ -136,12 +136,20 @@ pub fn typecheck_call(
             .map(Box::new)
             .map(Invocation::Call)?,
 
-        TypeAnnotation::Function {
-            func_ty: Type::Function(sig),
-            ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
-            .map(Box::new)
-            .map(Invocation::Call)?,
+        TypeAnnotation::Function(func) => {
+            match &func.func_ty {
+                Type::Function(sig) => {
+                    typecheck_func_call(&func_call, sig.as_ref(), ctx)
+                        .map(Box::new)
+                        .map(Invocation::Call)?
+                }
+
+                _ => {
+                    // ??? how is this not a function
+                    return Err(TypecheckError::NotCallable(Box::new(target)));
+                }
+            }
+        },
 
         TypeAnnotation::UFCSCall {
             function,
@@ -400,13 +408,13 @@ fn typecheck_ufcs_call(
         ctx,
     )?;
 
-    let func_annotation = TypeAnnotation::Function {
+    let func_annotation = FunctionAnnotation {
         func_ty: Type::Function(Rc::new(specialized_call_args.sig.clone())),
         ns: func_name.clone().parent().unwrap(),
         name: func_name.last().clone(),
         span: span.clone(),
         type_args: specialized_call_args.type_args.clone(),
-    };
+    }.into();
 
     // todo: this should construct a fully qualified path expr instead
     let target = ast::Expression::Ident(func_name.last().clone(), func_annotation);

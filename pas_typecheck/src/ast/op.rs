@@ -176,13 +176,13 @@ fn desugar_string_concat(
             let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
             let (concat_path, concat_sig) = ctx.find_function(&concat_path)?;
 
-            let concat_annotation = TypeAnnotation::Function {
+            let concat_annotation = FunctionAnnotation {
                 ns: concat_path.parent().unwrap(),
                 name: concat_path.last().clone(),
                 span: span.clone(),
                 func_ty: Type::Function(concat_sig),
                 type_args: None,
-            };
+            }.into();
 
             let concat_func = ast::Expression::Ident(concat_path.last().clone(), concat_annotation);
 
@@ -319,7 +319,7 @@ fn typecheck_type_member(
 ) -> TypecheckResult<TypeAnnotation> {
     let annotation = match ctx.find_type_member(ty, member_ident)? {
         TypeMember::Method { decl } => {
-            TypeAnnotation::InterfaceMethod(InterfaceMethodAnnotation::new(&decl, ty.clone(), span))
+            InterfaceMethodAnnotation::new(&decl, ty.clone(), span).into()
         }
     };
 
@@ -412,12 +412,12 @@ pub fn typecheck_member_value(
         }
 
         InstanceMember::Overloaded { candidates } => {
-            TypeAnnotation::Overload(OverloadAnnotation::new(
+            OverloadAnnotation::new(
                 candidates,
                 Some(Box::new(lhs.clone())),
                 Vec::new(),
                 span.clone(),
-            ))
+            ).into()
         }
 
         InstanceMember::Data { ty: member_ty } => {
@@ -474,7 +474,7 @@ pub fn typecheck_variant_ctor(
         span: member_ident.span().clone(),
     };
 
-    Ok(TypeAnnotation::VariantCtor(ctor_annotation))
+    Ok(ctor_annotation.into())
 }
 
 pub type UnaryOp = ast::UnaryOp<TypeAnnotation>;

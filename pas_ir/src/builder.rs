@@ -102,7 +102,7 @@ impl<'m> Builder<'m> {
         let case_index = variant_struct
             .cases
             .iter()
-            .position(|c| c.name == case.name);
+            .position(|c| c.name == *case.name);
 
         match case_index {
             Some(index) => (id, index, variant_struct.cases[index].ty.as_ref()),

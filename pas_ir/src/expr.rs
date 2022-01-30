@@ -488,12 +488,15 @@ fn translate_func_call(
     builder: &mut Builder
 ) -> Option<Ref> {
     let (_, full_name) = match func_call.target.annotation() {
-        pas_ty::TypeAnnotation::Function {
-            func_ty: pas_ty::Type::Function(sig),
-            ns,
-            name,
-            ..
-        } => (sig.as_ref(), ns.clone().child(name.clone())),
+        pas_ty::TypeAnnotation::Function(func) => {
+            match &func.func_ty {
+                pas_ty::Type::Function(sig) => {
+                    (sig.as_ref(), func.ns.clone().child(func.name.clone()))
+                }
+
+                _ => panic!("type of function was not a function type")
+            }
+        },
         _ => panic!("type of function call expr must be a function"),
     };
 
@@ -1223,15 +1226,9 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
             )
         },
 
-        TypeAnnotation::Function {
-            name,
-            ns,
-            type_args,
-            span,
-            ..
-        } => {
-            let func_name = ns.clone().child(name.clone());
-            let func = builder.translate_func(func_name, type_args.clone(), span);
+        TypeAnnotation::Function(func) => {
+            let func_name = func.ns.clone().child(func.name.clone());
+            let func = builder.translate_func(func_name, func.type_args.clone(), &func.span);
             let func_ref = GlobalRef::Function(func.id);
 
             Ref::Global(func_ref)

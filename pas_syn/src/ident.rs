@@ -3,10 +3,11 @@ use std::{
     fmt::{self, Write},
     hash::{Hash, Hasher},
 };
+use std::rc::Rc;
 
 #[derive(Eq, Clone)]
 pub struct Ident {
-    pub name: String,
+    pub name: Rc<String>,
     pub span: Span,
 }
 
@@ -24,13 +25,13 @@ impl PartialEq for Ident {
 
 impl PartialEq<String> for Ident {
     fn eq(&self, name: &String) -> bool {
-        self.name == *name
+        *self.name == *name
     }
 }
 
 impl PartialEq<str> for Ident {
     fn eq(&self, name: &str) -> bool {
-        self.name == name
+        *self.name == name
     }
 }
 
@@ -43,7 +44,7 @@ impl Hash for Ident {
 impl Ident {
     pub fn new(text: &str, span: impl Into<Span>) -> Self {
         Self {
-            name: text.to_string(),
+            name: Rc::new(text.to_string()),
             span: span.into(),
         }
     }

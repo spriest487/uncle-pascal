@@ -66,7 +66,7 @@ pub fn builtin_string_class() -> ast::Class {
 // builtin name of the dispose method of the builtin disposable interface
 pub fn builtin_disposable_dispose_name() -> Ident {
     Ident {
-        name: DISPOSABLE_DISPOSE_METHOD.to_string(),
+        name: Rc::new(DISPOSABLE_DISPOSE_METHOD.to_string()),
         span: builtin_span(),
     }
 }
