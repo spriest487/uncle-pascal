@@ -6,19 +6,19 @@ use crate::{ArrayCell, Pointer, RcCell, StructCell, ValueCell, VariantCell};
 use ::dlopen::{raw as dlopen, Error as DlopenError};
 use libffi::{
     low::ffi_type,
-    raw::FFI_TYPE_STRUCT,
     middle::{Builder as FfiBuilder, Type as FfiType},
+    raw::FFI_TYPE_STRUCT,
 };
-use pas_ir::{
-    metadata::{Metadata, Variant},
-    prelude::{Struct, StructID},
-    ExternalFunctionRef, Instruction, Type,
+use pas_ir::{prelude::*, ExternalFunctionRef};
+use std::{
+    cmp::max,
+    collections::{BTreeMap, HashMap},
+    convert::TryInto,
+    fmt, iter,
+    mem::transmute,
+    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
+    rc::Rc,
 };
-use std::collections::BTreeMap;
-use std::convert::TryInto;
-use std::mem::transmute;
-use std::ptr::slice_from_raw_parts_mut;
-use std::{cmp::max, collections::HashMap, fmt, iter, ptr::slice_from_raw_parts, rc::Rc};
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -558,13 +558,25 @@ impl Marshaller {
                 })
             }
 
-            Type::RcPointer(..) => {
+            Type::RcPointer(class_id) => {
                 let (raw_ptr, size) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
 
-                // deref the object to get its struct ID for the type
-                let rc_struct_bytes_ptr = raw_ptr.addr as *const u8;
-                if rc_struct_bytes_ptr.is_null() {
-                    return Err(MarshalError::InvalidData);
+                // null rcpointers can exist - e.g. uninitialized stack values
+                if raw_ptr.is_null() {
+                    // it shouldn't really matter because you can't do anything with a null pointer,
+                    // but let's try to return as correct a value as we can
+                    let null_ty = match class_id {
+                        // expected pointer to a concrete RC class object
+                        Some(ClassID::Class(struct_id)) => Type::RcObject(*struct_id),
+
+                        // abstract pointer - no idea what the actual rc type was
+                        _ => Type::Nothing,
+                    };
+
+                    return Ok(UnmarshalledValue {
+                        value: ValueCell::Pointer(Pointer::null(null_ty)),
+                        byte_count: size,
+                    });
                 }
 
                 // the struct ID is the 3rd field after the ptr and the ref count
@@ -572,7 +584,7 @@ impl Marshaller {
                 let struct_id_offset = rc_cell_fields[0].size() + rc_cell_fields[1].size();
 
                 let rc_struct_bytes = unsafe {
-                    slice_from_raw_parts(rc_struct_bytes_ptr, self.rc_cell_type.size())
+                    slice_from_raw_parts(raw_ptr.addr as *const u8, self.rc_cell_type.size())
                         .as_ref()
                         .unwrap()
                 };
