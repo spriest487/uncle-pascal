@@ -20,7 +20,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::Block(block) => {
-            translate_block(block, builder);
+            translate_block(block, Ref::Discard, builder);
         }
 
         ast::Statement::Exit(exit) => {

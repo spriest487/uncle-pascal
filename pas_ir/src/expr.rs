@@ -41,7 +41,14 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             .expect("conditional used in expression must have a type"),
 
         ast::Expression::Block(block) => {
-            translate_block(block, builder).expect("block used in expression must have a type")
+            let out_ty = match &block.output {
+                Some(output_expr) => builder.translate_type(output_expr.annotation().ty()),
+                None => panic!("block used in expression must have a type"),
+            };
+            let out_ref = builder.local_new(out_ty, None);
+            translate_block(block, out_ref.clone(), builder);
+
+            out_ref
         }
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
@@ -1277,15 +1284,10 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
     }
 }
 
-pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Option<Ref> {
-    let (out_val, out_ty) = match &block.output {
-        Some(out_expr) => {
-            let out_ty = builder.translate_type(out_expr.annotation().ty());
-            let out_val = builder.local_new(out_ty.clone(), None);
-
-            (Some(out_val), out_ty)
-        }
-        None => (None, Type::Nothing),
+pub fn translate_block(block: &pas_ty::ast::Block, out_ref: Ref, builder: &mut Builder) {
+    let out_ty = match &block.output {
+        Some(out_expr) => builder.translate_type(out_expr.annotation().ty()),
+        None => Type::Nothing,
     };
 
     builder.begin_scope();
@@ -1296,13 +1298,11 @@ pub fn translate_block(block: &pas_ty::ast::Block, builder: &mut Builder) -> Opt
 
     if let Some(out) = &block.output {
         let result_val = translate_expr(out, builder);
-        builder.mov(out_val.clone().unwrap(), result_val.clone());
+        builder.mov(out_ref, result_val.clone());
         builder.retain(result_val, &out_ty);
     }
 
     builder.end_scope();
-
-    out_val
 }
 
 pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {

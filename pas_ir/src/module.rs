@@ -2,7 +2,7 @@ use crate::{
     jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
     Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionCacheKey, FunctionDeclKey,
     FunctionDef, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
-    LocalID, Metadata, Ref, StructID, Type, TypeDef, Value, EXIT_LABEL,
+    LocalID, Metadata, Ref, StructID, Type, TypeDef, EXIT_LABEL, RETURN_REF,
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
@@ -161,7 +161,7 @@ impl Module {
                                 return_ty,
                                 params,
 
-                                src_span: extern_decl.span().clone()
+                                src_span: extern_decl.span().clone(),
                             }),
                         );
                         self.translated_funcs.insert(key, cached_func.clone());
@@ -364,32 +364,23 @@ impl Module {
             body_builder.retain(Ref::Local(*id), ty);
         }
 
-        let block_output = translate_block(&func.body, &mut body_builder);
+        let body_block_out_ref = match return_ty {
+            Type::Nothing => Ref::Discard,
+            _ => RETURN_REF.clone(),
+        };
 
-        if let Some(return_val) = block_output {
-            let return_at = Ref::Local(LocalID(0));
-            body_builder.append(Instruction::Move {
-                out: return_at.clone(),
-                new_val: Value::Ref(return_val),
-            });
-
-            // the value we just moved in came from the block output in this function's scope,
-            // so that ref is about to be released at the end of the function - we need to retain
-            // the return value so it outlives the function
-            body_builder.retain(return_at, &return_ty);
-        }
-
-        let mut body = body_builder.finish();
+        translate_block(&func.body, body_block_out_ref, &mut body_builder);
+        let mut body_instructions = body_builder.finish();
 
         // all functions should finish with the reserved EXIT label but to
         // avoid writing unused label instructions, if none of the other instructions in the body
         // are jumps to the exit label, we can elide it
-        if jmp_exists(&body, EXIT_LABEL) {
-            body.push(Instruction::Label(EXIT_LABEL));
+        if jmp_exists(&body_instructions, EXIT_LABEL) {
+            body_instructions.push(Instruction::Label(EXIT_LABEL));
         }
 
         FunctionDef {
-            body,
+            body: body_instructions,
             params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
             return_ty,
             debug_name,
