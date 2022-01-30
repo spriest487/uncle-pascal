@@ -84,10 +84,6 @@ impl StackFrame {
     }
 
     pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &ValueCell, alloc_pc: usize) -> StackResult<()> {
-        if self.locals.len() != id.0 {
-            return Err(StackError::IllegalAlloc(id));
-        }
-
         // we only need to allocate new variables the first time the block is executed, so if
         // we try to allocate twice from the same instruction, just do nothing
         // todo: this could be cleaned up by allocating everything at the start of the block
@@ -103,8 +99,16 @@ impl StackFrame {
                     });
                 }
 
+                // we are encountering an alloc expression for a previous allocation by the same
+                // instruction, it must be identical and we can skip it
                 return Ok(());
             }
+        }
+
+        // we're about to make this allocation for the first time, so the expected ID should be
+        // the next index in the stack
+        if self.locals.len() != id.0 {
+            return Err(StackError::IllegalAlloc(id));
         }
 
         let stack_offset = self.stack_alloc(value)?;

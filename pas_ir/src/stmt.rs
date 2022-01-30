@@ -114,35 +114,24 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
         builder.mov(counter_val.clone(), init_val);
 
-        builder.append(Instruction::Label(top_label));
+        builder.label(top_label);
 
         // break check: break_cond_val := counter_val > to_val
-        builder.append(Instruction::Gt {
-            a: Value::Ref(counter_val.clone()),
-            b: to_val.into(),
-            out: break_cond_val.clone(),
-        });
+        builder.gt(break_cond_val.clone(), counter_val.clone(), to_val);
 
         // jump to break label if loop_val
-        builder.append(Instruction::JumpIf {
-            test: Value::Ref(break_cond_val),
-            dest: break_label,
-        });
+        builder.jmp_if(break_label, break_cond_val);
 
         let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
             translate_stmt(&for_loop.body, builder);
         });
 
         if jmp_exists(body_instructions, continue_label) {
-            builder.append(Instruction::Label(continue_label));
+            builder.label(continue_label);
         }
 
         // counter_val := counter_val + inc_val
-        builder.append(Instruction::Add {
-            a: Value::Ref(counter_val.clone()),
-            b: inc_val,
-            out: counter_val.clone(),
-        });
+        builder.add(counter_val.clone(), counter_val.clone(), inc_val);
 
         // return to top of loop
         builder.append(Instruction::Jump {
@@ -151,7 +140,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
     });
 
     if jmp_exists(&loop_instructions, break_label) {
-        builder.append(Instruction::Label(break_label));
+        builder.label(break_label);
     }
 }
 
@@ -163,20 +152,14 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
     let loop_instructions = builder.scope(|builder| {
         let not_cond = builder.local_temp(Type::Bool);
 
-        builder.append(Instruction::Label(top_label));
+        builder.label(top_label);
 
         // evaluate condition
         let cond_val = translate_expr(&while_loop.condition, builder);
-        builder.append(Instruction::Not {
-            a: Value::Ref(cond_val),
-            out: not_cond.clone(),
-        });
+        builder.not(not_cond.clone(), cond_val);
 
         // break now if condition is false
-        builder.append(Instruction::JumpIf {
-            test: Value::Ref(not_cond),
-            dest: break_label,
-        });
+        builder.jmp_if(break_label, not_cond);
 
         // run loop body
         let body_instructions = builder.loop_body_scope(continue_label, break_label, |builder| {
@@ -184,15 +167,15 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         });
 
         if jmp_exists(body_instructions, continue_label) {
-            builder.append(Instruction::Label(continue_label));
+            builder.label(continue_label);
         }
 
         // start next iteration
-        builder.append(Instruction::Jump { dest: top_label });
+        builder.jmp(top_label);
     });
 
     if jmp_exists(loop_instructions, break_label) {
-        builder.append(Instruction::Label(break_label));
+        builder.label(break_label);
     }
 }
 
