@@ -165,11 +165,11 @@ pub fn typecheck_stmt(
 ) -> TypecheckResult<Statement> {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
-            typecheck_local_binding(binding, ctx).map(ast::Statement::LocalBinding)
+            typecheck_local_binding(binding, ctx).map(|s| ast::Statement::LocalBinding(Box::new(s)))
         }
 
         ast::Statement::Call(call) => match typecheck_call(call, expect_ty, ctx)? {
-            Invocation::Call(call) => Ok(ast::Statement::Call(*call)),
+            Invocation::Call(call) => Ok(ast::Statement::Call(call)),
             Invocation::Ctor(ctor) => {
                 let ctor_expr = Expression::from(*ctor);
                 let invalid_stmt = InvalidStatement::from(ctor_expr);
@@ -180,24 +180,24 @@ pub fn typecheck_stmt(
         ast::Statement::Block(block) => {
             let block = typecheck_block(block, expect_ty, ctx)?;
 
-            Ok(ast::Statement::Block(block))
+            Ok(ast::Statement::Block(Box::new(block)))
         }
 
         ast::Statement::ForLoop(for_loop) => {
-            typecheck_for_loop(for_loop, ctx).map(ast::Statement::ForLoop)
+            typecheck_for_loop(for_loop, ctx).map(Box::new).map(ast::Statement::ForLoop)
         }
 
         ast::Statement::WhileLoop(while_loop) => {
-            typecheck_while_loop(while_loop, ctx).map(ast::Statement::WhileLoop)
+            typecheck_while_loop(while_loop, ctx).map(Box::new).map(ast::Statement::WhileLoop)
         }
 
         ast::Statement::Assignment(assignment) => {
-            typecheck_assignment(assignment, ctx).map(ast::Statement::Assignment)
+            typecheck_assignment(assignment, ctx).map(Box::new).map(ast::Statement::Assignment)
         }
 
         ast::Statement::Exit(exit) => {
             let exit = typecheck_exit(exit, ctx)?;
-            Ok(ast::Statement::Exit(exit))
+            Ok(ast::Statement::Exit(Box::new(exit)))
         }
 
         ast::Statement::Break(span) => {
@@ -243,7 +243,7 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
     let expect_ty = ctx.current_func_return_ty()
         .ok_or_else(|| {
             TypecheckError::NoFunctionContext {
-                stmt: Box::new(ast::Statement::Exit(exit.clone()))
+                stmt: Box::new(ast::Statement::Exit(Box::new(exit.clone())))
             }
         })?
         .clone();

@@ -326,7 +326,7 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
             Ok(())
         }
 
-        ast::Statement::Exit(exit) => match exit {
+        ast::Statement::Exit(exit) => match exit.as_ref() {
             ast::Exit::WithoutValue(_) => Ok(()),
             ast::Exit::WithValue(exit_val, ..) => expect_expr_initialized(exit_val, ctx),
         },

@@ -59,13 +59,13 @@ impl<A: Annotation> fmt::Display for Assignment<A> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
-    LocalBinding(LocalBinding<A>),
-    Call(Call<A>),
-    Exit(Exit<A>),
-    Block(Block<A>),
-    ForLoop(ForLoop<A>),
-    WhileLoop(WhileLoop<A>),
-    Assignment(Assignment<A>),
+    LocalBinding(Box<LocalBinding<A>>),
+    Call(Box<Call<A>>),
+    Exit(Box<Exit<A>>),
+    Block(Box<Block<A>>),
+    ForLoop(Box<ForLoop<A>>),
+    WhileLoop(Box<WhileLoop<A>>),
+    Assignment(Box<Assignment<A>>),
     If(Box<IfCond<A>>),
     Break(A),
     Continue(A),
@@ -78,7 +78,7 @@ impl<A: Annotation> Statement<A> {
         match self {
             Statement::LocalBinding(binding) => &binding.annotation,
             Statement::Call(call) => &call.annotation(),
-            Statement::Exit(exit) => match exit {
+            Statement::Exit(exit) => match exit.as_ref() {
                 Exit::WithValue(_expr, annotation) => annotation,
                 Exit::WithoutValue(a) => a,
             },
@@ -96,11 +96,11 @@ impl<A: Annotation> Statement<A> {
 
     pub fn try_into_expr(self) -> Result<Expression<A>, Self> {
         match self {
-            Statement::Call(call) => Ok(Expression::from(call)),
+            Statement::Call(call) => Ok(Expression::Call(call)),
 
             Statement::Block(block) => {
                 if block.output.is_some() {
-                    Ok(Expression::from(block))
+                    Ok(Expression::Block(block))
                 } else {
                     Err(Statement::Block(block))
                 }
@@ -137,9 +137,9 @@ impl<A: Annotation> Statement<A> {
                     None => None,
                 };
 
-                Ok(Statement::Block(*block))
+                Ok(Statement::Block(block))
             }
-            Expression::Call(call) => Ok(Statement::Call(*call)),
+            Expression::Call(call) => Ok(Statement::Call(call)),
 
             Expression::BinOp(bin_op) => {
                 if bin_op.op == Operator::Assignment {
@@ -148,7 +148,7 @@ impl<A: Annotation> Statement<A> {
                         rhs: bin_op.rhs,
                         annotation: bin_op.annotation,
                     };
-                    Ok(Statement::Assignment(assignment))
+                    Ok(Statement::Assignment(Box::new(assignment)))
                 } else {
                     let invalid_bin_op = Expression::BinOp(bin_op);
                     Err(invalid_bin_op)
@@ -221,21 +221,21 @@ impl Statement<Span> {
                 kw: Keyword::Var, ..
             }) => {
                 let binding = LocalBinding::parse(tokens, true)?;
-                Ok(Statement::LocalBinding(binding))
+                Ok(Statement::LocalBinding(Box::new(binding)))
             }
 
             Some(TokenTree::Keyword {
                 kw: Keyword::For, ..
             }) => {
                 let for_loop = ForLoop::parse(tokens)?;
-                Ok(Statement::ForLoop(for_loop))
+                Ok(Statement::ForLoop(Box::new(for_loop)))
             }
 
             Some(TokenTree::Keyword {
                 kw: Keyword::While, ..
             }) => {
                 let while_loop = WhileLoop::parse(tokens)?;
-                Ok(Statement::WhileLoop(while_loop))
+                Ok(Statement::WhileLoop(Box::new(while_loop)))
             }
 
             Some(TokenTree::Keyword {
@@ -263,12 +263,17 @@ impl Statement<Span> {
                 let stmt_terminator = Keyword::End.or(Separator::Semicolon);
 
                 match tokens.look_ahead().match_one(stmt_terminator) {
-                    Some(..) => Ok(Statement::Exit(Exit::WithoutValue(span.clone()))),
+                    Some(..) => {
+                        let exit = Exit::WithoutValue(span.clone());
+                        Ok(Statement::Exit(Box::new(exit)))
+                    },
 
                     _ => {
                         let value_expr = Expression::parse(tokens)?;
                         let span = span.to(value_expr.annotation().span());
-                        Ok(Statement::Exit(Exit::WithValue(value_expr, span)))
+                        let exit = Exit::WithValue(value_expr, span);
+
+                        Ok(Statement::Exit(Box::new(exit)))
                     }
                 }
             }
