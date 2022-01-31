@@ -9,8 +9,8 @@ fn invalid_bin_op(
     rhs: &Expression,
 ) -> TypecheckError {
     TypecheckError::InvalidBinOp {
-        lhs: lhs.annotation().ty().clone(),
-        rhs: rhs.annotation().ty().clone(),
+        lhs: lhs.annotation().ty().into_owned(),
+        rhs: rhs.annotation().ty().into_owned(),
         op: bin_op.op,
         span: bin_op.annotation.span().clone(),
     }
@@ -54,9 +54,9 @@ pub fn typecheck_bin_op(
 
         Operator::Equals | Operator::NotEquals => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
-            if !lhs.annotation().ty().equatable(rhs.annotation().ty()) {
+            if !lhs.annotation().ty().equatable(&rhs.annotation().ty()) {
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
@@ -77,9 +77,9 @@ pub fn typecheck_bin_op(
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
-            rhs.annotation().expect_value(lhs.annotation().ty())?;
+            rhs.annotation().expect_value(&lhs.annotation().ty())?;
 
             if !lhs.annotation().ty().self_orderable() {
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
@@ -102,7 +102,7 @@ pub fn typecheck_bin_op(
 
         _ => {
             let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, lhs.annotation().ty(), ctx)?;
+            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
             // string concat sugar isn't available if the String class isn't loaded
             if let Ok(string_ty) = string_type(ctx) {
@@ -118,14 +118,14 @@ pub fn typecheck_bin_op(
             let valid_math = lhs
                 .annotation()
                 .ty()
-                .valid_math_op(bin_op.op, rhs.annotation().ty());
+                .valid_math_op(bin_op.op, &rhs.annotation().ty());
 
             if !valid_math {
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
             // check valid ops etc, result type etc
-            let result_ty = lhs.annotation().ty().clone();
+            let result_ty = lhs.annotation().ty().into_owned();
 
             let annotation = match result_ty {
                 Type::Nothing => TypeAnnotation::Untyped(span.clone()),
@@ -180,7 +180,7 @@ fn desugar_string_concat(
                 ns: concat_path.parent().unwrap(),
                 name: concat_path.last().clone(),
                 span: span.clone(),
-                func_ty: Type::Function(concat_sig),
+                sig: concat_sig.clone(),
                 type_args: None,
             }.into();
 
@@ -288,7 +288,7 @@ fn typecheck_member_of(
                 }
 
                 _ => Err(TypecheckError::InvalidCtorType {
-                    ty: lhs.annotation().ty().clone(),
+                    ty: lhs.annotation().ty().into_owned(),
                     span,
                 }),
             }
@@ -298,8 +298,8 @@ fn typecheck_member_of(
             let rhs = typecheck_expr(rhs, &Type::Nothing, ctx)?;
 
             Err(TypecheckError::InvalidBinOp {
-                lhs: lhs.annotation().ty().clone(),
-                rhs: rhs.annotation().ty().clone(),
+                lhs: lhs.annotation().ty().into_owned(),
+                rhs: rhs.annotation().ty().into_owned(),
                 span,
                 op: Operator::Member,
             })
@@ -330,7 +330,7 @@ pub fn typecheck_member_value(
     span: Span,
     ctx: &mut Context
 ) -> TypecheckResult<TypeAnnotation> {
-    let member = ctx.find_instance_member(lhs.annotation().ty(), &member_ident)?;
+    let member = ctx.find_instance_member(&lhs.annotation().ty(), &member_ident)?;
 
     let annotation = match member {
         InstanceMember::Method { iface_ty, method } => {
@@ -400,8 +400,8 @@ pub fn typecheck_member_value(
 
         InstanceMember::UFCSCall { func_name, sig } => {
             UFCSCallAnnotation {
-                function: func_name,
-                func_ty: Type::Function(sig),
+                function_name: func_name,
+                sig,
                 span: span.clone(),
                 self_arg: Box::new(lhs.clone()),
             }.into()
@@ -499,11 +499,11 @@ pub fn typecheck_unary_op(
                 }
             };
 
-            match (kind_addressable, ty) {
+            match (kind_addressable, ty.as_ref()) {
                 (false, _)
                 | (true, Type::Nothing | Type::Nil | Type::Function(..)) => {
                     Err(TypecheckError::NotAddressable {
-                        ty: ty.clone(),
+                        ty: ty.into_owned(),
                         value_kind,
                         span,
                     })
@@ -517,13 +517,13 @@ pub fn typecheck_unary_op(
                 | Type::Variant(..)
                 | Type::GenericParam(..)) if !ctx.allow_unsafe() => {
                     Err(TypecheckError::UnsafeAddressoOfNotAllowed {
-                        ty: ty.clone(),
+                        ty: ty.into_owned(),
                         span,
                     })
                 },
 
                 _ => Ok(TypedValueAnnotation {
-                    ty: ty.clone().ptr(),
+                    ty: ty.into_owned().ptr(),
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
@@ -532,9 +532,9 @@ pub fn typecheck_unary_op(
         }
 
         // unary +, is this always a no-op?
-        Operator::Plus if operand_ty.valid_math_op(Operator::Plus, operand_ty) => {
+        Operator::Plus if operand_ty.valid_math_op(Operator::Plus, &operand_ty) => {
             TypedValueAnnotation {
-                ty: operand_ty.clone(),
+                ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
@@ -542,9 +542,9 @@ pub fn typecheck_unary_op(
         }
 
         // unary negation - should this be disallowed for unsigned types?
-        Operator::Minus if operand_ty.valid_math_op(Operator::Minus, operand_ty) => {
+        Operator::Minus if operand_ty.valid_math_op(Operator::Minus, &operand_ty) => {
             TypedValueAnnotation {
-                ty: operand_ty.clone(),
+                ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
@@ -558,7 +558,7 @@ pub fn typecheck_unary_op(
                 .deref_ty()
                 .cloned()
                 .ok_or_else(|| TypecheckError::NotDerefable {
-                    ty: operand.annotation().ty().clone(),
+                    ty: operand.annotation().ty().into_owned(),
                     span: span.clone(),
                 })?;
 
@@ -586,7 +586,7 @@ pub fn typecheck_unary_op(
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
                 op: unary_op.op,
-                operand: operand.annotation().ty().clone(),
+                operand: operand.annotation().ty().into_owned(),
                 span: unary_op.annotation.clone(),
             });
         }
@@ -656,11 +656,11 @@ fn check_array_bound_static(base: &Expression, index: &Expression, ctx: &mut Con
         index.as_i128() < 0 || index.as_i128() >= dim as i128
     }
 
-    match (base.annotation().ty(), const_eval_integer(index, ctx)) {
+    match (base.annotation().ty().as_ref(), const_eval_integer(index, ctx)) {
         (Type::Array(array_ty), Ok(index_const)) if out_of_range(array_ty.dim, index_const) => Err(
             TypecheckError::IndexOutOfBounds {
                 index: index_const,
-                base_ty: Box::new(base.annotation().ty().clone()),
+                base_ty: Box::new(base.annotation().ty().into_owned()),
                 span: index.span().clone(),
             }
         ),

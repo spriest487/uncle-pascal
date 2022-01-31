@@ -1,4 +1,5 @@
 use std::{fmt, rc::Rc};
+use std::borrow::Cow;
 
 use pas_common::span::*;
 use pas_syn::{ast::{Annotation, DeclNamed, TypeDeclName}, ident::IdentPath, Ident, IntConstant};
@@ -28,7 +29,7 @@ pub struct OverloadAnnotation {
     pub span: Span,
 
     pub candidates: Vec<OverloadCandidate>,
-    func_ty: Type,
+    sig: Option<Rc<FunctionSig>>,
 
     pub self_arg: Option<Box<Expression>>,
 
@@ -48,7 +49,7 @@ impl OverloadAnnotation {
             span,
             type_args: Vec::new(), // NYI: methods can't have type args yet,
             self_arg: Some(Box::new(self_arg)),
-            func_ty: Type::Function(sig.clone()),
+            sig: Some(sig.clone()),
             candidates: vec![
                 OverloadCandidate::Method {
                     ident: decl.ident.last().clone(),
@@ -66,19 +67,26 @@ impl OverloadAnnotation {
         type_args: Vec<Type>,
         span: Span
     ) -> Self {
-        let func_ty = if candidates.len() == 1 {
-            Type::Function(candidates[0].sig().clone())
+        let sig = if candidates.len() == 1 {
+            Some(candidates[0].sig().clone())
         } else {
             // undecided
-            Type::Nothing
+            None
         };
 
         Self {
             candidates,
-            func_ty,
+            sig,
             span,
             self_arg,
             type_args,
+        }
+    }
+
+    pub fn func_ty(&self) -> Type {
+        match &self.sig {
+            Some(sig) => Type::Function(sig.clone()),
+            None => Type::Nothing,
         }
     }
 }
@@ -95,7 +103,7 @@ pub struct InterfaceMethodAnnotation {
     pub method_ident: Ident,
     pub span: Span,
 
-    method_func_ty: Type,
+    pub method_sig: Rc<FunctionSig>,
 }
 
 impl InterfaceMethodAnnotation {
@@ -106,12 +114,12 @@ impl InterfaceMethodAnnotation {
             iface_ty,
             method_ident: decl.ident.last().clone(),
             span,
-            method_func_ty: Type::Function(Rc::new(sig)),
+            method_sig: Rc::new(sig),
         }
     }
 
-    pub fn sig(&self) -> &FunctionSig {
-        self.method_func_ty.as_func().as_ref().unwrap()
+    pub fn func_ty(&self) -> Type {
+        Type::Function(self.method_sig.clone())
     }
 }
 
@@ -126,8 +134,14 @@ pub struct FunctionAnnotation {
     pub span: Span,
     pub name: Ident,
     pub ns: IdentPath,
-    pub func_ty: Type,
+    pub sig: Rc<FunctionSig>,
     pub type_args: Option<TypeList<Type>>,
+}
+
+impl FunctionAnnotation {
+    pub fn func_ty(&self) -> Type {
+        Type::Function(self.sig.clone())
+    }
 }
 
 impl From<FunctionAnnotation> for TypeAnnotation {
@@ -168,9 +182,16 @@ impl From<ConstAnnotation> for TypeAnnotation {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct UFCSCallAnnotation {
     pub self_arg: Box<Expression>,
-    pub function: IdentPath,
-    pub func_ty: Type,
+    pub function_name: IdentPath,
     pub span: Span,
+
+    pub sig: Rc<FunctionSig>,
+}
+
+impl UFCSCallAnnotation {
+    pub fn func_ty(&self) -> Type {
+        Type::Function(self.sig.clone())
+    }
 }
 
 impl From<UFCSCallAnnotation> for TypeAnnotation {
@@ -203,13 +224,13 @@ impl TypeAnnotation {
         assert_ne!(Type::Nothing, *expect_ty);
 
         let (actual_ty, span) = match self {
-            | TypeAnnotation::InterfaceMethod(method) => (method.method_func_ty.clone(), &method.span),
-            | TypeAnnotation::Overload(overload) => (overload.func_ty.clone(), &overload.span),
-            | TypeAnnotation::Function(func) => (func.func_ty.clone(), &func.span),
+            | TypeAnnotation::InterfaceMethod(method) => (method.func_ty(), &method.span),
+            | TypeAnnotation::Overload(overload) => (overload.func_ty(), &overload.span),
+            | TypeAnnotation::Function(func) => (func.func_ty(), &func.span),
             | TypeAnnotation::TypedValue(val) => (val.ty.clone(), &val.span),
             | TypeAnnotation::Const(const_val) => (const_val.ty.clone(), &const_val.span),
 
-            | TypeAnnotation::UFCSCall(call) => (call.func_ty.clone(), &call.span),
+            | TypeAnnotation::UFCSCall(call) => (call.func_ty(), &call.span),
 
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::Namespace(_, span)
@@ -237,22 +258,20 @@ impl TypeAnnotation {
         }
     }
 
-    pub fn ty(&self) -> &Type {
+    pub fn ty(&self) -> Cow<Type> {
         match self {
-            | TypeAnnotation::Namespace(_, _) => &Type::Nothing,
-            | TypeAnnotation::Untyped(_) => &Type::Nothing,
-            | TypeAnnotation::Type(_, _) => &Type::Nothing,
-            | TypeAnnotation::VariantCtor(..) => &Type::Nothing,
+            | TypeAnnotation::Namespace(_, _)
+            | TypeAnnotation::Untyped(_)
+            | TypeAnnotation::Type(_, _)
+            | TypeAnnotation::VariantCtor(..) => Cow::Owned(Type::Nothing),
 
-            | TypeAnnotation::Function(func) => &func.func_ty,
+            | TypeAnnotation::Function(func) => Cow::Owned(func.func_ty()),
+            | TypeAnnotation::UFCSCall(call) => Cow::Owned(call.func_ty()),
+            | TypeAnnotation::InterfaceMethod(method) => Cow::Owned(method.func_ty()),
+            | TypeAnnotation::Overload(overload) => Cow::Owned(overload.func_ty()),
 
-            | TypeAnnotation::UFCSCall(call) => &call.func_ty,
-            | TypeAnnotation::Const(const_val) => &const_val.ty,
-            | TypeAnnotation::TypedValue(val) => &val.ty,
-
-            | TypeAnnotation::InterfaceMethod(method) => &method.method_func_ty,
-
-            | TypeAnnotation::Overload(overload) => &overload.func_ty,
+            | TypeAnnotation::Const(const_val) => Cow::Borrowed(&const_val.ty),
+            | TypeAnnotation::TypedValue(val) => Cow::Borrowed(&val.ty),
         }
     }
 

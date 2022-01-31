@@ -79,7 +79,7 @@ pub fn typecheck_object_ctor(
 
         member
             .ty
-            .implicit_conversion_from(value_ty, value.span(), ctx)?;
+            .implicit_conversion_from(&value_ty, value.span(), ctx)?;
 
         members.push(ObjectCtorMember {
             ident: arg.ident.clone(),
@@ -91,7 +91,7 @@ pub fn typecheck_object_ctor(
     if members.len() != ty.members_len(ctx)? {
         let actual = members
             .into_iter()
-            .map(|m| m.value.annotation().ty().clone())
+            .map(|m| m.value.annotation().ty().into_owned())
             .collect();
         return Err(TypecheckError::InvalidArgs {
             span: ctor.annotation.clone(),
@@ -130,14 +130,14 @@ pub fn typecheck_collection_ctor(
     let (elements, elem_ty) = match expect_ty.collection_element_ty() {
         None => {
             let elements = elements_for_inferred_ty(ctor, ctx)?;
-            let elem_ty = elements[0].annotation().ty().clone();
+            let elem_ty = elements[0].annotation().ty().into_owned();
             (elements, elem_ty)
         }
 
         Some(elem_ty) => {
             if false && elem_ty.contains_generic_params() {
                 let elements = elements_for_inferred_ty(ctor, ctx)?;
-                let elem_ty = elements[0].annotation().ty().clone();
+                let elem_ty = elements[0].annotation().ty().into_owned();
                 (elements, elem_ty)
             } else {
                 let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
@@ -183,7 +183,7 @@ fn elements_for_inferred_ty(
 
     let mut elements = Vec::new();
     let first_element = typecheck_expr(&ctor.elements[0], &Type::Nothing, ctx)?;
-    let expected_ty = first_element.annotation().ty().clone();
+    let expected_ty = first_element.annotation().ty().into_owned();
 
     elements.push(first_element);
 

@@ -5,7 +5,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation, TypedValueAnnotation};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation, TypedValueAnnotation, UFCSCallAnnotation};
 
 #[cfg(test)]
 mod test;
@@ -31,7 +31,7 @@ fn invalid_args(
         expected: expected.iter().map(|p| p.ty.clone()).collect(),
         actual: actual_args
             .into_iter()
-            .map(|arg| arg.annotation().ty().clone())
+            .map(|arg| arg.annotation().ty().into_owned())
             .collect(),
         span,
     }
@@ -48,7 +48,7 @@ fn build_args_for_params(
 
     let rest_args = if let Some(self_arg) = self_arg {
         let self_ty = &expected_args[0].ty;
-        self_ty.implicit_conversion_from(self_arg.annotation().ty(), span, ctx)?;
+        self_ty.implicit_conversion_from(&self_arg.annotation().ty(), span, ctx)?;
 
         checked_args.push(self_arg.clone());
 
@@ -69,7 +69,7 @@ fn build_args_for_params(
         return Err(invalid_args(checked_args, expected_args, span.clone()));
     }
 
-    let mut self_ty: Option<&Type> = None;
+    let mut self_ty: Option<Type> = None;
 
     let all_arg_tys = checked_args
         .iter()
@@ -87,15 +87,15 @@ fn build_args_for_params(
         if expected.ty == Type::MethodSelf {
             if let Some(self_ty) = &self_ty {
                 self_ty
-                    .implicit_conversion_from(actual, span, ctx)
+                    .implicit_conversion_from(&actual, span, ctx)
                     .map_err(type_mismatch_as_bad_args)?;
             } else {
-                self_ty = Some(actual);
+                self_ty = Some(actual.into_owned());
             }
         } else {
             expected
                 .ty
-                .implicit_conversion_from(actual, span, ctx)
+                .implicit_conversion_from(&actual, span, ctx)
                 .map_err(type_mismatch_as_bad_args)?;
         }
     }
@@ -140,34 +140,15 @@ pub fn typecheck_call(
         },
 
         TypeAnnotation::Function(func) => {
-            match &func.func_ty {
-                Type::Function(sig) => {
-                    typecheck_func_call(&func_call, sig.as_ref(), ctx)
-                        .map(Box::new)
-                        .map(Invocation::Call)?
-                }
-
-                _ => {
-                    // ??? how is this not a function
-                    return Err(TypecheckError::NotCallable(Box::new(target)));
-                }
-            }
+            typecheck_func_call(&func_call, &func.sig, ctx)
+                .map(Box::new)
+                .map(Invocation::Call)?
         },
 
         TypeAnnotation::UFCSCall(ufcs_call) => {
-            let sig = match &ufcs_call.func_ty {
-                Type::Function(sig) => sig,
-                _ => {
-                    return Err(TypecheckError::NotCallable(Box::new(target)));
-                }
-            };
-
             let arg_brackets = (&func_call.args_brackets.0, &func_call.args_brackets.1);
 
-            let typecheck_call = typecheck_ufcs_call(
-                &ufcs_call.function,
-                sig,
-                (*ufcs_call.self_arg).clone(),
+            let typecheck_call = typecheck_ufcs_call(&ufcs_call,
                 &func_call.args,
                 func_call.annotation.span(),
                 arg_brackets,
@@ -250,13 +231,13 @@ fn typecheck_func_overload(
             decl,
         } => {
             let self_type = match &overloaded.self_arg {
-                Some(self_arg) => self_arg.annotation().ty().clone(),
+                Some(self_arg) => self_arg.annotation().ty().into_owned(),
 
                 None => {
                     let arg_tys: Vec<_> = overload
                         .args
                         .iter()
-                        .map(|a| a.annotation().ty().clone())
+                        .map(|a| a.annotation().ty().into_owned())
                         .collect();
 
                     match sig.self_ty_from_args(&arg_tys) {
@@ -329,7 +310,7 @@ fn typecheck_iface_method_call(
             expected: 0,
             actual: call_type_args.len(),
             span: call_type_args.span().clone(),
-            target: GenericTarget::FunctionSig(iface_method.sig().clone()),
+            target: GenericTarget::FunctionSig((*iface_method.method_sig).clone()),
         }
         .into());
     }
@@ -338,7 +319,7 @@ fn typecheck_iface_method_call(
     let self_type = {
         let mut ctx = ctx.clone();
         let first_self_pos = iface_method
-            .sig()
+            .method_sig
             .params
             .iter()
             .position(|param| param.ty == Type::MethodSelf)
@@ -349,7 +330,7 @@ fn typecheck_iface_method_call(
         // it's just the first arg from which we can infer the self-type
         let first_self_arg =
             typecheck_expr(&func_call.args[first_self_pos], &Type::Nothing, &mut ctx)?;
-        first_self_arg.annotation().ty().clone()
+        first_self_arg.annotation().ty().into_owned()
     };
 
     let iface_ident = match iface_method.iface_ty.as_iface() {
@@ -368,7 +349,7 @@ fn typecheck_iface_method_call(
         });
     }
 
-    let sig = iface_method.sig().with_self(&self_type);
+    let sig = iface_method.method_sig.with_self(&self_type);
 
     let typechecked_args =
         build_args_for_params(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
@@ -391,18 +372,16 @@ fn typecheck_iface_method_call(
 }
 
 fn typecheck_ufcs_call(
-    func_name: &IdentPath,
-    sig: &Rc<FunctionSig>,
-    self_arg: Expression,
+    ufcs_call: &UFCSCallAnnotation,
     rest_args: &[ast::Expression<Span>],
     span: &Span,
     arg_brackets: (&Span, &Span),
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
     let specialized_call_args = specialize_call_args(
-        sig,
+        &ufcs_call.sig,
         &rest_args,
-        Some(&self_arg),
+        Some(&ufcs_call.self_arg),
         None, // ufcs call can't have explicit type args
         &span,
         ctx,
@@ -414,15 +393,15 @@ fn typecheck_ufcs_call(
     )?;
 
     let func_annotation = FunctionAnnotation {
-        func_ty: Type::Function(Rc::new(specialized_call_args.sig.clone())),
-        ns: func_name.clone().parent().unwrap(),
-        name: func_name.last().clone(),
+        sig: Rc::new(specialized_call_args.sig.clone()),
+        ns: ufcs_call.function_name.clone().parent().unwrap(),
+        name: ufcs_call.function_name.last().clone(),
         span: span.clone(),
         type_args: specialized_call_args.type_args.clone(),
     }.into();
 
     // todo: this should construct a fully qualified path expr instead
-    let target = ast::Expression::Ident(func_name.last().clone(), func_annotation);
+    let target = ast::Expression::Ident(ufcs_call.function_name.last().clone(), func_annotation);
 
     let annotation = TypedValueAnnotation {
         ty: specialized_call_args.sig.return_ty.clone(),
@@ -470,7 +449,7 @@ where
                     let actual_arg = produce_expr(&Type::Nothing, ctx)?;
                     let actual_ty = actual_arg.annotation().ty().clone();
 
-                    inferred_ty_args[param_ty.pos] = Some(actual_ty.clone());
+                    inferred_ty_args[param_ty.pos] = Some(actual_ty.into_owned());
                     Ok(actual_arg)
                 }
             }
@@ -657,7 +636,7 @@ fn unwrap_inferred_args(
             None => {
                 let arg_tys = actual_args
                     .iter()
-                    .map(|a| a.annotation().ty().clone())
+                    .map(|a| a.annotation().ty().into_owned())
                     .collect();
 
                 return Err(TypecheckError::GenericError(
@@ -679,7 +658,7 @@ fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Co
     for (arg, param) in args_and_params {
         param
             .ty
-            .implicit_conversion_from(arg.annotation().ty(), arg.span(), ctx)?;
+            .implicit_conversion_from(&arg.annotation().ty(), arg.span(), ctx)?;
 
         let (is_in_ref, is_out_ref) = match &param.modifier {
             None => (false, false),
@@ -775,26 +754,26 @@ fn typecheck_variant_ctor_call(
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized
     // version of that same generic variant
-    let variant = match expect_ty {
+    let variant_sym = match expect_ty {
         Type::Variant(expect_variant)
             if expect_variant.is_specialization_of(&unspecialized_def.name) =>
         {
-            &*expect_variant
+            &**expect_variant
         }
 
         _ => &unspecialized_def.name,
     };
 
-    if variant.is_unspecialized_generic() {
+    if variant_sym.is_unspecialized_generic() {
         return Err(GenericError::CannotInferArgs {
-            target: GenericTarget::Name(variant.qualified.clone()),
+            target: GenericTarget::Name(variant_sym.qualified.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
             span,
         }
         .into());
     }
 
-    let variant_def = ctx.instantiate_variant(&variant)?;
+    let variant_def = ctx.instantiate_variant(&variant_sym)?;
 
     let case_index = match variant_def.case_position(case) {
         Some(index) => index,
@@ -803,7 +782,7 @@ fn typecheck_variant_ctor_call(
             return Err(NameError::MemberNotFound {
                 span: span.clone(),
                 member: case.clone(),
-                base: NameContainer::Type(Type::Variant(Box::new(variant.clone()))),
+                base: NameContainer::Type(Type::Variant(Box::new(variant_sym.clone()))),
             }
             .into())
         }
@@ -816,7 +795,7 @@ fn typecheck_variant_ctor_call(
                     .iter()
                     .map(|arg| {
                         typecheck_expr(arg, &Type::Nothing, ctx)
-                            .map(|arg| arg.annotation().ty().clone())
+                            .map(|arg| arg.annotation().ty().into_owned())
                     })
                     .collect::<TypecheckResult<_>>()?;
 
@@ -839,7 +818,7 @@ fn typecheck_variant_ctor_call(
             if args.len() != 1 {
                 let bad_args: Vec<_> = args
                     .into_iter()
-                    .map(|arg| arg.annotation().ty().clone())
+                    .map(|arg| arg.annotation().ty().into_owned())
                     .collect();
 
                 return Err(TypecheckError::InvalidArgs {
@@ -860,7 +839,7 @@ fn typecheck_variant_ctor_call(
     let annotation = TypedValueAnnotation {
         decl: None,
         span,
-        ty: Type::Variant(variant.clone().into()),
+        ty: Type::Variant(variant_sym.clone().into()),
         value_kind: ValueKind::Temporary,
     }.into();
 
@@ -962,7 +941,7 @@ pub fn resolve_overload(
             let self_ty = self_arg.annotation().ty();
             candidates
                 .iter()
-                .map(|c| c.sig().with_self(self_ty))
+                .map(|c| c.sig().with_self(&self_ty))
                 .collect()
         }
 
@@ -976,7 +955,7 @@ pub fn resolve_overload(
         let args = build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
         let actual_arg_tys: Vec<_> = args
             .iter()
-            .map(|arg_expr| arg_expr.annotation().ty().clone())
+            .map(|arg_expr| arg_expr.annotation().ty().into_owned())
             .collect();
 
         // if it's a direct interface method invocation (e.g. `Comparable.Compare(1, 2)`),
@@ -1041,7 +1020,7 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                match self_param_ty.implicit_conversion_from(self_arg_ty, self_arg.span(), ctx) {
+                match self_param_ty.implicit_conversion_from(&self_arg_ty, self_arg.span(), ctx) {
                     Ok(..) => true,
                     Err(..) => false,
                 }
@@ -1080,7 +1059,7 @@ pub fn resolve_overload(
 
         let arg = typecheck_expr(&args[arg_index], &Type::Nothing, ctx)?;
         let arg_span = args[arg_index].span();
-        let arg_ty = arg.annotation().ty().clone();
+        let arg_ty = arg.annotation().ty().into_owned();
         actual_args.push(arg);
 
         valid_candidates.retain(|i| {

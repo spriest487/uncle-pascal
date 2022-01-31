@@ -204,7 +204,7 @@ fn typecheck_const_decl(
         None => {
             // infer from provided value expression
             let const_val_expr = typecheck_expr(&decl.val, &Type::Nothing, ctx)?;
-            let ty = const_val_expr.annotation().ty().clone();
+            let ty = const_val_expr.annotation().ty().into_owned();
 
             (ty, const_val_expr)
         }

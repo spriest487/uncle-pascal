@@ -1,0 +1,3535 @@
+* Structures
+1: System::String
+  .0 chars: ^u8
+  .1 len: i32
+interface impls:
+  * rc System::Disposable
+  * rc System::Comparable
+  * rc System::Displayable
+
+* Interfaces: 
+0: System::Disposable
+  .0 (Dispose): (rc System::Disposable) -> none
+1: System::Comparable
+  .0 (Compare): (rc System::Comparable, rc System::Comparable) -> i32
+2: System::Displayable
+  .0 (ToString): (rc System::Displayable) -> rc System::String
+
+* String literals
+0: 'Enter an expression e.g. '2*3', '4/2' or 'exit'.'
+1: ''
+2: 'exit'
+3: 'invalid command: ''
+4: '''
+5: 'invalid operator found for command '
+6: ' => '
+7: 'true'
+8: 'false'
+
+* Functions
+0:  /* generated RC retain func for System::String */
+0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+1|   begin 
+2|       local %1 of ^i32
+3|         fld %1 := @(%0^ as System::String).len
+4|       local %2 of ^^u8
+5|         fld %2 := @(%0^ as System::String).chars
+6|     end 
+7|  dbgpop
+
+1:  /* <generated releaser for System::String> */
+0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+1|   begin 
+2|       local %1 of ^i32
+3|         fld %1 := @(%0^ as System::String).len
+4|       local %2 of ^^u8
+5|         fld %2 := @(%0^ as System::String).chars
+6|     end 
+7|  dbgpop
+
+2: System::WriteLn
+<external function 'WriteLn' in module 'rt'>
+
+3: System::StringTrim
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = rc System::String (return slot)
+  3|          // %1 = rc System::String
+  4|      retain %1
+  5|       local %2 of rc System::String
+  6|       begin 
+  7|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:5
+  8|              // if s.len = 0  then begin
+begin
+begin
+exit s
+end
+end
+end
+  9|           begin 
+ 10|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:8
+ 11|               local %3 of bool
+ 12|               begin 
+ 13|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:8
+ 14|                   local %4 of ^i32
+ 15|                   begin 
+ 16|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:8
+ 17|                       local %5 of ^rc System::String
+ 18|                      addrof %5 := @%1
+ 19|                      dbgpop
+ 20|                         fld %4 := @(%5^ as rc System::String).len
+ 21|                     end 
+ 22|                  dbgpop
+ 23|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:16
+ 24|                   local %5 of i32
+ 25|                     mov %5 := 0i32
+ 26|                  dbgpop
+ 27|                      eq %3 := %4^ = %5
+ 28|                 end 
+ 29|              dbgpop
+ 30|               jmpif 1: if %3
+ 31|                 jmp 2:
+ 32|   label 1:
+ 33|               begin 
+ 34|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:23
+ 35|                      // begin
+begin
+begin
+exit s
+end
+end
+end
+ 36|                   begin 
+ 37|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:23
+ 38|                          // begin
+begin
+exit s
+end
+end
+ 39|                       begin 
+ 40|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:177:23
+ 41|                              // begin
+exit s
+end
+ 42|                           begin 
+ 43|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:178:9
+ 44|                                  // exit s
+ 45|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:178:14
+ 46|                               local %4 of ^rc System::String
+ 47|                              addrof %4 := @%1
+ 48|                              dbgpop
+ 49|                                 mov %0 := %4^
+ 50|                             release %2
+ 51|                             release %1
+ 52|                                 jmp 0:
+ 53|                              dbgpop
+ 54|                             end 
+ 55|                          dbgpop
+ 56|                         end 
+ 57|                      dbgpop
+ 58|                     end 
+ 59|                  dbgpop
+ 60|                 end 
+ 61|                 jmp 2:
+ 62|   label 2:
+ 63|             end 
+ 64|          dbgpop
+ 65|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:181:5
+ 66|              // var startAt: Integer := 0
+ 67|           local %3 of i32
+ 68|           begin 
+ 69|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:181:20
+ 70|               local %4 of i32
+ 71|                 mov %4 := 0i32
+ 72|              dbgpop
+ 73|                 mov %3 := %4
+ 74|             end 
+ 75|          dbgpop
+ 76|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:182:5
+ 77|              // while IsWhiteSpace(StringCharAt(s, startAt)) do startAt := startAt + 1
+ 78|           begin 
+ 79|               local %4 of bool
+ 80|   label 3:
+ 81|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:182:11
+ 82|               local %5 of bool
+ 83|               begin 
+ 84|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:182:11
+ 85|                   local %6 of u8
+ 86|                   begin 
+ 87|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:182:11
+ 88|                       local %7 of ^rc System::String
+ 89|                      addrof %7 := @%1
+ 90|                      dbgpop
+ 91|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:182:26
+ 92|                       local %8 of ^i32
+ 93|                      addrof %8 := @%3
+ 94|                      dbgpop
+ 95|                        call %6 := System::StringCharAt(%7^, %8^)
+ 96|                     end 
+ 97|                  dbgpop
+ 98|                    call %5 := System::IsWhiteSpace(%6)
+ 99|                 end 
+100|              dbgpop
+101|                 not %4 := ~%5
+102|               jmpif 5: if %4
+103|               begin 
+104|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:183:9
+105|                      // startAt := startAt + 1
+106|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:183:9
+107|                   local %6 of ^i32
+108|                  addrof %6 := @%3
+109|                  dbgpop
+110|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:183:20
+111|                   local %7 of i32
+112|                   begin 
+113|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:183:20
+114|                       local %8 of ^i32
+115|                      addrof %8 := @%3
+116|                      dbgpop
+117|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:183:30
+118|                       local %9 of i32
+119|                         mov %9 := 1i32
+120|                      dbgpop
+121|                         add %7 := %8^ + %9
+122|                     end 
+123|                  dbgpop
+124|                     mov %6^ := %7
+125|                  dbgpop
+126|                 end 
+127|                 jmp 3:
+128|             end 
+129|   label 5:
+130|          dbgpop
+131|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:185:5
+132|              // var endAt: Integer := s.len - 1
+133|           local %4 of i32
+134|           begin 
+135|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:185:18
+136|               local %5 of i32
+137|               begin 
+138|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:185:18
+139|                   local %6 of ^i32
+140|                   begin 
+141|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:185:18
+142|                       local %7 of ^rc System::String
+143|                      addrof %7 := @%1
+144|                      dbgpop
+145|                         fld %6 := @(%7^ as rc System::String).len
+146|                     end 
+147|                  dbgpop
+148|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:185:26
+149|                   local %7 of i32
+150|                     mov %7 := 1i32
+151|                  dbgpop
+152|                     sub %5 := %6^ - %7
+153|                 end 
+154|              dbgpop
+155|                 mov %4 := %5
+156|             end 
+157|          dbgpop
+158|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:5
+159|              // while endAt > startAt and IsWhiteSpace(StringCharAt(s, endAt)) do endAt := endAt - 1
+160|           begin 
+161|               local %5 of bool
+162|   label 6:
+163|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:11
+164|               local %6 of bool
+165|               begin 
+166|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:11
+167|                   local %7 of bool
+168|                   begin 
+169|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:11
+170|                       local %8 of ^i32
+171|                      addrof %8 := @%4
+172|                      dbgpop
+173|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:19
+174|                       local %9 of ^i32
+175|                      addrof %9 := @%3
+176|                      dbgpop
+177|                          gt %7 := %8^ > %9^
+178|                     end 
+179|                  dbgpop
+180|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:31
+181|                   local %8 of bool
+182|                   begin 
+183|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:31
+184|                       local %9 of u8
+185|                       begin 
+186|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:31
+187|                           local %10 of ^rc System::String
+188|                          addrof %10 := @%1
+189|                          dbgpop
+190|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:186:46
+191|                           local %11 of ^i32
+192|                          addrof %11 := @%4
+193|                          dbgpop
+194|                            call %9 := System::StringCharAt(%10^, %11^)
+195|                         end 
+196|                      dbgpop
+197|                        call %8 := System::IsWhiteSpace(%9)
+198|                     end 
+199|                  dbgpop
+200|                     and %6 := %7 and %8
+201|                 end 
+202|              dbgpop
+203|                 not %5 := ~%6
+204|               jmpif 8: if %5
+205|               begin 
+206|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:187:9
+207|                      // endAt := endAt - 1
+208|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:187:9
+209|                   local %7 of ^i32
+210|                  addrof %7 := @%4
+211|                  dbgpop
+212|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:187:18
+213|                   local %8 of i32
+214|                   begin 
+215|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:187:18
+216|                       local %9 of ^i32
+217|                      addrof %9 := @%4
+218|                      dbgpop
+219|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:187:26
+220|                       local %10 of i32
+221|                         mov %10 := 1i32
+222|                      dbgpop
+223|                         sub %8 := %9^ - %10
+224|                     end 
+225|                  dbgpop
+226|                     mov %7^ := %8
+227|                  dbgpop
+228|                 end 
+229|                 jmp 6:
+230|             end 
+231|   label 8:
+232|          dbgpop
+233|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:5
+234|              // let len: Integer := endAt + 1 - startAt
+235|           local %5 of i32
+236|           begin 
+237|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:17
+238|               local %6 of i32
+239|               begin 
+240|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:17
+241|                   local %7 of i32
+242|                   begin 
+243|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:17
+244|                       local %8 of ^i32
+245|                      addrof %8 := @%4
+246|                      dbgpop
+247|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:25
+248|                       local %9 of i32
+249|                         mov %9 := 1i32
+250|                      dbgpop
+251|                         add %7 := %8^ + %9
+252|                     end 
+253|                  dbgpop
+254|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:189:30
+255|                   local %8 of ^i32
+256|                  addrof %8 := @%3
+257|                  dbgpop
+258|                     sub %6 := %7 - %8^
+259|                 end 
+260|              dbgpop
+261|                 mov %5 := %6
+262|             end 
+263|          dbgpop
+264|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:190:5
+265|           local %6 of rc System::String
+266|           begin 
+267|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:190:15
+268|               local %7 of ^rc System::String
+269|              addrof %7 := @%1
+270|              dbgpop
+271|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:190:18
+272|               local %8 of ^i32
+273|              addrof %8 := @%3
+274|              dbgpop
+275|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:190:27
+276|               local %9 of ^i32
+277|              addrof %9 := @%5
+278|              dbgpop
+279|                call %6 := System::SubString(%7^, %8^, %9^)
+280|             end 
+281|          dbgpop
+282|             mov %2 := %6
+283|          retain %6
+284|         release %6
+285|         end 
+286|         mov %0 := %2
+287|      retain %0
+288|     release %2
+289|     release %1
+290|     end 
+291|  dbgpop
+292|   label 0:
+
+4: System::IsWhiteSpace
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = bool (return slot)
+  3|          // %1 = u8
+  4|       local %2 of bool
+  5|       begin 
+  6|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+  7|           local %3 of bool
+  8|           begin 
+  9|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 10|               local %4 of bool
+ 11|               begin 
+ 12|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 13|                   local %5 of bool
+ 14|                   begin 
+ 15|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 16|                       local %6 of bool
+ 17|                       begin 
+ 18|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 19|                           local %7 of bool
+ 20|                           begin 
+ 21|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 22|                               local %8 of bool
+ 23|                               begin 
+ 24|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 25|                                   local %9 of bool
+ 26|                                   begin 
+ 27|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:5
+ 28|                                       local %10 of ^u8
+ 29|                                      addrof %10 := @%1
+ 30|                                      dbgpop
+ 31|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:55:12
+ 32|                                       local %11 of u8
+ 33|                                         mov %11 := 9u8
+ 34|                                      dbgpop
+ 35|                                          eq %9 := %10^ = %11
+ 36|                                     end 
+ 37|                                  dbgpop
+ 38|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:56:8
+ 39|                                   local %10 of bool
+ 40|                                   begin 
+ 41|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:56:8
+ 42|                                       local %11 of ^u8
+ 43|                                      addrof %11 := @%1
+ 44|                                      dbgpop
+ 45|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:56:15
+ 46|                                       local %12 of u8
+ 47|                                         mov %12 := 10u8
+ 48|                                      dbgpop
+ 49|                                          eq %10 := %11^ = %12
+ 50|                                     end 
+ 51|                                  dbgpop
+ 52|                                      or %8 := %9 or %10
+ 53|                                 end 
+ 54|                              dbgpop
+ 55|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:57:8
+ 56|                               local %9 of bool
+ 57|                               begin 
+ 58|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:57:8
+ 59|                                   local %10 of ^u8
+ 60|                                  addrof %10 := @%1
+ 61|                                  dbgpop
+ 62|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:57:15
+ 63|                                   local %11 of u8
+ 64|                                     mov %11 := 12u8
+ 65|                                  dbgpop
+ 66|                                      eq %9 := %10^ = %11
+ 67|                                 end 
+ 68|                              dbgpop
+ 69|                                  or %7 := %8 or %9
+ 70|                             end 
+ 71|                          dbgpop
+ 72|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:58:8
+ 73|                           local %8 of bool
+ 74|                           begin 
+ 75|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:58:8
+ 76|                               local %9 of ^u8
+ 77|                              addrof %9 := @%1
+ 78|                              dbgpop
+ 79|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:58:15
+ 80|                               local %10 of u8
+ 81|                                 mov %10 := 13u8
+ 82|                              dbgpop
+ 83|                                  eq %8 := %9^ = %10
+ 84|                             end 
+ 85|                          dbgpop
+ 86|                              or %6 := %7 or %8
+ 87|                         end 
+ 88|                      dbgpop
+ 89|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:59:8
+ 90|                       local %7 of bool
+ 91|                       begin 
+ 92|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:59:8
+ 93|                           local %8 of ^u8
+ 94|                          addrof %8 := @%1
+ 95|                          dbgpop
+ 96|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:59:15
+ 97|                           local %9 of u8
+ 98|                             mov %9 := 32u8
+ 99|                          dbgpop
+100|                              eq %7 := %8^ = %9
+101|                         end 
+102|                      dbgpop
+103|                          or %5 := %6 or %7
+104|                     end 
+105|                  dbgpop
+106|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:60:8
+107|                   local %6 of bool
+108|                   begin 
+109|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:60:8
+110|                       local %7 of ^u8
+111|                      addrof %7 := @%1
+112|                      dbgpop
+113|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:60:15
+114|                       local %8 of u8
+115|                         mov %8 := 133u8
+116|                      dbgpop
+117|                          eq %6 := %7^ = %8
+118|                     end 
+119|                  dbgpop
+120|                      or %4 := %5 or %6
+121|                 end 
+122|              dbgpop
+123|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:61:8
+124|               local %5 of bool
+125|               begin 
+126|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:61:8
+127|                   local %6 of ^u8
+128|                  addrof %6 := @%1
+129|                  dbgpop
+130|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:61:15
+131|                   local %7 of u8
+132|                     mov %7 := 160u8
+133|                  dbgpop
+134|                      eq %5 := %6^ = %7
+135|                 end 
+136|              dbgpop
+137|                  or %3 := %4 or %5
+138|             end 
+139|          dbgpop
+140|             mov %2 := %3
+141|         end 
+142|         mov %0 := %2
+143|     end 
+144|  dbgpop
+
+5: System::StringCharAt
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = u8 (return slot)
+ 3|          // %1 = rc System::String
+ 4|          // %2 = i32
+ 5|      retain %1
+ 6|       local %3 of u8
+ 7|       begin 
+ 8|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:118:19
+ 9|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:118:6
+10|           local %4 of ^u8
+11|           begin 
+12|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:118:6
+13|               local %5 of ^^u8
+14|               begin 
+15|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:118:6
+16|                   local %6 of ^rc System::String
+17|                  addrof %6 := @%1
+18|                  dbgpop
+19|                     fld %5 := @(%6^ as rc System::String).chars
+20|                 end 
+21|              dbgpop
+22|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:118:16
+23|               local %6 of ^i32
+24|              addrof %6 := @%2
+25|              dbgpop
+26|                 add %4 := %5^ + %6^
+27|             end 
+28|          dbgpop
+29|          dbgpop
+30|             mov %3 := %4^
+31|         end 
+32|         mov %0 := %3
+33|     release %1
+34|     end 
+35|  dbgpop
+
+6: System::SubString
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = rc System::String (return slot)
+  3|          // %1 = rc System::String
+  4|          // %2 = i32
+  5|          // %3 = i32
+  6|      retain %1
+  7|       local %4 of rc System::String
+  8|       begin 
+  9|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:103:5
+ 10|           local %5 of rc System::String
+ 11|           begin 
+ 12|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:103:8
+ 13|               local %6 of bool
+ 14|               begin 
+ 15|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:103:8
+ 16|                   local %7 of ^i32
+ 17|                  addrof %7 := @%3
+ 18|                  dbgpop
+ 19|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:103:14
+ 20|                   local %8 of i32
+ 21|                     mov %8 := 0i32
+ 22|                  dbgpop
+ 23|                      eq %6 := %7^ = %8
+ 24|                 end 
+ 25|              dbgpop
+ 26|               jmpif 1: if %6
+ 27|                 jmp 3:
+ 28|   label 1:
+ 29|               begin 
+ 30|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:104:9
+ 31|                   local %7 of rc System::String
+ 32|                     mov %7 := ''
+ 33|                  dbgpop
+ 34|                     mov %5 := %7
+ 35|                  retain %5
+ 36|                 end 
+ 37|                 jmp 2:
+ 38|   label 3:
+ 39|               begin 
+ 40|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:105:10
+ 41|                   local %7 of rc System::String
+ 42|                   begin 
+ 43|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:106:9
+ 44|                          // var buf: ^Byte := GetMem(len)
+ 45|                       local %8 of ^u8
+ 46|                       begin 
+ 47|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:106:20
+ 48|                           local %9 of ^u8
+ 49|                           begin 
+ 50|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:106:27
+ 51|                               local %10 of ^i32
+ 52|                              addrof %10 := @%3
+ 53|                              dbgpop
+ 54|                                call %9 := System::GetMem(%10^)
+ 55|                             end 
+ 56|                          dbgpop
+ 57|                             mov %8 := %9
+ 58|                         end 
+ 59|                      dbgpop
+ 60|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:9
+ 61|                          // for let i: Integer := 0 to len - 1 do begin
+buf + i^ := s.chars + from + i^
+end
+ 62|                       begin 
+ 63|                           local %9 of bool
+ 64|                           local %10 of i32
+ 65|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:22
+ 66|                           local %11 of i32
+ 67|                             mov %11 := 0i32
+ 68|                          dbgpop
+ 69|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:27
+ 70|                           local %12 of i32
+ 71|                           begin 
+ 72|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:27
+ 73|                               local %13 of ^i32
+ 74|                              addrof %13 := @%3
+ 75|                              dbgpop
+ 76|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:33
+ 77|                               local %14 of i32
+ 78|                                 mov %14 := 1i32
+ 79|                              dbgpop
+ 80|                                 sub %12 := %13^ - %14
+ 81|                             end 
+ 82|                          dbgpop
+ 83|                             mov %10 := %11
+ 84|   label 4:
+ 85|                              gt %9 := %10 > %12
+ 86|                           jmpif 6: if %9
+ 87|                           begin 
+ 88|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:107:38
+ 89|                                  // begin
+buf + i^ := s.chars + from + i^
+end
+ 90|                               begin 
+ 91|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:22
+ 92|                                      // buf + i^ := s.chars + from + i^
+ 93|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:22
+ 94|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:14
+ 95|                                   local %13 of ^u8
+ 96|                                   begin 
+ 97|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:14
+ 98|                                       local %14 of ^^u8
+ 99|                                      addrof %14 := @%8
+100|                                      dbgpop
+101|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:20
+102|                                       local %15 of ^i32
+103|                                      addrof %15 := @%10
+104|                                      dbgpop
+105|                                         add %13 := %14^ + %15^
+106|                                     end 
+107|                                  dbgpop
+108|                                  dbgpop
+109|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:47
+110|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:28
+111|                                   local %14 of ^u8
+112|                                   begin 
+113|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:28
+114|                                       local %15 of ^u8
+115|                                       begin 
+116|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:28
+117|                                           local %16 of ^^u8
+118|                                           begin 
+119|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:28
+120|                                               local %17 of ^rc System::String
+121|                                              addrof %17 := @%1
+122|                                              dbgpop
+123|                                                 fld %16 := @(%17^ as rc System::String).chars
+124|                                             end 
+125|                                          dbgpop
+126|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:38
+127|                                           local %17 of ^i32
+128|                                          addrof %17 := @%2
+129|                                          dbgpop
+130|                                             add %15 := %16^ + %17^
+131|                                         end 
+132|                                      dbgpop
+133|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:108:45
+134|                                       local %16 of ^i32
+135|                                      addrof %16 := @%10
+136|                                      dbgpop
+137|                                         add %14 := %15 + %16^
+138|                                     end 
+139|                                  dbgpop
+140|                                  dbgpop
+141|                                     mov %13^ := %14^
+142|                                  dbgpop
+143|                                 end 
+144|                              dbgpop
+145|                             end 
+146|                             add %10 := %10 + 1i32
+147|                             jmp 4:
+148|                         end 
+149|   label 6:
+150|                      dbgpop
+151|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:111:9
+152|                       local %9 of rc System::String
+153|                       rcnew System::String at %9^
+154|                       begin 
+155|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:111:23
+156|                           local %10 of ^^u8
+157|                          addrof %10 := @%8
+158|                          dbgpop
+159|                              // chars: buf (^u8)
+160|                           local %11 of ^^u8
+161|                             fld %11 := @(%9 as rc System::String).chars
+162|                             mov %11^ := %10^
+163|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:111:33
+164|                           local %12 of ^i32
+165|                          addrof %12 := @%3
+166|                          dbgpop
+167|                              // len: len (i32)
+168|                           local %13 of ^i32
+169|                             fld %13 := @(%9 as rc System::String).len
+170|                             mov %13^ := %12^
+171|                         end 
+172|                      dbgpop
+173|                         mov %7 := %9
+174|                      retain %9
+175|                     release %9
+176|                     end 
+177|                  dbgpop
+178|                     mov %5 := %7
+179|                  retain %5
+180|                 release %7
+181|                 end 
+182|   label 2:
+183|             end 
+184|          dbgpop
+185|             mov %4 := %5
+186|          retain %5
+187|         release %5
+188|         end 
+189|         mov %0 := %4
+190|      retain %0
+191|     release %4
+192|     release %1
+193|     end 
+194|  dbgpop
+
+7: System::GetMem
+<external function 'GetMem' in module 'rt'>
+
+8: System::ReadLn
+<external function 'ReadLn' in module 'rt'>
+
+9: System::CompareStr
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = i32 (return slot)
+  3|          // %1 = rc System::String
+  4|          // %2 = rc System::String
+  5|      retain %1
+  6|      retain %2
+  7|       local %3 of i32
+  8|       begin 
+  9|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:5
+ 10|              // if a.len = 0 and b.len = 0  then begin
+begin
+begin
+exit 0
+end
+end
+end
+ 11|           begin 
+ 12|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:8
+ 13|               local %4 of bool
+ 14|               begin 
+ 15|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:8
+ 16|                   local %5 of bool
+ 17|                   begin 
+ 18|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:8
+ 19|                       local %6 of ^i32
+ 20|                       begin 
+ 21|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:8
+ 22|                           local %7 of ^rc System::String
+ 23|                          addrof %7 := @%1
+ 24|                          dbgpop
+ 25|                             fld %6 := @(%7^ as rc System::String).len
+ 26|                         end 
+ 27|                      dbgpop
+ 28|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:16
+ 29|                       local %7 of i32
+ 30|                         mov %7 := 0i32
+ 31|                      dbgpop
+ 32|                          eq %5 := %6^ = %7
+ 33|                     end 
+ 34|                  dbgpop
+ 35|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:22
+ 36|                   local %6 of bool
+ 37|                   begin 
+ 38|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:22
+ 39|                       local %7 of ^i32
+ 40|                       begin 
+ 41|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:22
+ 42|                           local %8 of ^rc System::String
+ 43|                          addrof %8 := @%2
+ 44|                          dbgpop
+ 45|                             fld %7 := @(%8^ as rc System::String).len
+ 46|                         end 
+ 47|                      dbgpop
+ 48|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:30
+ 49|                       local %8 of i32
+ 50|                         mov %8 := 0i32
+ 51|                      dbgpop
+ 52|                          eq %6 := %7^ = %8
+ 53|                     end 
+ 54|                  dbgpop
+ 55|                     and %4 := %5 and %6
+ 56|                 end 
+ 57|              dbgpop
+ 58|               jmpif 1: if %4
+ 59|                 jmp 2:
+ 60|   label 1:
+ 61|               begin 
+ 62|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:37
+ 63|                      // begin
+begin
+begin
+exit 0
+end
+end
+end
+ 64|                   begin 
+ 65|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:37
+ 66|                          // begin
+begin
+exit 0
+end
+end
+ 67|                       begin 
+ 68|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:137:37
+ 69|                              // begin
+exit 0
+end
+ 70|                           begin 
+ 71|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:138:9
+ 72|                                  // exit 0
+ 73|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:138:14
+ 74|                               local %5 of i32
+ 75|                                 mov %5 := 0i32
+ 76|                              dbgpop
+ 77|                                 mov %0 := %5
+ 78|                             release %2
+ 79|                             release %1
+ 80|                                 jmp 0:
+ 81|                              dbgpop
+ 82|                             end 
+ 83|                          dbgpop
+ 84|                         end 
+ 85|                      dbgpop
+ 86|                     end 
+ 87|                  dbgpop
+ 88|                 end 
+ 89|                 jmp 2:
+ 90|   label 2:
+ 91|             end 
+ 92|          dbgpop
+ 93|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:141:5
+ 94|              // var aPos: Integer := 0
+ 95|           local %4 of i32
+ 96|           begin 
+ 97|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:141:17
+ 98|               local %5 of i32
+ 99|                 mov %5 := 0i32
+100|              dbgpop
+101|                 mov %4 := %5
+102|             end 
+103|          dbgpop
+104|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:142:5
+105|              // var bPos: Integer := 0
+106|           local %5 of i32
+107|           begin 
+108|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:142:17
+109|               local %6 of i32
+110|                 mov %6 := 0i32
+111|              dbgpop
+112|                 mov %5 := %6
+113|             end 
+114|          dbgpop
+115|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:144:5
+116|              // var cmp: Integer := 0
+117|           local %6 of i32
+118|           begin 
+119|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:144:25
+120|               local %7 of i32
+121|                 mov %7 := 0i32
+122|              dbgpop
+123|                 mov %6 := %7
+124|             end 
+125|          dbgpop
+126|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:145:5
+127|              // while true do begin
+if aPos < a.len and bPos < b.len  then begin
+begin
+begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+end
+end else begin
+begin
+if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+end
+end;
+if cmp <> 0  then begin
+begin
+break
+end
+end
+end
+128|           begin 
+129|               local %7 of bool
+130|   label 3:
+131|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:145:11
+132|               local %8 of bool
+133|                 mov %8 := true
+134|              dbgpop
+135|                 not %7 := ~%8
+136|               jmpif 5: if %7
+137|               begin 
+138|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:145:19
+139|                      // begin
+if aPos < a.len and bPos < b.len  then begin
+begin
+begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+end
+end else begin
+begin
+if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+end
+end;
+if cmp <> 0  then begin
+begin
+break
+end
+end
+end
+140|                   begin 
+141|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:9
+142|                          // if aPos < a.len and bPos < b.len  then begin
+begin
+begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+end
+end else begin
+begin
+if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+end
+end
+143|                       begin 
+144|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:12
+145|                           local %9 of bool
+146|                           begin 
+147|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:12
+148|                               local %10 of bool
+149|                               begin 
+150|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:12
+151|                                   local %11 of ^i32
+152|                                  addrof %11 := @%4
+153|                                  dbgpop
+154|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:19
+155|                                   local %12 of ^i32
+156|                                   begin 
+157|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:19
+158|                                       local %13 of ^rc System::String
+159|                                      addrof %13 := @%1
+160|                                      dbgpop
+161|                                         fld %12 := @(%13^ as rc System::String).len
+162|                                     end 
+163|                                  dbgpop
+164|                                   local %13 of bool
+165|                                      gt %13 := %11^ > %12^
+166|                                   local %14 of bool
+167|                                      eq %14 := %11^ = %12^
+168|                                   local %15 of bool
+169|                                      or %15 := %13 or %14
+170|                                     not %10 := ~%15
+171|                                 end 
+172|                              dbgpop
+173|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:29
+174|                               local %11 of bool
+175|                               begin 
+176|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:29
+177|                                   local %12 of ^i32
+178|                                  addrof %12 := @%5
+179|                                  dbgpop
+180|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:36
+181|                                   local %13 of ^i32
+182|                                   begin 
+183|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:36
+184|                                       local %14 of ^rc System::String
+185|                                      addrof %14 := @%2
+186|                                      dbgpop
+187|                                         fld %13 := @(%14^ as rc System::String).len
+188|                                     end 
+189|                                  dbgpop
+190|                                   local %14 of bool
+191|                                      gt %14 := %12^ > %13^
+192|                                   local %15 of bool
+193|                                      eq %15 := %12^ = %13^
+194|                                   local %16 of bool
+195|                                      or %16 := %14 or %15
+196|                                     not %11 := ~%16
+197|                                 end 
+198|                              dbgpop
+199|                                 and %9 := %10 and %11
+200|                             end 
+201|                          dbgpop
+202|                           jmpif 6: if %9
+203|                             jmp 8:
+204|   label 6:
+205|                           begin 
+206|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:47
+207|                                  // begin
+begin
+begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+end
+end
+208|                               begin 
+209|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:47
+210|                                      // begin
+begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+end
+211|                                   begin 
+212|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:146:47
+213|                                          // begin
+let aChar: Byte := a.chars + aPos^;
+let bChar: Byte := b.chars + bPos^;
+cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0;
+aPos := aPos + 1;
+bPos := bPos + 1
+end
+214|                                       begin 
+215|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:13
+216|                                              // let aChar: Byte := a.chars + aPos^
+217|                                           local %10 of u8
+218|                                           begin 
+219|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:42
+220|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:27
+221|                                               local %11 of ^u8
+222|                                               begin 
+223|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:27
+224|                                                   local %12 of ^^u8
+225|                                                   begin 
+226|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:27
+227|                                                       local %13 of ^rc System::String
+228|                                                      addrof %13 := @%1
+229|                                                      dbgpop
+230|                                                         fld %12 := @(%13^ as rc System::String).chars
+231|                                                     end 
+232|                                                  dbgpop
+233|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:147:37
+234|                                                   local %13 of ^i32
+235|                                                  addrof %13 := @%4
+236|                                                  dbgpop
+237|                                                     add %11 := %12^ + %13^
+238|                                                 end 
+239|                                              dbgpop
+240|                                              dbgpop
+241|                                                 mov %10 := %11^
+242|                                             end 
+243|                                          dbgpop
+244|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:13
+245|                                              // let bChar: Byte := b.chars + bPos^
+246|                                           local %11 of u8
+247|                                           begin 
+248|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:42
+249|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:27
+250|                                               local %12 of ^u8
+251|                                               begin 
+252|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:27
+253|                                                   local %13 of ^^u8
+254|                                                   begin 
+255|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:27
+256|                                                       local %14 of ^rc System::String
+257|                                                      addrof %14 := @%2
+258|                                                      dbgpop
+259|                                                         fld %13 := @(%14^ as rc System::String).chars
+260|                                                     end 
+261|                                                  dbgpop
+262|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:148:37
+263|                                                   local %14 of ^i32
+264|                                                  addrof %14 := @%5
+265|                                                  dbgpop
+266|                                                     add %12 := %13^ + %14^
+267|                                                 end 
+268|                                              dbgpop
+269|                                              dbgpop
+270|                                                 mov %11 := %12^
+271|                                             end 
+272|                                          dbgpop
+273|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:13
+274|                                              // cmp := if aChar > bChar  then 1 else if bChar > aChar  then -1 else 0
+275|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:13
+276|                                           local %12 of ^i32
+277|                                          addrof %12 := @%6
+278|                                          dbgpop
+279|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:20
+280|                                           local %13 of i32
+281|                                           begin 
+282|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:23
+283|                                               local %14 of bool
+284|                                               begin 
+285|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:23
+286|                                                   local %15 of ^u8
+287|                                                  addrof %15 := @%10
+288|                                                  dbgpop
+289|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:31
+290|                                                   local %16 of ^u8
+291|                                                  addrof %16 := @%11
+292|                                                  dbgpop
+293|                                                      gt %14 := %15^ > %16^
+294|                                                 end 
+295|                                              dbgpop
+296|                                               jmpif 9: if %14
+297|                                                 jmp 11:
+298|   label 9:
+299|                                               begin 
+300|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:149:42
+301|                                                   local %15 of i32
+302|                                                     mov %15 := 1i32
+303|                                                  dbgpop
+304|                                                     mov %13 := %15
+305|                                                 end 
+306|                                                 jmp 10:
+307|   label 11:
+308|                                               begin 
+309|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:22
+310|                                                   local %15 of i32
+311|                                                   begin 
+312|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:25
+313|                                                       local %16 of bool
+314|                                                       begin 
+315|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:25
+316|                                                           local %17 of ^u8
+317|                                                          addrof %17 := @%11
+318|                                                          dbgpop
+319|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:33
+320|                                                           local %18 of ^u8
+321|                                                          addrof %18 := @%10
+322|                                                          dbgpop
+323|                                                              gt %16 := %17^ > %18^
+324|                                                         end 
+325|                                                      dbgpop
+326|                                                       jmpif 12: if %16
+327|                                                         jmp 14:
+328|   label 12:
+329|                                                       begin 
+330|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:44
+331|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:150:45
+332|                                                           local %17 of i32
+333|                                                             mov %17 := 1i32
+334|                                                          dbgpop
+335|                                                           local %18 of i32
+336|                                                             sub %18 := 0i32 - %17
+337|                                                          dbgpop
+338|                                                             mov %15 := %18
+339|                                                         end 
+340|                                                         jmp 13:
+341|   label 14:
+342|                                                       begin 
+343|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:151:22
+344|                                                           local %17 of i32
+345|                                                             mov %17 := 0i32
+346|                                                          dbgpop
+347|                                                             mov %15 := %17
+348|                                                         end 
+349|   label 13:
+350|                                                     end 
+351|                                                  dbgpop
+352|                                                     mov %13 := %15
+353|                                                 end 
+354|   label 10:
+355|                                             end 
+356|                                          dbgpop
+357|                                             mov %12^ := %13
+358|                                          dbgpop
+359|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:153:13
+360|                                              // aPos := aPos + 1
+361|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:153:13
+362|                                           local %14 of ^i32
+363|                                          addrof %14 := @%4
+364|                                          dbgpop
+365|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:153:21
+366|                                           local %15 of i32
+367|                                           begin 
+368|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:153:21
+369|                                               local %16 of ^i32
+370|                                              addrof %16 := @%4
+371|                                              dbgpop
+372|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:153:28
+373|                                               local %17 of i32
+374|                                                 mov %17 := 1i32
+375|                                              dbgpop
+376|                                                 add %15 := %16^ + %17
+377|                                             end 
+378|                                          dbgpop
+379|                                             mov %14^ := %15
+380|                                          dbgpop
+381|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:154:13
+382|                                              // bPos := bPos + 1
+383|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:154:13
+384|                                           local %16 of ^i32
+385|                                          addrof %16 := @%5
+386|                                          dbgpop
+387|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:154:21
+388|                                           local %17 of i32
+389|                                           begin 
+390|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:154:21
+391|                                               local %18 of ^i32
+392|                                              addrof %18 := @%5
+393|                                              dbgpop
+394|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:154:28
+395|                                               local %19 of i32
+396|                                                 mov %19 := 1i32
+397|                                              dbgpop
+398|                                                 add %17 := %18^ + %19
+399|                                             end 
+400|                                          dbgpop
+401|                                             mov %16^ := %17
+402|                                          dbgpop
+403|                                         end 
+404|                                      dbgpop
+405|                                     end 
+406|                                  dbgpop
+407|                                 end 
+408|                              dbgpop
+409|                             end 
+410|                             jmp 7:
+411|   label 8:
+412|                           begin 
+413|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:14
+414|                                  // begin
+begin
+if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+end
+end
+415|                               begin 
+416|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:14
+417|                                      // begin
+if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+end
+418|                                   begin 
+419|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:14
+420|                                          // if aPos < a.len and aPos >= b.len  then begin
+begin
+begin
+cmp := 1
+end
+end
+end else begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+421|                                       begin 
+422|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:17
+423|                                           local %10 of bool
+424|                                           begin 
+425|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:17
+426|                                               local %11 of bool
+427|                                               begin 
+428|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:17
+429|                                                   local %12 of ^i32
+430|                                                  addrof %12 := @%4
+431|                                                  dbgpop
+432|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:24
+433|                                                   local %13 of ^i32
+434|                                                   begin 
+435|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:24
+436|                                                       local %14 of ^rc System::String
+437|                                                      addrof %14 := @%1
+438|                                                      dbgpop
+439|                                                         fld %13 := @(%14^ as rc System::String).len
+440|                                                     end 
+441|                                                  dbgpop
+442|                                                   local %14 of bool
+443|                                                      gt %14 := %12^ > %13^
+444|                                                   local %15 of bool
+445|                                                      eq %15 := %12^ = %13^
+446|                                                   local %16 of bool
+447|                                                      or %16 := %14 or %15
+448|                                                     not %11 := ~%16
+449|                                                 end 
+450|                                              dbgpop
+451|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:34
+452|                                               local %12 of bool
+453|                                               begin 
+454|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:34
+455|                                                   local %13 of ^i32
+456|                                                  addrof %13 := @%4
+457|                                                  dbgpop
+458|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:42
+459|                                                   local %14 of ^i32
+460|                                                   begin 
+461|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:42
+462|                                                       local %15 of ^rc System::String
+463|                                                      addrof %15 := @%2
+464|                                                      dbgpop
+465|                                                         fld %14 := @(%15^ as rc System::String).len
+466|                                                     end 
+467|                                                  dbgpop
+468|                                                   local %15 of bool
+469|                                                      gt %15 := %13^ > %14^
+470|                                                   local %16 of bool
+471|                                                      eq %16 := %13^ = %14^
+472|                                                      or %12 := %15 or %16
+473|                                                 end 
+474|                                              dbgpop
+475|                                                 and %10 := %11 and %12
+476|                                             end 
+477|                                          dbgpop
+478|                                           jmpif 15: if %10
+479|                                             jmp 17:
+480|   label 15:
+481|                                           begin 
+482|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:53
+483|                                                  // begin
+begin
+begin
+cmp := 1
+end
+end
+end
+484|                                               begin 
+485|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:53
+486|                                                      // begin
+begin
+cmp := 1
+end
+end
+487|                                                   begin 
+488|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:156:53
+489|                                                          // begin
+cmp := 1
+end
+490|                                                       begin 
+491|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:158:13
+492|                                                              // cmp := 1
+493|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:158:13
+494|                                                           local %11 of ^i32
+495|                                                          addrof %11 := @%6
+496|                                                          dbgpop
+497|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:158:20
+498|                                                           local %12 of i32
+499|                                                             mov %12 := 1i32
+500|                                                          dbgpop
+501|                                                             mov %11^ := %12
+502|                                                          dbgpop
+503|                                                         end 
+504|                                                      dbgpop
+505|                                                     end 
+506|                                                  dbgpop
+507|                                                 end 
+508|                                              dbgpop
+509|                                             end 
+510|                                             jmp 16:
+511|   label 17:
+512|                                           begin 
+513|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:14
+514|                                                  // begin
+begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+end
+515|                                               begin 
+516|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:14
+517|                                                      // begin
+if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+end
+518|                                                   begin 
+519|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:14
+520|                                                          // if bPos < b.len and bPos >= a.len  then begin
+begin
+begin
+cmp := -1
+end
+end
+end else begin
+begin
+begin
+break
+end
+end
+end
+521|                                                       begin 
+522|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:17
+523|                                                           local %11 of bool
+524|                                                           begin 
+525|                                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:17
+526|                                                               local %12 of bool
+527|                                                               begin 
+528|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:17
+529|                                                                   local %13 of ^i32
+530|                                                                  addrof %13 := @%5
+531|                                                                  dbgpop
+532|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:24
+533|                                                                   local %14 of ^i32
+534|                                                                   begin 
+535|                                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:24
+536|                                                                       local %15 of ^rc System::String
+537|                                                                      addrof %15 := @%2
+538|                                                                      dbgpop
+539|                                                                         fld %14 := @(%15^ as rc System::String).len
+540|                                                                     end 
+541|                                                                  dbgpop
+542|                                                                   local %15 of bool
+543|                                                                      gt %15 := %13^ > %14^
+544|                                                                   local %16 of bool
+545|                                                                      eq %16 := %13^ = %14^
+546|                                                                   local %17 of bool
+547|                                                                      or %17 := %15 or %16
+548|                                                                     not %12 := ~%17
+549|                                                                 end 
+550|                                                              dbgpop
+551|                                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:34
+552|                                                               local %13 of bool
+553|                                                               begin 
+554|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:34
+555|                                                                   local %14 of ^i32
+556|                                                                  addrof %14 := @%5
+557|                                                                  dbgpop
+558|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:42
+559|                                                                   local %15 of ^i32
+560|                                                                   begin 
+561|                                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:42
+562|                                                                       local %16 of ^rc System::String
+563|                                                                      addrof %16 := @%1
+564|                                                                      dbgpop
+565|                                                                         fld %15 := @(%16^ as rc System::String).len
+566|                                                                     end 
+567|                                                                  dbgpop
+568|                                                                   local %16 of bool
+569|                                                                      gt %16 := %14^ > %15^
+570|                                                                   local %17 of bool
+571|                                                                      eq %17 := %14^ = %15^
+572|                                                                      or %13 := %16 or %17
+573|                                                                 end 
+574|                                                              dbgpop
+575|                                                                 and %11 := %12 and %13
+576|                                                             end 
+577|                                                          dbgpop
+578|                                                           jmpif 18: if %11
+579|                                                             jmp 20:
+580|   label 18:
+581|                                                           begin 
+582|                                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:53
+583|                                                                  // begin
+begin
+begin
+cmp := -1
+end
+end
+end
+584|                                                               begin 
+585|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:53
+586|                                                                      // begin
+begin
+cmp := -1
+end
+end
+587|                                                                   begin 
+588|                                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:160:53
+589|                                                                          // begin
+cmp := -1
+end
+590|                                                                       begin 
+591|                                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:162:13
+592|                                                                              // cmp := -1
+593|                                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:162:13
+594|                                                                           local %12 of ^i32
+595|                                                                          addrof %12 := @%6
+596|                                                                          dbgpop
+597|                                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:162:20
+598|                                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:162:21
+599|                                                                           local %13 of i32
+600|                                                                             mov %13 := 1i32
+601|                                                                          dbgpop
+602|                                                                           local %14 of i32
+603|                                                                             sub %14 := 0i32 - %13
+604|                                                                          dbgpop
+605|                                                                             mov %12^ := %14
+606|                                                                          dbgpop
+607|                                                                         end 
+608|                                                                      dbgpop
+609|                                                                     end 
+610|                                                                  dbgpop
+611|                                                                 end 
+612|                                                              dbgpop
+613|                                                             end 
+614|                                                             jmp 19:
+615|   label 20:
+616|                                                           begin 
+617|                                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:164:14
+618|                                                                  // begin
+begin
+begin
+break
+end
+end
+end
+619|                                                               begin 
+620|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:164:14
+621|                                                                      // begin
+begin
+break
+end
+end
+622|                                                                   begin 
+623|                                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:164:14
+624|                                                                          // begin
+break
+end
+625|                                                                       begin 
+626|                                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:166:13
+627|                                                                              // break
+628|                                                                             jmp 5:
+629|                                                                          dbgpop
+630|                                                                         end 
+631|                                                                      dbgpop
+632|                                                                     end 
+633|                                                                  dbgpop
+634|                                                                 end 
+635|                                                              dbgpop
+636|                                                             end 
+637|   label 19:
+638|                                                         end 
+639|                                                      dbgpop
+640|                                                     end 
+641|                                                  dbgpop
+642|                                                 end 
+643|                                              dbgpop
+644|                                             end 
+645|   label 16:
+646|                                         end 
+647|                                      dbgpop
+648|                                     end 
+649|                                  dbgpop
+650|                                 end 
+651|                              dbgpop
+652|                             end 
+653|   label 7:
+654|                         end 
+655|                      dbgpop
+656|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:9
+657|                          // if cmp <> 0  then begin
+begin
+break
+end
+end
+658|                       begin 
+659|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:12
+660|                           local %9 of bool
+661|                           begin 
+662|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:12
+663|                               local %10 of ^i32
+664|                              addrof %10 := @%6
+665|                              dbgpop
+666|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:19
+667|                               local %11 of i32
+668|                                 mov %11 := 0i32
+669|                              dbgpop
+670|                                  eq %9 := %10^ = %11
+671|                                 not %9 := ~%9
+672|                             end 
+673|                          dbgpop
+674|                           jmpif 21: if %9
+675|                             jmp 22:
+676|   label 21:
+677|                           begin 
+678|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:26
+679|                                  // begin
+begin
+break
+end
+end
+680|                               begin 
+681|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:26
+682|                                      // begin
+break
+end
+683|                                   begin 
+684|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:169:26
+685|                                          // break
+686|                                         jmp 5:
+687|                                      dbgpop
+688|                                     end 
+689|                                  dbgpop
+690|                                 end 
+691|                              dbgpop
+692|                             end 
+693|                             jmp 22:
+694|   label 22:
+695|                         end 
+696|                      dbgpop
+697|                     end 
+698|                  dbgpop
+699|                 end 
+700|                 jmp 3:
+701|             end 
+702|   label 5:
+703|          dbgpop
+704|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:172:5
+705|           local %7 of ^i32
+706|          addrof %7 := @%6
+707|          dbgpop
+708|             mov %3 := %7^
+709|         end 
+710|         mov %0 := %3
+711|     release %2
+712|     release %1
+713|     end 
+714|  dbgpop
+715|   label 0:
+
+10: System::StringLen
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = i32 (return slot)
+ 3|          // %1 = rc System::String
+ 4|      retain %1
+ 5|       local %2 of i32
+ 6|       begin 
+ 7|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:50:5
+ 8|           local %3 of ^i32
+ 9|           begin 
+10|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:50:5
+11|               local %4 of ^rc System::String
+12|              addrof %4 := @%1
+13|              dbgpop
+14|                 fld %3 := @(%4^ as rc System::String).len
+15|             end 
+16|          dbgpop
+17|             mov %2 := %3^
+18|         end 
+19|         mov %0 := %2
+20|     release %1
+21|     end 
+22|  dbgpop
+
+11: System::StringConcat
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = rc System::String (return slot)
+  3|          // %1 = rc System::String
+  4|          // %2 = rc System::String
+  5|      retain %1
+  6|      retain %2
+  7|       local %3 of rc System::String
+  8|       begin 
+  9|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:5
+ 10|           local %4 of rc System::String
+ 11|           begin 
+ 12|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:8
+ 13|               local %5 of bool
+ 14|               begin 
+ 15|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:8
+ 16|                   local %6 of bool
+ 17|                   begin 
+ 18|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:8
+ 19|                       local %7 of ^i32
+ 20|                       begin 
+ 21|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:8
+ 22|                           local %8 of ^rc System::String
+ 23|                          addrof %8 := @%1
+ 24|                          dbgpop
+ 25|                             fld %7 := @(%8^ as rc System::String).len
+ 26|                         end 
+ 27|                      dbgpop
+ 28|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:16
+ 29|                       local %8 of i32
+ 30|                         mov %8 := 0i32
+ 31|                      dbgpop
+ 32|                          eq %6 := %7^ = %8
+ 33|                     end 
+ 34|                  dbgpop
+ 35|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:22
+ 36|                   local %7 of bool
+ 37|                   begin 
+ 38|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:22
+ 39|                       local %8 of ^i32
+ 40|                       begin 
+ 41|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:22
+ 42|                           local %9 of ^rc System::String
+ 43|                          addrof %9 := @%2
+ 44|                          dbgpop
+ 45|                             fld %8 := @(%9^ as rc System::String).len
+ 46|                         end 
+ 47|                      dbgpop
+ 48|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:66:30
+ 49|                       local %9 of i32
+ 50|                         mov %9 := 0i32
+ 51|                      dbgpop
+ 52|                          eq %7 := %8^ = %9
+ 53|                     end 
+ 54|                  dbgpop
+ 55|                     and %5 := %6 and %7
+ 56|                 end 
+ 57|              dbgpop
+ 58|               jmpif 1: if %5
+ 59|                 jmp 3:
+ 60|   label 1:
+ 61|               begin 
+ 62|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:67:9
+ 63|                   local %6 of rc System::String
+ 64|                   rcnew System::String at %6^
+ 65|                   begin 
+ 66|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:67:23
+ 67|                       local %7 of ^u8
+ 68|                         mov %7 := NULL
+ 69|                      dbgpop
+ 70|                          // chars: nil (^u8)
+ 71|                       local %8 of ^^u8
+ 72|                         fld %8 := @(%6 as rc System::String).chars
+ 73|                         mov %8^ := %7
+ 74|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:67:33
+ 75|                       local %9 of i32
+ 76|                         mov %9 := 0i32
+ 77|                      dbgpop
+ 78|                          // len: 0 (i32)
+ 79|                       local %10 of ^i32
+ 80|                         fld %10 := @(%6 as rc System::String).len
+ 81|                         mov %10^ := %9
+ 82|                     end 
+ 83|                  dbgpop
+ 84|                     mov %4 := %6
+ 85|                  retain %4
+ 86|                 release %6
+ 87|                 end 
+ 88|                 jmp 2:
+ 89|   label 3:
+ 90|               begin 
+ 91|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:10
+ 92|                   local %6 of rc System::String
+ 93|                   begin 
+ 94|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:13
+ 95|                       local %7 of bool
+ 96|                       begin 
+ 97|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:13
+ 98|                           local %8 of ^i32
+ 99|                           begin 
+100|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:13
+101|                               local %9 of ^rc System::String
+102|                              addrof %9 := @%1
+103|                              dbgpop
+104|                                 fld %8 := @(%9^ as rc System::String).len
+105|                             end 
+106|                          dbgpop
+107|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:21
+108|                           local %9 of i32
+109|                             mov %9 := 0i32
+110|                          dbgpop
+111|                              eq %7 := %8^ = %9
+112|                         end 
+113|                      dbgpop
+114|                       jmpif 4: if %7
+115|                         jmp 6:
+116|   label 4:
+117|                       begin 
+118|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:68:28
+119|                           local %8 of ^rc System::String
+120|                          addrof %8 := @%2
+121|                          dbgpop
+122|                             mov %6 := %8^
+123|                          retain %6
+124|                         end 
+125|                         jmp 5:
+126|   label 6:
+127|                       begin 
+128|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:10
+129|                           local %8 of rc System::String
+130|                           begin 
+131|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:13
+132|                               local %9 of bool
+133|                               begin 
+134|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:13
+135|                                   local %10 of ^i32
+136|                                   begin 
+137|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:13
+138|                                       local %11 of ^rc System::String
+139|                                      addrof %11 := @%2
+140|                                      dbgpop
+141|                                         fld %10 := @(%11^ as rc System::String).len
+142|                                     end 
+143|                                  dbgpop
+144|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:21
+145|                                   local %11 of i32
+146|                                     mov %11 := 0i32
+147|                                  dbgpop
+148|                                      eq %9 := %10^ = %11
+149|                                 end 
+150|                              dbgpop
+151|                               jmpif 7: if %9
+152|                                 jmp 9:
+153|   label 7:
+154|                               begin 
+155|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:69:28
+156|                                   local %10 of ^rc System::String
+157|                                  addrof %10 := @%1
+158|                                  dbgpop
+159|                                     mov %8 := %10^
+160|                                  retain %8
+161|                                 end 
+162|                                 jmp 8:
+163|   label 9:
+164|                               begin 
+165|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:70:10
+166|                                   local %10 of rc System::String
+167|                                   begin 
+168|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:9
+169|                                          // let len: Integer := a.len + b.len
+170|                                       local %11 of i32
+171|                                       begin 
+172|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:20
+173|                                           local %12 of i32
+174|                                           begin 
+175|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:20
+176|                                               local %13 of ^i32
+177|                                               begin 
+178|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:20
+179|                                                   local %14 of ^rc System::String
+180|                                                  addrof %14 := @%1
+181|                                                  dbgpop
+182|                                                     fld %13 := @(%14^ as rc System::String).len
+183|                                                 end 
+184|                                              dbgpop
+185|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:28
+186|                                               local %14 of ^i32
+187|                                               begin 
+188|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:71:28
+189|                                                   local %15 of ^rc System::String
+190|                                                  addrof %15 := @%2
+191|                                                  dbgpop
+192|                                                     fld %14 := @(%15^ as rc System::String).len
+193|                                                 end 
+194|                                              dbgpop
+195|                                                 add %12 := %13^ + %14^
+196|                                             end 
+197|                                          dbgpop
+198|                                             mov %11 := %12
+199|                                         end 
+200|                                      dbgpop
+201|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:73:9
+202|                                          // let bytes: ^Byte := GetMem(len)
+203|                                       local %12 of ^u8
+204|                                       begin 
+205|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:73:22
+206|                                           local %13 of ^u8
+207|                                           begin 
+208|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:73:29
+209|                                               local %14 of ^i32
+210|                                              addrof %14 := @%11
+211|                                              dbgpop
+212|                                                call %13 := System::GetMem(%14^)
+213|                                             end 
+214|                                          dbgpop
+215|                                             mov %12 := %13
+216|                                         end 
+217|                                      dbgpop
+218|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:9
+219|                                          // for let i: Integer := 0 to a.len - 1 do bytes + i^ := a.chars + i^
+220|                                       begin 
+221|                                           local %13 of bool
+222|                                           local %14 of i32
+223|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:22
+224|                                           local %15 of i32
+225|                                             mov %15 := 0i32
+226|                                          dbgpop
+227|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:27
+228|                                           local %16 of i32
+229|                                           begin 
+230|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:27
+231|                                               local %17 of ^i32
+232|                                               begin 
+233|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:27
+234|                                                   local %18 of ^rc System::String
+235|                                                  addrof %18 := @%1
+236|                                                  dbgpop
+237|                                                     fld %17 := @(%18^ as rc System::String).len
+238|                                                 end 
+239|                                              dbgpop
+240|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:75:35
+241|                                               local %18 of i32
+242|                                                 mov %18 := 1i32
+243|                                              dbgpop
+244|                                                 sub %16 := %17^ - %18
+245|                                             end 
+246|                                          dbgpop
+247|                                             mov %14 := %15
+248|   label 10:
+249|                                              gt %13 := %14 > %16
+250|                                           jmpif 12: if %13
+251|                                           begin 
+252|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:24
+253|                                                  // bytes + i^ := a.chars + i^
+254|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:24
+255|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:14
+256|                                               local %17 of ^u8
+257|                                               begin 
+258|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:14
+259|                                                   local %18 of ^^u8
+260|                                                  addrof %18 := @%12
+261|                                                  dbgpop
+262|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:22
+263|                                                   local %19 of ^i32
+264|                                                  addrof %19 := @%14
+265|                                                  dbgpop
+266|                                                     add %17 := %18^ + %19^
+267|                                                 end 
+268|                                              dbgpop
+269|                                              dbgpop
+270|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:42
+271|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:30
+272|                                               local %18 of ^u8
+273|                                               begin 
+274|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:30
+275|                                                   local %19 of ^^u8
+276|                                                   begin 
+277|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:30
+278|                                                       local %20 of ^rc System::String
+279|                                                      addrof %20 := @%1
+280|                                                      dbgpop
+281|                                                         fld %19 := @(%20^ as rc System::String).chars
+282|                                                     end 
+283|                                                  dbgpop
+284|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:76:40
+285|                                                   local %20 of ^i32
+286|                                                  addrof %20 := @%14
+287|                                                  dbgpop
+288|                                                     add %18 := %19^ + %20^
+289|                                                 end 
+290|                                              dbgpop
+291|                                              dbgpop
+292|                                                 mov %17^ := %18^
+293|                                              dbgpop
+294|                                             end 
+295|                                             add %14 := %14 + 1i32
+296|                                             jmp 10:
+297|                                         end 
+298|   label 12:
+299|                                      dbgpop
+300|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:9
+301|                                          // for let i: Integer := 0 to b.len - 1 do bytes + a.len + i^ := b.chars + i^
+302|                                       begin 
+303|                                           local %13 of bool
+304|                                           local %14 of i32
+305|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:22
+306|                                           local %15 of i32
+307|                                             mov %15 := 0i32
+308|                                          dbgpop
+309|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:27
+310|                                           local %16 of i32
+311|                                           begin 
+312|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:27
+313|                                               local %17 of ^i32
+314|                                               begin 
+315|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:27
+316|                                                   local %18 of ^rc System::String
+317|                                                  addrof %18 := @%2
+318|                                                  dbgpop
+319|                                                     fld %17 := @(%18^ as rc System::String).len
+320|                                                 end 
+321|                                              dbgpop
+322|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:78:35
+323|                                               local %18 of i32
+324|                                                 mov %18 := 1i32
+325|                                              dbgpop
+326|                                                 sub %16 := %17^ - %18
+327|                                             end 
+328|                                          dbgpop
+329|                                             mov %14 := %15
+330|   label 13:
+331|                                              gt %13 := %14 > %16
+332|                                           jmpif 15: if %13
+333|                                           begin 
+334|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:32
+335|                                                  // bytes + a.len + i^ := b.chars + i^
+336|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:32
+337|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:14
+338|                                               local %17 of ^u8
+339|                                               begin 
+340|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:14
+341|                                                   local %18 of ^u8
+342|                                                   begin 
+343|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:14
+344|                                                       local %19 of ^^u8
+345|                                                      addrof %19 := @%12
+346|                                                      dbgpop
+347|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:22
+348|                                                       local %20 of ^i32
+349|                                                       begin 
+350|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:22
+351|                                                           local %21 of ^rc System::String
+352|                                                          addrof %21 := @%1
+353|                                                          dbgpop
+354|                                                             fld %20 := @(%21^ as rc System::String).len
+355|                                                         end 
+356|                                                      dbgpop
+357|                                                         add %18 := %19^ + %20^
+358|                                                     end 
+359|                                                  dbgpop
+360|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:30
+361|                                                   local %19 of ^i32
+362|                                                  addrof %19 := @%14
+363|                                                  dbgpop
+364|                                                     add %17 := %18 + %19^
+365|                                                 end 
+366|                                              dbgpop
+367|                                              dbgpop
+368|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:50
+369|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:38
+370|                                               local %18 of ^u8
+371|                                               begin 
+372|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:38
+373|                                                   local %19 of ^^u8
+374|                                                   begin 
+375|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:38
+376|                                                       local %20 of ^rc System::String
+377|                                                      addrof %20 := @%2
+378|                                                      dbgpop
+379|                                                         fld %19 := @(%20^ as rc System::String).chars
+380|                                                     end 
+381|                                                  dbgpop
+382|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:79:48
+383|                                                   local %20 of ^i32
+384|                                                  addrof %20 := @%14
+385|                                                  dbgpop
+386|                                                     add %18 := %19^ + %20^
+387|                                                 end 
+388|                                              dbgpop
+389|                                              dbgpop
+390|                                                 mov %17^ := %18^
+391|                                              dbgpop
+392|                                             end 
+393|                                             add %14 := %14 + 1i32
+394|                                             jmp 13:
+395|                                         end 
+396|   label 15:
+397|                                      dbgpop
+398|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:81:9
+399|                                       local %13 of rc System::String
+400|                                       rcnew System::String at %13^
+401|                                       begin 
+402|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:81:23
+403|                                           local %14 of ^^u8
+404|                                          addrof %14 := @%12
+405|                                          dbgpop
+406|                                              // chars: bytes (^u8)
+407|                                           local %15 of ^^u8
+408|                                             fld %15 := @(%13 as rc System::String).chars
+409|                                             mov %15^ := %14^
+410|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:81:35
+411|                                           local %16 of ^i32
+412|                                          addrof %16 := @%11
+413|                                          dbgpop
+414|                                              // len: len (i32)
+415|                                           local %17 of ^i32
+416|                                             fld %17 := @(%13 as rc System::String).len
+417|                                             mov %17^ := %16^
+418|                                         end 
+419|                                      dbgpop
+420|                                         mov %10 := %13
+421|                                      retain %13
+422|                                     release %13
+423|                                     end 
+424|                                  dbgpop
+425|                                     mov %8 := %10
+426|                                  retain %8
+427|                                 release %10
+428|                                 end 
+429|   label 8:
+430|                             end 
+431|                          dbgpop
+432|                             mov %6 := %8
+433|                          retain %6
+434|                         release %8
+435|                         end 
+436|   label 5:
+437|                     end 
+438|                  dbgpop
+439|                     mov %4 := %6
+440|                  retain %4
+441|                 release %6
+442|                 end 
+443|   label 2:
+444|             end 
+445|          dbgpop
+446|             mov %3 := %4
+447|          retain %4
+448|         release %4
+449|         end 
+450|         mov %0 := %3
+451|      retain %0
+452|     release %3
+453|     release %2
+454|     release %1
+455|     end 
+456|  dbgpop
+
+12: System::StrToInt
+<external function 'StrToInt' in module 'rt'>
+
+13: System::IntToStr
+<external function 'IntToStr' in module 'rt'>
+
+14: impl of System::Comparable.Compare for i32
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = i32 (return slot)
+ 3|          // %1 = i32
+ 4|          // %2 = i32
+ 5|       local %3 of i32
+ 6|       begin 
+ 7|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:221:5
+ 8|           local %4 of i32
+ 9|           begin 
+10|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:221:5
+11|               local %5 of ^i32
+12|              addrof %5 := @%1
+13|              dbgpop
+14|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:221:12
+15|               local %6 of ^i32
+16|              addrof %6 := @%2
+17|              dbgpop
+18|                 sub %4 := %5^ - %6^
+19|             end 
+20|          dbgpop
+21|             mov %3 := %4
+22|         end 
+23|         mov %0 := %3
+24|     end 
+25|  dbgpop
+
+15: impl of System::Displayable.ToString for i32
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = rc System::String (return slot)
+ 3|          // %1 = i32
+ 4|       local %2 of rc System::String
+ 5|       begin 
+ 6|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:230:5
+ 7|           local %3 of rc System::String
+ 8|           begin 
+ 9|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:230:14
+10|               local %4 of ^i32
+11|              addrof %4 := @%1
+12|              dbgpop
+13|                call %3 := System::IntToStr(%4^)
+14|             end 
+15|          dbgpop
+16|             mov %2 := %3
+17|          retain %3
+18|         release %3
+19|         end 
+20|         mov %0 := %2
+21|      retain %0
+22|     release %2
+23|     end 
+24|  dbgpop
+
+16: impl of System::Comparable.Compare for rc System::String
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = i32 (return slot)
+ 3|          // %1 = rc System::String
+ 4|          // %2 = rc System::String
+ 5|      retain %1
+ 6|      retain %2
+ 7|       local %3 of i32
+ 8|       begin 
+ 9|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:216:5
+10|           local %4 of i32
+11|           begin 
+12|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:216:16
+13|               local %5 of ^rc System::String
+14|              addrof %5 := @%1
+15|              dbgpop
+16|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:216:22
+17|               local %6 of ^rc System::String
+18|              addrof %6 := @%2
+19|              dbgpop
+20|                call %4 := System::CompareStr(%5^, %6^)
+21|             end 
+22|          dbgpop
+23|             mov %3 := %4
+24|         end 
+25|         mov %0 := %3
+26|     release %2
+27|     release %1
+28|     end 
+29|  dbgpop
+
+17: impl of System::Disposable.Dispose for rc System::String
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|   begin 
+  2|          // %0 = rc System::String
+  3|      retain %0
+  4|       begin 
+  5|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:5
+  6|              // if self.len > 0  then begin
+begin
+FreeMem(self.chars)
+end
+end
+  7|           begin 
+  8|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:8
+  9|               local %1 of bool
+ 10|               begin 
+ 11|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:8
+ 12|                   local %2 of ^i32
+ 13|                   begin 
+ 14|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:8
+ 15|                       local %3 of ^rc System::String
+ 16|                      addrof %3 := @%0
+ 17|                      dbgpop
+ 18|                         fld %2 := @(%3^ as rc System::String).len
+ 19|                     end 
+ 20|                  dbgpop
+ 21|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:19
+ 22|                   local %3 of i32
+ 23|                     mov %3 := 0i32
+ 24|                  dbgpop
+ 25|                      gt %1 := %2^ > %3
+ 26|                 end 
+ 27|              dbgpop
+ 28|               jmpif 1: if %1
+ 29|                 jmp 2:
+ 30|   label 1:
+ 31|               begin 
+ 32|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:26
+ 33|                      // begin
+begin
+FreeMem(self.chars)
+end
+end
+ 34|                   begin 
+ 35|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:26
+ 36|                          // begin
+FreeMem(self.chars)
+end
+ 37|                       begin 
+ 38|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:26
+ 39|                              // FreeMem(self.chars)
+ 40|                           begin 
+ 41|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:34
+ 42|                               local %2 of ^^u8
+ 43|                               begin 
+ 44|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:42:34
+ 45|                                   local %3 of ^rc System::String
+ 46|                                  addrof %3 := @%0
+ 47|                                  dbgpop
+ 48|                                     fld %2 := @(%3^ as rc System::String).chars
+ 49|                                 end 
+ 50|                              dbgpop
+ 51|                                call System::FreeMem(%2^)
+ 52|                             end 
+ 53|                          dbgpop
+ 54|                         end 
+ 55|                      dbgpop
+ 56|                     end 
+ 57|                  dbgpop
+ 58|                 end 
+ 59|                 jmp 2:
+ 60|   label 2:
+ 61|             end 
+ 62|          dbgpop
+ 63|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:44:5
+ 64|              // self.chars := nil
+ 65|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:44:5
+ 66|           local %1 of ^^u8
+ 67|           begin 
+ 68|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:44:5
+ 69|               local %2 of ^rc System::String
+ 70|              addrof %2 := @%0
+ 71|              dbgpop
+ 72|                 fld %1 := @(%2^ as rc System::String).chars
+ 73|             end 
+ 74|          dbgpop
+ 75|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:44:19
+ 76|           local %2 of ^u8
+ 77|             mov %2 := NULL
+ 78|          dbgpop
+ 79|             mov %1^ := %2
+ 80|          dbgpop
+ 81|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:45:5
+ 82|              // self.len := 0
+ 83|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:45:5
+ 84|           local %3 of ^i32
+ 85|           begin 
+ 86|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:45:5
+ 87|               local %4 of ^rc System::String
+ 88|              addrof %4 := @%0
+ 89|              dbgpop
+ 90|                 fld %3 := @(%4^ as rc System::String).len
+ 91|             end 
+ 92|          dbgpop
+ 93|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:45:17
+ 94|           local %4 of i32
+ 95|             mov %4 := 0i32
+ 96|          dbgpop
+ 97|             mov %3^ := %4
+ 98|          dbgpop
+ 99|         end 
+100|     release %0
+101|     end 
+102|  dbgpop
+
+18: System::FreeMem
+<external function 'FreeMem' in module 'rt'>
+
+19: impl of System::Displayable.ToString for rc System::String
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = rc System::String (return slot)
+ 3|          // %1 = rc System::String
+ 4|      retain %1
+ 5|       local %2 of rc System::String
+ 6|       begin 
+ 7|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:240:5
+ 8|           local %3 of ^rc System::String
+ 9|          addrof %3 := @%1
+10|          dbgpop
+11|             mov %2 := %3^
+12|          retain %3^
+13|         end 
+14|         mov %0 := %2
+15|      retain %0
+16|     release %2
+17|     release %1
+18|     end 
+19|  dbgpop
+
+20: impl of System::Displayable.ToString for bool
+ 0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+ 1|   begin 
+ 2|          // %0 = rc System::String (return slot)
+ 3|          // %1 = bool
+ 4|       local %2 of rc System::String
+ 5|       begin 
+ 6|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:235:5
+ 7|           local %3 of rc System::String
+ 8|           begin 
+ 9|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:235:8
+10|               local %4 of ^bool
+11|              addrof %4 := @%1
+12|              dbgpop
+13|               jmpif 1: if %4^
+14|                 jmp 3:
+15|   label 1:
+16|               begin 
+17|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:235:18
+18|                   local %5 of rc System::String
+19|                     mov %5 := 'true'
+20|                  dbgpop
+21|                     mov %3 := %5
+22|                  retain %3
+23|                 end 
+24|                 jmp 2:
+25|   label 3:
+26|               begin 
+27|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:235:30
+28|                   local %5 of rc System::String
+29|                     mov %5 := 'false'
+30|                  dbgpop
+31|                     mov %3 := %5
+32|                  retain %3
+33|                 end 
+34|   label 2:
+35|             end 
+36|          dbgpop
+37|             mov %2 := %3
+38|          retain %3
+39|         release %3
+40|         end 
+41|         mov %0 := %2
+42|      retain %0
+43|     release %2
+44|     end 
+45|  dbgpop
+
+* Init:
+  0| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  1|  dbgpop
+  2| dbgpush C:\Users\tsuna\Documents\uncle_pascal2\units\System.pas:1:1
+  3|   begin 
+  4|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:3:1
+  5|          // let addCommand: Byte := 43
+  6|       local %0 of u8
+  7|       begin 
+  8|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:3:25
+  9|           local %1 of u8
+ 10|             mov %1 := 43u8
+ 11|          dbgpop
+ 12|             mov %0 := %1
+ 13|         end 
+ 14|      dbgpop
+ 15|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:4:1
+ 16|          // let subCommand: Byte := 45
+ 17|       local %1 of u8
+ 18|       begin 
+ 19|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:4:25
+ 20|           local %2 of u8
+ 21|             mov %2 := 45u8
+ 22|          dbgpop
+ 23|             mov %1 := %2
+ 24|         end 
+ 25|      dbgpop
+ 26|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:5:1
+ 27|          // let mulCommand: Byte := 42
+ 28|       local %2 of u8
+ 29|       begin 
+ 30|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:5:25
+ 31|           local %3 of u8
+ 32|             mov %3 := 42u8
+ 33|          dbgpop
+ 34|             mov %2 := %3
+ 35|         end 
+ 36|      dbgpop
+ 37|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:6:1
+ 38|          // let divCommand: Byte := 47
+ 39|       local %3 of u8
+ 40|       begin 
+ 41|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:6:25
+ 42|           local %4 of u8
+ 43|             mov %4 := 47u8
+ 44|          dbgpop
+ 45|             mov %3 := %4
+ 46|         end 
+ 47|      dbgpop
+ 48|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:8:1
+ 49|          // WriteLn('Enter an expression e.g. '2*3', '4/2' or 'exit'.')
+ 50|       begin 
+ 51|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:8:9
+ 52|           local %4 of rc System::String
+ 53|             mov %4 := 'Enter an expression e.g. '2*3', '4/2' or 'exit'.'
+ 54|          dbgpop
+ 55|            call System::WriteLn(%4)
+ 56|         end 
+ 57|      dbgpop
+ 58|     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:10:1
+ 59|          // while true do begin
+let command: System.String := StringTrim(ReadLn());
+if CompareStr(command, 'exit') = 0  then begin
+begin
+break
+end
+end;
+var opIndex: Integer := -1;
+for let i: Integer := 0 to StringLen(command) - 1 do begin
+let c: Byte := StringCharAt(command, i);
+if c = mulCommand or c = divCommand or c = addCommand or c = subCommand  then begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+end;
+if opIndex = -1  then begin
+begin
+begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+end
+end;
+let op: Byte := StringCharAt(command, opIndex);
+let lhs: Integer := StrToInt(StringTrim(SubString(command, 0, opIndex)));
+let rhs: Integer := StrToInt(StringTrim(SubString(command, opIndex + 1, StringLen(command) - opIndex + 1)));
+let result: Integer := if op = addCommand  then lhs + rhs else if op = subCommand  then lhs - rhs else if op = divCommand  then lhs / rhs else if op = mulCommand  then lhs * rhs else begin
+WriteLn(StringConcat('invalid operator found for command ', command));
+-1
+end;
+WriteLn(StringConcat(' => ', IntToStr(result)))
+end
+ 60|       begin 
+ 61|           local %4 of bool
+ 62|   label 1:
+ 63|         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:10:7
+ 64|           local %5 of bool
+ 65|             mov %5 := true
+ 66|          dbgpop
+ 67|             not %4 := ~%5
+ 68|           jmpif 3: if %4
+ 69|           begin 
+ 70|             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:10:15
+ 71|                  // begin
+let command: System.String := StringTrim(ReadLn());
+if CompareStr(command, 'exit') = 0  then begin
+begin
+break
+end
+end;
+var opIndex: Integer := -1;
+for let i: Integer := 0 to StringLen(command) - 1 do begin
+let c: Byte := StringCharAt(command, i);
+if c = mulCommand or c = divCommand or c = addCommand or c = subCommand  then begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+end;
+if opIndex = -1  then begin
+begin
+begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+end
+end;
+let op: Byte := StringCharAt(command, opIndex);
+let lhs: Integer := StrToInt(StringTrim(SubString(command, 0, opIndex)));
+let rhs: Integer := StrToInt(StringTrim(SubString(command, opIndex + 1, StringLen(command) - opIndex + 1)));
+let result: Integer := if op = addCommand  then lhs + rhs else if op = subCommand  then lhs - rhs else if op = divCommand  then lhs / rhs else if op = mulCommand  then lhs * rhs else begin
+WriteLn(StringConcat('invalid operator found for command ', command));
+-1
+end;
+WriteLn(StringConcat(' => ', IntToStr(result)))
+end
+ 72|               begin 
+ 73|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:11:5
+ 74|                      // let command: System.String := StringTrim(ReadLn())
+ 75|                   local %6 of rc System::String
+ 76|                   begin 
+ 77|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:11:20
+ 78|                       local %7 of rc System::String
+ 79|                       begin 
+ 80|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:11:20
+ 81|                           local %8 of rc System::String
+ 82|                           begin 
+ 83|                                call %8 := System::ReadLn()
+ 84|                             end 
+ 85|                          dbgpop
+ 86|                            call %7 := System::StringTrim(%8)
+ 87|                         release %8
+ 88|                         end 
+ 89|                      dbgpop
+ 90|                         mov %6 := %7
+ 91|                      retain %6
+ 92|                     release %7
+ 93|                     end 
+ 94|                  dbgpop
+ 95|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:5
+ 96|                      // if CompareStr(command, 'exit') = 0  then begin
+begin
+break
+end
+end
+ 97|                   begin 
+ 98|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:8
+ 99|                       local %7 of bool
+100|                       begin 
+101|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:8
+102|                           local %8 of i32
+103|                           begin 
+104|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:8
+105|                               local %9 of ^rc System::String
+106|                              addrof %9 := @%6
+107|                              dbgpop
+108|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:27
+109|                               local %10 of rc System::String
+110|                                 mov %10 := 'exit'
+111|                              dbgpop
+112|                                call %8 := System::CompareStr(%9^, %10)
+113|                             end 
+114|                          dbgpop
+115|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:37
+116|                           local %9 of i32
+117|                             mov %9 := 0i32
+118|                          dbgpop
+119|                              eq %7 := %8 = %9
+120|                         end 
+121|                      dbgpop
+122|                       jmpif 4: if %7
+123|                         jmp 5:
+124|   label 4:
+125|                       begin 
+126|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:44
+127|                              // begin
+begin
+break
+end
+end
+128|                           begin 
+129|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:44
+130|                                  // begin
+break
+end
+131|                               begin 
+132|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:13:44
+133|                                      // break
+134|                                 release %6
+135|                                     jmp 3:
+136|                                  dbgpop
+137|                                 end 
+138|                              dbgpop
+139|                             end 
+140|                          dbgpop
+141|                         end 
+142|                         jmp 5:
+143|   label 5:
+144|                     end 
+145|                  dbgpop
+146|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:15:5
+147|                      // var opIndex: Integer := -1
+148|                   local %7 of i32
+149|                   begin 
+150|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:15:20
+151|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:15:21
+152|                       local %8 of i32
+153|                         mov %8 := 1i32
+154|                      dbgpop
+155|                       local %9 of i32
+156|                         sub %9 := 0i32 - %8
+157|                      dbgpop
+158|                         mov %7 := %9
+159|                     end 
+160|                  dbgpop
+161|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:5
+162|                      // for let i: Integer := 0 to StringLen(command) - 1 do begin
+let c: Byte := StringCharAt(command, i);
+if c = mulCommand or c = divCommand or c = addCommand or c = subCommand  then begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+end
+163|                   begin 
+164|                       local %8 of bool
+165|                       local %9 of i32
+166|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:18
+167|                       local %10 of i32
+168|                         mov %10 := 0i32
+169|                      dbgpop
+170|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:23
+171|                       local %11 of i32
+172|                       begin 
+173|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:23
+174|                           local %12 of i32
+175|                           begin 
+176|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:23
+177|                               local %13 of ^rc System::String
+178|                              addrof %13 := @%6
+179|                              dbgpop
+180|                                call %12 := System::StringLen(%13^)
+181|                             end 
+182|                          dbgpop
+183|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:45
+184|                           local %13 of i32
+185|                             mov %13 := 1i32
+186|                          dbgpop
+187|                             sub %11 := %12 - %13
+188|                         end 
+189|                      dbgpop
+190|                         mov %9 := %10
+191|   label 6:
+192|                          gt %8 := %9 > %11
+193|                       jmpif 8: if %8
+194|                       begin 
+195|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:16:50
+196|                              // begin
+let c: Byte := StringCharAt(command, i);
+if c = mulCommand or c = divCommand or c = addCommand or c = subCommand  then begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+end
+197|                           begin 
+198|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:17:9
+199|                                  // let c: Byte := StringCharAt(command, i)
+200|                               local %12 of u8
+201|                               begin 
+202|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:17:18
+203|                                   local %13 of u8
+204|                                   begin 
+205|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:17:18
+206|                                       local %14 of ^rc System::String
+207|                                      addrof %14 := @%6
+208|                                      dbgpop
+209|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:17:39
+210|                                       local %15 of ^i32
+211|                                      addrof %15 := @%9
+212|                                      dbgpop
+213|                                        call %13 := System::StringCharAt(%14^, %15^)
+214|                                     end 
+215|                                  dbgpop
+216|                                     mov %12 := %13
+217|                                 end 
+218|                              dbgpop
+219|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:9
+220|                                  // if c = mulCommand or c = divCommand or c = addCommand or c = subCommand  then begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+221|                               begin 
+222|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:12
+223|                                   local %13 of bool
+224|                                   begin 
+225|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:12
+226|                                       local %14 of bool
+227|                                       begin 
+228|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:12
+229|                                           local %15 of bool
+230|                                           begin 
+231|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:12
+232|                                               local %16 of bool
+233|                                               begin 
+234|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:12
+235|                                                   local %17 of ^u8
+236|                                                  addrof %17 := @%12
+237|                                                  dbgpop
+238|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:16
+239|                                                   local %18 of ^u8
+240|                                                  addrof %18 := @%2
+241|                                                  dbgpop
+242|                                                      eq %16 := %17^ = %18^
+243|                                                 end 
+244|                                              dbgpop
+245|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:30
+246|                                               local %17 of bool
+247|                                               begin 
+248|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:30
+249|                                                   local %18 of ^u8
+250|                                                  addrof %18 := @%12
+251|                                                  dbgpop
+252|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:34
+253|                                                   local %19 of ^u8
+254|                                                  addrof %19 := @%3
+255|                                                  dbgpop
+256|                                                      eq %17 := %18^ = %19^
+257|                                                 end 
+258|                                              dbgpop
+259|                                                  or %15 := %16 or %17
+260|                                             end 
+261|                                          dbgpop
+262|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:48
+263|                                           local %16 of bool
+264|                                           begin 
+265|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:48
+266|                                               local %17 of ^u8
+267|                                              addrof %17 := @%12
+268|                                              dbgpop
+269|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:52
+270|                                               local %18 of ^u8
+271|                                              addrof %18 := @%0
+272|                                              dbgpop
+273|                                                  eq %16 := %17^ = %18^
+274|                                             end 
+275|                                          dbgpop
+276|                                              or %14 := %15 or %16
+277|                                         end 
+278|                                      dbgpop
+279|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:66
+280|                                       local %15 of bool
+281|                                       begin 
+282|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:66
+283|                                           local %16 of ^u8
+284|                                          addrof %16 := @%12
+285|                                          dbgpop
+286|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:70
+287|                                           local %17 of ^u8
+288|                                          addrof %17 := @%1
+289|                                          dbgpop
+290|                                              eq %15 := %16^ = %17^
+291|                                         end 
+292|                                      dbgpop
+293|                                          or %13 := %14 or %15
+294|                                     end 
+295|                                  dbgpop
+296|                                   jmpif 9: if %13
+297|                                     jmp 10:
+298|   label 9:
+299|                                   begin 
+300|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:86
+301|                                          // begin
+begin
+begin
+opIndex := i;
+break
+end
+end
+end
+302|                                       begin 
+303|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:86
+304|                                              // begin
+begin
+opIndex := i;
+break
+end
+end
+305|                                           begin 
+306|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:19:86
+307|                                                  // begin
+opIndex := i;
+break
+end
+308|                                               begin 
+309|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:20:13
+310|                                                      // opIndex := i
+311|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:20:13
+312|                                                   local %14 of ^i32
+313|                                                  addrof %14 := @%7
+314|                                                  dbgpop
+315|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:20:24
+316|                                                   local %15 of ^i32
+317|                                                  addrof %15 := @%9
+318|                                                  dbgpop
+319|                                                     mov %14^ := %15^
+320|                                                  dbgpop
+321|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:21:13
+322|                                                      // break
+323|                                                     jmp 8:
+324|                                                  dbgpop
+325|                                                 end 
+326|                                              dbgpop
+327|                                             end 
+328|                                          dbgpop
+329|                                         end 
+330|                                      dbgpop
+331|                                     end 
+332|                                     jmp 10:
+333|   label 10:
+334|                                 end 
+335|                              dbgpop
+336|                             end 
+337|                          dbgpop
+338|                         end 
+339|                         add %9 := %9 + 1i32
+340|                         jmp 6:
+341|                     end 
+342|   label 8:
+343|                  dbgpop
+344|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:5
+345|                      // if opIndex = -1  then begin
+begin
+begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+end
+end
+346|                   begin 
+347|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:8
+348|                       local %8 of bool
+349|                       begin 
+350|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:8
+351|                           local %9 of ^i32
+352|                          addrof %9 := @%7
+353|                          dbgpop
+354|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:18
+355|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:19
+356|                           local %10 of i32
+357|                             mov %10 := 1i32
+358|                          dbgpop
+359|                           local %11 of i32
+360|                             sub %11 := 0i32 - %10
+361|                          dbgpop
+362|                              eq %8 := %9^ = %11
+363|                         end 
+364|                      dbgpop
+365|                       jmpif 11: if %8
+366|                         jmp 12:
+367|   label 11:
+368|                       begin 
+369|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:26
+370|                              // begin
+begin
+begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+end
+end
+371|                           begin 
+372|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:26
+373|                                  // begin
+begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+end
+374|                               begin 
+375|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:25:26
+376|                                      // begin
+WriteLn(StringConcat(StringConcat('invalid command: '', command), '''));
+continue
+end
+377|                                   begin 
+378|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:9
+379|                                          // WriteLn(StringConcat(StringConcat('invalid command: '', command), '''))
+380|                                       begin 
+381|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:17
+382|                                           local %9 of rc System::String
+383|                                           begin 
+384|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:17
+385|                                               local %10 of rc System::String
+386|                                               begin 
+387|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:17
+388|                                                   local %11 of rc System::String
+389|                                                     mov %11 := 'invalid command: ''
+390|                                                  dbgpop
+391|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:41
+392|                                                   local %12 of ^rc System::String
+393|                                                  addrof %12 := @%6
+394|                                                  dbgpop
+395|                                                    call %10 := System::StringConcat(%11, %12^)
+396|                                                 end 
+397|                                              dbgpop
+398|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:26:51
+399|                                               local %11 of rc System::String
+400|                                                 mov %11 := '''
+401|                                              dbgpop
+402|                                                call %9 := System::StringConcat(%10, %11)
+403|                                             release %10
+404|                                             end 
+405|                                          dbgpop
+406|                                            call System::WriteLn(%9)
+407|                                         release %9
+408|                                         end 
+409|                                      dbgpop
+410|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:27:9
+411|                                          // continue
+412|                                     release %6
+413|                                         jmp 2:
+414|                                      dbgpop
+415|                                     end 
+416|                                  dbgpop
+417|                                 end 
+418|                              dbgpop
+419|                             end 
+420|                          dbgpop
+421|                         end 
+422|                         jmp 12:
+423|   label 12:
+424|                     end 
+425|                  dbgpop
+426|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:30:5
+427|                      // let op: Byte := StringCharAt(command, opIndex)
+428|                   local %8 of u8
+429|                   begin 
+430|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:30:15
+431|                       local %9 of u8
+432|                       begin 
+433|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:30:15
+434|                           local %10 of ^rc System::String
+435|                          addrof %10 := @%6
+436|                          dbgpop
+437|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:30:36
+438|                           local %11 of ^i32
+439|                          addrof %11 := @%7
+440|                          dbgpop
+441|                            call %9 := System::StringCharAt(%10^, %11^)
+442|                         end 
+443|                      dbgpop
+444|                         mov %8 := %9
+445|                     end 
+446|                  dbgpop
+447|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:5
+448|                      // let lhs: Integer := StrToInt(StringTrim(SubString(command, 0, opIndex)))
+449|                   local %9 of i32
+450|                   begin 
+451|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:16
+452|                       local %10 of i32
+453|                       begin 
+454|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:16
+455|                           local %11 of rc System::String
+456|                           begin 
+457|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:16
+458|                               local %12 of rc System::String
+459|                               begin 
+460|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:16
+461|                                   local %13 of ^rc System::String
+462|                                  addrof %13 := @%6
+463|                                  dbgpop
+464|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:34
+465|                                   local %14 of i32
+466|                                     mov %14 := 0i32
+467|                                  dbgpop
+468|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:31:37
+469|                                   local %15 of ^i32
+470|                                  addrof %15 := @%7
+471|                                  dbgpop
+472|                                    call %12 := System::SubString(%13^, %14, %15^)
+473|                                 end 
+474|                              dbgpop
+475|                                call %11 := System::StringTrim(%12)
+476|                             release %12
+477|                             end 
+478|                          dbgpop
+479|                            call %10 := System::StrToInt(%11)
+480|                         release %11
+481|                         end 
+482|                      dbgpop
+483|                         mov %9 := %10
+484|                     end 
+485|                  dbgpop
+486|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:5
+487|                      // let rhs: Integer := StrToInt(StringTrim(SubString(command, opIndex + 1, StringLen(command) - opIndex + 1)))
+488|                   local %10 of i32
+489|                   begin 
+490|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:16
+491|                       local %11 of i32
+492|                       begin 
+493|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:16
+494|                           local %12 of rc System::String
+495|                           begin 
+496|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:16
+497|                               local %13 of rc System::String
+498|                               begin 
+499|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:16
+500|                                   local %14 of ^rc System::String
+501|                                  addrof %14 := @%6
+502|                                  dbgpop
+503|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:34
+504|                                   local %15 of i32
+505|                                   begin 
+506|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:34
+507|                                       local %16 of ^i32
+508|                                      addrof %16 := @%7
+509|                                      dbgpop
+510|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:44
+511|                                       local %17 of i32
+512|                                         mov %17 := 1i32
+513|                                      dbgpop
+514|                                         add %15 := %16^ + %17
+515|                                     end 
+516|                                  dbgpop
+517|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:47
+518|                                   local %16 of i32
+519|                                   begin 
+520|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:47
+521|                                       local %17 of i32
+522|                                       begin 
+523|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:47
+524|                                           local %18 of ^rc System::String
+525|                                          addrof %18 := @%6
+526|                                          dbgpop
+527|                                            call %17 := System::StringLen(%18^)
+528|                                         end 
+529|                                      dbgpop
+530|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:70
+531|                                       local %18 of i32
+532|                                       begin 
+533|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:70
+534|                                           local %19 of ^i32
+535|                                          addrof %19 := @%7
+536|                                          dbgpop
+537|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:34:80
+538|                                           local %20 of i32
+539|                                             mov %20 := 1i32
+540|                                          dbgpop
+541|                                             add %18 := %19^ + %20
+542|                                         end 
+543|                                      dbgpop
+544|                                         sub %16 := %17 - %18
+545|                                     end 
+546|                                  dbgpop
+547|                                    call %13 := System::SubString(%14^, %15, %16)
+548|                                 end 
+549|                              dbgpop
+550|                                call %12 := System::StringTrim(%13)
+551|                             release %13
+552|                             end 
+553|                          dbgpop
+554|                            call %11 := System::StrToInt(%12)
+555|                         release %12
+556|                         end 
+557|                      dbgpop
+558|                         mov %10 := %11
+559|                     end 
+560|                  dbgpop
+561|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:38:5
+562|                      // let result: Integer := if op = addCommand  then lhs + rhs else if op = subCommand  then lhs - rhs else if op = divCommand  then lhs / rhs else if op = mulCommand  then lhs * rhs else begin
+WriteLn(StringConcat('invalid operator found for command ', command));
+-1
+end
+563|                   local %11 of i32
+564|                   begin 
+565|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:9
+566|                       local %12 of i32
+567|                       begin 
+568|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:12
+569|                           local %13 of bool
+570|                           begin 
+571|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:12
+572|                               local %14 of ^u8
+573|                              addrof %14 := @%8
+574|                              dbgpop
+575|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:17
+576|                               local %15 of ^u8
+577|                              addrof %15 := @%0
+578|                              dbgpop
+579|                                  eq %13 := %14^ = %15^
+580|                             end 
+581|                          dbgpop
+582|                           jmpif 13: if %13
+583|                             jmp 15:
+584|   label 13:
+585|                           begin 
+586|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:33
+587|                               local %14 of i32
+588|                               begin 
+589|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:33
+590|                                   local %15 of ^i32
+591|                                  addrof %15 := @%9
+592|                                  dbgpop
+593|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:39:39
+594|                                   local %16 of ^i32
+595|                                  addrof %16 := @%10
+596|                                  dbgpop
+597|                                     add %14 := %15^ + %16^
+598|                                 end 
+599|                              dbgpop
+600|                                 mov %12 := %14
+601|                             end 
+602|                             jmp 14:
+603|   label 15:
+604|                           begin 
+605|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:14
+606|                               local %14 of i32
+607|                               begin 
+608|                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:17
+609|                                   local %15 of bool
+610|                                   begin 
+611|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:17
+612|                                       local %16 of ^u8
+613|                                      addrof %16 := @%8
+614|                                      dbgpop
+615|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:22
+616|                                       local %17 of ^u8
+617|                                      addrof %17 := @%1
+618|                                      dbgpop
+619|                                          eq %15 := %16^ = %17^
+620|                                     end 
+621|                                  dbgpop
+622|                                   jmpif 16: if %15
+623|                                     jmp 18:
+624|   label 16:
+625|                                   begin 
+626|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:38
+627|                                       local %16 of i32
+628|                                       begin 
+629|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:38
+630|                                           local %17 of ^i32
+631|                                          addrof %17 := @%9
+632|                                          dbgpop
+633|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:40:44
+634|                                           local %18 of ^i32
+635|                                          addrof %18 := @%10
+636|                                          dbgpop
+637|                                             sub %16 := %17^ - %18^
+638|                                         end 
+639|                                      dbgpop
+640|                                         mov %14 := %16
+641|                                     end 
+642|                                     jmp 17:
+643|   label 18:
+644|                                   begin 
+645|                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:14
+646|                                       local %16 of i32
+647|                                       begin 
+648|                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:17
+649|                                           local %17 of bool
+650|                                           begin 
+651|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:17
+652|                                               local %18 of ^u8
+653|                                              addrof %18 := @%8
+654|                                              dbgpop
+655|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:22
+656|                                               local %19 of ^u8
+657|                                              addrof %19 := @%3
+658|                                              dbgpop
+659|                                                  eq %17 := %18^ = %19^
+660|                                             end 
+661|                                          dbgpop
+662|                                           jmpif 19: if %17
+663|                                             jmp 21:
+664|   label 19:
+665|                                           begin 
+666|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:38
+667|                                               local %18 of i32
+668|                                               begin 
+669|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:38
+670|                                                   local %19 of ^i32
+671|                                                  addrof %19 := @%9
+672|                                                  dbgpop
+673|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:41:44
+674|                                                   local %20 of ^i32
+675|                                                  addrof %20 := @%10
+676|                                                  dbgpop
+677|                                                    idiv %18 := %19^ div %20^
+678|                                                 end 
+679|                                              dbgpop
+680|                                                 mov %16 := %18
+681|                                             end 
+682|                                             jmp 20:
+683|   label 21:
+684|                                           begin 
+685|                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:14
+686|                                               local %18 of i32
+687|                                               begin 
+688|                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:17
+689|                                                   local %19 of bool
+690|                                                   begin 
+691|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:17
+692|                                                       local %20 of ^u8
+693|                                                      addrof %20 := @%8
+694|                                                      dbgpop
+695|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:22
+696|                                                       local %21 of ^u8
+697|                                                      addrof %21 := @%2
+698|                                                      dbgpop
+699|                                                          eq %19 := %20^ = %21^
+700|                                                     end 
+701|                                                  dbgpop
+702|                                                   jmpif 22: if %19
+703|                                                     jmp 24:
+704|   label 22:
+705|                                                   begin 
+706|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:38
+707|                                                       local %20 of i32
+708|                                                       begin 
+709|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:38
+710|                                                           local %21 of ^i32
+711|                                                          addrof %21 := @%9
+712|                                                          dbgpop
+713|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:42:44
+714|                                                           local %22 of ^i32
+715|                                                          addrof %22 := @%10
+716|                                                          dbgpop
+717|                                                             mul %20 := %21^ * %22^
+718|                                                         end 
+719|                                                      dbgpop
+720|                                                         mov %18 := %20
+721|                                                     end 
+722|                                                     jmp 23:
+723|   label 24:
+724|                                                   begin 
+725|                                                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:43:14
+726|                                                       local %20 of i32
+727|                                                       begin 
+728|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:44:13
+729|                                                              // WriteLn(StringConcat('invalid operator found for command ', command))
+730|                                                           begin 
+731|                                                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:44:21
+732|                                                               local %21 of rc System::String
+733|                                                               begin 
+734|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:44:21
+735|                                                                   local %22 of rc System::String
+736|                                                                     mov %22 := 'invalid operator found for command '
+737|                                                                  dbgpop
+738|                                                                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:44:61
+739|                                                                   local %23 of ^rc System::String
+740|                                                                  addrof %23 := @%6
+741|                                                                  dbgpop
+742|                                                                    call %21 := System::StringConcat(%22, %23^)
+743|                                                                 end 
+744|                                                              dbgpop
+745|                                                                call System::WriteLn(%21)
+746|                                                             release %21
+747|                                                             end 
+748|                                                          dbgpop
+749|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:45:13
+750|                                                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:45:14
+751|                                                           local %21 of i32
+752|                                                             mov %21 := 1i32
+753|                                                          dbgpop
+754|                                                           local %22 of i32
+755|                                                             sub %22 := 0i32 - %21
+756|                                                          dbgpop
+757|                                                             mov %20 := %22
+758|                                                         end 
+759|                                                      dbgpop
+760|                                                         mov %18 := %20
+761|                                                     end 
+762|   label 23:
+763|                                                 end 
+764|                                              dbgpop
+765|                                                 mov %16 := %18
+766|                                             end 
+767|   label 20:
+768|                                         end 
+769|                                      dbgpop
+770|                                         mov %14 := %16
+771|                                     end 
+772|   label 17:
+773|                                 end 
+774|                              dbgpop
+775|                                 mov %12 := %14
+776|                             end 
+777|   label 14:
+778|                         end 
+779|                      dbgpop
+780|                         mov %11 := %12
+781|                     end 
+782|                  dbgpop
+783|                 dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:48:5
+784|                      // WriteLn(StringConcat(' => ', IntToStr(result)))
+785|                   begin 
+786|                     dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:48:13
+787|                       local %12 of rc System::String
+788|                       begin 
+789|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:48:13
+790|                           local %13 of rc System::String
+791|                             mov %13 := ' => '
+792|                          dbgpop
+793|                         dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:48:22
+794|                           local %14 of rc System::String
+795|                           begin 
+796|                             dbgpush C:\Users\tsuna\Documents\uncle_pascal2\demos\Calculator.pas:48:22
+797|                               local %15 of ^i32
+798|                              addrof %15 := @%11
+799|                              dbgpop
+800|                                call %14 := System::IntToStr(%15^)
+801|                             end 
+802|                          dbgpop
+803|                            call %12 := System::StringConcat(%13, %14)
+804|                         release %14
+805|                         end 
+806|                      dbgpop
+807|                        call System::WriteLn(%12)
+808|                     release %12
+809|                     end 
+810|                  dbgpop
+811|                 release %6
+812|                 end 
+813|              dbgpop
+814|             end 
+815|   label 2:
+816|             jmp 1:
+817|         end 
+818|   label 3:
+819|      dbgpop
+820|     end 
+821|  dbgpop
+

@@ -272,7 +272,7 @@ pub fn ns_member_ref_to_annotation(
                 span,
                 ns: IdentPath::from_parts(parent_path.keys().cloned()),
                 name: key.clone(),
-                func_ty: Type::Function(sig.clone()),
+                sig: sig.clone(),
                 // the named version of the function never has type args, the caller will have
                 // to specialize the expression to add some
                 type_args: None,
@@ -432,7 +432,9 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
         ast::Call::Function(func_call) => {
             expect_expr_initialized(&func_call.target, ctx)?;
 
-            let params = match func_call.target.annotation().ty() {
+            let target_ty = func_call.target.annotation().ty();
+
+            let params = match target_ty.as_ref() {
                 Type::Function(sig) => &sig.params,
                 _ => panic!(
                     "function call with wrong target type shouldn't pass type checking (was: {:#?})",

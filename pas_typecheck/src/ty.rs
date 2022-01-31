@@ -661,7 +661,7 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
 
                     let dim = dim_val.as_usize().ok_or_else(|| TypecheckError::TypeMismatch {
                         span: dim_expr.span().clone(),
-                        actual: dim_expr.annotation().ty().clone(),
+                        actual: dim_expr.annotation().ty().into_owned(),
                         expected: Type::Primitive(Primitive::Int32),
                     })?;
 

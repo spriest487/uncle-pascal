@@ -20,7 +20,7 @@ pub fn typecheck_local_binding(
 
             Some(val) => {
                 let val = typecheck_expr(val, &Type::Nothing, ctx)?;
-                let val_ty = val.annotation().ty().clone();
+                let val_ty = val.annotation().ty().into_owned();
                 (Some(val), val_ty)
             }
         },
@@ -38,7 +38,7 @@ pub fn typecheck_local_binding(
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
 
-                    explicit_ty.implicit_conversion_from(val.annotation().ty(), val.span(), ctx)
+                    explicit_ty.implicit_conversion_from(&val.annotation().ty(), val.span(), ctx)
                         .map_err(|err| match err {
                             TypecheckError::TypeMismatch { expected, actual, span, .. } => {
                                 TypecheckError::InvalidBinOp {
@@ -129,10 +129,10 @@ pub fn typecheck_assignment(
         }
     }
 
-    let rhs = typecheck_expr(&assignment.rhs, lhs.annotation().ty(), ctx)?;
+    let rhs = typecheck_expr(&assignment.rhs, &lhs.annotation().ty(), ctx)?;
     let rhs_ty = rhs.annotation().ty();
 
-    lhs.annotation().ty().implicit_conversion_from(rhs_ty, assignment.span(), ctx).map_err(|err| {
+    lhs.annotation().ty().implicit_conversion_from(&rhs_ty, assignment.span(), ctx).map_err(|err| {
         match err {
             TypecheckError::TypeMismatch { expected, actual, span } => TypecheckError::InvalidBinOp {
                 lhs: expected,
@@ -256,7 +256,7 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
 
         ast::Exit::WithValue(value, span) => {
             let value = typecheck_expr(value, &expect_ty, ctx)?;
-            let ret_ty = value.annotation().ty().clone();
+            let ret_ty = value.annotation().ty().into_owned();
 
             let exit = ast::Exit::WithValue(value, TypeAnnotation::Untyped(span.clone()));
 

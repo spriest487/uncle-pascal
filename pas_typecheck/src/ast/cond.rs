@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use crate::ast::prelude::*;
 
 pub type IfCond = ast::IfCond<TypeAnnotation>;
@@ -24,7 +25,7 @@ pub fn typecheck_if_cond(
     let is_pattern = match &if_cond.is_pattern {
         Some(pattern) => Some(TypePattern::typecheck(
             pattern,
-            cond.annotation().ty(),
+            &cond.annotation().ty(),
             ctx,
         )?),
         None => None,
@@ -50,7 +51,7 @@ pub fn typecheck_if_cond(
     let else_branch = match &if_cond.else_branch {
         Some(else_expr) => {
             let mut else_ctx = ctx.clone();
-            let else_expr = typecheck_expr(else_expr, then_branch.annotation().ty(), &mut else_ctx)?;
+            let else_expr = typecheck_expr(else_expr, &then_branch.annotation().ty(), &mut else_ctx)?;
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_expr)
@@ -64,18 +65,19 @@ pub fn typecheck_if_cond(
     let span = if_cond.span().clone();
 
     let annotation = match (then_branch.annotation().ty(), else_branch.as_ref()) {
-        (Type::Nothing, _) | (_, None) => TypeAnnotation::Untyped(span),
+        | (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _)
+        | (_, None) => TypeAnnotation::Untyped(span),
 
-        (then_ty, Some(else_branch)) => {
+        | (then_ty, Some(else_branch)) => {
             if *else_branch.annotation().ty() != *then_ty {
                 return Err(TypecheckError::TypeMismatch {
-                    expected: then_branch.annotation().ty().clone(),
-                    actual: else_branch.annotation().ty().clone(),
+                    expected: then_branch.annotation().ty().into_owned(),
+                    actual: else_branch.annotation().ty().into_owned(),
                     span: else_branch.annotation().span().clone(),
                 });
             } else {
                 TypedValueAnnotation {
-                    ty: then_ty.clone(),
+                    ty: then_ty.into_owned(),
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,

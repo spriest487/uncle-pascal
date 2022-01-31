@@ -203,7 +203,7 @@ impl NameContainer {
     pub fn for_annotated(a: &TypeAnnotation) -> Self {
         match a {
             TypeAnnotation::Namespace(ns, ..) => NameContainer::Namespace(ns.clone()),
-            _ => NameContainer::Type(a.ty().clone()),
+            _ => NameContainer::Type(a.ty().into_owned()),
         }
     }
 }

@@ -20,7 +20,7 @@ pub fn typecheck_for_loop(
     if *to_expr.annotation().ty() != init_binding.val_ty {
         return Err(TypecheckError::TypeMismatch {
             expected: init_binding.val_ty,
-            actual: to_expr.annotation().ty().clone(),
+            actual: to_expr.annotation().ty().into_owned(),
             span: annotation.span().clone(),
         });
     }

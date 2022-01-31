@@ -184,7 +184,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     let rhs = translate_expr(&assignment.rhs, builder);
 
     // the new value is being stored in a new location, retain it
-    let rhs_ty = builder.translate_type(assignment.rhs.annotation().ty());
+    let rhs_ty = builder.translate_type(&assignment.rhs.annotation().ty());
     builder.retain(rhs.clone(), &rhs_ty);
 
     // the old value is being replaced, release it. local variables can be uninitialized,
@@ -195,7 +195,7 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     // handle that in the backend's release mechanism.
     //
     // the alternative would be to store an initialization flag alongside each rc variable
-    let lhs_ty = builder.translate_type(assignment.lhs.annotation().ty());
+    let lhs_ty = builder.translate_type(&assignment.lhs.annotation().ty());
     builder.release(lhs.clone(), &lhs_ty);
 
     builder.append(Instruction::Move {

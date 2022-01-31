@@ -73,9 +73,10 @@ pub fn typecheck_block(
     };
 
     if *expect_ty != Type::Nothing {
-        let output_ty = output.as_ref().map(|o| o.annotation().ty())
-            .cloned()
-            .unwrap_or(Type::Nothing);
+        let output_ty = match &output {
+            Some(expr) => expr.annotation().ty().into_owned(),
+            None => Type::Nothing,
+        };
 
         expect_ty.implicit_conversion_from(&output_ty, &block.end, ctx)?;
     }
@@ -86,7 +87,7 @@ pub fn typecheck_block(
             if *out_expr.annotation().ty() == Type::Nothing {
                 TypeAnnotation::Untyped(span)
             } else {
-                let out_ty = out_expr.annotation().ty().clone();
+                let out_ty = out_expr.annotation().ty().into_owned();
                 TypedValueAnnotation {
                     ty: out_ty,
                     value_kind: ValueKind::Temporary,
@@ -110,7 +111,7 @@ pub fn typecheck_block(
     };
 
     assert_eq!(*block.annotation.ty(), {
-        let out_ty = block.output.as_ref().map(|o| o.annotation().ty().clone());
+        let out_ty = block.output.as_ref().map(|o| o.annotation().ty().into_owned());
         out_ty.unwrap_or(Type::Nothing)
     });
 

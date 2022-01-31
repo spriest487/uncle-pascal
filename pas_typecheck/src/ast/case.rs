@@ -11,8 +11,8 @@ pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, ctx: &mut Context) -
 
     let mut branches = Vec::new();
     for branch in &case.branches {
-        let branch_value = typecheck_expr(&branch.value, cond_ty, ctx)?;
-        branch_value.annotation().expect_value(cond_ty)?;
+        let branch_value = typecheck_expr(&branch.value, &cond_ty, ctx)?;
+        branch_value.annotation().expect_value(&cond_ty)?;
 
         let branch_stmt = typecheck_stmt(&branch.item, &Type::Nothing, ctx)?;
 
@@ -70,7 +70,7 @@ pub fn case_stmt_into_expr(case: CaseStatement) -> TypecheckResult<CaseExpr> {
         if let Some(branch_ty) = &branch_expr_ty {
             branch_expr.annotation().expect_value(branch_ty)?;
         } else {
-            branch_expr_ty = Some(branch_expr.annotation().ty().clone());
+            branch_expr_ty = Some(branch_expr.annotation().ty().into_owned());
         }
 
         branches.push(CaseBranch {
@@ -125,15 +125,15 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
     let mut branch_expr_ty = None;
 
     for branch in &case.branches {
-        let branch_value = typecheck_expr(&branch.value, cond_ty, ctx)?;
-        branch_value.annotation().expect_value(cond_ty)?;
+        let branch_value = typecheck_expr(&branch.value, &cond_ty, ctx)?;
+        branch_value.annotation().expect_value(&cond_ty)?;
 
         let branch_expr = typecheck_expr(&branch.item, &expect_ty, ctx)?;
 
         if let Some(branch_expr_ty) = &branch_expr_ty {
             branch_expr.annotation().expect_value(branch_expr_ty)?;
         } else {
-            branch_expr_ty = Some(branch_expr.annotation().ty().clone())
+            branch_expr_ty = Some(branch_expr.annotation().ty().into_owned())
         }
 
         branches.push(ast::CaseBranch {
