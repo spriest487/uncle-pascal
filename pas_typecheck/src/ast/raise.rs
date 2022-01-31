@@ -13,12 +13,12 @@ pub fn typecheck_raise(
 
     // the "raise" expression just aborts, so it has whatever type is expected of it, so we
     // can use it in any expression position
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty: expect_ty.clone(),
         span: raise.span().clone(),
         decl: None,
         value_kind: ValueKind::Temporary,
-    };
+    }.into();
 
     Ok(Raise {
         value: Box::new(value),

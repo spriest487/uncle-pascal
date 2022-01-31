@@ -5,7 +5,7 @@ use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation};
+use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation, TypedValueAnnotation};
 
 #[cfg(test)]
 mod test;
@@ -129,12 +129,15 @@ pub fn typecheck_call(
     let target = typecheck_expr(&func_call.target, &Type::Nothing, ctx)?;
 
     let expr = match target.annotation() {
-        TypeAnnotation::TypedValue {
-            ty: Type::Function(sig),
-            ..
-        } => typecheck_func_call(&func_call, sig.as_ref(), ctx)
-            .map(Box::new)
-            .map(Invocation::Call)?,
+        TypeAnnotation::TypedValue(val) => match &val.ty {
+            Type::Function(sig) => typecheck_func_call(&func_call, sig.as_ref(), ctx)
+                .map(Box::new)
+                .map(Invocation::Call)?,
+
+            _ => {
+                return Err(TypecheckError::NotCallable(Box::new(target)));
+            }
+        },
 
         TypeAnnotation::Function(func) => {
             match &func.func_ty {
@@ -151,18 +154,20 @@ pub fn typecheck_call(
             }
         },
 
-        TypeAnnotation::UFCSCall {
-            function,
-            func_ty: Type::Function(sig),
-            self_arg,
-            ..
-        } => {
+        TypeAnnotation::UFCSCall(ufcs_call) => {
+            let sig = match &ufcs_call.func_ty {
+                Type::Function(sig) => sig,
+                _ => {
+                    return Err(TypecheckError::NotCallable(Box::new(target)));
+                }
+            };
+
             let arg_brackets = (&func_call.args_brackets.0, &func_call.args_brackets.1);
 
             let typecheck_call = typecheck_ufcs_call(
-                function,
+                &ufcs_call.function,
                 sig,
-                *self_arg.clone(),
+                (*ufcs_call.self_arg).clone(),
                 &func_call.args,
                 func_call.annotation.span(),
                 arg_brackets,
@@ -269,12 +274,12 @@ fn typecheck_func_overload(
 
             let sig = Rc::new(sig.with_self(&self_type));
 
-            let return_annotation = TypeAnnotation::TypedValue {
+            let return_annotation = TypedValueAnnotation {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
                 decl: Some(decl.span().clone()),
                 value_kind: ValueKind::Temporary,
-            };
+            }.into();
 
             let method_call = MethodCall {
                 annotation: return_annotation,
@@ -291,12 +296,12 @@ fn typecheck_func_overload(
         }
 
         OverloadCandidate::Function { decl_name, sig } => {
-            let return_annotation = TypeAnnotation::TypedValue {
+            let return_annotation = TypedValueAnnotation {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
                 decl: Some(decl_name.span().clone()),
                 value_kind: ValueKind::Temporary,
-            };
+            }.into();
 
             let func_call = FunctionCall {
                 annotation: return_annotation,
@@ -369,12 +374,12 @@ fn typecheck_iface_method_call(
         build_args_for_params(&sig.params, &func_call.args, None, func_call.span(), ctx)?;
 
     Ok(ast::Call::Method(MethodCall {
-        annotation: TypeAnnotation::TypedValue {
+        annotation: TypedValueAnnotation {
             ty: sig.return_ty.clone(),
             span: func_call.span().clone(),
             value_kind: ValueKind::Temporary,
             decl: None,
-        },
+        }.into(),
         args_brackets: func_call.args_brackets.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type,
@@ -419,12 +424,12 @@ fn typecheck_ufcs_call(
     // todo: this should construct a fully qualified path expr instead
     let target = ast::Expression::Ident(func_name.last().clone(), func_annotation);
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty: specialized_call_args.sig.return_ty.clone(),
         span: span.clone(),
         decl: None,
         value_kind: ValueKind::Temporary,
-    };
+    }.into();
 
     Ok(ast::Call::Function(FunctionCall {
         args: specialized_call_args.actual_args,
@@ -741,12 +746,12 @@ fn typecheck_func_call(
 
     let annotation = match return_ty {
         Type::Nothing => TypeAnnotation::Untyped(span),
-        return_ty => TypeAnnotation::TypedValue {
+        return_ty => TypedValueAnnotation {
             ty: return_ty,
             value_kind: ValueKind::Temporary,
             span,
             decl: None,
-        },
+        }.into(),
     };
 
     Ok(ast::Call::Function(FunctionCall {
@@ -852,12 +857,12 @@ fn typecheck_variant_ctor_call(
 
     let case = variant_def.cases[case_index].ident.clone();
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         decl: None,
         span,
-        ty: Type::Variant(Box::new(variant.clone())),
+        ty: Type::Variant(variant.clone().into()),
         value_kind: ValueKind::Temporary,
-    };
+    }.into();
 
     Ok(ast::Call::VariantCtor(ast::VariantCtorCall {
         variant: variant_def.name.clone(),

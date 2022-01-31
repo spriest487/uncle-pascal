@@ -87,12 +87,12 @@ pub fn typecheck_block(
                 TypeAnnotation::Untyped(span)
             } else {
                 let out_ty = out_expr.annotation().ty().clone();
-                TypeAnnotation::TypedValue {
+                TypedValueAnnotation {
                     ty: out_ty,
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }
+                }.into()
             }
         }
         None => TypeAnnotation::Untyped(span),

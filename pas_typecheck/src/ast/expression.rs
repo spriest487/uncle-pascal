@@ -36,12 +36,12 @@ pub fn typecheck_expr(
     match expr_node {
         ast::Expression::Literal(ast::Literal::String(s), _) => {
             let binding = ValueKind::Immutable;
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty: string_type(ctx)?,
                 value_kind: binding,
                 span: span.clone(),
                 decl: None,
-            };
+            }.into();
 
             Ok(ast::Expression::Literal(
                 ast::Literal::String(s.clone()),
@@ -50,12 +50,12 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Literal(ast::Literal::Boolean(b), _) => {
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Immutable,
                 span,
                 decl: None,
-            };
+            }.into();
 
             Ok(ast::Expression::Literal(
                 ast::Literal::Boolean(*b),
@@ -74,12 +74,12 @@ pub fn typecheck_expr(
                 unimplemented!("real literal outside range of f32")
             };
 
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty,
                 value_kind: ValueKind::Immutable,
                 span,
                 decl: None,
-            };
+            }.into();
 
             Ok(ast::Expression::Literal(
                 ast::Literal::Real(x.clone()),
@@ -93,12 +93,12 @@ pub fn typecheck_expr(
                 _ => Type::Nil,
             };
 
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty,
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            };
+            }.into();
             Ok(ast::Expression::Literal(ast::Literal::Nil, annotation))
         }
 
@@ -107,12 +107,12 @@ pub fn typecheck_expr(
 
             Ok(Expression::Literal(
                 Literal::SizeOf(Box::new(ty)),
-                TypeAnnotation::TypedValue {
+                TypedValueAnnotation {
                     ty: Type::Primitive(Primitive::Int32),
                     span: span.clone(),
                     decl: None,
                     value_kind: ValueKind::Temporary,
-                },
+                }.into(),
             ))
         }
 
@@ -122,12 +122,12 @@ pub fn typecheck_expr(
                 ..
             }) => Ok(ast::Expression::Literal(
                 val.clone(),
-                TypeAnnotation::TypedValue {
+                TypedValueAnnotation {
                     ty: ty.clone(),
                     decl: Some(span.clone()),
                     span: expr_node.span().clone(),
                     value_kind: ValueKind::Immutable,
-                },
+                }.into(),
             )),
 
             Some(member) => {
@@ -210,12 +210,12 @@ fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> Typec
         },
     };
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty,
         value_kind: ValueKind::Immutable,
         span,
         decl: None,
-    };
+    }.into();
 
     Ok(ast::Expression::Literal(
         ast::Literal::Integer(*i),
@@ -252,12 +252,12 @@ pub fn ns_member_ref_to_annotation(
         MemberRef::Value {
             value: Decl::BoundValue(binding),
             ..
-        } => TypeAnnotation::TypedValue {
+        } => TypedValueAnnotation {
             span,
             ty: binding.ty.clone(),
             value_kind: binding.kind,
             decl: binding.def.clone(),
-        },
+        }.into(),
 
         MemberRef::Value {
             value: Decl::Function { sig, .. },
@@ -282,12 +282,12 @@ pub fn ns_member_ref_to_annotation(
         MemberRef::Value {
             value: Decl::Const { ty, .. },
             ..
-        } => TypeAnnotation::TypedValue {
+        } => TypedValueAnnotation {
             ty: ty.clone(),
             decl: Some(span.clone()),
             span,
             value_kind: ValueKind::Immutable,
-        },
+        }.into(),
 
         MemberRef::Value {
             value: Decl::Type { ty, .. },

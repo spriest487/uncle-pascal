@@ -90,12 +90,12 @@ pub fn case_stmt_into_expr(case: CaseStatement) -> TypecheckResult<CaseExpr> {
     let else_expr = else_stmt.try_into_expr().map_err(invalid_item_err)?;
     else_expr.annotation().expect_value(&result_ty)?;
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         span,
         decl: None,
         value_kind: ValueKind::Temporary,
         ty: result_ty,
-    };
+    }.into();
 
     Ok(CaseExpr {
         cond_expr: case.cond_expr,
@@ -161,12 +161,12 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
         }
     };
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         span,
         decl: None,
         value_kind: ValueKind::Temporary,
         ty: result_ty,
-    };
+    }.into();
 
     Ok(CaseExpr {
         cond_expr: Box::new(cond_expr),

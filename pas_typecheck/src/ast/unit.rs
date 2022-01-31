@@ -227,12 +227,12 @@ fn typecheck_const_decl(
 
     let const_val = Expression::Literal(
         const_val_literal.clone(),
-        TypeAnnotation::Const {
+        ConstAnnotation {
             value: const_val_literal.clone(),
             span: span.clone(),
             decl: Some(span.clone()),
             ty: ty.clone(),
-        },
+        }.into(),
     );
 
     Ok(ast::ConstDecl {

@@ -74,12 +74,12 @@ pub fn typecheck_if_cond(
                     span: else_branch.annotation().span().clone(),
                 });
             } else {
-                TypeAnnotation::TypedValue {
+                TypedValueAnnotation {
                     ty: then_ty.clone(),
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }
+                }.into()
             }
         }
     };

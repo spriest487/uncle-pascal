@@ -113,12 +113,10 @@ pub fn typecheck_assignment(
 
     // lhs must evaluate to a mutable typed value
     match lhs.annotation() {
-        TypeAnnotation::TypedValue {
-            value_kind, decl, ..
-        } => {
-            if !value_kind.mutable() {
+        TypeAnnotation::TypedValue(val) => {
+            if !val.value_kind.mutable() {
                 return Err(TypecheckError::NotMutable {
-                    decl: decl.clone(),
+                    decl: val.decl.clone(),
                     expr: Box::new(lhs),
                 });
             }

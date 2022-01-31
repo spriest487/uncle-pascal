@@ -1213,16 +1213,12 @@ fn translate_dyn_array_ctor(
 
 fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Builder) -> Ref {
     match annotation {
-        TypeAnnotation::TypedValue {
-            value_kind: ValueKind::Temporary,
-            ty,
-            ..
-        } => {
+        TypeAnnotation::TypedValue(val) if val.value_kind == ValueKind::Temporary => {
             // this is illegal because temporary values shouldn't have names
             panic!(
                 "translated expression `{}` of type `{}` is of temporary value kind",
                 ident,
-                ty,
+                val.ty,
             )
         },
 
@@ -1237,17 +1233,9 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
         // ident lvalues are evaluated as pointers to the original values. they don't need
         // to be refcounted separately, because if they have a name, they must exist
         // in a scope at least as wide as the current one
-        TypeAnnotation::TypedValue {
-            value_kind: ValueKind::Immutable,
-            ..
-        }
-        | TypeAnnotation::TypedValue {
-            value_kind: ValueKind::Mutable,
-            ..
-        }
-        | TypeAnnotation::TypedValue {
-            value_kind: ValueKind::Uninitialized,
-            ..
+        TypeAnnotation::TypedValue(val) if match val.value_kind {
+            ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => true,
+            ValueKind::Ref | ValueKind::Temporary => false,
         } => {
             let local_ref = builder
                 .find_local(&ident.to_string())

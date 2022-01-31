@@ -17,6 +17,12 @@ pub struct VariantCtorAnnotation {
     pub case: Ident,
 }
 
+impl From<VariantCtorAnnotation> for TypeAnnotation {
+    fn from(a: VariantCtorAnnotation) -> Self {
+        TypeAnnotation::VariantCtor(Rc::new(a))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OverloadAnnotation {
     pub span: Span,
@@ -77,6 +83,12 @@ impl OverloadAnnotation {
     }
 }
 
+impl From<OverloadAnnotation> for TypeAnnotation {
+    fn from(a: OverloadAnnotation) -> Self {
+        TypeAnnotation::Overload(Rc::new(a))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct InterfaceMethodAnnotation {
     pub iface_ty: Type,
@@ -103,6 +115,12 @@ impl InterfaceMethodAnnotation {
     }
 }
 
+impl From<InterfaceMethodAnnotation> for TypeAnnotation {
+    fn from(a: InterfaceMethodAnnotation) -> Self {
+        TypeAnnotation::InterfaceMethod(Rc::new(a))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct FunctionAnnotation {
     pub span: Span,
@@ -112,39 +130,72 @@ pub struct FunctionAnnotation {
     pub type_args: Option<TypeList<Type>>,
 }
 
+impl From<FunctionAnnotation> for TypeAnnotation {
+    fn from(a: FunctionAnnotation) -> Self {
+        TypeAnnotation::Function(Rc::new(a))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypedValueAnnotation  {
+    pub span: Span,
+    pub ty: Type,
+    pub value_kind: ValueKind,
+    pub decl: Option<Span>,
+}
+
+impl From<TypedValueAnnotation> for TypeAnnotation {
+    fn from(a: TypedValueAnnotation) -> Self {
+        TypeAnnotation::TypedValue(Rc::new(a))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConstAnnotation {
+    pub span: Span,
+    pub decl: Option<Span>,
+
+    pub ty: Type,
+    pub value: Literal,
+}
+
+impl From<ConstAnnotation> for TypeAnnotation {
+    fn from(a: ConstAnnotation) -> Self {
+        TypeAnnotation::Const(Rc::new(a))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UFCSCallAnnotation {
+    pub self_arg: Box<Expression>,
+    pub function: IdentPath,
+    pub func_ty: Type,
+    pub span: Span,
+}
+
+impl From<UFCSCallAnnotation> for TypeAnnotation {
+    fn from(a: UFCSCallAnnotation) -> Self {
+        TypeAnnotation::UFCSCall(Rc::new(a))
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum TypeAnnotation {
     Untyped(Span),
-    TypedValue {
-        span: Span,
-        ty: Type,
-        value_kind: ValueKind,
-        decl: Option<Span>,
-    },
+    TypedValue(Rc<TypedValueAnnotation>),
     Function(Rc<FunctionAnnotation>),
     // direct method reference e.g. `Interface.Method`
     InterfaceMethod(Rc<InterfaceMethodAnnotation>),
     Type(Type, Span),
     Namespace(IdentPath, Span),
-    UFCSCall {
-        self_arg: Box<Expression>,
-        function: IdentPath,
-        func_ty: Type,
-        span: Span,
-    },
+    UFCSCall(Rc<UFCSCallAnnotation>),
     VariantCtor(Rc<VariantCtorAnnotation>),
 
     // as-yet unresolved function that may refer to 1+ functions (interface methods, ufcs functions,
     // or free functions)
     Overload(Rc<OverloadAnnotation>),
 
-    Const {
-        span: Span,
-        decl: Option<Span>,
-
-        ty: Type,
-        value: Literal,
-    },
+    Const(Rc<ConstAnnotation>),
 }
 
 impl TypeAnnotation {
@@ -155,10 +206,10 @@ impl TypeAnnotation {
             | TypeAnnotation::InterfaceMethod(method) => (method.method_func_ty.clone(), &method.span),
             | TypeAnnotation::Overload(overload) => (overload.func_ty.clone(), &overload.span),
             | TypeAnnotation::Function(func) => (func.func_ty.clone(), &func.span),
+            | TypeAnnotation::TypedValue(val) => (val.ty.clone(), &val.span),
+            | TypeAnnotation::Const(const_val) => (const_val.ty.clone(), &const_val.span),
 
-            | TypeAnnotation::UFCSCall { span, func_ty: ty, .. }
-            | TypeAnnotation::TypedValue { ty, span, .. }
-            | TypeAnnotation::Const { ty, span, .. } => (ty.clone(), span),
+            | TypeAnnotation::UFCSCall(call) => (call.func_ty.clone(), &call.span),
 
             | TypeAnnotation::Untyped(span)
             | TypeAnnotation::Namespace(_, span)
@@ -195,9 +246,9 @@ impl TypeAnnotation {
 
             | TypeAnnotation::Function(func) => &func.func_ty,
 
-            | TypeAnnotation::UFCSCall { func_ty: ty, .. }
-            | TypeAnnotation::Const { ty, .. }
-            | TypeAnnotation::TypedValue { ty, .. } => ty,
+            | TypeAnnotation::UFCSCall(call) => &call.func_ty,
+            | TypeAnnotation::Const(const_val) => &const_val.ty,
+            | TypeAnnotation::TypedValue(val) => &val.ty,
 
             | TypeAnnotation::InterfaceMethod(method) => &method.method_func_ty,
 
@@ -213,11 +264,11 @@ impl TypeAnnotation {
             TypeAnnotation::UFCSCall { .. } => None, // TODO
             TypeAnnotation::Overload { .. } => None, // TODO
 
-            TypeAnnotation::TypedValue { decl, .. } => decl.as_ref(),
+            TypeAnnotation::TypedValue(val) => val.decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
             TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
 
-            TypeAnnotation::Const { decl, .. } => decl.as_ref(),
+            TypeAnnotation::Const(const_val) => const_val.decl.as_ref(),
 
             TypeAnnotation::VariantCtor(ctor) => Some(ctor.variant_name.span()),
         }
@@ -225,7 +276,7 @@ impl TypeAnnotation {
 
     pub fn value_kind(&self) -> Option<ValueKind> {
         match self {
-            TypeAnnotation::TypedValue { value_kind, .. } => Some(*value_kind),
+            TypeAnnotation::TypedValue(val) => Some(val.value_kind),
             TypeAnnotation::Const { .. } => Some(ValueKind::Immutable),
             _ => None,
         }
@@ -251,14 +302,14 @@ impl Spanned for TypeAnnotation {
             | TypeAnnotation::InterfaceMethod(method) => &method.span,
             | TypeAnnotation::VariantCtor(ctor) => &ctor.span,
             | TypeAnnotation::Overload(overload) => &overload.span,
-
+            | TypeAnnotation::TypedValue(val) => &val.span,
+            | TypeAnnotation::Const(const_val) => &const_val.span,
             | TypeAnnotation::Function(func) => &func.span,
-            | TypeAnnotation::UFCSCall { span, .. }
+            | TypeAnnotation::UFCSCall(call) => &call.span,
+
             | TypeAnnotation::Untyped(span)
-            | TypeAnnotation::TypedValue { span, .. }
             | TypeAnnotation::Type(_, span)
             | TypeAnnotation::Namespace(_, span) => span,
-            | TypeAnnotation::Const { span, .. } => span,
         }
     }
 }
@@ -269,30 +320,6 @@ impl Annotation for TypeAnnotation {
     type Pattern = TypePattern;
     type ConstStringExpr = String;
     type ConstIntegerExpr = IntConstant;
-}
-
-impl From<InterfaceMethodAnnotation> for TypeAnnotation {
-    fn from(a: InterfaceMethodAnnotation) -> Self {
-        TypeAnnotation::InterfaceMethod(Rc::new(a))
-    }
-}
-
-impl From<VariantCtorAnnotation> for TypeAnnotation {
-    fn from(a: VariantCtorAnnotation) -> Self {
-        TypeAnnotation::VariantCtor(Rc::new(a))
-    }
-}
-
-impl From<OverloadAnnotation> for TypeAnnotation {
-    fn from(a: OverloadAnnotation) -> Self {
-        TypeAnnotation::Overload(Rc::new(a))
-    }
-}
-
-impl From<FunctionAnnotation> for TypeAnnotation {
-    fn from(a: FunctionAnnotation) -> Self {
-        TypeAnnotation::Function(Rc::new(a))
-    }
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]

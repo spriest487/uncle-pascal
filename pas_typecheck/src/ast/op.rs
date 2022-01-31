@@ -37,18 +37,18 @@ pub fn typecheck_bin_op(
             let rhs = typecheck_expr(&bin_op.rhs, &bool_ty, ctx)?;
             rhs.annotation().expect_value(&bool_ty)?;
 
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty: bool_ty,
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            };
+            }.into();
 
             Ok(Expression::from(BinOp {
                 lhs,
                 rhs,
                 op: bin_op.op,
-                annotation: annotation.clone(),
+                annotation,
             }))
         }
 
@@ -60,18 +60,18 @@ pub fn typecheck_bin_op(
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            };
+            }.into();
 
             Ok(Expression::from(BinOp {
                 lhs,
                 rhs,
                 op: bin_op.op,
-                annotation: annotation.clone(),
+                annotation
             }))
         }
 
@@ -85,18 +85,18 @@ pub fn typecheck_bin_op(
                 return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
             }
 
-            let annotation = TypeAnnotation::TypedValue {
+            let annotation = TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            };
+            }.into();
 
             Ok(Expression::from(BinOp {
                 lhs,
                 rhs,
                 op: bin_op.op,
-                annotation: annotation.clone(),
+                annotation,
             }))
         }
 
@@ -129,12 +129,12 @@ pub fn typecheck_bin_op(
 
             let annotation = match result_ty {
                 Type::Nothing => TypeAnnotation::Untyped(span.clone()),
-                ty => TypeAnnotation::TypedValue {
+                ty => TypedValueAnnotation {
                     ty,
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                },
+                }.into(),
             };
 
             Ok(Expression::from(ast::BinOp {
@@ -154,12 +154,12 @@ fn desugar_string_concat(
     ctx: &Context,
 ) -> TypecheckResult<Expression> {
     let span = lhs.annotation().span().to(rhs.annotation().span());
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty: string_ty.clone(),
         span: span.clone(),
         value_kind: ValueKind::Temporary,
         decl: None,
-    };
+    }.into();
 
     // if LHS and RHS are both string literals, we can concat them ahead of time
     match (&lhs, &rhs) {
@@ -218,12 +218,8 @@ fn typecheck_member_of(
                     typecheck_variant_ctor(variant_name, &member_ident, ctx)?
                 }
 
-                TypeAnnotation::TypedValue {
-                    value_kind,
-                    ty: base_ty,
-                    ..
-                } => {
-                    typecheck_member_value(&lhs, base_ty, *value_kind, &member_ident, span, ctx)?
+                TypeAnnotation::TypedValue(base_val) => {
+                    typecheck_member_value(&lhs, &base_val.ty, base_val.value_kind, &member_ident, span, ctx)?
                 }
 
                 TypeAnnotation::Type(ty, _) => {
@@ -403,12 +399,12 @@ pub fn typecheck_member_value(
         }
 
         InstanceMember::UFCSCall { func_name, sig } => {
-            TypeAnnotation::UFCSCall {
+            UFCSCallAnnotation {
                 function: func_name,
                 func_ty: Type::Function(sig),
                 span: span.clone(),
                 self_arg: Box::new(lhs.clone()),
-            }
+            }.into()
         }
 
         InstanceMember::Overloaded { candidates } => {
@@ -428,12 +424,12 @@ pub fn typecheck_member_value(
                 _ => value_kind,
             };
 
-            TypeAnnotation::TypedValue {
+            TypedValueAnnotation {
                 ty: member_ty.clone(),
                 span: span.clone(),
                 value_kind,
                 decl: None,
-            }
+            }.into()
         }
     };
 
@@ -526,33 +522,33 @@ pub fn typecheck_unary_op(
                     })
                 },
 
-                _ => Ok(TypeAnnotation::TypedValue {
+                _ => Ok(TypedValueAnnotation {
                     ty: ty.clone().ptr(),
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }),
+                }.into()),
             }?
         }
 
         // unary +, is this always a no-op?
         Operator::Plus if operand_ty.valid_math_op(Operator::Plus, operand_ty) => {
-            TypeAnnotation::TypedValue {
+            TypedValueAnnotation {
                 ty: operand_ty.clone(),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }
+            }.into()
         }
 
         // unary negation - should this be disallowed for unsigned types?
         Operator::Minus if operand_ty.valid_math_op(Operator::Minus, operand_ty) => {
-            TypeAnnotation::TypedValue {
+            TypedValueAnnotation {
                 ty: operand_ty.clone(),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: None,
-            }
+            }.into()
         }
 
         Operator::Deref => {
@@ -568,23 +564,23 @@ pub fn typecheck_unary_op(
 
             let value_kind = ValueKind::Mutable;
 
-            TypeAnnotation::TypedValue {
+            TypedValueAnnotation {
                 ty: deref_ty,
                 value_kind,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }
+            }.into()
         }
 
         Operator::Not => {
             operand.annotation().expect_value(&Type::Primitive(Primitive::Boolean))?;
 
-            TypeAnnotation::TypedValue {
+            TypedValueAnnotation {
                 ty: Type::Primitive(Primitive::Boolean),
                 value_kind: ValueKind::Temporary,
                 span,
                 decl: operand.annotation().decl().cloned(),
-            }
+            }.into()
         }
 
         _ => {
@@ -640,12 +636,12 @@ pub fn typecheck_indexer(
             span: span.clone(),
         })?;
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         value_kind,
         ty: el_ty,
         span: span.clone(),
         decl: None,
-    };
+    }.into();
 
     Ok(Expression::from(BinOp {
         lhs: base,

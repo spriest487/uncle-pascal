@@ -106,12 +106,12 @@ pub fn typecheck_object_ctor(
         members,
     };
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty,
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
-    };
+    }.into();
 
     Ok(ObjectCtor {
         ident: ty_name,
@@ -157,12 +157,12 @@ pub fn typecheck_collection_ctor(
         })),
     };
 
-    let annotation = TypeAnnotation::TypedValue {
+    let annotation = TypedValueAnnotation {
         ty: collection_ty,
         span: ctor.annotation.clone(),
         value_kind: ValueKind::Temporary,
         decl: None,
-    };
+    }.into();
 
     Ok(CollectionCtor {
         elements,

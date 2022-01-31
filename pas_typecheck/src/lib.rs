@@ -39,6 +39,7 @@ impl Module {
         eprintln!("type list size: {}", std::mem::size_of::<TypeList>());
         eprintln!("ident size: {}", std::mem::size_of::<pas_syn::Ident>());
         eprintln!("ident path size: {}", std::mem::size_of::<IdentPath>());
+        eprintln!("span size: {}", std::mem::size_of::<Span>());
 
         let module_span = Span::zero(units[0].ident.span().file.as_ref().clone());
 
