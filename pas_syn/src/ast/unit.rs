@@ -43,108 +43,161 @@ impl<A: Annotation> Unit<A> {
 }
 
 impl Unit<Span> {
-    pub fn parse(tokens: &mut TokenStream, ident: IdentPath) -> ParseResult<Self> {
+    pub fn parse(tokens: &mut TokenStream, file_ident: IdentPath) -> ParseResult<Self> {
+        let ident = match tokens.match_one_maybe(Keyword::Unit) {
+            Some(_unit_kw) => {
+                let ident = IdentPath::parse(tokens)?;
+                tokens.match_one(Separator::Semicolon)?;
+                ident
+            },
+            None => file_ident,
+        };
+
         let mut decls = Vec::new();
+        let mut init = Vec::new();
 
-        // can't use match_separated here because it doesn't play nicely
-        // with the fact that type decls are also semicolon-separated lists
-        loop {
-            let export_kw = tokens.match_one_maybe(Keyword::Export);
-            let visibility = match &export_kw {
-                Some(..) => Visibility::Interface,
-                None => Visibility::Implementation,
-            };
-
-            let exportable_decl_kw = Keyword::Function
-                .or(Keyword::Type)
-                .or(Keyword::Const);
-
-            let decl_start = match export_kw {
-                Some(..) => exportable_decl_kw,
-                None => exportable_decl_kw.or(Keyword::Uses),
-            };
-
-            match tokens.look_ahead().match_one(decl_start) {
-                Some(TokenTree::Keyword {
-                    kw: Keyword::Function,
-                    ..
-                }) => {
-                    let func_decl = FunctionDecl::parse(tokens)?;
-
-                    let block_ahead = tokens
-                        .look_ahead()
-                        .match_one(DelimiterPair::BeginEnd.or(Keyword::Unsafe))
-                        .is_some();
-                    if block_ahead {
-                        let body = Block::parse(tokens)?;
-
-                        decls.push(UnitDecl::FunctionDef {
-                            decl: FunctionDef {
-                                span: func_decl.span().to(body.span()),
-                                decl: func_decl,
-                                body,
-                            },
-                            visibility,
-                        });
-                    } else {
-                        decls.push(UnitDecl::FunctionDecl {
-                            decl: func_decl,
-                            visibility,
-                        });
-                    }
-                }
-
-                Some(TokenTree::Keyword {
-                    kw: Keyword::Type, ..
-                }) => {
-                    let ty_decl = TypeDecl::parse(tokens)?;
-                    decls.push(UnitDecl::Type {
-                        decl: ty_decl,
-                        visibility,
-                    });
-                }
-
-                Some(TokenTree::Keyword {
-                    kw: Keyword::Uses, ..
-                }) => {
-                    let uses_decl = UseDecl::parse(tokens)?;
-                    decls.push(UnitDecl::Uses { decl: uses_decl });
-                }
-
-                Some(TokenTree::Keyword {
-                    kw: Keyword::Const, ..
-                 }) => {
-                    let const_decl = ConstDecl::parse(tokens)?;
-                    decls.push(UnitDecl::Const {
-                        decl: const_decl,
-                        visibility,
-                    });
-                }
-
-                _ => break,
-            }
-
-            if !tokens.match_one_maybe(Separator::Semicolon).is_some() {
-                break;
-            }
+        let has_interface = tokens.match_one_maybe(Keyword::Interface).is_some();
+        if has_interface {
+            let interface_decls = parse_unit_decls(tokens, Visibility::Interface)?;
+            decls.extend(interface_decls);
         }
 
-        let init = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            let stmt_next = tokens
-                .look_ahead()
-                .match_one(stmt_start_matcher())
-                .is_some();
+        let has_implementation = tokens.match_one_maybe(Keyword::Implementation).is_some();
+        if has_implementation {
+            let interface_decls = parse_unit_decls(tokens, Visibility::Implementation)?;
+            decls.extend(interface_decls);
+        }
 
-            if !stmt_next {
-                Ok(Generate::Break)
-            } else {
-                let stmt = Statement::parse(tokens)?;
-                Ok(Generate::Yield(stmt))
-            }
-        })?;
+        let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
+        if has_initialization {
+            let init_section = parse_init_section(tokens)?;
+            init.extend(init_section)
+        }
+
+        if has_interface || has_implementation || has_initialization {
+            // it's a structured unit, we expect nothing after the defined sections
+
+            tokens.match_one(Keyword::End)?;
+
+            // unit can optionally be terminated by a full stop, for tradition's sake
+            tokens.match_one_maybe(Operator::Member);
+        } else {
+            // no structured segments, it's a freeform unit - everything is in the interface
+            // and we don't expect an end keyword after all decls/init
+            let freeform_decls = parse_unit_decls(tokens, Visibility::Interface)?;
+            decls.extend(freeform_decls);
+
+            let init_after_decls = parse_init_section(tokens)?;
+
+            init.extend(init_after_decls);
+        }
 
         Ok(Unit { ident, init, decls })
     }
+}
+
+fn unit_decl_start_matcher() -> Matcher {
+    Keyword::Function
+        .or(Keyword::Uses)
+        .or(Keyword::Type)
+        .or(Keyword::Const)
+}
+
+fn parse_unit_decls(tokens: &mut TokenStream, visibility: Visibility) -> ParseResult<Vec<UnitDecl<Span>>> {
+    let decl_start_matcher = unit_decl_start_matcher();
+
+    let mut decls = Vec::new();
+    loop {
+        match parse_unit_decl(tokens, visibility)? {
+            Some(decl) => decls.push(decl),
+            None => break,
+        }
+
+        if tokens.match_one_maybe(Separator::Semicolon).is_none() {
+            break;
+        }
+
+        if tokens.look_ahead().match_one(decl_start_matcher.clone()).is_none() {
+            break;
+        }
+    }
+
+    Ok(decls)
+}
+
+// can't use match_separated here because it doesn't play nicely
+// with the fact that type decls are also semicolon-separated lists
+fn parse_unit_decl(tokens: &mut TokenStream, visibility: Visibility) -> ParseResult<Option<UnitDecl<Span>>> {
+    let decl_start = unit_decl_start_matcher();
+
+    let decl = match tokens.look_ahead().match_one(decl_start) {
+        Some(tt) if tt.is_keyword(Keyword::Function) => {
+            let func_decl = FunctionDecl::parse(tokens)?;
+
+            let block_ahead = tokens
+                .look_ahead()
+                .match_one(DelimiterPair::BeginEnd.or(Keyword::Unsafe))
+                .is_some();
+            if block_ahead {
+                let body = Block::parse(tokens)?;
+
+                Some(UnitDecl::FunctionDef {
+                    decl: FunctionDef {
+                        span: func_decl.span().to(body.span()),
+                        decl: func_decl,
+                        body,
+                    },
+                    visibility,
+                })
+            } else {
+                Some(UnitDecl::FunctionDecl {
+                    decl: func_decl,
+                    visibility,
+                })
+            }
+        }
+
+        Some(tt) if tt.is_keyword(Keyword::Type) => {
+            let ty_decl = TypeDecl::parse(tokens)?;
+            Some(UnitDecl::Type {
+                decl: ty_decl,
+                visibility,
+            })
+        }
+
+        Some(tt) if tt.is_keyword(Keyword::Uses) => {
+            let uses_decl = UseDecl::parse(tokens)?;
+            Some(UnitDecl::Uses { decl: uses_decl })
+        }
+
+        Some(tt) if tt.is_keyword(Keyword::Const) => {
+            let const_decl = ConstDecl::parse(tokens)?;
+            Some(UnitDecl::Const {
+                decl: const_decl,
+                visibility,
+            })
+        }
+
+        _ => None,
+    };
+
+    Ok(decl)
+}
+
+fn parse_init_section(tokens: &mut TokenStream) -> ParseResult<Vec<Statement<Span>>> {
+    tokens.match_separated(Separator::Semicolon, |_, tokens| {
+        let stmt_next = tokens
+            .look_ahead()
+            .match_one(stmt_start_matcher())
+            .is_some();
+
+        if !stmt_next {
+            Ok(Generate::Break)
+        } else {
+            let stmt = Statement::parse(tokens)?;
+            Ok(Generate::Yield(stmt))
+        }
+    })
 }
 
 impl<A: Annotation> fmt::Display for Unit<A> {

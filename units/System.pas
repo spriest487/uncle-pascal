@@ -1,63 +1,67 @@
-export type Box[T] = class
+unit System;
+
+interface
+
+type Box[T] = class
     value: T
 end;
 
-export function Unbox[T](b: Box[T]): T
+function Unbox[T](b: Box[T]): T
 begin
     b.value
 end;
 
-export function NewBox[T](value: T): Box[T]
+function NewBox[T](value: T): Box[T]
 begin
     Box(value: value)
 end;
 
-export type String = class
+type String = class
     chars: ^Byte;
     len: Integer;
 end;
 
-export type Option[T] = variant
+type Option[T] = variant
     Some: T;
     None;
 end;
 
-export function GetMem(count: Integer): ^Byte; external 'rt';
-export function FreeMem(mem: ^Byte); external 'rt';
+function GetMem(count: Integer): ^Byte; external 'rt';
+function FreeMem(mem: ^Byte); external 'rt';
 
-export function WriteLn(line: String); external 'rt';
-export function ReadLn(): String; external 'rt';
+function WriteLn(line: String); external 'rt';
+function ReadLn(): String; external 'rt';
 
-export function Int8ToStr(i: Int8): String; external 'rt';
-export function ByteToStr(i: Byte): String; external 'rt';
-export function Int16ToStr(i: Int16): String; external 'rt';
-export function UInt16ToStr(i: UInt16): String; external 'rt';
-export function IntToStr(i: Integer): String; external 'rt';
-export function UInt32ToStr(i: UInt32): String; external 'rt';
-export function Int64ToStr(i: Int64): String; external 'rt';
-export function UInt64ToStr(i: UInt64): String; external 'rt';
-export function NativeIntToStr(i: NativeInt): String; external 'rt';
-export function NativeUIntToStr(i: NativeUInt): String; external 'rt';
+function Int8ToStr(i: Int8): String; external 'rt';
+function ByteToStr(i: Byte): String; external 'rt';
+function Int16ToStr(i: Int16): String; external 'rt';
+function UInt16ToStr(i: UInt16): String; external 'rt';
+function IntToStr(i: Integer): String; external 'rt';
+function UInt32ToStr(i: UInt32): String; external 'rt';
+function Int64ToStr(i: Int64): String; external 'rt';
+function UInt64ToStr(i: UInt64): String; external 'rt';
+function NativeIntToStr(i: NativeInt): String; external 'rt';
+function NativeUIntToStr(i: NativeUInt): String; external 'rt';
 
-export function StrToInt(s: String): Integer; external 'rt';
+function StrToInt(s: String): Integer; external 'rt';
 
-export function UInt8ToStr(i: Byte): String
+function UInt8ToStr(i: Byte): String
 begin
     ByteToStr(i)
 end;
 
-export function Int32ToStr(i: Integer): String
+function Int32ToStr(i: Integer): String
 begin
     IntToStr(i)
 end;
 
 function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
 
-export type Disposable = interface
+type Disposable = interface
     function Dispose(self: Self);
 end;
 
-export function Dispose of Disposable(self: String)
+function Dispose of Disposable(self: String)
 begin
     if self.len > 0 then FreeMem(self.chars);
 
@@ -65,12 +69,12 @@ begin
     self.len := 0;
 end;
 
-export function StringLen(s: String): Integer
+function StringLen(s: String): Integer
 begin
     s.len
 end;
 
-export function IsWhiteSpace(char: Byte): Boolean
+function IsWhiteSpace(char: Byte): Boolean
 begin
     char = 9
     or char = 10
@@ -81,7 +85,7 @@ begin
     or char = 160
 end;
 
-export function StringConcat(a, b: String): String
+function StringConcat(a, b: String): String
 begin
     if a.len = 0 and b.len = 0 then
         String(chars: nil; len: 0)
@@ -102,7 +106,7 @@ begin
     end
 end;
 
-export function StringFromBytes(bytes: ^Byte; len: Integer): String
+function StringFromBytes(bytes: ^Byte; len: Integer): String
 begin
     if len = 0 then
         String(chars: nil; len: 0)
@@ -117,7 +121,7 @@ begin
     end
 end;
 
-export function SubString(s: String; from: Integer; len: Integer): String
+function SubString(s: String; from: Integer; len: Integer): String
 begin
     // todo: bounds check
     if len = 0 then
@@ -132,13 +136,13 @@ begin
     end
 end;
 
-export function StringCharAt(s: String; at: Integer): Byte
+function StringCharAt(s: String; at: Integer): Byte
 begin
     // todo: bounds check
     (s.chars + at)^
 end;
 
-export function StringToBytes(s: String; bytes: ^Byte; len: Integer)
+function StringToBytes(s: String; bytes: ^Byte; len: Integer)
 begin
     if len = 0 or bytes = nil then
         exit;
@@ -152,7 +156,7 @@ begin
     end;
 end;
 
-export function CompareStr(a, b: String): Integer
+function CompareStr(a, b: String): Integer
 begin
     if a.len = 0 and b.len = 0 then begin
         exit 0;
@@ -192,7 +196,7 @@ begin
     cmp
 end;
 
-export function StringTrim(s: String): String
+function StringTrim(s: String): String
 begin
     if s.len = 0 then begin
         exit s;
@@ -210,104 +214,34 @@ begin
     SubString(s, startAt, len)
 end;
 
-export function Length[T](arr: array of T): Integer
+function Length[T](arr: array of T): Integer
 unsafe begin
     ArrayLengthInternal(arr)
 end;
 
-export type Comparable = interface
+type Comparable = interface
     function Compare(self: Self; other: Self): Integer;
 end;
 
-export function Max[T](a, b: T): T
+function Max[T](a, b: T): T
 where T is Comparable
 begin
     if a.Compare(b) > 0 then a else b
 end;
 
-export function Min[T](a, b: T): T
+function Min[T](a, b: T): T
 where T is Comparable
 begin
     if a.Compare(b) < 0 then a else b
 end;
 
-export function Compare of Comparable(self: String; other: String): Integer
-begin
-    CompareStr(self, other)
-end;
-
-export function Compare of Comparable(self: Integer; other: Integer): Integer
-begin
-    self - other
-end;
-
-export type Displayable = interface
+type Displayable = interface
     function ToString(self: Self): String;
-end;
-
-export function ToString of Displayable(self: Int8): String
-begin
-    Int8ToStr(self)
-end;
-
-export function ToString of Displayable(self: Byte): String
-begin
-    ByteToStr(self)
-end;
-
-export function ToString of Displayable(self: Int16): String
-begin
-    Int16ToStr(self)
-end;
-
-export function ToString of Displayable(self: UInt16): String
-begin
-    UInt16ToStr(self)
-end;
-
-export function ToString of Displayable(self: Integer): String
-begin
-    IntToStr(self)
-end;
-
-export function ToString of Displayable(self: UInt32): String
-begin
-    UInt32ToStr(self)
-end;
-
-export function ToString of Displayable(self: Int64): String
-begin
-    Int64ToStr(self)
-end;
-
-export function ToString of Displayable(self: UInt64): String
-begin
-    UInt64ToStr(self)
-end;
-
-export function ToString of Displayable(self: NativeInt): String
-begin
-    NativeIntToStr(self)
-end;
-
-export function ToString of Displayable(self: NativeUInt): String
-begin
-    NativeUIntToStr(self)
-end;
-
-export function ToString of Displayable(self: Boolean): String
-begin
-    if self then 'true' else 'false'
-end;
-
-export function ToString of Displayable(self: String): String
-begin
-    self
 end;
 
 function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer; defaultValLen: Integer): Any; external 'rt';
 
-export function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
+function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
 begin
     // must put this in a mutable local variable to take its address (can't address immutable vars)
     var defaultValVar := defaultVal;
@@ -321,3 +255,77 @@ begin
             else raise 'unreachable';
     end;
 end;
+
+implementation
+
+function Compare of Comparable(self: String; other: String): Integer
+begin
+    CompareStr(self, other)
+end;
+
+function Compare of Comparable(self: Integer; other: Integer): Integer
+begin
+    self - other
+end;
+
+function ToString of Displayable(self: Int8): String
+begin
+    Int8ToStr(self)
+end;
+
+function ToString of Displayable(self: Byte): String
+begin
+    ByteToStr(self)
+end;
+
+function ToString of Displayable(self: Int16): String
+begin
+    Int16ToStr(self)
+end;
+
+function ToString of Displayable(self: UInt16): String
+begin
+    UInt16ToStr(self)
+end;
+
+function ToString of Displayable(self: Integer): String
+begin
+    IntToStr(self)
+end;
+
+function ToString of Displayable(self: UInt32): String
+begin
+    UInt32ToStr(self)
+end;
+
+function ToString of Displayable(self: Int64): String
+begin
+    Int64ToStr(self)
+end;
+
+function ToString of Displayable(self: UInt64): String
+begin
+    UInt64ToStr(self)
+end;
+
+function ToString of Displayable(self: NativeInt): String
+begin
+    NativeIntToStr(self)
+end;
+
+function ToString of Displayable(self: NativeUInt): String
+begin
+    NativeUIntToStr(self)
+end;
+
+function ToString of Displayable(self: Boolean): String
+begin
+    if self then 'true' else 'false'
+end;
+
+function ToString of Displayable(self: String): String
+begin
+    self
+end;
+
+end.
