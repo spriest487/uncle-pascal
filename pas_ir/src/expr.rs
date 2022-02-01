@@ -52,6 +52,10 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         }
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
+        ast::Expression::Exit(exit) => {
+            translate_exit(exit, builder);
+            Ref::Discard
+        },
 
         ast::Expression::Case(case) => translate_case_expr(case, builder),
     };

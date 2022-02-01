@@ -196,7 +196,7 @@ pub fn typecheck_stmt(
         }
 
         ast::Statement::Exit(exit) => {
-            let exit = typecheck_exit(exit, ctx)?;
+            let exit = typecheck_exit(exit, &expect_ty, ctx)?;
             Ok(ast::Statement::Exit(Box::new(exit)))
         }
 
@@ -239,8 +239,8 @@ fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult
     }
 }
 
-fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<Exit> {
-    let expect_ty = ctx.current_func_return_ty()
+pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<Exit> {
+    let exit_ty = ctx.current_func_return_ty()
         .ok_or_else(|| {
             TypecheckError::NoFunctionContext {
                 stmt: Box::new(ast::Statement::Exit(Box::new(exit.clone())))
@@ -248,23 +248,36 @@ fn typecheck_exit(exit: &ast::Exit<Span>, ctx: &mut Context) -> TypecheckResult<
         })?
         .clone();
 
+    // exit expressions always count as the expected type, so you can write e.g.
+    // `let x := if true then 1 else exit;`
+    // since no value will ever be assigned to `x` if the exit expression is reached
+    let make_annotation = |span: &Span| match expect_ty {
+        Type::Nothing => TypeAnnotation::Untyped(span.clone()),
+        _ => TypedValueAnnotation {
+            span: span.clone(),
+            value_kind: ValueKind::Temporary,
+            ty: expect_ty.clone(),
+            decl: None,
+        }.into()
+    };
+
     let (exit, ret_ty) = match exit {
         ast::Exit::WithoutValue(span) => {
-            let exit = ast::Exit::WithoutValue(TypeAnnotation::Untyped(span.clone()));
+            let exit = ast::Exit::WithoutValue(make_annotation(span).into());
             (exit, Type::Nothing)
         },
 
         ast::Exit::WithValue(value, span) => {
-            let value = typecheck_expr(value, &expect_ty, ctx)?;
+            let value = typecheck_expr(value, &exit_ty, ctx)?;
             let ret_ty = value.annotation().ty().into_owned();
 
-            let exit = ast::Exit::WithValue(value, TypeAnnotation::Untyped(span.clone()));
+            let exit = ast::Exit::WithValue(value, make_annotation(span).into());
 
             (exit, ret_ty)
         }
     };
 
-    expect_ty.implicit_conversion_from(&ret_ty, exit.span(), ctx)?;
+    exit_ty.implicit_conversion_from(&ret_ty, exit.span(), ctx)?;
 
     Ok(exit)
 }

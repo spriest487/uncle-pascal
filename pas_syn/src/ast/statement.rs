@@ -1,39 +1,15 @@
 mod local_binding;
+mod exit;
 
-pub use self::local_binding::LocalBinding;
-use crate::ast::Raise;
+pub use self::{exit::Exit, local_binding::LocalBinding};
 use crate::{
     ast::{
         case::{CaseBlock, CaseStatement},
         expression::match_operand_start,
-        Block, Call, Expression, ForLoop, IfCond, WhileLoop,
+        Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop,
     },
     parse::prelude::*,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum Exit<A: Annotation> {
-    WithValue(Expression<A>, A),
-    WithoutValue(A),
-}
-
-impl<A: Annotation> fmt::Display for Exit<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Exit::WithoutValue(_) => write!(f, "exit"),
-            Exit::WithValue(value, _) => write!(f, "exit {}", value),
-        }
-    }
-}
-
-impl<A: Annotation> Spanned for Exit<A> {
-    fn span(&self) -> &Span {
-        match self {
-            Exit::WithValue(_, a) => a.span(),
-            Exit::WithoutValue(a) => a.span(),
-        }
-    }
-}
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Assignment<A: Annotation> {
@@ -117,6 +93,8 @@ impl<A: Annotation> Statement<A> {
 
             Statement::Raise(raise) => Ok(Expression::Raise(raise)),
 
+            Statement::Exit(exit) => Ok(Expression::Exit(exit)),
+
             not_expr => Err(not_expr),
         }
     }
@@ -179,6 +157,8 @@ impl<A: Annotation> Statement<A> {
             }
 
             Expression::Raise(raise) => Ok(Statement::Raise(raise)),
+
+            Expression::Exit(exit) => Ok(Statement::Exit(exit)),
 
             invalid => Err(invalid),
         }
@@ -256,26 +236,11 @@ impl Statement<Span> {
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Exit,
-                span,
+                ..
             }) => {
-                tokens.advance(1);
+                let exit = Exit::parse(tokens)?;
 
-                let stmt_terminator = Keyword::End.or(Separator::Semicolon);
-
-                match tokens.look_ahead().match_one(stmt_terminator) {
-                    Some(..) => {
-                        let exit = Exit::WithoutValue(span.clone());
-                        Ok(Statement::Exit(Box::new(exit)))
-                    },
-
-                    _ => {
-                        let value_expr = Expression::parse(tokens)?;
-                        let span = span.to(value_expr.annotation().span());
-                        let exit = Exit::WithValue(value_expr, span);
-
-                        Ok(Statement::Exit(Box::new(exit)))
-                    }
-                }
+                Ok(Statement::Exit(Box::new(exit)))
             }
 
             Some(TokenTree::Keyword {

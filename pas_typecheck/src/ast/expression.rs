@@ -186,6 +186,11 @@ pub fn typecheck_expr(
             let case = typecheck_case_expr(case, expect_ty, ctx)?;
             Ok(ast::Expression::from(case))
         }
+
+        ast::Expression::Exit(exit) => {
+            let exit = typecheck_exit(exit, expect_ty, ctx)?;
+            Ok(ast::Expression::from(exit))
+        }
     }
 }
 
@@ -395,6 +400,11 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         ast::Expression::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
         ast::Expression::Case(case) => expect_case_expr_initialized(&case, ctx),
+
+        ast::Expression::Exit(exit) => match exit.as_ref() {
+            ast::Exit::WithValue(exit_val, _) => expect_expr_initialized(exit_val, ctx),
+            ast::Exit::WithoutValue(_) => Ok(()),
+        },
     }
 }
 
