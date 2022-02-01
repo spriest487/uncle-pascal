@@ -29,75 +29,18 @@ pub fn typecheck_bin_op(
         Operator::Index => typecheck_indexer(&bin_op.lhs, &bin_op.rhs, &span, ctx),
 
         Operator::And | Operator::Or => {
-            let bool_ty = Type::Primitive(Primitive::Boolean);
-
-            let lhs = typecheck_expr(&bin_op.lhs, &bool_ty, ctx)?;
-            lhs.annotation().expect_value(&bool_ty)?;
-
-            let rhs = typecheck_expr(&bin_op.rhs, &bool_ty, ctx)?;
-            rhs.annotation().expect_value(&bool_ty)?;
-
-            let annotation = TypedValueAnnotation {
-                ty: bool_ty,
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }.into();
-
-            Ok(Expression::from(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation,
-            }))
+            let bin_op = typecheck_logical_op(bin_op, span, ctx)?;
+            Ok(Expression::from(bin_op))
         }
 
         Operator::Equals | Operator::NotEquals => {
-            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
-
-            if !lhs.annotation().ty().equatable(&rhs.annotation().ty()) {
-                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
-            }
-
-            let annotation = TypedValueAnnotation {
-                ty: Type::Primitive(Primitive::Boolean),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }.into();
-
-            Ok(Expression::from(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation
-            }))
+            let bin_op = typecheck_equality(bin_op, span, ctx)?;
+            Ok(Expression::from(bin_op))
         }
 
         Operator::Gt | Operator::Gte | Operator::Lt | Operator::Lte => {
-            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
-
-            rhs.annotation().expect_value(&lhs.annotation().ty())?;
-
-            if !lhs.annotation().ty().self_orderable() {
-                return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
-            }
-
-            let annotation = TypedValueAnnotation {
-                ty: Type::Primitive(Primitive::Boolean),
-                value_kind: ValueKind::Temporary,
-                span,
-                decl: None,
-            }.into();
-
-            Ok(Expression::from(BinOp {
-                lhs,
-                rhs,
-                op: bin_op.op,
-                annotation,
-            }))
+            let bin_op = typecheck_comparison(bin_op, span, ctx)?;
+            Ok(Expression::from(bin_op))
         }
 
         _ => {
@@ -145,6 +88,78 @@ pub fn typecheck_bin_op(
             }))
         }
     }
+}
+
+fn typecheck_logical_op(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+    let bool_ty = Type::Primitive(Primitive::Boolean);
+
+    let lhs = typecheck_expr(&bin_op.lhs, &bool_ty, ctx)?;
+    lhs.annotation().expect_value(&bool_ty)?;
+
+    let rhs = typecheck_expr(&bin_op.rhs, &bool_ty, ctx)?;
+    rhs.annotation().expect_value(&bool_ty)?;
+
+    let annotation = TypedValueAnnotation {
+        ty: bool_ty,
+        value_kind: ValueKind::Temporary,
+        span,
+        decl: None,
+    }.into();
+
+    Ok(BinOp {
+        lhs,
+        rhs,
+        op: bin_op.op,
+        annotation,
+    })
+}
+
+fn typecheck_equality(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+    let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+    let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
+
+    if !lhs.annotation().ty().equatable(&rhs.annotation().ty()) {
+        return Err(invalid_bin_op(bin_op, &lhs, &rhs));
+    }
+
+    let annotation = TypedValueAnnotation {
+        ty: Type::Primitive(Primitive::Boolean),
+        value_kind: ValueKind::Temporary,
+        span,
+        decl: None,
+    }.into();
+
+    Ok(BinOp {
+        lhs,
+        rhs,
+        op: bin_op.op,
+        annotation
+    })
+}
+
+fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context) -> TypecheckResult<BinOp> {
+    let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+    let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
+
+    rhs.annotation().expect_value(&lhs.annotation().ty())?;
+
+    if !lhs.annotation().ty().self_orderable() {
+        return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
+    }
+
+    let annotation = TypedValueAnnotation {
+        ty: Type::Primitive(Primitive::Boolean),
+        value_kind: ValueKind::Temporary,
+        span,
+        decl: None,
+    }.into();
+
+    Ok(BinOp {
+        lhs,
+        rhs,
+        op: bin_op.op,
+        annotation,
+    })
 }
 
 fn desugar_string_concat(
