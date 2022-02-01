@@ -245,9 +245,54 @@ export type Displayable = interface
     function ToString(self: Self): String;
 end;
 
+export function ToString of Displayable(self: Int8): String
+begin
+    Int8ToStr(self)
+end;
+
+export function ToString of Displayable(self: Byte): String
+begin
+    ByteToStr(self)
+end;
+
+export function ToString of Displayable(self: Int16): String
+begin
+    Int16ToStr(self)
+end;
+
+export function ToString of Displayable(self: UInt16): String
+begin
+    UInt16ToStr(self)
+end;
+
 export function ToString of Displayable(self: Integer): String
 begin
     IntToStr(self)
+end;
+
+export function ToString of Displayable(self: UInt32): String
+begin
+    UInt32ToStr(self)
+end;
+
+export function ToString of Displayable(self: Int64): String
+begin
+    Int64ToStr(self)
+end;
+
+export function ToString of Displayable(self: UInt64): String
+begin
+    UInt64ToStr(self)
+end;
+
+export function ToString of Displayable(self: NativeInt): String
+begin
+    NativeIntToStr(self)
+end;
+
+export function ToString of Displayable(self: NativeUInt): String
+begin
+    NativeUIntToStr(self)
 end;
 
 export function ToString of Displayable(self: Boolean): String

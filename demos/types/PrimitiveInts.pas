@@ -11,17 +11,17 @@ let u64: UInt64 := 10012312312301;
 let isize: NativeInt := -90123331;
 let usize: NativeUInt := 90123331;
 
-WriteLn('i8: ' + Int8ToStr(i8));
-WriteLn('u8: ' + UInt8ToStr(u8));
+WriteLn('i8: ' + i8);
+WriteLn('u8: ' + u8);
 
-WriteLn('i16: ' + Int16ToStr(i16));
-WriteLn('u16: ' + UInt16ToStr(u16));
+WriteLn('i16: ' + i16);
+WriteLn('u16: ' + u16);
 
-WriteLn('i32: ' + Int32ToStr(i32));
-WriteLn('u32: ' + UInt32ToStr(u32));
+WriteLn('i32: ' + i32);
+WriteLn('u32: ' + u32);
 
-WriteLn('i64: ' + Int64ToStr(i64));
-WriteLn('u64: ' + UInt64ToStr(u64));
+WriteLn('i64: ' + i64);
+WriteLn('u64: ' + u64);
 
-WriteLn('isize: ' + NativeIntToStr(isize));
-WriteLn('usize: ' + NativeUIntToStr(usize));
+WriteLn('isize: ' + isize);
+WriteLn('usize: ' + usize);

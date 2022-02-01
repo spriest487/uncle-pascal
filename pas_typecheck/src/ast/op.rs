@@ -44,14 +44,27 @@ pub fn typecheck_bin_op(
         }
 
         _ => {
-            let lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
-            let rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
+            let mut lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
+            let mut rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
 
             // string concat sugar isn't available if the String class isn't loaded
             if let Ok(string_ty) = string_type(ctx) {
-                let is_string_concat = bin_op.op == Operator::Plus
-                    && *lhs.annotation().ty() == string_ty
-                    && *rhs.annotation().ty() == string_ty;
+                let mut lhs_string = *lhs.annotation().ty() == string_ty;
+                let mut rhs_string = *rhs.annotation().ty() == string_ty;
+
+                if lhs_string && !rhs_string {
+                    if let Some(rhs_to_string) = desugar_displayable_to_string(&rhs, &span, ctx) {
+                        rhs = rhs_to_string;
+                        rhs_string = true;
+                    }
+                } else if !lhs_string && lhs_string {
+                    if let Some(lhs_to_string) = desugar_displayable_to_string(&lhs, &span, ctx) {
+                        lhs = lhs_to_string;
+                        lhs_string = true;
+                    }
+                }
+
+                let is_string_concat = bin_op.op == Operator::Plus && lhs_string && rhs_string;
 
                 if is_string_concat {
                     return desugar_string_concat(lhs, rhs, &string_ty, ctx);
@@ -162,6 +175,65 @@ fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
     })
 }
 
+// turn value `x` that implements System.Displayable into a call to `System.Displayable.ToString(x)`
+fn desugar_displayable_to_string(
+    expr: &Expression,
+    span: &Span,
+    ctx: &Context,
+) -> Option<Expression> {
+    let src_ty = expr.annotation().ty();
+
+    let system_unit_ident = Ident::new(SYSTEM_UNIT_NAME, span.clone());
+    let displayable_iface_ident = Ident::new(DISPLAYABLE_IFACE_NAME, span.clone());
+
+    let to_string_ident = Ident::new(DISPLAYABLE_TOSTRING_METHOD, span.clone());
+
+    let displayable_path = IdentPath::from_parts(vec![
+        system_unit_ident,
+        displayable_iface_ident
+    ]);
+
+    if !ctx.is_iface_impl(src_ty.as_ref(), &displayable_path) {
+        return None;
+    }
+
+    let displayable_iface = match ctx.find_iface_def(&displayable_path) {
+        Ok(iface_def) => iface_def,
+        Err(..) => return None,
+    };
+
+    let displayable_ty = Type::Interface(Box::new(displayable_path));
+
+    let to_string_method = match displayable_iface.get_method(&to_string_ident) {
+        Some(method_decl) => method_decl,
+        None => return None,
+    };
+
+    let to_string_sig = Rc::new(FunctionSig::of_decl(to_string_method));
+
+    // make a call
+    let displayable_call = Call::Method(MethodCall {
+        iface_type: displayable_ty.clone(),
+        ident: to_string_ident.clone(),
+        args: vec![
+            expr.clone(),
+        ],
+        type_args: None,
+        args_brackets: (span.clone(), span.clone()),
+        self_type: src_ty.into_owned(),
+        func_type: Type::Function(to_string_sig.clone()),
+        annotation: InterfaceMethodAnnotation {
+            iface_ty: displayable_ty,
+            method_ident: to_string_ident,
+            span: span.clone(),
+            method_sig: to_string_sig,
+        }.into(),
+    });
+
+    Some(Expression::from(displayable_call))
+}
+
+// desugar a binary + operation on two strings into a call to System.StringConcat
 fn desugar_string_concat(
     lhs: Expression,
     rhs: Expression,

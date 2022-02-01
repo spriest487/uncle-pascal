@@ -12,6 +12,9 @@ pub const ANY_TYPE_NAME: &str = "Any";
 pub const DISPOSABLE_IFACE_NAME: &str = "Disposable";
 pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
 
+pub const DISPLAYABLE_IFACE_NAME: &str = "Displayable";
+pub const DISPLAYABLE_TOSTRING_METHOD: &str = "ToString";
+
 pub const STRING_TYPE_NAME: &str = "String";
 const STRING_CHARS_FIELD: &str = "chars";
 const STRING_LEN_FIELD: &str = "len";
