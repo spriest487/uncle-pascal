@@ -328,6 +328,13 @@ impl ValueCell {
         }
     }
 
+    pub fn as_i8(&self) -> Option<i8> {
+        match self {
+            ValueCell::I8(x) => Some(*x),
+            _ => None,
+        }
+    }
+
     pub fn as_u8(&self) -> Option<u8> {
         match self {
             ValueCell::U8(x) => Some(*x),
@@ -335,9 +342,44 @@ impl ValueCell {
         }
     }
 
+    pub fn as_i16(&self) -> Option<i16> {
+        match self {
+            ValueCell::I16(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_u16(&self) -> Option<u16> {
+        match self {
+            ValueCell::U16(i) => Some(*i),
+            _ => None,
+        }
+    }
+
     pub fn as_i32(&self) -> Option<i32> {
         match self {
             ValueCell::I32(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            ValueCell::U32(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            ValueCell::I64(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            ValueCell::U64(i) => Some(*i),
             _ => None,
         }
     }

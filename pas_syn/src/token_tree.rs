@@ -372,7 +372,7 @@ mod test {
         assert_eq!(1, result.len());
 
         match result[0] {
-            TokenTree::IntNumber { value, .. } => assert_eq!(IntConstant::Char(32), value),
+            TokenTree::IntNumber { value, .. } => assert_eq!(IntConstant::Byte(32), value),
             _ => panic!("got {:#?}, expected a char literal", result),
         }
     }

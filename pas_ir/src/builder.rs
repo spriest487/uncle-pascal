@@ -558,9 +558,13 @@ impl<'m> Builder<'m> {
             .find_map(|scope| scope.local_by_name(name))
     }
 
-    pub fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor)
+    /// call `f` for every structural member of the object of type `ty` found at the `at`
+    /// reference.
+    ///
+    /// returns `true` if calling `f` for any of the members (or members of members) returns `true`
+    pub fn visit_deep<Visitor>(&mut self, at: Ref, ty: &Type, f: Visitor) -> bool
     where
-        Visitor: Fn(&mut Builder, &Type, Ref) + Copy,
+        Visitor: Fn(&mut Builder, &Type, Ref) -> bool + Copy,
     {
         match ty {
             Type::Struct(struct_id) => {
@@ -572,7 +576,12 @@ impl<'m> Builder<'m> {
                     .map(|(field_id, field)| (*field_id, field.ty.clone()))
                     .collect();
 
+                let mut result = false;
                 for (field, field_ty) in fields {
+                    if !(field_ty.is_rc() || field_ty.is_complex()) {
+                        continue;
+                    }
+
                     // store the field pointer in a temp slot
                     let field_val = self.local_temp(field_ty.clone().ptr());
                     self.append(Instruction::Field {
@@ -582,8 +591,10 @@ impl<'m> Builder<'m> {
                         field,
                     });
 
-                    self.visit_deep(field_val.to_deref(), &field_ty, f);
+                    result |= self.visit_deep(field_val.to_deref(), &field_ty, f);
                 }
+
+                result
             }
 
             Type::Variant(id) => {
@@ -605,6 +616,8 @@ impl<'m> Builder<'m> {
 
                 // jump out of the search loop if we find the matching case
                 let break_label = self.alloc_label();
+
+                let mut result = false;
 
                 // for each case, check if the tag matches and jump past it if not
                 let is_not_case = self.local_temp(Type::Bool);
@@ -639,7 +652,7 @@ impl<'m> Builder<'m> {
                             tag,
                         });
 
-                        self.visit_deep(data_ptr.to_deref(), &data_ty, f);
+                        result |= self.visit_deep(data_ptr.to_deref(), &data_ty, f);
 
                         // break
                         self.append(Instruction::Jump { dest: break_label });
@@ -650,10 +663,14 @@ impl<'m> Builder<'m> {
                 }
 
                 self.append(Instruction::Label(break_label));
+
+                result
             }
 
             Type::Array { element, dim } => {
                 let element_ptr = self.local_temp(element.clone().ptr());
+
+                let mut result = false;
                 for i in 0..*dim {
                     self.append(Instruction::Element {
                         out: element_ptr.clone(),
@@ -662,13 +679,15 @@ impl<'m> Builder<'m> {
                         index: Value::LiteralI32(i as i32), // todo: real usize type,
                     });
 
-                    self.visit_deep(element_ptr.clone().to_deref(), element, f);
+                    result |= self.visit_deep(element_ptr.clone().to_deref(), element, f);
                 }
+
+                result
             }
 
             // field or element
             _ => f(self, ty, at),
-        };
+        }
     }
 
     // generate deep (retain, release) funcs for complex types
@@ -686,7 +705,7 @@ impl<'m> Builder<'m> {
             let target_ref = Ref::Local(LocalID(0)).to_deref();
 
             release_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                builder.release(el_ref, el_ty);
+                builder.release(el_ref, el_ty)
             });
             release_builder.finish()
         };
@@ -707,7 +726,7 @@ impl<'m> Builder<'m> {
             retain_builder.bind_param(LocalID(0), ty.clone().ptr(), "target", true);
             let target_ref = Ref::Local(LocalID(0)).to_deref();
             retain_builder.visit_deep(target_ref, ty, |builder, el_ty, el_ref| {
-                builder.retain(el_ref, el_ty);
+                builder.retain(el_ref, el_ty)
             });
             retain_builder.finish()
         };
@@ -726,7 +745,7 @@ impl<'m> Builder<'m> {
         funcs
     }
 
-    pub fn retain(&mut self, at: Ref, ty: &Type) {
+    pub fn retain(&mut self, at: Ref, ty: &Type) -> bool {
         if self.opts().annotate_rc {
             self.comment(&format!("retain: {}", self.pretty_ty_name(ty)));
         }
@@ -745,20 +764,25 @@ impl<'m> Builder<'m> {
                     function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.retain))),
                     args: vec![Value::Ref(at_ptr)],
                     out: None,
-                })
+                });
+
+                true
             }
 
             _ if ty.is_rc() => {
                 self.append(Instruction::Retain { at });
+
+                true
             }
 
             _ => {
                 // not an RC type, nor a complex type containing RC types
+                false
             }
         }
     }
 
-    pub fn release(&mut self, at: Ref, ty: &Type) {
+    pub fn release(&mut self, at: Ref, ty: &Type) -> bool {
         if self.opts().annotate_rc {
             self.comment(&format!("release: {}", self.pretty_ty_name(ty)));
         }
@@ -777,15 +801,20 @@ impl<'m> Builder<'m> {
                     function: Value::Ref(Ref::Global(GlobalRef::Function(rc_funcs.release))),
                     args: vec![Value::Ref(at_ptr)],
                     out: None,
-                })
+                });
+
+                true
             }
 
             _ if ty.is_rc() => {
                 self.append(Instruction::Release { at });
+
+                true
             }
 
             _ => {
                 // not an RC type, nor a complex type containing RC types
+                false
             }
         }
     }

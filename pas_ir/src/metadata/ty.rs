@@ -336,6 +336,13 @@ impl Type {
         }
     }
 
+    pub fn is_complex(&self) -> bool {
+        match self {
+            Type::Variant(..) | Type::Array {..} | Type::Struct(..) => true,
+            _ => false,
+        }
+    }
+
     pub fn rc_resource_class_id(&self) -> Option<ClassID> {
         match self {
             Type::RcPointer(Some(class_id)) => Some(*class_id),

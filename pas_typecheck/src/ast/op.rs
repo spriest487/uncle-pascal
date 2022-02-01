@@ -477,10 +477,24 @@ pub type UnaryOp = ast::UnaryOp<TypeAnnotation>;
 
 pub fn typecheck_unary_op(
     unary_op: &ast::UnaryOp<Span>,
+    expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<UnaryOp> {
+    let operand_expect_ty = match unary_op.op {
+        Operator::Plus | Operator::Minus | Operator::Not => expect_ty.clone(),
+        Operator::AddressOf => match expect_ty {
+            // value of the operator expression is the pointer to the deref type, so the operand
+            // is of the deref type
+            Type::Pointer(deref_ty) => (**deref_ty).clone(),
+            _ => Type::Nothing,
+        }
+
+        Operator::Deref => expect_ty.clone().ptr(),
+        _ => Type::Nothing,
+    };
+
     let span = unary_op.span().clone();
-    let operand = typecheck_expr(&unary_op.operand, &Type::Nothing, ctx)?;
+    let operand = typecheck_expr(&unary_op.operand, &operand_expect_ty, ctx)?;
     let operand_ty = operand.annotation().ty();
 
     let annotation = match unary_op.op {

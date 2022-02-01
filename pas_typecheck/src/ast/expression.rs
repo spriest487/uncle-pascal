@@ -144,7 +144,7 @@ pub fn typecheck_expr(
         ast::Expression::BinOp(bin_op) => typecheck_bin_op(bin_op, expect_ty, ctx),
 
         ast::Expression::UnaryOp(unary_op) => {
-            let unary_op = typecheck_unary_op(unary_op, ctx)?;
+            let unary_op = typecheck_unary_op(unary_op, expect_ty, ctx)?;
             Ok(ast::Expression::from(unary_op))
         }
 

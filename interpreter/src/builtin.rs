@@ -1,23 +1,66 @@
 use std::borrow::Cow;
+use std::fmt;
 use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, Type};
 use crate::{ExecError, ExecResult, Interpreter, ValueCell, Pointer, RcCell, StructCell};
 use std::io::{self, BufRead};
 use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 
-/// %1: Integer -> %0: String
-pub(super) fn int_to_str(state: &mut Interpreter) -> ExecResult<()> {
+fn primitive_to_str<T, UnwrapCell>(state: &mut Interpreter, unwrap_cell: UnwrapCell) -> ExecResult<()>
+    where T: fmt::Display,
+    UnwrapCell: FnOnce(&ValueCell) -> Option<T>
+{
     let arg_0 = Ref::Local(LocalID(1));
 
     let arg_0_cell = state.load(&arg_0)?;
-    let int = arg_0_cell.as_i32()
+    let value = unwrap_cell(&arg_0_cell)
         .ok_or_else(|| {
-            ExecError::illegal_state(format!("IntToStr argument is not an int"))
+            ExecError::illegal_state(format!("primitive_to_str argument is not the correct type"))
         })?;
 
-    let string = state.create_string(&int.to_string())?;
+    let string = state.create_string(&value.to_string())?;
     state.store(&RETURN_REF, string)?;
 
     Ok(())
+}
+
+/// %1: I8 -> %0: String
+pub(super) fn i8_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_i8)
+}
+
+/// %1: I8 -> %0: String
+pub(super) fn u8_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_u8)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn i16_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_i16)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn u16_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_u16)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn i32_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_i32)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn u32_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_u32)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn i64_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_i64)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn u64_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_u64)
 }
 
 /// %1: String -> %0: Integer

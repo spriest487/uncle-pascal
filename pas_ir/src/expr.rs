@@ -625,33 +625,65 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
             builder.mov(out.clone(), Value::LiteralBool(*b));
         }
 
-        ast::Literal::Integer(i) => match ty {
-            pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => {
-                let val = i
-                    .as_i32()
-                    .expect("Int32-typed constant must be within range of i32");
-                builder.mov(out.clone(), Value::LiteralI32(val));
-            }
-            pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => {
-                let val = i
-                    .as_u32()
-                    .expect("Int32-typed constant must be within range of u32");
-                builder.mov(out.clone(), Value::LiteralU32(val));
-            }
-            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
-                let val = i
-                    .as_u8()
-                    .expect("Byte-typed constant must be within range of u8");
-                builder.mov(out.clone(), Value::LiteralByte(val))
-            }
-            pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
-                let val = i
-                    .as_f32()
-                    .expect("Real-typed constant must be within range of f32");
-                builder.mov(out.clone(), Value::LiteralF32(val))
-            }
+        ast::Literal::Integer(i) => {
+            match ty {
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => {
+                    let val = i
+                        .as_i8()
+                        .expect("Int8-typed constant must be within range of i8");
+                    builder.mov(out.clone(), Value::LiteralI8(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
+                    let val = i
+                        .as_u8()
+                        .expect("Byte-typed constant must be within range of u8");
+                    builder.mov(out.clone(), Value::LiteralByte(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => {
+                    let val = i
+                        .as_i16()
+                        .expect("Int16-typed constant must be within range of i16");
+                    builder.mov(out.clone(), Value::LiteralI16(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => {
+                    let val = i
+                        .as_u16()
+                        .expect("Int16-typed constant must be within range of i16");
+                    builder.mov(out.clone(), Value::LiteralU16(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => {
+                    let val = i
+                        .as_i32()
+                        .expect("Int32-typed constant must be within range of i32");
+                    builder.mov(out.clone(), Value::LiteralI32(val));
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => {
+                    let val = i
+                        .as_u32()
+                        .expect("Int32-typed constant must be within range of u32");
+                    builder.mov(out.clone(), Value::LiteralU32(val));
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => {
+                    let val = i
+                        .as_i64()
+                        .expect("Int64-typed constant must be within range of i64");
+                    builder.mov(out.clone(), Value::LiteralI64(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => {
+                    let val = i
+                        .as_u64()
+                        .expect("Int64-typed constant must be within range of i64");
+                    builder.mov(out.clone(), Value::LiteralU64(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
+                    let val = i
+                        .as_f32()
+                        .expect("Real-typed constant must be within range of f32");
+                    builder.mov(out.clone(), Value::LiteralF32(val))
+                }
 
-            _ => panic!("bad type for integer literal: {}", ty),
+                _ => panic!("bad type for integer literal: {}", ty),
+            }
         },
 
         ast::Literal::Real(r) => match ty {
@@ -969,8 +1001,14 @@ fn translate_unary_op(
             let op_ty = unary_op.annotation.ty();
 
             let zero_val = match op_ty.as_ref() {
-                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Value::LiteralI32(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => Value::LiteralI8(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => Value::LiteralByte(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => Value::LiteralI16(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => Value::LiteralI16(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => Value::LiteralI32(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => Value::LiteralU32(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => Value::LiteralI64(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => Value::LiteralU64(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Value::LiteralF32(0.0),
                 _ => unimplemented!("unary negation of {}", op_ty)
             };

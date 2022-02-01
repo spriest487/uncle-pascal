@@ -11,7 +11,8 @@ use std::ops::{Div, Mul};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum IntConstant {
-    Char(u8),
+    I8(i8),
+    Byte(u8),
     I32(i32),
     I64(i64),
     U32(u32),
@@ -21,7 +22,8 @@ pub enum IntConstant {
 impl fmt::Display for IntConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            IntConstant::Char(c) => write!(f, "#{}", c),
+            IntConstant::I8(i) => write!(f, "{}", i),
+            IntConstant::Byte(i) => write!(f, "{}", i),
             IntConstant::I32(i) => write!(f, "{}", i),
             IntConstant::I64(i) => write!(f, "{}", i),
             IntConstant::U32(i) => write!(f, "${:X}", i),
@@ -33,7 +35,8 @@ impl fmt::Display for IntConstant {
 impl IntConstant {
     pub fn is_zero(&self) -> bool {
         match self {
-            IntConstant::Char(c) => *c == 0,
+            IntConstant::I8(i) => *i == 0,
+            IntConstant::Byte(i) => *i == 0,
             IntConstant::I32(i) => *i == 0,
             IntConstant::U32(i) => *i == 0,
             IntConstant::I64(i) => *i == 0,
@@ -78,7 +81,8 @@ impl IntConstant {
 
     pub fn as_i128(&self) -> i128 {
         match self {
-            IntConstant::Char(i) => i128::from(*i),
+            IntConstant::I8(i) => i128::from(*i),
+            IntConstant::Byte(i) => i128::from(*i),
             IntConstant::I32(i) => i128::from(*i),
             IntConstant::U32(i) => i128::from(*i),
             IntConstant::I64(i) => i128::from(*i),
@@ -88,7 +92,8 @@ impl IntConstant {
 
     pub fn as_i8(&self) -> Option<i8> {
         match self {
-            IntConstant::Char(i) => cast::i8(*i).ok(),
+            IntConstant::I8(i) => Some(*i),
+            IntConstant::Byte(i) => cast::i8(*i).ok(),
             IntConstant::I32(i) => cast::i8(*i).ok(),
             IntConstant::U32(i) => cast::i8(*i).ok(),
             IntConstant::I64(i) => cast::i8(*i).ok(),
@@ -98,7 +103,8 @@ impl IntConstant {
 
     pub fn as_u8(&self) -> Option<u8> {
         match self {
-            IntConstant::Char(i) => Some(*i),
+            IntConstant::I8(i) => cast::u8(*i).ok(),
+            IntConstant::Byte(i) => Some(*i),
             IntConstant::I32(i) => cast::u8(*i).ok(),
             IntConstant::U32(i) => cast::u8(*i).ok(),
             IntConstant::I64(i) => cast::u8(*i).ok(),
@@ -108,7 +114,8 @@ impl IntConstant {
 
     pub fn as_i16(&self) -> Option<i16> {
         match self {
-            IntConstant::Char(i) => Some(cast::i16(*i)),
+            IntConstant::I8(i) => Some(*i as i16),
+            IntConstant::Byte(i) => Some(cast::i16(*i)),
             IntConstant::I32(i) => cast::i16(*i).ok(),
             IntConstant::U32(i) => cast::i16(*i).ok(),
             IntConstant::I64(i) => cast::i16(*i).ok(),
@@ -118,7 +125,8 @@ impl IntConstant {
 
     pub fn as_u16(&self) -> Option<u16> {
         match self {
-            IntConstant::Char(i) => Some(cast::u16(*i)),
+            IntConstant::I8(i) => cast::u16(*i).ok(),
+            IntConstant::Byte(i) => Some(cast::u16(*i)),
             IntConstant::I32(i) => cast::u16(*i).ok(),
             IntConstant::U32(i) => cast::u16(*i).ok(),
             IntConstant::I64(i) => cast::u16(*i).ok(),
@@ -128,7 +136,8 @@ impl IntConstant {
 
     pub fn as_i32(&self) -> Option<i32> {
         match self {
-            IntConstant::Char(i) => Some(i32::from(*i)),
+            IntConstant::I8(i) => Some(*i as i32),
+            IntConstant::Byte(i) => Some(i32::from(*i)),
             IntConstant::I32(i) => Some(*i),
             IntConstant::U32(i) => cast::i32(*i).ok(),
             IntConstant::I64(i) => cast::i32(*i).ok(),
@@ -138,7 +147,8 @@ impl IntConstant {
 
     pub fn as_u32(&self) -> Option<u32> {
         match self {
-            IntConstant::Char(i) => Some(u32::from(*i)),
+            IntConstant::I8(i) => cast::u32(*i).ok(),
+            IntConstant::Byte(i) => Some(u32::from(*i)),
             IntConstant::I32(i) => cast::u32(*i).ok(),
             IntConstant::U32(i) => Some(*i),
             IntConstant::I64(i) => cast::u32(*i).ok(),
@@ -148,7 +158,8 @@ impl IntConstant {
 
     pub fn as_i64(&self) -> Option<i64> {
         match self {
-            IntConstant::Char(i) => Some(i64::from(*i)),
+            IntConstant::I8(i) => Some(*i as i64),
+            IntConstant::Byte(i) => Some(i64::from(*i)),
             IntConstant::I32(i) => Some(i64::from(*i)),
             IntConstant::U32(i) => Some(i64::from(*i)),
             IntConstant::I64(i) => Some(*i),
@@ -158,7 +169,8 @@ impl IntConstant {
 
     pub fn as_u64(&self) -> Option<u64> {
         match self {
-            IntConstant::Char(i) => Some(u64::from(*i)),
+            IntConstant::I8(i) => cast::u64(*i).ok(),
+            IntConstant::Byte(i) => Some(u64::from(*i)),
             IntConstant::I32(i) => Some(*i as u64),
             IntConstant::U32(i) => Some(u64::from(*i)),
             IntConstant::I64(i) => cast::u64(*i).ok(),
@@ -168,7 +180,8 @@ impl IntConstant {
 
     pub fn as_f32(&self) -> Option<f32> {
         match self {
-            IntConstant::Char(i) => Some(cast::f32(*i)),
+            IntConstant::I8(i) => Some(cast::f32(*i)),
+            IntConstant::Byte(i) => Some(cast::f32(*i)),
             IntConstant::I32(i) => Some(cast::f32(*i)),
             IntConstant::U32(i) => Some(cast::f32(*i)),
             IntConstant::I64(i) => Some(cast::f32(*i)),
@@ -178,7 +191,8 @@ impl IntConstant {
 
     pub fn as_f64(&self) -> Option<f64> {
         match self {
-            IntConstant::Char(i) => Some(cast::f64(*i)),
+            IntConstant::I8(i) => Some(cast::f64(*i)),
+            IntConstant::Byte(i) => Some(cast::f64(*i)),
             IntConstant::I32(i) => Some(cast::f64(*i)),
             IntConstant::U32(i) => Some(cast::f64(*i)),
             IntConstant::I64(i) => Some(cast::f64(*i)),
@@ -189,8 +203,9 @@ impl IntConstant {
     #[cfg(target_pointer_width = "64")]
     pub fn as_usize(&self) -> Option<usize> {
         match self {
-            IntConstant::Char(i) => Some(*i as usize),
-            IntConstant::I32(i) => Some(*i as usize),
+            IntConstant::I8(i) => cast::usize(*i).ok(),
+            IntConstant::Byte(i) => Some(*i as usize),
+            IntConstant::I32(i) => cast::usize(*i).ok(),
             IntConstant::U32(i) => Some(*i as usize),
             IntConstant::I64(i) => cast::usize(*i).ok(),
             IntConstant::U64(i) => Some(*i as usize),
@@ -200,7 +215,8 @@ impl IntConstant {
     #[cfg(target_pointer_width = "32")]
     pub fn as_usize(&self) -> Option<usize> {
         match self {
-            IntConstant::Char(i) => Some(*i as usize),
+            IntConstant::I8(i) => cast::usize(*i).ok(),
+            IntConstant::Byte(i) => Some(*i as usize),
             IntConstant::I32(i) => cast::usize(*i).ok(),
             IntConstant::U32(i) => Some(*i as usize),
             IntConstant::I64(i) => cast::usize(*i).ok(),
@@ -211,7 +227,8 @@ impl IntConstant {
     #[cfg(target_pointer_width = "64")]
     pub fn as_isize(&self) -> Option<isize> {
         match self {
-            IntConstant::Char(i) => Some(*i as isize),
+            IntConstant::I8(i) => Some(*i as isize),
+            IntConstant::Byte(i) => Some(*i as isize),
             IntConstant::I32(i) => Some(*i as isize),
             IntConstant::U32(i) => Some(*i as isize),
             IntConstant::I64(i) => Some(*i as isize),
@@ -222,7 +239,8 @@ impl IntConstant {
     #[cfg(target_pointer_width = "32")]
     pub fn as_isize(&self) -> Option<isize> {
         match self {
-            IntConstant::Char(i) => Some(*i as isize),
+            IntConstant::I8(i) => Some(*i as isize),
+            IntConstant::Byte(i) => Some(*i as isize),
             IntConstant::I32(i) => Some(*i as isize),
             IntConstant::U32(i) => cast::isize(*i).ok(),
             IntConstant::I64(i) => cast::isize(*i).ok(),
@@ -245,7 +263,7 @@ impl PartialOrd for IntConstant {
 
 impl From<u8> for IntConstant {
     fn from(val: u8) -> Self {
-        IntConstant::Char(val)
+        IntConstant::Byte(val)
     }
 }
 
