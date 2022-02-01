@@ -10,38 +10,17 @@ use std::cmp::Ordering;
 use std::ops::{Div, Mul};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum IntConstant {
-    I8(i8),
-    Byte(u8),
-    I32(i32),
-    I64(i64),
-    U32(u32),
-    U64(u64),
-}
+pub struct IntConstant(i128);
 
 impl fmt::Display for IntConstant {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            IntConstant::I8(i) => write!(f, "{}", i),
-            IntConstant::Byte(i) => write!(f, "{}", i),
-            IntConstant::I32(i) => write!(f, "{}", i),
-            IntConstant::I64(i) => write!(f, "{}", i),
-            IntConstant::U32(i) => write!(f, "${:X}", i),
-            IntConstant::U64(i) => write!(f, "{}", i),
-        }
+        write!(f, "{}", self.0)
     }
 }
 
 impl IntConstant {
     pub fn is_zero(&self) -> bool {
-        match self {
-            IntConstant::I8(i) => *i == 0,
-            IntConstant::Byte(i) => *i == 0,
-            IntConstant::I32(i) => *i == 0,
-            IntConstant::U32(i) => *i == 0,
-            IntConstant::I64(i) => *i == 0,
-            IntConstant::U64(i) => *i == 0,
-        }
+        self.0 == 0
     }
 
     pub fn parse_str(s: &str) -> Option<Self> {
@@ -59,9 +38,9 @@ impl IntConstant {
 
                 // hex literals always produce unsigned values
                 if let Ok(val) = cast::u32(val) {
-                    Some(IntConstant::U32(val as u32))
+                    Some(IntConstant::from(val as u32))
                 } else {
-                    Some(IntConstant::U64(val))
+                    Some(IntConstant::from(val))
                 }
             }
 
@@ -80,172 +59,55 @@ impl IntConstant {
     }
 
     pub fn as_i128(&self) -> i128 {
-        match self {
-            IntConstant::I8(i) => i128::from(*i),
-            IntConstant::Byte(i) => i128::from(*i),
-            IntConstant::I32(i) => i128::from(*i),
-            IntConstant::U32(i) => i128::from(*i),
-            IntConstant::I64(i) => i128::from(*i),
-            IntConstant::U64(i) => i128::from(*i),
-        }
+        self.0
     }
 
     pub fn as_i8(&self) -> Option<i8> {
-        match self {
-            IntConstant::I8(i) => Some(*i),
-            IntConstant::Byte(i) => cast::i8(*i).ok(),
-            IntConstant::I32(i) => cast::i8(*i).ok(),
-            IntConstant::U32(i) => cast::i8(*i).ok(),
-            IntConstant::I64(i) => cast::i8(*i).ok(),
-            IntConstant::U64(i) => cast::i8(*i).ok(),
-        }
+        self.0.to_i8()
     }
 
     pub fn as_u8(&self) -> Option<u8> {
-        match self {
-            IntConstant::I8(i) => cast::u8(*i).ok(),
-            IntConstant::Byte(i) => Some(*i),
-            IntConstant::I32(i) => cast::u8(*i).ok(),
-            IntConstant::U32(i) => cast::u8(*i).ok(),
-            IntConstant::I64(i) => cast::u8(*i).ok(),
-            IntConstant::U64(i) => cast::u8(*i).ok(),
-        }
+        self.0.to_u8()
     }
 
     pub fn as_i16(&self) -> Option<i16> {
-        match self {
-            IntConstant::I8(i) => Some(*i as i16),
-            IntConstant::Byte(i) => Some(cast::i16(*i)),
-            IntConstant::I32(i) => cast::i16(*i).ok(),
-            IntConstant::U32(i) => cast::i16(*i).ok(),
-            IntConstant::I64(i) => cast::i16(*i).ok(),
-            IntConstant::U64(i) => cast::i16(*i).ok(),
-        }
+        self.0.to_i16()
     }
 
     pub fn as_u16(&self) -> Option<u16> {
-        match self {
-            IntConstant::I8(i) => cast::u16(*i).ok(),
-            IntConstant::Byte(i) => Some(cast::u16(*i)),
-            IntConstant::I32(i) => cast::u16(*i).ok(),
-            IntConstant::U32(i) => cast::u16(*i).ok(),
-            IntConstant::I64(i) => cast::u16(*i).ok(),
-            IntConstant::U64(i) => cast::u16(*i).ok(),
-        }
+        self.0.to_u16()
     }
 
     pub fn as_i32(&self) -> Option<i32> {
-        match self {
-            IntConstant::I8(i) => Some(*i as i32),
-            IntConstant::Byte(i) => Some(i32::from(*i)),
-            IntConstant::I32(i) => Some(*i),
-            IntConstant::U32(i) => cast::i32(*i).ok(),
-            IntConstant::I64(i) => cast::i32(*i).ok(),
-            IntConstant::U64(i) => cast::i32(*i).ok(),
-        }
+        self.0.to_i32()
     }
 
     pub fn as_u32(&self) -> Option<u32> {
-        match self {
-            IntConstant::I8(i) => cast::u32(*i).ok(),
-            IntConstant::Byte(i) => Some(u32::from(*i)),
-            IntConstant::I32(i) => cast::u32(*i).ok(),
-            IntConstant::U32(i) => Some(*i),
-            IntConstant::I64(i) => cast::u32(*i).ok(),
-            IntConstant::U64(i) => cast::u32(*i).ok(),
-        }
+       self.0.to_u32()
     }
 
     pub fn as_i64(&self) -> Option<i64> {
-        match self {
-            IntConstant::I8(i) => Some(*i as i64),
-            IntConstant::Byte(i) => Some(i64::from(*i)),
-            IntConstant::I32(i) => Some(i64::from(*i)),
-            IntConstant::U32(i) => Some(i64::from(*i)),
-            IntConstant::I64(i) => Some(*i),
-            IntConstant::U64(i) => cast::i64(*i).ok(),
-        }
+        self.0.to_i64()
     }
 
     pub fn as_u64(&self) -> Option<u64> {
-        match self {
-            IntConstant::I8(i) => cast::u64(*i).ok(),
-            IntConstant::Byte(i) => Some(u64::from(*i)),
-            IntConstant::I32(i) => Some(*i as u64),
-            IntConstant::U32(i) => Some(u64::from(*i)),
-            IntConstant::I64(i) => cast::u64(*i).ok(),
-            IntConstant::U64(i) => Some(*i),
-        }
+        self.0.to_u64()
     }
 
     pub fn as_f32(&self) -> Option<f32> {
-        match self {
-            IntConstant::I8(i) => Some(cast::f32(*i)),
-            IntConstant::Byte(i) => Some(cast::f32(*i)),
-            IntConstant::I32(i) => Some(cast::f32(*i)),
-            IntConstant::U32(i) => Some(cast::f32(*i)),
-            IntConstant::I64(i) => Some(cast::f32(*i)),
-            IntConstant::U64(i) => Some(cast::f32(*i)),
-        }
+        self.0.to_f32()
     }
 
     pub fn as_f64(&self) -> Option<f64> {
-        match self {
-            IntConstant::I8(i) => Some(cast::f64(*i)),
-            IntConstant::Byte(i) => Some(cast::f64(*i)),
-            IntConstant::I32(i) => Some(cast::f64(*i)),
-            IntConstant::U32(i) => Some(cast::f64(*i)),
-            IntConstant::I64(i) => Some(cast::f64(*i)),
-            IntConstant::U64(i) => Some(cast::f64(*i)),
-        }
+        self.0.to_f64()
     }
 
-    #[cfg(target_pointer_width = "64")]
     pub fn as_usize(&self) -> Option<usize> {
-        match self {
-            IntConstant::I8(i) => cast::usize(*i).ok(),
-            IntConstant::Byte(i) => Some(*i as usize),
-            IntConstant::I32(i) => cast::usize(*i).ok(),
-            IntConstant::U32(i) => Some(*i as usize),
-            IntConstant::I64(i) => cast::usize(*i).ok(),
-            IntConstant::U64(i) => Some(*i as usize),
-        }
+        self.0.to_usize()
     }
 
-    #[cfg(target_pointer_width = "32")]
-    pub fn as_usize(&self) -> Option<usize> {
-        match self {
-            IntConstant::I8(i) => cast::usize(*i).ok(),
-            IntConstant::Byte(i) => Some(*i as usize),
-            IntConstant::I32(i) => cast::usize(*i).ok(),
-            IntConstant::U32(i) => Some(*i as usize),
-            IntConstant::I64(i) => cast::usize(*i).ok(),
-            IntConstant::U64(i) => cast::usize(*i).ok(),
-        }
-    }
-
-    #[cfg(target_pointer_width = "64")]
     pub fn as_isize(&self) -> Option<isize> {
-        match self {
-            IntConstant::I8(i) => Some(*i as isize),
-            IntConstant::Byte(i) => Some(*i as isize),
-            IntConstant::I32(i) => Some(*i as isize),
-            IntConstant::U32(i) => Some(*i as isize),
-            IntConstant::I64(i) => Some(*i as isize),
-            IntConstant::U64(i) => cast::isize(*i).ok(),
-        }
-    }
-
-    #[cfg(target_pointer_width = "32")]
-    pub fn as_isize(&self) -> Option<isize> {
-        match self {
-            IntConstant::I8(i) => Some(*i as isize),
-            IntConstant::Byte(i) => Some(*i as isize),
-            IntConstant::I32(i) => Some(*i as isize),
-            IntConstant::U32(i) => cast::isize(*i).ok(),
-            IntConstant::I64(i) => cast::isize(*i).ok(),
-            IntConstant::U64(i) => cast::isize(*i).ok(),
-        }
+        self.0.to_isize()
     }
 }
 
@@ -261,68 +123,69 @@ impl PartialOrd for IntConstant {
     }
 }
 
+impl From<i8> for IntConstant {
+    fn from(val: i8) -> Self {
+        IntConstant(val as i128)
+    }
+}
+
 impl From<u8> for IntConstant {
     fn from(val: u8) -> Self {
-        IntConstant::Byte(val)
+        IntConstant(val as i128)
+    }
+}
+
+impl From<i16> for IntConstant {
+    fn from(val: i16) -> Self {
+        IntConstant(val as i128)
+    }
+}
+
+impl From<u16> for IntConstant {
+    fn from(val: u16) -> Self {
+        IntConstant(val as i128)
     }
 }
 
 impl From<i32> for IntConstant {
     fn from(val: i32) -> Self {
-        IntConstant::I32(val)
+        IntConstant(val as i128)
     }
 }
 
 impl From<u32> for IntConstant {
     fn from(val: u32) -> Self {
-        IntConstant::from(u64::from(val))
-    }
-}
-
-impl From<usize> for IntConstant {
-    fn from(val: usize) -> Self {
-        IntConstant::from(val as u64)
-    }
-}
-
-impl From<isize> for IntConstant {
-    fn from(val: isize) -> Self {
-        IntConstant::from(val as i64)
+        IntConstant(val as i128)
     }
 }
 
 impl From<i64> for IntConstant {
     fn from(val: i64) -> Self {
-        let i32_min = i64::from(i32::min_value());
-        let i32_max = i64::from(i32::max_value());
-
-        if val >= i32_min && val <= i32_max {
-            IntConstant::I32(val as i32)
-        } else {
-            IntConstant::I64(val)
-        }
+        IntConstant(val as i128)
     }
 }
 
 impl From<u64> for IntConstant {
     fn from(val: u64) -> Self {
-        if let Ok(val) = cast::i32(val) {
-            IntConstant::I32(val as i32)
-        } else if let Ok(val) = cast::i64(val) {
-            IntConstant::I64(val as i64)
-        } else {
-            IntConstant::U64(val)
-        }
+        IntConstant(val as i128)
+    }
+}
+
+impl From<usize> for IntConstant {
+    fn from(val: usize) -> Self {
+        IntConstant(val as i128)
+    }
+}
+
+impl From<isize> for IntConstant {
+    fn from(val: isize) -> Self {
+        IntConstant(val as i128)
     }
 }
 
 impl From<i128> for IntConstant {
     fn from(val: i128) -> Self {
-        if val > i128::from(i64::MAX) {
-            IntConstant::U64(val as u64)
-        } else {
-            IntConstant::from(val as i64)
-        }
+        IntConstant(val)
     }
 }
 
