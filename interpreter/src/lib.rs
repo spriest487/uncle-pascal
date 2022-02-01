@@ -1448,6 +1448,8 @@ impl Interpreter {
             ("UInt32ToStr", builtin::u32_to_str, Type::string_ptr(), vec![Type::U32]),
             ("Int64ToStr", builtin::i64_to_str, Type::string_ptr(), vec![Type::I64]),
             ("UInt64ToStr", builtin::u64_to_str, Type::string_ptr(), vec![Type::U64]),
+            ("NativeIntToStr", builtin::isize_to_str, Type::string_ptr(), vec![Type::ISize]),
+            ("NativeUIntToStr", builtin::usize_to_str, Type::string_ptr(), vec![Type::USize]),
 
             ("StrToInt", builtin::str_to_int, Type::I32, vec![STRING_TYPE]),
             ("WriteLn", builtin::write_ln, Type::Nothing, vec![STRING_TYPE]),

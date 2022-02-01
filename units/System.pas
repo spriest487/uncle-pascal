@@ -28,8 +28,28 @@ export function FreeMem(mem: ^Byte); external 'rt';
 export function WriteLn(line: String); external 'rt';
 export function ReadLn(): String; external 'rt';
 
+export function Int8ToStr(i: Int8): String; external 'rt';
+export function ByteToStr(i: Byte): String; external 'rt';
+export function Int16ToStr(i: Int16): String; external 'rt';
+export function UInt16ToStr(i: UInt16): String; external 'rt';
 export function IntToStr(i: Integer): String; external 'rt';
+export function UInt32ToStr(i: UInt32): String; external 'rt';
+export function Int64ToStr(i: Int64): String; external 'rt';
+export function UInt64ToStr(i: UInt64): String; external 'rt';
+export function NativeIntToStr(i: NativeInt): String; external 'rt';
+export function NativeUIntToStr(i: NativeUInt): String; external 'rt';
+
 export function StrToInt(s: String): Integer; external 'rt';
+
+export function UInt8ToStr(i: Byte): String
+begin
+    ByteToStr(i)
+end;
+
+export function Int32ToStr(i: Integer): String
+begin
+    IntToStr(i)
+end;
 
 function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
 

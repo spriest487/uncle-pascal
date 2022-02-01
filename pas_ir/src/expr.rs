@@ -675,10 +675,22 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
                         .expect("Int64-typed constant must be within range of i64");
                     builder.mov(out.clone(), Value::LiteralU64(val))
                 }
+                pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => {
+                    let val = i
+                        .as_isize()
+                        .expect("Int64-typed constant must be within range of i64");
+                    builder.mov(out.clone(), Value::LiteralISize(val))
+                }
+                pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => {
+                    let val = i
+                        .as_usize()
+                        .expect("Int64-typed constant must be within range of isize");
+                    builder.mov(out.clone(), Value::LiteralUSize(val))
+                }
                 pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
                     let val = i
                         .as_f32()
-                        .expect("Real-typed constant must be within range of f32");
+                        .expect("Real-typed constant must be within range of usize");
                     builder.mov(out.clone(), Value::LiteralF32(val))
                 }
 
@@ -1009,6 +1021,8 @@ fn translate_unary_op(
                 pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => Value::LiteralU32(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => Value::LiteralI64(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => Value::LiteralU64(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => Value::LiteralISize(0),
+                pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => Value::LiteralUSize(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Value::LiteralF32(0.0),
                 _ => unimplemented!("unary negation of {}", op_ty)
             };

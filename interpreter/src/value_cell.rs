@@ -384,6 +384,20 @@ impl ValueCell {
         }
     }
 
+    pub fn as_isize(&self) -> Option<isize> {
+        match self {
+            ValueCell::ISize(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    pub fn as_usize(&self) -> Option<usize> {
+        match self {
+            ValueCell::USize(i) => Some(*i),
+            _ => None,
+        }
+    }
+
     pub fn as_pointer(&self) -> Option<&Pointer> {
         match self {
             ValueCell::Pointer(ptr) => Some(ptr),

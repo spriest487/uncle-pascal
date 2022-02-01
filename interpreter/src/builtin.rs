@@ -63,6 +63,16 @@ pub(super) fn u64_to_str(state: &mut Interpreter) -> ExecResult<()> {
     primitive_to_str(state, ValueCell::as_u64)
 }
 
+/// %1: Integer -> %0: String
+pub(super) fn isize_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_isize)
+}
+
+/// %1: Integer -> %0: String
+pub(super) fn usize_to_str(state: &mut Interpreter) -> ExecResult<()> {
+    primitive_to_str(state, ValueCell::as_usize)
+}
+
 /// %1: String -> %0: Integer
 pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));
