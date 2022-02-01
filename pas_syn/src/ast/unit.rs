@@ -6,8 +6,8 @@ pub use self::const_decl::ConstDecl;
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {
-    Exported,
-    Private,
+    Interface,
+    Implementation,
 }
 
 #[derive(Clone, Debug)]
@@ -51,8 +51,8 @@ impl Unit<Span> {
         loop {
             let export_kw = tokens.match_one_maybe(Keyword::Export);
             let visibility = match &export_kw {
-                Some(..) => Visibility::Exported,
-                None => Visibility::Private,
+                Some(..) => Visibility::Interface,
+                None => Visibility::Implementation,
             };
 
             let exportable_decl_kw = Keyword::Function

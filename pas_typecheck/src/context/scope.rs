@@ -153,8 +153,8 @@ impl NamespaceStack<Scope> {
                  }) => match value {
                 Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
                     match visibility {
-                        Visibility::Exported => true,
-                        Visibility::Private => {
+                        Visibility::Interface => true,
+                        Visibility::Implementation => {
                             let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
 
                             current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)

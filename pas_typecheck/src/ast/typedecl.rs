@@ -38,7 +38,7 @@ pub fn typecheck_class(
         ast::ClassKind::Object => Type::Class(Box::new(name.clone())),
     };
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
-    ctx.declare_type(class.name.ident.clone(), self_ty, Visibility::Private)?;
+    ctx.declare_type(class.name.ident.clone(), self_ty, Visibility::Implementation)?;
 
     let mut members = Vec::new();
     for member in &class.members {

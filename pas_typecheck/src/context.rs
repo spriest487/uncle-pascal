@@ -126,7 +126,7 @@ impl Context {
 
         let declare_builtin = |ctx: &mut Self, name: &str, ty: Type| {
             let ident = Ident::new(name, module_span.clone());
-            ctx.declare_type(ident, ty, Visibility::Exported)
+            ctx.declare_type(ident, ty, Visibility::Interface)
                 .expect("builtin type decl must not fail");
         };
 
@@ -150,10 +150,10 @@ impl Context {
         });
 
         // declare things normally declared in System.pas that the compiler needs to function
-        self.declare_class(Rc::new(builtin_string_class()), Visibility::Exported)
+        self.declare_class(Rc::new(builtin_string_class()), Visibility::Interface)
             .expect("builtin System.String definition must not fail");
 
-        self.declare_iface(Rc::new(builtin_disposable_iface()), Visibility::Exported)
+        self.declare_iface(Rc::new(builtin_disposable_iface()), Visibility::Interface)
             .expect("builtin System.Disposable definition must not fail");
 
         self.pop_scope(system_scope);
@@ -459,7 +459,7 @@ impl Context {
                     is_iface,
                     pos,
                 })),
-                Visibility::Private,
+                Visibility::Implementation,
             )?;
         }
 
@@ -468,7 +468,7 @@ impl Context {
 
     pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> NamingResult<()> {
         let self_ident = Ident::new("Self", span);
-        self.declare_type(self_ident, ty, Visibility::Private)
+        self.declare_type(self_ident, ty, Visibility::Implementation)
     }
 
     pub fn declare_type(
