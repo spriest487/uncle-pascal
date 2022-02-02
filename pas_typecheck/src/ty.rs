@@ -426,10 +426,11 @@ impl Type {
         }
     }
 
-    pub fn collection_element_ty(&self) -> Option<&Type> {
+    pub fn index_element_ty(&self) -> Option<&Type> {
         match self {
             Type::Array(array_ty) => Some(&array_ty.element_ty),
             Type::DynArray { element } => Some(element.as_ref()),
+            Type::Pointer(deref_ty) => Some(deref_ty.as_ref()),
             _ => None,
         }
     }

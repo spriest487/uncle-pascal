@@ -139,30 +139,38 @@ mod test {
     fn finds_ufcs_func() {
         let unit = unit_from_src(
             "test",
-            r"type UFCSTarget = class
+            r"interface
+
+            type UFCSTarget = class
             end;
 
-            export function TargetMethod(t: UFCSTarget)
+            function TargetMethod(t: UFCSTarget)
             begin
-            end;",
+            end;
+
+            end",
         );
 
         let target = Type::of_decl(&unit.unit.type_decls().next().unwrap());
-        assert_eq!(target.full_path().unwrap().last().name, "UFCSTarget");
+        assert_eq!(target.full_path().unwrap().last().name.as_str(), "UFCSTarget");
 
         let methods = find_ufcs_free_functions(&target, &unit.context);
 
         assert_eq!(methods.len(), 1);
-        assert_eq!(methods[0].ident().name, "TargetMethod");
+        assert_eq!(methods[0].ident().name.as_str(), "TargetMethod");
     }
 
     #[test]
     fn finds_exported_ufcs_func_from_other_unit() {
-        let a_src = r"export type UFCSTarget = class
-            end;";
+        let a_src = r"interface
+            type UFCSTarget = class
+            end
+            end";
 
-        let b_src = r"export function TargetMethod(t: A.UFCSTarget)
+        let b_src = r"interface
+            function TargetMethod(t: A.UFCSTarget)
             begin
+            end
             end";
 
         let c_src = "uses A;uses B;";
@@ -176,17 +184,21 @@ mod test {
         let methods = find_ufcs_free_functions(&target, &c.context);
 
         assert_eq!(methods.len(), 1);
-        assert_eq!(methods[0].ident().name, "TargetMethod");
+        assert_eq!(methods[0].ident().name.as_str(), "TargetMethod");
     }
 
     #[test]
     fn doesnt_find_private_ufcs_func_from_other_unit() {
-        let a_src = r"export type UFCSTarget = class
-            end;";
-
-        let b_src = r"function TargetMethod(t: A.UFCSTarget)
-            begin
+        let a_src = r"
+            type UFCSTarget = class
             end";
+
+        let b_src = r"
+            implementation
+            function TargetMethod(t: A.UFCSTarget)
+            begin
+            end;
+            end.";
 
         let c_src = "uses A;uses B;";
 

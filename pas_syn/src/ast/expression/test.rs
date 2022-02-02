@@ -35,7 +35,7 @@ fn parse_assignment_then_call_in_order() {
                     bin_op.lhs
                 )
             });
-            assert_eq!("x", lhs_ident.name);
+            assert_eq!("x", lhs_ident.name.as_str());
         }
 
         _ => panic!("expected binary op, got `{:#?}`", expr),
@@ -52,7 +52,7 @@ fn parse_assignment_then_call_in_order_explicit() {
                     bin_op.lhs
                 )
             });
-            assert_eq!("x", lhs_ident.name);
+            assert_eq!("x", lhs_ident.name.as_str());
         }
 
         invalid => panic!("expected binary op, got `{:#?}`", invalid),
@@ -114,8 +114,8 @@ fn member_indexer_parse_order() {
                     let lhs_ident = bin_op.lhs.as_ident().expect("lhs should be an ident");
                     let rhs_ident = bin_op.rhs.as_ident().expect("rhs should be an ident");
 
-                    assert_eq!(lhs_ident.name, "x");
-                    assert_eq!(rhs_ident.name, "y");
+                    assert_eq!(lhs_ident.name.as_str(), "x");
+                    assert_eq!(rhs_ident.name.as_str(), "y");
                 }
                 invalid => panic!("expected indexer base expression, got {:#?}", invalid),
             }

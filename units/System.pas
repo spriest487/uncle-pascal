@@ -61,14 +61,6 @@ type Disposable = interface
     function Dispose(self: Self);
 end;
 
-function Dispose of Disposable(self: String)
-begin
-    if self.len > 0 then FreeMem(self.chars);
-
-    self.chars := nil;
-    self.len := 0;
-end;
-
 function StringLen(s: String): Integer
 begin
     s.len
@@ -94,13 +86,13 @@ begin
     else begin
         let len := a.len + b.len;
 
-        let bytes := GetMem(len);
+        var bytes := GetMem(len);
 
         for let i := 0 to a.len - 1 do
-            (bytes + i)^ := (a.chars + i)^;
+            bytes[i] := a.chars[i];
 
         for let i := 0 to b.len - 1 do
-            (bytes + a.len + i)^ := (b.chars + i)^;
+            bytes[a.len + i] := b.chars[i];
 
         String(chars: bytes; len: len);
     end
@@ -111,10 +103,10 @@ begin
     if len = 0 then
         String(chars: nil; len: 0)
     else begin
-        let strBytes: ^Byte := GetMem(len);
+        var strBytes: ^Byte := GetMem(len);
 
-        for let i: Integer := 0 to len do begin
-            (strBytes + i)^ := (bytes + i)^;
+        for let i: Integer := 0 to len - 1 do begin
+            strBytes[i] := bytes[i];
         end;
 
         String(chars: strBytes; len: len)
@@ -123,13 +115,18 @@ end;
 
 function SubString(s: String; from: Integer; len: Integer): String
 begin
-    // todo: bounds check
+    if from < 0
+    or len < 0
+    or from >= s.len
+    or (from + len) >= s.len then
+        raise 'invalid arguments to SubString';
+
     if len = 0 then
         ''
     else begin
         var buf := GetMem(len);
         for let i := 0 to len - 1 do begin
-            (buf + i)^ := (s.chars + from + i)^;
+            buf[i] := s.chars[from + i];
         end;
 
         String(chars: buf; len: len)
@@ -138,21 +135,22 @@ end;
 
 function StringCharAt(s: String; at: Integer): Byte
 begin
-    // todo: bounds check
-    (s.chars + at)^
+    if at < 0 or at >= s.len then
+        raise 'invalid index: ' + IntToStr(at);
+
+    s.chars[at]
 end;
 
-function StringToBytes(s: String; bytes: ^Byte; len: Integer)
+function StringToBytes(s: String; var bytes: ^Byte; len: Integer)
 begin
     if len = 0 or bytes = nil then
         exit;
 
-    let sLen := StringLen(s);
-    let max := (if len < sLen then len else sLen) - 1;
+    let max := (if len < s.len then len else s.len) - 1;
 
-    for let i := 0 to max do begin
-        var charPtr := bytes + i;
-        charPtr^ := StringCharAt(s, i);
+    for let i := 0 to max do
+    begin
+        bytes[i] := s.chars[i];
     end;
 end;
 
@@ -257,6 +255,15 @@ begin
 end;
 
 implementation
+
+function Dispose of Disposable(self: String)
+begin
+    if self.len > 0 then
+        FreeMem(self.chars);
+
+    self.chars := nil;
+    self.len := 0;
+end;
 
 function Compare of Comparable(self: String; other: String): Integer
 begin

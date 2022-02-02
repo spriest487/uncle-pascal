@@ -716,26 +716,30 @@ pub fn typecheck_indexer(
 
     check_array_bound_static(&base, &index, ctx)?;
 
-    let (el_ty, value_kind) = base
-        .annotation()
-        .ty()
-        .collection_element_ty()
-        .and_then(|el_ty| {
-            let value_kind = if base.annotation().ty().is_by_ref() {
+    let base_ty = base.annotation().ty();
+
+    let (el_ty, value_kind) = match (base_ty.index_element_ty(), base.annotation().value_kind()) {
+        (Some(el_ty), Some(base_value_kind)) => {
+            let base_value_kind = if base.annotation().ty().is_by_ref() {
                 // on heap e.g. dynamic array, always mutable
                 ValueKind::Mutable
             } else {
                 // inherit mutability from owning variable
-                base.annotation().value_kind()?
+                base_value_kind
             };
 
-            Some((el_ty.clone(), value_kind))
-        })
-        .ok_or_else(|| TypecheckError::InvalidIndexer {
-            index_ty: index_ty.clone(),
-            base: Box::new(base.clone()),
-            span: span.clone(),
-        })?;
+            (el_ty.clone(), base_value_kind)
+        }
+
+        // not indexable
+        _ => {
+            return Err(TypecheckError::InvalidIndexer {
+                index_ty: index_ty.clone(),
+                base: Box::new(base.clone()),
+                span: span.clone(),
+            })
+        }
+    };
 
     let annotation = TypedValueAnnotation {
         value_kind,

@@ -72,63 +72,66 @@ fn translate_indexer(
     base_ty: &pas_ty::Type,
     builder: &mut Builder,
 ) -> Ref {
-    let ptr_into = builder.local_temp(val_ty.clone().ptr());
-
-    builder.begin_scope();
-
     match base_ty {
         pas_ty::Type::Array(array_ty) => {
+            let element_ptr = builder.local_temp(val_ty.clone().ptr());
+
+            builder.begin_scope();
+
             let element_ty = builder.translate_type(&array_ty.element_ty);
             let len = cast::i32(array_ty.dim).expect("array dim must be within range of i32");
 
             gen_bounds_check(index_ref.clone(), Value::LiteralI32(len), builder);
 
             builder.append(Instruction::Element {
-                out: ptr_into.clone(),
+                out: element_ptr.clone(),
                 a: base_ref,
                 index: Value::Ref(index_ref),
                 element: element_ty,
             });
+
+            builder.end_scope();
+
+            element_ptr
         }
 
         pas_ty::Type::DynArray { element } => {
+            let element_ptr = builder.local_temp(val_ty.clone().ptr());
+
+            builder.begin_scope();
+
+            let arr_field_ptr = builder.local_temp(val_ty.clone().ptr().ptr());
+            let len_field_ptr = builder.local_temp(Type::I32.ptr());
+
             let array_struct = builder.translate_dyn_array_struct(&element);
             let array_class = ClassID::Class(array_struct);
             let array_class_ty = Type::RcPointer(Some(array_class));
 
-            let index_val = Value::Ref(index_ref);
-
-            // bounds check
-            let len_field_ptr = builder.local_temp(Type::I32.ptr());
             builder.field(len_field_ptr.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_LEN_FIELD);
+            builder.field(arr_field_ptr.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_PTR_FIELD);
 
-            gen_bounds_check(index_val.clone(), Value::Ref(len_field_ptr.to_deref()), builder);
+            gen_bounds_check(index_ref.clone(), Value::Ref(len_field_ptr.to_deref()), builder);
 
-            // offset array pointer to get element pointer
-            let arr_field = builder.local_temp(val_ty.clone().ptr().ptr());
-            builder.field(arr_field.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_PTR_FIELD);
+            // array_ptr := (array_field_ptr)^
+            // element_ptr := array_ptr + index
+            let array_ptr = arr_field_ptr.to_deref();
+            builder.add(element_ptr.clone(), array_ptr, index_ref);
 
-            builder.append(Instruction::Add {
-                out: ptr_into.clone(),
-                a: Value::Ref(arr_field.to_deref()),
-                b: index_val,
-            });
+            builder.end_scope();
+
+            element_ptr
         }
 
         pas_ty::Type::Pointer(_) => {
-            builder.append(Instruction::Add {
-                out: ptr_into.clone(),
-                a: base_ref.into(),
-                b: index_ref.into(),
-            });
+            let result_ptr = builder.local_temp(val_ty.clone().ptr());
+
+            builder.add(result_ptr.clone(), base_ref, index_ref);
+
+            result_ptr
         }
 
         unimpl => unimplemented!("IR for indexing into {}", unimpl),
     }
-
-    builder.end_scope();
-
-    ptr_into.to_deref()
 }
 
 fn gen_bounds_check(index_val: impl Into<Value>, len_val: impl Into<Value>, builder: &mut Builder) {
@@ -746,10 +749,17 @@ fn translate_bin_op(
 
     let out_ty = builder.translate_type(out_ty);
 
-    let (out_val, out_by_ref) = if bin_op.op == syn::Operator::Member {
-        (builder.local_new(out_ty.clone().ptr(), None), true)
-    } else {
-        (builder.local_new(out_ty.clone(), None), false)
+    // the functions to translate IR and member operators return pointers to the value
+    let (out_val, out_is_ptr) = match bin_op.op {
+        syn::Operator::Member | syn::Operator::Index => {
+            let out_val = builder.local_new(out_ty.clone().ptr(), None);
+            (out_val, true)
+        },
+
+        _ => {
+            let out_val = builder.local_new(out_ty.clone(), None);
+            (out_val, false)
+        }
     };
 
     builder.begin_scope();
@@ -974,13 +984,13 @@ fn translate_bin_op(
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 
-    if !out_by_ref {
+    if !out_is_ptr {
         builder.retain(out_val.clone(), &out_ty);
     }
 
     builder.end_scope();
 
-    if out_by_ref {
+    if out_is_ptr {
         out_val.to_deref()
     } else {
         out_val

@@ -16,8 +16,8 @@ fn rc_cell_roundtrips_ok() {
     let mut bytes = vec![0u8; 1024];
     let marshalled_size = marshaller.marshal_rc_cell(&marshalled_rc_cell, &mut bytes).unwrap();
 
-    let (unmarshalled_rc_cell, unmarshalled_size) = marshaller.unmarshal_rc_cell(&bytes[0..marshalled_size]).unwrap();
+    let result = marshaller.unmarshal_rc_cell(&bytes[0..marshalled_size]).unwrap();
 
-    assert_eq!(marshalled_size, unmarshalled_size);
-    assert_eq!(marshalled_rc_cell, unmarshalled_rc_cell);
+    assert_eq!(marshalled_size, result.byte_count);
+    assert_eq!(marshalled_rc_cell, result.value);
 }

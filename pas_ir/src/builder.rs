@@ -668,9 +668,13 @@ impl<'m> Builder<'m> {
             }
 
             Type::Array { element, dim } => {
-                let element_ptr = self.local_temp(element.clone().ptr());
+                if !element.is_rc() && !element.is_complex() {
+                    return false;
+                }
 
+                let element_ptr = self.local_temp(element.clone().ptr());
                 let mut result = false;
+
                 for i in 0..*dim {
                     self.append(Instruction::Element {
                         out: element_ptr.clone(),

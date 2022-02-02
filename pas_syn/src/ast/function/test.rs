@@ -82,7 +82,7 @@ fn parses_func_with_type_params() {
 
     let decl_ty_params = decl.type_params.expect("expected type params to be parsed");
     assert_eq!(1, decl_ty_params.items.len());
-    assert_eq!("A", decl_ty_params.items[0].ident.name);
+    assert_eq!("A", decl_ty_params.items[0].ident.name.as_str());
 }
 
 #[test]
@@ -110,5 +110,5 @@ fn parses_method_of_interface_with_type_args_with_type_params() {
 
     let decl_ty_params = decl.type_params.expect("expected type params to be found");
     assert_eq!(1, decl_ty_params.items.len());
-    assert_eq!("C", decl_ty_params.items[0].ident.name);
+    assert_eq!("C", decl_ty_params.items[0].ident.name.as_str());
 }

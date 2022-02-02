@@ -127,7 +127,7 @@ pub fn typecheck_collection_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<CollectionCtor> {
-    let (elements, elem_ty) = match expect_ty.collection_element_ty() {
+    let (elements, elem_ty) = match expect_ty.index_element_ty() {
         None => {
             let elements = elements_for_inferred_ty(ctor, ctx)?;
             let elem_ty = elements[0].annotation().ty().into_owned();

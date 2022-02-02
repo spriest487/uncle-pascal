@@ -83,20 +83,17 @@ impl Interpreter {
         }
     }
 
-    fn debug_ctx(&self) -> Cow<Span> {
-        match self.debug_ctx_stack.last() {
-            Some(ctx) => Cow::Borrowed(ctx),
-            None => Cow::Owned(Span::zero("")),
-        }
-    }
-
     fn add_debug_ctx(&self, err: ExecError) -> ExecError {
         match err {
             err @ ExecError::WithDebugContext { .. } => err,
-            err => ExecError::WithDebugContext {
-                err: Box::new(err),
-                span: self.debug_ctx().into_owned(),
-            }
+            err => match self.debug_ctx_stack.last() {
+                Some(ctx) => ExecError::WithDebugContext {
+                    err: Box::new(err),
+                    span: ctx.clone(),
+                },
+
+                None => err,
+            },
         }
     }
 
@@ -854,9 +851,9 @@ impl Interpreter {
             // pointer arithmetic
             (ValueCell::Pointer(ptr), ValueCell::I32(offset))
             | (ValueCell::I32(offset), ValueCell::Pointer(ptr)) => {
-                let ptr = self.offset_ptr(ptr, offset as isize)?;
+                let offset_ptr = self.offset_ptr(ptr, offset as isize)?;
 
-                Ok(ValueCell::Pointer(ptr))
+                Ok(ValueCell::Pointer(offset_ptr))
             },
 
             // value addition
@@ -875,10 +872,11 @@ impl Interpreter {
 
     fn offset_ptr(&self, ptr: Pointer, offset: isize) -> ExecResult<Pointer> {
         let marshal_ty = self.marshaller.get_ty(&ptr.ty)?;
+        let ty_size = marshal_ty.size() as isize;
 
         Ok(Pointer {
             ty: ptr.ty,
-            addr: (ptr.addr as isize + offset * marshal_ty.size() as isize) as usize,
+            addr: (ptr.addr as isize + offset * ty_size) as usize,
         })
     }
 

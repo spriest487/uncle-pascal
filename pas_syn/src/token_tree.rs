@@ -372,7 +372,7 @@ mod test {
         assert_eq!(1, result.len());
 
         match result[0] {
-            TokenTree::IntNumber { value, .. } => assert_eq!(IntConstant::Byte(32), value),
+            TokenTree::IntNumber { value, .. } => assert_eq!(IntConstant::from(32), value),
             _ => panic!("got {:#?}, expected a char literal", result),
         }
     }
@@ -421,7 +421,7 @@ mod test {
             } => {
                 assert_eq!(1, inner.len());
                 match &inner[0] {
-                    TokenTree::Ident(ident) => assert_eq!("a", ident.name),
+                    TokenTree::Ident(ident) => assert_eq!("a", ident.name.as_str()),
                     _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                 }
             }
@@ -447,7 +447,7 @@ mod test {
                         inner,
                         ..
                     } => match &inner[0] {
-                        TokenTree::Ident(ident) => assert_eq!("a", ident.name),
+                        TokenTree::Ident(ident) => assert_eq!("a", ident.name.as_str()),
                         _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                     },
                     _ => panic!("expected begin/end delimited tree, found {:#?}", inner[0]),
