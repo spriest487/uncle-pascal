@@ -183,6 +183,13 @@ impl<A: Annotation> Expression<A> {
         }
     }
 
+    pub fn as_unary_op(&self) -> Option<&UnaryOp<A>> {
+        match self {
+            Expression::UnaryOp(unary_op) => Some(unary_op.as_ref()),
+            _ => None,
+        }
+    }
+
     pub fn as_call(&self) -> Option<&Call<A>> {
         match self {
             Expression::Call(call) => Some(call),

@@ -136,7 +136,9 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
             }
 
             Position::Prefix => {
-                let (before_op, after_op) = parts.split_at(lo_op_index);
+                let mut before_op = parts;
+                let after_op = before_op.split_off(lo_op_index + 1);
+                before_op.truncate(lo_op_index);
 
                 if after_op.is_empty() {
                     return Err(TracedError::trace(ParseError::EmptyOperand {
@@ -145,9 +147,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                     }));
                 }
 
-                let parts_after_op = &after_op[1..];
-
-                let rhs = parts_after_op[0].clone().unwrap_operand();
+                let rhs = resolve_ops_by_precedence(after_op)?;
 
                 let op_expr = {
                     let span = op_token.span.to(rhs.annotation().span());
@@ -163,7 +163,6 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
                     .iter()
                     .cloned()
                     .chain(vec![CompoundExpressionPart::Operand(op_expr)])
-                    .chain(parts_after_op[1..].iter().cloned())
                     .collect();
 
                 assert!(!merged_parts.is_empty());
@@ -326,15 +325,6 @@ impl OperatorPart {
 enum CompoundExpressionPart {
     Operand(Expression<Span>),
     Operator(OperatorPart),
-}
-
-impl CompoundExpressionPart {
-    fn unwrap_operand(self) -> Expression<Span> {
-        match self {
-            CompoundExpressionPart::Operand(expr) => expr,
-            unexpected => panic!("called unwrap_operand on {:?}", unexpected),
-        }
-    }
 }
 
 pub struct CompoundExpressionParser<'tokens> {

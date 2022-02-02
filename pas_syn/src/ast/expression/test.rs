@@ -131,3 +131,22 @@ fn member_indexer_parse_order() {
         _ => panic!("expected indexer expression, got {:#?}", expr)
     }
 }
+
+#[test]
+fn addr_of_indexer_parse_order() {
+    let expr = parse_expr("@x[1]");
+
+    let unary_op = match expr.as_unary_op() {
+        Some(o) => o,
+        None => panic!("expr must parse as a unary op, got: {:#?}", expr),
+    };
+
+    assert_eq!(Operator::AddressOf, unary_op.op);
+
+    let operand_bin_op = match unary_op.operand.as_bin_op() {
+        Some(o) => o,
+        None => panic!("operand of unary op must parse as a binary op, got: {:#?}", unary_op.operand),
+    };
+
+    assert_eq!(Operator::Index, operand_bin_op.op);
+}
