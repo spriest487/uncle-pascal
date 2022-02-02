@@ -1480,7 +1480,9 @@ impl Interpreter {
     pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
-        self.debug_ctx_stack.push(module.module_span().clone());
+        if module.opts.debug_info {
+            self.debug_ctx_stack.push(module.module_span().clone());
+        }
 
         let mut marshaller = (*self.marshaller).clone();
 
