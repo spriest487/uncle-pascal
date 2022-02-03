@@ -370,21 +370,21 @@ impl Type {
     pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
         match (self, op, rhs) {
             // pointer arithmetic
-            (Type::Pointer(_), Operator::Plus, Type::Pointer(_))
-            | (Type::Pointer(_), Operator::Minus, Type::Pointer(_)) => true,
-            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::NativeInt))
-            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::NativeInt))
-            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int8))
-            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int8))
-            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int16))
-            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int16))
-            | (Type::Pointer(_), Operator::Plus, Type::Primitive(Primitive::Int32))
-            | (Type::Pointer(_), Operator::Minus, Type::Primitive(Primitive::Int32)) => true,
+            (Type::Pointer(_), Operator::Add, Type::Pointer(_))
+            | (Type::Pointer(_), Operator::Subtract, Type::Pointer(_)) => true,
+            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::NativeInt))
+            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::NativeInt))
+            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int8))
+            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int8))
+            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int16))
+            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int16))
+            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int32))
+            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int32)) => true,
 
             // all maths ops are valid for primitives of the same type
-            (Type::Primitive(a), Operator::Plus, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Minus, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::IntegerDivide, Type::Primitive(b))
+            (Type::Primitive(a), Operator::Add, Type::Primitive(b))
+            | (Type::Primitive(a), Operator::Subtract, Type::Primitive(b))
+            | (Type::Primitive(a), Operator::Divide, Type::Primitive(b))
             | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => {
                 if a.is_numeric() && b.is_numeric() {
                     *a == *b

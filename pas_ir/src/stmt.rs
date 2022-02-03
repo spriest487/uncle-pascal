@@ -39,6 +39,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
             translate_assignment(assignment, builder);
         }
 
+        ast::Statement::CompoundAssignment(assignment) => {
+            translate_compound_assignment(assignment, builder);
+        }
+
         ast::Statement::If(if_stmt) => {
             translate_if_cond(if_stmt, builder, true);
         }
@@ -201,6 +205,33 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     builder.append(Instruction::Move {
         out: lhs,
         new_val: rhs.into(),
+    });
+}
+
+pub fn translate_compound_assignment(assignment: &pas_ty::ast::CompoundAssignment, builder: &mut Builder) {
+    builder.scope(|builder| {
+        let lhs = translate_expr(&assignment.lhs, builder);
+        let rhs = translate_expr(&assignment.rhs, builder);
+
+        // result type must be the same as the lhs ty, that's where we're storing it
+        let lhs_ty = builder.translate_type(&assignment.lhs.annotation().ty());
+
+        let op_result = builder.local_temp(lhs_ty.clone());
+        match assignment.op {
+            pas_syn::CompoundAssignmentOperator::AddAssign => builder.add(op_result.clone(), lhs.clone(), rhs.clone()),
+            pas_syn::CompoundAssignmentOperator::SubtractAssign => builder.sub(op_result.clone(), lhs.clone(), rhs.clone()),
+            pas_syn::CompoundAssignmentOperator::MultiplyAssign => builder.mul(op_result.clone(), lhs.clone(), rhs.clone()),
+            pas_syn::CompoundAssignmentOperator::DivideAssign => builder.idiv(op_result.clone(), lhs.clone(), rhs.clone()),
+        };
+
+        // the new value is being stored in a new location, release the old value and retain it
+        builder.retain(op_result.clone(), &lhs_ty);
+        builder.release(lhs.clone(), &lhs_ty);
+
+        builder.append(Instruction::Move {
+            out: lhs,
+            new_val: op_result.into(),
+        });
     });
 }
 

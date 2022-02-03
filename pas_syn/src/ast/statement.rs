@@ -1,7 +1,12 @@
-mod local_binding;
+mod assign;
 mod exit;
+mod local_binding;
 
-pub use self::{exit::Exit, local_binding::LocalBinding};
+pub use self::{
+    assign::{Assignment, CompoundAssignment},
+    exit::Exit,
+    local_binding::LocalBinding,
+};
 use crate::{
     ast::{
         case::{CaseBlock, CaseStatement},
@@ -12,28 +17,6 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct Assignment<A: Annotation> {
-    pub lhs: Expression<A>,
-    pub rhs: Expression<A>,
-    pub annotation: A,
-}
-
-impl<A: Annotation> Spanned for Assignment<A>
-where
-    A: Spanned,
-{
-    fn span(&self) -> &Span {
-        self.annotation.span()
-    }
-}
-
-impl<A: Annotation> fmt::Display for Assignment<A> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{} := {}", self.lhs, self.rhs)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
     LocalBinding(Box<LocalBinding<A>>),
     Call(Box<Call<A>>),
@@ -42,6 +25,7 @@ pub enum Statement<A: Annotation> {
     ForLoop(Box<ForLoop<A>>),
     WhileLoop(Box<WhileLoop<A>>),
     Assignment(Box<Assignment<A>>),
+    CompoundAssignment(Box<CompoundAssignment<A>>),
     If(Box<IfCond<A>>),
     Break(A),
     Continue(A),
@@ -62,6 +46,7 @@ impl<A: Annotation> Statement<A> {
             Statement::ForLoop(for_loop) => &for_loop.annotation,
             Statement::WhileLoop(while_loop) => &while_loop.annotation,
             Statement::Assignment(assignment) => &assignment.annotation,
+            Statement::CompoundAssignment(assignment) => &assignment.annotation,
             Statement::If(if_stmt) => &if_stmt.annotation,
             Statement::Break(a) => a,
             Statement::Continue(a) => a,
@@ -120,16 +105,30 @@ impl<A: Annotation> Statement<A> {
             Expression::Call(call) => Ok(Statement::Call(call)),
 
             Expression::BinOp(bin_op) => {
-                if bin_op.op == Operator::Assignment {
-                    let assignment = Assignment {
-                        lhs: bin_op.lhs,
-                        rhs: bin_op.rhs,
-                        annotation: bin_op.annotation,
-                    };
-                    Ok(Statement::Assignment(Box::new(assignment)))
-                } else {
-                    let invalid_bin_op = Expression::BinOp(bin_op);
-                    Err(invalid_bin_op)
+                match bin_op.op {
+                    | Operator::Assignment => {
+                        let assignment = Assignment {
+                            lhs: bin_op.lhs,
+                            rhs: bin_op.rhs,
+                            annotation: bin_op.annotation,
+                        };
+                        Ok(assignment.into())
+                    }
+
+                    | Operator::CompoundAssignment(assign_op) => {
+                        let assignment = CompoundAssignment {
+                            lhs: bin_op.lhs,
+                            rhs: bin_op.rhs,
+                            annotation: bin_op.annotation,
+                            op: assign_op,
+                        };
+                        Ok(assignment.into())
+                    }
+
+                    | _ => {
+                        let invalid_bin_op = Expression::BinOp(bin_op);
+                        Err(invalid_bin_op)
+                    }
                 }
             }
 
@@ -235,8 +234,7 @@ impl Statement<Span> {
             }
 
             Some(TokenTree::Keyword {
-                kw: Keyword::Exit,
-                ..
+                kw: Keyword::Exit, ..
             }) => {
                 let exit = Exit::parse(tokens)?;
 
@@ -283,11 +281,30 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::ForLoop(for_loop) => write!(f, "{}", for_loop),
             Statement::WhileLoop(while_loop) => write!(f, "{}", while_loop),
             Statement::Assignment(assignment) => write!(f, "{}", assignment),
+            Statement::CompoundAssignment(assignment) => write!(f, "{}", assignment),
             Statement::If(if_stmt) => write!(f, "{}", if_stmt),
             Statement::Break(..) => write!(f, "{}", Keyword::Break),
             Statement::Continue(..) => write!(f, "{}", Keyword::Continue),
             Statement::Raise(raise) => write!(f, "{}", raise),
             Statement::Case(case) => write!(f, "{}", case),
         }
+    }
+}
+
+impl<A: Annotation> From<LocalBinding<A>> for Statement<A> {
+    fn from(local_binding: LocalBinding<A>) -> Self {
+        Statement::LocalBinding(Box::new(local_binding))
+    }
+}
+
+impl<A: Annotation> From<Assignment<A>> for Statement<A> {
+    fn from(assignment: Assignment<A>) -> Self {
+        Statement::Assignment(Box::new(assignment))
+    }
+}
+
+impl<A: Annotation> From<CompoundAssignment<A>> for Statement<A> {
+    fn from(assignment: CompoundAssignment<A>) -> Self {
+        Statement::CompoundAssignment(Box::new(assignment))
     }
 }

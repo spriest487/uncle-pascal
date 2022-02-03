@@ -1,6 +1,15 @@
-use crate::ast::prelude::*;
+mod assign;
+
+use crate::ast::{
+    prelude::*,
+    expression::{Invocation, typecheck_call},
+    statement::assign::{typecheck_assignment, typecheck_compound_assignment},
+};
 use pas_syn::Operator;
-use crate::ast::expression::{Invocation, typecheck_call};
+pub use self::assign::{
+    Assignment,
+    CompoundAssignment,
+};
 
 pub type LocalBinding = ast::LocalBinding<TypeAnnotation>;
 pub type Statement = ast::Statement<TypeAnnotation>;
@@ -103,61 +112,6 @@ pub fn typecheck_local_binding(
     Ok(local_binding)
 }
 
-pub type Assignment = ast::Assignment<TypeAnnotation>;
-
-pub fn typecheck_assignment(
-    assignment: &ast::Assignment<Span>,
-    ctx: &mut Context,
-) -> TypecheckResult<Assignment> {
-    let lhs = typecheck_expr(&assignment.lhs, &Type::Nothing, ctx)?;
-
-    // lhs must evaluate to a mutable typed value
-    match lhs.annotation() {
-        TypeAnnotation::TypedValue(val) => {
-            if !val.value_kind.mutable() {
-                return Err(TypecheckError::NotMutable {
-                    decl: val.decl.clone(),
-                    expr: Box::new(lhs),
-                });
-            }
-        }
-        _ => {
-            return Err(TypecheckError::NotMutable {
-                expr: Box::new(lhs),
-                decl: None,
-            });
-        }
-    }
-
-    let rhs = typecheck_expr(&assignment.rhs, &lhs.annotation().ty(), ctx)?;
-    let rhs_ty = rhs.annotation().ty();
-
-    lhs.annotation().ty().implicit_conversion_from(&rhs_ty, assignment.span(), ctx).map_err(|err| {
-        match err {
-            TypecheckError::TypeMismatch { expected, actual, span } => TypecheckError::InvalidBinOp {
-                lhs: expected,
-                rhs: actual,
-                op: Operator::Assignment,
-                span,
-            },
-
-            err => err,
-        }
-    })?;
-
-    if let ast::Expression::Ident(ident, ..) = &lhs {
-        if ctx.is_local(ident) {
-            ctx.initialize(ident);
-        }
-    }
-
-    Ok(Assignment {
-        lhs,
-        rhs,
-        annotation: TypeAnnotation::Untyped(assignment.annotation.clone()),
-    })
-}
-
 pub fn typecheck_stmt(
     stmt: &ast::Statement<Span>,
     expect_ty: &Type,
@@ -193,6 +147,10 @@ pub fn typecheck_stmt(
 
         ast::Statement::Assignment(assignment) => {
             typecheck_assignment(assignment, ctx).map(Box::new).map(ast::Statement::Assignment)
+        }
+
+        ast::Statement::CompoundAssignment(assignment) => {
+            typecheck_compound_assignment(assignment, ctx).map(Box::new).map(ast::Statement::CompoundAssignment)
         }
 
         ast::Statement::Exit(exit) => {

@@ -7,6 +7,7 @@ use crate::{
 };
 use pas_common::{span::*, BuildOptions, TracedError};
 use std::{path::PathBuf, rc::Rc};
+use crate::operators::CompoundAssignmentOperator;
 
 pub fn lex(
     file_name: impl Into<PathBuf>,
@@ -314,12 +315,12 @@ impl Lexer {
         Ok(token)
     }
 
-    fn operator_token(&mut self, op: Operator, len: usize) -> TokenTree {
+    fn operator_token(&mut self, op: impl Into<Operator>, len: usize) -> TokenTree {
         let start_loc = self.location;
         self.location.col += len;
         let span = self.span_to_current(start_loc);
 
-        TokenTree::Operator { op, span }
+        TokenTree::Operator { op: op.into(), span }
     }
 
     fn separator_token(&mut self, sep: Separator, len: usize) -> TokenTree {
@@ -422,10 +423,22 @@ impl Lexer {
             }
             ']' => Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?),
 
-            '+' => Some(self.operator_token(Operator::Plus, 1)),
-            '-' => Some(self.operator_token(Operator::Minus, 1)),
-            '*' => Some(self.operator_token(Operator::Multiply, 1)),
-            '/' => Some(self.operator_token(Operator::IntegerDivide, 1)),
+            '+' => match self.line.get(self.location.col + 1) {
+                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::AddAssign, 2)),
+                _ => Some(self.operator_token(Operator::Add, 1)),
+            },
+            '-' => match self.line.get(self.location.col + 1) {
+                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::SubtractAssign, 2)),
+                _ => Some(self.operator_token(Operator::Subtract, 1)),
+            },
+            '*' => match self.line.get(self.location.col + 1) {
+                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::MultiplyAssign, 2)),
+                _ => Some(self.operator_token(Operator::Multiply, 1)),
+            },
+            '/' => match self.line.get(self.location.col + 1) {
+                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::DivideAssign, 2)),
+                _ => Some(self.operator_token(Operator::Divide, 1)),
+            },
             '@' => Some(self.operator_token(Operator::AddressOf, 1)),
             ',' => Some(self.separator_token(Separator::Comma, 1)),
             '.' => Some(match self.line.get(self.location.col + 1) {

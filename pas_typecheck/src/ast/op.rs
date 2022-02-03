@@ -64,7 +64,7 @@ pub fn typecheck_bin_op(
                     }
                 }
 
-                let is_string_concat = bin_op.op == Operator::Plus && lhs_string && rhs_string;
+                let is_string_concat = bin_op.op == Operator::Add && lhs_string && rhs_string;
 
                 if is_string_concat {
                     return desugar_string_concat(lhs, rhs, &string_ty, ctx);
@@ -568,7 +568,7 @@ pub fn typecheck_unary_op(
     ctx: &mut Context,
 ) -> TypecheckResult<UnaryOp> {
     let operand_expect_ty = match unary_op.op {
-        Operator::Plus | Operator::Minus | Operator::Not => expect_ty.clone(),
+        Operator::Add | Operator::Subtract | Operator::Not => expect_ty.clone(),
         Operator::AddressOf => match expect_ty {
             // value of the operator expression is the pointer to the deref type, so the operand
             // is of the deref type
@@ -633,7 +633,7 @@ pub fn typecheck_unary_op(
         }
 
         // unary +, is this always a no-op?
-        Operator::Plus if operand_ty.valid_math_op(Operator::Plus, &operand_ty) => {
+        Operator::Add if operand_ty.valid_math_op(Operator::Add, &operand_ty) => {
             TypedValueAnnotation {
                 ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,
@@ -643,7 +643,7 @@ pub fn typecheck_unary_op(
         }
 
         // unary negation - should this be disallowed for unsigned types?
-        Operator::Minus if operand_ty.valid_math_op(Operator::Minus, &operand_ty) => {
+        Operator::Subtract if operand_ty.valid_math_op(Operator::Subtract, &operand_ty) => {
             TypedValueAnnotation {
                 ty: operand_ty.into_owned(),
                 value_kind: ValueKind::Temporary,

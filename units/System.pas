@@ -166,14 +166,14 @@ begin
     var cmp: Integer := 0;
     while true do begin
         if aPos < a.len and bPos < b.len then begin
-            let aChar := (a.chars + aPos)^;
-            let bChar := (b.chars + bPos)^;
+            let aChar := a.chars[aPos];
+            let bChar := b.chars[bPos];
             cmp := if aChar > bChar then 1
                 else if bChar > aChar then -1
                 else 0;
 
-            aPos := aPos + 1;
-            bPos := bPos + 1;
+            aPos += 1;
+            bPos += 1;
         end
         else if aPos < a.len and aPos >= b.len then begin
             // a is longer than b
@@ -202,11 +202,11 @@ begin
 
     var startAt := 0;
     while s.StringCharAt(startAt).IsWhiteSpace() do
-        startAt := startAt + 1;
+        startAt += 1;
 
     var endAt := s.len - 1;
     while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
-        endAt := endAt - 1;
+        endAt -= 1;
 
     let len := (endAt + 1) - startAt;
     SubString(s, startAt, len)

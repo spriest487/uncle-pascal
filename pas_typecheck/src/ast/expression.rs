@@ -338,6 +338,12 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
 
         ast::Statement::Assignment(assignment) => expect_expr_initialized(&assignment.rhs, ctx),
 
+        ast::Statement::CompoundAssignment(assignment) => {
+            expect_expr_initialized(&assignment.lhs, ctx)?;
+            expect_expr_initialized(&assignment.rhs, ctx)?;
+            Ok(())
+        },
+
         ast::Statement::Break(..) | ast::Statement::Continue(..) => Ok(()),
 
         ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),

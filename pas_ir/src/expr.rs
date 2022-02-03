@@ -830,7 +830,7 @@ fn translate_bin_op(
             });
         }
 
-        syn::Operator::Plus => {
+        syn::Operator::Add => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::Add {
                 out: out_val.clone(),
@@ -848,7 +848,7 @@ fn translate_bin_op(
             });
         }
 
-        syn::Operator::IntegerDivide => {
+        syn::Operator::Divide => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::IDiv {
                 out: out_val.clone(),
@@ -936,7 +936,7 @@ fn translate_bin_op(
             });
         }
 
-        syn::Operator::Minus => {
+        syn::Operator::Subtract => {
             let b = translate_expr(&bin_op.rhs, builder);
             builder.append(Instruction::Sub {
                 out: out_val.clone(),
@@ -1020,7 +1020,7 @@ fn translate_unary_op(
 
         syn::Operator::Deref => operand_ref.to_deref(),
 
-        syn::Operator::Minus => {
+        syn::Operator::Subtract => {
             let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
 
@@ -1050,7 +1050,7 @@ fn translate_unary_op(
             out_val
         }
 
-        syn::Operator::Plus => {
+        syn::Operator::Add => {
             // just turns its operand into a temporary value
             let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);

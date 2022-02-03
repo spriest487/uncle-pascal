@@ -58,6 +58,7 @@ pub enum ParseError {
     NoMatchingParamForTypeConstraint(TypeConstraint<TypeName>),
     UnterminatedStatement { span: Span },
     InvalidFunctionImplType(TypeName),
+    InvalidAssignmentExpr { span: Span },
 }
 
 pub type ParseResult<T> = Result<T, TracedError<ParseError>>;
@@ -79,6 +80,7 @@ impl Spanned for ParseError {
             ParseError::EmptyWhereClause(c) => c.span(),
             ParseError::UnterminatedStatement { span } => span,
             ParseError::InvalidFunctionImplType(tn) => tn.span(),
+            ParseError::InvalidAssignmentExpr { span } => span,
         }
     }
 }
@@ -100,6 +102,7 @@ impl fmt::Display for ParseError {
             ParseError::EmptyWhereClause(..) => write!(f, "Empty `where` clause"),
             ParseError::UnterminatedStatement { .. } => write!(f, "Unterminated statement"),
             ParseError::InvalidFunctionImplType(..) => write!(f, "Invalid interface type for method"),
+            ParseError::InvalidAssignmentExpr { .. } => write!(f, "Illegal assignment"),
         }
     }
 }
@@ -161,6 +164,10 @@ impl DiagnosticOutput for ParseError {
 
             ParseError::InvalidFunctionImplType(ty) => {
                 format!("type {} cannot have interface implementation functions declared for it", ty)
+            }
+
+            ParseError::InvalidAssignmentExpr { .. } => {
+                format!("Assignment operator can only be used in an assignment statement")
             }
         };
 
