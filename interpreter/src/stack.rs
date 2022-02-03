@@ -3,7 +3,7 @@ use std::fmt;
 use std::mem::size_of;
 use std::rc::Rc;
 use pas_ir::{LocalID, Type};
-use crate::{ValueCell, marshal::{Marshaller, MarshalError, MarshalResult}, Pointer};
+use crate::{DynValue, marshal::{Marshaller, MarshalError, MarshalResult}, Pointer};
 
 const SENTINEL: usize = 12345678;
 
@@ -16,13 +16,13 @@ struct Block {
 
 #[derive(Debug)]
 struct StackAlloc {
-    // local cells are allocated on the fly as the interpreter passes LocalAlloc
+    // local vals are allocated on the fly as the interpreter passes LocalAlloc
     // instructions. we want to prevent IR code from alloc-ing two locals with the same
-    // ID, but we might also legally run the same alloc instruction more than once if flow control
-    // takes us back over it.
+    // ID, but we might also legally run the same alloc instruction more than once if the
+    // control flow takes us back over it.
     // therefore we need to remember where a local allocation was made,
     // so the duplicate check can tell whether it's two allocations with the same ID
-    // function param allocs don't have an alloc locatoin
+    // function param allocs don't have an alloc location
     alloc_pc: Option<usize>,
 
     ty: Type,
@@ -68,7 +68,7 @@ impl StackFrame {
     /// add a local to the stack without a local variable declaration. function params and return
     /// values get allocated by this mechanism because they aren't ever declared as locals in the
     /// body of the function
-    pub fn add_undeclared_local(&mut self, ty: Type, value: &ValueCell) -> MarshalResult<LocalID> {
+    pub fn add_undeclared_local(&mut self, ty: Type, value: &DynValue) -> MarshalResult<LocalID> {
         let stack_offset = self.stack_alloc(value)?;
 
         if cfg!(debug_assertions) {
@@ -87,7 +87,7 @@ impl StackFrame {
         Ok(id)
     }
 
-    pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &ValueCell, alloc_pc: usize) -> StackResult<()> {
+    pub fn declare_local(&mut self, id: LocalID, ty: Type, value: &DynValue, alloc_pc: usize) -> StackResult<()> {
         // we only need to allocate new variables the first time the block is executed, so if
         // we try to allocate twice from the same instruction, just do nothing
         // todo: this could be cleaned up by allocating everything at the start of the block
@@ -140,7 +140,7 @@ impl StackFrame {
         }
     }
 
-    fn stack_alloc(&mut self, value: &ValueCell) -> MarshalResult<usize> {
+    fn stack_alloc(&mut self, value: &DynValue) -> MarshalResult<usize> {
         let start_offset = self.stack_offset;
         let alloc_slice = &mut self.stack_mem[start_offset..];
         let size = self.marshaller.marshal(value, alloc_slice)?;
@@ -263,7 +263,7 @@ impl fmt::Display for StackError {
                 write!(f, "illegal jump from block {} to block {}", current_block, dest_block)
             }
             StackError::IllegalAlloc(id) => {
-                write!(f, "allocation of local cell {} is not legal here", id)
+                write!(f, "allocation of local val {} is not legal here", id)
             }
             StackError::MarshalError(err) => {
                 write!(f, "{}", err)

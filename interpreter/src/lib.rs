@@ -1,6 +1,6 @@
 pub use self::{
     ptr::Pointer,
-    value_cell::*,
+    dyn_value::*,
 };
 use crate::{
     func::{BuiltinFn, BuiltinFunction, Function},
@@ -22,7 +22,7 @@ use crate::heap::NativeHeap;
 mod builtin;
 mod func;
 mod heap;
-mod value_cell;
+mod dyn_value;
 mod ptr;
 mod stack;
 mod marshal;
@@ -38,8 +38,8 @@ pub struct InterpreterOpts {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalCell {
-    pub value: ValueCell,
+pub struct GlobalValue {
+    pub value: DynValue,
     ty: Type,
 }
 
@@ -47,7 +47,7 @@ pub struct GlobalCell {
 pub struct Interpreter {
     metadata: Metadata,
     stack: Vec<StackFrame>,
-    globals: HashMap<GlobalRef, GlobalCell>,
+    globals: HashMap<GlobalRef, GlobalValue>,
 
     native_heap: NativeHeap,
 
@@ -101,7 +101,7 @@ impl Interpreter {
         &self.marshaller
     }
 
-    fn init_struct(&self, id: StructID) -> ExecResult<ValueCell> {
+    fn init_struct(&self, id: StructID) -> ExecResult<DynValue> {
         let struct_def = self.metadata.get_struct_def(id).cloned()
             .ok_or_else(|| {
                 let msg = format!("missing struct definition in metadata: {}", id);
@@ -112,49 +112,49 @@ impl Interpreter {
         for (&id, field) in &struct_def.fields {
             // include padding of -1s for non-contiguous IDs
             if id.0 >= fields.len() {
-                fields.resize(id.0 + 1, ValueCell::I32(-1));
+                fields.resize(id.0 + 1, DynValue::I32(-1));
             }
-            fields[id.0] = self.default_init_cell(&field.ty)?;
+            fields[id.0] = self.default_init_dyn_val(&field.ty)?;
         }
 
-        let struct_cell = StructCell { id, fields };
+        let struct_val = StructValue { id, fields };
 
-        Ok(ValueCell::Structure(Box::new(struct_cell)))
+        Ok(DynValue::Structure(Box::new(struct_val)))
     }
 
-    fn default_init_cell(&self, ty: &Type) -> ExecResult<ValueCell> {
-        let cell = match ty {
-            Type::I8 => ValueCell::I8(i8::MIN),
-            Type::U8 => ValueCell::U8(u8::MAX),
-            Type::I16 => ValueCell::I16(i16::MIN),
-            Type::U16 => ValueCell::U16(u16::MAX),
-            Type::I32 => ValueCell::I32(i32::MIN),
-            Type::U32 => ValueCell::U32(u32::MAX),
-            Type::I64 => ValueCell::I64(i64::MIN),
-            Type::U64 => ValueCell::U64(u64::MAX),
-            Type::ISize => ValueCell::ISize(isize::MIN),
-            Type::USize => ValueCell::USize(usize::MAX),
+    fn default_init_dyn_val(&self, ty: &Type) -> ExecResult<DynValue> {
+        let val = match ty {
+            Type::I8 => DynValue::I8(i8::MIN),
+            Type::U8 => DynValue::U8(u8::MAX),
+            Type::I16 => DynValue::I16(i16::MIN),
+            Type::U16 => DynValue::U16(u16::MAX),
+            Type::I32 => DynValue::I32(i32::MIN),
+            Type::U32 => DynValue::U32(u32::MAX),
+            Type::I64 => DynValue::I64(i64::MIN),
+            Type::U64 => DynValue::U64(u64::MAX),
+            Type::ISize => DynValue::ISize(isize::MIN),
+            Type::USize => DynValue::USize(usize::MAX),
 
-            Type::Bool => ValueCell::Bool(false),
-            Type::F32 => ValueCell::F32(f32::NAN),
+            Type::Bool => DynValue::Bool(false),
+            Type::F32 => DynValue::F32(f32::NAN),
 
             Type::Struct(id) => self.init_struct(*id)?,
 
-            Type::RcPointer(class_id) => ValueCell::Pointer(Pointer::null(match class_id {
+            Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
                 Some(ClassID::Class(struct_id)) => Type::RcObject(*struct_id),
                 _ => Type::Nothing,
             })),
 
-            Type::Pointer(target) => ValueCell::Pointer(Pointer::null((**target).clone())),
+            Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
 
             Type::Array { element, dim } => {
                 let mut elements = Vec::new();
                 for _ in 0..*dim {
-                    let el = self.default_init_cell(element.as_ref())?;
+                    let el = self.default_init_dyn_val(element.as_ref())?;
                     elements.push(el);
                 }
 
-                ValueCell::Array(Box::new(ArrayCell {
+                DynValue::Array(Box::new(ArrayValue {
                     el_ty: (**element).clone(),
                     elements,
                 }))
@@ -170,38 +170,38 @@ impl Interpreter {
                     .ty;
 
                 let default_val = match case_ty {
-                    Some(case_ty) => self.default_init_cell(case_ty)?,
-                    None => ValueCell::Pointer(Pointer::null(Type::Nothing)),
+                    Some(case_ty) => self.default_init_dyn_val(case_ty)?,
+                    None => DynValue::Pointer(Pointer::null(Type::Nothing)),
                 };
 
-                ValueCell::Variant(Box::new(VariantCell {
+                DynValue::Variant(Box::new(VariantValue {
                     id: *id,
-                    tag: Box::new(ValueCell::I32(default_tag)),
+                    tag: Box::new(DynValue::I32(default_tag)),
                     data: Box::new(default_val),
                 }))
             },
 
             _ => {
-                let msg = format!("can't initialize default cell of type `{:?}`", ty);
+                let msg = format!("can't initialize default value of type `{:?}`", ty);
                 return Err(ExecError::illegal_state(msg));
             }
         };
 
-        Ok(cell)
+        Ok(val)
     }
 
-    fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<ValueCell>> {
+    fn load_indirect(&self, ptr: &Pointer) -> ExecResult<Cow<DynValue>> {
         let val = self.native_heap.load(ptr)?;
         Ok(Cow::Owned(val))
     }
 
     /// dereference a pointer and set the value it points to
-    fn store_indirect(&mut self, ptr: &Pointer, val: ValueCell) -> ExecResult<()> {
+    fn store_indirect(&mut self, ptr: &Pointer, val: DynValue) -> ExecResult<()> {
         self.native_heap.store(ptr, val)?;
         Ok(())
     }
 
-    fn store_local(&mut self, id: LocalID, val: ValueCell) -> ExecResult<()> {
+    fn store_local(&mut self, id: LocalID, val: DynValue) -> ExecResult<()> {
         let current_frame = self.current_frame_mut()?;
         let local_ptr = current_frame.get_local_ptr(id)
             .map_err(|err| self.add_debug_ctx(err.into()))?;
@@ -211,7 +211,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn load_local(&self, id: LocalID) -> ExecResult<ValueCell> {
+    fn load_local(&self, id: LocalID) -> ExecResult<DynValue> {
         let current_frame = self.current_frame()?;
         let local_ptr = current_frame.get_local_ptr(id)
             .map_err(|err| self.add_debug_ctx(err.into()))?;
@@ -221,7 +221,7 @@ impl Interpreter {
         Ok(value)
     }
 
-    fn store(&mut self, at: &Ref, val: ValueCell) -> ExecResult<()> {
+    fn store(&mut self, at: &Ref, val: DynValue) -> ExecResult<()> {
         match at {
             Ref::Discard => {
                 // do nothing with this value
@@ -234,14 +234,14 @@ impl Interpreter {
 
             Ref::Global(name) => {
                 if self.globals.contains_key(name) {
-                    return Err(ExecError::illegal_state(format!("global cell `{}` is already allocated", name)));
+                    return Err(ExecError::illegal_state(format!("global `{}` is already allocated", name)));
                 }
 
                 self.globals.insert(
                     name.clone(),
-                    GlobalCell {
+                    GlobalValue {
                         value: val,
-                        // todo: for the moment this means no RC for global cells stored after init
+                        // todo: for the moment this means no RC for global vals stored after init
                         ty: Type::Nothing,
                     },
                 );
@@ -250,21 +250,21 @@ impl Interpreter {
             }
 
             Ref::Deref(inner) => match self.evaluate(inner)? {
-                ValueCell::Pointer(ptr) => {
+                DynValue::Pointer(ptr) => {
                     self.store_indirect(&ptr, val)?;
 
                     Ok(())
                 }
 
                 x => {
-                    let msg = format!("can't dereference non-pointer cell with value {:?}", x);
+                    let msg = format!("can't dereference non-pointer val with value {:?}", x);
                     Err(ExecError::illegal_state(msg))
                 },
             },
         }
     }
 
-    fn load(&self, at: &Ref) -> ExecResult<Cow<ValueCell>> {
+    fn load(&self, at: &Ref) -> ExecResult<Cow<DynValue>> {
         match at {
             Ref::Discard => {
                 let msg = "can't read value from discard ref";
@@ -274,43 +274,43 @@ impl Interpreter {
             Ref::Local(id) => self.load_local(*id).map(Cow::Owned),
 
             Ref::Global(name) => match self.globals.get(name) {
-                Some(cell) => Ok(Cow::Borrowed(&cell.value)),
+                Some(global_val) => Ok(Cow::Borrowed(&global_val.value)),
                 None => {
-                    let msg = format!("global cell `{}` is not allocated", name);
+                    let msg = format!("global val `{}` is not allocated", name);
                     Err(ExecError::illegal_state(msg))
                 }
             },
 
             Ref::Deref(inner) => match self.evaluate(inner)? {
-                ValueCell::Pointer(ptr) => self.load_indirect(&ptr),
+                DynValue::Pointer(ptr) => self.load_indirect(&ptr),
                 x => {
-                    let msg = format!("can't dereference cell {:?}", x);
+                    let msg = format!("can't dereference val {:?}", x);
                     Err(ExecError::illegal_state(msg))
                 },
             },
         }
     }
 
-    fn evaluate(&self, val: &Value) -> ExecResult<ValueCell> {
+    fn evaluate(&self, val: &Value) -> ExecResult<DynValue> {
         match val {
             Value::Ref(r) => {
                 let ref_val = self.load(r)?;
                 Ok(ref_val.into_owned())
             },
 
-            Value::LiteralByte(i) => Ok(ValueCell::U8(*i)),
-            Value::LiteralI8(i) => Ok(ValueCell::I8(*i)),
-            Value::LiteralI16(i) => Ok(ValueCell::I16(*i)),
-            Value::LiteralU16(i) => Ok(ValueCell::U16(*i)),
-            Value::LiteralI32(i) => Ok(ValueCell::I32(*i)),
-            Value::LiteralU32(i) => Ok(ValueCell::U32(*i)),
-            Value::LiteralI64(i) => Ok(ValueCell::I64(*i)),
-            Value::LiteralU64(i) => Ok(ValueCell::U64(*i)),
-            Value::LiteralISize(i) => Ok(ValueCell::ISize(*i)),
-            Value::LiteralUSize(i) => Ok(ValueCell::USize(*i)),
-            Value::LiteralF32(f) => Ok(ValueCell::F32(*f)),
-            Value::LiteralBool(b) => Ok(ValueCell::Bool(*b)),
-            Value::LiteralNull => Ok(ValueCell::Pointer(Pointer::null(Type::Nothing))),
+            Value::LiteralByte(i) => Ok(DynValue::U8(*i)),
+            Value::LiteralI8(i) => Ok(DynValue::I8(*i)),
+            Value::LiteralI16(i) => Ok(DynValue::I16(*i)),
+            Value::LiteralU16(i) => Ok(DynValue::U16(*i)),
+            Value::LiteralI32(i) => Ok(DynValue::I32(*i)),
+            Value::LiteralU32(i) => Ok(DynValue::U32(*i)),
+            Value::LiteralI64(i) => Ok(DynValue::I64(*i)),
+            Value::LiteralU64(i) => Ok(DynValue::U64(*i)),
+            Value::LiteralISize(i) => Ok(DynValue::ISize(*i)),
+            Value::LiteralUSize(i) => Ok(DynValue::USize(*i)),
+            Value::LiteralF32(f) => Ok(DynValue::F32(*f)),
+            Value::LiteralBool(b) => Ok(DynValue::Bool(*b)),
+            Value::LiteralNull => Ok(DynValue::Pointer(Pointer::null(Type::Nothing))),
         }
     }
 
@@ -344,11 +344,11 @@ impl Interpreter {
 
     fn vcall_lookup(
         &self,
-        self_cell: &ValueCell,
+        self_val: &DynValue,
         iface_id: InterfaceID,
         method: MethodID,
     ) -> ExecResult<FunctionID> {
-        let self_ptr = self_cell
+        let self_ptr = self_val
             .as_pointer()
             .ok_or_else(|| {
                 let msg = "expected target of vcall to be a pointer";
@@ -356,11 +356,11 @@ impl Interpreter {
             })?;
 
         let self_class_id = match self.load_indirect(self_ptr)?.as_ref()  {
-            ValueCell::RcCell(rc_cell) => Ok(rc_cell.struct_id),
+            DynValue::Rc(rc_val) => Ok(rc_val.struct_id),
             _ => {
                 let msg = format!(
-                    "expected target of vcall {}.{} to be an rc cell, but found {:?}",
-                    iface_id, method.0, self_cell,
+                    "expected target of vcall {}.{} to be an rc value, but found {:?}",
+                    iface_id, method.0, self_val,
                 );
                 Err(ExecError::illegal_state(msg))
             }
@@ -384,16 +384,16 @@ impl Interpreter {
             })
     }
 
-    fn call(&mut self, func: &Function, args: &[ValueCell], out: Option<&Ref>) -> ExecResult<()> {
+    fn call(&mut self, func: &Function, args: &[DynValue], out: Option<&Ref>) -> ExecResult<()> {
         let stack_size = func.stack_alloc_size(self.marshaller())?;
         self.push_stack(func.debug_name(), stack_size);
 
         // store empty result at $0 if needed
         let return_ty = func.return_ty();
         let ret_id = if *return_ty != Type::Nothing {
-            let result_cell = self.default_init_cell(return_ty)?;
+            let result_val = self.default_init_dyn_val(return_ty)?;
 
-            let ret_id = self.current_frame_mut()?.add_undeclared_local(return_ty.clone(), &result_cell)?;
+            let ret_id = self.current_frame_mut()?.add_undeclared_local(return_ty.clone(), &result_val)?;
             assert_eq!(ret_id, LocalID(0));
             Some(ret_id)
         } else {
@@ -415,15 +415,15 @@ impl Interpreter {
             None => LocalID(0),
         };
 
-        for (arg_index, (arg_cell, param_ty)) in args.iter().zip(func.param_tys()).enumerate() {
-            let arg_id = self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_cell)?;
+        for (arg_index, (arg_val, param_ty)) in args.iter().zip(func.param_tys()).enumerate() {
+            let arg_id = self.current_frame_mut()?.add_undeclared_local(param_ty.clone(), arg_val)?;
 
             assert_eq!(LocalID(first_arg_id.0 + arg_index), arg_id);
         }
 
         func.invoke(self)?;
 
-        let result_cell = match ret_id {
+        let result_val = match ret_id {
             None => None,
             Some(ret_id) => {
                 let ret_ref = Ref::Local(ret_id);
@@ -434,9 +434,9 @@ impl Interpreter {
 
         self.pop_stack()?;
 
-        match (result_cell, out) {
-            (Some(result_cell), Some(out_at)) => {
-                self.store(&out_at, result_cell)?;
+        match (result_val, out) {
+            (Some(v), Some(out_at)) => {
+                self.store(&out_at, v)?;
             }
 
             (None, Some(_)) => {
@@ -451,7 +451,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn invoke_disposer(&mut self, cell: &ValueCell, ty: &Type) -> ExecResult<()> {
+    fn invoke_disposer(&mut self, val: &DynValue, ty: &Type) -> ExecResult<()> {
         let dispose_impl_id = self
             .metadata
             .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
@@ -465,7 +465,7 @@ impl Interpreter {
 
             let dispose_ref = GlobalRef::Function(dispose_func);
             let func = match self.globals.get(&dispose_ref).map(|c| &c.value) {
-                Some(ValueCell::Function(func)) => func.clone(),
+                Some(DynValue::Function(func)) => func.clone(),
                 _ => panic!("missing {} for {}", dispose_desc, disposed_name),
             };
 
@@ -473,7 +473,7 @@ impl Interpreter {
                 eprintln!("rc: invoking {}", dispose_desc);
             }
 
-            self.call(&func, &[cell.clone()], None)?;
+            self.call(&func, &[val.clone()], None)?;
         } else if self.trace_rc {
             eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
@@ -506,24 +506,24 @@ impl Interpreter {
             })
     }
 
-    fn release_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
-        let rc_ptr = cell
+    fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
+        let rc_ptr = val
             .as_pointer()
-            .unwrap_or_else(|| panic!("released cell was not a pointer, found: {:?}", cell));
+            .unwrap_or_else(|| panic!("released val was not a pointer, found: {:?}", val));
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
         if rc_ptr.is_null() {
             return Ok(());
         }
 
-        let rc_cell = match self.load_indirect(&rc_ptr)?.into_owned() {
-            ValueCell::RcCell(rc_cell) => *rc_cell,
-            other => panic!("released cell was not an rc value, found: {:?}", other),
+        let rc_val = match self.load_indirect(&rc_ptr)?.into_owned() {
+            DynValue::Rc(rc_val) => *rc_val,
+            other => panic!("released val was not an rc value, found: {:?}", other),
         };
 
-        let resource_ty = Type::Struct(rc_cell.struct_id);
+        let resource_ty = Type::Struct(rc_val.struct_id);
 
-        if rc_cell.ref_count == 1 {
+        if rc_val.ref_count == 1 {
             if self.trace_rc {
                 println!(
                     "rc: no more refs to {}, delete resource of type {}",
@@ -534,8 +534,8 @@ impl Interpreter {
 
             // Dispose() the inner resource. For an RC type, interfaces are implemented
             // for the RC pointer type, not the resource type
-            let resource_id = ClassID::Class(rc_cell.struct_id);
-            self.invoke_disposer(&cell, &Type::RcPointer(Some(resource_id)))?;
+            let resource_id = ClassID::Class(rc_val.struct_id);
+            self.invoke_disposer(&val, &Type::RcPointer(Some(resource_id)))?;
 
             // Now release the fields of the resource struct as if it was a normal record.
             // This could technically invoke another disposer, but it won't, because there's
@@ -543,7 +543,7 @@ impl Interpreter {
 
             // resource structs can be zero-sized, in which case there's nothing allocated,
             // so we can skip the rc cleanup and dynfree in that case
-            if !rc_cell.resource_ptr.is_null() {
+            if !rc_val.resource_ptr.is_null() {
                 let rc_funcs = self.find_rc_boilerplate(&resource_ty)?;
 
                 let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
@@ -552,20 +552,20 @@ impl Interpreter {
                     .cloned()
                     .unwrap();
 
-                let release_ptr = ValueCell::Pointer(rc_cell.resource_ptr.clone());
+                let release_ptr = DynValue::Pointer(rc_val.resource_ptr.clone());
                 self.call(&release_func, &[release_ptr], None)?;
 
                 if self.trace_rc {
                     eprintln!(
                         "rc: free {} @ {}",
                         self.metadata.pretty_ty_name(&resource_ty),
-                        rc_cell.resource_ptr
+                        rc_val.resource_ptr
                     )
                 }
 
                 // zero-sized resource types will never have actually allocated anything as the resource
                 // pointer
-                self.dynfree(&rc_cell.resource_ptr)?;
+                self.dynfree(&rc_val.resource_ptr)?;
             }
 
             if self.trace_rc {
@@ -576,31 +576,31 @@ impl Interpreter {
             }
             self.dynfree(&rc_ptr)?;
         } else {
-            let ref_count = rc_cell.ref_count - 1;
+            let ref_count = rc_val.ref_count - 1;
             assert!(ref_count > 0);
 
             if self.trace_rc {
                 eprintln!(
                     "rc: release {} @ {} ({} more refs)",
                     self.metadata.pretty_ty_name(&resource_ty),
-                    rc_cell.resource_ptr,
+                    rc_val.resource_ptr,
                     ref_count,
                 )
             }
 
-            self.store_indirect(&rc_ptr, ValueCell::RcCell(Box::new(RcCell { ref_count, ..rc_cell })))?;
+            self.store_indirect(&rc_ptr, DynValue::Rc(Box::new(RcValue { ref_count, ..rc_val })))?;
         }
 
         Ok(())
     }
 
-    fn retain_cell(&mut self, cell: &ValueCell) -> ExecResult<()> {
-        match cell {
-            ValueCell::Pointer(ptr) => {
-                let mut rc_cell = self.load_indirect(ptr)?.into_owned();
+    fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
+        match val {
+            DynValue::Pointer(ptr) => {
+                let mut rc_val = self.load_indirect(ptr)?.into_owned();
 
-                match &mut rc_cell {
-                    ValueCell::RcCell(rc) => {
+                match &mut rc_val {
+                    DynValue::Rc(rc) => {
                         rc.ref_count += 1;
 
                         if self.trace_rc {
@@ -609,18 +609,18 @@ impl Interpreter {
                     }
 
                     other => {
-                        let msg = format!("retained cell must point to an rc cell, found: {:?}", other);
+                        let msg = format!("retained val must point to an rc val, found: {:?}", other);
                         return Err(ExecError::illegal_state(msg));
                     }
                 };
 
-                self.store_indirect(ptr, rc_cell)?;
+                self.store_indirect(ptr, rc_val)?;
 
                 Ok(())
             }
 
             _ => {
-                Err(ExecError::illegal_state(format!("{:?} cannot be retained", cell)))
+                Err(ExecError::illegal_state(format!("{:?} cannot be retained", val)))
             },
         }
     }
@@ -636,7 +636,7 @@ impl Interpreter {
             // let intPtr := @int;
             // @(intPtr^) -> address of int behind intPtr
             Ref::Deref(val) => match self.evaluate(val)? {
-                ValueCell::Pointer(ptr) => Ok(ptr.clone()),
+                DynValue::Pointer(ptr) => Ok(ptr.clone()),
 
                 _ => {
                     let msg = format!("deref of non-pointer value @ {}", val);
@@ -645,7 +645,7 @@ impl Interpreter {
             },
 
             // let int := 1;
-            // @int -> stack address of int cell
+            // @int -> stack address of int val
             Ref::Local(id) => {
                 self.current_frame()?.get_local_ptr(*id)
                     .map_err(|err| {
@@ -753,7 +753,7 @@ impl Interpreter {
 
             Instruction::AddrOf { out, a } => {
                 let a_ptr = self.addr_of_ref(a)?;
-                self.store(out, ValueCell::Pointer(a_ptr))?;
+                self.store(out, DynValue::Pointer(a_ptr))?;
             }
 
             Instruction::Field {
@@ -796,21 +796,17 @@ impl Interpreter {
 
             Instruction::DynFree { at } => self.exec_dynfree(at)?,
             Instruction::Raise { val } => self.exec_raise(&val)?,
-
-            // all value are one cell in the interpreter
-            Instruction::SizeOf { out, ty } => {
-                self.exec_size_of(out, ty)?;
-            }
+            Instruction::SizeOf { out, ty } => self.exec_size_of(out, ty)?,
         }
 
         Ok(())
     }
 
     fn exec_local_alloc(&mut self, id: LocalID, pc: usize, ty: &Type) -> ExecResult<()> {
-        let uninit_cell = self.default_init_cell(ty)?;
+        let uninit_val = self.default_init_dyn_val(ty)?;
 
         let current_frame = self.current_frame_mut()?;
-        current_frame.declare_local(id, ty.clone(), &uninit_cell, pc)
+        current_frame.declare_local(id, ty.clone(), &uninit_val, pc)
             .map_err(|err| self.add_debug_ctx(err.into()))?;
 
         Ok(())
@@ -835,10 +831,10 @@ impl Interpreter {
     fn exec_rc_new(&mut self, out: &Ref, struct_id: &StructID) -> ExecResult<()> {
         let struct_ty = Type::Struct(*struct_id);
 
-        let default_val = self.default_init_cell(&struct_ty)?;
+        let default_val = self.default_init_dyn_val(&struct_ty)?;
         let rc_ptr = self.rc_alloc(default_val, *struct_id)?;
 
-        self.store(out, ValueCell::Pointer(rc_ptr))?;
+        self.store(out, DynValue::Pointer(rc_ptr))?;
 
         Ok(())
     }
@@ -849,11 +845,11 @@ impl Interpreter {
 
         let result = match (a_val, b_val) {
             // pointer arithmetic
-            (ValueCell::Pointer(ptr), ValueCell::I32(offset))
-            | (ValueCell::I32(offset), ValueCell::Pointer(ptr)) => {
+            (DynValue::Pointer(ptr), DynValue::I32(offset))
+            | (DynValue::I32(offset), DynValue::Pointer(ptr)) => {
                 let offset_ptr = self.offset_ptr(ptr, offset as isize)?;
 
-                Ok(ValueCell::Pointer(offset_ptr))
+                Ok(DynValue::Pointer(offset_ptr))
             },
 
             // value addition
@@ -894,7 +890,7 @@ impl Interpreter {
             ExecError::illegal_state(format!("type has illegal size: {}", marshal_ty.size()))
         })?;
 
-        self.store(out, ValueCell::I32(size))?;
+        self.store(out, DynValue::I32(size))?;
 
         Ok(())
     }
@@ -906,7 +902,7 @@ impl Interpreter {
 
     fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
         match self.load(at)?.into_owned() {
-            ValueCell::Pointer(ptr) => {
+            DynValue::Pointer(ptr) => {
                 self.dynfree(&ptr)
             }
 
@@ -917,7 +913,7 @@ impl Interpreter {
         }
     }
 
-    pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<ValueCell>) -> ExecResult<Pointer> {
+    pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<DynValue>) -> ExecResult<Pointer> {
         if values.len() == 0 {
             return Err(ExecError::ZeroLengthAllocation);
         }
@@ -957,21 +953,21 @@ impl Interpreter {
             .map_err(|_| ExecError::illegal_state("alloc length must be positive"))?;
 
         let ptr = self.dynalloc(ty, count)?;
-        self.store(out, ValueCell::Pointer(ptr))?;
+        self.store(out, DynValue::Pointer(ptr))?;
 
         Ok(())
     }
 
     fn exec_retain(&mut self, at: &Ref) -> ExecResult<()> {
-        let cell = self.load(at)?.into_owned();
-        self.retain_cell(&cell)?;
+        let val = self.load(at)?.into_owned();
+        self.retain_dyn_val(&val)?;
 
         Ok(())
     }
 
     fn exec_release(&mut self, at: &Ref) -> ExecResult<()> {
-        let cell = self.load(at)?.into_owned();
-        self.release_cell(&cell)?;
+        let val = self.load(at)?.into_owned();
+        self.release_dyn_val(&val)?;
 
         Ok(())
     }
@@ -984,13 +980,13 @@ impl Interpreter {
         test: &Value,
     ) -> ExecResult<()> {
         match self.evaluate(test)? {
-            ValueCell::Bool(true) => {
+            DynValue::Bool(true) => {
                 self.exec_jump(pc, &labels[&dest])
             }
-            ValueCell::Bool(false) => {
+            DynValue::Bool(false) => {
                 Ok(())
             }
-            _ => Err(ExecError::illegal_state("JumpIf instruction testing non-boolean cell")),
+            _ => Err(ExecError::illegal_state("JumpIf instruction testing non-boolean value")),
         }
     }
 
@@ -1019,7 +1015,7 @@ impl Interpreter {
 
         self.store(
             out,
-            ValueCell::Pointer(Pointer {
+            DynValue::Pointer(Pointer {
                 addr: a_ptr.addr + data_offset,
                 ty: case_ty,
             }),
@@ -1033,7 +1029,7 @@ impl Interpreter {
         // output a pointer ot hte variant
         let tag_ptr = self.addr_of_ref(a)?;
 
-        self.store(out, ValueCell::Pointer(tag_ptr))?;
+        self.store(out, DynValue::Pointer(tag_ptr))?;
 
         Ok(())
     }
@@ -1055,7 +1051,7 @@ impl Interpreter {
 
         self.store(
             out,
-            ValueCell::Pointer(Pointer{
+            DynValue::Pointer(Pointer{
                 addr: array_ptr.addr + index_offset,
                 ty: element.clone(),
             }),
@@ -1098,11 +1094,11 @@ impl Interpreter {
 
         let result = match (a_val, b_val) {
             // pointer arithmetic
-            (ValueCell::Pointer(ptr), ValueCell::I32(offset))
-            | (ValueCell::I32(offset), ValueCell::Pointer(ptr)) => {
+            (DynValue::Pointer(ptr), DynValue::I32(offset))
+            | (DynValue::I32(offset), DynValue::Pointer(ptr)) => {
                 let ptr = self.offset_ptr(ptr, -offset as isize)?;
 
-                Ok(ValueCell::Pointer(ptr))
+                Ok(DynValue::Pointer(ptr))
             },
 
             // value addition
@@ -1160,7 +1156,7 @@ impl Interpreter {
             },
         };
 
-        self.store(out, ValueCell::Bool(eq))?;
+        self.store(out, DynValue::Bool(eq))?;
 
         Ok(())
     }
@@ -1175,7 +1171,7 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        self.store(out, ValueCell::Bool(gt))?;
+        self.store(out, DynValue::Bool(gt))?;
 
         Ok(())
     }
@@ -1191,7 +1187,7 @@ impl Interpreter {
             }
         };
 
-        self.store(out, ValueCell::Bool(not))?;
+        self.store(out, DynValue::Bool(not))?;
 
         Ok(())
     }
@@ -1213,7 +1209,7 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        self.store(out, ValueCell::Bool(a_val && b_val))?;
+        self.store(out, DynValue::Bool(a_val && b_val))?;
 
         Ok(())
     }
@@ -1235,7 +1231,7 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        self.store(out, ValueCell::Bool(a_val || b_val))?;
+        self.store(out, DynValue::Bool(a_val || b_val))?;
 
         Ok(())
     }
@@ -1246,13 +1242,13 @@ impl Interpreter {
         function: &Value,
         args: &Vec<Value>,
     ) -> ExecResult<()> {
-        let arg_cells: Vec<_> = args
+        let arg_vals: Vec<_> = args
             .iter()
             .map(|arg_val| self.evaluate(arg_val))
             .collect::<ExecResult<_>>()?;
 
         match self.evaluate(function)? {
-            ValueCell::Function(function) => self.call(&function, &arg_cells, out.as_ref())?,
+            DynValue::Function(function) => self.call(&function, &arg_vals, out.as_ref())?,
 
             _ => {
                 let msg = format!("{} does not reference a function", function);
@@ -1271,25 +1267,25 @@ impl Interpreter {
         self_arg: &Value,
         rest_args: &[Value],
     ) -> ExecResult<()> {
-        let self_cell = self.evaluate(&self_arg)?;
-        let func = self.vcall_lookup(&self_cell, iface_id, method)?;
+        let self_val = self.evaluate(&self_arg)?;
+        let func = self.vcall_lookup(&self_val, iface_id, method)?;
 
-        let mut arg_cells = vec![self_cell];
+        let mut arg_vals = vec![self_val];
         for arg_val in rest_args {
-            let arg_cell = self.evaluate(arg_val)?;
-            arg_cells.push(arg_cell);
+            let arg_val = self.evaluate(arg_val)?;
+            arg_vals.push(arg_val);
         }
 
         let func_ref = Ref::Global(GlobalRef::Function(func));
         let func = match self.evaluate(&Value::Ref(func_ref))? {
-            ValueCell::Function(func) => func,
+            DynValue::Function(func) => func,
             unexpected => {
-                let msg = format!("invalid function cell: {:?}", unexpected);
+                let msg = format!("invalid function val: {:?}", unexpected);
                 return Err(ExecError::illegal_state(msg));
             },
         };
 
-        self.call(&func, &arg_cells, out)?;
+        self.call(&func, &arg_vals, out)?;
 
         Ok(())
     }
@@ -1303,25 +1299,25 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        let rc_cell = match self.load_indirect(&a_ptr)?.into_owned() {
-            ValueCell::RcCell(rc) => Ok(rc),
+        let rc_val = match self.load_indirect(&a_ptr)?.into_owned() {
+            DynValue::Rc(rc) => Ok(rc),
             _ => {
-                let msg = "rc pointer target of ClassIs instruction must point to an rc cell";
+                let msg = "rc pointer target of ClassIs instruction must point to an rc value";
                 Err(ExecError::illegal_state(msg))
             }
         }?;
 
         let is = match class_id {
-            ClassID::Class(struct_id) => rc_cell.struct_id == *struct_id,
+            ClassID::Class(struct_id) => rc_val.struct_id == *struct_id,
             ClassID::Interface(iface_id) => {
-                let resource_id = ClassID::Class(rc_cell.struct_id);
+                let resource_id = ClassID::Class(rc_val.struct_id);
                 let actual_ty = Type::RcPointer(Some(resource_id));
 
                 self.metadata.is_impl(&actual_ty, *iface_id)
             }
         };
 
-        self.store(out, ValueCell::Bool(is))?;
+        self.store(out, DynValue::Bool(is))?;
 
         Ok(())
     }
@@ -1360,17 +1356,17 @@ impl Interpreter {
 
             Type::RcPointer(..) => {
                 let target = self.load(&a.clone().to_deref())?;
-                let rc_cell = match target.as_rc() {
-                    Some(rc_cell) => rc_cell,
+                let rc_val = match target.as_rc() {
+                    Some(rc_val) => rc_val,
                     None => {
-                        let msg = format!("trying to read field pointer of rc type but target wasn't an rc cell @ {} (target was: {:?}", a, target);
+                        let msg = format!("trying to read field pointer of rc type but target wasn't an rc value @ {} (target was: {:?}", a, target);
                         return Err(ExecError::illegal_state(msg));
                     }
                 };
 
-                let struct_ptr = rc_cell.resource_ptr.clone();
+                let struct_ptr = rc_val.resource_ptr.clone();
 
-                let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_cell.struct_id, *field)?;
+                let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_val.struct_id, *field)?;
 
                 Pointer {
                     ty: field_ty,
@@ -1387,7 +1383,7 @@ impl Interpreter {
             }
         };
 
-        self.store(out, ValueCell::Pointer(field_ptr))?;
+        self.store(out, DynValue::Pointer(field_ptr))?;
 
         Ok(())
     }
@@ -1401,7 +1397,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn rc_alloc(&mut self, resource: ValueCell, ty_id: StructID) -> ExecResult<Pointer> {
+    fn rc_alloc(&mut self, resource: DynValue, ty_id: StructID) -> ExecResult<Pointer> {
         // if the resource is a zero-sized class, we don't need to allocate a resource at all
         let res_ty = Type::Struct(ty_id);
         let res_size = self.marshaller.get_ty(&res_ty)?.size();
@@ -1410,21 +1406,21 @@ impl Interpreter {
             _ => self.dynalloc_init(&res_ty, vec![resource])?,
         };
 
-        let rc_cell = ValueCell::RcCell(Box::new(RcCell {
+        let rc_val = DynValue::Rc(Box::new(RcValue {
             ref_count: 1,
             resource_ptr,
             struct_id: ty_id,
         }));
 
-        self.dynalloc_init(&Type::RcObject(ty_id), vec![rc_cell])
+        self.dynalloc_init(&Type::RcObject(ty_id), vec![rc_val])
     }
 
     fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type, params: Vec<Type>) {
         if let Some(func_id) = self.metadata.find_function(&name) {
             self.globals.insert(
                 GlobalRef::Function(func_id),
-                GlobalCell {
-                    value: ValueCell::Function(Rc::new(Function::Builtin(BuiltinFunction {
+                GlobalValue {
+                    value: DynValue::Function(Rc::new(Function::Builtin(BuiltinFunction {
                         func,
                         return_ty: ret,
                         param_tys: params,
@@ -1527,8 +1523,8 @@ impl Interpreter {
             if let Some(func) = func {
                 self.globals.insert(
                     func_ref,
-                    GlobalCell {
-                        value: ValueCell::Function(Rc::new(func)),
+                    GlobalValue {
+                        value: DynValue::Function(Rc::new(func)),
                         ty: Type::Nothing,
                     },
                 );
@@ -1539,7 +1535,7 @@ impl Interpreter {
         self.native_heap.set_marshaller(self.marshaller.clone());
 
         for (id, literal) in module.metadata.strings() {
-            let str_cell = self.create_string(literal)
+            let str_val = self.create_string(literal)
                 .map_err(|err| ExecError::WithDebugContext {
                     err: err.into(),
                     span: module.module_span().clone(),
@@ -1549,8 +1545,8 @@ impl Interpreter {
 
             self.globals.insert(
                 str_ref,
-                GlobalCell {
-                    value: str_cell,
+                GlobalValue {
+                    value: str_val,
                     ty: Type::RcPointer(Some(ClassID::Class(STRING_ID))),
                 },
             );
@@ -1572,17 +1568,17 @@ impl Interpreter {
         Ok(())
     }
 
-    fn deref_rc(&self, rc_cell: &ValueCell) ->  ExecResult<Cow<ValueCell>> {
-        let rc = rc_cell.as_rc().ok_or_else(|| {
-            let msg = format!("trying to deref RC ref but value was {:?}", rc_cell);
+    fn deref_rc(&self, rc_val: &DynValue) ->  ExecResult<Cow<DynValue>> {
+        let rc = rc_val.as_rc().ok_or_else(|| {
+            let msg = format!("trying to deref RC ref but value was {:?}", rc_val);
             ExecError::illegal_state(msg)
         })?;
 
         self.load_indirect(&rc.resource_ptr)
     }
 
-    fn create_string(&mut self, content: &str) -> ExecResult<ValueCell> {
-        let chars: Vec<_> = content.chars().map(|c| ValueCell::U8(c as u8)).collect();
+    fn create_string(&mut self, content: &str) -> ExecResult<DynValue> {
+        let chars: Vec<_> = content.chars().map(|c| DynValue::U8(c as u8)).collect();
         let chars_len = cast::i32(chars.len()).map_err(|_| {
             let msg = format!("string length out of range: {}", chars.len());
             ExecError::illegal_state(msg)
@@ -1596,40 +1592,40 @@ impl Interpreter {
 
         let str_fields = vec![
             // field 0: `chars: ^Byte`
-            ValueCell::Pointer(chars_ptr),
+            DynValue::Pointer(chars_ptr),
             // field 1: `len: Integer`
-            ValueCell::I32(chars_len),
+            DynValue::I32(chars_len),
         ];
 
-        let str_cell = ValueCell::Structure(Box::new(StructCell {
+        let str_val = DynValue::Structure(Box::new(StructValue {
             id: STRING_ID,
             fields: str_fields,
         }));
 
-        let str_ptr = self.rc_alloc(str_cell, STRING_ID)?;
-        Ok(ValueCell::Pointer(str_ptr))
+        let str_ptr = self.rc_alloc(str_val, STRING_ID)?;
+        Ok(DynValue::Pointer(str_ptr))
     }
 
     fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
         let str_rc_ptr = self.load(str_ref)?;
-        let str_cell = self.deref_rc(&str_rc_ptr)?;
+        let str_val = self.deref_rc(&str_rc_ptr)?;
 
-        let str_cell = match str_cell.as_struct(STRING_ID) {
-            Some(struct_cell) => struct_cell,
+        let str_struct = match str_val.as_struct(STRING_ID) {
+            Some(struct_val) => struct_val,
             None => {
                 let msg = format!(
-                    "tried to read string value from rc cell which didn't contain a string struct: {:?}",
-                    str_cell,
+                    "tried to read string value from rc val which didn't contain a string struct: {:?}",
+                    str_val,
                 );
                 return Err(ExecError::illegal_state(msg))
             },
         };
 
-        let len_cell = &str_cell[STRING_LEN_FIELD];
-        let len = len_cell.as_i32()
+        let len_val = &str_struct[STRING_LEN_FIELD];
+        let len = len_val.as_i32()
             .and_then(|len| cast::usize(len).ok())
             .ok_or_else(|| {
-                let msg = format!("string length cell contained invalid value: {:?}", len_cell);
+                let msg = format!("string length value contained invalid value: {:?}", len_val);
                 ExecError::illegal_state(msg)
             })?;
 
@@ -1637,12 +1633,12 @@ impl Interpreter {
             return Ok(String::new());
         }
 
-        let chars_ptr = str_cell[STRING_CHARS_FIELD]
+        let chars_ptr = str_struct[STRING_CHARS_FIELD]
             .as_pointer()
             .ok_or_else(|| {
                 ExecError::illegal_state(format!(
                     "string contained invalid `chars` pointer value: {:?}",
-                    str_cell
+                    str_struct
                 ))
             })?;
 
@@ -1667,9 +1663,9 @@ impl Interpreter {
     pub fn shutdown(mut self) -> ExecResult<()> {
         let globals: Vec<_> = self.globals.values().cloned().collect();
 
-        for GlobalCell { value, ty } in globals {
+        for GlobalValue { value, ty } in globals {
             if ty.is_rc() {
-                self.release_cell(&value)?;
+                self.release_dyn_val(&value)?;
             }
         }
 

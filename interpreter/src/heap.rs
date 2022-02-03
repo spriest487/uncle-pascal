@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::rc::Rc;
 use pas_ir::Type;
-use crate::{ValueCell, marshal::{Marshaller, MarshalError}, Pointer};
+use crate::{DynValue, marshal::{Marshaller, MarshalError}, Pointer};
 
 #[derive(Clone, Debug)]
 pub enum NativeHeapError {
@@ -88,7 +88,7 @@ impl NativeHeap {
         Ok(())
     }
 
-    pub fn load(&self, addr: &Pointer) -> NativeHeapResult<ValueCell> {
+    pub fn load(&self, addr: &Pointer) -> NativeHeapResult<DynValue> {
         if addr.addr == 0 {
             return Err(NativeHeapError::NullPointerDeref);
         }
@@ -98,7 +98,7 @@ impl NativeHeap {
         Ok(val)
     }
 
-    pub fn store(&mut self, addr: &Pointer, val: ValueCell) -> NativeHeapResult<()> {
+    pub fn store(&mut self, addr: &Pointer, val: DynValue) -> NativeHeapResult<()> {
         if addr.addr == 0 {
             return Err(NativeHeapError::NullPointerDeref);
         }

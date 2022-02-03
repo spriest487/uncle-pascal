@@ -1,4 +1,4 @@
-use crate::value_cell::ValueCell;
+use crate::dyn_value::DynValue;
 use crate::{ExecResult, Interpreter};
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -31,7 +31,7 @@ impl Pointer {
         self.addr == 0
     }
 
-    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, ValueCell>> {
+    pub fn deref_ptr<'a>(&self, state: &'a Interpreter) -> ExecResult<Cow<'a, DynValue>> {
         state.load_indirect(self)
     }
 

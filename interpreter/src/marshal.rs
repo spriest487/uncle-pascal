@@ -2,7 +2,7 @@
 mod test;
 
 use crate::func::ffi::FfiInvoker;
-use crate::{ArrayCell, Pointer, RcCell, StructCell, ValueCell, VariantCell};
+use crate::{ArrayValue, Pointer, RcValue, StructValue, DynValue, VariantValue};
 use ::dlopen::{raw as dlopen, Error as DlopenError};
 use libffi::{
     low::ffi_type,
@@ -25,11 +25,11 @@ pub enum MarshalError {
     InvalidData,
 
     UnsupportedType(Type),
-    UnsupportedValue(ValueCell),
+    UnsupportedValue(DynValue),
 
     VariantTagOutOfRange {
         variant_id: StructID,
-        tag: ValueCell,
+        tag: DynValue,
     },
 
     InvalidStructID {
@@ -37,7 +37,7 @@ pub enum MarshalError {
         actual: StructID,
     },
 
-    InvalidRefCountValue(ValueCell),
+    InvalidRefCountValue(DynValue),
 
     ExternSymbolLoadFailed {
         lib: String,
@@ -80,8 +80,8 @@ pub struct UnmarshalledValue<T> {
     pub byte_count: usize,
 }
 
-impl From<UnmarshalledValue<ValueCell>> for ValueCell {
-    fn from(val: UnmarshalledValue<ValueCell>) -> Self {
+impl From<UnmarshalledValue<DynValue>> for DynValue {
+    fn from(val: UnmarshalledValue<DynValue>) -> Self {
         val.value
     }
 }
@@ -205,12 +205,12 @@ pub struct Marshaller {
     struct_field_types: BTreeMap<StructID, Vec<Type>>,
     variant_case_types: BTreeMap<StructID, Vec<Option<Type>>>,
 
-    rc_cell_type: ForeignType,
+    rc_val_type: ForeignType,
 }
 
 impl Marshaller {
     pub fn new() -> Self {
-        let rc_cell_type = ForeignType::structure(vec![
+        let rc_val_type = ForeignType::structure(vec![
             ForeignType::pointer(), // resource address
             ForeignType::usize(),   // ref count
             ForeignType::usize(),   // struct ID
@@ -223,7 +223,7 @@ impl Marshaller {
             struct_field_types: BTreeMap::new(),
             variant_case_types: BTreeMap::new(),
 
-            rc_cell_type,
+            rc_val_type,
         };
 
         marshaller.types.insert(Type::I8, ForeignType::i8());
@@ -405,7 +405,7 @@ impl Marshaller {
                 Ok(ForeignType::structure(el_tys))
             }
 
-            Type::RcObject(..) => Ok(self.rc_cell_type.clone()),
+            Type::RcObject(..) => Ok(self.rc_val_type.clone()),
 
             // all primitives/builtins should be in the cache already
             _ => Err(MarshalError::UnsupportedType(ty.clone())),
@@ -430,7 +430,7 @@ impl Marshaller {
 
             Type::Pointer(..) | Type::RcPointer(..) => Ok(ForeignType::pointer()),
 
-            Type::RcObject(..) => Ok(self.rc_cell_type.clone()),
+            Type::RcObject(..) => Ok(self.rc_val_type.clone()),
 
             ty => match self.types.get(ty) {
                 Some(cached_ty) => Ok(cached_ty.clone()),
@@ -439,25 +439,25 @@ impl Marshaller {
         }
     }
 
-    pub fn marshal(&self, val: &ValueCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
+    pub fn marshal(&self, val: &DynValue, out_bytes: &mut [u8]) -> MarshalResult<usize> {
         let size = match val {
-            ValueCell::I8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::U8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::I16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::U16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::I32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::U32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::I64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::U64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::ISize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::USize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::F32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
-            ValueCell::Bool(x) => {
+            DynValue::I8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::U8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::I16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::U16(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::I32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::U32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::I64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::U64(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::ISize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::USize(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::F32(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
+            DynValue::Bool(x) => {
                 out_bytes[0] = if *x { 1 } else { 0 };
                 1
             }
 
-            ValueCell::Array(x) => {
+            DynValue::Array(x) => {
                 let mut el_offset = 0;
 
                 for i in 0..x.elements.len() {
@@ -469,9 +469,9 @@ impl Marshaller {
                 el_offset
             }
 
-            ValueCell::Structure(struct_cell) => {
+            DynValue::Structure(struct_val) => {
                 let mut fields_size = 0;
-                for field in &struct_cell.fields {
+                for field in &struct_val.fields {
                     let field_bytes = &mut out_bytes[fields_size..];
                     fields_size += self.marshal(field, field_bytes)?;
                 }
@@ -479,11 +479,11 @@ impl Marshaller {
                 fields_size
             }
 
-            ValueCell::Variant(variant_cell) => self.marshal_variant(variant_cell, out_bytes)?,
+            DynValue::Variant(variant_val) => self.marshal_variant(variant_val, out_bytes)?,
 
-            ValueCell::Pointer(ptr) => self.marshal_ptr(ptr, out_bytes)?,
+            DynValue::Pointer(ptr) => self.marshal_ptr(ptr, out_bytes)?,
 
-            ValueCell::RcCell(rc_cell) => self.marshal_rc_cell(rc_cell, out_bytes)?,
+            DynValue::Rc(rc_val) => self.marshal_rc(rc_val, out_bytes)?,
 
             unsupported => return Err(MarshalError::UnsupportedValue(unsupported.clone())),
         };
@@ -508,7 +508,7 @@ impl Marshaller {
         Ok((ptr, addr_bytes.len()))
     }
 
-    pub fn unmarshal_from_ptr(&self, into_ptr: &Pointer) -> MarshalResult<ValueCell> {
+    pub fn unmarshal_from_ptr(&self, into_ptr: &Pointer) -> MarshalResult<DynValue> {
         if into_ptr.addr == 0 {
             return Err(MarshalError::InvalidData);
         }
@@ -521,7 +521,7 @@ impl Marshaller {
         Ok(result.value)
     }
 
-    pub fn marshal_into(&self, val: &ValueCell, into_ptr: &Pointer) -> MarshalResult<usize> {
+    pub fn marshal_into(&self, val: &DynValue, into_ptr: &Pointer) -> MarshalResult<usize> {
         if into_ptr.addr == 0 {
             return Err(MarshalError::InvalidData);
         }
@@ -538,31 +538,31 @@ impl Marshaller {
         &self,
         in_bytes: &[u8],
         ty: &Type,
-    ) -> MarshalResult<UnmarshalledValue<ValueCell>> {
-        let cell_value = match ty {
-            Type::I8 => unmarshal_from_ne_bytes(in_bytes, i8::from_ne_bytes)?.map(ValueCell::I8),
-            Type::U8 => unmarshal_from_ne_bytes(in_bytes, u8::from_ne_bytes)?.map(ValueCell::U8),
-            Type::I16 => unmarshal_from_ne_bytes(in_bytes, i16::from_ne_bytes)?.map(ValueCell::I16),
-            Type::U16 => unmarshal_from_ne_bytes(in_bytes, u16::from_ne_bytes)?.map(ValueCell::U16),
-            Type::I32 => unmarshal_from_ne_bytes(in_bytes, i32::from_ne_bytes)?.map(ValueCell::I32),
-            Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes)?.map(ValueCell::U32),
-            Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes)?.map(ValueCell::I64),
-            Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes)?.map(ValueCell::U64),
+    ) -> MarshalResult<UnmarshalledValue<DynValue>> {
+        let dyn_val = match ty {
+            Type::I8 => unmarshal_from_ne_bytes(in_bytes, i8::from_ne_bytes)?.map(DynValue::I8),
+            Type::U8 => unmarshal_from_ne_bytes(in_bytes, u8::from_ne_bytes)?.map(DynValue::U8),
+            Type::I16 => unmarshal_from_ne_bytes(in_bytes, i16::from_ne_bytes)?.map(DynValue::I16),
+            Type::U16 => unmarshal_from_ne_bytes(in_bytes, u16::from_ne_bytes)?.map(DynValue::U16),
+            Type::I32 => unmarshal_from_ne_bytes(in_bytes, i32::from_ne_bytes)?.map(DynValue::I32),
+            Type::U32 => unmarshal_from_ne_bytes(in_bytes, u32::from_ne_bytes)?.map(DynValue::U32),
+            Type::I64 => unmarshal_from_ne_bytes(in_bytes, i64::from_ne_bytes)?.map(DynValue::I64),
+            Type::U64 => unmarshal_from_ne_bytes(in_bytes, u64::from_ne_bytes)?.map(DynValue::U64),
             Type::ISize => {
-                unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes)?.map(ValueCell::ISize)
+                unmarshal_from_ne_bytes(in_bytes, isize::from_ne_bytes)?.map(DynValue::ISize)
             }
             Type::USize => {
-                unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?.map(ValueCell::USize)
+                unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?.map(DynValue::USize)
             }
 
-            Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes)?.map(ValueCell::F32),
+            Type::F32 => unmarshal_from_ne_bytes(in_bytes, f32::from_ne_bytes)?.map(DynValue::F32),
 
             Type::Bool => {
                 if in_bytes.len() == 0 {
                     return Err(MarshalError::InvalidData);
                 }
 
-                let value = ValueCell::Bool(in_bytes[0] != 0);
+                let value = DynValue::Bool(in_bytes[0] != 0);
                 UnmarshalledValue {
                     value,
                     byte_count: 1,
@@ -585,16 +585,16 @@ impl Marshaller {
                     };
 
                     UnmarshalledValue {
-                        value: ValueCell::Pointer(Pointer::null(null_ty)),
+                        value: DynValue::Pointer(Pointer::null(null_ty)),
                         byte_count: size,
                     }
                 } else {
                     // the struct ID is the 3rd field after the ptr and the ref count
-                    let rc_cell_fields = self.rc_cell_type.elements();
-                    let struct_id_offset = rc_cell_fields[0].size() + rc_cell_fields[1].size();
+                    let rc_fields = self.rc_val_type.elements();
+                    let struct_id_offset = rc_fields[0].size() + rc_fields[1].size();
 
                     let rc_struct_bytes = unsafe {
-                        slice_from_raw_parts(raw_ptr.addr as *const u8, self.rc_cell_type.size())
+                        slice_from_raw_parts(raw_ptr.addr as *const u8, self.rc_val_type.size())
                             .as_ref()
                             .unwrap()
                     };
@@ -603,7 +603,7 @@ impl Marshaller {
                     let struct_id = usize::from_ne_bytes(unmarshal_bytes(struct_id_bytes)?);
 
                     UnmarshalledValue {
-                        value: ValueCell::Pointer(Pointer {
+                        value: DynValue::Pointer(Pointer {
                             addr: raw_ptr.addr,
                             ty: Type::RcObject(StructID(struct_id)),
                         }),
@@ -613,23 +613,23 @@ impl Marshaller {
             }
 
             Type::RcObject(id) => {
-                let rc_cell_val = self.unmarshal_rc_cell(in_bytes)?;
+                let rc_val = self.unmarshal_rc(in_bytes)?;
 
-                if rc_cell_val.value.struct_id != *id {
+                if rc_val.value.struct_id != *id {
                     return Err(MarshalError::InvalidStructID {
                         expected: *id,
-                        actual: rc_cell_val.value.struct_id,
+                        actual: rc_val.value.struct_id,
                     });
                 }
 
-                rc_cell_val.map(Box::new).map(ValueCell::RcCell)
+                rc_val.map(Box::new).map(DynValue::Rc)
             }
 
             Type::Pointer(deref_ty) => {
                 let (ptr, size) = self.unmarshal_ptr((**deref_ty).clone(), in_bytes)?;
 
                 UnmarshalledValue {
-                    value: ValueCell::Pointer(ptr),
+                    value: DynValue::Pointer(ptr),
                     byte_count: size,
                 }
             }
@@ -645,7 +645,7 @@ impl Marshaller {
 
                 UnmarshalledValue {
                     byte_count: offset,
-                    value: ValueCell::Array(Box::new(ArrayCell {
+                    value: DynValue::Array(Box::new(ArrayValue {
                         el_ty: *element.clone(),
                         elements,
                     })),
@@ -670,7 +670,7 @@ impl Marshaller {
                 }
 
                 UnmarshalledValue {
-                    value: ValueCell::Structure(Box::new(StructCell {
+                    value: DynValue::Structure(Box::new(StructValue {
                         id: *struct_id,
                         fields,
                     })),
@@ -679,8 +679,8 @@ impl Marshaller {
             }
 
             Type::Variant(variant_id) => {
-                let variant_cell_val = self.unmarshal_variant(*variant_id, in_bytes)?;
-                variant_cell_val.map(Box::new).map(ValueCell::Variant)
+                let variant_val = self.unmarshal_variant(*variant_id, in_bytes)?;
+                variant_val.map(Box::new).map(DynValue::Variant)
             },
 
             _ => {
@@ -688,7 +688,7 @@ impl Marshaller {
             },
         };
 
-        Ok(cell_value)
+        Ok(dyn_val)
     }
 
     pub fn stack_alloc_size(&self, instructions: &[Instruction]) -> MarshalResult<usize> {
@@ -711,15 +711,15 @@ impl Marshaller {
 
     fn marshal_variant(
         &self,
-        variant_cell: &VariantCell,
+        variant_val: &VariantValue,
         out_bytes: &mut [u8],
     ) -> MarshalResult<usize> {
         let case_tys = self
             .variant_case_types
-            .get(&variant_cell.id)
-            .ok_or_else(|| MarshalError::UnsupportedType(Type::Variant(variant_cell.id)))?;
+            .get(&variant_val.id)
+            .ok_or_else(|| MarshalError::UnsupportedType(Type::Variant(variant_val.id)))?;
 
-        let tag = variant_cell.tag.as_i32()
+        let tag = variant_val.tag.as_i32()
             .ok_or_else(|| MarshalError::InvalidData)?;
 
         let case_ty = case_tys.get(tag as usize)
@@ -727,15 +727,15 @@ impl Marshaller {
 
         // we still need to refer to the type size, because we always always marshal/unmarshal
         // the entire size of the variant regardless of which case is active
-        let variant_size = self.get_ty(&Type::Variant(variant_cell.id))?.size();
+        let variant_size = self.get_ty(&Type::Variant(variant_val.id))?.size();
 
-        let tag_size = self.marshal(&variant_cell.tag, out_bytes)?;
+        let tag_size = self.marshal(&variant_val.tag, out_bytes)?;
 
         // don't marshal anything for data-less cases
         let data_size = match case_ty {
             None => 0,
             Some(case_ty) => {
-                let data_size = self.marshal(&variant_cell.data, &mut out_bytes[tag_size..])?;
+                let data_size = self.marshal(&variant_val.data, &mut out_bytes[tag_size..])?;
                 let ty_size = self.get_ty(case_ty)?.size();
                 assert_eq!(ty_size, data_size);
 
@@ -744,7 +744,7 @@ impl Marshaller {
         };
 
         let marshalled_size = tag_size + data_size;
-        assert!(marshalled_size <= variant_size, "marshalled size {} <= type size {} for variant {}", marshalled_size, variant_size, Type::Variant(variant_cell.id));
+        assert!(marshalled_size <= variant_size, "marshalled size {} <= type size {} for variant {}", marshalled_size, variant_size, Type::Variant(variant_val.id));
 
         Ok(variant_size)
     }
@@ -753,7 +753,7 @@ impl Marshaller {
         &self,
         variant_id: StructID,
         in_bytes: &[u8],
-    ) -> MarshalResult<UnmarshalledValue<VariantCell>> {
+    ) -> MarshalResult<UnmarshalledValue<VariantValue>> {
         let tag_val = self.unmarshal(in_bytes, &Type::I32)?;
         let tag = tag_val.value.as_i32().unwrap();
 
@@ -780,7 +780,7 @@ impl Marshaller {
         let data_val = match case_ty {
             Some(case_ty) => self.unmarshal(&in_bytes[tag_val.byte_count..], case_ty)?,
             None => UnmarshalledValue {
-                value: ValueCell::Pointer(Pointer::null(Type::Nothing)),
+                value: DynValue::Pointer(Pointer::null(Type::Nothing)),
                 byte_count: 0,
             },
         };
@@ -789,27 +789,27 @@ impl Marshaller {
 
         Ok(UnmarshalledValue {
             byte_count: variant_size,
-            value: VariantCell {
+            value: VariantValue {
                 id: variant_id,
-                tag: Box::new(ValueCell::I32(tag as i32)),
+                tag: Box::new(DynValue::I32(tag as i32)),
                 data: Box::new(data_val.value),
             },
         })
     }
 
-    fn marshal_rc_cell(&self, rc_cell: &RcCell, out_bytes: &mut [u8]) -> MarshalResult<usize> {
-        let mut offset = self.marshal_ptr(&rc_cell.resource_ptr, out_bytes)?;
+    fn marshal_rc(&self, rc_val: &RcValue, out_bytes: &mut [u8]) -> MarshalResult<usize> {
+        let mut offset = self.marshal_ptr(&rc_val.resource_ptr, out_bytes)?;
 
-        let ref_count_bytes = rc_cell.ref_count.to_ne_bytes();
+        let ref_count_bytes = rc_val.ref_count.to_ne_bytes();
         offset += marshal_bytes(&ref_count_bytes, &mut out_bytes[offset..]);
 
-        let struct_id_bytes = rc_cell.struct_id.0.to_ne_bytes();
+        let struct_id_bytes = rc_val.struct_id.0.to_ne_bytes();
         offset += marshal_bytes(&struct_id_bytes, &mut out_bytes[offset..]);
 
         Ok(offset)
     }
 
-    fn unmarshal_rc_cell(&self, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<RcCell>> {
+    fn unmarshal_rc(&self, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<RcValue>> {
         let (resource_ptr, mut offset) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
 
         let ref_count_bytes = unmarshal_bytes(&in_bytes[offset..])?;
@@ -824,7 +824,7 @@ impl Marshaller {
         let resource_ptr = resource_ptr.reinterpret(Type::Struct(struct_id));
 
         Ok(UnmarshalledValue {
-            value: RcCell {
+            value: RcValue {
                 resource_ptr,
                 struct_id,
                 ref_count,

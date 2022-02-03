@@ -113,6 +113,19 @@ begin
     end
 end;
 
+function StringLenNullTerminated(chars: ^Byte): Integer
+begin
+    if chars = nil then exit 0;
+
+    var len := 0;
+    while chars[len] <> $0 do
+    begin
+        len += 1;
+    end;
+
+    len
+end;
+
 function SubString(s: String; from: Integer; len: Integer): String
 begin
     if from < 0
@@ -146,9 +159,12 @@ begin
     if len = 0 or bytes = nil then
         exit;
 
-    let max := (if len < s.len then len else s.len) - 1;
+    let max := if len < s.len then
+        len
+    else
+        s.len;
 
-    for let i := 0 to max do
+    for let i := 0 to max - 1 do
     begin
         bytes[i] := s.chars[i];
     end;
