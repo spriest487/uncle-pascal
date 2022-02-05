@@ -44,29 +44,33 @@ impl FfiInvoker {
     }
 
     pub fn invoke(&self, state: &mut Interpreter) -> ExecResult<()> {
-        // marshal args into a byte vec
-        let mut args = Vec::new();
+        // marshal args into a byte vec - we need to pass pointers into this vec, so it can't
+        // be reallocated, and we need to calculate the total size now
+        let params_total_size = self.ffi_param_tys.iter().map(|p| p.size()).sum();
+
+        let mut args = vec![0; params_total_size].into_boxed_slice();
+
         let mut args_ptrs = Vec::new();
         let first_param_local = match self.return_ty { Type::Nothing => 0, _ => 1 };
 
         let param_ty_both = self.param_tys.iter().zip(self.ffi_param_tys.iter());
 
+        let mut arg_offset = 0;
+
         for (i, (_param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
             let local_id = LocalID(first_param_local + i);
-            let arg_foreign_len = ffi_param_ty.size();
 
-            let arg_start = args.len();
-            args.resize(args.len() + arg_foreign_len, 0);
-
+            let arg_marshalled_size = ffi_param_ty.size();
             let arg_val = state.load(&Ref::Local(local_id))?;
-            let bytes_copied = state.marshaller().marshal(&arg_val, &mut args[arg_start..])?;
+            let bytes_copied = state.marshaller().marshal(&arg_val, &mut args[arg_offset..])?;
 
             assert_eq!(bytes_copied, ffi_param_ty.size());
 
             let arg_ptr = unsafe {
-                (args.as_mut_ptr() as *mut c_void).offset(arg_start as isize)
+                (args.as_mut_ptr() as *mut c_void).offset(arg_offset as isize)
             };
             args_ptrs.push(arg_ptr);
+            arg_offset += arg_marshalled_size;
         }
 
         let mut result_buf: Vec<u8> = if self.return_ty != Type::Nothing {
