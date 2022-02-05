@@ -1,5 +1,6 @@
 use std::{ptr::slice_from_raw_parts};
 use std::ffi::c_void;
+use std::ptr::null_mut;
 use crate::{
     ExecResult, Interpreter,
     marshal::ForeignType,
@@ -15,7 +16,6 @@ pub struct FfiInvoker {
 
     symbol: *const (),
 
-    param_tys: Vec<Type>,
     ffi_param_tys: Vec<ForeignType>,
 
     return_ty: Type,
@@ -26,7 +26,6 @@ impl FfiInvoker {
     pub fn new(
         cif: Cif,
         symbol: *const (),
-        param_tys: Vec<Type>,
         ffi_param_tys: Vec<ForeignType>,
         return_ty: Type,
         ffi_return_ty: ForeignType
@@ -35,7 +34,6 @@ impl FfiInvoker {
             cif,
             symbol,
 
-            param_tys,
             ffi_param_tys,
 
             return_ty,
@@ -49,28 +47,26 @@ impl FfiInvoker {
         let params_total_size = self.ffi_param_tys.iter().map(|p| p.size()).sum();
 
         let mut args = vec![0; params_total_size].into_boxed_slice();
+        let mut args_ptrs = vec![null_mut(); self.ffi_param_tys.len()].into_boxed_slice();
 
-        let mut args_ptrs = Vec::new();
         let first_param_local = match self.return_ty { Type::Nothing => 0, _ => 1 };
-
-        let param_ty_both = self.param_tys.iter().zip(self.ffi_param_tys.iter());
 
         let mut arg_offset = 0;
 
-        for (i, (_param_ty, ffi_param_ty)) in param_ty_both.enumerate() {
+        for i in 0..self.ffi_param_tys.len() {
             let local_id = LocalID(first_param_local + i);
 
-            let arg_marshalled_size = ffi_param_ty.size();
+            let param_size = self.ffi_param_tys[i].size();
+
             let arg_val = state.load(&Ref::Local(local_id))?;
             let bytes_copied = state.marshaller().marshal(&arg_val, &mut args[arg_offset..])?;
 
-            assert_eq!(bytes_copied, ffi_param_ty.size());
+            assert_eq!(bytes_copied, param_size);
 
-            let arg_ptr = unsafe {
+            args_ptrs[i] = unsafe {
                 (args.as_mut_ptr() as *mut c_void).offset(arg_offset as isize)
             };
-            args_ptrs.push(arg_ptr);
-            arg_offset += arg_marshalled_size;
+            arg_offset += param_size;
         }
 
         let mut result_buf: Vec<u8> = if self.return_ty != Type::Nothing {

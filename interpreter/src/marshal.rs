@@ -363,7 +363,6 @@ impl Marshaller {
         Ok(FfiInvoker::new(
             cif,
             symbol,
-            func_ref.params.clone(),
             ffi_param_tys,
             func_ref.return_ty.clone(),
             ffi_return_ty,
