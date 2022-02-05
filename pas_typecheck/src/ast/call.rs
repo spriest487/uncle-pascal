@@ -6,6 +6,7 @@ use pas_syn::{ast, Ident, IdentPath};
 
 use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
 use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation, TypedValueAnnotation, UFCSCallAnnotation};
+use crate::ast::cast::check_implicit_conversion;
 
 #[cfg(test)]
 mod test;
@@ -48,7 +49,7 @@ fn build_args_for_params(
 
     let rest_args = if let Some(self_arg) = self_arg {
         let self_ty = &expected_args[0].ty;
-        self_ty.implicit_conversion_from(&self_arg.annotation().ty(), span, ctx)?;
+        check_implicit_conversion(self_ty, &self_arg.annotation().ty(), span, ctx)?;
 
         checked_args.push(self_arg.clone());
 
@@ -86,16 +87,13 @@ fn build_args_for_params(
     for (actual, expected) in all_arg_tys {
         if expected.ty == Type::MethodSelf {
             if let Some(self_ty) = &self_ty {
-                self_ty
-                    .implicit_conversion_from(&actual, span, ctx)
+                check_implicit_conversion(self_ty, &actual, span, ctx)
                     .map_err(type_mismatch_as_bad_args)?;
             } else {
                 self_ty = Some(actual.into_owned());
             }
         } else {
-            expected
-                .ty
-                .implicit_conversion_from(&actual, span, ctx)
+            check_implicit_conversion(&expected.ty, &actual, span, ctx)
                 .map_err(type_mismatch_as_bad_args)?;
         }
     }
@@ -656,9 +654,7 @@ fn unwrap_inferred_args(
 fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Context) -> TypecheckResult<()> {
     let args_and_params = args.iter().zip(params.iter());
     for (arg, param) in args_and_params {
-        param
-            .ty
-            .implicit_conversion_from(&arg.annotation().ty(), arg.span(), ctx)?;
+        check_implicit_conversion(&param.ty, &arg.annotation().ty(), arg.span(), ctx)?;
 
         let (is_in_ref, is_out_ref) = match &param.modifier {
             None => (false, false),
@@ -1020,7 +1016,7 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                match self_param_ty.implicit_conversion_from(&self_arg_ty, self_arg.span(), ctx) {
+                match check_implicit_conversion(&self_param_ty, &self_arg_ty, self_arg.span(), ctx) {
                     Ok(..) => true,
                     Err(..) => false,
                 }
@@ -1070,10 +1066,7 @@ pub fn resolve_overload(
                 false
             } else {
                 let sig_param = &sig.params[param_index];
-                sig_param
-                    .ty
-                    .implicit_conversion_from(&arg_ty, arg_span, ctx)
-                    .is_ok()
+                check_implicit_conversion(&sig_param.ty, &arg_ty, arg_span, ctx).is_ok()
             }
         });
 

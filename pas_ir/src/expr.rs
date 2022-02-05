@@ -58,6 +58,8 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         },
 
         ast::Expression::Case(case) => translate_case_expr(case, builder),
+
+        ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
     };
 
     builder.pop_debug_context();
@@ -1381,6 +1383,16 @@ fn translate_case_expr(case: &pas_ty::ast::CaseExpr, builder: &mut Builder) -> R
         let branch_result = translate_expr(item, builder);
         builder.mov(out_ref.clone(), branch_result);
     });
+
+    out_ref
+}
+
+fn translate_cast_expr(cast: &pas_ty::ast::Cast, builder: &mut Builder) -> Ref {
+    let val = translate_expr(&cast.expr, builder);
+    let ty = builder.translate_type(&cast.ty);
+    let out_ref = builder.local_temp(ty.clone());
+
+    builder.cast(out_ref.clone(), val, ty);
 
     out_ref
 }

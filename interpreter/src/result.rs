@@ -1,6 +1,7 @@
 use crate::{heap::NativeHeapError, marshal::MarshalError, Pointer};
 use pas_common::{span::Span, DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
+use pas_ir::Instruction;
 use crate::stack::StackError;
 
 #[derive(Debug)]
@@ -18,6 +19,7 @@ pub enum ExecError {
     IllegalDereference {
         ptr: Pointer,
     },
+    IllegalInstruction(Instruction),
     IllegalState {
         msg: String,
     },
@@ -46,6 +48,7 @@ impl ExecError {
             ExecError::NativeHeapError(err) => Some(err.to_string()),
             ExecError::ZeroLengthAllocation => None,
             ExecError::StackError(err) => Some(err.to_string()),
+            ExecError::IllegalInstruction(i) => Some(i.to_string()),
             _ => None,
         }
     }
@@ -72,6 +75,7 @@ impl fmt::Display for ExecError {
             ExecError::NativeHeapError(err) => write!(f, "{}", err),
             ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
             ExecError::WithDebugContext { .. } => write!(f, "Execution error"),
+            ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
         }
     }
 }

@@ -670,6 +670,20 @@ impl<'a> Builder<'a> {
                     self.module,
                 )));
             }
+
+            ir::Instruction::Cast { ty, out, a } => {
+                let ty = Type::from_metadata(ty, self.module);
+                let expr = Expr::translate_val(a, self.module);
+
+                // TODO: just assume any valid pascal cast is a valid C cast for now...
+                let cast_result = Expr::Cast(Box::new(expr), ty);
+
+                self.stmts.push(Statement::Expr(Expr::translate_assign(
+                    out,
+                    cast_result,
+                    self.module,
+                )));
+            }
         }
     }
 
@@ -725,7 +739,9 @@ impl<'a> Builder<'a> {
             | ir::Instruction::ClassIs { out, .. }
             | ir::Instruction::RcNew { out, .. }
             | ir::Instruction::DynAlloc { out, .. }
+            | ir::Instruction::Cast { out, .. }
             | ir::Instruction::SizeOf { out, .. } => *out == ir::Ref::Discard,
+
         }
     }
 

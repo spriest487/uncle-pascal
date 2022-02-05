@@ -1,7 +1,8 @@
 use crate::{ast::prelude::*, ty::FunctionParamSig};
-pub use call::{typecheck_call, Call, FunctionCall, Invocation, MethodCall, VariantCtorCall};
+pub use call::{Call, FunctionCall, Invocation, MethodCall, typecheck_call, VariantCtorCall};
 use pas_common::span::*;
 use pas_syn::{ast, IntConstant};
+use crate::ast::cast::typecheck_cast_expr;
 
 pub type Expression = ast::Expression<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -190,6 +191,11 @@ pub fn typecheck_expr(
         ast::Expression::Exit(exit) => {
             let exit = typecheck_exit(exit, expect_ty, ctx)?;
             Ok(ast::Expression::from(exit))
+        }
+
+        ast::Expression::Cast(cast) => {
+            let cast = typecheck_cast_expr(cast, ctx)?;
+            Ok(ast::Expression::from(cast))
         }
     }
 }
@@ -411,6 +417,8 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
             ast::Exit::WithValue(exit_val, _) => expect_expr_initialized(exit_val, ctx),
             ast::Exit::WithoutValue(_) => Ok(()),
         },
+
+        ast::Expression::Cast(cast) => expect_expr_initialized(&cast.expr, ctx),
     }
 }
 

@@ -1,6 +1,6 @@
 pub use self::{
-    block::*, call::*, cond::*, ctor::*, expression::*, function::*, iter::*, op::*,
-    raise::*, statement::*, typedecl::*, unit::*, case::*,
+    block::*, call::*, case::*, cond::*, ctor::*, expression::*, function::*, iter::*,
+    op::*, raise::*, statement::*, typedecl::*, unit::*, cast::*,
 };
 
 mod block;
@@ -17,6 +17,7 @@ mod call;
 mod raise;
 mod case;
 pub mod const_eval;
+pub mod cast;
 
 mod prelude {
     pub use pas_common::span::*;

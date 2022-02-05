@@ -170,7 +170,13 @@ pub enum TypecheckError {
 
     InvalidCaseExprBlock {
         span: Span,
-    }
+    },
+
+    InvalidCast {
+        from: Type,
+        to: Type,
+        span: Span,
+    },
 }
 
 pub type TypecheckResult<T> = Result<T, TypecheckError>;
@@ -235,6 +241,7 @@ impl Spanned for TypecheckError {
             TypecheckError::UnsafeAddressoOfNotAllowed { span, .. } => span,
             TypecheckError::InvalidConstExpr { expr } => expr.span(),
             TypecheckError::InvalidCaseExprBlock { span } => span,
+            TypecheckError::InvalidCast { span, .. } => span,
         }
     }
 }
@@ -309,6 +316,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidConstExpr { .. } => "Invalid constant expression".to_string(),
 
             TypecheckError::InvalidCaseExprBlock { .. } => "Case block invalid as expression".to_string(),
+
+            TypecheckError::InvalidCast { .. } => "Invalid cast".to_string(),
         }
     }
 
@@ -582,6 +591,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidCaseExprBlock { .. } => {
                 write!(f, "case expression must contain at least one branch and an `else` branch")
+            }
+
+            TypecheckError::InvalidCast { from, to, .. } => {
+                write!(f, "`{}` cannot be cast to `{}`", from, to)
             }
         }
     }

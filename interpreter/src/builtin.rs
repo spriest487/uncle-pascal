@@ -320,7 +320,7 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     };
 
     let new_array_val = DynValue::Rc(Box::new(new_array_rc));
-    let new_array_ptr = state.dynalloc_init(&Type::RcObject(array_class), vec![new_array_val])?;
+    let new_array_ptr = state.dynalloc_init(&Type::RcObject(Some(array_class)), vec![new_array_val])?;
 
     state.store(&RETURN_REF, DynValue::Pointer(new_array_ptr))?;
     Ok(())

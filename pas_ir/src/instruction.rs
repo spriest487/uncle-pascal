@@ -166,6 +166,12 @@ pub enum Instruction {
         out: Ref,
         ty: Type,
     },
+
+    Cast {
+        out: Ref,
+        ty: Type,
+        a: Value,
+    }
 }
 
 impl fmt::Display for Instruction {

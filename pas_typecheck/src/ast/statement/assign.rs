@@ -2,6 +2,7 @@ use crate::ast::{typecheck_expr, Expression};
 use crate::{Context, Type, TypeAnnotation, TypecheckError, TypecheckResult};
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Operator};
+use crate::ast::cast::check_implicit_conversion;
 
 pub type Assignment = ast::Assignment<TypeAnnotation>;
 pub type CompoundAssignment = ast::CompoundAssignment<TypeAnnotation>;
@@ -74,12 +75,11 @@ fn typecheck_operands(
         }
     }
 
-    let rhs = typecheck_expr(&src_rhs, &lhs.annotation().ty(), ctx)?;
+    let lhs_ty = lhs.annotation().ty();
+    let rhs = typecheck_expr(&src_rhs, &lhs_ty, ctx)?;
     let rhs_ty = rhs.annotation().ty();
 
-    lhs.annotation()
-        .ty()
-        .implicit_conversion_from(&rhs_ty, span, ctx)
+    check_implicit_conversion(&lhs_ty, &rhs_ty, span, ctx)
         .map_err(|err| match err {
             TypecheckError::TypeMismatch {
                 expected,

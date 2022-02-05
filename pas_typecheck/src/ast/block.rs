@@ -1,4 +1,6 @@
+use std::borrow::Cow;
 use crate::ast::{expect_stmt_initialized, prelude::*};
+use crate::ast::cast::check_implicit_conversion;
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -73,12 +75,12 @@ pub fn typecheck_block(
     };
 
     if *expect_ty != Type::Nothing {
-        let output_ty = match &output {
-            Some(expr) => expr.annotation().ty().into_owned(),
-            None => Type::Nothing,
+        let (output_ty, output_span) = match &output {
+            Some(expr) => (expr.annotation().ty(), expr.span()),
+            None => (Cow::Owned(Type::Nothing), &block.end),
         };
 
-        expect_ty.implicit_conversion_from(&output_ty, &block.end, ctx)?;
+        check_implicit_conversion(expect_ty, &output_ty, output_span, ctx)?;
     }
 
     let span = block.annotation.span().clone();

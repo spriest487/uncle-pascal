@@ -3,10 +3,11 @@ mod parse;
 pub(crate) mod test;
 
 pub use self::parse::match_operand_start;
-use crate::ast::expression::parse::CompoundExpressionParser;
-use crate::ast::{CaseExpr, Exit, Typed};
 use crate::{
-    ast::{Annotation, BinOp, Block, Call, CollectionCtor, IfCond, ObjectCtor, Raise, UnaryOp},
+    ast::{
+        expression::parse::CompoundExpressionParser, Annotation, BinOp, Block, Call, CaseExpr,
+        Cast, CollectionCtor, Exit, IfCond, ObjectCtor, Raise, Typed, UnaryOp,
+    },
     consts::*,
     ident::*,
     parse::*,
@@ -51,6 +52,7 @@ pub enum Expression<A: Annotation> {
     Raise(Box<Raise<A>>),
     Exit(Box<Exit<A>>),
     Case(Box<CaseExpr<A>>),
+    Cast(Box<Cast<A>>),
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -120,6 +122,12 @@ impl<A: Annotation> From<Exit<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<Cast<A>> for Expression<A> {
+    fn from(cast: Cast<A>) -> Self {
+        Expression::Cast(Box::new(cast))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -135,6 +143,7 @@ impl<A: Annotation> Expression<A> {
             Expression::Raise(raise) => &raise.annotation,
             Expression::Case(case) => &case.annotation,
             Expression::Exit(exit) => exit.annotation(),
+            Expression::Cast(cast) => &cast.annotation,
         }
     }
 
@@ -152,6 +161,7 @@ impl<A: Annotation> Expression<A> {
             Expression::Raise(raise) => &mut raise.annotation,
             Expression::Case(case) => &mut case.annotation,
             Expression::Exit(exit) => exit.annotation_mut(),
+            Expression::Cast(cast) => &mut cast.annotation,
         }
     }
 
@@ -227,6 +237,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Raise(raise) => write!(f, "{}", raise),
             Expression::Case(case) => write!(f, "{}", case),
             Expression::Exit(exit) => write!(f, "{}", exit),
+            Expression::Cast(cast) => write!(f, "{}", cast),
         }
     }
 }

@@ -493,6 +493,14 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn cast(&mut self, out: impl Into<Ref>, val: impl Into<Value>, ty: Type) {
+        self.append(Instruction::Cast {
+            out: out.into(),
+            a: val.into(),
+            ty,
+        })
+    }
+
     pub fn bind_param(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
         self.current_scope_mut().bind_param(id, name, ty, by_ref);
     }

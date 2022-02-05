@@ -29,9 +29,10 @@ pub enum Operator {
     Multiply,
     Divide,
 
-
     Deref,
     AddressOf,
+
+    As,
 
     And,
     Not,
@@ -86,7 +87,7 @@ impl From<CompoundAssignmentOperator> for Operator {
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-static PRECEDENCE: [(Operator, Position); 29] = [
+static PRECEDENCE: [(Operator, Position); 30] = [
     (Operator::Index, Position::Binary),
     (Operator::Member, Position::Binary),
     (Operator::Call, Position::Postfix),
@@ -95,6 +96,7 @@ static PRECEDENCE: [(Operator, Position); 29] = [
     (Operator::Add, Position::Prefix),
     (Operator::Subtract, Position::Prefix),
     (Operator::Not, Position::Prefix),
+    (Operator::As, Position::Postfix),
     (Operator::Shl, Position::Binary),
     (Operator::Shr, Position::Binary),
     (Operator::Multiply, Position::Binary),
@@ -157,6 +159,7 @@ impl Operator {
             "in" => Some(Operator::In),
             "shl" => Some(Operator::Shl),
             "shr" => Some(Operator::Shr),
+            "as" => Some(Operator::As),
             _ => None,
         }
     }
@@ -201,6 +204,7 @@ impl fmt::Display for Operator {
             Operator::RangeInclusive => write!(f, ".."),
             Operator::Call => write!(f, "(...)"),
             Operator::Index => write!(f, "[...]"),
+            Operator::As => write!(f, "as"),
         }
     }
 }

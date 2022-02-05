@@ -141,8 +141,8 @@ impl Interpreter {
             Type::Struct(id) => self.init_struct(*id)?,
 
             Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
-                Some(ClassID::Class(struct_id)) => Type::RcObject(*struct_id),
-                _ => Type::Nothing,
+                Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
+                _ => Type::RcObject(None),
             })),
 
             Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
@@ -797,6 +797,8 @@ impl Interpreter {
             Instruction::DynFree { at } => self.exec_dynfree(at)?,
             Instruction::Raise { val } => self.exec_raise(&val)?,
             Instruction::SizeOf { out, ty } => self.exec_size_of(out, ty)?,
+
+            Instruction::Cast { out, ty, a } => self.exec_cast(out, ty, a)?,
         }
 
         Ok(())
@@ -855,10 +857,11 @@ impl Interpreter {
             // value addition
             (a_val, b_val) => match a_val.try_add(&b_val) {
                 Some(result) => Ok(result),
-                None => {
-                    let msg = format!("Add is not valid for {:?} + {:?}", a_val, b_val);
-                    Err(ExecError::illegal_state(msg))
-                },
+                None => Err(ExecError::IllegalInstruction(Instruction::Add {
+                    a: a.clone(),
+                    b: b.clone(),
+                    out: out.clone(),
+                })),
             }
         }?;
 
@@ -893,6 +896,22 @@ impl Interpreter {
         self.store(out, DynValue::I32(size))?;
 
         Ok(())
+    }
+
+    fn exec_cast(&mut self, out: &Ref, ty: &Type, a: &Value) -> ExecResult<()> {
+        let val = self.evaluate(a)?;
+        match val.try_cast(ty) {
+            Some(new_val) => {
+                self.store(out, new_val)?;
+                Ok(())
+            }
+
+            None => Err(ExecError::IllegalInstruction(Instruction::Cast {
+                out: out.clone(),
+                a: a.clone(),
+                ty: ty.clone(),
+            }))
+        }
     }
 
     pub fn dynfree(&mut self, ptr: &Pointer) -> ExecResult<()> {
@@ -1066,11 +1085,11 @@ impl Interpreter {
 
         match a_val.try_mul(&b_val) {
             Some(result) => self.store(out, result),
-            None => panic!(
-                "Mul is not valid for {:?} * {:?}",
-                a_val,
-                b_val,
-            ),
+            None => Err(ExecError::IllegalInstruction(Instruction::Mul {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
         }
     }
 
@@ -1080,11 +1099,11 @@ impl Interpreter {
 
         match a_val.try_idiv(&b_val) {
             Some(result) => self.store(out, result),
-            None => panic!(
-                "IDiv is not valid for {:?} div {:?}",
-                a_val,
-                b_val,
-            ),
+            None => Err(ExecError::IllegalInstruction(Instruction::IDiv {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
         }
     }
 
@@ -1104,10 +1123,11 @@ impl Interpreter {
             // value addition
             (a_val, b_val) => match a_val.try_sub(&b_val) {
                 Some(result) => Ok(result),
-                None => {
-                    let msg = format!("Sub is not valid for {:?} + {:?}", a_val, b_val);
-                    Err(ExecError::illegal_state(msg))
-                },
+                None => Err(ExecError::IllegalInstruction(Instruction::Sub {
+                    a: a.clone(),
+                    b: b.clone(),
+                    out: out.clone(),
+                })),
             }
         }?;
 
@@ -1121,11 +1141,11 @@ impl Interpreter {
 
         match a_val.try_shl(&b_val) {
             Some(result) => self.store(out, result),
-            None => panic!(
-                "Shl is not valid for {:?} shl {:?}",
-                a_val,
-                b_val,
-            ),
+            None => Err(ExecError::IllegalInstruction(Instruction::Shl {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
         }
     }
 
@@ -1134,62 +1154,53 @@ impl Interpreter {
         let b_val = self.evaluate(b)?;
 
         match a_val.try_shr(&b_val) {
-            Some(result) => self.store(out, result)?,
-            None => {
-                let msg = format!("Shr is not valid for {:?} shr {:?}", a_val, b_val);
-                return Err(ExecError::illegal_state(msg));
-            },
+            Some(result) => self.store(out, result),
+            None => Err(ExecError::IllegalInstruction(Instruction::Shr {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
         }
-
-        Ok(())
     }
 
     fn exec_eq(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        let eq = match a_val.try_eq(&b_val) {
-            Some(eq) => eq,
-            None => {
-                let msg = format!("Eq is not valid for {:?} = {:?}", a_val, b_val);
-                return Err(ExecError::illegal_state(msg));
-            },
-        };
-
-        self.store(out, DynValue::Bool(eq))?;
-
-        Ok(())
+        match a_val.try_eq(&b_val) {
+            Some(eq) => self.store(out, DynValue::Bool(eq)),
+            None => Err(ExecError::IllegalInstruction(Instruction::Eq {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
+        }
     }
 
     fn exec_gt(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
         let a_val = self.evaluate(a)?;
         let b_val = self.evaluate(b)?;
 
-        let gt = a_val.try_gt(&b_val)
-            .ok_or_else(|| {
-                let msg = format!("Gt is not valid for {} ({:?}) > {} ({:?})", a, a_val, b, b_val);
-                ExecError::illegal_state(msg)
-            })?;
-
-        self.store(out, DynValue::Bool(gt))?;
-
-        Ok(())
+        match a_val.try_gt(&b_val) {
+            Some(gt) => self.store(out, DynValue::Bool(gt)),
+            None => Err(ExecError::IllegalInstruction(Instruction::Gt {
+                a: a.clone(),
+                b: b.clone(),
+                out: out.clone(),
+            })),
+        }
     }
 
     fn exec_not(&mut self, out: &Ref, a: &Value) -> ExecResult<()> {
         let a_val = self.evaluate(a)?;
 
-        let not = match a_val.try_not() {
-            Some(not) => not,
-            None => {
-                let msg = format!("Not instruction is not valid for {:?}", a);
-                return Err(ExecError::illegal_state(msg))
-            }
-        };
-
-        self.store(out, DynValue::Bool(not))?;
-
-        Ok(())
+        match a_val.try_not() {
+            Some(not) => self.store(out, DynValue::Bool(not)),
+            None => Err(ExecError::IllegalInstruction(Instruction::Not {
+                a: a.clone(),
+                out: out.clone(),
+            })),
+        }
     }
 
     fn exec_and(&mut self, out: &Ref, a: &Value, b: &Value) -> ExecResult<()> {
@@ -1412,7 +1423,7 @@ impl Interpreter {
             struct_id: ty_id,
         }));
 
-        self.dynalloc_init(&Type::RcObject(ty_id), vec![rc_val])
+        self.dynalloc_init(&Type::RcObject(Some(ty_id)), vec![rc_val])
     }
 
     fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type, params: Vec<Type>) {
@@ -1568,7 +1579,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn deref_rc(&self, rc_val: &DynValue) ->  ExecResult<Cow<DynValue>> {
+    fn deref_rc(&self, rc_val: &DynValue) -> ExecResult<Cow<DynValue>> {
         let rc = rc_val.as_rc().ok_or_else(|| {
             let msg = format!("trying to deref RC ref but value was {:?}", rc_val);
             ExecError::illegal_state(msg)

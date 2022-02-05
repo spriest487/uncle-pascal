@@ -6,6 +6,7 @@ use crate::ast::{
     statement::assign::{typecheck_assignment, typecheck_compound_assignment},
 };
 use pas_syn::Operator;
+use crate::ast::cast::check_implicit_conversion;
 pub use self::assign::{
     Assignment,
     CompoundAssignment,
@@ -46,8 +47,9 @@ pub fn typecheck_local_binding(
             let val = match &binding.val {
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
+                    let val_ty = val.annotation().ty();
 
-                    explicit_ty.implicit_conversion_from(&val.annotation().ty(), val.span(), ctx)
+                    check_implicit_conversion(&explicit_ty, &val_ty, val.span(), ctx)
                         .map_err(|err| match err {
                             TypecheckError::TypeMismatch { expected, actual, span, .. } => {
                                 TypecheckError::InvalidBinOp {
@@ -235,7 +237,7 @@ pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Contex
         }
     };
 
-    exit_ty.implicit_conversion_from(&ret_ty, exit.span(), ctx)?;
+    check_implicit_conversion(&exit_ty, &ret_ty, exit.span(), ctx)?;
 
     Ok(exit)
 }

@@ -578,10 +578,10 @@ impl Marshaller {
                     // but let's try to return as correct a value as we can
                     let null_ty = match class_id {
                         // expected pointer to a concrete RC class object
-                        Some(ClassID::Class(struct_id)) => Type::RcObject(*struct_id),
+                        Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
 
                         // abstract pointer - no idea what the actual rc type was
-                        _ => Type::Nothing,
+                        None | Some(ClassID::Interface(..)) => Type::RcObject(None),
                     };
 
                     UnmarshalledValue {
@@ -605,21 +605,24 @@ impl Marshaller {
                     UnmarshalledValue {
                         value: DynValue::Pointer(Pointer {
                             addr: raw_ptr.addr,
-                            ty: Type::RcObject(StructID(struct_id)),
+                            ty: Type::RcObject(Some(StructID(struct_id))),
                         }),
                         byte_count: size,
                     }
                 }
             }
 
-            Type::RcObject(id) => {
+            Type::RcObject(expect_id) => {
                 let rc_val = self.unmarshal_rc(in_bytes)?;
 
-                if rc_val.value.struct_id != *id {
-                    return Err(MarshalError::InvalidStructID {
-                        expected: *id,
-                        actual: rc_val.value.struct_id,
-                    });
+                // we only need to check the rc type if we were expecting a particular concrete type
+                if let Some(expect_id) = expect_id {
+                    if rc_val.value.struct_id != *expect_id {
+                        return Err(MarshalError::InvalidStructID {
+                            expected: *expect_id,
+                            actual: rc_val.value.struct_id,
+                        });
+                    }
                 }
 
                 rc_val.map(Box::new).map(DynValue::Rc)

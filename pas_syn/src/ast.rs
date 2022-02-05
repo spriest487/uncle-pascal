@@ -12,6 +12,7 @@ pub mod statement;
 pub mod type_constraint;
 pub mod typedecl;
 pub mod unit;
+pub mod cast;
 
 pub use self::{
     block::*,
@@ -28,6 +29,7 @@ pub use self::{
     type_constraint::*,
     typedecl::*,
     unit::*,
+    cast::Cast,
 };
 use crate::parse::prelude::*;
 use pas_common::TracedError;

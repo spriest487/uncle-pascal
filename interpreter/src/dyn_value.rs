@@ -1,6 +1,6 @@
 use crate::func::Function;
 use crate::ptr::Pointer;
-use pas_ir::metadata::{FieldID, StructID};
+use pas_ir::metadata::{ClassID, FieldID, StructID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
 use std::rc::Rc;
@@ -114,6 +114,71 @@ pub enum DynValue {
 }
 
 impl DynValue {
+    pub fn try_cast(&self, ty: &Type) -> Option<Self> {
+        match ty {
+            | Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),
+            | Type::U8 => self.to_bigint().map(|x| x as u8).map(DynValue::U8),
+            | Type::I16 => self.to_bigint().map(|x| x as i16).map(DynValue::I16),
+            | Type::U16 => self.to_bigint().map(|x| x as u16).map(DynValue::U16),
+            | Type::I32 => self.to_bigint().map(|x| x as i32).map(DynValue::I32),
+            | Type::U32 => self.to_bigint().map(|x| x as u32).map(DynValue::U32),
+            | Type::I64 => self.to_bigint().map(|x| x as i64).map(DynValue::I64),
+            | Type::U64 => self.to_bigint().map(|x| x as u64).map(DynValue::U64),
+            | Type::ISize => self.to_bigint().map(|x| x as isize).map(DynValue::ISize),
+            | Type::USize => self.to_bigint().map(|x| x as usize).map(DynValue::USize),
+            | Type::Bool => self.to_bigint().map(|i| DynValue::Bool(i != 0)),
+
+            | Type::F32 => {
+                if let DynValue::F32(..) = self {
+                    return Some(self.clone());
+                }
+
+                self.to_bigint().map(|x| x as f32).map(DynValue::F32)
+            }
+
+            | Type::Pointer(deref_ty) => {
+                let addr = cast::usize(self.to_bigint()?).ok()?;
+                let ptr = Pointer {
+                    ty: (**deref_ty).clone(),
+                    addr
+                };
+                Some(DynValue::Pointer(ptr))
+            }
+
+            | Type::RcObject(..)
+            | Type::Nothing => None,
+
+            | Type::RcPointer(class_id) => {
+                let addr = cast::usize(self.to_bigint()?).ok()?;
+                let ptr = Pointer {
+                    addr,
+                    ty: match class_id {
+                        Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
+                        None | Some(ClassID::Interface(..)) => Type::RcObject(None),
+                    }
+                };
+                Some(DynValue::Pointer(ptr))
+            }
+
+            | Type::Struct(id) => match self {
+                DynValue::Structure(s) if s.id == *id => Some(self.clone()),
+                _ => None,
+            }
+
+            | Type::Variant(id) => match self {
+                DynValue::Variant(v) if v.id == *id => Some(self.clone()),
+                _ => None,
+            }
+
+            | Type::Array { element, dim } => match self {
+                DynValue::Array(arr) if arr.el_ty == **element && arr.elements.len() == *dim => {
+                    Some(self.clone())
+                }
+                _ => None,
+            }
+        }
+    }
+
     pub fn try_eq(&self, other: &Self) -> Option<bool> {
         match (self, other) {
             (DynValue::Bool(a), DynValue::Bool(b)) => Some(a == b),
@@ -394,6 +459,27 @@ impl DynValue {
     pub fn as_usize(&self) -> Option<usize> {
         match self {
             DynValue::USize(i) => Some(*i),
+            _ => None,
+        }
+    }
+
+    // might need to replace i128 with an actual bigint type at one point, this is valid as long
+    // as i128 can hold any representable integer type in the language
+    pub fn to_bigint(&self) -> Option<i128> {
+        match self {
+            DynValue::I8(x) => Some(*x as i128),
+            DynValue::U8(x) => Some(*x as i128),
+            DynValue::I16(x) => Some(*x as i128),
+            DynValue::U16(x) => Some(*x as i128),
+            DynValue::I32(x) => Some(*x as i128),
+            DynValue::U32(x) => Some(*x as i128),
+            DynValue::I64(x) => Some(*x as i128),
+            DynValue::U64(x) => Some(*x as i128),
+            DynValue::ISize(x) => Some(*x as i128),
+            DynValue::USize(x) => Some(*x as i128),
+            DynValue::Pointer(ptr) => Some(ptr.addr as i128),
+            DynValue::Bool(true) => Some(1),
+            DynValue::Bool(false) => Some(0),
             _ => None,
         }
     }

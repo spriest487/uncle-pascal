@@ -10,7 +10,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering};
-use crate::ast::{CaseExpr, Exit, Expression, Literal};
+use crate::ast::{CaseExpr, Cast, Exit, Expression, Literal};
 
 // anything which can appear at the start of an operand subexpr (not let bindings
 // or flow control statements)
@@ -46,10 +46,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
             CompoundExpressionPart::Operand(operand) => operand,
             CompoundExpressionPart::Operator(op_part) => {
                 let err = ParseError::UnexpectedOperator {
-                    operator: match op_part {
-                        OperatorPart::Call { args, .. } => args.open,
-                        OperatorPart::OperatorSymbol(op_symbol) => op_symbol.span.clone(),
-                    },
+                    operator: op_part.span(),
                 };
                 return Err(TracedError::trace(err));
             }
@@ -170,35 +167,55 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
             }
 
             Position::Postfix => {
-                let (before_op, after_op) = parts.split_at(lo_op_index);
+                resolve_postfix(parts, lo_op_index, &op_token.span, |operand| {
+                    let span = op_token.span.to(operand.annotation().span());
 
-                if before_op.is_empty() {
-                    return Err(TracedError::trace(ParseError::EmptyOperand {
-                        operator: op_token.span.clone(),
-                        before: true,
-                    }));
-                }
-
-                // everything on the left becomes the operand
-                let operand = resolve_ops_by_precedence(before_op.to_vec())?;
-                let span = op_token.span.to(operand.annotation().span());
-
-                let op_expr = Expression::from(UnaryOp {
-                    op: op_token.op,
-                    annotation: span.clone(),
-                    operand,
-                });
-
-                let merged_parts: Vec<_> = vec![CompoundExpressionPart::Operand(op_expr)]
-                    .into_iter()
-                    .chain(after_op[1..].iter().cloned())
-                    .collect();
-
-                assert!(!merged_parts.is_empty());
-                resolve_ops_by_precedence(merged_parts)
+                    Expression::from(UnaryOp {
+                        op: op_token.op,
+                        annotation: span,
+                        operand,
+                    })
+                })
             }
         },
+
+        OperatorPart::AsCast { ty, kw_span } => {
+            resolve_postfix(parts, lo_op_index, &kw_span, |operand| {
+                let span = kw_span.to(&ty);
+                Expression::from(Cast {
+                    expr: operand,
+                    annotation: span,
+                    ty,
+                })
+            })
+        }
     }
+}
+
+fn resolve_postfix<F>(parts: Vec<CompoundExpressionPart>, lo_op_index: usize, span: &Span, f: F) -> ParseResult<Expression<Span>>
+    where F: FnOnce(Expression<Span>) -> Expression<Span>
+{
+    let (before_op, after_op) = parts.split_at(lo_op_index);
+
+    if before_op.is_empty() {
+        return Err(TracedError::trace(ParseError::EmptyOperand {
+            operator: span.clone(),
+            before: true,
+        }));
+    }
+
+    // everything on the left becomes the operand
+    let operand = resolve_ops_by_precedence(before_op.to_vec())?;
+
+    let op_expr = f(operand);
+
+    let merged_parts: Vec<_> = vec![CompoundExpressionPart::Operand(op_expr)]
+        .into_iter()
+        .chain(after_op[1..].iter().cloned())
+        .collect();
+
+    assert!(!merged_parts.is_empty());
+    resolve_ops_by_precedence(merged_parts)
 }
 
 fn parse_identifier(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
@@ -295,25 +312,48 @@ enum OperatorPart {
         args: ArgList<Span>,
         type_args: Option<TypeList<TypeName>>,
     },
+
+    // `as` cast operator followed by typename
+    AsCast {
+        kw_span: Span,
+        ty: TypeName,
+    }
+}
+
+impl OperatorPart {
+    pub fn position(&self) -> Position {
+        match self {
+            OperatorPart::Call { .. } => Position::Postfix,
+            OperatorPart::OperatorSymbol(sym) => sym.pos,
+            OperatorPart::AsCast { .. } => Position::Postfix,
+        }
+    }
+
+    pub fn op(&self) -> Operator {
+        match self {
+            OperatorPart::Call { .. } => Operator::Call,
+            OperatorPart::OperatorSymbol(sym) => sym.op,
+            OperatorPart::AsCast { .. } => Operator::As,
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        match self {
+            OperatorPart::OperatorSymbol(sym) => sym.span.clone(),
+            OperatorPart::Call { args, type_args: Some(ty_args), .. } => ty_args.span.to(&args.close),
+            OperatorPart::Call { args, .. } => args.open.to(&args.close),
+            OperatorPart::AsCast { kw_span, ty } => kw_span.to(ty.span()),
+        }
+    }
 }
 
 impl OperatorPart {
     fn cmp_precedence(&self, b: &Self) -> Ordering {
-        let ((op_a, pos_a), (op_b, pos_b)) = match (self, b) {
-            (OperatorPart::Call { .. }, OperatorPart::Call { .. }) => (
-                (Operator::Call, Position::Postfix),
-                (Operator::Call, Position::Postfix),
-            ),
-            (OperatorPart::Call { .. }, OperatorPart::OperatorSymbol(sym_op)) => {
-                ((Operator::Call, Position::Postfix), (sym_op.op, sym_op.pos))
-            }
-            (OperatorPart::OperatorSymbol(sym_op), OperatorPart::Call { .. }) => {
-                ((sym_op.op, sym_op.pos), (Operator::Call, Position::Postfix))
-            }
-            (OperatorPart::OperatorSymbol(sym_op_a), OperatorPart::OperatorSymbol(sym_op_b)) => {
-                ((sym_op_a.op, sym_op_a.pos), (sym_op_b.op, sym_op_b.pos))
-            }
-        };
+        let op_a = self.op();
+        let op_b = b.op();
+
+        let pos_a = self.position();
+        let pos_b = b.position();
 
         let prec_a = op_a.precedence(pos_a);
         let prec_b = op_b.precedence(pos_b);
@@ -632,18 +672,26 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             }
 
             Some(TokenTree::Operator { .. }) => {
-                // expect another operand afterwards
 
-                let op = self.tokens.match_one(Matcher::AnyOperator)?;
 
-                // assumes there are no postfix operators that are also valid in infix position
-                if op.as_operator().unwrap().is_valid_in_pos(Position::Postfix) {
+                let op_tt = self.tokens.match_one(Matcher::AnyOperator)?;
+                let op = op_tt.as_operator().unwrap();
+
+                // special behaviour for "as" operator because it needs to parse a typename too
+                if op == Operator::As {
+                    let as_typename = TypeName::parse(self.tokens)?;
+
+                    self.last_was_operand = true;
+                    self.push_operator_cast(op_tt, as_typename);
+                } else if op.is_valid_in_pos(Position::Postfix) {
+                    // assumes there are no postfix operators that are also valid in infix position
                     // expect another operator
                     self.last_was_operand = true;
-                    self.push_operator_token(op, Position::Postfix);
+                    self.push_operator_token(op_tt, Position::Postfix);
                 } else {
+                    // expect another operand afterwards
                     self.last_was_operand = false;
-                    self.push_operator_token(op, Position::Binary);
+                    self.push_operator_token(op_tt, Position::Binary);
                 }
             }
 
@@ -695,6 +743,13 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     fn push_operator_call(&mut self, args: ArgList<Span>, type_args: Option<TypeList<TypeName>>) {
         let op_call = OperatorPart::Call { args, type_args };
         self.parts.push(CompoundExpressionPart::Operator(op_call));
+    }
+
+    fn push_operator_cast(&mut self, op_tt: TokenTree, ty: TypeName) {
+        let op_as = OperatorPart::AsCast { kw_span: op_tt.into_span(), ty };
+
+        let part = CompoundExpressionPart::Operator(op_as);
+        self.parts.push(part);
     }
 
     fn push_operator_token(&mut self, op_token: TokenTree, pos: Position) {
