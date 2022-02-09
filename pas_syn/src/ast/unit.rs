@@ -270,7 +270,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
 
 #[derive(Clone, Debug)]
 pub struct UseDecl {
-    pub units: Vec<Ident>,
+    pub units: Vec<IdentPath>,
     pub span: Span,
 }
 
@@ -297,8 +297,8 @@ impl UseDecl {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Uses)?;
         let units = tokens.match_separated(Separator::Comma, |_, tokens| {
-            let unit_ident = tokens.match_one(Matcher::AnyIdent)?;
-            Ok(Generate::Yield(unit_ident.into_ident().unwrap()))
+            let unit_path = IdentPath::parse(tokens)?;
+            Ok(Generate::Yield(unit_path))
         })?;
 
         if units.is_empty() {

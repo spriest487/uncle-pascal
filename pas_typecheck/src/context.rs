@@ -205,16 +205,31 @@ impl Context {
 
             let part_ns = IdentPath::from_parts(part_path.clone());
 
-            // if let Err(e) = self.declare(part, Decl::Namespace(part_ns.clone())) {
-            //     for unit_scope in unit_scopes.into_iter().rev() {
-            //         self.pop_scope(unit_scope);
-            //     }
-            //     return Err(e.into());
-            // }
+            let current_scope = self.scopes.current_mut();
+            match current_scope.remove_member(part_ns.last()) {
+                Some(Member::Namespace(existing_ns)) => {
+                    // this is a previously declared namespace e.g. we are trying to define unit
+                    // A.B.C and A.B has been previously declared - we take B out of the scope
+                    // temporarily and make it active again. it'll be returned to its parent
+                    // scope as normal when we pop it
+                    self.scopes.push(existing_ns);
+                }
 
-            let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
+                Some(Member::Value(decl)) => {
+                    // we are trying to declare namespace A.B.C but A.B refers to something that
+                    // isn't a namespace
+                    return Err(NameError::Unexpected {
+                        ident: part_ns,
+                        actual: Named::from(decl),
+                        expected: ExpectedKind::Namespace,
+                    }.into());
+                }
 
-            unit_scopes.push(scope);
+                _ => {
+                    let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
+                    unit_scopes.push(scope);
+                }
+            }
         }
 
         let result = f(self);
@@ -1100,15 +1115,25 @@ impl Context {
 
     pub fn undefined_syms(&self) -> Vec<Ident> {
         let mut syms = Vec::new();
-        for scope in self.scopes.current_path().as_slice().iter().rev() {
+
+        let current_path = self.scopes.current_path();
+        let current_scopes = current_path.as_slice();
+
+        for i in (0..current_scopes.len()).rev() {
+            let scope = current_scopes[i];
+
+            let current_scope_ns = IdentPath::from_parts(current_scopes[0..=i].iter()
+                .flat_map(|s| s.key())
+                .cloned());
+
             for (ident, decl) in scope.iter_decls() {
                 // only functions can possibly be undefined
                 if let Member::Value(Decl::Function { .. }) = decl {
-                    let decl_path = IdentPath::from_parts(scope.key().cloned())
-                        .clone()
+                    let decl_path = current_scope_ns.clone()
                         .child(ident.clone());
 
                     if self.defs.get(&decl_path).is_none() {
+                        eprintln!("undefined: {}", decl_path);
                         syms.push(ident.clone());
                     }
                 }

@@ -105,6 +105,10 @@ impl Namespace for Scope {
     fn replace_member(&mut self, key: Ident, member_val: Member<Self>) {
         self.decls.insert(key, member_val);
     }
+
+    fn remove_member(&mut self, key: &Self::Key) -> Option<Member<Self>> {
+        self.decls.remove(key)
+    }
 }
 
 impl<'a> PathRef<'a, Scope> {

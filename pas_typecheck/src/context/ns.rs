@@ -79,6 +79,8 @@ pub trait Namespace: Sized {
         member_val: Member<Self>,
     ) -> Result<(), AlreadyDeclared<Self::Key>>;
     fn replace_member(&mut self, key: Self::Key, member_val: Member<Self>);
+
+    fn remove_member(&mut self, key: &Self::Key) -> Option<Member<Self>>;
 }
 
 #[derive(Debug)]

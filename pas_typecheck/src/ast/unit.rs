@@ -42,9 +42,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
     }
 }
 
-fn typecheck_unit_uses_decl(unit: &Ident, ctx: &mut Context) -> TypecheckResult<()> {
-    let unit_path = IdentPath::from(unit.clone());
-
+fn typecheck_unit_uses_decl(unit_path: &IdentPath, ctx: &mut Context) -> TypecheckResult<()> {
     match ctx.find_path(&unit_path) {
         // path refers to a known unit path (by alias or directly by its canon name)
         Some(MemberRef::Namespace { path }) => {
@@ -57,7 +55,7 @@ fn typecheck_unit_uses_decl(unit: &Ident, ctx: &mut Context) -> TypecheckResult<
         Some(MemberRef::Value { value, .. }) => {
             let unexpected = Named::Decl(value.clone());
             let err = NameError::Unexpected {
-                ident: unit.clone().into(),
+                ident: unit_path.clone(),
                 actual: unexpected,
                 expected: ExpectedKind::Namespace,
             };
@@ -66,7 +64,7 @@ fn typecheck_unit_uses_decl(unit: &Ident, ctx: &mut Context) -> TypecheckResult<
 
         // path does not exist
         None => {
-            return Err(TypecheckError::from(NameError::NotFound(unit.clone())));
+            return Err(TypecheckError::from(NameError::NotFound(unit_path.last().clone())));
         }
     }
 
