@@ -180,8 +180,8 @@ impl<'s, NS: Namespace> PathRefMut<'s, NS> {
         self.namespaces.last_mut().unwrap()
     }
 
-    pub fn as_slice(&self) -> &[&'s mut NS] {
-        self.namespaces.as_slice()
+    pub fn as_slice(&mut self) -> &mut [&'s mut NS] {
+        self.namespaces.as_mut_slice()
     }
 }
 
@@ -268,10 +268,18 @@ where
         }
     }
 
+    pub fn iter(&self) -> impl ExactSizeIterator<Item=&NS> + DoubleEndedIterator<Item=&NS> {
+        self.namespaces.iter()
+    }
+
     pub fn current_path(&self) -> PathRef<NS> {
         PathRef {
             namespaces: self.namespaces.iter().collect(),
         }
+    }
+
+    pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item=&mut NS> + DoubleEndedIterator<Item=&mut NS> {
+        self.namespaces.iter_mut()
     }
 
     pub fn current_path_mut(&mut self) -> PathRefMut<NS> {
@@ -311,10 +319,6 @@ where
         }
 
         Some(MemberRef::Namespace { path: current })
-    }
-
-    pub fn iter_up(&self) -> impl Iterator<Item = &NS> {
-        self.namespaces.iter().rev()
     }
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)

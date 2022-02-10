@@ -101,6 +101,11 @@ pub enum TypecheckError {
     UnableToInferType {
         expr: Box<ast::Expression<Span>>,
     },
+    UnableToInferSpecialization {
+        generic_ty: Type,
+        hint_ty: Type,
+        span: Span,
+    },
     UninitBindingWithNoType {
         binding: Box<ast::LocalBinding<Span>>,
     },
@@ -222,6 +227,7 @@ impl Spanned for TypecheckError {
             TypecheckError::DuplicateNamedArg { span, .. } => span,
             TypecheckError::UndefinedSymbols { unit, .. } => unit.span(),
             TypecheckError::UnableToInferType { expr } => expr.annotation().span(),
+            TypecheckError::UnableToInferSpecialization { span, .. } => span,
             TypecheckError::UninitBindingWithNoType { binding } => binding.annotation.span(),
             TypecheckError::BindingWithNoType { binding } => binding.annotation.span(),
             TypecheckError::NotInitialized { usage, .. } => usage.span(),
@@ -274,6 +280,9 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::UndefinedSymbols { .. } => "Undefined symbol(s)".to_string(),
             TypecheckError::UnableToInferType { .. } => {
                 "Unable to infer type of expression".to_string()
+            }
+            TypecheckError::UnableToInferSpecialization { .. } => {
+                "Unable to infer type specialization".to_string()
             }
             TypecheckError::UninitBindingWithNoType { .. } => {
                 "Uninitialized binding must have an explicit type".to_string()
@@ -510,6 +519,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnableToInferType { expr } => {
                 write!(f, "unable to infer the type of `{}`", expr)
+            }
+
+            TypecheckError::UnableToInferSpecialization { generic_ty, hint_ty, .. } => {
+                write!(f, "unable to infer specialization of the generic type `{}` from expected type `{}`", generic_ty, hint_ty)
             }
 
             TypecheckError::UninitBindingWithNoType { binding } => {

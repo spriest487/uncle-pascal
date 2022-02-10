@@ -136,8 +136,9 @@ impl TypePattern {
                         },
                         _ => unreachable!("should never infer a non-variant specialized type for a generic variant"),
                     })
-                    .ok_or_else(|| TypecheckError::NotMatchable {
-                        ty: var_ty.clone(),
+                    .ok_or_else(|| TypecheckError::UnableToInferSpecialization {
+                        generic_ty: var_ty.clone(),
+                        hint_ty: expect_ty.clone(),
                         span: span.clone(),
                     })
             }

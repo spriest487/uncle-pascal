@@ -314,7 +314,7 @@ impl Context {
     }
 
     pub fn current_func_return_ty(&self) -> Option<&Type> {
-        for scope in self.scopes.iter_up() {
+        for scope in self.scopes.iter().rev() {
             if let Environment::FunctionBody { result_ty } = scope.env() {
                 return Some(result_ty);
             }
@@ -324,7 +324,7 @@ impl Context {
     }
 
     pub fn allow_unsafe(&self) -> bool {
-        for scope in self.scopes.iter_up() {
+        for scope in self.scopes.iter().rev() {
             if let Environment::Block { allow_unsafe: true } = scope.env() {
                 return true;
             }
@@ -1147,24 +1147,31 @@ impl Context {
     /// No effect if the decl exists and is already initialized.
     /// Panics if the decl doesn't exist or isn't a kind of decl which can be initialized.
     pub fn initialize(&mut self, local_id: &Ident) {
-        let scope = self.scopes.current_mut();
-        check_initialize_allowed(scope, local_id);
+        for scope in self.scopes.iter_mut().rev() {
+            if let Some(member) = scope.get_decl_mut(local_id) {
+                if let Member::Value(Decl::BoundValue(Binding { kind, .. })) = member {
+                    if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
+                        *kind = ValueKind::Mutable;
 
-        match scope.get_decl_mut(local_id) {
-            Some(Member::Value(Decl::BoundValue(Binding { kind, .. }))) => {
-                if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
-                    *kind = ValueKind::Mutable;
-                } else {
-                    panic!("{} does not refer to a mutable binding", local_id);
+                        return;
+                    } else {
+                        panic!("{} does not refer to a mutable binding", local_id);
+                    }
                 }
             }
-            _ => panic!("{} does not refer to a mutable binding", local_id),
         }
+
+        panic!("called initialize() on an id which isn't an initializable binding in this scope: {}", local_id)
     }
 
-    pub fn is_local(&self, id: &Ident) -> bool {
-        let current = self.scopes.current_path();
-        current.top().get_decl(id).is_some()
+    pub fn get_decl_scope(&self, id: &Ident) -> Option<&Scope> {
+        for scope in self.scopes.iter().rev() {
+            if scope.get_decl(id).is_some() {
+                return Some(scope);
+            }
+        }
+
+        None
     }
 
     pub fn consolidate_branches(&mut self, branch_contexts: &[Self]) {
@@ -1222,39 +1229,6 @@ impl Context {
         match ty {
             Type::Class(class) => self.namespace().is_parent_of(&class.qualified),
             _ => true,
-        }
-    }
-}
-
-fn check_initialize_allowed(scope: &Scope, ident: &Ident) {
-    match scope.get_decl(ident) {
-        Some(Member::Value(decl)) => match decl {
-            Decl::BoundValue(Binding { kind, .. }) => {
-                if !kind.mutable() {
-                    panic!(
-                        "`{}` cannot be initialized: not mutable (was: {})",
-                        ident, kind
-                    );
-                }
-            }
-
-            other => {
-                panic!(
-                    "`{}` cannot be initialized: not a binding (was: {:?})",
-                    ident, other
-                );
-            }
-        },
-
-        Some(other) => {
-            panic!(
-                "`{}` cannot be initialized: not a decl (was: {:?})",
-                ident, other
-            );
-        }
-
-        None => {
-            panic!("`{}` cannot be initialized: not found in this scope", ident);
         }
     }
 }

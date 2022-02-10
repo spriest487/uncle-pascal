@@ -14,8 +14,8 @@ pub fn typecheck_assignment(
     let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, assignment.span(), ctx)?;
 
     if let ast::Expression::Ident(ident, ..) = &lhs {
-        if ctx.is_local(ident) {
-            ctx.initialize(ident);
+        if ctx.get_decl_scope(ident).is_some() {
+            ctx.initialize(ident)
         }
     }
 

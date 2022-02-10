@@ -57,7 +57,7 @@ impl fmt::Display for MarshalError {
             MarshalError::UnsupportedType(ty) => write!(f, "unable to marshal type: {}", ty),
             MarshalError::ExternSymbolLoadFailed { lib, symbol, msg } => write!(
                 f,
-                "external symbol {}::{} failed to load: {}",
+                "external symbol {}::{} failed to load ({})",
                 lib, symbol, msg
             ),
             MarshalError::VariantTagOutOfRange { variant_id, tag } => write!(
@@ -349,6 +349,7 @@ impl Marshaller {
             Some(lib_rc) => lib_rc.clone(),
             None => {
                 let lib = dlopen::Library::open(&func_ref.src).map_err(sym_load_err)?;
+
                 let lib_rc = Rc::new(lib);
                 self.libs.insert(func_ref.src.clone(), lib_rc.clone());
                 lib_rc
