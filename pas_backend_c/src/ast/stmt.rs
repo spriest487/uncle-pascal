@@ -344,10 +344,6 @@ impl<'a> Builder<'a> {
     }
 
     fn translate_instruction(&mut self, instruction: &ir::Instruction) {
-        if Self::should_discard(instruction) {
-            return;
-        }
-
         if self.module.opts.trace_ir {
             self.stmts.push(Statement::Comment(instruction.to_string()));
         }
@@ -684,64 +680,6 @@ impl<'a> Builder<'a> {
                     self.module,
                 )));
             }
-        }
-    }
-
-    // can this instruction be discarded? usually this means its parameters make it a noop,
-    // e.g. mov or arithmetic into to a discard ref.
-    //
-    // intentional noop instructions like comments and debug info are not considered discardable.
-    pub fn should_discard(instruction: &ir::Instruction) -> bool {
-        match instruction {
-            // never discard
-            | ir::Instruction::Comment(..)
-            | ir::Instruction::DebugPush(..)
-            | ir::Instruction::DebugPop
-            | ir::Instruction::LocalBegin
-            | ir::Instruction::LocalEnd
-            | ir::Instruction::Label(..)
-            | ir::Instruction::Jump { .. }
-            | ir::Instruction::JumpIf { .. }
-            | ir::Instruction::Raise { .. }
-            | ir::Instruction::VirtualCall { .. }
-            | ir::Instruction::Call { .. }
-            | ir::Instruction::LocalAlloc(..) => false,
-
-            // instructions that mutate state
-            // discard if they operate on a discard ref
-            | ir::Instruction::Release { at }
-            | ir::Instruction::Retain { at }
-            | ir::Instruction::DynFree { at } => *at == ir::Ref::Discard,
-
-            // mov: discard if either the origin or destination refs are discards
-            | ir::Instruction::Move { out: ir::Ref::Discard, .. }
-            | ir::Instruction::Move { new_val: ir::Value::Ref(ir::Ref::Discard), .. } => true,
-            | ir::Instruction::Move { .. } => false,
-
-            // operator instructions
-            // discard if they output into a discard ref
-            | ir::Instruction::Add { out, .. }
-            | ir::Instruction::Sub { out, .. }
-            | ir::Instruction::Mul { out, .. }
-            | ir::Instruction::IDiv { out, .. }
-            | ir::Instruction::Shl { out, .. }
-            | ir::Instruction::Shr { out, .. }
-            | ir::Instruction::Eq { out, .. }
-            | ir::Instruction::Gt { out, .. }
-            | ir::Instruction::Not { out, .. }
-            | ir::Instruction::And { out, .. }
-            | ir::Instruction::Or { out, .. }
-            | ir::Instruction::AddrOf { out, .. }
-            | ir::Instruction::Element { out, .. }
-            | ir::Instruction::VariantTag { out, .. }
-            | ir::Instruction::VariantData { out, .. }
-            | ir::Instruction::Field { out, .. }
-            | ir::Instruction::ClassIs { out, .. }
-            | ir::Instruction::RcNew { out, .. }
-            | ir::Instruction::DynAlloc { out, .. }
-            | ir::Instruction::Cast { out, .. }
-            | ir::Instruction::SizeOf { out, .. } => *out == ir::Ref::Discard,
-
         }
     }
 

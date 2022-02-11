@@ -174,6 +174,65 @@ pub enum Instruction {
     }
 }
 
+impl Instruction {
+    // can this instruction be discarded? usually this means its parameters make it a noop,
+    // e.g. mov or arithmetic into to a discard ref.
+    //
+    // intentional noop instructions like comments and debug info are not considered discardable.
+    pub fn should_discard(&self) -> bool {
+        match self {
+            // never discard
+            | Instruction::Comment(..)
+            | Instruction::DebugPush(..)
+            | Instruction::DebugPop
+            | Instruction::LocalBegin
+            | Instruction::LocalEnd
+            | Instruction::Label(..)
+            | Instruction::Jump { .. }
+            | Instruction::JumpIf { .. }
+            | Instruction::Raise { .. }
+            | Instruction::VirtualCall { .. }
+            | Instruction::Call { .. }
+            | Instruction::LocalAlloc(..) => false,
+
+            // instructions that mutate state
+            // discard if they operate on a discard ref
+            | Instruction::Release { at }
+            | Instruction::Retain { at }
+            | Instruction::DynFree { at } => *at == Ref::Discard,
+
+            // mov: discard if either the origin or destination refs are discards
+            | Instruction::Move { out: Ref::Discard, .. }
+            | Instruction::Move { new_val: Value::Ref(Ref::Discard), .. } => true,
+            | Instruction::Move { .. } => false,
+
+            // operator instructions
+            // discard if they output into a discard ref
+            | Instruction::Add { out, .. }
+            | Instruction::Sub { out, .. }
+            | Instruction::Mul { out, .. }
+            | Instruction::IDiv { out, .. }
+            | Instruction::Shl { out, .. }
+            | Instruction::Shr { out, .. }
+            | Instruction::Eq { out, .. }
+            | Instruction::Gt { out, .. }
+            | Instruction::Not { out, .. }
+            | Instruction::And { out, .. }
+            | Instruction::Or { out, .. }
+            | Instruction::AddrOf { out, .. }
+            | Instruction::Element { out, .. }
+            | Instruction::VariantTag { out, .. }
+            | Instruction::VariantData { out, .. }
+            | Instruction::Field { out, .. }
+            | Instruction::ClassIs { out, .. }
+            | Instruction::RcNew { out, .. }
+            | Instruction::DynAlloc { out, .. }
+            | Instruction::Cast { out, .. }
+            | Instruction::SizeOf { out, .. } => *out == Ref::Discard,
+        }
+    }
+}
+
 impl fmt::Display for Instruction {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut buf = String::new();

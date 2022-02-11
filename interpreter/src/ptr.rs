@@ -4,6 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
+use pas_ir::prelude::Metadata;
 use pas_ir::Type;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed
@@ -64,6 +65,12 @@ impl Pointer {
 
     pub fn addr_shr(&self, rhs: usize) -> Self {
         Self { ty: self.ty.clone(), addr: self.addr >> rhs }
+    }
+
+    pub fn to_pretty_string(&self, metadata: &Metadata) -> String {
+        let ty_pretty_name = metadata.pretty_ty_name(&self.ty);
+
+        format!("0x{:0width$x} ({})", self.addr, ty_pretty_name, width = (size_of::<usize>() * 2))
     }
 }
 

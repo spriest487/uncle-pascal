@@ -382,7 +382,19 @@ impl Metadata {
                     }
                 };
 
-                Cow::Owned(format!("rc {}", resource_name))
+                Cow::Owned(format!("rc[{}]", resource_name))
+            }
+
+            Type::RcObject(rc_obj) => {
+                match rc_obj {
+                    Some(struct_id) => {
+                        let struct_name = self.pretty_ty_name(&Type::Struct(*struct_id));
+                        Cow::Owned(format!("rc_obj[{}]", struct_name))
+                    }
+                    None => {
+                        Cow::Borrowed("rc_obj")
+                    }
+                }
             }
 
             Type::Pointer(ty) => Cow::Owned(format!("^{}", self.pretty_ty_name(ty))),

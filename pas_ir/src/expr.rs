@@ -1357,11 +1357,16 @@ pub fn translate_block(block: &pas_ty::ast::Block, out_ref: Ref, builder: &mut B
 
 pub fn translate_exit(exit: &pas_ty::ast::Exit, builder: &mut Builder) {
     if let ast::Exit::WithValue(val, _) = exit {
+        let value_ty = builder.translate_type(&val.annotation().ty());
         let value_val = translate_expr(val, builder);
 
         // we can assume this function has a return register, otherwise an exit statement
         // wouldn't pass typechecking
         builder.mov(RETURN_REF, value_val);
+
+        // we are effectively reassigning the return ref, so like a normal assignment, we need
+        // retain the new value to make it outlive the scope the exit expr appears in
+        builder.retain(RETURN_REF.clone(), &value_ty);
     }
 
     builder.exit_function();

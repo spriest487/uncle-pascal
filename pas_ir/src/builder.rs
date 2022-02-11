@@ -257,6 +257,10 @@ impl<'m> Builder<'m> {
     }
 
     pub fn append(&mut self, instruction: Instruction) {
+        if instruction.should_discard() {
+            return;
+        }
+
         self.instructions.push(instruction);
     }
 
@@ -645,7 +649,9 @@ impl<'m> Builder<'m> {
                 // for each case, check if the tag matches and jump past it if not
 
                 for (tag, case) in cases.iter().enumerate() {
-                    self.comment(&format!("testing for variant case {} ({})", tag, case.name));
+                    if self.opts().debug_info {
+                        self.comment(&format!("testing for variant case {} ({})", tag, case.name));
+                    }
 
                     if let Some(data_ty) = &case.ty {
                         if !(data_ty.is_rc() || data_ty.is_complex()) {
@@ -885,7 +891,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn begin_scope(&mut self) {
-        self.instructions.push(Instruction::LocalBegin);
+        self.append(Instruction::LocalBegin);
         self.scopes.push(Scope::new());
 
         if self.opts().annotate_scopes {
@@ -980,7 +986,7 @@ impl<'m> Builder<'m> {
         }
 
         self.scopes.pop().unwrap();
-        self.instructions.push(Instruction::LocalEnd);
+        self.append(Instruction::LocalEnd);
     }
 
     pub fn break_loop(&mut self) {

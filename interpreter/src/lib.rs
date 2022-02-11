@@ -506,29 +506,37 @@ impl Interpreter {
             })
     }
 
-    fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
+    fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<bool> {
         let rc_ptr = val
             .as_pointer()
-            .unwrap_or_else(|| panic!("released val was not a pointer, found: {:?}", val));
+            .ok_or_else(|| {
+                let msg = format!("released val was not a pointer, found: {:?}", val);
+                ExecError::illegal_state(msg)
+            })?;
+
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
         if rc_ptr.is_null() {
-            return Ok(());
+            return Ok(false);
         }
 
         let rc_val = match self.load_indirect(&rc_ptr)?.into_owned() {
             DynValue::Rc(rc_val) => *rc_val,
-            other => panic!("released val was not an rc value, found: {:?}", other),
+            other => {
+                let msg = format!("released val was not an rc value, found: {:?}", other);
+                return Err(ExecError::illegal_state(msg));
+            }
         };
 
         let resource_ty = Type::Struct(rc_val.struct_id);
 
-        if rc_val.ref_count == 1 {
+        let no_more_refs = rc_val.ref_count == 1;
+        if no_more_refs {
             if self.trace_rc {
                 println!(
-                    "rc: no more refs to {}, delete resource of type {}",
-                    rc_ptr,
-                    self.metadata.pretty_ty_name(&resource_ty),
+                    "rc: no more refs to {}, freeing {}",
+                    rc_ptr.to_pretty_string(&self.metadata),
+                    self.rc_val_debug_string(&rc_val),
                 );
             }
 
@@ -557,9 +565,9 @@ impl Interpreter {
 
                 if self.trace_rc {
                     eprintln!(
-                        "rc: free {} @ {}",
-                        self.metadata.pretty_ty_name(&resource_ty),
-                        rc_val.resource_ptr
+                        "rc: free @ {} of {}",
+                        rc_val.resource_ptr.to_pretty_string(&self.metadata),
+                        self.rc_val_debug_string(&rc_val),
                     )
                 }
 
@@ -571,7 +579,7 @@ impl Interpreter {
             if self.trace_rc {
                 eprintln!(
                     "rc: free rc object @ {}",
-                    rc_ptr
+                    rc_ptr.to_pretty_string(&self.metadata),
                 )
             }
             self.dynfree(&rc_ptr)?;
@@ -581,17 +589,17 @@ impl Interpreter {
 
             if self.trace_rc {
                 eprintln!(
-                    "rc: release {} @ {} ({} more refs)",
-                    self.metadata.pretty_ty_name(&resource_ty),
-                    rc_val.resource_ptr,
+                    "rc: release @ {} ({} more refs to {})",
+                    rc_val.resource_ptr.to_pretty_string(&self.metadata),
                     ref_count,
+                    self.rc_val_debug_string(&rc_val),
                 )
             }
 
             self.store_indirect(&rc_ptr, DynValue::Rc(Box::new(RcValue { ref_count, ..rc_val })))?;
         }
 
-        Ok(())
+        Ok(no_more_refs)
     }
 
     fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
@@ -604,7 +612,7 @@ impl Interpreter {
                         rc.ref_count += 1;
 
                         if self.trace_rc {
-                            eprintln!("rc: retain @ {} (ref count: {})", ptr, rc.ref_count);
+                            eprintln!("rc: retain @ {} (ref count: {})", ptr.to_pretty_string(&self.metadata), rc.ref_count);
                         }
                     }
 
@@ -622,6 +630,24 @@ impl Interpreter {
             _ => {
                 Err(ExecError::illegal_state(format!("{:?} cannot be retained", val)))
             },
+        }
+    }
+
+    fn rc_val_debug_string(&self, rc_val: &RcValue) -> String {
+        // special case useful for debugging - print string values in rc trace output
+        let val_as_debug_str = (rc_val.struct_id == STRING_ID && !rc_val.resource_ptr.is_null())
+            .then(|| {
+                self.load_indirect(&rc_val.resource_ptr)
+            })
+            .and_then(|load_str| {
+                self.read_string_struct(load_str.ok()?.as_struct(STRING_ID)?).ok()
+            });
+
+        if let Some(debug_str) = val_as_debug_str {
+            format!("string '{}'", debug_str)
+        } else {
+            let ty_name = self.metadata.pretty_ty_name(&Type::Struct(rc_val.struct_id));
+            format!("resource of type {}", ty_name)
         }
     }
 
@@ -986,7 +1012,14 @@ impl Interpreter {
 
     fn exec_release(&mut self, at: &Ref) -> ExecResult<()> {
         let val = self.load(at)?.into_owned();
-        self.release_dyn_val(&val)?;
+
+        // to aid with debugging, set freed RC pointers to a recognizable value
+        if self.release_dyn_val(&val)? {
+            self.store(at, DynValue::Pointer(Pointer {
+                ty: Type::Nothing,
+                addr: usize::MAX,
+            }))?;
+        }
 
         Ok(())
     }
@@ -1632,6 +1665,10 @@ impl Interpreter {
             },
         };
 
+        self.read_string_struct(str_struct)
+    }
+
+    fn read_string_struct(&self, str_struct: &StructValue) -> ExecResult<String> {
         let len_val = &str_struct[STRING_LEN_FIELD];
         let len = len_val.as_i32()
             .and_then(|len| cast::usize(len).ok())
