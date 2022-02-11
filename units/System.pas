@@ -26,6 +26,11 @@ type Option[T] = variant
     None;
 end;
 
+type Result[T, E] = variant
+    Ok: T;
+    Error: E;
+end;
+
 function GetMem(count: Integer): ^Byte; external 'rt';
 function FreeMem(mem: ^Byte); external 'rt';
 
