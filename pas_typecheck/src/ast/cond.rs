@@ -18,8 +18,12 @@ pub fn typecheck_if_cond(
 
     // ...and verify the condition is definitely a boolean in non-is-match conditions
     if if_cond.is_pattern.is_none() {
-        cond.annotation()
-            .expect_value(&Type::Primitive(Primitive::Boolean))?;
+        check_implicit_conversion(
+            &Type::Primitive(Primitive::Boolean),
+            &cond.annotation().ty(),
+            if_cond.span(),
+            ctx
+        )?;
     }
 
     let is_pattern = match &if_cond.is_pattern {
@@ -69,20 +73,14 @@ pub fn typecheck_if_cond(
         | (_, None) => TypeAnnotation::Untyped(span),
 
         | (then_ty, Some(else_branch)) => {
-            if *else_branch.annotation().ty() != *then_ty {
-                return Err(TypecheckError::TypeMismatch {
-                    expected: then_branch.annotation().ty().into_owned(),
-                    actual: else_branch.annotation().ty().into_owned(),
-                    span: else_branch.annotation().span().clone(),
-                });
-            } else {
-                TypedValueAnnotation {
-                    ty: then_ty.into_owned(),
-                    value_kind: ValueKind::Temporary,
-                    span,
-                    decl: None,
-                }.into()
-            }
+            check_implicit_conversion(&then_ty, &else_branch.annotation().ty(), else_branch.annotation().span(), ctx)?;
+
+            TypedValueAnnotation {
+                ty: then_ty.into_owned(),
+                value_kind: ValueKind::Temporary,
+                span,
+                decl: None,
+            }.into()
         }
     };
 

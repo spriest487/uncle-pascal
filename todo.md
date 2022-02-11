@@ -1,3 +1,4 @@
+* instead of allowing implicit conversions unaltered, we should always expect exact types - and wrap permissible implicit conversions in cast expressions instead
 * stop outputting empty releaser funcs where there's nothing ot be released
 * fmt_pretty in interpreter to format with debug type info - can default impl with Display::fmt
 * CASE: fix separators - should allow optional ; before end/else
