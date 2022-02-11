@@ -1,10 +1,13 @@
-use crate::{AlreadyDeclared, Decl, Environment, Member, MemberRef, Namespace, NamespaceStack, PathRef};
+use crate::{AlreadyDeclared, Decl, Environment, Member, MemberRef, NameKind, Namespace, NamespaceStack, PathRef};
 use pas_syn::ast::Visibility;
 use pas_syn::{Ident, IdentPath};
 use std::borrow::Borrow;
-use std::collections::HashMap;
-use std::fmt;
-use std::hash::Hash;
+use std::{
+    cmp::Ordering,
+    collections::HashMap,
+    fmt::{self, Write},
+    hash::Hash,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
 pub struct ScopeID(pub usize);
@@ -47,7 +50,7 @@ impl Scope {
         &self.env
     }
 
-    pub fn iter_decls(&self) -> impl Iterator<Item = (&Ident, &Member<Scope>)> {
+    pub fn members(&self) -> impl Iterator<Item = (&Ident, &Member<Scope>)> {
         self.decls.iter()
     }
 
@@ -57,6 +60,50 @@ impl Scope {
 
     pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut Member<Scope>> {
         self.decls.get_mut(ident)
+    }
+
+    #[allow(unused)]
+    pub fn to_debug_string(&self) -> Result<String, fmt::Error> {
+        let mut output = String::new();
+        self.to_debug_string_rec(0, &mut output)?;
+
+        Ok(output)
+    }
+
+    fn to_debug_string_rec(&self, indent: usize, debug_str: &mut String) -> fmt::Result {
+        for _ in 0..indent {
+            write!(debug_str, "  ")?;
+        }
+        match self.env.namespace() {
+            Some(ns) => writeln!(debug_str, "Namespace scope: {}", ns)?,
+            None => writeln!(debug_str, "Anonymous scope")?,
+        }
+
+        let mut members: Vec<_> = self.members().collect();
+        members.sort_by(|(key_a, decl_a), (key_b, decl_b)| {
+            match (decl_a.kind(), decl_b.kind()) {
+                (NameKind::Name, NameKind::Namespace) => Ordering::Less,
+                (NameKind::Namespace, NameKind::Name) => Ordering::Greater,
+                _ => key_a.name.cmp(&key_b.name),
+            }
+        });
+
+        for (key, member) in members {
+            match member {
+                Member::Value(decl) => {
+                    for _ in 0..indent + 1 {
+                        write!(debug_str, "  ")?;
+                    }
+                    writeln!(debug_str, "{} ({})", key, decl.to_string())?;
+                }
+
+                Member::Namespace(scope) => {
+                    scope.to_debug_string_rec(indent + 1, debug_str)?;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
