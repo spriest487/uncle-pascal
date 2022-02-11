@@ -97,7 +97,7 @@ pub struct Context {
     // span for the whole module, should be position 0 of the primary source file
     module_span: Span,
 
-    next_id: ScopeID,
+    next_scope_id: ScopeID,
     scopes: NamespaceStack<Scope>,
 
     /// iface ident -> self ty -> impl details
@@ -115,7 +115,7 @@ impl Context {
             module_span: module_span.clone(),
 
             scopes: NamespaceStack::new(Scope::new(ScopeID(0), Environment::Global)),
-            next_id: ScopeID(1),
+            next_scope_id: ScopeID(1),
 
             defs: Default::default(),
 
@@ -164,8 +164,8 @@ impl Context {
     }
 
     pub fn push_scope(&mut self, env: Environment) -> ScopeID {
-        let new_id = self.next_id;
-        self.next_id = ScopeID(self.next_id.0 + 1);
+        let new_id = self.next_scope_id;
+        self.next_scope_id = ScopeID(self.next_scope_id.0 + 1);
 
         // self.scopes.current_mut().insert_member()
 
@@ -207,27 +207,37 @@ impl Context {
 
             let current_scope = self.scopes.current_mut();
             match current_scope.remove_member(part_ns.last()) {
+                None => {
+                    // this part of the namespace is new, add a new scope for it
+                    let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
+                    unit_scopes.push(scope);
+                }
+
                 Some(Member::Namespace(existing_ns)) => {
                     // this is a previously declared namespace e.g. we are trying to define unit
                     // A.B.C and A.B has been previously declared - we take B out of the scope
                     // temporarily and make it active again. it'll be returned to its parent
                     // scope as normal when we pop it
+                    unit_scopes.push(existing_ns.id());
                     self.scopes.push(existing_ns);
                 }
 
                 Some(Member::Value(decl)) => {
-                    // we are trying to declare namespace A.B.C but A.B refers to something that
+                    // we are trying to declare namespace A.B.C but A.B refers to something else that
                     // isn't a namespace
-                    return Err(NameError::Unexpected {
-                        ident: part_ns,
-                        actual: Named::from(decl),
+                    let err = NameError::Unexpected {
+                        ident: part_ns.clone(),
+                        actual: Named::from(decl.clone()),
                         expected: ExpectedKind::Namespace,
-                    }.into());
-                }
+                    }.into();
 
-                _ => {
-                    let scope = self.push_scope(Environment::Namespace { namespace: part_ns });
-                    unit_scopes.push(scope);
+                    // restore the previous state
+                    current_scope.insert_member(part, Member::Value(decl)).unwrap();
+                    for unit_scope in unit_scopes.into_iter().rev() {
+                        self.pop_scope(unit_scope);
+                    }
+
+                    return Err(err);
                 }
             }
         }
@@ -1126,7 +1136,7 @@ impl Context {
                 .flat_map(|s| s.key())
                 .cloned());
 
-            for (ident, decl) in scope.iter_decls() {
+            for (ident, decl) in scope.members() {
                 // only functions can possibly be undefined
                 if let Member::Value(Decl::Function { .. }) = decl {
                     let decl_path = current_scope_ns.clone()
@@ -1164,6 +1174,10 @@ impl Context {
         panic!("called initialize() on an id which isn't an initializable binding in this scope: {}", local_id)
     }
 
+    pub fn root_scope(&self) -> &Scope {
+        self.scopes.iter().nth(0).unwrap()
+    }
+
     pub fn get_decl_scope(&self, id: &Ident) -> Option<&Scope> {
         for scope in self.scopes.iter().rev() {
             if scope.get_decl(id).is_some() {
@@ -1179,7 +1193,7 @@ impl Context {
 
         let uninit_names: Vec<_> = scope
             .top()
-            .iter_decls()
+            .members()
             .filter_map(|(ident, decl)| match decl {
                 Member::Value(Decl::BoundValue(Binding {
                     kind: ValueKind::Uninitialized,

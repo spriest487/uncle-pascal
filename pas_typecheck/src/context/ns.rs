@@ -118,7 +118,6 @@ impl<'s, NS: Namespace> PathRef<'s, NS> {
                     }
                 } else {
                     let key = key.borrow();
-
                     let (key, member) = ns.get_member(key)?;
 
                     match member {
@@ -295,8 +294,12 @@ where
     pub fn resolve_path(&self, path: &[NS::Key]) -> Option<MemberRef<NS>> {
         let mut current = self.current_path();
         for (i, part) in path.iter().enumerate() {
-            current = match current.find(part)? {
-                MemberRef::Namespace { path } => path,
+            match current.find(part)? {
+                MemberRef::Namespace { path } => {
+                    // found a namespace that matches this part, look for the next part inside
+                    // that namespace
+                    current = path;
+                },
 
                 MemberRef::Value {
                     key,
