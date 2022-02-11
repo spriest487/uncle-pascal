@@ -501,6 +501,23 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn variant_tag(&mut self, out: impl Into<Ref>, a: impl Into<Ref>, of_ty: Type) {
+        self.append(Instruction::VariantTag {
+            out: out.into(),
+            a: a.into(),
+            of_ty
+        })
+    }
+
+    pub fn variant_data(&mut self, out: impl Into<Ref>, a: impl Into<Ref>, of_ty: Type, tag: usize) {
+        self.append(Instruction::VariantData {
+            out: out.into(),
+            a: a.into(),
+            of_ty,
+            tag,
+        })
+    }
+
     pub fn bind_param(&mut self, id: LocalID, ty: Type, name: impl Into<String>, by_ref: bool) {
         self.current_scope_mut().bind_param(id, name, ty, by_ref);
     }
@@ -614,13 +631,11 @@ impl<'m> Builder<'m> {
                     .cases
                     .to_vec();
 
-                // get the tag
                 let tag_ptr = self.local_temp(Type::I32.ptr());
-                self.append(Instruction::VariantTag {
-                    out: tag_ptr.clone(),
-                    a: at.clone(),
-                    of_ty: Type::Variant(*id),
-                });
+                let is_not_case = self.local_temp(Type::Bool);
+
+                // get the tag
+                self.variant_tag(tag_ptr.clone(), at.clone(), Type::Variant(*id));
 
                 // jump out of the search loop if we find the matching case
                 let break_label = self.alloc_label();
@@ -628,49 +643,45 @@ impl<'m> Builder<'m> {
                 let mut result = false;
 
                 // for each case, check if the tag matches and jump past it if not
-                let is_not_case = self.local_temp(Type::Bool);
+
                 for (tag, case) in cases.iter().enumerate() {
                     self.comment(&format!("testing for variant case {} ({})", tag, case.name));
 
                     if let Some(data_ty) = &case.ty {
+                        if !(data_ty.is_rc() || data_ty.is_complex()) {
+                            continue;
+                        }
+
                         let skip_case_label = self.alloc_label();
 
                         // is_not_case := tag_ptr^ != tag
-                        self.append(Instruction::Eq {
-                            out: is_not_case.clone(),
-                            a: Value::Ref(tag_ptr.clone().to_deref()),
-                            b: Value::LiteralI32(tag as i32), // todo proper size type
-                        });
-                        self.append(Instruction::Not {
-                            out: is_not_case.clone(),
-                            a: Value::Ref(is_not_case.clone()),
-                        });
+                        let tag_val = Value::LiteralI32(tag as i32);
+                        self.eq(is_not_case.clone(), tag_ptr.clone().to_deref(), tag_val);
+                        self.not(is_not_case.clone(), is_not_case.clone());
 
-                        self.append(Instruction::JumpIf {
-                            dest: skip_case_label,
-                            test: Value::Ref(is_not_case.clone()),
-                        });
+                        self.jmp_if(skip_case_label, is_not_case.clone());
 
                         // get ptr into case data and visit it
-                        let data_ptr = self.local_temp(data_ty.clone().ptr());
-                        self.append(Instruction::VariantData {
-                            out: data_ptr.clone(),
-                            a: at.clone(),
-                            of_ty: Type::Variant(*id),
-                            tag,
+
+                        // only one of these allocations will occur depending on which case is
+                        // active, so a scope is needed here to stop the local counter being
+                        // incremented once per case
+                        self.scope(|builder| {
+                            let data_ptr = builder.local_temp(data_ty.clone().ptr());
+                            builder.variant_data(data_ptr.clone(), at.clone(), Type::Variant(*id), tag);
+
+                            result |= builder.visit_deep(data_ptr.to_deref(), &data_ty, f);
                         });
 
-                        result |= self.visit_deep(data_ptr.to_deref(), &data_ty, f);
-
-                        // break
-                        self.append(Instruction::Jump { dest: break_label });
+                        // break after any case executes
+                        self.jmp(break_label);
 
                         // jump to here if this case isn't active
-                        self.append(Instruction::Label(skip_case_label));
+                        self.label(skip_case_label);
                     }
                 }
 
-                self.append(Instruction::Label(break_label));
+                self.label(break_label);
 
                 result
             }
