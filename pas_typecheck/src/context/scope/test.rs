@@ -178,7 +178,7 @@ fn resolves_val_in_declared_ns() {
 
     let path = IdentPath::from_parts([ident("B"), ident("x")]);
 
-    match namespaces.resolve_path(path.as_slice()) {
+    match namespaces.resolve_path(&path) {
         Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
@@ -200,7 +200,7 @@ fn resolves_val_in_explicit_root_ns() {
 
     let path = IdentPath::from_parts([ident("A"), ident("x")]);
 
-    match namespaces.resolve_path(path.as_slice()) {
+    match namespaces.resolve_path(&path) {
         Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
@@ -222,7 +222,7 @@ fn resolves_val_in_root_ns() {
 
     let path = IdentPath::from_parts([ident("x")]);
 
-    match namespaces.resolve_path(path.as_slice()) {
+    match namespaces.resolve_path(&path) {
         Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
@@ -245,7 +245,7 @@ fn resolves_val_in_explicit_current_ns() {
 
     let path = IdentPath::from_parts([ident("B"), ident("x")]);
 
-    match namespaces.resolve_path(path.as_slice()) {
+    match namespaces.resolve_path(&path) {
         Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
@@ -268,7 +268,7 @@ fn resolves_val_in_current_ns() {
 
     let path = IdentPath::from_parts([ident("x")]);
 
-    match namespaces.resolve_path(path.as_slice()) {
+    match namespaces.resolve_path(&path) {
         Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
@@ -337,9 +337,9 @@ fn visit_all_to_vec(namespaces: &ScopeStack) -> Vec<(String, Decl)> {
 
     namespaces.visit_members(
         |_ns_path, _key, _member| true,
-        |path, _, val| {
-            let path_str = IdentPath::from_parts(path.to_vec()).to_string();
-            visited.push((path_str, val.clone()));
+        |path, key, val| {
+            let full_path = IdentPath::new(key.clone(), path.to_vec());
+            visited.push((full_path.to_string(), val.clone()));
         },
     );
 
@@ -356,8 +356,8 @@ fn visit_all_visits_parent_scopes_rev_order() {
     let visited = visit_all_to_vec(&namespaces);
 
     assert_eq!(2, visited.len());
-    assert_eq!(("A::B::b_val".to_string(), const_decl(2)), visited[0]);
-    assert_eq!(("A::a_val".to_string(), const_decl(1)), visited[1]);
+    assert_eq!(("A.B.b_val".to_string(), const_decl(2)), visited[0]);
+    assert_eq!(("A.a_val".to_string(), const_decl(1)), visited[1]);
 }
 
 #[test]
@@ -370,6 +370,45 @@ fn visit_all_visits_unnamed_scopes() {
     let visited = visit_all_to_vec(&namespaces);
 
     assert_eq!(2, visited.len());
-    assert_eq!(("A::b_val".to_string(), const_decl(2)), visited[0]);
-    assert_eq!(("A::a_val".to_string(), const_decl(1)), visited[1]);
+    assert_eq!(("A.b_val".to_string(), const_decl(2)), visited[0]);
+    assert_eq!(("A.a_val".to_string(), const_decl(1)), visited[1]);
+}
+
+#[test]
+fn finds_deep_nested_child_decl() {
+    let mut namespaces: ScopeStack = ScopeStack::new(new_scope_anon());
+    namespaces.push_scope(new_scope("A"));
+    namespaces.push_scope(new_scope("B"));
+    namespaces.push_scope(new_scope("C"));
+    namespaces.insert_decl(ident("x"), const_decl(456)).unwrap();
+
+    namespaces.pop_scope();
+    namespaces.pop_scope();
+    namespaces.pop_scope();
+
+    let found = namespaces.resolve_path(&IdentPath::from_parts([
+        ident("A"),
+        ident("B"),
+        ident("C"),
+        ident("x")
+    ])).unwrap();
+
+    assert_eq!(Some(const_decl(456)).as_ref(), found.as_value())
+}
+
+#[test]
+fn finds_sibling_scope_decl() {
+    let mut namespaces: ScopeStack = ScopeStack::new(new_scope_anon());
+    namespaces.push_scope(new_scope("A"));
+    namespaces.insert_decl(ident("x"), const_decl(523)).unwrap();
+    namespaces.pop_scope();
+
+    namespaces.push_scope(new_scope("B"));
+
+    let found = namespaces.resolve_path(&IdentPath::from_parts([
+        ident("A"),
+        ident("x")
+    ])).unwrap();
+
+    assert_eq!(Some(const_decl(523)).as_ref(), found.as_value())
 }

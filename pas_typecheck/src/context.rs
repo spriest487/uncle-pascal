@@ -212,13 +212,13 @@ impl Context {
                     unit_scopes.push(scope);
                 }
 
-                Some(ScopeMember::Scope(existing_ns)) => {
+                Some(ScopeMember::Scope(existing_scope)) => {
                     // this is a previously declared namespace e.g. we are trying to define unit
                     // A.B.C and A.B has been previously declared - we take B out of the scope
                     // temporarily and make it active again. it'll be returned to its parent
                     // scope as normal when we pop it
-                    unit_scopes.push(existing_ns.id());
-                    self.scopes.push_scope(existing_ns);
+                    unit_scopes.push(existing_scope.id());
+                    self.scopes.push_scope(existing_scope);
                 }
 
                 Some(ScopeMember::Decl(decl)) => {
@@ -245,6 +245,8 @@ impl Context {
 
         for unit_scope in unit_scopes.into_iter().rev() {
             self.pop_scope(unit_scope);
+
+            eprintln!("unit_scope: popped scope {}", unit_scope.0);
         }
 
         result
@@ -304,17 +306,14 @@ impl Context {
                     })
                     .collect();
 
-                match results.len() {
-                    0 => None,
-                    1 => Some(results.into_iter().next().unwrap()),
-                    _ => {
-                        // todo: error for ambiguous resolve
-                        None
-                    }
-                }
+                // the last `uses` import always wins
+                results.into_iter().last()
             }
 
-            None => None,
+            None => {
+                eprintln!("couldn't find {} in {}", path, self.scopes.current_path().to_namespace());
+                None
+            },
         }
     }
 
