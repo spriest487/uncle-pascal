@@ -193,12 +193,12 @@ impl ScopeMember {
 
 #[derive(Debug, Clone)]
 pub enum ScopeMemberRef<'s> {
-    Value {
+    Decl {
         parent_path: ScopePathRef<'s>,
         key: &'s Ident,
         value: &'s Decl,
     },
-    Namespace {
+    Scope {
         // todo: separate this into parent_path and key
         // refs to namespaces always refer to keyed namespaces, so we should present the top level's
         // key as a Ident ref instead of the Option<Ident> we get from path.top().key()
@@ -209,15 +209,15 @@ pub enum ScopeMemberRef<'s> {
 impl<'s> ScopeMemberRef<'s> {
     pub fn as_value(&self) -> Option<&'s Decl> {
         match self {
-            ScopeMemberRef::Value { value, .. } => Some(value),
-            ScopeMemberRef::Namespace { .. } => None,
+            ScopeMemberRef::Decl { value, .. } => Some(value),
+            ScopeMemberRef::Scope { .. } => None,
         }
     }
 
     pub fn kind(&self) -> ScopeMemberKind {
         match self {
-            ScopeMemberRef::Value { .. } => ScopeMemberKind::Decl,
-            ScopeMemberRef::Namespace { .. } => ScopeMemberKind::Scope,
+            ScopeMemberRef::Decl { .. } => ScopeMemberKind::Decl,
+            ScopeMemberRef::Scope { .. } => ScopeMemberKind::Scope,
         }
     }
 }

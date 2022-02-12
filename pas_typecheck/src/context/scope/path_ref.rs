@@ -31,7 +31,7 @@ impl<'s> ScopePathRef<'s> {
                 let path = &self.namespaces[0..=i];
 
                 let member_ref = if ns.key().map(Borrow::borrow) == Some(key) {
-                    ScopeMemberRef::Namespace {
+                    ScopeMemberRef::Scope {
                         path: ScopePathRef { namespaces: path.to_vec() },
                     }
                 } else {
@@ -42,12 +42,12 @@ impl<'s> ScopePathRef<'s> {
                         ScopeMember::Scope(ns) => {
                             let mut path = path.to_vec();
                             path.push(ns);
-                            ScopeMemberRef::Namespace {
+                            ScopeMemberRef::Scope {
                                 path: ScopePathRef { namespaces: path },
                             }
                         }
 
-                        ScopeMember::Decl(value) => ScopeMemberRef::Value {
+                        ScopeMember::Decl(value) => ScopeMemberRef::Decl {
                             key,
                             value,
                             parent_path: ScopePathRef { namespaces: path.to_vec() },

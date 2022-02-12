@@ -104,17 +104,17 @@ impl ScopeStack {
         self.scopes.last_mut().unwrap()
     }
 
-    pub fn resolve_path(&self, path: &[Ident]) -> Option<ScopeMemberRef> {
+    pub fn resolve_path(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
         let mut current = self.current_path();
         for (i, part) in path.iter().enumerate() {
             match current.find(part)? {
-                ScopeMemberRef::Namespace { path } => {
+                ScopeMemberRef::Scope { path } => {
                     // found a namespace that matches this part, look for the next part inside
                     // that namespace
                     current = path;
                 },
 
-                ScopeMemberRef::Value {
+                ScopeMemberRef::Decl {
                     key,
                     value,
                     parent_path,
@@ -122,7 +122,7 @@ impl ScopeStack {
                     let is_last = i == path.len() - 1;
 
                     return if is_last {
-                        Some(ScopeMemberRef::Value {
+                        Some(ScopeMemberRef::Decl {
                             parent_path,
                             key,
                             value,
@@ -134,7 +134,7 @@ impl ScopeStack {
             }
         }
 
-        Some(ScopeMemberRef::Namespace { path: current })
+        Some(ScopeMemberRef::Scope { path: current })
     }
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)
@@ -180,8 +180,8 @@ impl ScopeStack {
         let current_ns = current_path.to_namespace();
         let current_uses = current_path.all_used_units();
 
-        match self.resolve_path(name.as_slice()) {
-            Some(ScopeMemberRef::Value {
+        match self.resolve_path(name) {
+            Some(ScopeMemberRef::Decl {
                      parent_path, value, ..
                  }) => match value {
                 Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
@@ -200,7 +200,7 @@ impl ScopeStack {
                 _ => true,
             },
 
-            Some(ScopeMemberRef::Namespace { .. }) => {
+            Some(ScopeMemberRef::Scope { .. }) => {
                 current_uses.contains(name)
             }
 

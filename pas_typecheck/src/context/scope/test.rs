@@ -38,7 +38,7 @@ fn finds_val_in_same_ctx() {
     namespaces.insert_decl(ident("x"), const_decl(123)).unwrap();
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -58,7 +58,7 @@ fn finds_val_in_parent_ctx() {
     namespaces.push_scope(new_scope("B"));
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -81,7 +81,7 @@ fn finds_top_val_of_shadowed_name() {
     namespaces.insert_decl(ident("x"), const_decl(123)).unwrap();
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -104,7 +104,7 @@ fn finds_val_in_anon_namespace() {
     namespaces.push_scope(new_scope("B"));
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(None, parent_path.as_slice().last().unwrap().key());
@@ -125,7 +125,7 @@ fn finds_val_through_anon_namespace() {
     namespaces.insert_decl(ident("x"), const_decl(123)).unwrap();
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -150,12 +150,12 @@ fn finds_val_in_declared_ns() {
     namespaces.pop_scope();
 
     let b = match namespaces.current_path().find(&ident("B")) {
-        Some(ScopeMemberRef::Namespace { path }) => path,
+        Some(ScopeMemberRef::Scope { path }) => path,
         _ => panic!("B should be a namespace"),
     };
 
     match b.find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -179,7 +179,7 @@ fn resolves_val_in_declared_ns() {
     let path = IdentPath::from_parts([ident("B"), ident("x")]);
 
     match namespaces.resolve_path(path.as_slice()) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -201,7 +201,7 @@ fn resolves_val_in_explicit_root_ns() {
     let path = IdentPath::from_parts([ident("A"), ident("x")]);
 
     match namespaces.resolve_path(path.as_slice()) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -223,7 +223,7 @@ fn resolves_val_in_root_ns() {
     let path = IdentPath::from_parts([ident("x")]);
 
     match namespaces.resolve_path(path.as_slice()) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -246,7 +246,7 @@ fn resolves_val_in_explicit_current_ns() {
     let path = IdentPath::from_parts([ident("B"), ident("x")]);
 
     match namespaces.resolve_path(path.as_slice()) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -269,7 +269,7 @@ fn resolves_val_in_current_ns() {
     let path = IdentPath::from_parts([ident("x")]);
 
     match namespaces.resolve_path(path.as_slice()) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -291,7 +291,7 @@ fn replaces_val_in_correct_scope() {
         .unwrap();
 
     match namespaces.current_path().find(&ident("x")) {
-        Some(ScopeMemberRef::Value {
+        Some(ScopeMemberRef::Decl {
             value, parent_path, ..
         }) => {
             assert_eq!(
@@ -324,7 +324,7 @@ fn finds_popped_scope_by_key() {
     namespaces.pop_scope();
 
     match namespaces.current_path().find(&ident("B")) {
-        Some(ScopeMemberRef::Namespace { path }) => {
+        Some(ScopeMemberRef::Scope { path }) => {
             let path_keys: Vec<_> = path.keys().cloned().collect();
             assert_eq!(&[ident("A"), ident("B")], path_keys.as_slice());
         }

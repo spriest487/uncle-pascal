@@ -112,6 +112,10 @@ impl<Part: fmt::Debug> Path<Part> {
         self.parts.first().unwrap()
     }
 
+    pub fn len(&self) -> usize {
+        self.parts.len()
+    }
+
     pub fn last(&self) -> &Part {
         self.parts.last().unwrap()
     }
