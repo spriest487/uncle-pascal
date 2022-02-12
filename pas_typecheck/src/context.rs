@@ -1,5 +1,4 @@
 pub mod builtin;
-pub mod ns;
 pub mod result;
 pub mod scope;
 pub mod value_kind;
@@ -9,7 +8,7 @@ mod decl;
 mod def;
 
 pub use self::{
-    builtin::*, decl::*, def::*, ns::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
+    builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
 use crate::ast::Literal;
 use crate::{
@@ -98,7 +97,7 @@ pub struct Context {
     module_span: Span,
 
     next_scope_id: ScopeID,
-    scopes: NamespaceStack<Scope>,
+    scopes: NamespaceStack,
 
     /// iface ident -> self ty -> impl details
     iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
@@ -277,15 +276,15 @@ impl Context {
         }
     }
 
-    pub fn find(&self, name: &Ident) -> Option<MemberRef<Scope>> {
+    pub fn find(&self, name: &Ident) -> Option<MemberRef> {
         self.find_path_slice(&[name.clone()])
     }
 
-    pub fn find_path(&self, path: &IdentPath) -> Option<MemberRef<Scope>> {
+    pub fn find_path(&self, path: &IdentPath) -> Option<MemberRef> {
         self.find_path_slice(path.as_slice())
     }
 
-    fn find_path_slice(&self, path: &[Ident]) -> Option<MemberRef<Scope>> {
+    fn find_path_slice(&self, path: &[Ident]) -> Option<MemberRef> {
         match self.scopes.resolve_path(path) {
             Some(MemberRef::Value {
                      value: Decl::Alias(aliased),
@@ -388,15 +387,7 @@ impl Context {
             }
 
             None => {
-                self.scopes
-                    .insert(name.clone(), decl)
-                    .map_err(
-                        |AlreadyDeclared(existing, kind)| NameError::AlreadyDeclared {
-                            existing: Path::from_parts(existing),
-                            existing_kind: kind,
-                            new: name,
-                        },
-                    )
+                self.scopes.insert(name.clone(), decl)
             }
         }
     }

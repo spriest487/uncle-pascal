@@ -244,7 +244,7 @@ fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -
 }
 
 pub fn ns_member_ref_to_annotation(
-    member: MemberRef<Scope>,
+    member: MemberRef,
     span: Span,
     ctx: &Context,
 ) -> TypeAnnotation {

@@ -1,12 +1,20 @@
-use crate::{AlreadyDeclared, Decl, Environment, Member, MemberRef, NameKind, Namespace, NamespaceStack, PathRef};
-use pas_syn::ast::Visibility;
+#[cfg(test)]
+mod test;
+mod scope_stack;
+mod path_ref;
+
+use crate::{Decl, Environment, NameError, NamingResult};
 use pas_syn::{Ident, IdentPath};
-use std::borrow::Borrow;
 use std::{
+    borrow::Borrow,
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Write},
     hash::Hash,
+};
+pub use self::{
+    scope_stack::*,
+    path_ref::*,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq, Ord, PartialOrd, Hash, Copy)]
@@ -16,7 +24,7 @@ pub struct ScopeID(pub usize);
 pub struct Scope {
     id: ScopeID,
     env: Environment,
-    decls: HashMap<Ident, Member<Scope>>,
+    decls: HashMap<Ident, Member>,
 
     use_units: Vec<IdentPath>,
 }
@@ -30,6 +38,52 @@ impl Scope {
 
             use_units: Vec::new(),
         }
+    }
+
+    pub fn key(&self) -> Option<&Ident> {
+        match &self.env {
+            Environment::Namespace { namespace } => Some(namespace.last()),
+            _ => None,
+        }
+    }
+
+    pub fn keys(&self) -> Vec<Ident> {
+        self.decls.keys().cloned().collect()
+    }
+
+    pub fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member)>
+    where
+        Ident: Borrow<Q>,
+        Q: Hash + Eq + ?Sized + fmt::Debug,
+    {
+        self.decls
+            .iter()
+            .find(|(k, _v)| (*k).borrow() == member_key)
+    }
+
+    pub fn insert_member(&mut self, key: Ident, member_val: Member) -> NamingResult<()> {
+        if let Some(existing) = self.decls.get(&key) {
+            let kind = existing.kind();
+            let mut path = self.keys();
+            path.push(key.clone());
+
+            return Err(NameError::AlreadyDeclared {
+                new: key,
+                existing: IdentPath::from_parts(path),
+                existing_kind: kind,
+            });
+        }
+
+        self.decls.insert(key.clone(), member_val);
+        Ok(())
+    }
+
+    pub fn replace_member(&mut self, key: Ident, member_val: Member) {
+        self.decls.insert(key, member_val);
+    }
+
+    pub fn remove_member(&mut self, key: &Ident) -> Option<Member> {
+        self.decls.remove(key)
     }
 
     pub fn add_use_unit(&mut self, use_unit: IdentPath) {
@@ -50,15 +104,15 @@ impl Scope {
         &self.env
     }
 
-    pub fn members(&self) -> impl Iterator<Item = (&Ident, &Member<Scope>)> {
+    pub fn members(&self) -> impl Iterator<Item = (&Ident, &Member)> {
         self.decls.iter()
     }
 
-    pub fn get_decl(&self, ident: &Ident) -> Option<&Member<Scope>> {
+    pub fn get_decl(&self, ident: &Ident) -> Option<&Member> {
         self.decls.get(ident)
     }
 
-    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut Member<Scope>> {
+    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut Member> {
         self.decls.get_mut(ident)
     }
 
@@ -80,13 +134,13 @@ impl Scope {
         }
 
         let mut members: Vec<_> = self.members().collect();
-        members.sort_by(|(key_a, decl_a), (key_b, decl_b)| {
-            match (decl_a.kind(), decl_b.kind()) {
+        members.sort_by(
+            |(key_a, decl_a), (key_b, decl_b)| match (decl_a.kind(), decl_b.kind()) {
                 (NameKind::Name, NameKind::Namespace) => Ordering::Less,
                 (NameKind::Namespace, NameKind::Name) => Ordering::Greater,
                 _ => key_a.name.cmp(&key_b.name),
-            }
-        });
+            },
+        );
 
         for (key, member) in members {
             match member {
@@ -107,137 +161,63 @@ impl Scope {
     }
 }
 
-impl Namespace for Scope {
-    type Key = Ident;
-    type Value = Decl;
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum NameKind {
+    Namespace,
+    Name,
+}
 
-    fn key(&self) -> Option<&Self::Key> {
-        match &self.env {
-            Environment::Namespace { namespace } => Some(namespace.last()),
-            _ => None,
+impl fmt::Display for NameKind {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            NameKind::Namespace => write!(f, "Namespace"),
+            NameKind::Name => write!(f, "Name"),
         }
-    }
-
-    fn keys(&self) -> Vec<Ident> {
-        self.decls.keys().cloned().collect()
-    }
-
-    fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member<Self>)>
-    where
-        Ident: Borrow<Q>,
-        Q: Hash + Eq + ?Sized + fmt::Debug,
-    {
-        self.decls
-            .iter()
-            .find(|(k, _v)| (*k).borrow() == member_key)
-    }
-
-    fn insert_member(
-        &mut self,
-        key: Ident,
-        member_val: Member<Self>,
-    ) -> Result<(), AlreadyDeclared<Ident>> {
-        if let Some(existing) = self.decls.get(&key) {
-            let kind = existing.kind();
-            let mut path = self.keys();
-            path.push(key.clone());
-
-            return Err(AlreadyDeclared(path, kind));
-        }
-
-        self.decls.insert(key.clone(), member_val);
-        Ok(())
-    }
-
-    fn replace_member(&mut self, key: Ident, member_val: Member<Self>) {
-        self.decls.insert(key, member_val);
-    }
-
-    fn remove_member(&mut self, key: &Self::Key) -> Option<Member<Self>> {
-        self.decls.remove(key)
     }
 }
 
-impl<'a> PathRef<'a, Scope> {
-    pub fn to_namespace(&self) -> IdentPath {
-        let namespace = self.as_slice().iter().filter_map(|s| s.key().cloned());
-        IdentPath::from_parts(namespace)
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub enum Member {
+    Namespace(Scope),
+    Value(Decl),
+}
 
-    pub fn all_used_units(&self) -> Vec<IdentPath> {
-        let mut unit_paths = Vec::new();
-
-        for scope in self.as_slice().iter().rev() {
-            for used_unit in scope.use_units() {
-                if !unit_paths.contains(used_unit) {
-                    unit_paths.push(used_unit.clone());
-                }
-            }
+impl Member {
+    pub fn kind(&self) -> NameKind {
+        match self {
+            Member::Namespace(_) => NameKind::Namespace,
+            Member::Value(_) => NameKind::Name,
         }
-
-        unit_paths
     }
 }
 
-impl NamespaceStack<Scope> {
-    pub fn visit_visible<Visitor>(&self, visitor: Visitor)
-    where
-        Visitor: FnMut(&[Ident], &Ident, &Decl),
-    {
-        self.visit_members(
-            |ns_path, key, _member| {
-                let member_path = IdentPath::new(key.clone(), ns_path.to_vec());
-                self.is_accessible(&member_path)
-            },
-            visitor,
-        );
-    }
+#[derive(Debug, Clone)]
+pub enum MemberRef<'s> {
+    Value {
+        parent_path: PathRef<'s>,
+        key: &'s Ident,
+        value: &'s Decl,
+    },
+    Namespace {
+        // todo: separate this into parent_path and key
+        // refs to namespaces always refer to keyed namespaces, so we should present the top level's
+        // key as a Ident ref instead of the Option<Ident> we get from path.top().key()
+        path: PathRef<'s>,
+    },
+}
 
-    pub fn is_accessible(&self, name: &IdentPath) -> bool {
-        let current_path = self.current_path();
-        let current_ns = current_path.to_namespace();
-        let current_uses = current_path.all_used_units();
-
-        match self.resolve_path(name.as_slice()) {
-            Some(MemberRef::Value {
-                     parent_path, value, ..
-                 }) => match value {
-                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
-                    match visibility {
-                        Visibility::Interface => true,
-                        Visibility::Implementation => {
-                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
-
-                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
-                        }
-                    }
-                }
-
-                Decl::Alias(..) => false,
-
-                _ => true,
-            },
-
-            Some(MemberRef::Namespace { .. }) => {
-                current_uses.contains(name)
-            }
-
-            _ => true,
+impl<'s> MemberRef<'s> {
+    pub fn as_value(&self) -> Option<&'s Decl> {
+        match self {
+            MemberRef::Value { value, .. } => Some(value),
+            MemberRef::Namespace { .. } => None,
         }
     }
 
-    // collect the used units for the current scope
-    pub fn current_used_units(&self) -> Vec<IdentPath> {
-        let mut current_use_units = Vec::new();
-
-        for scope in self.current_path().as_slice().iter().rev() {
-            for use_unit in scope.use_units() {
-                if !current_use_units.contains(use_unit) {
-                    current_use_units.push(use_unit.clone());
-                }
-            }
+    pub fn kind(&self) -> NameKind {
+        match self {
+            MemberRef::Value { .. } => NameKind::Name,
+            MemberRef::Namespace { .. } => NameKind::Namespace,
         }
-
-        current_use_units
     }
 }
