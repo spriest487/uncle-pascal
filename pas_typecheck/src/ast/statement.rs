@@ -38,10 +38,9 @@ pub fn typecheck_local_binding(
         val_ty => {
             let explicit_ty = typecheck_type(val_ty, ctx)?;
             if explicit_ty.is_unspecialized_generic() {
-                return Err(GenericError::IllegalUnspecialized {
+                return Err(TypecheckError::from_generic_err(GenericError::IllegalUnspecialized {
                     ty: explicit_ty,
-                    span: binding.val_ty.span().clone(),
-                }.into());
+                }, binding.span().clone()));
             }
 
             let val = match &binding.val {
@@ -79,10 +78,9 @@ pub fn typecheck_local_binding(
     }
 
     if binding_ty.is_unspecialized_generic() {
-        return Err(GenericError::IllegalUnspecialized {
+        return Err(TypecheckError::from_generic_err(GenericError::IllegalUnspecialized {
             ty: binding_ty,
-            span: binding.val_ty.span().clone(),
-        }.into());
+        }, binding.span().clone()));
     }
 
     let name = binding.name.clone();

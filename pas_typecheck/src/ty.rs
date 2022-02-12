@@ -5,7 +5,7 @@ use crate::{
     ast::{Class, FunctionDecl, Member, Variant},
     context,
     result::*,
-    Context, GenericError, GenericResult, GenericTarget, NamingResult, Symbol, TypeAnnotation,
+    Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
 };
 use pas_common::span::*;
 use pas_syn::{
@@ -107,7 +107,7 @@ impl Type {
         }
     }
 
-    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NamingResult<Option<Member>> {
+    pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
                 let def = ctx.instantiate_class(class_name)?;
@@ -119,7 +119,7 @@ impl Type {
         }
     }
 
-    pub fn get_member(&self, index: usize, ctx: &Context) -> NamingResult<Option<Member>> {
+    pub fn get_member(&self, index: usize, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_class(class)?;
@@ -131,7 +131,7 @@ impl Type {
         }
     }
 
-    pub fn members_len(&self, ctx: &Context) -> NamingResult<usize> {
+    pub fn members_len(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_class(class)?;
@@ -142,7 +142,7 @@ impl Type {
         }
     }
 
-    pub fn members(&self, ctx: &Context) -> NamingResult<Vec<Member>> {
+    pub fn members(&self, ctx: &Context) -> NameResult<Vec<Member>> {
         let mut members = Vec::new();
         for i in 0..self.members_len(ctx)? {
             let member = self.get_member(i, ctx)?.unwrap();
@@ -330,7 +330,7 @@ impl Type {
         }
     }
 
-    pub fn get_method(&self, method: &Ident, ctx: &Context) -> NamingResult<Option<FunctionDecl>> {
+    pub fn get_method(&self, method: &Ident, ctx: &Context) -> NameResult<Option<FunctionDecl>> {
         match self {
             Type::Interface(iface) => {
                 let iface_def = ctx.find_iface_def(iface)?;
@@ -478,15 +478,15 @@ impl Type {
                 Ok(arg.clone())
             }
 
-            Type::Record(class) => specialize_generic_name(&class, args, span)
+            Type::Record(class) => specialize_generic_name(&class, args)
                 .map(Box::new)
                 .map(Type::Record),
 
-            Type::Class(class) => specialize_generic_name(&class, args, span)
+            Type::Class(class) => specialize_generic_name(&class, args)
                 .map(Box::new)
                 .map(Type::Class),
 
-            Type::Variant(variant) => specialize_generic_name(&variant, args, span)
+            Type::Variant(variant) => specialize_generic_name(&variant, args)
                 .map(Box::new)
                 .map(Type::Variant),
 
@@ -556,7 +556,12 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             type_args,
             span,
         }) => {
-            let (_, raw_ty) = ctx.find_type(ident)?;
+            let (_, raw_ty) = ctx.find_type(ident)
+                .map_err(|err| TypecheckError::NameError {
+                    err,
+                    span: ty.span().clone(),
+                })?;
+
             let raw_ty = raw_ty.clone();
 
             let ty = match type_args {
@@ -570,7 +575,8 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                     let checked_type_args =
                         TypeList::new(checked_type_arg_items, type_args.span().clone());
 
-                    Type::specialize_generic(&raw_ty, &checked_type_args, span)?
+                    Type::specialize_generic(&raw_ty, &checked_type_args, span)
+                        .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?
                 }
 
                 None => raw_ty.clone(),
@@ -613,7 +619,6 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
 pub fn specialize_generic_name(
     name: &Symbol,
     args: &TypeList,
-    span: &Span,
 ) -> GenericResult<Symbol> {
     if !name.is_unspecialized_generic() {
         return Ok(name.clone());
@@ -630,7 +635,6 @@ pub fn specialize_generic_name(
             target: GenericTarget::Name(name.qualified.clone()),
             expected: type_params.items.len(),
             actual: args.len(),
-            span: span.clone(),
         });
     }
 
@@ -645,9 +649,8 @@ pub fn specialize_generic_name(
 pub fn specialize_class_def(
     class: &Class,
     ty_args: &TypeList,
-    span: &Span,
 ) -> GenericResult<Class> {
-    let parameterized_name = specialize_generic_name(&class.name, &ty_args, span)?;
+    let parameterized_name = specialize_generic_name(&class.name, &ty_args)?;
 
     let members: Vec<_> = class
         .members
@@ -674,9 +677,8 @@ pub fn specialize_class_def(
 pub fn specialize_generic_variant(
     variant: &Variant,
     args: &TypeList,
-    span: &Span,
 ) -> GenericResult<Variant> {
-    let parameterized_name = specialize_generic_name(&variant.name, &args, span)?;
+    let parameterized_name = specialize_generic_name(&variant.name, &args)?;
 
     let cases: Vec<_> = variant
         .cases

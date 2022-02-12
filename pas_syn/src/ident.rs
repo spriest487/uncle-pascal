@@ -215,6 +215,13 @@ impl IdentPath {
 
         Ok(IdentPath::from_parts(path))
     }
+
+    pub fn path_span(&self) -> Span {
+        match self.parts.len() {
+            1 => self.parts[0].span.clone(),
+            _ => self.parts[0].span.to(&self.parts[self.parts.len() - 1].span),
+        }
+    }
 }
 
 impl fmt::Display for Path<Ident> {

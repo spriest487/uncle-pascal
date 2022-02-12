@@ -1,6 +1,8 @@
-use pas_syn::ast::Visibility;
-use pas_syn::{Ident, IdentPath};
-use crate::{Decl, ScopeMember, ScopeMemberRef, NameError, ScopeMemberKind, NamingResult, scope::*};
+use pas_syn::{
+    ast::Visibility,
+    Ident, IdentPath
+};
+use crate::{Decl, ScopeMember, ScopeMemberRef, NameError, ScopeMemberKind, NameResult, scope::*};
 
 #[derive(Debug, Clone)]
 pub struct ScopeStack {
@@ -45,7 +47,7 @@ impl ScopeStack {
         &mut self,
         member_key: impl Into<Ident>,
         decl: Decl,
-    ) -> NamingResult<()> {
+    ) -> NameResult<()> {
         let member_key = member_key.into();
         let top = self.current_mut();
 
@@ -66,7 +68,7 @@ impl ScopeStack {
         &mut self,
         member_key: impl Into<Ident>,
         member: Decl,
-    ) -> NamingResult<()> {
+    ) -> NameResult<()> {
         let member_key = member_key.into();
         let top = self.current_mut();
 
@@ -76,7 +78,9 @@ impl ScopeStack {
                 Ok(())
             }
 
-            None => Err(NameError::NotFound(member_key)),
+            None => Err(NameError::NotFound {
+                ident: IdentPath::from(member_key),
+            }),
         }
     }
 

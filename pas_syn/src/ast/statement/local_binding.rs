@@ -70,3 +70,9 @@ impl<A: Annotation> fmt::Display for LocalBinding<A> {
         Ok(())
     }
 }
+
+impl<A: Annotation> Spanned for LocalBinding<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}

@@ -11,11 +11,7 @@ pub use self::{
     builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
 use crate::ast::Literal;
-use crate::{
-    ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant},
-    specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type,
-    TypeParamList, TypeParamType,
-};
+use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -186,9 +182,8 @@ impl Context {
         }
     }
 
-    pub fn unit_scope<T, E, F>(&mut self, unit_path: IdentPath, f: F) -> Result<T, E>
-        where F: FnOnce(&mut Context) -> Result<T, E>,
-        E: From<NameError>
+    pub fn unit_scope<T, F>(&mut self, unit_path: IdentPath, f: F) -> TypecheckResult<T>
+        where F: FnOnce(&mut Context) -> TypecheckResult<T>,
     {
         let path_len = unit_path.as_slice().len();
         let mut path_parts = unit_path.into_parts();
@@ -200,6 +195,7 @@ impl Context {
 
         for _ in 0..path_len {
             let part = path_parts.pop().unwrap();
+            let part_span = part.span.clone();
             part_path.push(part.clone());
 
             let part_ns = IdentPath::from_parts(part_path.clone());
@@ -228,7 +224,7 @@ impl Context {
                         ident: part_ns.clone(),
                         actual: Named::from(decl.clone()),
                         expected: ExpectedKind::Namespace,
-                    }.into();
+                    };
 
                     // restore the previous state
                     current_scope.insert_member(part, ScopeMember::Decl(decl)).unwrap();
@@ -236,7 +232,7 @@ impl Context {
                         self.pop_scope(unit_scope);
                     }
 
-                    return Err(err);
+                    return Err(TypecheckError::from_name_err(err, part_span));
                 }
             }
         }
@@ -311,7 +307,6 @@ impl Context {
             }
 
             None => {
-                eprintln!("couldn't find {} in {}", path, self.scopes.current_path().to_namespace());
                 None
             },
         }
@@ -337,7 +332,7 @@ impl Context {
         false
     }
 
-    fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
+    fn declare(&mut self, name: Ident, decl: Decl) -> TypecheckResult<()> {
         let local_name_path = IdentPath::from_parts([name.clone()]);
 
         match self.find_path(&local_name_path) {
@@ -358,10 +353,13 @@ impl Context {
                         let old_ns = IdentPath::from_parts(parent_path.keys().cloned());
                         let old_ident = old_ns.child(key.clone());
 
-                        Err(NameError::AlreadyDeclared {
-                            new: name,
-                            existing_kind: ScopeMemberKind::Decl,
-                            existing: old_ident,
+                        Err(TypecheckError::NameError {
+                            span: name.span.clone(),
+                            err: NameError::AlreadyDeclared {
+                                new: name,
+                                existing_kind: ScopeMemberKind::Decl,
+                                existing: old_ident,
+                            },
                         })
                     }
                 }
@@ -376,20 +374,28 @@ impl Context {
                     ScopeMemberRef::Scope { path } => Path::from_parts(path.keys().cloned()),
                 };
 
-                Err(NameError::AlreadyDeclared {
-                    new: name,
-                    existing_kind: old_kind,
-                    existing: old_ident,
+                Err(TypecheckError::NameError {
+                    span: name.span().clone(),
+                    err: NameError::AlreadyDeclared {
+                        new: name,
+                        existing_kind: old_kind,
+                        existing: old_ident,
+                    },
                 })
             }
 
             None => {
-                self.scopes.insert_decl(name, decl)
+                self.scopes.insert_decl(name.clone(), decl).map_err(|err| {
+                    TypecheckError::NameError {
+                        err,
+                        span: name.span().clone(),
+                    }
+                })
             }
         }
     }
 
-    pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> NamingResult<()> {
+    pub fn declare_binding(&mut self, name: Ident, binding: Binding) -> TypecheckResult<()> {
         self.declare(name, Decl::BoundValue(binding))?;
         Ok(())
     }
@@ -398,7 +404,7 @@ impl Context {
         &mut self,
         iface: Rc<Interface>,
         visibility: Visibility,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         let name = iface.name.decl_name.ident.clone();
         let iface_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
         self.declare_type(name.clone(), iface_ty, visibility)?;
@@ -418,7 +424,7 @@ impl Context {
         &mut self,
         variant: Rc<Variant>,
         visibility: Visibility,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         let name = variant.name.decl_name.ident.clone();
 
         let variant_ty = Type::Variant(Box::new(variant.name.clone()));
@@ -435,7 +441,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> NamingResult<()> {
+    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> TypecheckResult<()> {
         let name = class.name.decl_name.ident.clone();
 
         let class_ty = match class.kind {
@@ -457,7 +463,7 @@ impl Context {
     }
 
     /// declare the type params of a function in the local scope
-    pub fn declare_type_params(&mut self, names: &TypeParamList) -> NamingResult<()> {
+    pub fn declare_type_params(&mut self, names: &TypeParamList) -> TypecheckResult<()> {
         for (pos, param) in names.items.iter().enumerate() {
             let is_iface = param
                 .constraint
@@ -479,7 +485,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> NamingResult<()> {
+    pub fn declare_self_ty(&mut self, ty: Type, span: Span) -> TypecheckResult<()> {
         let self_ident = Ident::new("Self", span);
         self.declare_type(self_ident, ty, Visibility::Implementation)
     }
@@ -489,7 +495,7 @@ impl Context {
         name: Ident,
         ty: Type,
         visibility: Visibility,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         self.declare(name, Decl::Type { ty, visibility })?;
         Ok(())
     }
@@ -499,7 +505,7 @@ impl Context {
         name: Ident,
         func_decl: &FunctionDecl,
         visibility: Visibility,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         let decl = Decl::Function {
             sig: FunctionSig::of_decl(func_decl).into(),
             visibility,
@@ -515,7 +521,7 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> NamingResult<()> {
+    pub fn declare_alias(&mut self, name: Ident, aliased: IdentPath) -> TypecheckResult<()> {
         self.declare(name, Decl::Alias(aliased))
     }
 
@@ -526,7 +532,7 @@ impl Context {
         ty: Type,
         visibility: Visibility,
         span: Span,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         self.declare(
             name,
             Decl::Const {
@@ -555,35 +561,17 @@ impl Context {
         }
     }
 
-    pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
-        match self.find_path(ns_path) {
-            Some(ScopeMemberRef::Scope { path }) => Ok(path.top().keys()),
-
-            Some(ScopeMemberRef::Decl { value: decl, .. }) => {
-                let unexpected = Named::Decl(decl.clone());
-                Err(NameError::Unexpected {
-                    ident: ns_path.clone(),
-                    expected: ExpectedKind::Namespace,
-                    actual: unexpected,
-                })
-            }
-
-            None => Err(NameError::NotFound(ns_path.last().clone())),
-        }
-    }
-
     fn method_impl_entry(
         &mut self,
         iface_ident: IdentPath,
         self_ty: Type,
         method: Ident,
-    ) -> NamingResult<Entry<Ident, Option<FunctionDef>>> {
+    ) -> NameResult<Entry<Ident, Option<FunctionDef>>> {
         // check the method exists
         let iface = self.find_iface_def(&iface_ident)?;
         if iface.get_method(&method).is_none() {
             let base_ty = Type::Interface(Box::new(iface.name.qualified.clone()));
             return Err(NameError::MemberNotFound {
-                span: method.span.clone(),
                 base: NameContainer::Type(base_ty),
                 member: method,
             });
@@ -597,36 +585,44 @@ impl Context {
 
         Ok(impl_for_ty.methods.entry(method))
     }
-
-    pub fn declare_method_impl(
-        &mut self,
-        iface_ident: IdentPath,
-        self_ty: Type,
-        method: Ident,
-    ) -> NamingResult<()> {
-        self.method_impl_entry(iface_ident, self_ty, method)?
-            .or_insert_with(|| None);
-        Ok(())
-    }
+    //
+    // pub fn declare_method_impl(
+    //     &mut self,
+    //     iface_ident: IdentPath,
+    //     self_ty: Type,
+    //     method: Ident,
+    // ) -> TypecheckResult<()> {
+    //     self.method_impl_entry(iface_ident, self_ty, method)
+    //         .map_err(|err| TypecheckError::from_name_err(err, method.span().clone()))?
+    //         .or_insert_with(|| None);
+    //     Ok(())
+    // }
 
     pub fn define_method_impl(
         &mut self,
         iface: &IdentPath,
         self_ty: Type,
         method_def: FunctionDef,
-    ) -> NamingResult<()> {
-        match self.method_impl_entry(
-            iface.clone(),
-            self_ty.clone(),
-            method_def.decl.ident.last().clone(),
-        )? {
+    ) -> TypecheckResult<()> {
+        let entry = self
+            .method_impl_entry(
+                iface.clone(),
+                self_ty.clone(),
+                method_def.decl.ident.last().clone(),
+            )
+            .map_err(|err| TypecheckError::from_name_err(err, method_def.decl.span().clone()))?;
+
+        match entry {
             Entry::Occupied(mut entry) => {
                 if entry.get().is_some() {
-                    return Err(NameError::AlreadyImplemented {
-                        method: method_def.decl.ident.last().clone(),
-                        for_ty: self_ty,
-                        iface: iface.clone(),
-                        existing: entry.key().span.clone(),
+                    return Err(TypecheckError::NameError {
+                        err: NameError::AlreadyImplemented {
+                            method: method_def.decl.ident.last().clone(),
+                            for_ty: self_ty,
+                            iface: iface.clone(),
+                            existing: entry.key().span.clone(),
+                        },
+                        span: method_def.decl.span,
                     });
                 } else {
                     *entry.get_mut() = Some(method_def);
@@ -670,7 +666,7 @@ impl Context {
         def: Def,
         decl_predicate: DeclPred,
         map_unexpected: MapUnexpected,
-    ) -> NamingResult<()>
+    ) -> TypecheckResult<()>
     where
         DeclPred: Fn(&Decl) -> DefDeclMatch,
         MapUnexpected: Fn(IdentPath, Named) -> NameError,
@@ -678,15 +674,25 @@ impl Context {
         let full_name = IdentPath::new(name.clone(), self.scopes.current_path().keys().cloned());
 
         if let Some(existing) = self.defs.get(&full_name) {
-            return Err(NameError::AlreadyDefined {
+            let err = NameError::AlreadyDefined {
                 ident: full_name,
                 existing: existing.ident().span().clone(),
+            };
+
+            return Err(TypecheckError::NameError {
+                err,
+                span: def.ident().span().clone(),
             });
         }
 
         match self.scopes.current_path().find(&name) {
             None => {
-                return Err(NameError::NotFound(name.clone()));
+                return Err(TypecheckError::NameError {
+                    err: NameError::NotFound {
+                        ident: IdentPath::from(name.clone()),
+                    },
+                    span: def.ident().span().clone(),
+                });
             }
 
             Some(ScopeMemberRef::Decl {
@@ -700,23 +706,29 @@ impl Context {
                     }
 
                     DefDeclMatch::Mismatch => {
-                        return Err(NameError::DefDeclMismatch {
-                            decl: key.span().clone(),
-                            def: def.ident().span().clone(),
-                            ident: full_name,
+                        return Err(TypecheckError::NameError {
+                            err: NameError::DefDeclMismatch {
+                                decl: key.span().clone(),
+                                def: def.ident().span().clone(),
+                                ident: full_name,
+                            },
+                            span: def.ident().span.clone(),
                         });
                     }
 
                     DefDeclMatch::WrongKind => {
                         let unexpected = Named::Decl(value.clone());
-                        return Err(map_unexpected(full_name, unexpected));
+                        let err = map_unexpected(full_name, unexpected);
+                        return Err(TypecheckError::NameError { err, span: def.span().clone() });
                     }
                 }
             }
 
             Some(ScopeMemberRef::Scope { path }) => {
                 let path = IdentPath::from_parts(path.keys().cloned());
-                return Err(map_unexpected(full_name, Named::Namespace(path)));
+                let err = map_unexpected(full_name, Named::Namespace(path));
+
+                return Err(TypecheckError::NameError { err, span: def.span().clone() });
             }
         }
 
@@ -730,7 +742,7 @@ impl Context {
         name: Ident,
         def: FunctionDef,
         visibility: Visibility,
-    ) -> NamingResult<()> {
+    ) -> TypecheckResult<()> {
         let sig = FunctionSig::of_decl(&def.decl);
 
         let is_func_decl = |decl: &Decl| match decl {
@@ -756,7 +768,7 @@ impl Context {
         self.define(name, Def::Function(def), is_func_decl, expected_func_err)
     }
 
-    pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
+    pub fn find_type(&self, name: &IdentPath) -> NameResult<(IdentPath, &Type)> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
                 value: Decl::Type { ty, .. },
@@ -780,7 +792,7 @@ impl Context {
                 expected: ExpectedKind::AnyType,
             }),
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
@@ -788,7 +800,7 @@ impl Context {
         self.defs.get(name)
     }
 
-    pub fn find_class_def(&self, name: &IdentPath) -> NamingResult<Rc<Class>> {
+    pub fn find_class_def(&self, name: &IdentPath) -> NameResult<Rc<Class>> {
         match self.defs.get(name) {
             Some(Def::Class(class_def)) => Ok(class_def.clone()),
 
@@ -808,18 +820,18 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
-    pub fn instantiate_class(&self, name: &Symbol) -> NamingResult<Rc<Class>> {
+    pub fn instantiate_class(&self, name: &Symbol) -> NameResult<Rc<Class>> {
         name.expect_not_unspecialized()?;
 
         let base_def = self.find_class_def(&name.qualified)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_class_def(base_def.as_ref(), type_args, name.span())?;
+                let instance_def = specialize_class_def(base_def.as_ref(), type_args)?;
                 Rc::new(instance_def)
             }
             None => base_def,
@@ -828,7 +840,7 @@ impl Context {
         Ok(instance_def)
     }
 
-    pub fn find_variant_def(&self, name: &IdentPath) -> NamingResult<Rc<Variant>> {
+    pub fn find_variant_def(&self, name: &IdentPath) -> NameResult<Rc<Variant>> {
         match self.defs.get(name) {
             Some(Def::Variant(variant_def)) => Ok(variant_def.clone()),
 
@@ -848,19 +860,22 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
-    pub fn instantiate_variant(&self, name: &Symbol) -> NamingResult<Rc<Variant>> {
-        name.expect_not_unspecialized()?;
+    pub fn instantiate_variant(&self, name: &Symbol) -> TypecheckResult<Rc<Variant>> {
+        name.expect_not_unspecialized()
+            .map_err(|err| TypecheckError::from_generic_err(err, name.span().clone()))?;
 
-        let base_def = self.find_variant_def(&name.qualified)?;
+        let base_def = self.find_variant_def(&name.qualified)
+            .map_err(|err| TypecheckError::from_name_err(err, name.span().clone()))?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
                 let instance_def =
-                    specialize_generic_variant(base_def.as_ref(), type_args, name.span())?;
+                    specialize_generic_variant(base_def.as_ref(), type_args)
+                        .map_err(|err| TypecheckError::from_generic_err(err, type_args.span().clone()))?;
                 Rc::new(instance_def)
             }
             None => base_def,
@@ -869,7 +884,7 @@ impl Context {
         Ok(instance_def)
     }
 
-    pub fn find_iface(&self, name: &IdentPath) -> NamingResult<IdentPath> {
+    pub fn find_iface(&self, name: &IdentPath) -> NameResult<IdentPath> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
                 value:
@@ -900,11 +915,11 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
-    pub fn find_iface_def(&self, name: &IdentPath) -> NamingResult<Rc<Interface>> {
+    pub fn find_iface_def(&self, name: &IdentPath) -> NameResult<Rc<Interface>> {
         match self.defs.get(name) {
             Some(Def::Interface(iface_def)) => Ok(iface_def.clone()),
 
@@ -924,7 +939,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
@@ -968,7 +983,7 @@ impl Context {
         }
     }
 
-    pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
+    pub fn find_function(&self, name: &IdentPath) -> NameResult<(IdentPath, Rc<FunctionSig>)> {
         match self.find_path(name) {
             Some(ScopeMemberRef::Decl {
                 value: Decl::Function { sig, .. },
@@ -994,7 +1009,7 @@ impl Context {
                 })
             }
 
-            None => Err(NameError::NotFound(name.last().clone())),
+            None => Err(NameError::NotFound { ident: name.clone() }),
         }
     }
 
@@ -1002,10 +1017,10 @@ impl Context {
         &'ctx self,
         of_ty: &'ty Type,
         member: &Ident,
-    ) -> NamingResult<InstanceMember> {
+    ) -> NameResult<InstanceMember> {
         let data_member = of_ty.find_data_member(member, self)?;
 
-        let methods = ufcs::instance_methods_of(of_ty, self)?;
+        let methods = ufcs::find_instance_methods_of(of_ty, self)?;
         let matching_methods: Vec<_> = methods.iter().filter(|m| *m.ident() == *member).collect();
 
         match (data_member, matching_methods.len()) {
@@ -1028,7 +1043,6 @@ impl Context {
 
             // no data member, no methods
             (None, 0) => Err(NameError::MemberNotFound {
-                span: member.span.clone(),
                 member: member.clone(),
                 base: NameContainer::Type(of_ty.clone()),
             }),
@@ -1055,21 +1069,21 @@ impl Context {
         }
     }
 
-    pub fn is_unsized_ty(&self, ty: &Type) -> NamingResult<bool> {
+    pub fn is_unsized_ty(&self, ty: &Type) -> NameResult<bool> {
         match ty {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
             Type::Class(class) | Type::Record(class) => {
                 match self.find_class_def(&class.qualified) {
                     Ok(..) => Ok(false),
-                    Err(NameError::NotFound(..)) => Ok(true),
-                    Err(err) => Err(err.into()),
+                    Err(NameError::NotFound { .. }) => Ok(true),
+                    Err(err) => Err(err),
                 }
             }
 
             Type::Variant(variant) => match self.find_variant_def(&variant.qualified) {
                 Ok(..) => Ok(false),
-                Err(NameError::NotFound(..)) => Ok(true),
+                Err(NameError::NotFound { .. }) => Ok(true),
                 Err(err) => Err(err.into()),
             },
 
@@ -1086,7 +1100,7 @@ impl Context {
         }
     }
 
-    pub fn find_type_member(&self, ty: &Type, member_ident: &Ident) -> NamingResult<TypeMember> {
+    pub fn find_type_member(&self, ty: &Type, member_ident: &Ident) -> NameResult<TypeMember> {
         match ty {
             Type::Interface(iface) => {
                 let iface_def = self.find_iface_def(iface)?;
@@ -1094,7 +1108,6 @@ impl Context {
                     NameError::MemberNotFound {
                         member: member_ident.clone(),
                         base: NameContainer::Type(ty.clone()),
-                        span: member_ident.span.clone(),
                     }
                 })?;
 
@@ -1105,7 +1118,6 @@ impl Context {
 
             _ => Err(NameError::MemberNotFound {
                 base: NameContainer::Type(ty.clone()),
-                span: member_ident.span.clone(),
                 member: member_ident.clone(),
             }),
         }

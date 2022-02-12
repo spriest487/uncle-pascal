@@ -3,7 +3,7 @@ mod test;
 mod scope_stack;
 mod path_ref;
 
-use crate::{Decl, Environment, NameError, NamingResult};
+use crate::{Decl, Environment, NameError, NameResult};
 use pas_syn::{Ident, IdentPath};
 use std::{
     borrow::Borrow,
@@ -61,7 +61,7 @@ impl Scope {
             .find(|(k, _v)| (*k).borrow() == member_key)
     }
 
-    pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NamingResult<()> {
+    pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NameResult<()> {
         if let Some(existing) = self.decls.get(&key) {
             let kind = existing.kind();
             let mut path = self.keys();

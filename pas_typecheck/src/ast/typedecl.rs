@@ -44,7 +44,10 @@ pub fn typecheck_class(
     for member in &class.members {
         let ty = typecheck_type(&member.ty, ctx)?.clone();
 
-        if ctx.is_unsized_ty(&ty)? {
+        let is_unsized = ctx.is_unsized_ty(&ty)
+            .map_err(|err| TypecheckError::from_name_err(err, class.span().clone()))?;
+
+        if is_unsized {
             return Err(TypecheckError::UnsizedMember {
                 decl: name.qualified,
                 member: member.ident.clone(),
@@ -81,10 +84,13 @@ pub fn typecheck_iface(
         if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
             let method_path = name.qualified.clone().child(method.ident.single().clone());
 
-            return Err(TypecheckError::ScopeError(NameError::AlreadyDefined {
-                ident: method_path,
-                existing: existing.span().clone(),
-            }));
+            return Err(TypecheckError::NameError {
+                err: NameError::AlreadyDefined {
+                    ident: method_path,
+                    existing: existing.span().clone(),
+                },
+                span: method.ident.span().clone(),
+            });
         }
 
         let mut method_decl = typecheck_func_decl(method, ctx)?;

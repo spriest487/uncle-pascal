@@ -7,11 +7,15 @@ use crate::{
 use pas_common::{span::*, Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{ast, parse::InvalidStatement, Ident, IdentPath, Operator, IntConstant};
 use std::fmt;
+use std::path::PathBuf;
 use crate::ast::{DeclMod, Statement};
 
 #[derive(Debug)]
 pub enum TypecheckError {
-    ScopeError(NameError),
+    NameError {
+        err: NameError,
+        span: Span
+    },
     NotCallable(Box<Expression>),
     InvalidArgs {
         expected: Vec<Type>,
@@ -133,8 +137,6 @@ pub enum TypecheckError {
         stmt: Box<ast::Statement<Span>>,
     },
 
-    GenericError(GenericError),
-
     UnsizedMember {
         decl: IdentPath,
         member: Ident,
@@ -184,27 +186,28 @@ pub enum TypecheckError {
     },
 }
 
-pub type TypecheckResult<T> = Result<T, TypecheckError>;
+impl TypecheckError {
+    pub fn from_name_err(err: NameError, span: Span) -> Self {
+        TypecheckError::NameError {
+            err,
+            span
+        }
+    }
 
-impl From<NameError> for TypecheckError {
-    fn from(err: NameError) -> Self {
-        match err {
-            NameError::GenericError(err) => TypecheckError::from(err),
-            err => TypecheckError::ScopeError(err),
+    pub fn from_generic_err(err: GenericError, span: Span) -> Self {
+        TypecheckError::NameError {
+            err: NameError::GenericError(err),
+            span,
         }
     }
 }
 
-impl From<GenericError> for TypecheckError {
-    fn from(err: GenericError) -> Self {
-        TypecheckError::GenericError(err)
-    }
-}
+pub type TypecheckResult<T> = Result<T, TypecheckError>;
 
 impl Spanned for TypecheckError {
     fn span(&self) -> &Span {
         match self {
-            TypecheckError::ScopeError(err) => err.span(),
+            TypecheckError::NameError { span, .. } => span,
             TypecheckError::NotCallable(expr) => expr.annotation().span(),
             TypecheckError::InvalidArgs { span, .. } => span,
             TypecheckError::InvalidCallInExpression(call) => call.annotation().span(),
@@ -238,7 +241,6 @@ impl Spanned for TypecheckError {
             TypecheckError::NoLoopContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::NoFunctionContext { stmt, .. } => stmt.annotation().span(),
             TypecheckError::UnsizedMember { member, .. } => member.span(),
-            TypecheckError::GenericError(err) => err.span(),
             TypecheckError::InvalidMethodInterface { span, .. } => span,
             TypecheckError::InterfaceNotImplemented { span, .. } => span,
             TypecheckError::Private { span, .. } => span,
@@ -255,7 +257,24 @@ impl Spanned for TypecheckError {
 impl DiagnosticOutput for TypecheckError {
     fn title(&self) -> String {
         match self {
-            TypecheckError::ScopeError(err) => err.title(),
+            TypecheckError::NameError { err, ..  } => match err {
+                NameError::NotFound { .. } => "Name not found".to_string(),
+                NameError::MemberNotFound { .. } => "Named member not found".to_string(),
+                NameError::Unexpected { .. } => "Name had unexpected type".to_string(),
+                NameError::AlreadyDeclared { .. } => "Name already declared".to_string(),
+                NameError::AlreadyDefined { .. } => "Name already defined".to_string(),
+                NameError::Ambiguous { .. } => "Name is ambiguous".to_string(),
+                NameError::AlreadyImplemented { .. } => "Method already implemented".to_string(),
+                NameError::DefDeclMismatch { .. } => {
+                    "Definition does not match previous declaration".to_string()
+                }
+                NameError::GenericError(err) => match err {
+                    GenericError::ArgsLenMismatch { .. } => "Wrong number of type arguments".to_string(),
+                    GenericError::ArgConstraintNotSatisfied { .. } => "Type paramter constraint not satisfied by argument".to_string(),
+                    GenericError::CannotInferArgs { .. } => "Cannot infer type arguments".to_string(),
+                    GenericError::IllegalUnspecialized { .. } => "Illegal use of unspecialized type".to_string(),
+                }
+            }
             TypecheckError::NotCallable(_) => "Not callable".to_string(),
             TypecheckError::InvalidArgs { .. } => "Invalid arguments".to_string(),
             TypecheckError::InvalidCallInExpression(_) => "Invalid call in expression".to_string(),
@@ -305,8 +324,6 @@ impl DiagnosticOutput for TypecheckError {
 
             TypecheckError::UnsizedMember { .. } => "Unsized member".to_string(),
 
-            TypecheckError::GenericError(err) => err.title(),
-
             TypecheckError::InvalidMethodInterface { .. } => {
                 "Invalid interface type for method".to_string()
             }
@@ -332,9 +349,8 @@ impl DiagnosticOutput for TypecheckError {
 
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            TypecheckError::ScopeError(err) => err.label(),
-            TypecheckError::GenericError(err) => err.label(),
             TypecheckError::UndefinedSymbols { .. } => None,
+
             _ => Some(DiagnosticLabel {
                 text: Some(self.to_string()),
                 span: self.span().clone(),
@@ -344,8 +360,77 @@ impl DiagnosticOutput for TypecheckError {
 
     fn see_also(&self) -> Vec<DiagnosticMessage> {
         match self {
-            TypecheckError::ScopeError(err) => err.see_also(),
-            TypecheckError::GenericError(err) => err.see_also(),
+            TypecheckError::NameError { err, .. } => match err {
+                NameError::AlreadyDeclared { new, existing, existing_kind } => {
+                    if *existing.span().file.as_ref() == PathBuf::from("<builtin>") {
+                        // don't show this message for conflicts with builtin identifiers
+                        return Vec::new()
+                    }
+
+                    vec![DiagnosticMessage {
+                        title: format!("{} `{}` previously declared here", existing_kind, new),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: existing.span().clone(),
+                        }),
+                    }]
+                }
+
+                NameError::AlreadyDefined { ident, existing } => vec![DiagnosticMessage {
+                    title: format!("`{}` previously defined here", ident),
+                    label: Some(DiagnosticLabel {
+                        text: None,
+                        span: existing.span().clone(),
+                    }),
+                }],
+
+                NameError::AlreadyImplemented {
+                    iface,
+                    method,
+                    existing,
+                    ..
+                } => vec![DiagnosticMessage {
+                    title: format!("`{}.{}` previously implemented here", iface, method),
+                    label: Some(DiagnosticLabel {
+                        text: None,
+                        span: existing.clone(),
+                    }),
+                }],
+
+                NameError::Ambiguous { ident, options } => {
+                    let mut see_also: Vec<_> = options
+                        .iter()
+                        .map(|option| DiagnosticMessage {
+                            title: format!("`{}` could refer to `{}`", ident, option.join(".")),
+                            label: Some(DiagnosticLabel {
+                                text: None,
+                                span: option.last().span().clone(),
+                            }),
+                        })
+                        .collect();
+                    see_also.sort();
+                    see_also
+                }
+
+                NameError::DefDeclMismatch { def, decl, ident } => vec![
+                    DiagnosticMessage {
+                        title: format!("Previous declaration of `{}`", ident),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: decl.clone(),
+                        }),
+                    },
+                    DiagnosticMessage {
+                        title: format!("Conflicting definition of `{}`", ident),
+                        label: Some(DiagnosticLabel {
+                            text: None,
+                            span: def.clone(),
+                        }),
+                    },
+                ],
+
+                _ => Vec::new(),
+            },
 
             TypecheckError::UndefinedSymbols { syms, .. } => syms
                 .iter()
@@ -421,7 +506,7 @@ fn write_args<'a>(f: &mut fmt::Formatter, args: impl IntoIterator<Item = &'a Typ
 impl fmt::Display for TypecheckError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypecheckError::ScopeError(err) => write!(f, "{}", err),
+            TypecheckError::NameError { err, .. } => write!(f, "{}", err),
             TypecheckError::NotCallable(expr) => {
                 write!(f, "expression `{}` of type `{}` is not a callable function", expr, expr.annotation().ty())
             }
@@ -564,10 +649,6 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::UnsizedMember { decl, member_ty, .. } => {
                 write!(f, "`{}` cannot have member of type `{}` because its size is unknown in this context", decl, member_ty)
-            }
-
-            TypecheckError::GenericError(err) => {
-                write!(f, "{}", err)
             }
 
             TypecheckError::InvalidMethodInterface { ty, .. } => {

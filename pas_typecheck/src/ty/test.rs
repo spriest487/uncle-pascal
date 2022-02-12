@@ -38,7 +38,7 @@ fn specialize_class_has_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeList::new(vec![INT32.clone()], span.clone());
-    let result = specialize_class_def(&tys[0], &type_args, &span).unwrap();
+    let result = specialize_class_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.unwrap();
@@ -63,7 +63,7 @@ fn specialize_class_has_multi_correct_member_types() {
     let span = Span::zero("test");
 
     let type_args = TypeList::new(vec![INT32.clone(), BYTE.clone()], span.clone());
-    let result = specialize_class_def(&tys[0], &type_args, &span).unwrap();
+    let result = specialize_class_def(&tys[0], &type_args).unwrap();
 
     assert!(result.name.type_args.is_some());
     let actual_type_args = result.name.type_args.unwrap();
@@ -95,7 +95,7 @@ fn specialize_class_with_deep_params() {
 
     let type_args = TypeList::new(vec![INT32], span.clone());
 
-    let result = specialize_class_def(&tys[1], &type_args, &span).unwrap();
+    let result = specialize_class_def(&tys[1], &type_args).unwrap();
 
     let a_name = result.members[0].ty.as_record().unwrap();
     assert_eq!("test.A[Integer, Integer]", a_name.to_string());
@@ -164,7 +164,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .next()
         .unwrap();
 
-    let a_int = specialize_class_def(&a_class, &int_params, &span)
+    let a_int = specialize_class_def(&a_class, &int_params)
         .map(|class| Type::Record(Box::new(class.name)))
         .unwrap();
 

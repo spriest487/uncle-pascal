@@ -137,8 +137,11 @@ pub fn typecheck_expr(
             }
 
             _ => {
-                let not_found_ident = ident.clone();
-                Err(NameError::NotFound(not_found_ident).into())
+                let not_found_ident = ident.clone().into();
+                Err(TypecheckError::NameError {
+                    err: NameError::NotFound { ident: not_found_ident },
+                    span: expr_node.span().clone(),
+                })
             },
         },
 

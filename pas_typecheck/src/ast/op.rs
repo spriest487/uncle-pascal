@@ -261,7 +261,8 @@ fn desugar_string_concat(
         _ => {
             let system_path = IdentPath::from(Ident::new("System", span.clone()));
             let concat_path = system_path.child(Ident::new("StringConcat", span.clone()));
-            let (concat_path, concat_sig) = ctx.find_function(&concat_path)?;
+            let (concat_path, concat_sig) = ctx.find_function(&concat_path)
+                .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
             let concat_annotation = FunctionAnnotation {
                 ns: concat_path.parent().unwrap(),
@@ -302,7 +303,7 @@ fn typecheck_member_of(
 
             let annotation = match lhs.annotation() {
                 TypeAnnotation::Type(Type::Variant(variant_name), ..) => {
-                    typecheck_variant_ctor(variant_name, &member_ident, ctx)?
+                    typecheck_variant_ctor(variant_name, &member_ident, &span, ctx)?
                 }
 
                 TypeAnnotation::TypedValue(base_val) => {
@@ -320,23 +321,23 @@ fn typecheck_member_of(
                     match ctx.find_path(&full_path) {
                         Some(member) => ns_member_ref_to_annotation(member, span, ctx),
                         None => {
-                            return Err(NameError::MemberNotFound {
+                            let err = NameError::MemberNotFound {
                                 member: member_ident,
-                                span,
                                 base: NameContainer::for_annotated(lhs.annotation()),
-                            }
-                            .into());
+                            };
+
+                            return Err(TypecheckError::from_name_err(err, span));
                         }
                     }
                 }
 
                 _ => {
-                    return Err(NameError::MemberNotFound {
+                    let err = NameError::MemberNotFound {
                         member: member_ident,
-                        span,
                         base: NameContainer::for_annotated(lhs.annotation()),
-                    }
-                    .into());
+                    };
+
+                    return Err(TypecheckError::from_name_err(err, span));
                 }
             };
 
@@ -400,7 +401,10 @@ fn typecheck_type_member(
     span: Span,
     ctx: &mut Context
 ) -> TypecheckResult<TypeAnnotation> {
-    let annotation = match ctx.find_type_member(ty, member_ident)? {
+    let type_member = ctx.find_type_member(ty, member_ident)
+        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+
+    let annotation = match type_member {
         TypeMember::Method { decl } => {
             InterfaceMethodAnnotation::new(&decl, ty.clone(), span).into()
         }
@@ -417,7 +421,8 @@ pub fn typecheck_member_value(
     span: Span,
     ctx: &mut Context
 ) -> TypecheckResult<TypeAnnotation> {
-    let member = ctx.find_instance_member(&lhs.annotation().ty(), &member_ident)?;
+    let member = ctx.find_instance_member(&lhs.annotation().ty(), &member_ident)
+        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let annotation = match member {
         InstanceMember::Method { iface_ty, method } => {
@@ -429,7 +434,9 @@ pub fn typecheck_member_value(
             // if it's being called through an interface, it's a virtual call
             let method = if base_ty.as_iface().is_ok() {
                 // calling the virtual method
-                let iface_decl = ctx.find_iface_def(iface_id)?;
+                let iface_decl = ctx.find_iface_def(iface_id)
+                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+
                 let method_decl = iface_decl.get_method(&method)
                     .expect("method must exist, it was found by find_instance_member");
 
@@ -452,7 +459,8 @@ pub fn typecheck_member_value(
                                 // which implementation to call during codegen
                                 let iface_ident = is_iface.as_iface()
                                     .expect("type constraint must be an interface");
-                                let method_iface = ctx.find_iface_def(iface_ident)?;
+                                let method_iface = ctx.find_iface_def(iface_ident)
+                                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
                                 method_iface.get_method(&method).cloned()
                             }
@@ -474,11 +482,10 @@ pub fn typecheck_member_value(
                         span.clone()
                     ),
 
-                    None => return Err(NameError::MemberNotFound {
-                        span,
+                    None => return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
                         base: NameContainer::Type(base_ty.clone()),
                         member: method,
-                    }.into())
+                    }, span))
                 }
             };
 
@@ -526,6 +533,7 @@ pub fn typecheck_member_value(
 pub fn typecheck_variant_ctor(
     variant_name: &Symbol,
     member_ident: &Ident,
+    span: &Span,
     ctx: &mut Context
 ) -> TypecheckResult<TypeAnnotation> {
     assert!(
@@ -536,7 +544,8 @@ pub fn typecheck_variant_ctor(
     // we check the named case exists in the unspecialized definition here, but
     // we don't want to try instantiating the actual variant type because we have
     // no information about its type args.
-    let variant_def = ctx.find_variant_def(&variant_name.qualified)?;
+    let variant_def = ctx.find_variant_def(&variant_name.qualified)
+        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     let case_exists = variant_def
         .cases
@@ -544,11 +553,10 @@ pub fn typecheck_variant_ctor(
         .any(|case| case.ident == *member_ident);
 
     if !case_exists {
-        return Err(NameError::MemberNotFound {
-            span: member_ident.span().clone(),
+        return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
             base: NameContainer::Type(Type::Variant(Box::new(variant_name.clone()))),
             member: member_ident.clone(),
-        }.into());
+        }, span.clone()));
     }
 
     let ctor_annotation = VariantCtorAnnotation {

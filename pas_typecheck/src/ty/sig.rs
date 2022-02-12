@@ -1,8 +1,9 @@
-use crate::ast::{FunctionDecl, FunctionParam};
-use crate::{Context, GenericError, GenericResult, GenericTarget, Type, TypeList, TypeParamList};
-use pas_common::span::{Span, Spanned};
-use pas_syn::ast;
-use pas_syn::ast::FunctionParamMod;
+use crate::{
+    ast::{FunctionDecl, FunctionParam},
+    Context, GenericError, GenericResult, GenericTarget, Type, TypeList, TypeParamList,
+};
+use pas_common::span::Spanned;
+use pas_syn::ast::{self, FunctionParamMod};
 use std::fmt;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
@@ -81,7 +82,7 @@ impl FunctionSig {
                     .collect();
 
                 Some(ast::TypeList::new(items, type_params.span().clone()))
-            }
+            },
             None => None,
         };
 
@@ -100,12 +101,7 @@ impl FunctionSig {
     /// test if a list of type args that could be used to specialize this function are applicable
     /// e.g. this sig has type params, the number of type params is the same as the number
     /// of args provided, and that each arg passes the constraints for its corresponding param
-    pub fn validate_type_args(
-        &self,
-        type_args: &TypeList,
-        span: &Span,
-        ctx: &Context,
-    ) -> GenericResult<()> {
+    pub fn validate_type_args(&self, type_args: &TypeList, ctx: &Context) -> GenericResult<()> {
         let expected_type_args_len = match self.type_params.as_ref() {
             Some(type_params) => type_params.len(),
             None => 0,
@@ -116,7 +112,6 @@ impl FunctionSig {
                 expected: expected_type_args_len,
                 actual: type_args.len(),
                 target: GenericTarget::FunctionSig(self.clone()),
-                span: span.clone(),
             });
         }
 
@@ -129,7 +124,7 @@ impl FunctionSig {
             match &type_params.items[arg_pos].is_ty {
                 Type::Any => {
                     // nothing to validate
-                }
+                },
 
                 Type::Interface(is_iface_ident) => {
                     let actual_ty = &type_args.items[arg_pos];
@@ -137,10 +132,9 @@ impl FunctionSig {
                         return Err(GenericError::ArgConstraintNotSatisfied {
                             is_not_ty: Type::Interface(is_iface_ident.clone()),
                             arg_ty: actual_ty.clone(),
-                            span: span.clone(),
                         });
                     }
-                }
+                },
 
                 bad => panic!(
                     "unsupported type in signature type param constraint: {}",
@@ -152,13 +146,8 @@ impl FunctionSig {
         Ok(())
     }
 
-    pub fn specialize_generic(
-        &self,
-        type_args: &TypeList,
-        span: &Span,
-        ctx: &Context,
-    ) -> GenericResult<Self> {
-        self.validate_type_args(type_args, span, ctx)?;
+    pub fn specialize_generic(&self, type_args: &TypeList, ctx: &Context) -> GenericResult<Self> {
+        self.validate_type_args(type_args, ctx)?;
 
         let params = self
             .params

@@ -9,6 +9,7 @@ const SENTINEL: usize = 12345678;
 
 #[derive(Debug)]
 struct Block {
+    #[allow(unused)] // is this actually needed??
     decls: Vec<LocalID>,
 
     initial_stack_offset: usize,

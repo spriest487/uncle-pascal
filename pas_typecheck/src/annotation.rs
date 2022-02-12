@@ -356,7 +356,6 @@ impl Symbol {
         } else {
             Err(GenericError::IllegalUnspecialized {
                 ty: Type::Class(Box::new(self.clone())),
-                span: self.span().clone(),
             })
         }
     }

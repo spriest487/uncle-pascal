@@ -11,7 +11,13 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let (_, raw_ty) = ctx.find_type(&ctor.ident)?;
+    let (_, raw_ty) = ctx.find_type(&ctor.ident)
+        .map_err(|err| {
+            TypecheckError::NameError {
+                err,
+                span: ctor.ident.span().clone(),
+            }
+        })?;
 
     let ty_name = raw_ty
         .full_path()
@@ -24,20 +30,29 @@ pub fn typecheck_object_ctor(
     // the generic type the constructor expression refers to, use that instead
     let ty = raw_ty
         .infer_specialized_from_hint(expect_ty)
-        .ok_or_else(|| GenericError::CannotInferArgs {
-            target: GenericTarget::Name(ty_name.clone()),
-            span: span.clone(),
-            hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+        .ok_or_else(|| {
+            let err = GenericError::CannotInferArgs {
+                target: GenericTarget::Name(ty_name.clone()),
+                hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
+            };
+
+            TypecheckError::NameError {
+                span: span.clone(),
+                err: NameError::GenericError(err),
+            }
         })?
         .clone();
 
     if ty.is_unspecialized_generic() {
-        return Err(GenericError::CannotInferArgs {
+        let err = GenericError::CannotInferArgs {
             target: GenericTarget::Name(ctor.ident.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
-            span,
-        }
-        .into());
+        };
+
+        return Err(TypecheckError::NameError {
+            span: span.clone(),
+            err: NameError::GenericError(err),
+        });
     }
 
     if !ctx.is_accessible(&ty_name) {
@@ -51,7 +66,9 @@ pub fn typecheck_object_ctor(
         return Err(TypecheckError::PrivateConstructor { ty, span });
     }
 
-    let ty_members: Vec<_> = ty.members(ctx)?;
+    let ty_members: Vec<_> = ty.members(ctx).map_err(|err| {
+        TypecheckError::NameError { err, span: span.clone() }
+    })?;
     let mut members: Vec<ObjectCtorMember> = Vec::new();
 
     for arg in &ctor.args.members {
@@ -66,12 +83,15 @@ pub fn typecheck_object_ctor(
         let member = match ty_members.iter().find(|m| m.ident == arg.ident) {
             Some(member) => member,
             None => {
-                return Err(NameError::MemberNotFound {
+                let err = NameError::MemberNotFound {
                     base: NameContainer::Type(ty),
                     member: arg.ident.clone(),
-                    span: arg.span.clone(),
-                }
-                .into())
+                };
+
+                return Err(TypecheckError::NameError {
+                    span: arg.span().clone(),
+                    err,
+                });
             }
         };
 
@@ -87,7 +107,13 @@ pub fn typecheck_object_ctor(
         });
     }
 
-    if members.len() != ty.members_len(ctx)? {
+    let ty_members_len = ty.members_len(ctx)
+        .map_err(|err| TypecheckError::NameError {
+            span: span.clone(),
+            err,
+        })?;
+
+    if members.len() != ty_members_len {
         let actual = members
             .into_iter()
             .map(|m| m.value.annotation().ty().into_owned())

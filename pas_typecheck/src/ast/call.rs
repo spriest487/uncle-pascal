@@ -4,9 +4,15 @@ use pas_common::span::{Span, Spanned as _};
 use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
-use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
-use crate::{context::InstanceMethod, typecheck_type, Context, FunctionParamSig, FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation, TypeArgsResult, TypecheckError, TypecheckResult, ValueKind, NameContainer, FunctionAnnotation, TypedValueAnnotation, UFCSCallAnnotation};
 use crate::ast::cast::check_implicit_conversion;
+use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
+use crate::{
+    context::InstanceMethod, typecheck_type, Context, FunctionAnnotation, FunctionParamSig,
+    FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation,
+    NameContainer, NameError, OverloadAnnotation, Specializable, Type, TypeAnnotation,
+    TypeArgsResult, TypecheckError, TypecheckResult, TypedValueAnnotation, UFCSCallAnnotation,
+    ValueKind,
+};
 
 #[cfg(test)]
 mod test;
@@ -80,7 +86,7 @@ fn build_args_for_params(
     let type_mismatch_as_bad_args = |err| match err {
         TypecheckError::TypeMismatch { .. } => {
             invalid_args(checked_args.clone(), expected_args, span.clone())
-        }
+        },
         err => err,
     };
 
@@ -134,19 +140,18 @@ pub fn typecheck_call(
 
             _ => {
                 return Err(TypecheckError::NotCallable(Box::new(target)));
-            }
+            },
         },
 
-        TypeAnnotation::Function(func) => {
-            typecheck_func_call(&func_call, &func.sig, ctx)
-                .map(Box::new)
-                .map(Invocation::Call)?
-        },
+        TypeAnnotation::Function(func) => typecheck_func_call(&func_call, &func.sig, ctx)
+            .map(Box::new)
+            .map(Invocation::Call)?,
 
         TypeAnnotation::UFCSCall(ufcs_call) => {
             let arg_brackets = (&func_call.args_brackets.0, &func_call.args_brackets.1);
 
-            let typecheck_call = typecheck_ufcs_call(&ufcs_call,
+            let typecheck_call = typecheck_ufcs_call(
+                &ufcs_call,
                 &func_call.args,
                 func_call.annotation.span(),
                 arg_brackets,
@@ -154,19 +159,19 @@ pub fn typecheck_call(
             );
 
             typecheck_call.map(Box::new).map(Invocation::Call)?
-        }
+        },
 
         TypeAnnotation::Overload(overloaded) => {
             typecheck_func_overload(ctx, func_call, &target, &overloaded)
                 .map(Box::new)
                 .map(Invocation::Call)?
-        }
+        },
 
         TypeAnnotation::InterfaceMethod(iface_method) => {
             typecheck_iface_method_call(iface_method, func_call, ctx)
                 .map(Box::new)
                 .map(Invocation::Call)?
-        }
+        },
 
         TypeAnnotation::Type(ty, ..) if func_call.args.is_empty() && ty.full_path().is_some() => {
             let ty: &Type = ty;
@@ -186,7 +191,7 @@ pub fn typecheck_call(
             typecheck_object_ctor(&ctor, span, expect_ty, ctx)
                 .map(Box::new)
                 .map(Invocation::Ctor)?
-        }
+        },
 
         TypeAnnotation::VariantCtor(variant, ..) => typecheck_variant_ctor_call(
             &variant.variant_name,
@@ -246,9 +251,9 @@ fn typecheck_func_overload(
                                 method: ident.clone(),
                                 iface: iface_ty.clone(),
                             })
-                        }
+                        },
                     }
-                }
+                },
             };
 
             let sig = Rc::new(sig.with_self(&self_type));
@@ -258,7 +263,8 @@ fn typecheck_func_overload(
                 ty: sig.return_ty.clone(),
                 decl: Some(decl.span().clone()),
                 value_kind: ValueKind::Temporary,
-            }.into();
+            }
+            .into();
 
             let method_call = MethodCall {
                 annotation: return_annotation,
@@ -272,7 +278,7 @@ fn typecheck_func_overload(
             };
 
             ast::Call::Method(method_call)
-        }
+        },
 
         OverloadCandidate::Function { decl_name, sig } => {
             let return_annotation = TypedValueAnnotation {
@@ -280,7 +286,8 @@ fn typecheck_func_overload(
                 ty: sig.return_ty.clone(),
                 decl: Some(decl_name.span().clone()),
                 value_kind: ValueKind::Temporary,
-            }.into();
+            }
+            .into();
 
             let func_call = FunctionCall {
                 annotation: return_annotation,
@@ -291,7 +298,7 @@ fn typecheck_func_overload(
             };
 
             ast::Call::Function(func_call)
-        }
+        },
     };
 
     Ok(call)
@@ -304,13 +311,14 @@ fn typecheck_iface_method_call(
 ) -> TypecheckResult<Call> {
     // not yet supported
     if let Some(call_type_args) = &func_call.type_args {
-        return Err(GenericError::ArgsLenMismatch {
-            expected: 0,
-            actual: call_type_args.len(),
-            span: call_type_args.span().clone(),
-            target: GenericTarget::FunctionSig((*iface_method.method_sig).clone()),
-        }
-        .into());
+        return Err(TypecheckError::from_generic_err(
+            GenericError::ArgsLenMismatch {
+                expected: 0,
+                actual: call_type_args.len(),
+                target: GenericTarget::FunctionSig((*iface_method.method_sig).clone()),
+            },
+            call_type_args.span().clone(),
+        ));
     }
 
     // branch the context to check the self-arg, because we're about to re-check it in a second
@@ -358,7 +366,8 @@ fn typecheck_iface_method_call(
             span: func_call.span().clone(),
             value_kind: ValueKind::Temporary,
             decl: None,
-        }.into(),
+        }
+        .into(),
         args_brackets: func_call.args_brackets.clone(),
         func_type: Type::Function(Rc::new(sig)),
         self_type,
@@ -396,7 +405,8 @@ fn typecheck_ufcs_call(
         name: ufcs_call.function_name.last().clone(),
         span: span.clone(),
         type_args: specialized_call_args.type_args.clone(),
-    }.into();
+    }
+    .into();
 
     // todo: this should construct a fully qualified path expr instead
     let target = ast::Expression::Ident(ufcs_call.function_name.last().clone(), func_annotation);
@@ -406,7 +416,8 @@ fn typecheck_ufcs_call(
         span: span.clone(),
         decl: None,
         value_kind: ValueKind::Temporary,
-    }.into();
+    }
+    .into();
 
     Ok(ast::Call::Function(FunctionCall {
         args: specialized_call_args.actual_args,
@@ -441,7 +452,7 @@ where
                 Some(already_inferred_ty) => {
                     let actual_arg = produce_expr(already_inferred_ty, ctx)?;
                     Ok(actual_arg)
-                }
+                },
 
                 None => {
                     let actual_arg = produce_expr(&Type::Nothing, ctx)?;
@@ -449,9 +460,9 @@ where
 
                     inferred_ty_args[param_ty.pos] = Some(actual_ty.into_owned());
                     Ok(actual_arg)
-                }
+                },
             }
-        }
+        },
 
         // param is not generic: param type drives expr expected type
         param_ty => {
@@ -461,7 +472,7 @@ where
             infer_from_structural_ty_args(param_ty, &actual_ty, inferred_ty_args);
 
             Ok(actual_arg)
-        }
+        },
     }
 }
 
@@ -476,12 +487,15 @@ fn infer_from_structural_ty_args(
                 return;
             }
 
-            (vec![param_array_ty.element_ty.clone()], vec![actual_array_ty.element_ty.clone()])
-        }
+            (
+                vec![param_array_ty.element_ty.clone()],
+                vec![actual_array_ty.element_ty.clone()],
+            )
+        },
 
         (Type::DynArray { element: param_el }, Type::DynArray { element: actual_el }) => {
             (vec![*param_el.clone()], vec![*actual_el.clone()])
-        }
+        },
 
         _ => {
             if !param_ty.same_decl_type(actual_ty) {
@@ -497,7 +511,7 @@ fn infer_from_structural_ty_args(
                 _ => return,
             };
             (param_ty_args, actual_ty_args)
-        }
+        },
     };
 
     let all_ty_args = param_ty_args.iter().zip(actual_ty_args.iter());
@@ -508,7 +522,7 @@ fn infer_from_structural_ty_args(
                 assert_eq!(None, *inferred);
 
                 *inferred = Some(actual_ty_arg.clone());
-            }
+            },
 
             _ => infer_from_structural_ty_args(param_ty_arg, actual_ty_arg, inferred_ty_args),
         }
@@ -525,13 +539,13 @@ fn specialize_call_args(
 ) -> TypecheckResult<SpecializedCallArgs> {
     if decl_sig.type_params.is_none() {
         if let Some(explicit_ty_args) = explicit_ty_args {
-            return Err(TypecheckError::GenericError(
+            return Err(TypecheckError::from_generic_err(
                 GenericError::ArgsLenMismatch {
                     expected: 0,
                     actual: explicit_ty_args.len(),
-                    span: span.clone(),
                     target: GenericTarget::FunctionSig(decl_sig.clone()),
                 },
+                span.clone(),
             ));
         }
 
@@ -549,7 +563,8 @@ fn specialize_call_args(
         // we have explicit args, don't try to infer types
         let sig = decl_sig
             .clone()
-            .specialize_generic(&explicit_ty_args, span, ctx)?;
+            .specialize_generic(&explicit_ty_args, ctx)
+            .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
 
         let actual_args = build_args_for_params(&sig.params, args, self_arg, span, ctx)?;
 
@@ -564,12 +579,13 @@ fn specialize_call_args(
         if args.len() + self_arg_len != decl_sig.params.len() {
             // this is an inferral error because we don't have enough information to report
             // it as an arg type mismatch
-            return Err(GenericError::CannotInferArgs {
-                target: GenericTarget::FunctionSig(decl_sig.clone()),
-                hint: GenericTypeHint::Unknown,
-                span: span.clone(),
-            }
-            .into());
+            return Err(TypecheckError::from_generic_err(
+                GenericError::CannotInferArgs {
+                    target: GenericTarget::FunctionSig(decl_sig.clone()),
+                    hint: GenericTypeHint::Unknown,
+                },
+                span.clone(),
+            ));
         }
 
         // try to infer type from args, left to right
@@ -600,10 +616,10 @@ fn specialize_call_args(
             actual_args.push(actual_arg);
         }
 
-        let inferred_ty_args =
-            unwrap_inferred_args(decl_sig, inferred_ty_args, &actual_args, span)?;
+        let inferred_ty_args = unwrap_inferred_args(decl_sig, inferred_ty_args, &actual_args, span)?;
 
-        let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, span, ctx)?;
+        let actual_sig = decl_sig.specialize_generic(&inferred_ty_args, ctx)
+            .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?;
 
         //                println!("{} -> {}, inferred: {:#?}", decl_sig, actual_sig, inferred_ty_args);
 
@@ -629,7 +645,7 @@ fn unwrap_inferred_args(
         match arg {
             Some(arg) => {
                 items.push(arg);
-            }
+            },
 
             None => {
                 let arg_tys = actual_args
@@ -637,21 +653,25 @@ fn unwrap_inferred_args(
                     .map(|a| a.annotation().ty().into_owned())
                     .collect();
 
-                return Err(TypecheckError::GenericError(
+                return Err(TypecheckError::from_generic_err(
                     GenericError::CannotInferArgs {
                         target: GenericTarget::FunctionSig(decl_sig.clone()),
                         hint: GenericTypeHint::ArgTypes(arg_tys),
-                        span: span.clone(),
                     },
+                    span.clone(),
                 ));
-            }
+            },
         }
     }
 
     Ok(TypeList::new(items, span.clone()))
 }
 
-fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Context) -> TypecheckResult<()> {
+fn typecheck_args(
+    args: &[Expression],
+    params: &[FunctionParamSig],
+    ctx: &mut Context,
+) -> TypecheckResult<()> {
     let args_and_params = args.iter().zip(params.iter());
     for (arg, param) in args_and_params {
         check_implicit_conversion(&param.ty, &arg.annotation().ty(), arg.span(), ctx)?;
@@ -668,13 +688,13 @@ fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Co
                 // in a separate pass
                 Some(ValueKind::Mutable)
                 | Some(ValueKind::Ref)
-                | Some(ValueKind::Uninitialized) => {}
+                | Some(ValueKind::Uninitialized) => {},
                 _ => {
                     return Err(TypecheckError::NotMutable {
                         expr: Box::new(arg.clone()),
                         decl: None,
                     });
-                }
+                },
             }
 
             let ref_name = match &arg {
@@ -683,7 +703,7 @@ fn typecheck_args(args: &[Expression], params: &[FunctionParamSig], ctx: &mut Co
                     return Err(TypecheckError::InvalidRefExpression {
                         expr: Box::new(arg.clone()),
                     });
-                }
+                },
             };
 
             if is_out_ref {
@@ -726,7 +746,8 @@ fn typecheck_func_call(
             value_kind: ValueKind::Temporary,
             span,
             decl: None,
-        }.into(),
+        }
+        .into(),
     };
 
     Ok(ast::Call::Function(FunctionCall {
@@ -746,7 +767,8 @@ fn typecheck_variant_ctor_call(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
-    let unspecialized_def = ctx.find_variant_def(variant)?;
+    let unspecialized_def = ctx.find_variant_def(variant)
+        .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
     // infer the specialized generic type if the written one is generic and the hint is a specialized
     // version of that same generic variant
@@ -755,18 +777,16 @@ fn typecheck_variant_ctor_call(
             if expect_variant.is_specialization_of(&unspecialized_def.name) =>
         {
             &**expect_variant
-        }
+        },
 
         _ => &unspecialized_def.name,
     };
 
     if variant_sym.is_unspecialized_generic() {
-        return Err(GenericError::CannotInferArgs {
+        return Err(TypecheckError::from_generic_err(GenericError::CannotInferArgs {
             target: GenericTarget::Name(variant_sym.qualified.clone()),
             hint: GenericTypeHint::ExpectedValueType(expect_ty.clone()),
-            span,
-        }
-        .into());
+        }, span));
     }
 
     let variant_def = ctx.instantiate_variant(&variant_sym)?;
@@ -775,13 +795,11 @@ fn typecheck_variant_ctor_call(
         Some(index) => index,
 
         None => {
-            return Err(NameError::MemberNotFound {
-                span: span.clone(),
+            return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
                 member: case.clone(),
                 base: NameContainer::Type(Type::Variant(Box::new(variant_sym.clone()))),
-            }
-            .into())
-        }
+            }, span));
+        },
     };
 
     let arg = match &variant_def.cases[case_index].data_ty {
@@ -803,7 +821,7 @@ fn typecheck_variant_ctor_call(
             }
 
             None
-        }
+        },
 
         Some(data_ty) => {
             let args: Vec<Expression> = args
@@ -827,7 +845,7 @@ fn typecheck_variant_ctor_call(
             args[0].annotation().expect_value(data_ty)?;
 
             Some(args.into_iter().next().unwrap())
-        }
+        },
     };
 
     let case = variant_def.cases[case_index].ident.clone();
@@ -837,7 +855,8 @@ fn typecheck_variant_ctor_call(
         span,
         ty: Type::Variant(variant_sym.clone().into()),
         value_kind: ValueKind::Temporary,
-    }.into();
+    }
+    .into();
 
     Ok(ast::Call::VariantCtor(ast::VariantCtorCall {
         variant: variant_def.name.clone(),
@@ -911,12 +930,12 @@ impl fmt::Display for OverloadCandidate {
         match self {
             OverloadCandidate::Function { decl_name, .. } => {
                 write!(f, "function {}", decl_name)
-            }
+            },
             OverloadCandidate::Method {
                 iface_ty, ident, ..
             } => {
                 write!(f, "method {}.{}", iface_ty, ident)
-            }
+            },
         }
     }
 }
@@ -939,7 +958,7 @@ pub fn resolve_overload(
                 .iter()
                 .map(|c| c.sig().with_self(&self_ty))
                 .collect()
-        }
+        },
 
         None => candidates.iter().map(|c| (**c.sig()).clone()).collect(),
     };
@@ -1016,7 +1035,8 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                match check_implicit_conversion(&self_param_ty, &self_arg_ty, self_arg.span(), ctx) {
+                match check_implicit_conversion(&self_param_ty, &self_arg_ty, self_arg.span(), ctx)
+                {
                     Ok(..) => true,
                     Err(..) => false,
                 }

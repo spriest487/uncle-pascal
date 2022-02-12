@@ -72,13 +72,12 @@ impl TypePattern {
                 // check case with this ident exists
                 if variant_def.case_position(case_ident).is_none() {
                     let err_span = path.first().span.to(&case_ident.span);
+                    let variant_ty = Type::Variant(Box::new(variant_def.name.clone()));
 
-                    return Err(NameError::MemberNotFound {
-                        base: NameContainer::Type(Type::Variant(Box::new(variant_def.name.clone()))),
+                    return Err(TypecheckError::from_name_err(NameError::MemberNotFound {
+                        base: NameContainer::Type(variant_ty),
                         member: case_ident.clone(),
-                        span: err_span,
-                    }
-                        .into());
+                    }, err_span));
                 }
 
                 Ok(Some((
@@ -101,7 +100,12 @@ impl TypePattern {
         ctx: &mut Context,
     ) -> TypecheckResult<Type> {
         let raw_ty = match name {
-            ast::TypeName::Ident(IdentTypeName { ident, .. }) => ctx.find_type(ident)?.1.clone(),
+            ast::TypeName::Ident(IdentTypeName { ident, .. }) => {
+                let (_ident_path, ty) = ctx.find_type(ident)
+                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+
+                ty.clone()
+            },
             _ => typecheck_type(name, ctx)?,
         };
 
@@ -126,7 +130,9 @@ impl TypePattern {
     ) -> TypecheckResult<Symbol> {
         match expect_ty {
             expect_var @ Type::Variant(..) => {
-                let variant_def = ctx.find_variant_def(variant)?;
+                let variant_def = ctx.find_variant_def(variant)
+                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+
                 let var_ty = Type::Variant(Box::new(variant_def.name.clone()));
 
                 var_ty.infer_specialized_from_hint(expect_var)
@@ -144,7 +150,9 @@ impl TypePattern {
             }
 
             _ => {
-                let variant_def = ctx.find_variant_def(variant)?;
+                let variant_def = ctx.find_variant_def(variant)
+                    .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
+
                 // expect_ty is probably Nothing and we have to assume the type we find from
                 // just the typename is right (if not, we'll get a type mismatch later)
                 // todo: make sure we get a type mismatch later

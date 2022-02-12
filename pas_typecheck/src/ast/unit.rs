@@ -59,12 +59,12 @@ fn typecheck_unit_uses_decl(unit_path: &IdentPath, ctx: &mut Context) -> Typeche
                 actual: unexpected,
                 expected: ExpectedKind::Namespace,
             };
-            return Err(TypecheckError::from(err));
+            return Err(TypecheckError::from_name_err(err, unit_path.path_span()));
         }
 
         // path does not exist
         None => {
-            return Err(TypecheckError::from(NameError::NotFound(unit_path.last().clone())));
+            return Err(TypecheckError::from_name_err(NameError::NotFound { ident: unit_path.clone() }, unit_path.path_span()));
         }
     }
 
@@ -87,7 +87,7 @@ fn typecheck_unit_func_def(
 
         ctx.define_method_impl(iface_decl, impl_iface.for_ty.clone(), func_def.clone())?;
     } else {
-        if let Err(NameError::NotFound(..)) = ctx.find_function(&func_def.decl.ident) {
+        if let Err(NameError::NotFound { .. }) = ctx.find_function(&func_def.decl.ident) {
             let func_decl = &func_def.decl;
             ctx.declare_function(func_def.decl.ident.last().clone(), func_decl, visibility)?;
         }

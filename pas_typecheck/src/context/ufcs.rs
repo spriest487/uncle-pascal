@@ -3,7 +3,7 @@ use std::rc::Rc;
 use pas_syn::{Ident, IdentPath};
 
 use crate::ast::FunctionDecl;
-use crate::{Context, Decl, FunctionSig, NamingResult, Type};
+use crate::{Context, Decl, FunctionSig, NameResult, Type};
 
 #[derive(Clone, Debug)]
 pub enum InstanceMethod {
@@ -31,7 +31,7 @@ impl InstanceMethod {
 /// OR any free function taking `ty` as its first parameter (UFCS syntax)
 /// OR any free function taking a generic type, or a parameterized type into which `ty` can
 ///    be substituted, as its first parameter (generic UFCS)
-pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
+pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
     match ty {
         Type::Interface(iface) => {
             let iface_def = ctx.find_iface_def(iface)?;
@@ -48,7 +48,7 @@ pub fn instance_methods_of(ty: &Type, ctx: &Context) -> NamingResult<Vec<Instanc
         }
 
         Type::GenericParam(generic_param_ty) => match &generic_param_ty.is_iface {
-            Some(is_iface) => instance_methods_of(is_iface, ctx),
+            Some(is_iface) => find_instance_methods_of(is_iface, ctx),
             None => Ok(Vec::new()),
         },
 
@@ -97,7 +97,7 @@ fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     methods
 }
 
-fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NamingResult<Vec<InstanceMethod>> {
+fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceMethod>> {
     let mut methods = Vec::new();
 
     for (iface_ident, iface_impls) in &ctx.iface_impls {
