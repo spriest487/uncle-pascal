@@ -241,8 +241,6 @@ impl Context {
 
         for unit_scope in unit_scopes.into_iter().rev() {
             self.pop_scope(unit_scope);
-
-            eprintln!("unit_scope: popped scope {}", unit_scope.0);
         }
 
         result
