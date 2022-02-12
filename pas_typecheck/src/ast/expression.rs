@@ -118,7 +118,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Ident(ident, _) => match ctx.find(&ident) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value: Decl::Const { ty, val, span, .. },
                 ..
             }) => Ok(ast::Expression::Literal(
@@ -244,12 +244,12 @@ fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -
 }
 
 pub fn ns_member_ref_to_annotation(
-    member: MemberRef,
+    member: ScopeMemberRef,
     span: Span,
     ctx: &Context,
 ) -> TypeAnnotation {
     match member {
-        MemberRef::Value {
+        ScopeMemberRef::Value {
             value: Decl::Alias(aliased),
             ..
         } => {
@@ -260,7 +260,7 @@ pub fn ns_member_ref_to_annotation(
             ns_member_ref_to_annotation(alias_ref, span, ctx)
         }
 
-        MemberRef::Value {
+        ScopeMemberRef::Value {
             value: Decl::BoundValue(binding),
             ..
         } => TypedValueAnnotation {
@@ -270,7 +270,7 @@ pub fn ns_member_ref_to_annotation(
             decl: binding.def.clone(),
         }.into(),
 
-        MemberRef::Value {
+        ScopeMemberRef::Value {
             value: Decl::Function { sig, .. },
             ref parent_path,
             key,
@@ -290,7 +290,7 @@ pub fn ns_member_ref_to_annotation(
             }.into()
         }
 
-        MemberRef::Value {
+        ScopeMemberRef::Value {
             value: Decl::Const { ty, .. },
             ..
         } => TypedValueAnnotation {
@@ -300,15 +300,15 @@ pub fn ns_member_ref_to_annotation(
             value_kind: ValueKind::Immutable,
         }.into(),
 
-        MemberRef::Value {
+        ScopeMemberRef::Value {
             value: Decl::Type { ty, .. },
             ..
         } => TypeAnnotation::Type(ty.clone(), span),
 
-        MemberRef::Value { value: Decl::Namespace(path), .. } => {
+        ScopeMemberRef::Value { value: Decl::Namespace(path), .. } => {
             TypeAnnotation::Namespace(path.clone(), span)
         }
-        MemberRef::Namespace { path } => {
+        ScopeMemberRef::Namespace { path } => {
             TypeAnnotation::Namespace(IdentPath::from_parts(path.keys().cloned()), span)
         }
     }

@@ -1,50 +1,50 @@
 use pas_syn::ast::Visibility;
 use pas_syn::{Ident, IdentPath};
-use crate::{Decl, Member, MemberRef, NameError, NameKind, NamingResult, scope::*};
+use crate::{Decl, ScopeMember, ScopeMemberRef, NameError, ScopeMemberKind, NamingResult, scope::*};
 
 #[derive(Debug, Clone)]
-pub struct NamespaceStack {
-    namespaces: Vec<Scope>,
+pub struct ScopeStack {
+    scopes: Vec<Scope>,
 }
 
-impl NamespaceStack {
+impl ScopeStack {
     pub fn new(root: Scope) -> Self {
         Self {
-            namespaces: vec![root],
+            scopes: vec![root],
         }
     }
 
-    pub fn push(&mut self, ns: Scope) {
-        self.namespaces.push(ns)
+    pub fn push_scope(&mut self, ns: Scope) {
+        self.scopes.push(ns)
     }
 
-    pub fn pop(&mut self) {
-        if self.namespaces.len() == 1 {
-            panic!("can't pop the root namespace");
+    pub fn pop_scope(&mut self) {
+        if self.scopes.len() == 1 {
+            panic!("can't pop the root scope");
         }
 
         let popped = self
-            .namespaces
+            .scopes
             .pop()
-            .expect("pop called with no active namespaces");
+            .expect("pop called with no active scopes");
 
         if let Some(popped_key) = popped.key().cloned() {
-            let current = self.namespaces.last_mut().unwrap();
+            let current = self.scopes.last_mut().unwrap();
             if current
-                .insert_member(popped_key, Member::Namespace(popped))
+                .insert_member(popped_key, ScopeMember::Scope(popped))
                 .is_err()
             {
                 unreachable!(
-                    "should never be possible to declare something with same key as current NS"
+                    "should never be possible to declare something with same key as current scope"
                 );
             }
         }
     }
 
-    pub fn insert(
+    pub fn insert_decl(
         &mut self,
         member_key: impl Into<Ident>,
-        member: Decl,
+        decl: Decl,
     ) -> NamingResult<()> {
         let member_key = member_key.into();
         let top = self.current_mut();
@@ -54,15 +54,15 @@ impl NamespaceStack {
             return Err(NameError::AlreadyDeclared {
                 new: member_key,
                 existing: IdentPath::from_parts(top.keys()),
-                existing_kind: NameKind::Namespace,
+                existing_kind: ScopeMemberKind::Scope,
             });
         }
 
-        top.insert_member(member_key.clone(), Member::Value(member))
+        top.insert_member(member_key.clone(), ScopeMember::Decl(decl))
     }
 
     // todo: different error codes for "not defined at all" vs "defined but not in the current scope"
-    pub fn replace(
+    pub fn replace_decl(
         &mut self,
         member_key: impl Into<Ident>,
         member: Decl,
@@ -72,7 +72,7 @@ impl NamespaceStack {
 
         match top.get_member(&member_key) {
             Some(_) => {
-                top.replace_member(member_key, Member::Value(member));
+                top.replace_member(member_key, ScopeMember::Decl(member));
                 Ok(())
             }
 
@@ -81,40 +81,40 @@ impl NamespaceStack {
     }
 
     pub fn iter(&self) -> impl ExactSizeIterator<Item=&Scope> + DoubleEndedIterator<Item=&Scope> {
-        self.namespaces.iter()
+        self.scopes.iter()
     }
 
-    pub fn current_path(&self) -> PathRef {
-        PathRef {
-            namespaces: self.namespaces.iter().collect(),
+    pub fn current_path(&self) -> ScopePathRef {
+        ScopePathRef {
+            namespaces: self.scopes.iter().collect(),
         }
     }
 
     pub fn iter_mut(&mut self) -> impl ExactSizeIterator<Item=&mut Scope> + DoubleEndedIterator<Item=&mut Scope> {
-        self.namespaces.iter_mut()
+        self.scopes.iter_mut()
     }
 
-    pub fn current_path_mut(&mut self) -> PathRefMut {
-        PathRefMut {
-            namespaces: self.namespaces.iter_mut().collect(),
+    pub fn current_path_mut(&mut self) -> ScopePathRefMut {
+        ScopePathRefMut {
+            namespaces: self.scopes.iter_mut().collect(),
         }
     }
 
     pub fn current_mut(&mut self) -> &mut Scope {
-        self.namespaces.last_mut().unwrap()
+        self.scopes.last_mut().unwrap()
     }
 
-    pub fn resolve_path(&self, path: &[Ident]) -> Option<MemberRef> {
+    pub fn resolve_path(&self, path: &[Ident]) -> Option<ScopeMemberRef> {
         let mut current = self.current_path();
         for (i, part) in path.iter().enumerate() {
             match current.find(part)? {
-                MemberRef::Namespace { path } => {
+                ScopeMemberRef::Namespace { path } => {
                     // found a namespace that matches this part, look for the next part inside
                     // that namespace
                     current = path;
                 },
 
-                MemberRef::Value {
+                ScopeMemberRef::Value {
                     key,
                     value,
                     parent_path,
@@ -122,7 +122,7 @@ impl NamespaceStack {
                     let is_last = i == path.len() - 1;
 
                     return if is_last {
-                        Some(MemberRef::Value {
+                        Some(ScopeMemberRef::Value {
                             parent_path,
                             key,
                             value,
@@ -134,26 +134,26 @@ impl NamespaceStack {
             }
         }
 
-        Some(MemberRef::Namespace { path: current })
+        Some(ScopeMemberRef::Namespace { path: current })
     }
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)
         where
             Visitor: FnMut(&[Ident], &Ident, &Decl),
-            Predicate: Fn(&[Ident], &Ident, &Member) -> bool,
+            Predicate: Fn(&[Ident], &Ident, &ScopeMember) -> bool,
     {
         let mut ns_path = Vec::with_capacity(8);
 
-        for ns_index in (0..self.namespaces.len()).rev() {
+        for ns_index in (0..self.scopes.len()).rev() {
             ns_path.clear();
             ns_path.extend(
-                self.namespaces[0..=ns_index]
+                self.scopes[0..=ns_index]
                     .iter()
                     .filter_map(|ns| ns.key())
                     .cloned(),
             );
 
-            let ns = &self.namespaces[ns_index];
+            let ns = &self.scopes[ns_index];
             let ns_keys = ns.keys().into_iter().filter_map(|k| ns.get_member(&k));
 
             for (key, member) in ns_keys {
@@ -181,7 +181,7 @@ impl NamespaceStack {
         let current_uses = current_path.all_used_units();
 
         match self.resolve_path(name.as_slice()) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                      parent_path, value, ..
                  }) => match value {
                 Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
@@ -200,7 +200,7 @@ impl NamespaceStack {
                 _ => true,
             },
 
-            Some(MemberRef::Namespace { .. }) => {
+            Some(ScopeMemberRef::Namespace { .. }) => {
                 current_uses.contains(name)
             }
 
@@ -226,24 +226,24 @@ impl NamespaceStack {
 
 fn visit_member<Predicate, Visitor>(
     key: &Ident,
-    member: &Member,
+    member: &ScopeMember,
     ns_path: &mut Vec<Ident>,
     predicate: &Predicate,
     visitor: &mut Visitor,
 ) where
     Visitor: FnMut(&[Ident], &Ident, &Decl),
-    Predicate: Fn(&[Ident], &Ident, &Member) -> bool,
+    Predicate: Fn(&[Ident], &Ident, &ScopeMember) -> bool,
 {
     if !predicate(ns_path, key, member) {
         return;
     }
 
     match member {
-        Member::Value(value) => {
+        ScopeMember::Decl(value) => {
             visitor(ns_path, key, value);
         }
 
-        Member::Namespace(ns) => {
+        ScopeMember::Scope(ns) => {
             let nested_ns_keys = ns.keys();
             let nested_ns_members = nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
 
@@ -256,7 +256,7 @@ fn visit_member<Predicate, Visitor>(
     }
 }
 
-fn print_ns(ns: &Scope, indent: usize, f: &mut fmt::Formatter) -> fmt::Result {
+fn print_scope(ns: &Scope, indent: usize, f: &mut fmt::Formatter) -> fmt::Result {
     for _ in 0..indent {
         write!(f, " ")?;
     }
@@ -274,11 +274,11 @@ fn print_ns(ns: &Scope, indent: usize, f: &mut fmt::Formatter) -> fmt::Result {
     let member_indent = indent + 4;
     for (k, v) in members {
         match v {
-            Member::Namespace(child) => {
-                print_ns(child, member_indent, f)?;
+            ScopeMember::Scope(child) => {
+                print_scope(child, member_indent, f)?;
             }
 
-            Member::Value(val) => {
+            ScopeMember::Decl(val) => {
                 for _ in 0..member_indent {
                     write!(f, " ")?;
                 }
@@ -294,12 +294,12 @@ fn print_ns(ns: &Scope, indent: usize, f: &mut fmt::Formatter) -> fmt::Result {
     writeln!(f, "]")
 }
 
-impl fmt::Display for NamespaceStack {
+impl fmt::Display for ScopeStack {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "[")?;
 
-        for ns in &self.namespaces {
-            print_ns(ns, 4, f)?;
+        for ns in &self.scopes {
+            print_scope(ns, 4, f)?;
         }
 
         write!(f, "]")

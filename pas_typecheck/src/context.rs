@@ -97,7 +97,7 @@ pub struct Context {
     module_span: Span,
 
     next_scope_id: ScopeID,
-    scopes: NamespaceStack,
+    scopes: ScopeStack,
 
     /// iface ident -> self ty -> impl details
     iface_impls: HashMap<IdentPath, HashMap<Type, InterfaceImpl>>,
@@ -113,7 +113,7 @@ impl Context {
         let mut root_ctx = Self {
             module_span: module_span.clone(),
 
-            scopes: NamespaceStack::new(Scope::new(ScopeID(0), Environment::Global)),
+            scopes: ScopeStack::new(Scope::new(ScopeID(0), Environment::Global)),
             next_scope_id: ScopeID(1),
 
             defs: Default::default(),
@@ -168,7 +168,7 @@ impl Context {
 
         // self.scopes.current_mut().insert_member()
 
-        self.scopes.push(Scope::new(new_id, env));
+        self.scopes.push_scope(Scope::new(new_id, env));
         new_id
     }
 
@@ -178,7 +178,7 @@ impl Context {
         loop {
             let popped_id = self.scopes.current_path().top().id();
 
-            self.scopes.pop();
+            self.scopes.pop_scope();
 
             if popped_id == id {
                 break;
@@ -212,16 +212,16 @@ impl Context {
                     unit_scopes.push(scope);
                 }
 
-                Some(Member::Namespace(existing_ns)) => {
+                Some(ScopeMember::Scope(existing_ns)) => {
                     // this is a previously declared namespace e.g. we are trying to define unit
                     // A.B.C and A.B has been previously declared - we take B out of the scope
                     // temporarily and make it active again. it'll be returned to its parent
                     // scope as normal when we pop it
                     unit_scopes.push(existing_ns.id());
-                    self.scopes.push(existing_ns);
+                    self.scopes.push_scope(existing_ns);
                 }
 
-                Some(Member::Value(decl)) => {
+                Some(ScopeMember::Decl(decl)) => {
                     // we are trying to declare namespace A.B.C but A.B refers to something else that
                     // isn't a namespace
                     let err = NameError::Unexpected {
@@ -231,7 +231,7 @@ impl Context {
                     }.into();
 
                     // restore the previous state
-                    current_scope.insert_member(part, Member::Value(decl)).unwrap();
+                    current_scope.insert_member(part, ScopeMember::Decl(decl)).unwrap();
                     for unit_scope in unit_scopes.into_iter().rev() {
                         self.pop_scope(unit_scope);
                     }
@@ -271,22 +271,22 @@ impl Context {
 
     pub fn find_decl(&self, name: &Ident) -> Option<&Ident> {
         match self.find(name)? {
-            MemberRef::Value { key, .. } => Some(key),
+            ScopeMemberRef::Value { key, .. } => Some(key),
             _ => None,
         }
     }
 
-    pub fn find(&self, name: &Ident) -> Option<MemberRef> {
+    pub fn find(&self, name: &Ident) -> Option<ScopeMemberRef> {
         self.find_path_slice(&[name.clone()])
     }
 
-    pub fn find_path(&self, path: &IdentPath) -> Option<MemberRef> {
+    pub fn find_path(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
         self.find_path_slice(path.as_slice())
     }
 
-    fn find_path_slice(&self, path: &[Ident]) -> Option<MemberRef> {
+    fn find_path_slice(&self, path: &[Ident]) -> Option<ScopeMemberRef> {
         match self.scopes.resolve_path(path) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                      value: Decl::Alias(aliased),
                      ..
                  }) => self.find_path(aliased),
@@ -344,7 +344,7 @@ impl Context {
 
     fn declare(&mut self, name: Ident, decl: Decl) -> NamingResult<()> {
         match self.find(&name) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value: Decl::Alias(aliased),
                 key,
                 ref parent_path,
@@ -363,7 +363,7 @@ impl Context {
 
                         Err(NameError::AlreadyDeclared {
                             new: name.clone(),
-                            existing_kind: NameKind::Name,
+                            existing_kind: ScopeMemberKind::Decl,
                             existing: old_ident,
                         })
                     }
@@ -373,10 +373,10 @@ impl Context {
             Some(old_ref) => {
                 let old_kind = old_ref.kind();
                 let old_ident = match old_ref {
-                    MemberRef::Value {
+                    ScopeMemberRef::Value {
                         key, parent_path, ..
                     } => Path::new(key.clone(), parent_path.keys().cloned()),
-                    MemberRef::Namespace { path } => Path::from_parts(path.keys().cloned()),
+                    ScopeMemberRef::Namespace { path } => Path::from_parts(path.keys().cloned()),
                 };
 
                 Err(NameError::AlreadyDeclared {
@@ -387,7 +387,7 @@ impl Context {
             }
 
             None => {
-                self.scopes.insert(name.clone(), decl)
+                self.scopes.insert_decl(name.clone(), decl)
             }
         }
     }
@@ -545,7 +545,7 @@ impl Context {
         let member = self.find_path(path)?;
 
         match member {
-            MemberRef::Value {
+            ScopeMemberRef::Value {
                 value,
                 parent_path,
                 key,
@@ -560,9 +560,9 @@ impl Context {
 
     pub fn namespace_names(&self, ns_path: &IdentPath) -> NamingResult<Vec<Ident>> {
         match self.find_path(ns_path) {
-            Some(MemberRef::Namespace { path }) => Ok(path.top().keys()),
+            Some(ScopeMemberRef::Namespace { path }) => Ok(path.top().keys()),
 
-            Some(MemberRef::Value { value: decl, .. }) => {
+            Some(ScopeMemberRef::Value { value: decl, .. }) => {
                 let unexpected = Named::Decl(decl.clone());
                 Err(NameError::Unexpected {
                     ident: ns_path.clone(),
@@ -692,7 +692,7 @@ impl Context {
                 return Err(NameError::NotFound(name.clone()));
             }
 
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value,
                 parent_path: _,
                 key,
@@ -717,7 +717,7 @@ impl Context {
                 }
             }
 
-            Some(MemberRef::Namespace { path }) => {
+            Some(ScopeMemberRef::Namespace { path }) => {
                 let path = IdentPath::from_parts(path.keys().cloned());
                 return Err(map_unexpected(full_name, Named::Namespace(path)));
             }
@@ -761,7 +761,7 @@ impl Context {
 
     pub fn find_type(&self, name: &IdentPath) -> NamingResult<(IdentPath, &Type)> {
         match self.find_path(name) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value: Decl::Type { ty, .. },
                 key,
                 ref parent_path,
@@ -771,13 +771,13 @@ impl Context {
                 Ok((parent_path, ty))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(ScopeMemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 expected: ExpectedKind::AnyType,
                 actual: other.clone().into(),
             }),
 
-            Some(MemberRef::Namespace { path }) => Err(NameError::Unexpected {
+            Some(ScopeMemberRef::Namespace { path }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 actual: Named::Namespace(IdentPath::from_parts(path.keys().cloned())),
                 expected: ExpectedKind::AnyType,
@@ -874,7 +874,7 @@ impl Context {
 
     pub fn find_iface(&self, name: &IdentPath) -> NamingResult<IdentPath> {
         match self.find_path(name) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value:
                     Decl::Type {
                         ty: Type::Interface(..),
@@ -889,13 +889,13 @@ impl Context {
                 Ok(parent_path)
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(ScopeMemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 actual: other.clone().into(),
                 expected: ExpectedKind::Interface,
             }),
 
-            Some(MemberRef::Namespace { path }) => {
+            Some(ScopeMemberRef::Namespace { path }) => {
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: Named::Namespace(path.to_namespace()),
@@ -973,7 +973,7 @@ impl Context {
 
     pub fn find_function(&self, name: &IdentPath) -> NamingResult<(IdentPath, Rc<FunctionSig>)> {
         match self.find_path(name) {
-            Some(MemberRef::Value {
+            Some(ScopeMemberRef::Value {
                 value: Decl::Function { sig, .. },
                 key,
                 ref parent_path,
@@ -983,13 +983,13 @@ impl Context {
                 Ok((func_path, sig.clone()))
             }
 
-            Some(MemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
+            Some(ScopeMemberRef::Value { value: other, .. }) => Err(NameError::Unexpected {
                 ident: name.clone(),
                 actual: other.clone().into(),
                 expected: ExpectedKind::Function,
             }),
 
-            Some(MemberRef::Namespace { path }) => {
+            Some(ScopeMemberRef::Namespace { path }) => {
                 Err(NameError::Unexpected {
                     ident: name.clone(),
                     actual: Named::Namespace(path.to_namespace()),
@@ -1129,7 +1129,7 @@ impl Context {
 
             for (ident, decl) in scope.members() {
                 // only functions can possibly be undefined
-                if let Member::Value(Decl::Function { .. }) = decl {
+                if let ScopeMember::Decl(Decl::Function { .. }) = decl {
                     let decl_path = current_scope_ns.clone()
                         .child(ident.clone());
 
@@ -1150,7 +1150,7 @@ impl Context {
     pub fn initialize(&mut self, local_id: &Ident) {
         for scope in self.scopes.iter_mut().rev() {
             if let Some(member) = scope.get_decl_mut(local_id) {
-                if let Member::Value(Decl::BoundValue(Binding { kind, .. })) = member {
+                if let ScopeMember::Decl(Decl::BoundValue(Binding { kind, .. })) = member {
                     if *kind == ValueKind::Uninitialized || *kind == ValueKind::Mutable {
                         *kind = ValueKind::Mutable;
 
@@ -1186,7 +1186,7 @@ impl Context {
             .top()
             .members()
             .filter_map(|(ident, decl)| match decl {
-                Member::Value(Decl::BoundValue(Binding {
+                ScopeMember::Decl(Decl::BoundValue(Binding {
                     kind: ValueKind::Uninitialized,
                     ..
                 })) => Some(ident),
@@ -1202,7 +1202,7 @@ impl Context {
                 branch_contexts
                     .iter()
                     .all(|ctx| match ctx.find(uninit_name).unwrap() {
-                        MemberRef::Value {
+                        ScopeMemberRef::Value {
                             value, parent_path, ..
                         } => match value {
                             Decl::BoundValue(binding) => {
@@ -1213,7 +1213,7 @@ impl Context {
                             _ => false,
                         },
 
-                        MemberRef::Namespace { .. } => false,
+                        ScopeMemberRef::Namespace { .. } => false,
                     });
 
             if is_init_in_all {

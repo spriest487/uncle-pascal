@@ -24,7 +24,7 @@ pub struct ScopeID(pub usize);
 pub struct Scope {
     id: ScopeID,
     env: Environment,
-    decls: HashMap<Ident, Member>,
+    decls: HashMap<Ident, ScopeMember>,
 
     use_units: Vec<IdentPath>,
 }
@@ -51,7 +51,7 @@ impl Scope {
         self.decls.keys().cloned().collect()
     }
 
-    pub fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &Member)>
+    pub fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &ScopeMember)>
     where
         Ident: Borrow<Q>,
         Q: Hash + Eq + ?Sized + fmt::Debug,
@@ -61,7 +61,7 @@ impl Scope {
             .find(|(k, _v)| (*k).borrow() == member_key)
     }
 
-    pub fn insert_member(&mut self, key: Ident, member_val: Member) -> NamingResult<()> {
+    pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NamingResult<()> {
         if let Some(existing) = self.decls.get(&key) {
             let kind = existing.kind();
             let mut path = self.keys();
@@ -78,11 +78,11 @@ impl Scope {
         Ok(())
     }
 
-    pub fn replace_member(&mut self, key: Ident, member_val: Member) {
+    pub fn replace_member(&mut self, key: Ident, member_val: ScopeMember) {
         self.decls.insert(key, member_val);
     }
 
-    pub fn remove_member(&mut self, key: &Ident) -> Option<Member> {
+    pub fn remove_member(&mut self, key: &Ident) -> Option<ScopeMember> {
         self.decls.remove(key)
     }
 
@@ -104,15 +104,15 @@ impl Scope {
         &self.env
     }
 
-    pub fn members(&self) -> impl Iterator<Item = (&Ident, &Member)> {
+    pub fn members(&self) -> impl Iterator<Item = (&Ident, &ScopeMember)> {
         self.decls.iter()
     }
 
-    pub fn get_decl(&self, ident: &Ident) -> Option<&Member> {
+    pub fn get_decl(&self, ident: &Ident) -> Option<&ScopeMember> {
         self.decls.get(ident)
     }
 
-    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut Member> {
+    pub fn get_decl_mut(&mut self, ident: &Ident) -> Option<&mut ScopeMember> {
         self.decls.get_mut(ident)
     }
 
@@ -136,22 +136,22 @@ impl Scope {
         let mut members: Vec<_> = self.members().collect();
         members.sort_by(
             |(key_a, decl_a), (key_b, decl_b)| match (decl_a.kind(), decl_b.kind()) {
-                (NameKind::Name, NameKind::Namespace) => Ordering::Less,
-                (NameKind::Namespace, NameKind::Name) => Ordering::Greater,
+                (ScopeMemberKind::Decl, ScopeMemberKind::Scope) => Ordering::Less,
+                (ScopeMemberKind::Scope, ScopeMemberKind::Decl) => Ordering::Greater,
                 _ => key_a.name.cmp(&key_b.name),
             },
         );
 
         for (key, member) in members {
             match member {
-                Member::Value(decl) => {
+                ScopeMember::Decl(decl) => {
                     for _ in 0..indent + 1 {
                         write!(debug_str, "  ")?;
                     }
                     writeln!(debug_str, "{} ({})", key, decl.to_string())?;
                 }
 
-                Member::Namespace(scope) => {
+                ScopeMember::Scope(scope) => {
                     scope.to_debug_string_rec(indent + 1, debug_str)?;
                 }
             }
@@ -162,39 +162,39 @@ impl Scope {
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum NameKind {
-    Namespace,
-    Name,
+pub enum ScopeMemberKind {
+    Scope,
+    Decl,
 }
 
-impl fmt::Display for NameKind {
+impl fmt::Display for ScopeMemberKind {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            NameKind::Namespace => write!(f, "Namespace"),
-            NameKind::Name => write!(f, "Name"),
+            ScopeMemberKind::Scope => write!(f, "Scope"),
+            ScopeMemberKind::Decl => write!(f, "Decl"),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Member {
-    Namespace(Scope),
-    Value(Decl),
+pub enum ScopeMember {
+    Scope(Scope),
+    Decl(Decl),
 }
 
-impl Member {
-    pub fn kind(&self) -> NameKind {
+impl ScopeMember {
+    pub fn kind(&self) -> ScopeMemberKind {
         match self {
-            Member::Namespace(_) => NameKind::Namespace,
-            Member::Value(_) => NameKind::Name,
+            ScopeMember::Scope(_) => ScopeMemberKind::Scope,
+            ScopeMember::Decl(_) => ScopeMemberKind::Decl,
         }
     }
 }
 
 #[derive(Debug, Clone)]
-pub enum MemberRef<'s> {
+pub enum ScopeMemberRef<'s> {
     Value {
-        parent_path: PathRef<'s>,
+        parent_path: ScopePathRef<'s>,
         key: &'s Ident,
         value: &'s Decl,
     },
@@ -202,22 +202,22 @@ pub enum MemberRef<'s> {
         // todo: separate this into parent_path and key
         // refs to namespaces always refer to keyed namespaces, so we should present the top level's
         // key as a Ident ref instead of the Option<Ident> we get from path.top().key()
-        path: PathRef<'s>,
+        path: ScopePathRef<'s>,
     },
 }
 
-impl<'s> MemberRef<'s> {
+impl<'s> ScopeMemberRef<'s> {
     pub fn as_value(&self) -> Option<&'s Decl> {
         match self {
-            MemberRef::Value { value, .. } => Some(value),
-            MemberRef::Namespace { .. } => None,
+            ScopeMemberRef::Value { value, .. } => Some(value),
+            ScopeMemberRef::Namespace { .. } => None,
         }
     }
 
-    pub fn kind(&self) -> NameKind {
+    pub fn kind(&self) -> ScopeMemberKind {
         match self {
-            MemberRef::Value { .. } => NameKind::Name,
-            MemberRef::Namespace { .. } => NameKind::Namespace,
+            ScopeMemberRef::Value { .. } => ScopeMemberKind::Decl,
+            ScopeMemberRef::Namespace { .. } => ScopeMemberKind::Scope,
         }
     }
 }

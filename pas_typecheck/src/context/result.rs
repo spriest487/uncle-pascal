@@ -1,4 +1,4 @@
-use crate::{context::Decl, Type, FunctionSig, TypeAnnotation, NameKind};
+use crate::{context::Decl, Type, FunctionSig, TypeAnnotation, ScopeMemberKind};
 use pas_common::{span::*, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput};
 use pas_syn::{Ident, IdentPath};
 use std::{fmt, path::PathBuf};
@@ -238,7 +238,7 @@ pub enum NameError {
     AlreadyDeclared {
         new: Ident,
         existing: IdentPath,
-        existing_kind: NameKind,
+        existing_kind: ScopeMemberKind,
     },
     AlreadyDefined {
         ident: IdentPath,

@@ -2,23 +2,23 @@ use std::borrow::Borrow;
 use std::fmt;
 use std::hash::Hash;
 use pas_syn::{Ident, IdentPath};
-use crate::{Member, MemberRef, Scope};
+use crate::{ScopeMember, ScopeMemberRef, Scope};
 
 #[derive(Debug)]
-pub struct PathRef<'s> {
+pub struct ScopePathRef<'s> {
     pub(super) namespaces: Vec<&'s Scope>,
 }
 
-impl<'s> Clone for PathRef<'s> {
+impl<'s> Clone for ScopePathRef<'s> {
     fn clone(&self) -> Self {
-        PathRef {
+        ScopePathRef {
             namespaces: self.namespaces.clone(),
         }
     }
 }
 
-impl<'s> PathRef<'s> {
-    pub fn find<Q>(&self, key: &Q) -> Option<MemberRef<'s>>
+impl<'s> ScopePathRef<'s> {
+    pub fn find<Q>(&self, key: &Q) -> Option<ScopeMemberRef<'s>>
         where
             Ident: Borrow<Q>,
             Q: Hash + Eq + ?Sized + fmt::Debug,
@@ -31,26 +31,26 @@ impl<'s> PathRef<'s> {
                 let path = &self.namespaces[0..=i];
 
                 let member_ref = if ns.key().map(Borrow::borrow) == Some(key) {
-                    MemberRef::Namespace {
-                        path: PathRef { namespaces: path.to_vec() },
+                    ScopeMemberRef::Namespace {
+                        path: ScopePathRef { namespaces: path.to_vec() },
                     }
                 } else {
                     let key = key.borrow();
                     let (key, member) = ns.get_member(key)?;
 
                     match member {
-                        Member::Namespace(ns) => {
+                        ScopeMember::Scope(ns) => {
                             let mut path = path.to_vec();
                             path.push(ns);
-                            MemberRef::Namespace {
-                                path: PathRef { namespaces: path },
+                            ScopeMemberRef::Namespace {
+                                path: ScopePathRef { namespaces: path },
                             }
                         }
 
-                        Member::Value(value) => MemberRef::Value {
+                        ScopeMember::Decl(value) => ScopeMemberRef::Value {
                             key,
                             value,
-                            parent_path: PathRef { namespaces: path.to_vec() },
+                            parent_path: ScopePathRef { namespaces: path.to_vec() },
                         },
                     }
                 };
@@ -101,11 +101,11 @@ impl<'s> PathRef<'s> {
 }
 
 #[derive(Debug)]
-pub struct PathRefMut<'s> {
+pub struct ScopePathRefMut<'s> {
     pub(super) namespaces: Vec<&'s mut Scope>,
 }
 
-impl<'s> PathRefMut<'s> {
+impl<'s> ScopePathRefMut<'s> {
     pub fn top(&'s mut self) -> &'s mut Scope {
         self.namespaces.last_mut().unwrap()
     }
