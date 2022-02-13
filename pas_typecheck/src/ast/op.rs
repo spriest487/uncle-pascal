@@ -43,7 +43,7 @@ pub fn typecheck_bin_op(
             Ok(Expression::from(bin_op))
         }
 
-        Operator::BitAnd | Operator::BitOr | Operator::BitNot | Operator::Caret => {
+        Operator::BitAnd | Operator::BitOr | Operator::Shr | Operator::Shl | Operator::Caret => {
             let bin_op = typecheck_bitwise_op(bin_op, expect_ty, ctx)?;
             Ok(Expression::from(bin_op))
         }
@@ -191,13 +191,11 @@ fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut C
         ctx,
     )?;
 
-    if lhs.annotation().ty().valid_math_op(bin_op.op, &rhs.annotation().ty()) {
-        return Err(TypecheckError::InvalidBinOp {
-            lhs: lhs.annotation().ty().into_owned(),
-            rhs: rhs.annotation().ty().into_owned(),
-            span: bin_op.span().clone(),
-            op: bin_op.op,
-        })
+    let lhs_ty = lhs.annotation().ty();
+    let rhs_ty = rhs.annotation().ty();
+
+    if !lhs_ty.valid_math_op(bin_op.op, &rhs_ty) {
+        return Err(invalid_bin_op(&bin_op, &lhs, &rhs));
     }
 
     Ok(BinOp {

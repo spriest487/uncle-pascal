@@ -1,6 +1,7 @@
-use crate::ast::{BinOp, Expression, Literal};
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+use crate::ast::{BinOp, Expression, IfCond, Literal, UnaryOp};
 use crate::Context;
-use pas_syn::Operator;
+use pas_syn::{IntConstant, Operator};
 
 pub trait ConstEval {
     fn const_eval(&self, ctx: &Context) -> Option<Literal>;
@@ -17,6 +18,8 @@ impl ConstEval for Expression {
         match self {
             Expression::Literal(lit, ..) => Some(lit.clone()),
             Expression::BinOp(bin_op) => bin_op.const_eval(ctx),
+            Expression::UnaryOp(op) => op.const_eval(ctx),
+            Expression::IfCond(cond) => cond.const_eval(ctx),
             _ => None,
         }
     }
@@ -41,6 +44,11 @@ impl ConstEval for BinOp {
             Operator::Gte => const_lt(lhs, rhs).and_then(const_negate),
             Operator::Lt => const_lt(lhs, rhs),
             Operator::Lte => const_gt(lhs, rhs).and_then(const_negate),
+            Operator::Caret => const_bitwise(lhs, rhs, u64::bitxor),
+            Operator::BitAnd => const_bitwise(lhs, rhs, u64::bitand),
+            Operator::BitOr => const_bitwise(lhs, rhs, u64::bitor),
+            Operator::Shl => const_bitwise(lhs, rhs, u64::shl),
+            Operator::Shr => const_bitwise(lhs, rhs, u64::shr),
             _ => None,
         }
     }
@@ -124,5 +132,58 @@ fn const_lt(a: Literal, b: Literal) -> Option<Literal> {
         (Literal::Real(a), Literal::Real(b)) => Some(Literal::Boolean(a < b)),
         (Literal::Integer(a), Literal::Integer(b)) => Some(Literal::Boolean(a < b)),
         _ => None,
+    }
+}
+
+fn const_bitwise<Op>(a: Literal, b: Literal, op: Op) -> Option<Literal>
+where
+    Op: Fn(u64, u64) -> u64
+{
+    match (a, b) {
+        (Literal::Integer(a), Literal::Integer(b)) => {
+            let val = op(a.as_u64()?, b.as_u64()?);
+            Some(Literal::Integer(IntConstant::from(val)))
+        }
+
+        _ => None
+    }
+}
+
+impl ConstEval for UnaryOp {
+    fn const_eval(&self, ctx: &Context) -> Option<Literal> {
+        match self.op {
+            Operator::BitNot => {
+                match self.operand.const_eval(ctx)? {
+                    Literal::Integer(i) => {
+                        let operand_val = i.as_u64()?;
+                        Some(Literal::Integer(IntConstant::from(!operand_val)))
+                    }
+
+                    _ => None
+                }
+            }
+
+            _ => None,
+        }
+    }
+}
+
+impl ConstEval for IfCond {
+    fn const_eval(&self, ctx: &Context) -> Option<Literal> {
+        let else_branch = self.else_branch.as_ref()?;
+
+        let cond_val = match self.cond.const_eval(ctx)? {
+            Literal::Boolean(cond_val) => cond_val,
+            _ => return None,
+        };
+
+        let then_val = self.then_branch.const_eval(ctx)?;
+        let else_val = else_branch.const_eval(ctx)?;
+
+        Some(if cond_val {
+            then_val
+        } else {
+            else_val
+        })
     }
 }
