@@ -181,7 +181,7 @@ fn resolve_ops_by_precedence(parts: Vec<CompoundExpressionPart>) -> ParseResult<
 
         OperatorPart::AsCast { ty, kw_span } => {
             resolve_postfix(parts, lo_op_index, &kw_span, |operand| {
-                let span = kw_span.to(&ty);
+                let span = operand.span().to(&ty);
                 Expression::from(Cast {
                     expr: operand,
                     annotation: span,

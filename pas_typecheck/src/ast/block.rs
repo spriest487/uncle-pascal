@@ -12,67 +12,63 @@ pub fn typecheck_block(
     });
 
     let mut statements = Vec::new();
+    let mut output = None;
+
+    let expect_output = *expect_ty != Type::Nothing;
 
     for (i, stmt) in block.statements.iter().enumerate() {
-        // could this statement be the output expression (is it the last statement in a block which
-        // we don't already have an output expression from parsing?) - if so give it the same type
-        // hint as the block
-        let stmt_expect_ty = if block.output.is_none() && i == block.statements.len() - 1 {
-            expect_ty
-        } else {
-            &Type::Nothing
-        };
+        let is_last_stmt = i == block.statements.len() - 1;
 
-        let stmt = typecheck_stmt(stmt, stmt_expect_ty, ctx)?;
+        if is_last_stmt && expect_output && block.output.is_none() {
+            // this is the final statement in the block, and during parsing this block didn't
+            // get an output expression. we expect this block to have an output, so try to convert
+            // the final statement here into an expression
+            match stmt.clone().try_into_expr() {
+                Ok(src_output_stmt_expr) => {
+                    let mut output_stmt_expr = typecheck_expr(&src_output_stmt_expr, expect_ty, ctx)?;
+                    if *expect_ty != Type::Nothing {
+                        output_stmt_expr = implicit_conversion(output_stmt_expr, expect_ty, ctx)?;
+                    }
+                    output = Some(output_stmt_expr);
+                },
+
+                Err(bad_stmt) => {
+                    // typecheck the actual statement which isn't a valid expr so we can use it
+                    // for a better error message
+                    let bad_stmt = typecheck_stmt(&bad_stmt, expect_ty, ctx)?;
+                    return Err(TypecheckError::BlockOutputIsNotExpression {
+                        stmt: Box::new(bad_stmt),
+                        expected_expr_ty: expect_ty.clone(),
+                    });
+                },
+            }
+
+            continue;
+        }
+
+        let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
         expect_stmt_initialized(&stmt, ctx)?;
         statements.push(stmt);
     }
 
-    let output = match &block.output {
-        Some(expr) => {
-            let out_expr = typecheck_expr(expr, expect_ty, ctx)?;
-            expect_expr_initialized(&out_expr, ctx)?;
+    // process the parsed output expression (this is mutually exclusive with converting the final
+    // statement into an output)
+    // the block's body statements can alter the context by declaring vars, initializing decls,
+    // etc, so this has to be checked *after* we've processed the rest of the statements
+    if let Some(src_output_expr) = &block.output {
+        // we should not have tried to interpret any statements as output expressions
+        assert_eq!(None, output);
 
-            if *out_expr.annotation().ty() == Type::Nothing {
-                // the block contains a final expression which returns no value,
-                // so it should just be treated like a statement
-                let last_stmt = Statement::try_from_expr(out_expr)
-                    .map_err(|invalid| TypecheckError::InvalidBlockOutput(Box::new(invalid)))?;
-                statements.push(last_stmt);
-                None
-            } else if *expect_ty != Type::Nothing {
-                let out_expr = implicit_conversion(out_expr, expect_ty, ctx)?;
+        let mut out_expr = typecheck_expr(src_output_expr, expect_ty, ctx)?;
+        if *expect_ty != Type::Nothing {
+            out_expr = implicit_conversion(out_expr, expect_ty, ctx)?;
+        }
+        output = Some(out_expr);
+    }
 
-                Some(out_expr)
-            } else {
-                Some(out_expr)
-            }
-        },
-
-        // parsing alone can't find all the cases where the final statement
-        // in a block is a typed expression indicating the output, for example
-        // if the block finishes on a call. if we're expecing a return type and
-        // parsing didn't find us the output expression, we can move the final
-        // stmt into the output if the type matches
-        None if *expect_ty != Type::Nothing => {
-            if statements.last().is_some() {
-                let last_stmt = statements.pop().unwrap();
-
-                let output = last_stmt.try_into_expr().map_err(|bad_stmt| {
-                    TypecheckError::BlockOutputIsNotExpression {
-                        stmt: Box::new(bad_stmt),
-                        expected_expr_ty: expect_ty.clone(),
-                    }
-                })?;
-
-                Some(output)
-            } else {
-                None
-            }
-        },
-
-        None => None,
-    };
+    if let Some(output_expr) = &output {
+        expect_expr_initialized(output_expr, ctx)?;
+    }
 
     let span = block.annotation.span().clone();
     let annotation = match &output {

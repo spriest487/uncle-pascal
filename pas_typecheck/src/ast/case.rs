@@ -5,7 +5,7 @@ pub type CaseBlock<Item> = ast::CaseBlock<TypeAnnotation, Item>;
 pub type CaseExpr = ast::CaseExpr<TypeAnnotation>;
 pub type CaseStatement = ast::CaseStatement<TypeAnnotation>;
 
-pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, ctx: &mut Context) -> TypecheckResult<CaseStatement> {
+pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<CaseStatement> {
     let cond_expr = typecheck_expr(&case.cond_expr, &Type::Nothing, ctx)?;
     let cond_ty = cond_expr.annotation().ty();
 
@@ -14,7 +14,7 @@ pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, ctx: &mut Context) -
         let branch_value = typecheck_expr(&branch.value, &cond_ty, ctx)?;
         branch_value.annotation().expect_value(&cond_ty)?;
 
-        let branch_stmt = typecheck_stmt(&branch.item, &Type::Nothing, ctx)?;
+        let branch_stmt = typecheck_stmt(&branch.item, &expect_ty, ctx)?;
 
         branches.push(ast::CaseBranch {
             value: Box::new(branch_value),
@@ -25,7 +25,7 @@ pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, ctx: &mut Context) -
 
     let else_branch = match &case.else_branch {
         Some(else_branch) => {
-            let else_stmt = typecheck_stmt(else_branch, &Type::Nothing, ctx)?;
+            let else_stmt = typecheck_stmt(else_branch, &expect_ty, ctx)?;
             Some(else_stmt)
         }
 
@@ -38,69 +38,6 @@ pub fn typecheck_case_stmt(case: &ast::CaseStatement<Span>, ctx: &mut Context) -
         cond_expr: Box::new(cond_expr),
         branches,
         else_branch: else_branch.map(Box::new),
-        annotation,
-    })
-}
-
-fn invalid_item_err(item_stmt: Statement) -> TypecheckError {
-    TypecheckError::InvalidCaseExprBlock {
-        span: item_stmt.span().clone(),
-    }
-}
-
-pub fn case_stmt_into_expr(case: CaseStatement) -> TypecheckResult<CaseExpr> {
-    let span = case.span().clone();
-
-    if case.branches.is_empty() || case.else_branch.is_none() {
-        return Err(TypecheckError::InvalidCaseExprBlock { span });
-    }
-
-    let else_stmt = if let Some(else_item) = case.else_branch {
-        else_item
-    } else {
-        return Err(TypecheckError::InvalidCaseExprBlock { span });
-    };
-
-    let mut branches = Vec::new();
-    let mut branch_expr_ty = None;
-
-    for branch in case.branches {
-        let branch_expr = branch.item.try_into_expr().map_err(invalid_item_err)?;
-
-        if let Some(branch_ty) = &branch_expr_ty {
-            branch_expr.annotation().expect_value(branch_ty)?;
-        } else {
-            branch_expr_ty = Some(branch_expr.annotation().ty().into_owned());
-        }
-
-        branches.push(CaseBranch {
-            value: branch.value,
-            item: Box::new(branch_expr),
-            span: branch.span,
-        })
-    }
-
-    let result_ty = match branch_expr_ty {
-        Some(branch_expr_ty) => branch_expr_ty,
-        None => {
-            return Err(TypecheckError::InvalidCaseExprBlock { span });
-        }
-    };
-
-    let else_expr = else_stmt.try_into_expr().map_err(invalid_item_err)?;
-    else_expr.annotation().expect_value(&result_ty)?;
-
-    let annotation = TypedValueAnnotation {
-        span,
-        decl: None,
-        value_kind: ValueKind::Temporary,
-        ty: result_ty,
-    }.into();
-
-    Ok(CaseExpr {
-        cond_expr: case.cond_expr,
-        branches,
-        else_branch: Some(Box::new(else_expr)),
         annotation,
     })
 }
@@ -144,12 +81,12 @@ pub fn typecheck_case_expr(case: &ast::CaseExpr<Span>, expect_ty: &Type, ctx: &m
     }
 
     let result_ty = match branch_expr_ty {
-        Some(branch_expr_ty) => branch_expr_ty,
-        None => {
+        Some(Type::Nothing) | None => {
             return Err(TypecheckError::InvalidCaseExprBlock { span });
         }
-    };
 
+        Some(branch_expr_ty) => branch_expr_ty,
+    };
 
     let else_expr = match &case.else_branch {
         Some(else_branch) => {

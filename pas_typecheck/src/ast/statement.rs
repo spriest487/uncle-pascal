@@ -180,7 +180,7 @@ pub fn typecheck_stmt(
         }
 
         ast::Statement::Case(case) => {
-            let case = typecheck_case_stmt(case, ctx)?;
+            let case = typecheck_case_stmt(case, expect_ty, ctx)?;
             Ok(ast::Statement::Case(Box::new(case)))
         }
     }

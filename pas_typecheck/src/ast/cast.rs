@@ -16,6 +16,8 @@ pub fn implicit_conversion(
     to: &Type,
     ctx: &Context,
 ) -> TypecheckResult<Expression> {
+    assert_ne!(Type::Nothing, *to, "bad usage of implicit_conversion: can't convert to nothing");
+
     let expr_ty = expr.annotation().ty();
     if *expr_ty == *to {
         return Ok(expr);

@@ -99,7 +99,10 @@ begin
         for let i := 0 to b.len - 1 do
             bytes[a.len + i] := b.chars[i];
 
-        String(chars: bytes; len: len);
+        String(
+            chars: bytes;
+            len: len
+        );
     end
 end;
 

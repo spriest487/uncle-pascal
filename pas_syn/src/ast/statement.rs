@@ -9,7 +9,7 @@ pub use self::{
 };
 use crate::{
     ast::{
-        case::{CaseBlock, CaseStatement},
+        case::{CaseBlock, CaseStatement, CaseExpr, CaseBranch},
         expression::match_operand_start,
         Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop,
     },
@@ -61,11 +61,28 @@ impl<A: Annotation> Statement<A> {
 
             Statement::Block(block) => {
                 if block.output.is_some() {
+                    // block that already had an output expr
                     Ok(Expression::Block(block))
                 } else {
-                    Err(Statement::Block(block))
+                    let final_stmt_expr = block.statements.last().and_then(|final_stmt| {
+                        final_stmt.clone().try_into_expr().ok()
+                    });
+                    if let Some(output_expr) = final_stmt_expr {
+                        // block where we can reinterpret the final statement as an output expr
+                        let mut statements = block.statements;
+                        statements.pop();
+
+                        Ok(Expression::from(Block {
+                            statements,
+                            output: Some(output_expr),
+                            ..*block
+                        }))
+                    } else {
+                        // block that doesn't work as an expr
+                        Err(Statement::Block(block))
+                    }
                 }
-            }
+            },
 
             Statement::If(if_cond) => {
                 // if-expressions must always have an else branch
@@ -74,14 +91,45 @@ impl<A: Annotation> Statement<A> {
                 } else {
                     Err(Statement::If(if_cond))
                 }
-            }
+            },
 
             Statement::Raise(raise) => Ok(Expression::Raise(raise)),
 
             Statement::Exit(exit) => Ok(Expression::Exit(exit)),
 
+            // case statements that have an else branch might also be valid as expressions if every
+            // branch is also valid as an expression
+            Statement::Case(case) => {
+                let case = Self::case_into_expr(*case)?;
+                Ok(Expression::from(case))
+            },
+
             not_expr => Err(not_expr),
         }
+    }
+
+    fn case_into_expr(case: CaseStatement<A>) -> Result<CaseExpr<A>, Statement<A>> {
+        let else_branch = match case.else_branch.as_ref() {
+            None => return Err(Statement::Case(Box::new(case))),
+            Some(else_branch) => Self::try_into_expr((**else_branch).clone())?,
+        };
+
+        let mut branches = Vec::with_capacity(case.branches.len());
+        for branch in case.branches {
+            let item = Self::try_into_expr(*branch.item)?;
+            branches.push(CaseBranch {
+                value: branch.value,
+                span: branch.span,
+                item: Box::new(item),
+            })
+        }
+
+        Ok(CaseExpr {
+            cond_expr: case.cond_expr,
+            branches,
+            else_branch: Some(Box::new(else_branch)),
+            annotation: case.annotation,
+        })
     }
 
     pub fn try_from_expr(expr: Expression<A>) -> Result<Self, Expression<A>> {
@@ -96,41 +144,39 @@ impl<A: Annotation> Statement<A> {
 
                         block.statements.push(last_stmt);
                         None
-                    }
+                    },
                     None => None,
                 };
 
                 Ok(Statement::Block(block))
-            }
+            },
             Expression::Call(call) => Ok(Statement::Call(call)),
 
-            Expression::BinOp(bin_op) => {
-                match bin_op.op {
-                    | Operator::Assignment => {
-                        let assignment = Assignment {
-                            lhs: bin_op.lhs,
-                            rhs: bin_op.rhs,
-                            annotation: bin_op.annotation,
-                        };
-                        Ok(assignment.into())
-                    }
+            Expression::BinOp(bin_op) => match bin_op.op {
+                Operator::Assignment => {
+                    let assignment = Assignment {
+                        lhs: bin_op.lhs,
+                        rhs: bin_op.rhs,
+                        annotation: bin_op.annotation,
+                    };
+                    Ok(assignment.into())
+                },
 
-                    | Operator::CompoundAssignment(assign_op) => {
-                        let assignment = CompoundAssignment {
-                            lhs: bin_op.lhs,
-                            rhs: bin_op.rhs,
-                            annotation: bin_op.annotation,
-                            op: assign_op,
-                        };
-                        Ok(assignment.into())
-                    }
+                Operator::CompoundAssignment(assign_op) => {
+                    let assignment = CompoundAssignment {
+                        lhs: bin_op.lhs,
+                        rhs: bin_op.rhs,
+                        annotation: bin_op.annotation,
+                        op: assign_op,
+                    };
+                    Ok(assignment.into())
+                },
 
-                    | _ => {
-                        let invalid_bin_op = Expression::BinOp(bin_op);
-                        Err(invalid_bin_op)
-                    }
-                }
-            }
+                _ => {
+                    let invalid_bin_op = Expression::BinOp(bin_op);
+                    Err(invalid_bin_op)
+                },
+            },
 
             Expression::IfCond(if_cond) => {
                 let then_branch = match Self::try_from_expr(if_cond.then_branch) {
@@ -153,7 +199,7 @@ impl<A: Annotation> Statement<A> {
                     else_branch,
                     annotation: if_cond.annotation,
                 })))
-            }
+            },
 
             Expression::Raise(raise) => Ok(Statement::Raise(raise)),
 
@@ -201,21 +247,21 @@ impl Statement<Span> {
             }) => {
                 let binding = LocalBinding::parse(tokens, true)?;
                 Ok(Statement::LocalBinding(Box::new(binding)))
-            }
+            },
 
             Some(TokenTree::Keyword {
                 kw: Keyword::For, ..
             }) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(Box::new(for_loop)))
-            }
+            },
 
             Some(TokenTree::Keyword {
                 kw: Keyword::While, ..
             }) => {
                 let while_loop = WhileLoop::parse(tokens)?;
                 Ok(Statement::WhileLoop(Box::new(while_loop)))
-            }
+            },
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Break,
@@ -223,7 +269,7 @@ impl Statement<Span> {
             }) => {
                 tokens.advance(1);
                 Ok(Statement::Break(span))
-            }
+            },
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Continue,
@@ -231,7 +277,7 @@ impl Statement<Span> {
             }) => {
                 tokens.advance(1);
                 Ok(Statement::Continue(span))
-            }
+            },
 
             Some(TokenTree::Keyword {
                 kw: Keyword::Exit, ..
@@ -239,15 +285,16 @@ impl Statement<Span> {
                 let exit = Exit::parse(tokens)?;
 
                 Ok(Statement::Exit(Box::new(exit)))
-            }
+            },
 
             Some(TokenTree::Delimited {
-                delim: DelimiterPair::CaseEnd, ..
+                delim: DelimiterPair::CaseEnd,
+                ..
             }) => {
                 let case = CaseBlock::parse(tokens)?;
 
                 Ok(Statement::Case(Box::new(case)))
-            }
+            },
 
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression
@@ -259,12 +306,12 @@ impl Statement<Span> {
                     TracedError::trace(err)
                 })?;
                 Ok(stmt)
-            }
+            },
 
             None => Err(TracedError::trace(match tokens.look_ahead().next() {
                 Some(unexpected) => {
                     ParseError::UnexpectedToken(Box::new(unexpected), Some(stmt_start))
-                }
+                },
                 None => ParseError::UnexpectedEOF(stmt_start, tokens.context().clone()),
             })),
         }
