@@ -519,7 +519,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                 self.push_operand(expr);
             }
 
-            Some(tt) if tt.is_keyword(Keyword::Case) => {
+            Some(tt) if tt.is_delimited(DelimiterPair::CaseEnd) => {
                 let expr = parse_case_expr(self.tokens)?;
                 self.push_operand(expr);
             }

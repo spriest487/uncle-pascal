@@ -241,8 +241,8 @@ impl Statement<Span> {
                 Ok(Statement::Exit(Box::new(exit)))
             }
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Case, ..
+            Some(TokenTree::Delimited {
+                delim: DelimiterPair::CaseEnd, ..
             }) => {
                 let case = CaseBlock::parse(tokens)?;
 
