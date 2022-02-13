@@ -13,6 +13,7 @@ use pas_ir::{
 };
 use std::{collections::HashMap, rc::Rc};
 use std::borrow::Cow;
+use std::ops::{BitAnd, BitOr, BitXor};
 use cast::usize;
 
 use crate::result::{ExecError, ExecResult};
@@ -757,6 +758,12 @@ impl Interpreter {
             Instruction::Not { out, a } => self.exec_not(out, a)?,
             Instruction::And { out, a, b } => self.exec_and(out, a, b)?,
             Instruction::Or { out, a, b } => self.exec_or(out, a, b)?,
+
+            Instruction::BitAnd { out, a, b } => self.exec_bitwise(out, a, b, u64::bitand, instruction)?,
+            Instruction::BitOr { out, a, b } => self.exec_bitwise(out, a, b, u64::bitor, instruction)?,
+            Instruction::BitXor { out, a, b } => self.exec_bitwise(out, a, b, u64::bitxor, instruction)?,
+            Instruction::BitNot { out, a } => self.exec_bitwise_not(out, a, instruction)?,
+
             Instruction::Move { out, new_val } => {
                 let val = self.evaluate(new_val)?;
                 self.store(out, val)?
@@ -1278,6 +1285,56 @@ impl Interpreter {
         self.store(out, DynValue::Bool(a_val || b_val))?;
 
         Ok(())
+    }
+
+    fn exec_bitwise<Op>(&mut self, out: &Ref, a: &Value, b: &Value, op: Op, instruction: &Instruction) -> ExecResult<()>
+    where
+        Op: Fn(u64, u64) -> u64
+    {
+        let a_cell = self.evaluate(a)?;
+
+        let a_val = a_cell
+            .try_cast(&Type::U64)
+            .and_then(|val| val.as_u64())
+            .ok_or_else(|| {
+                ExecError::IllegalInstruction(instruction.clone())
+            })?;
+
+        let b_val = self
+            .evaluate(b)?
+            .try_cast(&Type::U64)
+            .and_then(|val| val.as_u64())
+            .ok_or_else(|| {
+                ExecError::IllegalInstruction(instruction.clone())
+            })?;
+
+        let result = op(a_val, b_val);
+        self.store(out, match a_cell {
+            DynValue::U8(_) => DynValue::U8(result as u8),
+            DynValue::U16(_) => DynValue::U16(result as u16),
+            DynValue::U32(_) => DynValue::U32(result as u32),
+            DynValue::USize(_) => DynValue::USize(result as usize),
+            _ => DynValue::U64(result),
+        })
+    }
+
+    fn exec_bitwise_not(&mut self, out: &Ref, a: &Value, instruction: &Instruction) -> ExecResult<()> {
+        let a_cell = self.evaluate(a)?;
+        let a_val = a_cell
+            .try_cast(&Type::U64)
+            .and_then(|val| val.as_u64())
+            .ok_or_else(|| {
+                ExecError::IllegalInstruction(instruction.clone())
+            })?;
+
+        let result = !a_val;
+        self.store(out, match a_cell {
+            DynValue::U8(_) => DynValue::U8(result as u8),
+            DynValue::U16(_) => DynValue::U16(result as u16),
+            DynValue::U32(_) => DynValue::U32(result as u32),
+            DynValue::USize(_) => DynValue::USize(result as usize),
+            _ => DynValue::U64(result),
+        })
     }
 
     fn exec_call(

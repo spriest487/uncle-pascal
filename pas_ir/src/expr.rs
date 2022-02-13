@@ -983,6 +983,33 @@ fn translate_bin_op(
             });
         }
 
+        syn::Operator::BitAnd => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::BitAnd {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
+        syn::Operator::BitOr => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::BitOr {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
+        syn::Operator::Caret => {
+            let b = translate_expr(&bin_op.rhs, builder);
+            builder.append(Instruction::BitXor {
+                out: out_val.clone(),
+                a: lhs_val.into(),
+                b: b.into(),
+            });
+        }
+
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
 

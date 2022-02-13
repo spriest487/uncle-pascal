@@ -93,6 +93,41 @@ pub trait InstructionFormatter {
                 self.format_val(b, f)
             }
 
+            Instruction::BitAnd { out, a, b } => {
+                write!(f, "{:>width$} ", "bitand", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " & ")?;
+                self.format_val(b, f)
+            }
+            Instruction::BitOr { out, a, b } => {
+                write!(f, "{:>width$} ", "bitor", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " | ")?;
+                self.format_val(b, f)
+            }
+            Instruction::BitXor { out, a, b } => {
+                write!(f, "{:>width$} ", "bitxor", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ")?;
+                self.format_val(a, f)?;
+                write!(f, " ^ ")?;
+                self.format_val(b, f)
+            }
+            Instruction::BitNot { out, a } => {
+                write!(f, "{:>width$} ", "bitnot", width = IX_WIDTH)?;
+
+                self.format_ref(out, f)?;
+                write!(f, " := ~")?;
+                self.format_val(a, f)
+            }
+
             Instruction::Eq { out, a, b } => {
                 write!(f, "{:>width$} ", "eq", width = IX_WIDTH)?;
 

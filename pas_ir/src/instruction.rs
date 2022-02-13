@@ -46,6 +46,25 @@ pub enum Instruction {
         a: Value,
         b: Value,
     },
+    BitAnd {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    BitOr {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    BitXor {
+        out: Ref,
+        a: Value,
+        b: Value,
+    },
+    BitNot {
+        out: Ref,
+        a: Value,
+    },
 
     Eq {
         out: Ref,
@@ -219,6 +238,10 @@ impl Instruction {
             | Instruction::Not { out, .. }
             | Instruction::And { out, .. }
             | Instruction::Or { out, .. }
+            | Instruction::BitOr { out, .. }
+            | Instruction::BitAnd { out, .. }
+            | Instruction::BitXor { out, .. }
+            | Instruction::BitNot { out, .. }
             | Instruction::AddrOf { out, .. }
             | Instruction::Element { out, .. }
             | Instruction::VariantTag { out, .. }

@@ -18,6 +18,9 @@ pub enum InfixOp {
     Rem,
     Shl,
     Shr,
+    BitAnd,
+    BitOr,
+    BitXor,
 }
 
 impl fmt::Display for InfixOp {
@@ -35,18 +38,23 @@ impl fmt::Display for InfixOp {
             InfixOp::Rem => write!(f, "%"),
             InfixOp::Shl => write!(f, "<<"),
             InfixOp::Shr => write!(f, ">>"),
+            InfixOp::BitAnd => write!(f, "&"),
+            InfixOp::BitOr => write!(f, "|"),
+            InfixOp::BitXor => write!(f, "^"),
         }
     }
 }
 
 pub enum PrefixOp {
     Not,
+    BitNot,
 }
 
 impl fmt::Display for PrefixOp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             PrefixOp::Not => write!(f, "!"),
+            PrefixOp::BitNot => write!(f, "~"),
         }
     }
 }
@@ -409,66 +417,51 @@ impl<'a> Builder<'a> {
             }
 
             ir::Instruction::Eq { out, a, b } => {
-                let cmp = Expr::translate_infix_op(a, InfixOp::Eq, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    cmp,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Eq, b);
             }
 
             ir::Instruction::Add { out, a, b } => {
-                let add = Expr::translate_infix_op(a, InfixOp::Add, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    add,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Add, b);
             }
 
             ir::Instruction::Sub { out, a, b } => {
-                let sub = Expr::translate_infix_op(a, InfixOp::Sub, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    sub,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Sub, b);
             }
 
             ir::Instruction::Mul { out, a, b } => {
-                let mul_result = Expr::translate_infix_op(a, InfixOp::Mul, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    mul_result,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Mul, b);
             }
 
             ir::Instruction::IDiv { out, a, b } => {
-                let div_result = Expr::translate_infix_op(a, InfixOp::Div, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    div_result,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Div, b);
             }
 
             ir::Instruction::Shl { out, a, b } => {
-                let div_result = Expr::translate_infix_op(a, InfixOp::Shl, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    div_result,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Shl, b);
             }
 
             ir::Instruction::Shr { out, a, b } => {
-                let div_result = Expr::translate_infix_op(a, InfixOp::Shr, b, self.module);
-                self.stmts.push(Statement::Expr(Expr::translate_assign(
-                    out,
-                    div_result,
-                    self.module,
-                )));
+                self.write_infix_op(out, a, InfixOp::Shr, b);
+            }
+
+            ir::Instruction::BitAnd { out, a, b } => {
+                self.write_infix_op(out, a, InfixOp::BitAnd, b);
+            }
+
+            ir::Instruction::BitOr { out, a, b } => {
+                self.write_infix_op(out, a, InfixOp::BitOr, b);
+            }
+
+            ir::Instruction::BitXor { out, a, b } => {
+                self.write_infix_op(out, a, InfixOp::BitXor, b);
+            }
+
+            ir::Instruction::BitNot { out, a } => {
+                let val = Expr::PrefixOp {
+                    op: PrefixOp::BitNot,
+                    operand: Box::new(Expr::translate_val(a, self.module)),
+                };
+                self.stmts.push(Statement::Expr(Expr::translate_assign(out, val, self.module)))
             }
 
             ir::Instruction::Element { out, a, index, .. } => {
@@ -681,6 +674,15 @@ impl<'a> Builder<'a> {
                 )));
             }
         }
+    }
+
+    fn write_infix_op(&mut self, out: &ir::Ref, lhs: &ir::Value, op: InfixOp, rhs: &ir::Value) {
+        let and = Expr::translate_infix_op(lhs, op, rhs, self.module);
+        self.stmts.push(Statement::Expr(Expr::translate_assign(
+            out,
+            and,
+            self.module,
+        )))
     }
 
     fn translate_is(&mut self, out: &ir::Ref, a: &ir::Value, class_id: ClassID) {
