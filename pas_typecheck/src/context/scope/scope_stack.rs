@@ -109,13 +109,29 @@ impl ScopeStack {
     }
 
     pub fn resolve_path(&self, path: &IdentPath) -> Option<ScopeMemberRef> {
-        let mut current = self.current_path();
+        let current_path = self.current_path();
+
+        let mut next_path = current_path.clone();
         for (i, part) in path.iter().enumerate() {
-            match current.find(part)? {
+            // special case because the namespace stack may not contain namespaces that are under
+            // construction during this call e.g. if we are looking for decl A.B.C but A.B is the
+            // current namespace, A won't contain B - it isn't stored there until it gets popped
+            if next_path.is_parent_of(&current_path) {
+                // if the next named part in the current path is the part we're looking for, the
+                // path we're looking for is the current path
+                let next_named_part = current_path.namespaces[next_path.namespaces.len()..].iter()
+                    .find_map(|s| s.key());
+                if next_named_part == Some(part) {
+                    next_path = current_path.clone();
+                    continue;
+                }
+            }
+
+            match next_path.find(part)? {
                 ScopeMemberRef::Scope { path } => {
                     // found a namespace that matches this part, look for the next part inside
                     // that namespace
-                    current = path;
+                    next_path = path;
                 },
 
                 ScopeMemberRef::Decl {
@@ -138,7 +154,7 @@ impl ScopeStack {
             }
         }
 
-        Some(ScopeMemberRef::Scope { path: current })
+        Some(ScopeMemberRef::Scope { path: next_path })
     }
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)

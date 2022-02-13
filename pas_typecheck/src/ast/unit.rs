@@ -92,7 +92,7 @@ fn typecheck_unit_func_def(
             ctx.declare_function(func_def.decl.ident.last().clone(), func_decl, visibility)?;
         }
 
-        ctx.define_function(name, func_def.clone(), visibility)?;
+        ctx.define_function(name, func_def.clone())?;
     }
 
     Ok(UnitDecl::FunctionDef {

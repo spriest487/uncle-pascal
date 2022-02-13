@@ -739,19 +739,18 @@ impl Context {
         &mut self,
         name: Ident,
         def: FunctionDef,
-        visibility: Visibility,
     ) -> TypecheckResult<()> {
         let sig = FunctionSig::of_decl(&def.decl);
 
+        // defining a function - only the sig needs to match, the visibility of the definition doesn't matter
+        // since the implementation of an interface func can be in the implementation section, but the implementation
+        // of an implementation func can't be in the interface section, since it comes last
         let is_func_decl = |decl: &Decl| match decl {
-            Decl::Function {
-                sig: existing_sig,
-                visibility: existing_vis,
-            } => {
-                if sig == **existing_sig && visibility == *existing_vis {
-                    DefDeclMatch::Match
-                } else {
+            Decl::Function { sig: existing_sig, .. } => {
+                if sig != **existing_sig {
                     DefDeclMatch::Mismatch
+                } else {
+                    DefDeclMatch::Match
                 }
             }
             _ => DefDeclMatch::WrongKind,

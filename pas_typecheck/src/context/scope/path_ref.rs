@@ -1,6 +1,3 @@
-use std::borrow::Borrow;
-use std::fmt;
-use std::hash::Hash;
 use pas_syn::{Ident, IdentPath};
 use crate::{ScopeMember, ScopeMemberRef, Scope};
 
@@ -18,45 +15,42 @@ impl<'s> Clone for ScopePathRef<'s> {
 }
 
 impl<'s> ScopePathRef<'s> {
-    pub fn find<Q>(&self, key: &Q) -> Option<ScopeMemberRef<'s>>
-        where
-            Ident: Borrow<Q>,
-            Q: Hash + Eq + ?Sized + fmt::Debug,
-    {
-        self.namespaces
-            .iter()
-            .enumerate()
-            .rev()
-            .find_map(|(i, ns)| {
-                let path = &self.namespaces[0..=i];
+    pub fn find(&self, key: &Ident) -> Option<ScopeMemberRef<'s>> {
+        for i in (0..self.namespaces.len()).rev() {
+            let path = &self.namespaces[0..=i];
+            let scope = &path[path.len() - 1];
 
-                let member_ref = if ns.key().map(Borrow::borrow) == Some(key) {
-                    ScopeMemberRef::Scope {
-                        path: ScopePathRef { namespaces: path.to_vec() },
+            if scope.key() == Some(key) {
+                return Some(ScopeMemberRef::Scope {
+                    path: ScopePathRef { namespaces: path.to_vec() },
+                });
+            }
+
+            if let Some((key, member)) = scope.get_member(key) {
+                return match member {
+                    ScopeMember::Scope(ns) => {
+                        let mut path = path.to_vec();
+                        path.push(ns);
+
+                        Some(ScopeMemberRef::Scope {
+                            path: ScopePathRef { namespaces: path },
+                        })
                     }
-                } else {
-                    let key = key.borrow();
-                    let (key, member) = ns.get_member(key)?;
 
-                    match member {
-                        ScopeMember::Scope(ns) => {
-                            let mut path = path.to_vec();
-                            path.push(ns);
-                            ScopeMemberRef::Scope {
-                                path: ScopePathRef { namespaces: path },
-                            }
-                        }
+                    ScopeMember::Decl(value) => {
+                        let parent_path = ScopePathRef { namespaces: path.to_vec() };
 
-                        ScopeMember::Decl(value) => ScopeMemberRef::Decl {
+                        Some(ScopeMemberRef::Decl {
                             key,
                             value,
-                            parent_path: ScopePathRef { namespaces: path.to_vec() },
-                        },
-                    }
-                };
+                            parent_path,
+                        })
+                    },
+                }
+            }
+        }
 
-                Some(member_ref)
-            })
+        None
     }
 
     pub fn as_slice(&self) -> &[&Scope] {
@@ -97,6 +91,10 @@ impl<'s> ScopePathRef<'s> {
         }
 
         unit_paths
+    }
+
+    pub fn is_parent_of(&self, other: &ScopePathRef) -> bool {
+        self.namespaces.len() < other.namespaces.len() && other.namespaces[0..self.namespaces.len()] == self.namespaces
     }
 }
 

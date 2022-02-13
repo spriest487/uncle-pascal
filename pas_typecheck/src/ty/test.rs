@@ -122,7 +122,7 @@ fn specialized_fn_has_right_sig() {
     let type_args = TypeList::new([INT32], span.clone());
 
     let a_int_sig = a_sig
-        .specialize_generic(&type_args, &span, &ctx)
+        .specialize_generic(&type_args, &ctx)
         .unwrap();
 
     let expect_sig = FunctionSig {
@@ -173,7 +173,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
 
     let ctx = Context::root(true, span.clone());
 
-    let b_int_sig = b_sig.specialize_generic(&int_params, &span, &ctx).unwrap();
+    let b_int_sig = b_sig.specialize_generic(&int_params, &ctx).unwrap();
 
     let expect_sig = FunctionSig {
         type_params: Some(ast::TypeList::new([FunctionSigTypeParam { is_ty: Type::Any }], span.clone())),

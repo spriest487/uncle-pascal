@@ -6,7 +6,6 @@ mod path_ref;
 use crate::{Decl, Environment, NameError, NameResult};
 use pas_syn::{Ident, IdentPath};
 use std::{
-    borrow::Borrow,
     cmp::Ordering,
     collections::HashMap,
     fmt::{self, Write},
@@ -51,14 +50,8 @@ impl Scope {
         self.decls.keys().cloned().collect()
     }
 
-    pub fn get_member<Q>(&self, member_key: &Q) -> Option<(&Ident, &ScopeMember)>
-    where
-        Ident: Borrow<Q>,
-        Q: Hash + Eq + ?Sized + fmt::Debug,
-    {
-        self.decls
-            .iter()
-            .find(|(k, _v)| (*k).borrow() == member_key)
+    pub fn get_member(&self, member_key: &Ident) -> Option<(&Ident, &ScopeMember)> {
+        self.decls.get_key_value(member_key)
     }
 
     pub fn insert_member(&mut self, key: Ident, member_val: ScopeMember) -> NameResult<()> {

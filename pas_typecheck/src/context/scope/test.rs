@@ -412,3 +412,19 @@ fn finds_sibling_scope_decl() {
 
     assert_eq!(Some(const_decl(523)).as_ref(), found.as_value())
 }
+
+#[test]
+fn find_fully_qualified_in_current_scope() {
+    let mut namespaces: ScopeStack = ScopeStack::new(new_scope_anon());
+    namespaces.push_scope(new_scope("A"));
+    namespaces.push_scope(new_scope("B"));
+    namespaces.insert_decl(ident("x"), const_decl(987)).unwrap();
+
+    let found = namespaces.resolve_path(&IdentPath::from_parts([
+        ident("A"),
+        ident("B"),
+        ident("x")
+    ])).unwrap();
+
+    assert_eq!(Some(const_decl(987)).as_ref(), found.as_value())
+}
