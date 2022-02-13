@@ -1020,7 +1020,7 @@ fn translate_unary_op(
             out_val
         }
 
-        syn::Operator::Deref => operand_ref.to_deref(),
+        syn::Operator::Caret => operand_ref.to_deref(),
 
         syn::Operator::Subtract => {
             let out_ty = builder.translate_type(out_ty);

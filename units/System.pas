@@ -159,7 +159,7 @@ begin
     s.chars[at]
 end;
 
-function StringToBytes(s: String; var bytes: ^Byte; len: Integer)
+function StringToBytes(s: String; bytes: ^Byte; len: Integer)
 begin
     if len = 0 or bytes = nil then
         exit;
@@ -169,9 +169,11 @@ begin
     else
         s.len;
 
+    // need to make a mutable copy of this pointer since we're going to modify its contents
+    var outBytes := bytes;
     for let i := 0 to max - 1 do
     begin
-        bytes[i] := s.chars[i];
+        outBytes[i] := s.chars[i];
     end;
 end;
 

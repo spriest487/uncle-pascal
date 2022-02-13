@@ -1,20 +1,18 @@
 pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
-use crate::ast::{const_eval_integer, typecheck_expr};
-use crate::TypeArgsResult::NotGeneric;
 use crate::{
-    ast::{Class, FunctionDecl, Member, Variant},
+    ast::{const_eval_integer, typecheck_expr, Class, FunctionDecl, Member, Variant},
     context,
     result::*,
     Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
+    TypeArgsResult::NotGeneric,
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, ClassKind, Typed},
+    ast::{self, ArrayTypeName, ClassKind, IdentTypeName, Typed},
     ident::*,
     Operator,
 };
 use std::{fmt, rc::Rc};
-use pas_syn::ast::{ArrayTypeName, IdentTypeName};
 
 #[cfg(test)]
 mod test;
@@ -97,13 +95,15 @@ impl Type {
         match type_decl {
             ast::TypeDecl::Class(class) if class.kind == ClassKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
-            }
+            },
 
             ast::TypeDecl::Class(class) => Type::Class(Box::new(class.name.clone())),
 
             ast::TypeDecl::Variant(variant) => Type::Variant(Box::new(variant.name.clone())),
 
-            ast::TypeDecl::Interface(iface) => Type::Interface(Box::new(iface.name.qualified.clone())),
+            ast::TypeDecl::Interface(iface) => {
+                Type::Interface(Box::new(iface.name.qualified.clone()))
+            },
         }
     }
 
@@ -113,7 +113,7 @@ impl Type {
                 let def = ctx.instantiate_class(class_name)?;
 
                 Ok(def.find_member(member).cloned())
-            }
+            },
 
             _ => Ok(None),
         }
@@ -125,7 +125,7 @@ impl Type {
                 let class = ctx.instantiate_class(class)?;
 
                 Ok(class.members.get(index).cloned())
-            }
+            },
 
             _ => Ok(None),
         }
@@ -136,7 +136,7 @@ impl Type {
             Type::Record(class) | Type::Class(class) => {
                 let class = ctx.instantiate_class(class)?;
                 Ok(class.members.len())
-            }
+            },
 
             _ => Ok(0),
         }
@@ -205,7 +205,7 @@ impl Type {
                     (None, None) => TypeArgsResult::NotGeneric,
                     (None, Some(..)) => unreachable!(),
                 }
-            }
+            },
 
             _ => NotGeneric,
         }
@@ -215,7 +215,7 @@ impl Type {
         match self {
             Type::Variant(name) | Type::Class(name) | Type::Record(name) => {
                 name.decl_name.type_params.as_ref()
-            }
+            },
 
             _ => None,
         }
@@ -297,23 +297,39 @@ impl Type {
 
     pub fn valid_math_op(&self, op: Operator, rhs: &Self) -> bool {
         match (self, op, rhs) {
-            // pointer arithmetic
-            (Type::Pointer(_), Operator::Add, Type::Pointer(_))
-            | (Type::Pointer(_), Operator::Subtract, Type::Pointer(_)) => true,
-            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::NativeInt))
-            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::NativeInt))
-            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int8))
-            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int8))
-            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int16))
-            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int16))
-            | (Type::Pointer(_), Operator::Add, Type::Primitive(Primitive::Int32))
-            | (Type::Pointer(_), Operator::Subtract, Type::Primitive(Primitive::Int32)) => true,
+            // pointer arithmetic:
+            // - lhs is any pointer
+            // - operator is +, - or any bitwise operator
+            // - rhs is any integer type lte than the system pointer size
+            (
+                Type::Pointer(_) | Type::Primitive(Primitive::Pointer),
+                Operator::Add
+                | Operator::Subtract
+                | Operator::BitAnd
+                | Operator::BitOr
+                | Operator::Caret,
+                Type::Primitive(p),
+            ) => p.is_integer() && p.native_size() <= Primitive::Pointer.native_size(),
+
+            // (typed) pointer arithmetic:
+            // - lhs is any pointer
+            // - rhs is +, - or any bitwise operator
+            // - rhs is another pointer of the same type
+            (
+                Type::Pointer(_),
+                Operator::Add
+                | Operator::Subtract
+                | Operator::BitAnd
+                | Operator::BitOr
+                | Operator::Caret,
+                Type::Pointer(..)
+            ) => *self == *rhs,
 
             // all maths ops are valid for primitives of the same type
-            (Type::Primitive(a), Operator::Add, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Subtract, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Divide, Type::Primitive(b))
-            | (Type::Primitive(a), Operator::Multiply, Type::Primitive(b)) => {
+            (
+                Type::Primitive(a),
+                Operator::Add | Operator::Subtract | Operator::Divide | Operator::Multiply,
+                Type::Primitive(b)) => {
                 if a.is_numeric() && b.is_numeric() {
                     *a == *b
                 } else {
@@ -321,9 +337,13 @@ impl Type {
                 }
             },
 
-            (_, Operator::Shl, _) | (_, Operator::Shr, _) if *self == *rhs => match self {
-                Type::Primitive(p) if p.is_integer() && !p.is_signed() => true,
-                _ => false,
+            // bitwise ops are valid for two identical unsigned primitive types
+            (
+                Type::Primitive(lhs),
+                Operator::Shl | Operator::Shr | Operator::BitAnd | Operator::BitOr | Operator::Caret,
+                Type::Primitive(rhs)
+            ) if *lhs == *rhs => {
+                lhs.is_integer() && !lhs.is_signed()
             },
 
             _ => false,
@@ -341,7 +361,7 @@ impl Type {
                     .cloned();
 
                 Ok(method_decl)
-            }
+            },
 
             _ => Ok(None),
         }
@@ -437,15 +457,15 @@ impl Type {
 
             Type::Class(name) if name.decl_name.type_params.is_some() => {
                 Type::Class(Box::new(Self::new_class_name(&name, args)))
-            }
+            },
 
             Type::Record(name) if name.decl_name.type_params.is_some() => {
                 Type::Record(Box::new(Self::new_class_name(&name, args)))
-            }
+            },
 
             Type::Variant(name) if name.decl_name.type_params.is_some() => {
                 Type::Variant(Box::new(Self::new_class_name(&name, args)))
-            }
+            },
 
             Type::DynArray { element } => Type::DynArray {
                 element: element.substitute_type_args(args).into(),
@@ -456,7 +476,8 @@ impl Type {
                 ArrayType {
                     element_ty: array_ty.element_ty.substitute_type_args(args).into(),
                     dim: array_ty.dim,
-                }.into()
+                }
+                .into()
             },
 
             Type::Pointer(base_ty) => base_ty.substitute_type_args(args).ptr(),
@@ -476,7 +497,7 @@ impl Type {
                 });
 
                 Ok(arg.clone())
-            }
+            },
 
             Type::Record(class) => specialize_generic_name(&class, args)
                 .map(Box::new)
@@ -490,9 +511,18 @@ impl Type {
                 .map(Box::new)
                 .map(Type::Variant),
 
-            Type::Array(array_ty) => array_ty.element_ty
-                .specialize_generic(args, span)
-                .map(|element_ty| ArrayType { element_ty, dim: array_ty.dim }.into()),
+            Type::Array(array_ty) => {
+                array_ty
+                    .element_ty
+                    .specialize_generic(args, span)
+                    .map(|element_ty| {
+                        ArrayType {
+                            element_ty,
+                            dim: array_ty.dim,
+                        }
+                        .into()
+                    })
+            },
 
             Type::DynArray { element } => element
                 .specialize_generic(args, span)
@@ -556,7 +586,8 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             type_args,
             span,
         }) => {
-            let (_, raw_ty) = ctx.find_type(ident)
+            let (_, raw_ty) = ctx
+                .find_type(ident)
                 .map_err(|err| TypecheckError::NameError {
                     err,
                     span: ty.span().clone(),
@@ -577,13 +608,13 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
 
                     Type::specialize_generic(&raw_ty, &checked_type_args, span)
                         .map_err(|err| TypecheckError::from_generic_err(err, span.clone()))?
-                }
+                },
 
                 None => raw_ty.clone(),
             };
 
             Ok(ty.indirect_by(*indirection))
-        }
+        },
 
         ast::TypeName::Array(ArrayTypeName { element, dim, .. }) => {
             let element_ty = typecheck_type(element.as_ref(), ctx)?;
@@ -594,32 +625,28 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
                         typecheck_expr(dim_expr, &Type::Primitive(Primitive::Int32), ctx)?;
                     let dim_val = const_eval_integer(&dim_expr, ctx)?;
 
-                    let dim = dim_val.as_usize().ok_or_else(|| TypecheckError::TypeMismatch {
-                        span: dim_expr.span().clone(),
-                        actual: dim_expr.annotation().ty().into_owned(),
-                        expected: Type::Primitive(Primitive::Int32),
-                    })?;
+                    let dim = dim_val
+                        .as_usize()
+                        .ok_or_else(|| TypecheckError::TypeMismatch {
+                            span: dim_expr.span().clone(),
+                            actual: dim_expr.annotation().ty().into_owned(),
+                            expected: Type::Primitive(Primitive::Int32),
+                        })?;
 
-                    Ok(ArrayType {
-                        element_ty,
-                        dim,
-                    }.into())
-                }
+                    Ok(ArrayType { element_ty, dim }.into())
+                },
 
                 None => Ok(Type::DynArray {
                     element: Box::new(element_ty),
                 }),
             }
-        }
+        },
 
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
     }
 }
 
-pub fn specialize_generic_name(
-    name: &Symbol,
-    args: &TypeList,
-) -> GenericResult<Symbol> {
+pub fn specialize_generic_name(name: &Symbol, args: &TypeList) -> GenericResult<Symbol> {
     if !name.is_unspecialized_generic() {
         return Ok(name.clone());
     }
@@ -646,10 +673,7 @@ pub fn specialize_generic_name(
     Ok(name)
 }
 
-pub fn specialize_class_def(
-    class: &Class,
-    ty_args: &TypeList,
-) -> GenericResult<Class> {
+pub fn specialize_class_def(class: &Class, ty_args: &TypeList) -> GenericResult<Class> {
     let parameterized_name = specialize_generic_name(&class.name, &ty_args)?;
 
     let members: Vec<_> = class
@@ -674,10 +698,7 @@ pub fn specialize_class_def(
     })
 }
 
-pub fn specialize_generic_variant(
-    variant: &Variant,
-    args: &TypeList,
-) -> GenericResult<Variant> {
+pub fn specialize_generic_variant(variant: &Variant, args: &TypeList) -> GenericResult<Variant> {
     let parameterized_name = specialize_generic_name(&variant.name, &args)?;
 
     let cases: Vec<_> = variant
@@ -689,7 +710,7 @@ pub fn specialize_generic_variant(
                 Some(ty) => {
                     let ty = ty.clone().substitute_type_args(&args);
                     Some(ty)
-                }
+                },
             };
 
             Ok(ast::VariantCase {

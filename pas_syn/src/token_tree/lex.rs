@@ -323,6 +323,13 @@ impl Lexer {
         TokenTree::Operator { op: op.into(), span }
     }
 
+    fn operator_or_compound_assignment_token(&mut self, op: impl Into<Operator>, compound_op: impl Into<CompoundAssignmentOperator>) -> TokenTree {
+        match self.line.get(self.location.col + 1) {
+            Some('=') => self.operator_token(Operator::CompoundAssignment(compound_op.into()), 2),
+            _ => self.operator_token(op.into(), 1),
+        }
+    }
+
     fn separator_token(&mut self, sep: Separator, len: usize) -> TokenTree {
         let start_loc = self.location;
         self.location.col += len;
@@ -423,22 +430,13 @@ impl Lexer {
             }
             ']' => Some(self.end_delim_group(DelimiterPair::SquareBracket, 1)?),
 
-            '+' => match self.line.get(self.location.col + 1) {
-                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::AddAssign, 2)),
-                _ => Some(self.operator_token(Operator::Add, 1)),
-            },
-            '-' => match self.line.get(self.location.col + 1) {
-                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::SubtractAssign, 2)),
-                _ => Some(self.operator_token(Operator::Subtract, 1)),
-            },
-            '*' => match self.line.get(self.location.col + 1) {
-                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::MultiplyAssign, 2)),
-                _ => Some(self.operator_token(Operator::Multiply, 1)),
-            },
-            '/' => match self.line.get(self.location.col + 1) {
-                Some('=') => Some(self.operator_token(CompoundAssignmentOperator::DivideAssign, 2)),
-                _ => Some(self.operator_token(Operator::Divide, 1)),
-            },
+            '+' => Some(self.operator_or_compound_assignment_token(Operator::Add, CompoundAssignmentOperator::AddAssign)),
+            '-' => Some(self.operator_or_compound_assignment_token(Operator::Subtract, CompoundAssignmentOperator::SubtractAssign)),
+            '*' => Some(self.operator_or_compound_assignment_token(Operator::Multiply, CompoundAssignmentOperator::MultiplyAssign)),
+            '/' => Some(self.operator_or_compound_assignment_token(Operator::Divide, CompoundAssignmentOperator::DivideAssign)),
+            '|' => Some(self.operator_token(Operator::BitOr, 1)),
+            '&' => Some(self.operator_token(Operator::BitAnd, 1)),
+            '~' => Some(self.operator_token(Operator::BitNot, 1)),
             '@' => Some(self.operator_token(Operator::AddressOf, 1)),
             ',' => Some(self.separator_token(Separator::Comma, 1)),
             '.' => Some(match self.line.get(self.location.col + 1) {
@@ -446,7 +444,7 @@ impl Lexer {
                 _ => self.operator_token(Operator::Member, 1),
             }),
             ';' => Some(self.separator_token(Separator::Semicolon, 1)),
-            '^' => Some(self.operator_token(Operator::Deref, 1)),
+            '^' => Some(self.operator_token(Operator::Caret, 1)),
             '>' => Some(match self.line.get(self.location.col + 1) {
                 Some('=') => self.operator_token(Operator::Gte, 2),
                 _ => self.operator_token(Operator::Gt, 1),

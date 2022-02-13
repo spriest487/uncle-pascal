@@ -2,7 +2,7 @@ use crate::ast::{typecheck_expr, Expression};
 use crate::{Context, Type, TypeAnnotation, TypecheckError, TypecheckResult};
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast, Operator};
-use crate::ast::cast::check_implicit_conversion;
+use crate::ast::cast::implicit_conversion;
 
 pub type Assignment = ast::Assignment<TypeAnnotation>;
 pub type CompoundAssignment = ast::CompoundAssignment<TypeAnnotation>;
@@ -11,7 +11,7 @@ pub fn typecheck_assignment(
     assignment: &ast::Assignment<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Assignment> {
-    let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, assignment.span(), ctx)?;
+    let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
     if let ast::Expression::Ident(ident, ..) = &lhs {
         if ctx.get_decl_scope(ident).is_some() {
@@ -30,7 +30,7 @@ pub fn typecheck_compound_assignment(
     assignment: &ast::CompoundAssignment<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<CompoundAssignment> {
-    let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, assignment.span(), ctx)?;
+    let (lhs, rhs) = typecheck_operands(&assignment.lhs, &assignment.rhs, ctx)?;
 
     if !lhs.annotation().ty().valid_math_op(assignment.op.binary_operator(), &rhs.annotation().ty()) {
         return Err(TypecheckError::InvalidBinOp {
@@ -52,7 +52,6 @@ pub fn typecheck_compound_assignment(
 fn typecheck_operands(
     src_lhs: &ast::Expression<Span>,
     src_rhs: &ast::Expression<Span>,
-    span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<(Expression, Expression)> {
     let lhs = typecheck_expr(&src_lhs, &Type::Nothing, ctx)?;
@@ -76,10 +75,9 @@ fn typecheck_operands(
     }
 
     let lhs_ty = lhs.annotation().ty();
-    let rhs = typecheck_expr(&src_rhs, &lhs_ty, ctx)?;
-    let rhs_ty = rhs.annotation().ty();
 
-    check_implicit_conversion(&lhs_ty, &rhs_ty, span, ctx)
+    let rhs = typecheck_expr(&src_rhs, &lhs_ty, ctx)?;
+    let rhs = implicit_conversion(rhs, &lhs_ty, ctx)
         .map_err(|err| match err {
             TypecheckError::TypeMismatch {
                 expected,

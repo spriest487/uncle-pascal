@@ -175,7 +175,7 @@ impl TypeName {
         let mut indirection = 0;
         let mut indirection_span = None;
 
-        while let Some(deref_tt) = tokens.match_one_maybe(Operator::Deref) {
+        while let Some(deref_tt) = tokens.match_one_maybe(Operator::Caret) {
             if indirection_span.is_none() {
                 indirection_span = Some(deref_tt.span().clone());
             }

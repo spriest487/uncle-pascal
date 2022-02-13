@@ -6,7 +6,7 @@ use crate::ast::{
     statement::assign::{typecheck_assignment, typecheck_compound_assignment},
 };
 use pas_syn::Operator;
-use crate::ast::cast::check_implicit_conversion;
+use crate::ast::cast::implicit_conversion;
 pub use self::assign::{
     Assignment,
     CompoundAssignment,
@@ -46,9 +46,8 @@ pub fn typecheck_local_binding(
             let val = match &binding.val {
                 Some(val) => {
                     let val = typecheck_expr(val, &explicit_ty, ctx)?;
-                    let val_ty = val.annotation().ty();
 
-                    check_implicit_conversion(&explicit_ty, &val_ty, val.span(), ctx)
+                    let val = implicit_conversion(val, &explicit_ty, ctx)
                         .map_err(|err| match err {
                             TypecheckError::TypeMismatch { expected, actual, span, .. } => {
                                 TypecheckError::InvalidBinOp {
@@ -198,7 +197,7 @@ fn expect_in_loop(stmt: &ast::Statement<Span>, ctx: &Context) -> TypecheckResult
 }
 
 pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<Exit> {
-    let exit_ty = ctx.current_func_return_ty()
+    let ret_ty = ctx.current_func_return_ty()
         .ok_or_else(|| {
             TypecheckError::NoFunctionContext {
                 stmt: Box::new(ast::Statement::Exit(Box::new(exit.clone())))
@@ -219,23 +218,18 @@ pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Contex
         }.into()
     };
 
-    let (exit, ret_ty) = match exit {
+    let exit = match exit {
         ast::Exit::WithoutValue(span) => {
-            let exit = ast::Exit::WithoutValue(make_annotation(span).into());
-            (exit, Type::Nothing)
+            Exit::WithoutValue(make_annotation(span).into())
         },
 
         ast::Exit::WithValue(value, span) => {
-            let value = typecheck_expr(value, &exit_ty, ctx)?;
-            let ret_ty = value.annotation().ty().into_owned();
+            let value = typecheck_expr(value, &ret_ty, ctx)?;
+            let value = implicit_conversion(value, &ret_ty, ctx)?;
 
-            let exit = ast::Exit::WithValue(value, make_annotation(span).into());
-
-            (exit, ret_ty)
+            Exit::WithValue(value, make_annotation(span).into())
         }
     };
-
-    check_implicit_conversion(&exit_ty, &ret_ty, exit.span(), ctx)?;
 
     Ok(exit)
 }

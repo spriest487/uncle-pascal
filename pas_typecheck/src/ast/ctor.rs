@@ -1,4 +1,4 @@
-use crate::ast::cast::check_implicit_conversion;
+use crate::ast::cast::implicit_conversion;
 use crate::ast::prelude::*;
 
 pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;
@@ -95,10 +95,11 @@ pub fn typecheck_object_ctor(
             }
         };
 
-        let value = typecheck_expr(&arg.value, &member.ty, ctx)?;
-        let value_ty = value.annotation().ty();
-
-        check_implicit_conversion(&member.ty, &value_ty, value.span(), ctx)?;
+        let value = implicit_conversion(
+            typecheck_expr(&arg.value, &member.ty, ctx)?,
+            &member.ty,
+            ctx
+        )?;
 
         members.push(ObjectCtorMember {
             ident: arg.ident.clone(),

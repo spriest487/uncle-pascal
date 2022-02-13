@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum Primitive {
     Boolean,
@@ -67,6 +69,24 @@ impl Primitive {
             | Primitive::Pointer => true,
 
             | _ => false,
+        }
+    }
+
+    pub fn native_size(&self) -> usize {
+        match self {
+            | Primitive::Byte => size_of::<u8>(),
+            | Primitive::Int8 => size_of::<i8>(),
+            | Primitive::Int16 => size_of::<i16>(),
+            | Primitive::UInt16 => size_of::<u16>(),
+            | Primitive::Int32 => size_of::<u32>(),
+            | Primitive::UInt32 => size_of::<u32>(),
+            | Primitive::Int64 => size_of::<u64>(),
+            | Primitive::UInt64 => size_of::<u64>(),
+            | Primitive::NativeInt => size_of::<isize>(),
+            | Primitive::NativeUInt => size_of::<usize>(),
+            | Primitive::Pointer => size_of::<*const u8>(),
+            | Primitive::Boolean => size_of::<bool>(),
+            | Primitive::Real32 => size_of::<f32>(),
         }
     }
 

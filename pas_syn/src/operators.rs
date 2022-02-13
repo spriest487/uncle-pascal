@@ -29,7 +29,7 @@ pub enum Operator {
     Multiply,
     Divide,
 
-    Deref,
+    Caret,
     AddressOf,
 
     As,
@@ -37,6 +37,11 @@ pub enum Operator {
     And,
     Not,
     Or,
+
+    // no bitwise xor since the caret operator used for derefs doubles as that
+    BitAnd,
+    BitNot,
+    BitOr,
 
     Equals,
     NotEquals,
@@ -87,15 +92,16 @@ impl From<CompoundAssignmentOperator> for Operator {
 
 /// canonical operator precedence ordering. operations higher in the list
 /// take precedence over ones below them
-static PRECEDENCE: [(Operator, Position); 30] = [
+static PRECEDENCE: [(Operator, Position); 34] = [
     (Operator::Index, Position::Binary),
     (Operator::Member, Position::Binary),
     (Operator::Call, Position::Postfix),
-    (Operator::Deref, Position::Postfix),
+    (Operator::Caret, Position::Postfix),
     (Operator::AddressOf, Position::Prefix),
     (Operator::Add, Position::Prefix),
     (Operator::Subtract, Position::Prefix),
     (Operator::Not, Position::Prefix),
+    (Operator::BitNot, Position::Prefix),
     (Operator::As, Position::Postfix),
     (Operator::Shl, Position::Binary),
     (Operator::Shr, Position::Binary),
@@ -110,7 +116,10 @@ static PRECEDENCE: [(Operator, Position); 30] = [
     (Operator::Lt, Position::Binary),
     (Operator::Lte, Position::Binary),
     (Operator::In, Position::Binary),
+    (Operator::BitAnd, Position::Binary),
     (Operator::And, Position::Binary),
+    (Operator::BitOr, Position::Binary),
+    (Operator::Caret, Position::Binary),
     (Operator::Or, Position::Binary),
     (Operator::RangeInclusive, Position::Binary),
     (Operator::Assignment, Position::Binary),
@@ -181,7 +190,7 @@ impl fmt::Display for Operator {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Operator::Member => write!(f, "."),
-            Operator::Deref => write!(f, "^"),
+            Operator::Caret => write!(f, "^"),
             Operator::AddressOf => write!(f, "@"),
             Operator::Assignment => write!(f, ":="),
             Operator::CompoundAssignment(a) => write!(f, "{}", a),
@@ -205,6 +214,9 @@ impl fmt::Display for Operator {
             Operator::Call => write!(f, "(...)"),
             Operator::Index => write!(f, "[...]"),
             Operator::As => write!(f, "as"),
+            Operator::BitAnd => write!(f, "&"),
+            Operator::BitNot => write!(f, "~"),
+            Operator::BitOr => write!(f, "|"),
         }
     }
 }

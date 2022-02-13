@@ -43,6 +43,11 @@ pub fn typecheck_bin_op(
             Ok(Expression::from(bin_op))
         }
 
+        Operator::BitAnd | Operator::BitOr | Operator::BitNot | Operator::Caret => {
+            let bin_op = typecheck_bitwise_op(bin_op, expect_ty, ctx)?;
+            Ok(Expression::from(bin_op))
+        }
+
         _ => {
             let mut lhs = typecheck_expr(&bin_op.lhs, &Type::Nothing, ctx)?;
             let mut rhs = typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?;
@@ -172,6 +177,39 @@ fn typecheck_comparison(bin_op: &ast::BinOp<Span>, span: Span, ctx: &mut Context
         rhs,
         op: bin_op.op,
         annotation,
+    })
+}
+
+fn typecheck_bitwise_op(bin_op: &ast::BinOp<Span>, expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<BinOp> {
+    let lhs = typecheck_expr(&bin_op.lhs, expect_ty, ctx)?;
+
+    // for bitwise operations to make sense the lhs and rhs must be the exact same type so insert a
+    // conversion here as necessary
+    let rhs = implicit_conversion(
+        typecheck_expr(&bin_op.rhs, &lhs.annotation().ty(), ctx)?,
+        &lhs.annotation().ty(),
+        ctx,
+    )?;
+
+    if lhs.annotation().ty().valid_math_op(bin_op.op, &rhs.annotation().ty()) {
+        return Err(TypecheckError::InvalidBinOp {
+            lhs: lhs.annotation().ty().into_owned(),
+            rhs: rhs.annotation().ty().into_owned(),
+            span: bin_op.span().clone(),
+            op: bin_op.op,
+        })
+    }
+
+    Ok(BinOp {
+        annotation: TypedValueAnnotation {
+            ty: lhs.annotation().ty().into_owned(),
+            span: bin_op.span().clone(),
+            value_kind: ValueKind::Temporary,
+            decl: None,
+        }.into(),
+        lhs,
+        rhs,
+        op: bin_op.op,
     })
 }
 
@@ -584,7 +622,7 @@ pub fn typecheck_unary_op(
             _ => Type::Nothing,
         }
 
-        Operator::Deref => expect_ty.clone().ptr(),
+        Operator::Caret => expect_ty.clone().ptr(),
         _ => Type::Nothing,
     };
 
@@ -660,7 +698,7 @@ pub fn typecheck_unary_op(
             }.into()
         }
 
-        Operator::Deref => {
+        Operator::Caret => {
             let deref_ty = operand
                 .annotation()
                 .ty()

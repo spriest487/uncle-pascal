@@ -1,7 +1,7 @@
 use crate::{Context, Primitive, Type, TypeAnnotation, typecheck_type, TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind};
-use pas_common::span::Span;
+use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
-use crate::ast::typecheck_expr;
+use crate::ast::{Expression, typecheck_expr};
 
 pub type Cast = ast::Cast<TypeAnnotation>;
 
@@ -11,9 +11,26 @@ enum Conversion {
     Illegal,
 }
 
-pub fn check_implicit_conversion(
+pub fn implicit_conversion(
+    expr: Expression,
     to: &Type,
+    ctx: &Context,
+) -> TypecheckResult<Expression> {
+    let expr_ty = expr.annotation().ty();
+    if *expr_ty == *to {
+        return Ok(expr);
+    }
+
+    let span = expr.span().clone();
+
+    check_implicit_conversion(&expr_ty, to, &span, ctx)?;
+
+    Ok(Expression::from(create_cast(expr, to.clone(), span)))
+}
+
+pub fn check_implicit_conversion(
     from: &Type,
+    to: &Type,
     span: &Span,
     ctx: &Context,
 ) -> TypecheckResult<()> {
@@ -77,7 +94,7 @@ pub fn check_explicit_cast(
     span: &Span,
     ctx: &Context,
 ) -> TypecheckResult<()> {
-    if check_implicit_conversion(to, from, span, ctx).is_ok() {
+    if check_implicit_conversion(from, to, span, ctx).is_ok() {
         return Ok(());
     }
 
@@ -111,16 +128,20 @@ pub fn typecheck_cast_expr(cast: &ast::Cast<Span>, ctx: &mut Context) -> Typeche
 
     check_explicit_cast(&expr.annotation().ty(), &cast_ty, &cast.annotation, ctx)?;
 
+    Ok(create_cast(expr, cast_ty, cast.span().clone()))
+}
+
+fn create_cast(expr: Expression, cast_ty: Type, span: Span) -> Cast {
     let annotation = TypedValueAnnotation {
         ty: cast_ty.clone(),
-        span: cast.annotation.clone(),
+        span,
         value_kind: ValueKind::Temporary,
         decl: None,
     };
 
-    Ok(Cast {
+    Cast {
         annotation: annotation.into(),
         expr,
         ty: cast_ty,
-    })
+    }
 }

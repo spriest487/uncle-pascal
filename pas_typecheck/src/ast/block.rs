@@ -1,6 +1,4 @@
-use std::borrow::Cow;
-use crate::ast::{expect_stmt_initialized, prelude::*};
-use crate::ast::cast::check_implicit_conversion;
+use crate::ast::{cast::implicit_conversion, expect_stmt_initialized, prelude::*};
 
 pub type Block = ast::Block<TypeAnnotation>;
 
@@ -39,15 +37,17 @@ pub fn typecheck_block(
                 // the block contains a final expression which returns no value,
                 // so it should just be treated like a statement
                 let last_stmt = Statement::try_from_expr(out_expr)
-                    .map_err(|invalid| {
-                        TypecheckError::InvalidBlockOutput(Box::new(invalid))
-                    })?;
+                    .map_err(|invalid| TypecheckError::InvalidBlockOutput(Box::new(invalid)))?;
                 statements.push(last_stmt);
                 None
+            } else if *expect_ty != Type::Nothing {
+                let out_expr = implicit_conversion(out_expr, expect_ty, ctx)?;
+
+                Some(out_expr)
             } else {
                 Some(out_expr)
             }
-        }
+        },
 
         // parsing alone can't find all the cases where the final statement
         // in a block is a typed expression indicating the output, for example
@@ -69,19 +69,10 @@ pub fn typecheck_block(
             } else {
                 None
             }
-        }
+        },
 
         None => None,
     };
-
-    if *expect_ty != Type::Nothing {
-        let (output_ty, output_span) = match &output {
-            Some(expr) => (expr.annotation().ty(), expr.span()),
-            None => (Cow::Owned(Type::Nothing), &block.end),
-        };
-
-        check_implicit_conversion(expect_ty, &output_ty, output_span, ctx)?;
-    }
 
     let span = block.annotation.span().clone();
     let annotation = match &output {
@@ -95,9 +86,10 @@ pub fn typecheck_block(
                     value_kind: ValueKind::Temporary,
                     span,
                     decl: None,
-                }.into()
+                }
+                .into()
             }
-        }
+        },
         None => TypeAnnotation::Untyped(span),
     };
 
@@ -113,7 +105,10 @@ pub fn typecheck_block(
     };
 
     assert_eq!(*block.annotation.ty(), {
-        let out_ty = block.output.as_ref().map(|o| o.annotation().ty().into_owned());
+        let out_ty = block
+            .output
+            .as_ref()
+            .map(|o| o.annotation().ty().into_owned());
         out_ty.unwrap_or(Type::Nothing)
     });
 

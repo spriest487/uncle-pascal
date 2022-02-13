@@ -16,15 +16,11 @@ pub fn typecheck_if_cond(
 
     let cond = typecheck_expr(&if_cond.cond, &cond_expect_ty, ctx)?;
 
-    // ...and verify the condition is definitely a boolean in non-is-match conditions
-    if if_cond.is_pattern.is_none() {
-        check_implicit_conversion(
-            &Type::Primitive(Primitive::Boolean),
-            &cond.annotation().ty(),
-            if_cond.span(),
-            ctx
-        )?;
-    }
+    // if there's no is-match, implicit conversion of the condition expression to bool
+    let cond = match if_cond.is_pattern {
+        Some(..) => cond,
+        None => implicit_conversion(cond, &Type::Primitive(Primitive::Boolean), ctx)?,
+    };
 
     let is_pattern = match &if_cond.is_pattern {
         Some(pattern) => Some(TypePattern::typecheck(
@@ -55,11 +51,18 @@ pub fn typecheck_if_cond(
     let else_branch = match &if_cond.else_branch {
         Some(else_expr) => {
             let mut else_ctx = ctx.clone();
-            let else_expr = typecheck_expr(else_expr, &then_branch.annotation().ty(), &mut else_ctx)?;
+            let then_ty = then_branch.annotation().ty();
+
+            let else_expr = typecheck_expr(else_expr, &then_ty, &mut else_ctx)?;
+            let else_expr = match then_ty.as_ref() {
+                Type::Nothing => else_expr,
+                then_ty => implicit_conversion(else_expr, &then_ty, ctx)?,
+            };
 
             ctx.consolidate_branches(&[then_ctx, else_ctx]);
             Some(else_expr)
         }
+
         None => {
             ctx.consolidate_branches(&[then_ctx]);
             None
@@ -72,9 +75,7 @@ pub fn typecheck_if_cond(
         | (Cow::Owned(Type::Nothing) | Cow::Borrowed(Type::Nothing), _)
         | (_, None) => TypeAnnotation::Untyped(span),
 
-        | (then_ty, Some(else_branch)) => {
-            check_implicit_conversion(&then_ty, &else_branch.annotation().ty(), else_branch.annotation().span(), ctx)?;
-
+        | (then_ty, Some(_else_branch)) => {
             TypedValueAnnotation {
                 ty: then_ty.into_owned(),
                 value_kind: ValueKind::Temporary,

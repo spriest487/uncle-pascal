@@ -4,8 +4,8 @@ use pas_common::span::{Span, Spanned as _};
 use pas_syn::ast::{FunctionParamMod, TypeList};
 use pas_syn::{ast, Ident, IdentPath};
 
-use crate::ast::cast::check_implicit_conversion;
-use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor};
+use crate::ast::cast::implicit_conversion;
+use crate::ast::{typecheck_expr, typecheck_object_ctor, Expression, FunctionDecl, ObjectCtor, check_implicit_conversion};
 use crate::{
     context::InstanceMethod, typecheck_type, Context, FunctionAnnotation, FunctionParamSig,
     FunctionSig, GenericError, GenericTarget, GenericTypeHint, InterfaceMethodAnnotation,
@@ -45,8 +45,8 @@ fn invalid_args(
 }
 
 fn build_args_for_params(
-    expected_args: &[FunctionParamSig],
-    actual_args: &[ast::Expression<Span>],
+    params: &[FunctionParamSig],
+    src_args: &[ast::Expression<Span>],
     self_arg: Option<&Expression>,
     span: &Span,
     ctx: &mut Context,
@@ -54,55 +54,53 @@ fn build_args_for_params(
     let mut checked_args = Vec::new();
 
     let rest_args = if let Some(self_arg) = self_arg {
-        let self_ty = &expected_args[0].ty;
-        check_implicit_conversion(self_ty, &self_arg.annotation().ty(), span, ctx)?;
+        let self_ty = &params[0].ty;
 
-        checked_args.push(self_arg.clone());
+        let self_arg = implicit_conversion(self_arg.clone(), self_ty, ctx)?;
+        checked_args.push(self_arg);
 
-        &expected_args[1..]
+        &params[1..]
     } else {
-        expected_args
+        params
     };
 
-    for (arg, expected_param) in actual_args.iter().zip(rest_args.iter()) {
+    // typecheck each arg (don't do conversions yet, we haven't figured out the self ty yet)
+    for (arg, expected_param) in src_args.iter().zip(rest_args.iter()) {
         let arg_expr = typecheck_expr(arg, &expected_param.ty, ctx)?;
         checked_args.push(arg_expr);
     }
 
-    typecheck_args(&checked_args, expected_args, ctx)?;
-
-    if checked_args.len() != expected_args.len() {
-        // arg count doesn't match expected param count
-        return Err(invalid_args(checked_args, expected_args, span.clone()));
+    // does arg count match expected arg count?
+    if checked_args.len() != params.len() {
+        return Err(invalid_args(checked_args, params, span.clone()));
     }
 
+    // find the self ty - take the actual type of the first arg that is passed to a Self-typed param
     let mut self_ty: Option<Type> = None;
+    let mut params = params.to_vec();
 
-    let all_arg_tys = checked_args
-        .iter()
-        .map(|arg_expr| arg_expr.annotation().ty())
-        .zip(expected_args.iter());
+    for i in 0..params.len() {
+        let expected = &params[i];
+        if expected.ty != Type::MethodSelf {
+            continue;
+        }
 
-    let type_mismatch_as_bad_args = |err| match err {
-        TypecheckError::TypeMismatch { .. } => {
-            invalid_args(checked_args.clone(), expected_args, span.clone())
-        },
-        err => err,
-    };
-
-    for (actual, expected) in all_arg_tys {
-        if expected.ty == Type::MethodSelf {
-            if let Some(self_ty) = &self_ty {
-                check_implicit_conversion(self_ty, &actual, span, ctx)
-                    .map_err(type_mismatch_as_bad_args)?;
-            } else {
-                self_ty = Some(actual.into_owned());
+        match &self_ty {
+            // this is the first arg passed as a Self param, use this as the self ty from now on
+            None => {
+                let actual_self_ty = checked_args[i].annotation().ty().into_owned();
+                params[i].ty = actual_self_ty.clone();
+                self_ty = Some(actual_self_ty);
             }
-        } else {
-            check_implicit_conversion(&expected.ty, &actual, span, ctx)
-                .map_err(type_mismatch_as_bad_args)?;
+
+            // we have already deduced a self ty and are using that one
+            Some(actual_self_ty) => {
+                params[i].ty = actual_self_ty.clone();
+            }
         }
     }
+
+    validate_args(&mut checked_args, &params, span, ctx)?;
 
     Ok(checked_args)
 }
@@ -385,7 +383,7 @@ fn typecheck_ufcs_call(
     arg_brackets: (&Span, &Span),
     ctx: &mut Context,
 ) -> TypecheckResult<Call> {
-    let specialized_call_args = specialize_call_args(
+    let mut specialized_call_args = specialize_call_args(
         &ufcs_call.sig,
         &rest_args,
         Some(&ufcs_call.self_arg),
@@ -393,9 +391,10 @@ fn typecheck_ufcs_call(
         &span,
         ctx,
     )?;
-    typecheck_args(
-        &specialized_call_args.actual_args,
+    validate_args(
+        &mut specialized_call_args.actual_args,
         &specialized_call_args.sig.params,
+        span,
         ctx,
     )?;
 
@@ -667,15 +666,39 @@ fn unwrap_inferred_args(
     Ok(TypeList::new(items, span.clone()))
 }
 
-fn typecheck_args(
-    args: &[Expression],
+/// final arg validation when all arg types are known and specialized correctly, and any
+/// self-args have been processed into normal arguments to match the sig
+/// - insert any required implicit type conversions
+/// - validate length
+/// - ensure that the expressions provided for out/var refs are mutable l-values
+/// - mark the names referenced in out vars as initialized
+fn validate_args(
+    args: &mut [Expression],
     params: &[FunctionParamSig],
+    span: &Span,
     ctx: &mut Context,
 ) -> TypecheckResult<()> {
+    if args.len() != params.len() {
+        return Err(invalid_args(args.to_vec(), params, span.clone()));
+    }
+
+    for i in 0..params.len() {
+        // only do implicit conversion for non-ref params
+        if params[i].is_by_ref() {
+            continue;
+        }
+
+        args[i] = implicit_conversion(args[i].clone(), &params[i].ty, ctx)
+            .map_err(|err| match err {
+                TypecheckError::TypeMismatch { .. } => {
+                    invalid_args(args.to_vec(), params, span.clone())
+                },
+                err => err,
+            })?;
+    }
+
     let args_and_params = args.iter().zip(params.iter());
     for (arg, param) in args_and_params {
-        check_implicit_conversion(&param.ty, &arg.annotation().ty(), arg.span(), ctx)?;
-
         let (is_in_ref, is_out_ref) = match &param.modifier {
             None => (false, false),
             Some(FunctionParamMod::Out) => (false, true),
@@ -729,11 +752,12 @@ fn typecheck_func_call(
         None => None,
     };
 
-    let specialized_call_args =
+    let mut specialized_call_args =
         specialize_call_args(sig, &func_call.args, None, type_args, &span, ctx)?;
-    typecheck_args(
-        &specialized_call_args.actual_args,
+    validate_args(
+        &mut specialized_call_args.actual_args,
         &specialized_call_args.sig.params,
+        func_call.span(),
         ctx,
     )?;
 
@@ -1035,11 +1059,7 @@ pub fn resolve_overload(
             } else {
                 let self_param_ty = &sig.params[0].ty;
 
-                match check_implicit_conversion(&self_param_ty, &self_arg_ty, self_arg.span(), ctx)
-                {
-                    Ok(..) => true,
-                    Err(..) => false,
-                }
+                check_implicit_conversion(&self_arg_ty, &self_param_ty, span, ctx).is_ok()
             }
         });
 
@@ -1086,7 +1106,7 @@ pub fn resolve_overload(
                 false
             } else {
                 let sig_param = &sig.params[param_index];
-                check_implicit_conversion(&sig_param.ty, &arg_ty, arg_span, ctx).is_ok()
+                check_implicit_conversion(&arg_ty, &sig_param.ty, arg_span, ctx).is_ok()
             }
         });
 
