@@ -728,6 +728,28 @@ pub fn typecheck_unary_op(
             }.into()
         }
 
+        Operator::BitNot => {
+            let valid_ty = match operand.annotation().ty().as_ref() {
+                Type::Primitive(p) => p.is_integer() && !p.is_signed(),
+                _ => false,
+            };
+
+            if !valid_ty {
+                return Err(TypecheckError::InvalidUnaryOp {
+                    operand: operand.annotation().ty().into_owned(),
+                    op: unary_op.op,
+                    span,
+                })
+            }
+
+            TypedValueAnnotation {
+                ty: operand.annotation().ty().into_owned(),
+                value_kind: ValueKind::Temporary,
+                span,
+                decl: None,
+            }.into()
+        }
+
         _ => {
             return Err(TypecheckError::InvalidUnaryOp {
                 op: unary_op.op,
