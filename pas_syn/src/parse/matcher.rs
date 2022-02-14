@@ -91,15 +91,17 @@ impl fmt::Display for Matcher {
             Matcher::AnyLiteralReal => write!(f, "floating point literal"),
             Matcher::AnyLiteralBoolean => write!(f, "boolean literal"),
             Matcher::Exact(exact_token) => write!(f, "{}", exact_token),
-            Matcher::OneOf(matchers) => write!(
-                f,
-                "one of: {}",
-                matchers
-                    .iter()
-                    .map(|matcher| format!("{}", matcher))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
+            Matcher::OneOf(matchers) => {
+                write!(
+                    f,
+                    "one of: {}",
+                    matchers
+                        .iter()
+                        .map(|matcher| format!("{}", matcher))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            },
         }
     }
 }

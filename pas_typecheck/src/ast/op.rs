@@ -290,7 +290,7 @@ fn desugar_string_concat(
             ast::Expression::Literal(ast::Literal::String(a), _),
             ast::Expression::Literal(ast::Literal::String(b), _),
         ) => Ok(ast::Expression::Literal(
-            ast::Literal::String(a.clone() + b),
+            ast::Literal::String(Rc::new((**a).clone() + b.as_str())),
             annotation,
         )),
 

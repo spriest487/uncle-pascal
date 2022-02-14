@@ -1,11 +1,11 @@
-use crate::{prelude::*, translate_stmt, Builder, Type, build_case_block};
+use crate::{build_case_block, prelude::*, translate_stmt, Builder, Type};
 use pas_common::span::*;
 use pas_syn as syn;
-use syn::ast;
-use pas_typecheck as pas_ty;
-use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
-use std::convert::TryFrom;
 use pas_syn::Ident;
+use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
+use pas_typecheck as pas_ty;
+use std::convert::TryFrom;
+use syn::ast;
 
 use crate::ty::ClassID;
 
@@ -15,7 +15,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
     let result_ref = match expr {
         ast::Expression::Literal(lit, annotation) => {
             translate_literal(lit, &annotation.ty(), builder)
-        }
+        },
 
         ast::Expression::BinOp(bin_op) => {
             translate_bin_op(bin_op, &bin_op.annotation.ty(), builder)
@@ -23,21 +23,19 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
 
         ast::Expression::UnaryOp(unary_op) => {
             translate_unary_op(unary_op, &unary_op.annotation.ty(), builder)
-        }
+        },
 
-        ast::Expression::Ident(ident, annotation) => {
-            translate_ident(ident, annotation, builder)
-        }
+        ast::Expression::Ident(ident, annotation) => translate_ident(ident, annotation, builder),
 
         ast::Expression::Call(call) => {
             translate_call(call, builder).expect("call used in expression must have a return value")
-        }
+        },
 
         ast::Expression::ObjectCtor(ctor) => translate_object_ctor(ctor, builder),
 
         ast::Expression::CollectionCtor(ctor) => translate_collection_ctor(ctor, builder),
 
-        ast::Expression::IfCond(if_cond) => translate_if_cond(if_cond, builder, false)
+        ast::Expression::IfCond(if_cond) => translate_if_cond_expr(if_cond, builder)
             .expect("conditional used in expression must have a type"),
 
         ast::Expression::Block(block) => {
@@ -49,7 +47,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
             translate_block(block, out_ref.clone(), builder);
 
             out_ref
-        }
+        },
 
         ast::Expression::Raise(raise) => translate_raise(raise, builder),
         ast::Expression::Exit(exit) => {
@@ -95,7 +93,7 @@ fn translate_indexer(
             builder.end_scope();
 
             element_ptr
-        }
+        },
 
         pas_ty::Type::DynArray { element } => {
             let element_ptr = builder.local_temp(val_ty.clone().ptr());
@@ -109,10 +107,24 @@ fn translate_indexer(
             let array_class = ClassID::Class(array_struct);
             let array_class_ty = Type::RcPointer(Some(array_class));
 
-            builder.field(len_field_ptr.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_LEN_FIELD);
-            builder.field(arr_field_ptr.clone(), base_ref.clone(), &array_class_ty, DYNARRAY_PTR_FIELD);
+            builder.field(
+                len_field_ptr.clone(),
+                base_ref.clone(),
+                &array_class_ty,
+                DYNARRAY_LEN_FIELD,
+            );
+            builder.field(
+                arr_field_ptr.clone(),
+                base_ref.clone(),
+                &array_class_ty,
+                DYNARRAY_PTR_FIELD,
+            );
 
-            gen_bounds_check(index_ref.clone(), Value::Ref(len_field_ptr.to_deref()), builder);
+            gen_bounds_check(
+                index_ref.clone(),
+                Value::Ref(len_field_ptr.to_deref()),
+                builder,
+            );
 
             // array_ptr := (array_field_ptr)^
             // element_ptr := array_ptr + index
@@ -122,7 +134,7 @@ fn translate_indexer(
             builder.end_scope();
 
             element_ptr
-        }
+        },
 
         pas_ty::Type::Pointer(_) => {
             let result_ptr = builder.local_temp(val_ty.clone().ptr());
@@ -130,7 +142,7 @@ fn translate_indexer(
             builder.add(result_ptr.clone(), base_ref, index_ref);
 
             result_ptr
-        }
+        },
 
         unimpl => unimplemented!("IR for indexing into {}", unimpl),
     }
@@ -145,59 +157,60 @@ fn gen_bounds_check(index_val: impl Into<Value>, len_val: impl Into<Value>, buil
     let gte_zero = builder.gte_to_val(index_val.clone(), Value::LiteralI32(0));
     let lt_len = builder.lt_to_val(index_val, len_val);
     let bounds_check_ok = builder.and_to_val(gte_zero, lt_len);
-    builder.append(Instruction::JumpIf { dest: bounds_ok_label, test: bounds_check_ok });
+    builder.append(Instruction::JumpIf {
+        dest: bounds_ok_label,
+        test: bounds_check_ok,
+    });
 
     // otherwise: raise
     let err_str = builder.find_or_insert_string("array index out of bounds");
     builder.append(Instruction::Raise {
-        val: Ref::Global(GlobalRef::StringLiteral(err_str))
+        val: Ref::Global(GlobalRef::StringLiteral(err_str)),
     });
 
     builder.append(Instruction::Label(bounds_ok_label));
 }
 
-fn translate_branch(
-    expr: &pas_ty::ast::Expression,
-    out_val: Option<&Ref>,
-    out_ty: &Type,
-    builder: &mut Builder,
-    as_stmt: bool,
-) {
-    if as_stmt {
+pub fn translate_if_cond_expr(if_cond: &pas_ty::ast::IfCondExpression, builder: &mut Builder) -> Option<Ref> {
+    translate_if_cond(if_cond, builder, |branch, out_ref, out_ty, builder| {
+        let val = translate_expr(branch, builder);
+
+        if let Some(out_ref) = out_ref.cloned() {
+            builder.append(Instruction::Move {
+                out: out_ref.clone(),
+                new_val: val.into(),
+            });
+            builder.retain(out_ref, &out_ty);
+        }
+    })
+}
+
+pub fn translate_if_cond_stmt(if_cond: &pas_ty::ast::IfCondStatement, builder: &mut Builder) -> Option<Ref> {
+    translate_if_cond(if_cond, builder, |branch, out_ref, _out_ty, builder| {
         assert!(
-            out_val.is_none(),
+            out_ref.is_none(),
             "branch translated as statement should not have an out location"
         );
 
-        let stmt = pas_ty::ast::Statement::try_from_expr(expr.clone())
-            .unwrap_or_else(|_| panic!("branch expression `{}` is not valid as a statement", expr));
-
-        translate_stmt(&stmt, builder);
-    } else {
-        let val = translate_expr(expr, builder);
-
-        if let Some(out_val) = out_val.cloned() {
-            builder.append(Instruction::Move {
-                out: out_val.clone(),
-                new_val: val.into(),
-            });
-            builder.retain(out_val, &out_ty);
-        }
-    }
+        translate_stmt(&branch, builder);
+    })
 }
 
-pub fn translate_if_cond(
-    if_cond: &pas_ty::ast::IfCond,
+fn translate_if_cond<B, BranchTranslateFn>(
+    if_cond: &pas_ty::ast::IfCond<B>,
     builder: &mut Builder,
-    as_stmt: bool,
-) -> Option<Ref> {
+    branch_translate: BranchTranslateFn,
+) -> Option<Ref>
+where
+    BranchTranslateFn: Fn(&B, Option<&Ref>, &Type, &mut Builder),
+{
     let (out_val, out_ty) = match if_cond.annotation.ty().as_ref() {
         pas_ty::Type::Nothing => (None, Type::Nothing),
         out_ty => {
             let out_ty = builder.translate_type(out_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
             (Some(out_val), out_ty)
-        }
+        },
     };
 
     builder.scope(|builder| {
@@ -221,12 +234,12 @@ pub fn translate_if_cond(
                         let binding_ref = cond_val;
 
                         vec![(binding_name, is_ty, binding_ref)]
-                    }
+                    },
                     None => Vec::new(),
                 };
 
                 (is, bindings)
-            }
+            },
 
             Some(TypePattern::NegatedType { ty, .. }) => {
                 let is_not_ty = builder.translate_type(ty);
@@ -234,15 +247,16 @@ pub fn translate_if_cond(
 
                 let is_not = builder.not_to_val(is);
                 (is_not, Vec::new())
-            }
+            },
 
             Some(TypePattern::VariantCase {
-                     variant,
-                     case,
-                     data_binding,
-                     ..
-                 }) => {
-                let (struct_id, case_index, case_ty) = builder.translate_variant_case(variant, case);
+                variant,
+                case,
+                data_binding,
+                ..
+            }) => {
+                let (struct_id, case_index, case_ty) =
+                    builder.translate_variant_case(variant, case);
                 let variant_ty = Type::Variant(struct_id);
 
                 let bindings = match data_binding {
@@ -263,17 +277,18 @@ pub fn translate_if_cond(
                         });
 
                         vec![(binding_name, case_ty, data_ptr.to_deref())]
-                    }
+                    },
 
                     None => Vec::new(),
                 };
 
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
                 (Value::Ref(is), bindings)
-            }
+            },
 
             Some(TypePattern::NegatedVariantCase { variant, case, .. }) => {
-                let (struct_id, case_index, _case_ty) = builder.translate_variant_case(variant, case);
+                let (struct_id, case_index, _case_ty) =
+                    builder.translate_variant_case(variant, case);
 
                 let variant_ty = Type::Variant(struct_id);
                 let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
@@ -281,7 +296,7 @@ pub fn translate_if_cond(
                 let is_not = builder.not_to_val(Value::Ref(is));
 
                 (is_not, Vec::new())
-            }
+            },
         };
 
         builder.append(Instruction::JumpIf {
@@ -312,13 +327,7 @@ pub fn translate_if_cond(
                 builder.retain(pattern_binding, &binding_ty);
             }
 
-            translate_branch(
-                &if_cond.then_branch,
-                out_val.as_ref(),
-                &out_ty,
-                builder,
-                as_stmt,
-            );
+            branch_translate(&if_cond.then_branch, out_val.as_ref(), &out_ty, builder);
         });
 
         builder.append(Instruction::Jump { dest: end_label });
@@ -327,7 +336,7 @@ pub fn translate_if_cond(
             builder.append(Instruction::Label(else_label.unwrap()));
 
             builder.begin_scope();
-            translate_branch(else_branch, out_val.as_ref(), &out_ty, builder, as_stmt);
+            branch_translate(&else_branch, out_val.as_ref(), &out_ty, builder);
             builder.end_scope();
         }
 
@@ -375,17 +384,13 @@ fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) ->
                 });
 
                 Value::Ref(result)
-            }
+            },
 
             // value is RC and we are testing if it's Any: it always is
-            Type::RcPointer(None) => {
-                Value::LiteralBool(true)
-            }
+            Type::RcPointer(None) => Value::LiteralBool(true),
 
             // value is a value type, we wanted an RC type
-            _ => {
-                Value::LiteralBool(false)
-            }
+            _ => Value::LiteralBool(false),
         }
     } else {
         // value types must match exactly
@@ -406,7 +411,7 @@ fn translate_call_with_args(
             let out_ty = builder.translate_type(return_ty);
             let out_val = builder.local_new(out_ty.clone(), None);
             Some(out_val)
-        }
+        },
     };
 
     builder.begin_scope();
@@ -458,7 +463,7 @@ fn translate_call_with_args(
                 self_arg,
                 rest_args,
             }
-        }
+        },
     });
 
     // no need to retain, the result of a function must be retained as part of its body
@@ -478,23 +483,17 @@ enum CallTarget {
 
 pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::Function(func_call) => {
-            translate_func_call(func_call, builder)
-        }
+        ast::Call::Function(func_call) => translate_func_call(func_call, builder),
 
-        ast::Call::Method(method_call) => {
-            translate_method_call(method_call, builder)
-        }
+        ast::Call::Method(method_call) => translate_method_call(method_call, builder),
 
-        ast::Call::VariantCtor(variant_ctor) => {
-            translate_variant_ctor_call(variant_ctor, builder)
-        }
+        ast::Call::VariantCtor(variant_ctor) => translate_variant_ctor_call(variant_ctor, builder),
     }
 }
 
 fn translate_func_call(
     func_call: &pas_ty::ast::FunctionCall,
-    builder: &mut Builder
+    builder: &mut Builder,
 ) -> Option<Ref> {
     let (_, full_name) = match func_call.target.annotation() {
         pas_ty::TypeAnnotation::Function(func) => {
@@ -514,7 +513,7 @@ fn translate_func_call(
 
 fn translate_method_call(
     method_call: &pas_ty::ast::MethodCall,
-    builder: &mut Builder
+    builder: &mut Builder,
 ) -> Option<Ref> {
     if method_call.type_args.is_some() {
         unimplemented!("method call with type args")
@@ -529,31 +528,26 @@ fn translate_method_call(
     let method_sig = method_call.func_type.as_func().unwrap();
 
     let call_target = match &self_ty {
-        Type::RcPointer(Some(ClassID::Interface(iface_id))) => {
-            CallTarget::Virtual {
-                iface_id: *iface_id,
-                method: method_call.ident.to_string(),
-            }
+        Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
+            iface_id: *iface_id,
+            method: method_call.ident.to_string(),
         },
 
         _ => {
             let method_self_ty = method_call.self_type.clone();
             let method_self_ty = match builder.type_args() {
                 Some(builder_type_args) => method_self_ty.substitute_type_args(builder_type_args),
-                None =>  method_self_ty,
+                None => method_self_ty,
             };
 
-//            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
-            let method_decl = builder.translate_method_impl(
-                iface,
-                method_call.ident.clone(),
-                method_self_ty,
-            );
+            //            println!("translating method {}::{} of {}", iface, method_call.ident, method_call.self_type);
+            let method_decl =
+                builder.translate_method_impl(iface, method_call.ident.clone(), method_self_ty);
 
             let func_val = Ref::Global(GlobalRef::Function(method_decl.id));
 
             CallTarget::Function(func_val.into())
-        }
+        },
     };
 
     translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
@@ -561,7 +555,7 @@ fn translate_method_call(
 
 fn translate_variant_ctor_call(
     variant_ctor: &pas_ty::ast::VariantCtorCall,
-    builder: &mut Builder
+    builder: &mut Builder,
 ) -> Option<Ref> {
     let variant_ty = pas_ty::Type::Variant(Box::new(variant_ctor.variant.clone()));
 
@@ -570,8 +564,7 @@ fn translate_variant_ctor_call(
         None => variant_ty,
     };
 
-    let variant_name = variant_ty.as_variant()
-        .unwrap();
+    let variant_name = variant_ty.as_variant().unwrap();
 
     let out_ty = builder.translate_type(&variant_ty);
     let out = builder.local_new(out_ty.clone(), None);
@@ -585,16 +578,10 @@ fn translate_variant_ctor_call(
         of_ty: out_ty.clone(),
     });
 
-    let (_, case_index, _) = builder.translate_variant_case(
-        variant_name,
-        &variant_ctor.case,
-    );
+    let (_, case_index, _) = builder.translate_variant_case(variant_name, &variant_ctor.case);
 
     // todo: proper index type
-    builder.mov(
-        tag_ptr.to_deref(),
-        Value::LiteralI32(case_index as i32),
-    );
+    builder.mov(tag_ptr.to_deref(), Value::LiteralI32(case_index as i32));
 
     if let Some(arg) = &variant_ctor.arg {
         let arg_ref = translate_expr(arg, builder);
@@ -621,90 +608,92 @@ fn is_string_class(class: &pas_ty::Symbol) -> bool {
         && class.qualified.last().name.as_str() == "String"
 }
 
-fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builder: &mut Builder) -> Ref {
+fn translate_literal(
+    lit: &ast::Literal<pas_ty::Type>,
+    ty: &pas_ty::Type,
+    builder: &mut Builder,
+) -> Ref {
     let out_ty = builder.translate_type(ty);
     let out = builder.local_temp(out_ty);
 
     match lit {
         ast::Literal::Nil => {
             builder.mov(out.clone(), Value::LiteralNull);
-        }
+        },
 
         ast::Literal::Boolean(b) => {
             builder.mov(out.clone(), Value::LiteralBool(*b));
-        }
+        },
 
-        ast::Literal::Integer(i) => {
-            match ty {
-                pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => {
-                    let val = i
-                        .as_i8()
-                        .expect("Int8-typed constant must be within range of i8");
-                    builder.mov(out.clone(), Value::LiteralI8(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
-                    let val = i
-                        .as_u8()
-                        .expect("Byte-typed constant must be within range of u8");
-                    builder.mov(out.clone(), Value::LiteralByte(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => {
-                    let val = i
-                        .as_i16()
-                        .expect("Int16-typed constant must be within range of i16");
-                    builder.mov(out.clone(), Value::LiteralI16(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => {
-                    let val = i
-                        .as_u16()
-                        .expect("Int16-typed constant must be within range of i16");
-                    builder.mov(out.clone(), Value::LiteralU16(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => {
-                    let val = i
-                        .as_i32()
-                        .expect("Int32-typed constant must be within range of i32");
-                    builder.mov(out.clone(), Value::LiteralI32(val));
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => {
-                    let val = i
-                        .as_u32()
-                        .expect("Int32-typed constant must be within range of u32");
-                    builder.mov(out.clone(), Value::LiteralU32(val));
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => {
-                    let val = i
-                        .as_i64()
-                        .expect("Int64-typed constant must be within range of i64");
-                    builder.mov(out.clone(), Value::LiteralI64(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => {
-                    let val = i
-                        .as_u64()
-                        .expect("Int64-typed constant must be within range of i64");
-                    builder.mov(out.clone(), Value::LiteralU64(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => {
-                    let val = i
-                        .as_isize()
-                        .expect("Int64-typed constant must be within range of i64");
-                    builder.mov(out.clone(), Value::LiteralISize(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => {
-                    let val = i
-                        .as_usize()
-                        .expect("Int64-typed constant must be within range of isize");
-                    builder.mov(out.clone(), Value::LiteralUSize(val))
-                }
-                pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
-                    let val = i
-                        .as_f32()
-                        .expect("Real-typed constant must be within range of usize");
-                    builder.mov(out.clone(), Value::LiteralF32(val))
-                }
+        ast::Literal::Integer(i) => match ty {
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int8) => {
+                let val = i
+                    .as_i8()
+                    .expect("Int8-typed constant must be within range of i8");
+                builder.mov(out.clone(), Value::LiteralI8(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::Byte) => {
+                let val = i
+                    .as_u8()
+                    .expect("Byte-typed constant must be within range of u8");
+                builder.mov(out.clone(), Value::LiteralByte(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int16) => {
+                let val = i
+                    .as_i16()
+                    .expect("Int16-typed constant must be within range of i16");
+                builder.mov(out.clone(), Value::LiteralI16(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt16) => {
+                let val = i
+                    .as_u16()
+                    .expect("Int16-typed constant must be within range of i16");
+                builder.mov(out.clone(), Value::LiteralU16(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int32) => {
+                let val = i
+                    .as_i32()
+                    .expect("Int32-typed constant must be within range of i32");
+                builder.mov(out.clone(), Value::LiteralI32(val));
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt32) => {
+                let val = i
+                    .as_u32()
+                    .expect("Int32-typed constant must be within range of u32");
+                builder.mov(out.clone(), Value::LiteralU32(val));
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::Int64) => {
+                let val = i
+                    .as_i64()
+                    .expect("Int64-typed constant must be within range of i64");
+                builder.mov(out.clone(), Value::LiteralI64(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::UInt64) => {
+                let val = i
+                    .as_u64()
+                    .expect("Int64-typed constant must be within range of i64");
+                builder.mov(out.clone(), Value::LiteralU64(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => {
+                let val = i
+                    .as_isize()
+                    .expect("Int64-typed constant must be within range of i64");
+                builder.mov(out.clone(), Value::LiteralISize(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => {
+                let val = i
+                    .as_usize()
+                    .expect("Int64-typed constant must be within range of isize");
+                builder.mov(out.clone(), Value::LiteralUSize(val))
+            },
+            pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => {
+                let val = i
+                    .as_f32()
+                    .expect("Real-typed constant must be within range of usize");
+                builder.mov(out.clone(), Value::LiteralF32(val))
+            },
 
-                _ => panic!("bad type for integer literal: {}", ty),
-            }
+            _ => panic!("bad type for integer literal: {}", ty),
         },
 
         ast::Literal::Real(r) => match ty {
@@ -713,7 +702,7 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
                     .as_f32()
                     .expect("Real32-typed constant must be within range of f32");
                 builder.mov(out.clone(), Value::LiteralF32(val));
-            }
+            },
             _ => panic!("bad type for real literal: {}", ty),
         },
 
@@ -723,7 +712,7 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
                 let lit_ref = GlobalRef::StringLiteral(lit_id);
 
                 builder.mov(out.clone(), Value::Ref(Ref::Global(lit_ref)));
-            }
+            },
             _ => panic!("bad type for string literal: {}", ty),
         },
 
@@ -733,7 +722,7 @@ fn translate_literal(lit: &ast::Literal<pas_ty::Type>, ty: &pas_ty::Type, builde
                 out: out.clone(),
                 ty,
             });
-        }
+        },
     }
 
     out
@@ -761,7 +750,7 @@ fn translate_bin_op(
         _ => {
             let out_val = builder.local_new(out_ty.clone(), None);
             (out_val, false)
-        }
+        },
     };
 
     builder.begin_scope();
@@ -801,14 +790,20 @@ fn translate_bin_op(
                 of_ty,
                 field,
             });
-        }
+        },
 
         syn::Operator::Index => {
             let index_val = translate_expr(&bin_op.rhs, builder);
-            let element_val = translate_indexer(&out_ty, lhs_val, index_val, &bin_op.lhs.annotation().ty(), builder);
+            let element_val = translate_indexer(
+                &out_ty,
+                lhs_val,
+                index_val,
+                &bin_op.lhs.annotation().ty(),
+                builder,
+            );
 
             builder.mov(out_val.clone(), element_val);
-        }
+        },
 
         syn::Operator::NotEquals => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -821,7 +816,7 @@ fn translate_bin_op(
                 out: out_val.clone(),
                 a: Value::Ref(out_val.clone()),
             });
-        }
+        },
 
         syn::Operator::Equals => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -830,7 +825,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Add => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -839,7 +834,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Multiply => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -848,7 +843,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Divide => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -857,7 +852,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Gt => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -866,7 +861,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Gte => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -890,7 +885,7 @@ fn translate_bin_op(
                 a: gt.into(),
                 b: eq.into(),
             });
-        }
+        },
 
         syn::Operator::Lt => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -920,7 +915,7 @@ fn translate_bin_op(
                 out: out_val.clone(),
                 a: gte.into(),
             });
-        }
+        },
 
         syn::Operator::Lte => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -936,7 +931,7 @@ fn translate_bin_op(
                 out: out_val.clone(),
                 a: gt.into(),
             });
-        }
+        },
 
         syn::Operator::Subtract => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -945,7 +940,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Shl => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -954,7 +949,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Shr => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -963,7 +958,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::And => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -972,7 +967,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Or => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -981,7 +976,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::BitAnd => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -990,7 +985,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::BitOr => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -999,7 +994,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         syn::Operator::Caret => {
             let b = translate_expr(&bin_op.rhs, builder);
@@ -1008,7 +1003,7 @@ fn translate_bin_op(
                 a: lhs_val.into(),
                 b: b.into(),
             });
-        }
+        },
 
         _ => unimplemented!("IR for op {}", bin_op.op),
     };
@@ -1045,7 +1040,7 @@ fn translate_unary_op(
             builder.retain(out_val.clone(), &out_ty);
 
             out_val
-        }
+        },
 
         syn::Operator::Caret => operand_ref.to_deref(),
 
@@ -1067,7 +1062,7 @@ fn translate_unary_op(
                 pas_ty::Type::Primitive(pas_ty::Primitive::NativeInt) => Value::LiteralISize(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::NativeUInt) => Value::LiteralUSize(0),
                 pas_ty::Type::Primitive(pas_ty::Primitive::Real32) => Value::LiteralF32(0.0),
-                _ => unimplemented!("unary negation of {}", op_ty)
+                _ => unimplemented!("unary negation of {}", op_ty),
             };
 
             builder.append(Instruction::Sub {
@@ -1077,7 +1072,7 @@ fn translate_unary_op(
             });
 
             out_val
-        }
+        },
 
         syn::Operator::Add => {
             // just turns its operand into a temporary value
@@ -1086,7 +1081,7 @@ fn translate_unary_op(
             builder.mov(out_val.clone(), operand_ref);
 
             out_val
-        }
+        },
 
         syn::Operator::Not => {
             let out_val = builder.local_new(Type::Bool, None);
@@ -1094,7 +1089,7 @@ fn translate_unary_op(
             builder.not(out_val.clone(), operand_ref);
 
             out_val
-        }
+        },
 
         op => unimplemented!("IR translation of unary operator {}", op),
     }
@@ -1169,11 +1164,9 @@ fn translate_collection_ctor(ctor: &pas_ty::ast::CollectionCtor, builder: &mut B
     match ctor_ty.as_ref() {
         pas_ty::Type::Array(array_ty) => {
             translate_static_array_ctor(ctor, &array_ty.element_ty, array_ty.dim, builder)
-        }
+        },
 
-        pas_ty::Type::DynArray { element } => {
-            translate_dyn_array_ctor(ctor, element, builder)
-        }
+        pas_ty::Type::DynArray { element } => translate_dyn_array_ctor(ctor, element, builder),
 
         unimpl => unimplemented!("IR for array constructor {} of type {}", ctor, unimpl),
     }
@@ -1183,7 +1176,7 @@ fn translate_static_array_ctor(
     ctor: &pas_ty::ast::CollectionCtor,
     element: &pas_ty::Type,
     dim: usize,
-    builder: &mut Builder
+    builder: &mut Builder,
 ) -> Ref {
     let el_ty = builder.translate_type(element);
 
@@ -1220,7 +1213,7 @@ fn translate_static_array_ctor(
 fn translate_dyn_array_ctor(
     ctor: &pas_ty::ast::CollectionCtor,
     element: &pas_ty::Type,
-    builder: &mut Builder
+    builder: &mut Builder,
 ) -> Ref {
     let elem_ty = builder.translate_type(element);
 
@@ -1250,8 +1243,7 @@ fn translate_dyn_array_ctor(
         });
 
         // set length
-        let len =
-            i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
+        let len = i32::try_from(ctor.elements.len()).expect("invalid dynamic array ctor length");
         builder.mov(len_ref.clone().to_deref(), Value::LiteralI32(len));
 
         // get pointer to storage pointer
@@ -1309,8 +1301,7 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
             // this is illegal because temporary values shouldn't have names
             panic!(
                 "translated expression `{}` of type `{}` is of temporary value kind",
-                ident,
-                val.ty,
+                ident, val.ty,
             )
         },
 
@@ -1320,15 +1311,17 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
             let func_ref = GlobalRef::Function(func.id);
 
             Ref::Global(func_ref)
-        }
+        },
 
         // ident lvalues are evaluated as pointers to the original values. they don't need
         // to be refcounted separately, because if they have a name, they must exist
         // in a scope at least as wide as the current one
-        TypeAnnotation::TypedValue(val) if match val.value_kind {
-            ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => true,
-            ValueKind::Ref | ValueKind::Temporary => false,
-        } => {
+        TypeAnnotation::TypedValue(val)
+            if match val.value_kind {
+                ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => true,
+                ValueKind::Ref | ValueKind::Temporary => false,
+            } =>
+        {
             let local_ref = builder
                 .find_local(&ident.to_string())
                 .map(|local| {
@@ -1355,7 +1348,7 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
                 a: local_ref,
             });
             ref_temp.to_deref()
-        }
+        },
 
         _ => panic!("wrong kind of node annotation for ident: {:?}", ident),
     }

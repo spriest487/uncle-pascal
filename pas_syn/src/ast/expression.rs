@@ -14,13 +14,15 @@ use crate::{
 };
 use pas_common::span::*;
 use std::fmt;
+use std::rc::Rc;
+use crate::ast::IfCondBranchParse;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal<T: Typed> {
     Nil,
     Integer(IntConstant),
     Real(RealConstant),
-    String(String),
+    String(Rc<String>),
     Boolean(bool),
     SizeOf(Box<T>),
 }
@@ -47,12 +49,18 @@ pub enum Expression<A: Annotation> {
     Call(Box<Call<A>>),
     ObjectCtor(Box<ObjectCtor<A>>),
     CollectionCtor(Box<CollectionCtor<A>>),
-    IfCond(Box<IfCond<A>>),
+    IfCond(Box<IfCond<A, Expression<A>>>),
     Block(Box<Block<A>>),
     Raise(Box<Raise<A>>),
     Exit(Box<Exit<A>>),
     Case(Box<CaseExpr<A>>),
     Cast(Box<Cast<A>>),
+}
+
+impl IfCondBranchParse for Expression<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        Expression::parse(tokens)
+    }
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -92,8 +100,8 @@ impl<A: Annotation> From<CollectionCtor<A>> for Expression<A> {
     }
 }
 
-impl<A: Annotation> From<IfCond<A>> for Expression<A> {
-    fn from(cond: IfCond<A>) -> Self {
+impl<A: Annotation> From<IfCond<A, Expression<A>>> for Expression<A> {
+    fn from(cond: IfCond<A, Expression<A>>) -> Self {
         Expression::IfCond(Box::new(cond))
     }
 }

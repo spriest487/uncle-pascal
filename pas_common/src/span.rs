@@ -10,7 +10,7 @@ pub struct Location {
 impl Ord for Location {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.line.cmp(&other.line) {
-            Ordering::Equal => self.col.cmp(&other.line),
+            Ordering::Equal => self.col.cmp(&other.col),
             line_ord => line_ord,
         }
     }

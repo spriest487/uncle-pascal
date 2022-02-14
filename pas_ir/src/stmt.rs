@@ -1,5 +1,5 @@
 use pas_common::span::Spanned;
-use crate::{prelude::*, translate_block, translate_exit, translate_call, translate_expr, translate_if_cond, Builder, Type};
+use crate::{prelude::*, translate_block, translate_exit, translate_call, translate_expr, Builder, Type, translate_if_cond_stmt};
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 use crate::expr::translate_raise;
@@ -44,7 +44,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         }
 
         ast::Statement::If(if_stmt) => {
-            translate_if_cond(if_stmt, builder, true);
+            translate_if_cond_stmt(if_stmt, builder);
         }
 
         ast::Statement::Raise(raise) => {

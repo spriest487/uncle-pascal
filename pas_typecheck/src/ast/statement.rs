@@ -170,7 +170,7 @@ pub fn typecheck_stmt(
         }
 
         ast::Statement::If(if_cond) => {
-            let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
+            let if_cond = typecheck_if_cond_stmt(if_cond, expect_ty, ctx)?;
             Ok(ast::Statement::If(Box::new(if_cond)))
         }
 

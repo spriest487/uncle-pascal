@@ -263,7 +263,7 @@ impl Lexer {
         let span = self.span_to_current(start_loc);
 
         let str_token = TokenTree::String {
-            value: contents,
+            value: Rc::new(contents),
             span,
         };
 

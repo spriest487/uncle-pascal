@@ -11,6 +11,7 @@ use std::{
     fmt::{self, Write as _},
     path::PathBuf,
 };
+use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
@@ -79,7 +80,7 @@ pub enum TokenTree {
         span: Span,
     },
     String {
-        value: String,
+        value: Rc<String>,
         span: Span,
     },
     Keyword {

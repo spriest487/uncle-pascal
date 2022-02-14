@@ -9,12 +9,13 @@ pub use self::{
 };
 use crate::{
     ast::{
-        case::{CaseBlock, CaseStatement, CaseExpr, CaseBranch},
+        case::{CaseBlock, CaseStatement},
         expression::match_operand_start,
         Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop,
     },
     parse::prelude::*,
 };
+use crate::ast::IfCondBranchParse;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
@@ -26,11 +27,17 @@ pub enum Statement<A: Annotation> {
     WhileLoop(Box<WhileLoop<A>>),
     Assignment(Box<Assignment<A>>),
     CompoundAssignment(Box<CompoundAssignment<A>>),
-    If(Box<IfCond<A>>),
+    If(Box<IfCond<A, Statement<A>>>),
     Break(A),
     Continue(A),
     Raise(Box<Raise<A>>),
     Case(Box<CaseStatement<A>>),
+}
+
+impl IfCondBranchParse for Statement<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        Statement::parse(tokens)
+    }
 }
 
 impl<A: Annotation> Statement<A> {
@@ -55,84 +62,44 @@ impl<A: Annotation> Statement<A> {
         }
     }
 
-    pub fn try_into_expr(self) -> Result<Expression<A>, Self> {
+    pub fn as_block(&self) -> Option<&Block<A>> {
         match self {
-            Statement::Call(call) => Ok(Expression::Call(call)),
+            Statement::Block(block) => Some(block),
+            _ => None,
+        }
+    }
+}
+
+impl Statement<Span> {
+    pub fn to_expr(&self) -> Option<Expression<Span>> {
+        match self {
+            Statement::Call(call) => Some(Expression::Call(call.clone())),
 
             Statement::Block(block) => {
-                if block.output.is_some() {
-                    // block that already had an output expr
-                    Ok(Expression::Block(block))
-                } else {
-                    let final_stmt_expr = block.statements.last().and_then(|final_stmt| {
-                        final_stmt.clone().try_into_expr().ok()
-                    });
-                    if let Some(output_expr) = final_stmt_expr {
-                        // block where we can reinterpret the final statement as an output expr
-                        let mut statements = block.statements;
-                        statements.pop();
-
-                        Ok(Expression::from(Block {
-                            statements,
-                            output: Some(output_expr),
-                            ..*block
-                        }))
-                    } else {
-                        // block that doesn't work as an expr
-                        Err(Statement::Block(block))
-                    }
-                }
+                let block_expr = block.to_expr()?;
+                Some(Expression::from(block_expr))
             },
 
             Statement::If(if_cond) => {
-                // if-expressions must always have an else branch
-                if if_cond.else_branch.is_some() {
-                    Ok(Expression::IfCond(if_cond))
-                } else {
-                    Err(Statement::If(if_cond))
-                }
+                let if_cond_expr = if_cond.to_expr()?;
+                Some(Expression::from(if_cond_expr))
             },
 
-            Statement::Raise(raise) => Ok(Expression::Raise(raise)),
-
-            Statement::Exit(exit) => Ok(Expression::Exit(exit)),
+            Statement::Raise(raise) => Some(Expression::Raise(raise.clone())),
+            Statement::Exit(exit) => Some(Expression::Exit(exit.clone())),
 
             // case statements that have an else branch might also be valid as expressions if every
             // branch is also valid as an expression
             Statement::Case(case) => {
-                let case = Self::case_into_expr(*case)?;
-                Ok(Expression::from(case))
+                let case = case.to_expr()?;
+                Some(Expression::from(case))
             },
 
-            not_expr => Err(not_expr),
+            _ => None,
         }
     }
 
-    fn case_into_expr(case: CaseStatement<A>) -> Result<CaseExpr<A>, Statement<A>> {
-        let else_branch = match case.else_branch.as_ref() {
-            None => return Err(Statement::Case(Box::new(case))),
-            Some(else_branch) => Self::try_into_expr((**else_branch).clone())?,
-        };
-
-        let mut branches = Vec::with_capacity(case.branches.len());
-        for branch in case.branches {
-            let item = Self::try_into_expr(*branch.item)?;
-            branches.push(CaseBranch {
-                value: branch.value,
-                span: branch.span,
-                item: Box::new(item),
-            })
-        }
-
-        Ok(CaseExpr {
-            cond_expr: case.cond_expr,
-            branches,
-            else_branch: Some(Box::new(else_branch)),
-            annotation: case.annotation,
-        })
-    }
-
-    pub fn try_from_expr(expr: Expression<A>) -> Result<Self, Expression<A>> {
+    pub fn try_from_expr(expr: Expression<Span>) -> Result<Self, Expression<Span>> {
         match expr.clone() {
             Expression::Block(mut block) => {
                 block.output = match block.output {
@@ -179,16 +146,9 @@ impl<A: Annotation> Statement<A> {
             },
 
             Expression::IfCond(if_cond) => {
-                let then_branch = match Self::try_from_expr(if_cond.then_branch) {
-                    Ok(then_stmt) => Expression::from(Block::single_stmt(then_stmt)),
-                    Err(_) => return Err(expr),
-                };
-
+                let then_branch = Self::try_from_expr(if_cond.then_branch)?;
                 let else_branch = match if_cond.else_branch {
-                    Some(else_expr) => match Self::try_from_expr(else_expr) {
-                        Ok(else_stmt) => Some(Expression::from(Block::single_stmt(else_stmt))),
-                        Err(_) => return Err(expr),
-                    },
+                    Some(else_expr) => Some(Self::try_from_expr(else_expr)?),
                     None => None,
                 };
 
@@ -206,13 +166,6 @@ impl<A: Annotation> Statement<A> {
             Expression::Exit(exit) => Ok(Statement::Exit(exit)),
 
             invalid => Err(invalid),
-        }
-    }
-
-    pub fn as_block(&self) -> Option<&Block<A>> {
-        match self {
-            Statement::Block(block) => Some(block),
-            _ => None,
         }
     }
 }
@@ -239,62 +192,48 @@ impl Statement<Span> {
         let stmt_start = stmt_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
-            Some(TokenTree::Keyword {
-                kw: Keyword::Let, ..
-            })
-            | Some(TokenTree::Keyword {
-                kw: Keyword::Var, ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Let) || tt.is_keyword(Keyword::Var) => {
                 let binding = LocalBinding::parse(tokens, true)?;
                 Ok(Statement::LocalBinding(Box::new(binding)))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::For, ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::For) => {
                 let for_loop = ForLoop::parse(tokens)?;
                 Ok(Statement::ForLoop(Box::new(for_loop)))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::While, ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::While) => {
                 let while_loop = WhileLoop::parse(tokens)?;
                 Ok(Statement::WhileLoop(Box::new(while_loop)))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Break,
-                span,
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Break) => {
                 tokens.advance(1);
-                Ok(Statement::Break(span))
+                Ok(Statement::Break(tt.into_span()))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Continue,
-                span,
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Continue) => {
                 tokens.advance(1);
-                Ok(Statement::Continue(span))
+                Ok(Statement::Continue(tt.into_span()))
             },
 
-            Some(TokenTree::Keyword {
-                kw: Keyword::Exit, ..
-            }) => {
+            Some(tt) if tt.is_keyword(Keyword::Exit) => {
                 let exit = Exit::parse(tokens)?;
 
                 Ok(Statement::Exit(Box::new(exit)))
             },
 
-            Some(TokenTree::Delimited {
-                delim: DelimiterPair::CaseEnd,
-                ..
-            }) => {
+            Some(tt) if tt.is_delimited(DelimiterPair::CaseEnd) => {
                 let case = CaseBlock::parse(tokens)?;
 
                 Ok(Statement::Case(Box::new(case)))
             },
+
+            Some(tt) if tt.is_keyword(Keyword::If) => {
+                let if_cond = IfCond::parse(tokens)?;
+
+                Ok(Statement::If(Box::new(if_cond)))
+            }
 
             Some(..) => {
                 // it doesn't start with a statement keyword, it must be an expression

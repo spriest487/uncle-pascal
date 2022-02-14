@@ -23,8 +23,8 @@ pub fn typecheck_block(
             // this is the final statement in the block, and during parsing this block didn't
             // get an output expression. we expect this block to have an output, so try to convert
             // the final statement here into an expression
-            match stmt.clone().try_into_expr() {
-                Ok(src_output_stmt_expr) => {
+            match stmt.to_expr() {
+                Some(src_output_stmt_expr) => {
                     let mut output_stmt_expr = typecheck_expr(&src_output_stmt_expr, expect_ty, ctx)?;
                     if *expect_ty != Type::Nothing {
                         output_stmt_expr = implicit_conversion(output_stmt_expr, expect_ty, ctx)?;
@@ -32,10 +32,10 @@ pub fn typecheck_block(
                     output = Some(output_stmt_expr);
                 },
 
-                Err(bad_stmt) => {
+                None => {
                     // typecheck the actual statement which isn't a valid expr so we can use it
                     // for a better error message
-                    let bad_stmt = typecheck_stmt(&bad_stmt, expect_ty, ctx)?;
+                    let bad_stmt = typecheck_stmt(&stmt, expect_ty, ctx)?;
                     return Err(TypecheckError::BlockOutputIsNotExpression {
                         stmt: Box::new(bad_stmt),
                         expected_expr_ty: expect_ty.clone(),

@@ -1,17 +1,16 @@
 use std::borrow::Cow;
 use crate::ast::prelude::*;
 
-pub type IfCond = ast::IfCond<TypeAnnotation>;
+pub type IfCond<B> = ast::IfCond<TypeAnnotation, B>;
+pub type IfCondExpression = ast::IfCond<TypeAnnotation, Expression>;
+pub type IfCondStatement = ast::IfCond<TypeAnnotation, Statement>;
 
-pub fn typecheck_if_cond(
-    if_cond: &ast::IfCond<Span>,
-    expect_ty: &Type,
-    ctx: &mut Context,
-) -> TypecheckResult<IfCond> {
+fn typecheck_cond_expr<B>(if_cond: &ast::IfCond<Span, B>, ctx: &mut Context) -> TypecheckResult<Expression> {
     // condition expr has a boolean hint if we're not doing an is-match
-    let cond_expect_ty = match if_cond.is_pattern {
-        Some(..) => Type::Nothing,
-        None => Type::Primitive(Primitive::Boolean),
+    let cond_expect_ty = if if_cond.is_pattern.is_some() {
+        Type::Nothing
+    } else {
+        Type::Primitive(Primitive::Boolean)
     };
 
     let cond = typecheck_expr(&if_cond.cond, &cond_expect_ty, ctx)?;
@@ -22,15 +21,28 @@ pub fn typecheck_if_cond(
         None => implicit_conversion(cond, &Type::Primitive(Primitive::Boolean), ctx)?,
     };
 
+    Ok(cond)
+}
+
+fn typecheck_pattern_match<B>(if_cond: &ast::IfCond<Span, B>, cond: &Expression, ctx: &mut Context) -> TypecheckResult<Option<TypePattern>> {
     let is_pattern = match &if_cond.is_pattern {
-        Some(pattern) => Some(TypePattern::typecheck(
-            pattern,
-            &cond.annotation().ty(),
-            ctx,
-        )?),
+        Some(pattern) => {
+            let pattern = TypePattern::typecheck(
+                pattern,
+                &cond.annotation().ty(),
+                ctx,
+            )?;
+
+            Some(pattern)
+        },
+
         None => None,
     };
 
+    Ok(is_pattern)
+}
+
+fn create_then_branch_ctx(is_pattern: Option<&TypePattern>, ctx: &mut Context) -> TypecheckResult<Context> {
     let mut then_ctx = ctx.clone();
 
     // is-pattern binding only exists in the "then" branch, if present
@@ -46,6 +58,58 @@ pub fn typecheck_if_cond(
             )?;
         }
     }
+
+    Ok(then_ctx)
+}
+
+pub fn typecheck_if_cond_stmt(
+    if_cond: &ast::IfCond<Span, ast::Statement<Span>>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<IfCond<Statement>> {
+    let cond = typecheck_cond_expr(&if_cond, ctx)?;
+
+    let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;
+
+    let mut then_ctx = create_then_branch_ctx(is_pattern.as_ref(), ctx)?;
+
+    let then_branch = typecheck_stmt(&if_cond.then_branch, expect_ty, &mut then_ctx)?;
+    let else_branch = match &if_cond.else_branch {
+        Some(else_expr) => {
+            let mut else_ctx = ctx.clone();
+            let else_stmt = typecheck_stmt(else_expr, &Type::Nothing, &mut else_ctx)?;
+
+            ctx.consolidate_branches(&[then_ctx, else_ctx]);
+            Some(else_stmt)
+        }
+
+        None => {
+            ctx.consolidate_branches(&[then_ctx]);
+            None
+        }
+    };
+
+    let annotation = TypeAnnotation::Untyped(if_cond.span().clone());
+
+    Ok(IfCond {
+        cond,
+        is_pattern,
+        then_branch,
+        else_branch,
+        annotation,
+    })
+}
+
+pub fn typecheck_if_cond_expr(
+    if_cond: &ast::IfCond<Span, ast::Expression<Span>>,
+    expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<IfCond<Expression>> {
+    let cond = typecheck_cond_expr(&if_cond, ctx)?;
+
+    let is_pattern = typecheck_pattern_match(&if_cond, &cond, ctx)?;
+
+    let mut then_ctx = create_then_branch_ctx(is_pattern.as_ref(), ctx)?;
 
     let then_branch = typecheck_expr(&if_cond.then_branch, expect_ty, &mut then_ctx)?;
     let else_branch = match &if_cond.else_branch {

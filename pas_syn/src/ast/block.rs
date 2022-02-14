@@ -44,16 +44,23 @@ impl Block<Span> {
 
         let span = body_tt.span().clone();
 
-        let (mut body_tokens, begin, end) = match body_tt {
+        let (inner, begin, end) = match body_tt {
             TokenTree::Delimited {
                 inner, open, close, ..
-            } => (TokenStream::new(inner, open.clone()), open, close),
+            } => (inner, open, close),
             _ => unreachable!(),
         };
+
+        let mut body_tokens = TokenStream::new(inner.clone(), begin.clone());
 
         let mut output_expr: Option<Expression<_>> = None;
 
         let statements = body_tokens.match_separated(Separator::Semicolon, |_, tokens| {
+            let stmt_start_pos = match tokens.look_ahead().next() {
+                Some(tt) => tt.span().start,
+                None => return Ok(Generate::Break),
+            };
+
             match Statement::parse(tokens) {
                 Ok(stmt) => Ok(Generate::Yield(stmt)),
 
@@ -62,8 +69,33 @@ impl Block<Span> {
                     // expression, assume it's the block output. some expressions (eg calls) are
                     // always valid as statements regardless of type, so in some cases the block
                     // output can't be determined until typechecking
-                    ParseError::InvalidStatement(InvalidStatement(expr)) => {
-                        output_expr = Some((**expr).clone());
+                    ParseError::InvalidStatement(InvalidStatement(..)) => {
+                        // NASTY HACK ZONE
+                        // we need to re-parse the tokens used for this statement, so make a new
+                        // stream out of the block's inner tokens and fast-forward it to where
+                        // we started parsing this statement...
+                        let mut output_expr_tokens = TokenStream::new(inner.clone(), begin.clone());
+                        while let Some(tt) = output_expr_tokens.look_ahead().next() {
+                            let tt_start = tt.span().start;
+                            if tt_start < stmt_start_pos {
+                                output_expr_tokens.advance(1);
+                            } else {
+                                break;
+                            }
+                        }
+
+                        output_expr = Some(Expression::parse(&mut output_expr_tokens)?);
+                        output_expr_tokens.match_one_maybe(Separator::Semicolon);
+
+                        // then check we used all the tokens here, while fast-forwarding the original
+                        // stream as if we read it properly (safe because the output expression
+                        // must be the last token before the end of the block)
+                        output_expr_tokens.finish()?;
+
+                        while tokens.look_ahead().next().is_some() {
+                            tokens.advance(1);
+                        }
+
                         Ok(Generate::Break)
                     }
 
@@ -87,6 +119,37 @@ impl Block<Span> {
         };
 
         Ok(block)
+    }
+
+    // convert block-as-statement into an block-as-expression
+    // todo: should these be two different types?
+    pub fn to_expr(&self) -> Option<Self> {
+        if self.output.is_some() {
+            // block that already had an output expr
+            return Some(self.clone());
+        }
+
+        let final_stmt_expr = self.statements.last().and_then(|final_stmt| {
+            final_stmt.clone().to_expr()
+        });
+
+        if let Some(output_expr) = final_stmt_expr {
+            // block where we can reinterpret the final statement as an output expr
+            let mut statements = self.statements.clone();
+            statements.pop();
+
+            return Some(Block {
+                statements,
+                output: Some(output_expr),
+                annotation: self.annotation.clone(),
+                unsafe_kw: self.unsafe_kw.clone(),
+                begin: self.begin.clone(),
+                end: self.end.clone(),
+            });
+        }
+
+        // block that doesn't work as an expr
+        None
     }
 }
 

@@ -9,7 +9,7 @@ pub type Literal = ast::Literal<Type>;
 
 pub fn const_eval_string(expr: &Expression, ctx: &Context) -> TypecheckResult<String> {
     match expr.const_eval(ctx) {
-        Some(Literal::String(src_str)) => Ok(src_str),
+        Some(Literal::String(src_str)) => Ok((*src_str).clone()),
 
         _ => Err(TypecheckError::InvalidConstExpr {
             expr: Box::new(expr.clone()),
@@ -172,7 +172,7 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::IfCond(if_cond) => {
-            let if_cond = typecheck_if_cond(if_cond, expect_ty, ctx)?;
+            let if_cond = typecheck_if_cond_expr(if_cond, expect_ty, ctx)?;
             Ok(ast::Expression::from(if_cond))
         }
 
@@ -321,7 +321,7 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
     match stmt {
         ast::Statement::Call(call) => expect_call_initialized(call, ctx),
 
-        ast::Statement::If(if_stmt) => expect_if_initialized(if_stmt, ctx),
+        ast::Statement::If(if_stmt) => expect_if_stmt_initialized(if_stmt, ctx),
 
         ast::Statement::Block(block) => expect_block_initialized(block, ctx),
 
@@ -379,14 +379,7 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
 
         ast::Expression::Block(block) => expect_block_initialized(block, ctx),
 
-        ast::Expression::IfCond(cond) => {
-            expect_expr_initialized(&cond.cond, ctx)?;
-            expect_expr_initialized(&cond.then_branch, ctx)?;
-            if let Some(else_branch) = &cond.else_branch {
-                expect_expr_initialized(else_branch, ctx)?;
-            }
-            Ok(())
-        }
+        ast::Expression::IfCond(cond) => expect_if_expr_initialized(cond, ctx),
 
         ast::Expression::ObjectCtor(ctor) => {
             for member in &ctor.args.members {
@@ -493,11 +486,20 @@ fn expect_call_initialized(call: &Call, ctx: &Context) -> TypecheckResult<()> {
     Ok(())
 }
 
-fn expect_if_initialized(if_stmt: &IfCond, ctx: &Context) -> TypecheckResult<()> {
+fn expect_if_expr_initialized(if_stmt: &IfCond<Expression>, ctx: &Context) -> TypecheckResult<()> {
     expect_expr_initialized(&if_stmt.cond, ctx)?;
     expect_expr_initialized(&if_stmt.then_branch, ctx)?;
     if let Some(else_branch) = &if_stmt.else_branch {
         expect_expr_initialized(else_branch, ctx)?;
+    }
+    Ok(())
+}
+
+fn expect_if_stmt_initialized(if_stmt: &IfCond<Statement>, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&if_stmt.cond, ctx)?;
+    expect_stmt_initialized(&if_stmt.then_branch, ctx)?;
+    if let Some(else_branch) = &if_stmt.else_branch {
+        expect_stmt_initialized(else_branch, ctx)?;
     }
     Ok(())
 }

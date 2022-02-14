@@ -1,33 +1,33 @@
+#[cfg(test)]
+mod test;
+
 use crate::{
-    ast::{Block, Expression, Statement},
+    ast::{Expression, Statement},
     parse::prelude::*,
 };
 
+pub trait IfCondBranchParse: Sized {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
+}
+
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
-pub struct IfCond<A: Annotation> {
+pub struct IfCond<A, B>
+where
+    A: Annotation,
+{
     pub cond: Expression<A>,
 
     pub is_pattern: Option<A::Pattern>,
 
-    pub then_branch: Expression<A>,
-    pub else_branch: Option<Expression<A>>,
+    pub then_branch: B,
+    pub else_branch: Option<B>,
     pub annotation: A,
 }
 
-fn parse_branch_expr(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
-    match Statement::parse(tokens) {
-        Ok(stmt) => Ok(Expression::from(Block::single_stmt(stmt))),
-
-        Err(TracedError {
-            err: ParseError::InvalidStatement(InvalidStatement(expr)),
-            ..
-        }) => Ok(*expr),
-
-        Err(err) => Err(err),
-    }
-}
-
-impl IfCond<Span> {
+impl<B> IfCond<Span, B>
+where
+    B: IfCondBranchParse + Spanned,
+{
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let if_token = tokens.match_one(Keyword::If)?;
         let cond = Expression::parse(tokens)?;
@@ -36,23 +36,23 @@ impl IfCond<Span> {
             Some(_is_kw) => {
                 let pattern = TypeNamePattern::parse(tokens)?;
                 Some(pattern)
-            }
+            },
 
             None => None,
         };
 
         tokens.match_one(Keyword::Then)?;
-        let then_branch = parse_branch_expr(tokens)?;
+        let then_branch = B::parse(tokens)?;
 
         let (else_branch, span) = match tokens.match_one_maybe(Keyword::Else) {
             Some(_else_token) => {
-                let else_branch = parse_branch_expr(tokens)?;
-                let span = if_token.span().to(else_branch.annotation());
+                let else_branch = B::parse(tokens)?;
+                let span = if_token.span().to(else_branch.span());
 
                 (Some(else_branch), span)
-            }
+            },
 
-            None => (None, if_token.span().to(then_branch.annotation())),
+            None => (None, if_token.span().to(then_branch.span())),
         };
 
         Ok(IfCond {
@@ -65,7 +65,11 @@ impl IfCond<Span> {
     }
 }
 
-impl<A: Annotation> fmt::Display for IfCond<A> {
+impl<A, B> fmt::Display for IfCond<A, B>
+where
+    A: Annotation,
+    B: fmt::Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "if {} ", self.cond)?;
 
@@ -83,72 +87,30 @@ impl<A: Annotation> fmt::Display for IfCond<A> {
     }
 }
 
-impl<A: Annotation> Spanned for IfCond<A> {
+impl<A, B> Spanned for IfCond<A, B>
+where
+    A: Annotation,
+    B: IfCondBranchParse,
+{
     fn span(&self) -> &Span {
         self.annotation.span()
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::ast::expression::test::parse_expr;
-    use crate::ast::TypeNamePatternKind;
+impl IfCond<Span, Statement<Span>> {
+    pub fn to_expr(&self) -> Option<IfCond<Span, Expression<Span>>> {
+        let then_branch = self.then_branch.to_expr()?;
+        let else_branch = match &self.else_branch {
+            Some(else_stmt) => Some(else_stmt.to_expr()?),
+            None => None,
+        };
 
-    fn parse_if_cond(src: &str) -> IfCond<Span> {
-        match parse_expr(src) {
-            Expression::IfCond(if_cond) => *if_cond,
-            expr => panic!("expected expression to be an if condition, got: {:?}", expr),
-        }
-    }
-
-    #[test]
-    fn parses_without_is_pattern() {
-        let cond = parse_if_cond("if x then y");
-        assert!(cond.is_pattern.is_none());
-    }
-
-    #[test]
-    fn parses_with_is_pattern() {
-        let cond = parse_if_cond("if x is String then y");
-        assert!(cond.is_pattern.is_some());
-
-        match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::ExactType { name, kind, .. } => {
-                assert_eq!(name.to_string(), "String");
-                assert_eq!(*kind, TypeNamePatternKind::Is);
-            }
-
-            _ => panic!("expected positive binding"),
-        }
-    }
-
-    #[test]
-    fn parses_with_is_not_pattern() {
-        let cond = parse_if_cond("if x is not String then y");
-        assert!(cond.is_pattern.is_some());
-
-        match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::ExactType { name, .. } => {
-                assert_eq!("String", name.to_string());
-            }
-
-            _ => panic!("expected negative binding"),
-        }
-    }
-
-    #[test]
-    fn parses_with_is_pattern_and_binding() {
-        let cond = parse_if_cond("if x is String s then y");
-        assert!(cond.is_pattern.is_some());
-
-        match cond.is_pattern.as_ref().unwrap() {
-            TypeNamePattern::ExactType { name, kind: TypeNamePatternKind::IsWithBinding(binding), .. } => {
-                assert_eq!(name.to_string(), "String");
-                assert_eq!(binding.to_string(), "s".to_string());
-            }
-
-            _ => panic!("expected positive binding"),
-        }
+        Some(IfCond {
+            cond: self.cond.clone(),
+            annotation: self.annotation.clone(),
+            is_pattern: self.is_pattern.clone(),
+            then_branch,
+            else_branch,
+        })
     }
 }

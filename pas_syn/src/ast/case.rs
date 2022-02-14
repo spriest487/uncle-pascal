@@ -229,3 +229,27 @@ where
         })
     }
 }
+
+impl CaseStatement<Span> {
+    pub fn to_expr(&self) -> Option<CaseExpr<Span>> {
+        // must have an else branch that is a valid expression
+        let else_branch = self.else_branch.as_ref()?.clone().to_expr()?;
+
+        let mut branches = Vec::with_capacity(self.branches.len());
+        for branch in &self.branches {
+            let item = (*branch.item).clone().to_expr()?;
+            branches.push(CaseBranch {
+                value: branch.value.clone(),
+                span: branch.span.clone(),
+                item: Box::new(item),
+            })
+        }
+
+        Some(CaseExpr {
+            cond_expr: self.cond_expr.clone(),
+            branches,
+            else_branch: Some(Box::new(else_branch)),
+            annotation: self.annotation.clone(),
+        })
+    }
+}
