@@ -649,7 +649,7 @@ impl Marshaller {
                 UnmarshalledValue {
                     byte_count: offset,
                     value: DynValue::Array(Box::new(ArrayValue {
-                        el_ty: *element.clone(),
+                        el_ty: (**element).clone(),
                         elements,
                     })),
                 }

@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 use pas_common::span::Span;
 use crate::name_path::NamePath;
 use crate::{FunctionID, InterfaceID, MethodID, STRING_ID, StructID};
@@ -247,11 +248,11 @@ pub enum Type {
     /// no type or unknown type (used for raw pointers like void*)
     Nothing,
 
-    Pointer(Box<Type>),
+    Pointer(Rc<Type>),
     Struct(StructID),
     Variant(StructID),
     Array {
-        element: Box<Type>,
+        element: Rc<Type>,
         dim: usize,
     },
 
@@ -279,7 +280,7 @@ pub enum Type {
 
 impl Type {
     pub fn ptr(self) -> Self {
-        Type::Pointer(Box::new(self))
+        Type::Pointer(Rc::new(self))
     }
 
     pub const fn rc_ptr_to(class: ClassID) -> Self {
@@ -304,7 +305,7 @@ impl Type {
     pub fn array(self, dim: usize) -> Self {
         Type::Array {
             dim,
-            element: Box::new(self),
+            element: Rc::new(self),
         }
     }
 

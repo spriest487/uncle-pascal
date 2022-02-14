@@ -7,6 +7,7 @@ use pas_syn as syn;
 use pas_syn::{Ident, IdentPath};
 use pas_typecheck as pas_ty;
 use std::borrow::Cow;
+use std::rc::Rc;
 
 pub mod name_path;
 pub mod ty;
@@ -661,7 +662,7 @@ impl Metadata {
             pas_ty::Type::Array(array_ty) => {
                 let element = self.find_type(&array_ty.element_ty);
                 Type::Array {
-                    element: Box::new(element),
+                    element: Rc::new(element),
                     dim: array_ty.dim,
                 }
             }
