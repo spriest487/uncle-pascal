@@ -324,6 +324,8 @@ fn translate_match_stmt(match_stmt: &pas_ty::ast::MatchStmt, builder: &mut Build
             None
         };
 
+        let is_skip = builder.local_temp(Type::Bool);
+
         for branch in &match_stmt.branches {
             builder.scope(|builder| {
                 // label to skip this branch if it isn't a match
@@ -332,17 +334,17 @@ fn translate_match_stmt(match_stmt: &pas_ty::ast::MatchStmt, builder: &mut Build
                 let pattern_match = translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
 
                 // jump to skip label if pattern match return false
-                let is_skip = builder.local_temp(Type::Bool);
                 builder.not(is_skip.clone(), pattern_match.is_match.clone());
-                builder.jmp_if(skip_label, is_skip);
+                builder.jmp_if(skip_label, is_skip.clone());
 
                 // code to run if we didn't skip - the actual branch
+                builder.scope(|builder| {
+                    for binding in pattern_match.bindings {
+                        binding.bind_local(builder);
+                    }
 
-                for binding in pattern_match.bindings {
-                    binding.bind_local(builder);
-                }
-
-                translate_stmt(&branch.item, builder);
+                    translate_stmt(&branch.item, builder);
+                });
 
                 // only one branch must run so break out of the block now
                 builder.jmp(break_label);
