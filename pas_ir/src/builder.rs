@@ -245,6 +245,8 @@ impl<'m> Builder<'m> {
             return;
         }
 
+        self.current_scope_mut().inc_debug_ctx_count();
+
         self.append(Instruction::DebugPush(ctx));
     }
 
@@ -252,6 +254,8 @@ impl<'m> Builder<'m> {
         if !self.opts().debug_info {
             return;
         }
+
+        self.current_scope_mut().dec_debug_ctx_count();
 
         self.append(Instruction::DebugPop);
     }
@@ -697,14 +701,14 @@ impl<'m> Builder<'m> {
                     return false;
                 }
 
-                let element_ptr = self.local_temp(element.clone().ptr());
+                let element_ptr = self.local_temp((**element).clone().ptr());
                 let mut result = false;
 
                 for i in 0..*dim {
                     self.append(Instruction::Element {
                         out: element_ptr.clone(),
                         a: at.clone(),
-                        element: *element.clone(),
+                        element: (**element).clone(),
                         index: Value::LiteralI32(i as i32), // todo: real usize type,
                     });
 
@@ -936,10 +940,24 @@ impl<'m> Builder<'m> {
             }
         }
 
+        let cleanup_range = to_scope..=last_scope;
+
+        if self.opts().debug_info {
+            let debug_pops: usize = self.scopes[cleanup_range.clone()]
+                .iter()
+                .map(|scope| scope.debug_ctx_count())
+                .sum();
+
+            for _ in 0..debug_pops {
+                // don't call the helper func to do this, we don't want to modify the scope here
+                self.append(Instruction::DebugPop);
+            }
+        }
+
         // locals from all scopes up to the target scope, in order of deepest->shallowest,
         // then in reverse allocation order
-        let locals: Vec<_> = (to_scope..=last_scope)
-            .map(|i| &self.scopes[i])
+        let locals: Vec<_> = self.scopes[cleanup_range]
+            .iter()
             .rev()
             .flat_map(|scope| scope.locals().iter().rev().cloned())
             .collect();

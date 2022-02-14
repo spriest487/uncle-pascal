@@ -68,11 +68,30 @@ impl Local {
 #[derive(Debug)]
 pub(super) struct Scope {
     locals: Vec<Local>,
+
+    // debug context pushes belonging to this scope - when cleaning up this scope, any un-popped
+    // entries in the debug context stack that were pushed during this scope also need to be popped
+    debug_ctx_depth: usize,
 }
 
 impl Scope {
     pub fn new() -> Self {
-        Self { locals: Vec::new() }
+        Self {
+            locals: Vec::new(),
+            debug_ctx_depth: 0,
+        }
+    }
+
+    pub fn debug_ctx_count(&self) -> usize {
+        self.debug_ctx_depth
+    }
+
+    pub fn inc_debug_ctx_count(&mut self) {
+        self.debug_ctx_depth += 1;
+    }
+
+    pub fn dec_debug_ctx_count(&mut self) {
+        self.debug_ctx_depth -= 1;
     }
 
     pub fn locals(&self) -> &[Local] {
