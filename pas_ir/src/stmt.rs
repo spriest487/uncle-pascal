@@ -164,8 +164,10 @@ pub fn translate_while_loop(while_loop: &pas_ty::ast::WhileLoop, builder: &mut B
         builder.label(top_label);
 
         // evaluate condition
-        let cond_val = translate_expr(&while_loop.condition, builder);
-        builder.not(not_cond.clone(), cond_val);
+        builder.scope(|builder| {
+            let cond_val = translate_expr(&while_loop.condition, builder);
+            builder.not(not_cond.clone(), cond_val);
+        });
 
         // break now if condition is false
         builder.jmp_if(break_label, not_cond);
