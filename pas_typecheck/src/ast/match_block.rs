@@ -143,7 +143,7 @@ pub fn typecheck_match_expr(
             |item_expr, expect_ty, branches: &[MatchBlockBranch<Expression>], ctx| {
                 if branches.len() > 0 {
                     let result_ty = branches[0].item.annotation().ty();
-                    let item_expr = typecheck_expr(item_expr, expect_ty, ctx)?;
+                    let item_expr = typecheck_expr(item_expr, &result_ty, ctx)?;
                     implicit_conversion(item_expr, &result_ty, ctx)
                 } else {
                     typecheck_expr(item_expr, expect_ty, ctx)
