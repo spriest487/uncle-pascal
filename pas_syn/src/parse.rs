@@ -89,7 +89,7 @@ impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ParseError::UnexpectedToken(..) => write!(f, "Unexpected token"),
-            ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of file"),
+            ParseError::UnexpectedEOF(..) => write!(f, "Unexpected end of sequence"),
             ParseError::EmptyOperand { .. } => write!(f, "Empty operand"),
             ParseError::UnexpectedOperator { .. } => write!(f, "Unexpected operator"),
             ParseError::InvalidStatement(invalid) => write!(f, "{}", invalid.title()),

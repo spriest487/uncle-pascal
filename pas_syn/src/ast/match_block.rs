@@ -85,8 +85,8 @@ where
             }))
         })?;
 
-        let else_branch = match tokens.match_one_maybe(Keyword::Else) {
-            Some(_else_tt) => Some(B::parse(tokens)?),
+        let else_branch = match inner_tokens.match_one_maybe(Keyword::Else) {
+            Some(_else_tt) => Some(B::parse(&mut inner_tokens)?),
             None => None,
         };
 

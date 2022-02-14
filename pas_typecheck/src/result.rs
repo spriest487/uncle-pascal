@@ -190,6 +190,7 @@ pub enum TypecheckError {
     },
     MatchExprNotExhaustive {
         span: Span,
+        missing_cases: Vec<Ident>,
     }
 }
 
@@ -706,8 +707,19 @@ impl fmt::Display for TypecheckError {
                 write!(f, "this match block must have at least one branch")
             }
 
-            TypecheckError::MatchExprNotExhaustive { .. } => {
-                write!(f, "this match expression must be exhaustive or have an `else` branch")
+            TypecheckError::MatchExprNotExhaustive { missing_cases, .. } => {
+                write!(f, "this match expression must be exhaustive or have an `else` branch")?;
+                if missing_cases.len() > 0 {
+                    write!(f, " (unhandled cases: ")?;
+                    for (i, missing_case) in missing_cases.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", missing_case)?;
+                    }
+                    write!(f, ")")?;
+                }
+                Ok(())
             }
         }
     }

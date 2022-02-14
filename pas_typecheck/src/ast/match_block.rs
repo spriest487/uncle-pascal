@@ -1,10 +1,11 @@
-use crate::ast::{typecheck_expr, typecheck_stmt, Expression, implicit_conversion};
+use crate::ast::{typecheck_expr, typecheck_stmt, Expression, implicit_conversion, Statement};
 use crate::{Binding, Context, Environment, Type, TypeAnnotation, TypePattern, TypecheckError, TypecheckResult, ValueKind, TypedValueAnnotation};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast;
 
-pub type MatchExpr = ast::MatchExpr<TypeAnnotation>;
-pub type MatchStmt = ast::MatchStmt<TypeAnnotation>;
+pub type MatchBlock<B> = ast::MatchBlock<TypeAnnotation, B>;
+pub type MatchExpr = MatchBlock<Expression>;
+pub type MatchStmt = MatchBlock<Statement>;
 pub type MatchBlockBranch<B> = ast::MatchBlockBranch<TypeAnnotation, B>;
 
 fn typecheck_match_cond<B>(
@@ -160,10 +161,46 @@ pub fn typecheck_match_expr(
             None => None,
         };
 
-        if else_branch.is_none() && cond_expr.annotation().ty().is_rc_reference() {
-            return Err(TypecheckError::MatchExprNotExhaustive {
-                span: match_expr.span().clone(),
-            })
+        if else_branch.is_none() {
+            let mut missing_cases = Vec::new();
+            let is_exhaustive = match cond_expr.annotation().ty().as_ref() {
+                Type::Any | Type::Interface(..) => {
+                    // matches on dynamic RC types can never be exhaustive
+                    false
+                }
+
+                Type::Variant(var_sym) => {
+                    let variant_def = block_ctx.find_variant_def(&var_sym.qualified)
+                        .map_err(|err| TypecheckError::from_name_err(err, match_expr.span().clone()))?;
+
+                    // add all variants and remove the ones mentioned by any variant pattern, or
+                    // NOT mentioned by any negated variant pattern
+                    missing_cases.reserve(variant_def.cases.len());
+
+                    for def_case in &variant_def.cases {
+                        let is_mentioned = branches.iter().any(|branch| match &branch.pattern {
+                            TypePattern::VariantCase { case, .. } => *case == def_case.ident,
+                            TypePattern::NegatedVariantCase { case, .. } => *case != def_case.ident,
+                            _ => false,
+                        });
+
+                        if !is_mentioned {
+                            missing_cases.push(def_case.ident.clone());
+                        }
+                    }
+
+                    missing_cases.is_empty()
+                }
+
+                _ =>  true,
+            };
+
+            if !is_exhaustive {
+                return Err(TypecheckError::MatchExprNotExhaustive {
+                    span: match_expr.span().clone(),
+                    missing_cases,
+                })
+            }
         }
 
         let annotation = TypedValueAnnotation {

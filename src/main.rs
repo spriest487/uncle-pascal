@@ -129,7 +129,7 @@ fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf
 fn preprocess(
     filename: &PathBuf,
     search_paths: &[PathBuf],
-    opts: &BuildOptions,
+    opts: BuildOptions,
 ) -> Result<PreprocessedUnit, CompileError> {
     let filename = find_in_paths(&filename, search_paths).unwrap_or_else(|| {
         eprintln!("unit not found: {}", filename.display());
@@ -150,7 +150,7 @@ fn preprocess(
         Ok(file) => file,
     };
 
-    let pp = pp::Preprocessor::new(filename, opts.clone());
+    let pp = pp::Preprocessor::new(filename, opts);
     let preprocessed = pp.preprocess(&src)?;
 
     Ok(preprocessed)
@@ -207,6 +207,10 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
 
+    if args.no_stdlib {
+        opts.define("NO_STDLIB".to_string());
+    }
+
     let all_filenames = units.into_iter().chain(vec![args.file.clone()]);
     let source_dirs = source_dirs(args);
 
@@ -218,7 +222,7 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     }
 
     let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| preprocess(&unit_filename, &source_dirs, &opts))
+        .map(|unit_filename| preprocess(&unit_filename, &source_dirs, opts.clone()))
         .collect::<Result<_, CompileError>>()?;
 
     if args.target == Target::Preprocessed {

@@ -69,7 +69,7 @@ impl Block<Span> {
                     // expression, assume it's the block output. some expressions (eg calls) are
                     // always valid as statements regardless of type, so in some cases the block
                     // output can't be determined until typechecking
-                    ParseError::InvalidStatement(InvalidStatement(..)) => {
+                    ParseError::InvalidStatement(InvalidStatement(_invalid)) => {
                         // NASTY HACK ZONE
                         // we need to re-parse the tokens used for this statement, so make a new
                         // stream out of the block's inner tokens and fast-forward it to where

@@ -1278,16 +1278,86 @@ fn translate_case_expr(case: &pas_ty::ast::CaseExpr, builder: &mut Builder) -> R
     out_ref
 }
 
-fn translate_match_expr(match_expr: &pas_ty::ast::MatchExpr, builder: &mut Builder) -> Ref {
-    unimplemented!()
-}
-
 fn translate_cast_expr(cast: &pas_ty::ast::Cast, builder: &mut Builder) -> Ref {
     let val = translate_expr(&cast.expr, builder);
     let ty = builder.translate_type(&cast.ty);
     let out_ref = builder.local_temp(ty.clone());
 
     builder.cast(out_ref.clone(), val, ty);
+
+    out_ref
+}
+
+fn translate_match_expr(match_expr: &pas_ty::ast::MatchExpr, builder: &mut Builder) -> Ref {
+    let out_ty = builder.translate_type(&match_expr.annotation.ty());
+    let out_ref = builder.local_new(out_ty.clone(), None);
+
+    builder.scope(|builder| {
+        let cond_expr = translate_expr(&match_expr.cond_expr, builder);
+        let cond_ty = builder.translate_type(&match_expr.cond_expr.annotation().ty());
+
+        let break_label = builder.alloc_label();
+
+        let else_label = if match_expr.else_branch.is_some() {
+            Some(builder.alloc_label())
+        } else {
+            None
+        };
+
+        let is_skip = builder.local_temp(Type::Bool);
+
+        for branch in &match_expr.branches {
+            // label to skip this branch if it isn't a match
+            let skip_label = builder.alloc_label();
+
+            builder.scope(|builder| {
+                let pattern_match = translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
+
+                // jump to skip label if pattern match return false
+                builder.not(is_skip.clone(), pattern_match.is_match.clone());
+                builder.jmp_if(skip_label, is_skip.clone());
+
+                builder.scope(|builder| {
+                    // code to run if we didn't skip - the actual branch
+                    for binding in pattern_match.bindings {
+                        binding.bind_local(builder);
+                    }
+
+                    let branch_val = translate_expr(&branch.item, builder);
+
+                    builder.mov(out_ref.clone(), branch_val);
+                    builder.retain(out_ref.clone(), &out_ty);
+                });
+
+                // only one branch must run so break out of the block now
+                builder.jmp(break_label);
+
+                builder.label(skip_label);
+            });
+        }
+
+        // write the else branch - will fall through to here if we didn't run any branches
+        if let Some(else_branch) = &match_expr.else_branch {
+            builder.scope(|builder| {
+                builder.label(else_label.unwrap());
+
+                let else_val = translate_expr(else_branch, builder);
+                builder.mov(out_ref.clone(), else_val);
+                builder.retain(out_ref.clone(), &out_ty);
+            });
+
+            builder.jmp(break_label);
+        }
+
+        // we MUST have executed a branch!
+        let err = "unhandled pattern in match expression";
+        let err_str = builder.find_or_insert_string(err);
+        builder.append(Instruction::Raise {
+            val: Ref::Global(GlobalRef::StringLiteral(err_str)),
+        });
+
+        builder.label(break_label);
+    });
 
     out_ref
 }
