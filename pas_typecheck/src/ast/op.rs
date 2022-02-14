@@ -639,7 +639,7 @@ pub fn typecheck_unary_op(
                     false
                 }
 
-                Some(ValueKind::Mutable | ValueKind::Ref) => {
+                Some(ValueKind::Mutable) => {
                     true
                 }
             };

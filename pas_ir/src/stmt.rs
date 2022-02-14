@@ -3,6 +3,7 @@ use crate::{prelude::*, translate_block, translate_exit, translate_call, transla
 use pas_syn::ast;
 use pas_typecheck as pas_ty;
 use crate::expr::translate_raise;
+use crate::pattern::translate_pattern_match;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());
@@ -61,6 +62,10 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::Case(case) => {
             translate_case_stmt(case, builder);
+        }
+
+        ast::Statement::Match(match_stmt) => {
+            translate_match_stmt(match_stmt, builder);
         }
     }
 
@@ -300,6 +305,59 @@ where
             });
 
             builder.jmp(break_label);
+        }
+
+        builder.label(break_label);
+    });
+}
+
+fn translate_match_stmt(match_stmt: &pas_ty::ast::MatchStmt, builder: &mut Builder) {
+    builder.scope(|builder| {
+        let cond_expr = translate_expr(&match_stmt.cond_expr, builder);
+        let cond_ty = builder.translate_type(&match_stmt.cond_expr.annotation().ty());
+
+        let break_label = builder.alloc_label();
+
+        let else_label = if match_stmt.else_branch.is_some() {
+            Some(builder.alloc_label())
+        } else {
+            None
+        };
+
+        for branch in &match_stmt.branches {
+            builder.scope(|builder| {
+                // label to skip this branch if it isn't a match
+                let skip_label = builder.alloc_label();
+
+                let pattern_match = translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
+
+                // jump to skip label if pattern match return false
+                let is_skip = builder.local_temp(Type::Bool);
+                builder.not(is_skip.clone(), pattern_match.is_match.clone());
+                builder.jmp_if(skip_label, is_skip);
+
+                // code to run if we didn't skip - the actual branch
+
+                for binding in pattern_match.bindings {
+                    binding.bind_local(builder);
+                }
+
+                translate_stmt(&branch.item, builder);
+
+                // only one branch must run so break out of the block now
+                builder.jmp(break_label);
+
+                builder.label(skip_label);
+            });
+        }
+
+        // write the else branch - will fall through to here if we didn't run any branches
+        if let Some(else_branch) = &match_stmt.else_branch {
+            builder.scope(|builder| {
+                builder.label(else_label.unwrap());
+
+                translate_stmt(else_branch, builder);
+            });
         }
 
         builder.label(break_label);

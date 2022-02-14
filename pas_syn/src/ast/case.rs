@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast::{Annotation, Expression, Statement};
-use crate::parse::{MatchOneOf, ParseResult, TokenStream};
+use crate::parse::{MatchOneOf, Parse, ParseResult, TokenStream};
 use crate::{DelimiterPair, Keyword, Separator, TokenTree};
 use pas_common::span::{Span, Spanned};
 use std::fmt;
@@ -75,7 +75,7 @@ where
 
 impl<B> CaseBlock<Span, B>
 where
-    B: CaseItemParse
+    B: Parse + Spanned
 {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let (case_kw, case_inner, end_kw) = match tokens.match_one(DelimiterPair::CaseEnd)? {
@@ -148,22 +148,6 @@ where
     }
 }
 
-pub trait CaseItemParse: Sized + Spanned {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
-}
-
-impl CaseItemParse for Expression<Span> {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        Expression::parse(tokens)
-    }
-}
-
-impl CaseItemParse for Statement<Span> {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        Statement::parse(tokens)
-    }
-}
-
 #[derive(Debug, Clone, Eq)]
 pub struct CaseBranch<A: Annotation, Item> {
     pub value: Box<Expression<A>>,
@@ -213,7 +197,7 @@ where
 
 impl<Item> CaseBranch<Span, Item>
 where
-    Item: CaseItemParse,
+    Item: Parse + Spanned,
 {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let value = Expression::parse(tokens)?;

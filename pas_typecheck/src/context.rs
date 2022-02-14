@@ -182,6 +182,18 @@ impl Context {
         }
     }
 
+    pub fn scope<F, T>(&mut self, env: Environment, f: F) -> TypecheckResult<T>
+        where F: FnOnce(&mut Context) -> TypecheckResult<T>
+    {
+        let scope_id = self.push_scope(env);
+
+        let result = f(self);
+
+        self.pop_scope(scope_id);
+
+        return result;
+    }
+
     pub fn unit_scope<T, F>(&mut self, unit_path: IdentPath, f: F) -> TypecheckResult<T>
         where F: FnOnce(&mut Context) -> TypecheckResult<T>,
     {

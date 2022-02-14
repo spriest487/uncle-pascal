@@ -184,6 +184,13 @@ pub enum TypecheckError {
         to: Type,
         span: Span,
     },
+
+    EmptyMatchBlock {
+        span: Span,
+    },
+    MatchExprNotExhaustive {
+        span: Span,
+    }
 }
 
 impl TypecheckError {
@@ -250,6 +257,8 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidConstExpr { expr } => expr.span(),
             TypecheckError::InvalidCaseExprBlock { span } => span,
             TypecheckError::InvalidCast { span, .. } => span,
+            TypecheckError::EmptyMatchBlock { span, .. } => span,
+            TypecheckError::MatchExprNotExhaustive { span, .. } => span,
         }
     }
 }
@@ -344,6 +353,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidCaseExprBlock { .. } => "Case block invalid as expression".to_string(),
 
             TypecheckError::InvalidCast { .. } => "Invalid cast".to_string(),
+            TypecheckError::EmptyMatchBlock { .. } => "Empty match block".to_string(),
+            TypecheckError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive".to_string(),
         }
     }
 
@@ -689,6 +700,14 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidCast { from, to, .. } => {
                 write!(f, "`{}` cannot be cast to `{}`", from, to)
+            }
+
+            TypecheckError::EmptyMatchBlock { .. } => {
+                write!(f, "this match block must have at least one branch")
+            }
+
+            TypecheckError::MatchExprNotExhaustive { .. } => {
+                write!(f, "this match expression must be exhaustive or have an `else` branch")
             }
         }
     }

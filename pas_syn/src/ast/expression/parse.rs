@@ -11,6 +11,7 @@ use crate::{
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering};
 use crate::ast::{CaseExpr, Cast, Exit, Expression, Literal};
+use crate::ast::match_block::MatchExpr;
 
 // anything which can appear at the start of an operand subexpr (not let bindings
 // or flow control statements)
@@ -23,6 +24,7 @@ pub fn match_operand_start() -> Matcher {
         // block/control flow
         .or(DelimiterPair::BeginEnd)
         .or(DelimiterPair::CaseEnd)
+        .or(DelimiterPair::MatchEnd)
         .or(Keyword::Unsafe)
         .or(Keyword::If)
         .or(Keyword::Raise)
@@ -450,6 +452,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
                     DelimiterPair::CaseEnd => {
                         let case = CaseExpr::parse(&mut self.tokens)?;
                         self.push_operand(Expression::from(case))
+                    }
+
+                    DelimiterPair::MatchEnd => {
+                        let match_expr = MatchExpr::parse(&mut self.tokens)?;
+                        self.push_operand(Expression::from(match_expr))
                     }
                 }
             }

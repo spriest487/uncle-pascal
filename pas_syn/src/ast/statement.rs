@@ -11,11 +11,10 @@ use crate::{
     ast::{
         case::{CaseBlock, CaseStatement},
         expression::match_operand_start,
-        Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop,
+        Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop, MatchStmt,
     },
     parse::prelude::*,
 };
-use crate::ast::IfCondBranchParse;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Statement<A: Annotation> {
@@ -32,9 +31,10 @@ pub enum Statement<A: Annotation> {
     Continue(A),
     Raise(Box<Raise<A>>),
     Case(Box<CaseStatement<A>>),
+    Match(Box<MatchStmt<A>>),
 }
 
-impl IfCondBranchParse for Statement<Span> {
+impl Parse for Statement<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         Statement::parse(tokens)
     }
@@ -59,6 +59,7 @@ impl<A: Annotation> Statement<A> {
             Statement::Continue(a) => a,
             Statement::Raise(raise) => &raise.annotation,
             Statement::Case(case) => &case.annotation,
+            Statement::Match(match_stmt) => &match_stmt.annotation,
         }
     }
 
@@ -94,6 +95,11 @@ impl Statement<Span> {
                 let case = case.to_expr()?;
                 Some(Expression::from(case))
             },
+
+            Statement::Match(match_stmt) => {
+                let match_expr = match_stmt.to_expr()?;
+                Some(Expression::from(match_expr))
+            }
 
             _ => None,
         }
@@ -229,6 +235,12 @@ impl Statement<Span> {
                 Ok(Statement::Case(Box::new(case)))
             },
 
+            Some(tt) if tt.is_delimited(DelimiterPair::MatchEnd) => {
+                let case = MatchStmt::parse(tokens)?;
+
+                Ok(Statement::Match(Box::new(case)))
+            },
+
             Some(tt) if tt.is_keyword(Keyword::If) => {
                 let if_cond = IfCond::parse(tokens)?;
 
@@ -273,6 +285,7 @@ impl<A: Annotation> fmt::Display for Statement<A> {
             Statement::Continue(..) => write!(f, "{}", Keyword::Continue),
             Statement::Raise(raise) => write!(f, "{}", raise),
             Statement::Case(case) => write!(f, "{}", case),
+            Statement::Match(match_stmt) => write!(f, "{}", match_stmt),
         }
     }
 }

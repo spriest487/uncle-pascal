@@ -191,3 +191,7 @@ impl DiagnosticOutput for ParseError {
         }
     }
 }
+
+pub trait Parse: Sized {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
+}

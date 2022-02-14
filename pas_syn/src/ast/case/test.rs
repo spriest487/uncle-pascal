@@ -1,10 +1,11 @@
 use super::*;
 use crate::TokenTree;
 use pas_common::BuildOptions;
+use crate::parse::Parse;
 
 fn parse_case<Item>(s: &str) -> CaseBlock<Span, Item>
     where
-        Item: CaseItemParse
+        Item: Parse
 {
     let src_tokens = TokenTree::tokenize("test", s, &BuildOptions::default()).unwrap();
     let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));

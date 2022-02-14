@@ -2,10 +2,11 @@ use crate::{build_case_block, prelude::*, translate_stmt, Builder, Type};
 use pas_common::span::*;
 use pas_syn as syn;
 use pas_syn::Ident;
-use pas_ty::{TypeAnnotation, TypePattern, ValueKind};
+use pas_ty::{TypeAnnotation, ValueKind};
 use pas_typecheck as pas_ty;
 use std::convert::TryFrom;
 use syn::ast;
+use crate::pattern::{PatternMatchOutput, translate_pattern_match};
 
 use crate::ty::ClassID;
 
@@ -56,6 +57,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         },
 
         ast::Expression::Case(case) => translate_case_expr(case, builder),
+        ast::Expression::Match(match_expr) => translate_match_expr(match_expr, builder),
 
         ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
     };
@@ -221,182 +223,50 @@ where
         let cond_val = translate_expr(&if_cond.cond, builder);
         let cond_ty = builder.translate_type(&if_cond.cond.annotation().ty());
 
-        let (test_val, pattern_bindings) = match &if_cond.is_pattern {
-            None => (Value::Ref(cond_val), Vec::new()),
+        let pattern_match = match &if_cond.is_pattern {
+            // match the cond val against the type pattern that follows it
+            Some(is_pattern) => translate_pattern_match(is_pattern, &cond_val, &cond_ty, builder),
 
-            Some(TypePattern::Type { binding, ty, .. }) => {
-                let is_ty = builder.translate_type(ty);
-                let is = translate_is_ty(cond_val.clone(), &cond_ty, &is_ty, builder);
-
-                let bindings = match binding {
-                    Some(binding) => {
-                        let binding_name = binding.name.to_string();
-                        let binding_ref = cond_val;
-
-                        vec![(binding_name, is_ty, binding_ref)]
-                    },
-                    None => Vec::new(),
-                };
-
-                (is, bindings)
-            },
-
-            Some(TypePattern::NegatedType { ty, .. }) => {
-                let is_not_ty = builder.translate_type(ty);
-                let is = translate_is_ty(cond_val, &cond_ty, &is_not_ty, builder);
-
-                let is_not = builder.not_to_val(is);
-                (is_not, Vec::new())
-            },
-
-            Some(TypePattern::VariantCase {
-                variant,
-                case,
-                data_binding,
-                ..
-            }) => {
-                let (struct_id, case_index, case_ty) =
-                    builder.translate_variant_case(variant, case);
-                let variant_ty = Type::Variant(struct_id);
-
-                let bindings = match data_binding {
-                    Some(binding) => {
-                        let binding_name = binding.name.to_string();
-
-                        let case_ty = case_ty
-                            .cloned()
-                            .expect("variant pattern with binding must refer to a case with data");
-
-                        let data_ptr = builder.local_temp(case_ty.clone().ptr());
-
-                        builder.append(Instruction::VariantData {
-                            out: data_ptr.clone(),
-                            a: cond_val.clone(),
-                            of_ty: variant_ty.clone(),
-                            tag: case_index,
-                        });
-
-                        vec![(binding_name, case_ty, data_ptr.to_deref())]
-                    },
-
-                    None => Vec::new(),
-                };
-
-                let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
-                (Value::Ref(is), bindings)
-            },
-
-            Some(TypePattern::NegatedVariantCase { variant, case, .. }) => {
-                let (struct_id, case_index, _case_ty) =
-                    builder.translate_variant_case(variant, case);
-
-                let variant_ty = Type::Variant(struct_id);
-                let is = translate_is_variant(cond_val, variant_ty, case_index, builder);
-
-                let is_not = builder.not_to_val(Value::Ref(is));
-
-                (is_not, Vec::new())
-            },
+            // no pattern, the cond val must be a boolean and we're just testing that
+            None => PatternMatchOutput {
+                is_match: Value::Ref(cond_val),
+                bindings: Vec::new(),
+            }
         };
 
-        builder.append(Instruction::JumpIf {
-            test: test_val.into(),
-            dest: then_label,
-        });
+        builder.jmp_if(then_label, pattern_match.is_match.clone());
 
         if let Some(else_label) = else_label {
-            builder.append(Instruction::Jump { dest: else_label });
+            builder.jmp(else_label);
         } else {
-            builder.append(Instruction::Jump { dest: end_label });
+            builder.jmp(end_label);
         }
 
-        builder.append(Instruction::Label(then_label));
+        builder.label(then_label);
 
         builder.scope(|builder| {
             // bind pattern locals to names and retain them
-            for (binding_name, binding_ty, binding_ref) in pattern_bindings {
-                builder.comment(&format!(
-                    "pattern binding {}: {}",
-                    binding_name,
-                    builder.pretty_ty_name(&binding_ty)
-                ));
-                // since there's no fancy destructuring yet, we just need to mov the old value into a
-                // new local, which pascal will see as a variable of the new type
-                let pattern_binding = builder.local_new(binding_ty.clone(), Some(binding_name));
-                builder.mov(pattern_binding.clone(), binding_ref);
-                builder.retain(pattern_binding, &binding_ty);
+            for pattern_binding in &pattern_match.bindings {
+                pattern_binding.bind_local(builder);
             }
 
             branch_translate(&if_cond.then_branch, out_val.as_ref(), &out_ty, builder);
         });
 
-        builder.append(Instruction::Jump { dest: end_label });
+        builder.jmp(end_label);
 
         if let Some(else_branch) = &if_cond.else_branch {
-            builder.append(Instruction::Label(else_label.unwrap()));
+            builder.label(else_label.unwrap());
 
             builder.begin_scope();
             branch_translate(&else_branch, out_val.as_ref(), &out_ty, builder);
             builder.end_scope();
         }
 
-        builder.append(Instruction::Label(end_label));
+        builder.label(end_label);
     });
 
     out_val
-}
-
-fn translate_is_variant(
-    val: Ref,
-    variant_ty: Type,
-    case_index: usize,
-    builder: &mut Builder,
-) -> Ref {
-    let tag_ptr = builder.local_temp(Type::I32.ptr());
-    builder.append(Instruction::VariantTag {
-        out: tag_ptr.clone(),
-        a: val,
-        of_ty: variant_ty,
-    });
-
-    let is = builder.local_temp(Type::Bool);
-    builder.append(Instruction::Eq {
-        out: is.clone(),
-        a: Value::Ref(tag_ptr.to_deref()),
-        b: Value::LiteralI32(case_index as i32), //todo: proper size type,
-    });
-
-    is
-}
-
-fn translate_is_ty(val: Ref, val_ty: &Type, ty: &Type, builder: &mut Builder) -> Value {
-    if val_ty.is_rc() {
-        match ty {
-            Type::RcPointer(Some(class_id)) => {
-                // checking if one RC type (probably an interface) is an instance of another RC
-                // type (probably a class): this is a runtime check
-                let result = builder.local_temp(Type::Bool);
-
-                builder.append(Instruction::ClassIs {
-                    out: result.clone(),
-                    a: Value::Ref(val),
-                    class_id: *class_id,
-                });
-
-                Value::Ref(result)
-            },
-
-            // value is RC and we are testing if it's Any: it always is
-            Type::RcPointer(None) => Value::LiteralBool(true),
-
-            // value is a value type, we wanted an RC type
-            _ => Value::LiteralBool(false),
-        }
-    } else {
-        // value types must match exactly
-        let same_ty = *val_ty == *ty;
-        Value::LiteralBool(same_ty)
-    }
 }
 
 fn translate_call_with_args(
@@ -1297,14 +1167,6 @@ fn translate_dyn_array_ctor(
 
 fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Builder) -> Ref {
     match annotation {
-        TypeAnnotation::TypedValue(val) if val.value_kind == ValueKind::Temporary => {
-            // this is illegal because temporary values shouldn't have names
-            panic!(
-                "translated expression `{}` of type `{}` is of temporary value kind",
-                ident, val.ty,
-            )
-        },
-
         TypeAnnotation::Function(func) => {
             let func_name = func.ns.clone().child(func.name.clone());
             let func = builder.translate_func(func_name, func.type_args.clone(), &func.span);
@@ -1313,15 +1175,7 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
             Ref::Global(func_ref)
         },
 
-        // ident lvalues are evaluated as pointers to the original values. they don't need
-        // to be refcounted separately, because if they have a name, they must exist
-        // in a scope at least as wide as the current one
-        TypeAnnotation::TypedValue(val)
-            if match val.value_kind {
-                ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => true,
-                ValueKind::Ref | ValueKind::Temporary => false,
-            } =>
-        {
+        TypeAnnotation::TypedValue(val) => {
             let local_ref = builder
                 .find_local(&ident.to_string())
                 .map(|local| {
@@ -1340,14 +1194,26 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
                     )
                 });
 
-            let ref_ty = builder.translate_type(&annotation.ty());
-            let ref_temp = builder.local_temp(ref_ty.ptr());
+            match val.value_kind {
+                // ident lvalues are evaluated as pointers to the original values. they don't need
+                // to be refcounted separately, because if they have a name, they must exist
+                // in a scope at least as wide as the current one
+                ValueKind::Immutable | ValueKind::Mutable | ValueKind::Uninitialized => {
+                    let ref_ty = builder.translate_type(&annotation.ty());
+                    let ref_temp = builder.local_temp(ref_ty.ptr());
 
-            builder.append(Instruction::AddrOf {
-                out: ref_temp.clone(),
-                a: local_ref,
-            });
-            ref_temp.to_deref()
+                    builder.append(Instruction::AddrOf {
+                        out: ref_temp.clone(),
+                        a: local_ref,
+                    });
+                    ref_temp.to_deref()
+                }
+
+                // ident rvalue - just evaluate it
+                ValueKind::Temporary => {
+                    local_ref
+                }
+            }
         },
 
         _ => panic!("wrong kind of node annotation for ident: {:?}", ident),
@@ -1410,6 +1276,10 @@ fn translate_case_expr(case: &pas_ty::ast::CaseExpr, builder: &mut Builder) -> R
     });
 
     out_ref
+}
+
+fn translate_match_expr(match_expr: &pas_ty::ast::MatchExpr, builder: &mut Builder) -> Ref {
+    unimplemented!()
 }
 
 fn translate_cast_expr(cast: &pas_ty::ast::Cast, builder: &mut Builder) -> Ref {

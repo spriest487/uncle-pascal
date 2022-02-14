@@ -17,6 +17,7 @@ use std::rc::Rc;
 pub enum DelimiterPair {
     BeginEnd,
     CaseEnd,
+    MatchEnd,
     Bracket,
     SquareBracket,
 }
@@ -26,6 +27,7 @@ impl DelimiterPair {
         match self {
             DelimiterPair::BeginEnd => ("begin", "end"),
             DelimiterPair::CaseEnd => ("case", "end"),
+            DelimiterPair::MatchEnd => ("match", "end"),
             DelimiterPair::Bracket => ("(", ")"),
             DelimiterPair::SquareBracket => ("[", "]"),
         }
@@ -40,6 +42,7 @@ impl fmt::Display for DelimiterPair {
             match self {
                 DelimiterPair::BeginEnd => "begin/end",
                 DelimiterPair::CaseEnd => "case/end",
+                DelimiterPair::MatchEnd => "match/end",
                 DelimiterPair::SquareBracket => "[]",
                 DelimiterPair::Bracket => "()",
             }

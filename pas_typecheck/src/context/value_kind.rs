@@ -14,9 +14,6 @@ pub enum ValueKind {
     /// rvalue, e.g. value returned from function, result of operation,
     /// with no binding
     Temporary,
-
-    /// reference to a mutable location somewhere else
-    Ref,
 }
 
 impl fmt::Display for ValueKind {
@@ -26,7 +23,6 @@ impl fmt::Display for ValueKind {
             ValueKind::Immutable => write!(f, "Immutable binding"),
             ValueKind::Mutable => write!(f, "Mutable binding"),
             ValueKind::Temporary => write!(f, "Temporary value"),
-            ValueKind::Ref => write!(f, "Reference"),
         }
     }
 }

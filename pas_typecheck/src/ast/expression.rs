@@ -3,6 +3,7 @@ pub use call::{Call, FunctionCall, Invocation, MethodCall, typecheck_call, Varia
 use pas_common::span::*;
 use pas_syn::{ast, IntConstant};
 use crate::ast::cast::typecheck_cast_expr;
+use crate::ast::match_block::MatchExpr;
 
 pub type Expression = ast::Expression<TypeAnnotation>;
 pub type Literal = ast::Literal<Type>;
@@ -191,6 +192,11 @@ pub fn typecheck_expr(
             Ok(ast::Expression::from(case))
         }
 
+        ast::Expression::Match(match_expr) => {
+            let match_expr = typecheck_match_expr(match_expr, expect_ty, ctx)?;
+            Ok(ast::Expression::from(match_expr))
+        }
+
         ast::Expression::Exit(exit) => {
             let exit = typecheck_exit(exit, expect_ty, ctx)?;
             Ok(ast::Expression::from(exit))
@@ -358,6 +364,8 @@ pub fn expect_stmt_initialized(stmt: &Statement, ctx: &Context) -> TypecheckResu
         ast::Statement::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
         ast::Statement::Case(case) => expect_case_stmt_initialized(case, ctx),
+
+        ast::Statement::Match(match_stmt) => expect_match_stmt_initialized(match_stmt, ctx),
     }
 }
 
@@ -408,6 +416,8 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         ast::Expression::Raise(raise) => expect_expr_initialized(&raise.value, ctx),
 
         ast::Expression::Case(case) => expect_case_expr_initialized(&case, ctx),
+
+        ast::Expression::Match(match_expr) => expect_match_expr_initialized(&match_expr, ctx),
 
         ast::Expression::Exit(exit) => match exit.as_ref() {
             ast::Exit::WithValue(exit_val, _) => expect_expr_initialized(exit_val, ctx),
@@ -539,6 +549,34 @@ fn expect_case_expr_initialized(case: &CaseExpr, ctx: &Context) -> TypecheckResu
 
     if let Some(else_branch) = &case.else_branch {
         expect_expr_initialized(else_branch, ctx)?;
+    }
+
+    Ok(())
+}
+
+fn expect_match_expr_initialized(match_expr: &MatchExpr, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&match_expr.cond_expr, ctx)?;
+
+    for branch in &match_expr.branches {
+        expect_expr_initialized(&branch.item, ctx)?;
+    }
+
+    if let Some(else_branch) = &match_expr.else_branch {
+        expect_expr_initialized(else_branch, ctx)?;
+    }
+
+    Ok(())
+}
+
+fn expect_match_stmt_initialized(match_stmt: &MatchStmt, ctx: &Context) -> TypecheckResult<()> {
+    expect_expr_initialized(&match_stmt.cond_expr, ctx)?;
+
+    for branch in &match_stmt.branches {
+        expect_stmt_initialized(&branch.item, ctx)?;
+    }
+
+    if let Some(else_branch) = &match_stmt.else_branch {
+        expect_stmt_initialized(else_branch, ctx)?;
     }
 
     Ok(())

@@ -6,10 +6,6 @@ use crate::{
     parse::prelude::*,
 };
 
-pub trait IfCondBranchParse: Sized {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
-}
-
 #[derive(Eq, PartialEq, Hash, Debug, Clone)]
 pub struct IfCond<A, B>
 where
@@ -26,7 +22,7 @@ where
 
 impl<B> IfCond<Span, B>
 where
-    B: IfCondBranchParse + Spanned,
+    B: Parse + Spanned,
 {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let if_token = tokens.match_one(Keyword::If)?;
@@ -90,7 +86,7 @@ where
 impl<A, B> Spanned for IfCond<A, B>
 where
     A: Annotation,
-    B: IfCondBranchParse,
+    B: Parse,
 {
     fn span(&self) -> &Span {
         self.annotation.span()

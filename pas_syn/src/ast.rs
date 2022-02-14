@@ -1,6 +1,7 @@
 pub mod block;
 pub mod call;
 mod case;
+mod match_block;
 pub mod cond;
 pub mod ctor;
 pub mod expression;
@@ -18,6 +19,7 @@ pub use self::{
     block::*,
     call::*,
     case::{CaseBranch, CaseExpr, CaseStatement, CaseBlock},
+    match_block::*,
     cond::*,
     ctor::*,
     expression::*,

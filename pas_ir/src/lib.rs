@@ -16,6 +16,7 @@ pub mod metadata;
 mod module;
 mod stmt;
 mod val;
+mod pattern;
 pub mod prelude {
     pub use crate::{
         instruction::*, metadata::ty::*, metadata::*, GlobalRef, Instruction, Label, Ref, Value,

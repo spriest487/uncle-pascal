@@ -15,7 +15,7 @@ use crate::{
 use pas_common::span::*;
 use std::fmt;
 use std::rc::Rc;
-use crate::ast::IfCondBranchParse;
+use crate::ast::match_block::MatchExpr;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal<T: Typed> {
@@ -54,13 +54,8 @@ pub enum Expression<A: Annotation> {
     Raise(Box<Raise<A>>),
     Exit(Box<Exit<A>>),
     Case(Box<CaseExpr<A>>),
+    Match(Box<MatchExpr<A>>),
     Cast(Box<Cast<A>>),
-}
-
-impl IfCondBranchParse for Expression<Span> {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        Expression::parse(tokens)
-    }
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -136,6 +131,12 @@ impl<A: Annotation> From<Cast<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<MatchExpr<A>> for Expression<A> {
+    fn from(match_expr: MatchExpr<A>) -> Self {
+        Expression::Match(Box::new(match_expr))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -150,6 +151,7 @@ impl<A: Annotation> Expression<A> {
             Expression::ObjectCtor(ctor) => &ctor.annotation,
             Expression::Raise(raise) => &raise.annotation,
             Expression::Case(case) => &case.annotation,
+            Expression::Match(match_expr) => &match_expr.annotation,
             Expression::Exit(exit) => exit.annotation(),
             Expression::Cast(cast) => &cast.annotation,
         }
@@ -168,6 +170,7 @@ impl<A: Annotation> Expression<A> {
             Expression::ObjectCtor(ctor) => &mut ctor.annotation,
             Expression::Raise(raise) => &mut raise.annotation,
             Expression::Case(case) => &mut case.annotation,
+            Expression::Match(match_expr) => &mut match_expr.annotation,
             Expression::Exit(exit) => exit.annotation_mut(),
             Expression::Cast(cast) => &mut cast.annotation,
         }
@@ -223,6 +226,12 @@ impl<A: Annotation> Expression<A> {
     }
 }
 
+impl Parse for Expression<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        Expression::parse(tokens)
+    }
+}
+
 impl Expression<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let parser = CompoundExpressionParser::new(tokens);
@@ -244,6 +253,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::UnaryOp(op) => write!(f, "{}", op),
             Expression::Raise(raise) => write!(f, "{}", raise),
             Expression::Case(case) => write!(f, "{}", case),
+            Expression::Match(match_expr) => write!(f, "{}", match_expr),
             Expression::Exit(exit) => write!(f, "{}", exit),
             Expression::Cast(cast) => write!(f, "{}", cast),
         }

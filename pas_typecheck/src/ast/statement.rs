@@ -183,6 +183,11 @@ pub fn typecheck_stmt(
             let case = typecheck_case_stmt(case, expect_ty, ctx)?;
             Ok(ast::Statement::Case(Box::new(case)))
         }
+
+        ast::Statement::Match(match_stmt) => {
+            let match_stmt = typecheck_match_stmt(match_stmt, expect_ty, ctx)?;
+            Ok(ast::Statement::Match(Box::new(match_stmt)))
+        }
     }
 }
 
