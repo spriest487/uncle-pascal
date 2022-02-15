@@ -15,14 +15,20 @@ pub enum CompileError {
     ParseError(TracedError<ParseError>),
     TypecheckError(TypecheckError),
     PreprocessorError(PreprocessorError),
+    ExecError(ExecError),
+
     InvalidUnitFilename(Span),
+    FileNotFound(PathBuf, Option<Span>),
+    OutputFailed(Span, io::Error),
     DuplicateUnit {
         unit_ident: IdentPath,
         duplicate_path: PathBuf,
     },
-    FileNotFound(PathBuf, Option<Span>),
-    OutputFailed(Span, io::Error),
-    ExecError(ExecError),
+    CircularDependency {
+        unit_ident: IdentPath,
+        used_unit: IdentPath,
+        span: Span,
+    }
 }
 
 impl From<TracedError<TokenizeError>> for CompileError {
@@ -92,6 +98,13 @@ impl DiagnosticOutput for CompileError {
             CompileError::DuplicateUnit { unit_ident, duplicate_path } => DiagnosticMessage {
                 title: format!("`{}` @ {} was already loaded", unit_ident, duplicate_path.display()),
                 label: None,
+            },
+            CompileError::CircularDependency { unit_ident, used_unit, span } => DiagnosticMessage {
+                title: format!("unit `{}` used from `{}` creates a circular reference", used_unit, unit_ident),
+                label: Some(DiagnosticLabel {
+                    text: Some("unit used here".to_string()),
+                    span: span.clone(),
+                })
             }
         }
     }
@@ -131,8 +144,9 @@ impl fmt::Display for CompileError {
                 write!(f, "writing to file {} failed: {}", span.file.display(), err,)
             }
             CompileError::ExecError(err) => write!(f, "{}", err),
-            CompileError::DuplicateUnit { .. } => write!(f, "Unit was already loaded"),
-            CompileError::FileNotFound(_, _) => write!(f, "File not found"),
+            CompileError::DuplicateUnit { .. } => write!(f, "unit was already loaded"),
+            CompileError::FileNotFound(_, _) => write!(f, "file not found"),
+            CompileError::CircularDependency { .. } => write!(f, "circular unit reference"),
         }
     }
 }

@@ -10,9 +10,10 @@ use std::{
     io::{Read as _, Write as _},
     path::{PathBuf},
     process,
+    collections::hash_map::{HashMap, Entry},
 };
-use linked_hash_map::{Entry, LinkedHashMap};
 use structopt::StructOpt;
+use topological_sort::TopologicalSort;
 use pas_backend_c as backend_c;
 use pas_common::{span::*, BuildOptions};
 use pas_interpreter::{Interpreter, InterpreterOpts};
@@ -124,7 +125,8 @@ fn compile(args: &Args) -> Result<(), CompileError> {
         return Ok(());
     }
 
-    let mut parsed_units = LinkedHashMap::new();
+    let mut parsed_units = HashMap::new();
+    let mut compilation_order = TopologicalSort::<IdentPath>::new();
 
     loop {
         let unit_filename = match sources.next() {
@@ -135,6 +137,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
         let pp_unit = preprocess(&unit_filename, opts.clone())?;
         let parsed_unit = parse(&pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
 
+        let unit_ident = parsed_unit.ident.clone();
         let uses_units: Vec<_> = parsed_unit.decls.iter()
             .filter_map(|decl| match decl {
                 ast::UnitDecl::Uses { decl } => Some(decl.clone()),
@@ -143,7 +146,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
             .flat_map(|uses| uses.units)
             .collect();
 
-        match parsed_units.entry(parsed_unit.ident.clone()) {
+        match parsed_units.entry(unit_ident.clone()) {
             Entry::Occupied(..) => {
                 return Err(CompileError::DuplicateUnit {
                     unit_ident: parsed_unit.ident,
@@ -153,13 +156,28 @@ fn compile(args: &Args) -> Result<(), CompileError> {
 
             Entry::Vacant(entry) => {
                 entry.insert(parsed_unit);
+                compilation_order.insert(unit_ident.clone());
             }
         }
 
         for used_unit in uses_units {
+            let span = used_unit.span().clone();
+
+            if args.verbose {
+                println!("unit {} used from {}", used_unit, unit_ident);
+            }
+
+            compilation_order.add_dependency(used_unit.clone(), unit_ident.clone());
+            if compilation_order.peek().is_none() {
+                return Err(CompileError::CircularDependency {
+                    unit_ident,
+                    used_unit,
+                    span,
+                })
+            }
+
             if !parsed_units.contains_key(&used_unit) {
-                let filename = PathBuf::from(used_unit.to_string()).with_extension("pas");
-                sources.add(&filename, Some(used_unit.path_span()))?;
+                sources.add_used_unit(&unit_filename, &used_unit)?;
             }
         }
     }
@@ -171,8 +189,21 @@ fn compile(args: &Args) -> Result<(), CompileError> {
         return Ok(());
     }
 
-    let parsed_units: Vec<_> = parsed_units.into_iter().map(|(_path, unit)| unit).collect();
-    let typed_module = ty::Module::typecheck(&parsed_units, args.no_stdlib)?;
+    let mut compile_units = Vec::new();
+    while let Some(next_compiled_unit) = compilation_order.pop() {
+        compile_units.push(parsed_units.remove(&next_compiled_unit).unwrap());
+    }
+
+    assert_eq!(compilation_order.len(), 0);
+
+    if args.verbose {
+        println!("Compilation units:");
+        for compile_unit in &compile_units {
+            println!("\t{}", compile_unit.ident);
+        }
+    }
+
+    let typed_module = ty::Module::typecheck(&compile_units, args.no_stdlib)?;
 
     if args.target == Target::TypecheckAst {
         for unit in &typed_module.units {

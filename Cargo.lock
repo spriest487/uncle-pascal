@@ -353,7 +353,6 @@ version = "0.1.0"
 dependencies = [
  "codespan",
  "codespan-reporting",
- "linked-hash-map",
  "pas_backend_c",
  "pas_common",
  "pas_interpreter",
@@ -362,6 +361,7 @@ dependencies = [
  "pas_syn",
  "pas_typecheck",
  "structopt",
+ "topological-sort",
 ]
 
 [[package]]
@@ -532,6 +532,12 @@ checksum = "8018d24e04c95ac8790716a5987d0fec4f8b27249ffa0f7d33f1369bdfb88cbd"
 dependencies = [
  "once_cell",
 ]
+
+[[package]]
+name = "topological-sort"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa7c7f42dea4b1b99439786f5633aeb9c14c1b53f75e282803c2ec2ad545873c"
 
 [[package]]
 name = "unicode-segmentation"

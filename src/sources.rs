@@ -1,24 +1,37 @@
-use std::collections::LinkedList;
+use std::collections::{LinkedList};
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use pas_common::span::*;
+use pas_syn::IdentPath;
 use crate::{CompileError, Args};
+
+fn find_in_path(filename: &PathBuf, dir: &Path) -> Option<PathBuf> {
+    if !dir.exists() || !dir.is_dir() {
+        return None;
+    }
+
+    let file_path = dir.join(filename);
+
+    if file_path.exists() {
+        // try to canonicalize the filename (not the rest of the path)
+        let file_path_with_canon_name = file_path.canonicalize().ok()
+            .and_then(|canon_path| {
+                let canon_filename = canon_path.file_name()?;
+                Some(file_path.with_file_name(canon_filename))
+            })
+            .unwrap_or(file_path);
+
+        Some(file_path_with_canon_name)
+    } else {
+        None
+    }
+}
 
 fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
     for search_path in search_paths.iter() {
         if search_path.exists() && search_path.is_dir() {
-            let file_path = search_path.join(filename);
-
-            if file_path.exists() {
-                // try to canonicalize the filename (not the rest of the path)
-                let file_path_with_canon_name = file_path.canonicalize().ok()
-                    .and_then(|canon_path| {
-                        let canon_filename = canon_path.file_name()?;
-                        Some(file_path.with_file_name(canon_filename))
-                    })
-                    .unwrap_or(file_path);
-
-                return Some(file_path_with_canon_name);
+            if let Some(result_path) = find_in_path(filename, search_path) {
+                return Some(result_path);
             }
         }
     }
@@ -27,6 +40,8 @@ fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf
 }
 
 pub struct SourceCollection {
+    verbose: bool,
+
     source_dirs: Vec<PathBuf>,
     source_filenames: LinkedList<PathBuf>,
 }
@@ -37,18 +52,23 @@ impl SourceCollection {
             .filter(|dir| dir.exists())
             .cloned()
             .chain({
-                let cwd = env::current_dir().ok();
-                let units_dir = env::var("PASCAL2_UNITS").ok().map(PathBuf::from);
+                let mut unit_dirs = Vec::with_capacity(4);
+                if let Ok(units_var) = env::var("PASCAL2_UNITS") {
+                    unit_dirs.extend(units_var.split(";").map(PathBuf::from));
+                }
 
-                [cwd, units_dir]
-                    .iter()
-                    .filter_map(|dir| dir.as_ref())
+                if let Ok(cwd) = env::current_dir() {
+                    unit_dirs.push(cwd);
+                }
+
+                unit_dirs.into_iter()
                     .filter(|dir| dir.exists())
-                    .cloned()
             })
             .collect();
 
         let mut sources = Self {
+            verbose: args.verbose,
+
             source_dirs,
             source_filenames: LinkedList::new(),
         };
@@ -74,15 +94,36 @@ impl SourceCollection {
         &self.source_dirs
     }
 
-    pub fn add(&mut self, unit_filename: &PathBuf, span: Option<Span>) -> Result<(), CompileError> {
+    fn add(&mut self, unit_filename: &PathBuf, span: Option<Span>) -> Result<(), CompileError> {
         match find_in_paths(unit_filename, &self.source_dirs) {
             Some(path) => {
+                if self.source_filenames.contains(&path) {
+                    return Ok(());
+                }
+
+                if self.verbose {
+                    println!("added source path {}", path.display());
+                }
+
                 self.source_filenames.push_back(path);
                 Ok(())
             }
 
             None => Err(CompileError::FileNotFound(unit_filename.clone(), span)),
         }
+    }
+
+    pub fn add_used_unit(&mut self, base_unit_path: &PathBuf, used_unit: &IdentPath) -> Result<(), CompileError> {
+        let unit_filename = PathBuf::from(used_unit.to_string() + ".pas");
+
+        if let Some(from_unit_dir) = base_unit_path.parent() {
+            if let Some(used_path) = find_in_path(&unit_filename, from_unit_dir) {
+                self.source_filenames.push_back(used_path);
+                return Ok(());
+            }
+        }
+
+        self.add(&unit_filename, Some(used_unit.span().clone()))
     }
 
     pub fn next(&mut self) -> Option<PathBuf> {
