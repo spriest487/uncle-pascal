@@ -102,8 +102,8 @@ fn compile(args: &Args) -> Result<(), CompileError> {
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
 
-    if args.no_stdlib {
-        opts.define("NO_STDLIB".to_string());
+    for define_sym in &args.define_syms {
+        opts.define(define_sym.clone());
     }
 
     let mut sources = SourceCollection::new(args)?;
@@ -203,7 +203,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
         }
     }
 
-    let typed_module = ty::Module::typecheck(&compile_units, args.no_stdlib)?;
+    let typed_module = ty::Module::typecheck(&compile_units)?;
 
     if args.target == Target::TypecheckAst {
         for unit in &typed_module.units {
@@ -232,7 +232,6 @@ fn compile(args: &Args) -> Result<(), CompileError> {
                     trace_heap: args.trace_heap,
                     trace_rc: args.trace_rc,
                     trace_ir: args.trace_ir,
-                    no_stdlib: args.no_stdlib,
                 };
                 let module = backend_c::translate(&module, opts);
                 write_output_file(&out_path, &module)?;
@@ -244,11 +243,10 @@ fn compile(args: &Args) -> Result<(), CompileError> {
             trace_rc: args.trace_rc,
             trace_heap: args.trace_heap,
             trace_ir: args.trace_ir,
-            no_stdlib: args.no_stdlib,
         };
 
         let mut interpreter = Interpreter::new(&interpret_opts);
-        interpreter.load_module(&module, !args.no_stdlib)?;
+        interpreter.load_module(&module)?;
         interpreter.shutdown()?;
     }
 

@@ -73,11 +73,6 @@ impl SourceCollection {
             source_filenames: LinkedList::new(),
         };
 
-        // add system units
-        if !args.no_stdlib {
-            sources.add(&PathBuf::from("System.pas"), None)?;
-        }
-
         // add extra referenced units
         for unit_arg in &args.units {
             let unit_arg_filename = PathBuf::from(unit_arg.clone());

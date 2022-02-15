@@ -17,6 +17,9 @@ pub struct Args {
     #[structopt(name = "OUTPUT", short = "o", parse(from_os_str))]
     pub output: Option<PathBuf>,
 
+    #[structopt(name="define", short = "d")]
+    pub define_syms: Vec<String>,
+
     /// additional units to compile
     #[structopt(name = "units", short = "u")]
     pub units: Vec<String>,
@@ -24,10 +27,6 @@ pub struct Args {
     /// source dir for unit source files
     #[structopt(name = "search-dir", short = "s", parse(from_os_str))]
     pub search_dirs: Vec<PathBuf>,
-
-    /// don't automatically reference the standard library units
-    #[structopt(long = "no-stdlib")]
-    pub no_stdlib: bool,
 
     /// target stage. intermediate targets other than `interpret` will cause
     /// compilation to stop at that stage and dump the output.

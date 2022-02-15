@@ -105,7 +105,7 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn root(no_stdlib: bool, module_span: Span) -> Self {
+    pub fn root(module_span: Span) -> Self {
         let mut root_ctx = Self {
             module_span: module_span.clone(),
 
@@ -132,26 +132,7 @@ impl Context {
             declare_builtin(&mut root_ctx, primitive.name(), Type::Primitive(*primitive));
         }
 
-        if no_stdlib {
-            root_ctx.def_no_stdlib_types(module_span);
-        }
-
         root_ctx
-    }
-
-    fn def_no_stdlib_types(&mut self, module_span: Span) {
-        let system_scope = self.push_scope(Environment::Namespace {
-            namespace: IdentPath::new(Ident::new(SYSTEM_UNIT_NAME, module_span), vec![]),
-        });
-
-        // declare things normally declared in System.pas that the compiler needs to function
-        self.declare_class(Rc::new(builtin_string_class()), Visibility::Interface)
-            .expect("builtin System.String definition must not fail");
-
-        self.declare_iface(Rc::new(builtin_disposable_iface()), Visibility::Interface)
-            .expect("builtin System.Disposable definition must not fail");
-
-        self.pop_scope(system_scope);
     }
 
     pub fn module_span(&self) -> &Span {

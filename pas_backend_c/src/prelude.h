@@ -191,8 +191,6 @@ static void RcRelease(struct Rc* rc) {
 
 static void Raise(struct Rc* msg_str_rc);
 
-#if !NO_STDLIB
-
 // implementations of System.pas builtins
 
 static int32_t System_StrToInt(struct Rc* str_rc);
@@ -204,16 +202,6 @@ static void System_WriteLn(struct Rc* str_rc);
 static struct Rc* System_ReadLn(void);
 static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
 static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len, void* default_val, int32_t default_val_len);
-
-// Strings
-
-// this needs to match what would ordinarily be generated for the System.String decl
-struct Struct_1 {
-    unsigned char* field_0;
-    int32_t field_1;
-};
-
-#endif
 
 // runtime start/stop
 

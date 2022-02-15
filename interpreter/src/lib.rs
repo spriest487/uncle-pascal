@@ -34,8 +34,6 @@ pub struct InterpreterOpts {
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
-
-    pub no_stdlib: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -1572,7 +1570,7 @@ impl Interpreter {
         }
     }
 
-    pub fn load_module(&mut self, module: &Module, init_stdlib: bool) -> ExecResult<()> {
+    pub fn load_module(&mut self, module: &Module) -> ExecResult<()> {
         self.metadata.extend(&module.metadata);
 
         if module.opts.debug_info {
@@ -1653,9 +1651,7 @@ impl Interpreter {
             );
         }
 
-        if init_stdlib {
-            self.init_stdlib_globals();
-        }
+        self.init_stdlib_globals();
 
         let init_stack_size = self.marshaller.stack_alloc_size(&module.init)
             .map_err(|err| self.add_debug_ctx(err.into()))?;

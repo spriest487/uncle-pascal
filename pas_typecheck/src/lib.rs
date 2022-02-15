@@ -30,7 +30,7 @@ pub struct Module {
 }
 
 impl Module {
-    pub fn typecheck(units: &[pas_syn::ast::Unit<Span>], no_stdlib: bool) -> TypecheckResult<Self> {
+    pub fn typecheck(units: &[pas_syn::ast::Unit<Span>]) -> TypecheckResult<Self> {
         // eprintln!("function sig size: {}", std::mem::size_of::<sig::FunctionSig>());
         // eprintln!("type size: {}", std::mem::size_of::<Type>());
         // eprintln!("type annotation size: {}", std::mem::size_of::<TypeAnnotation>());
@@ -43,7 +43,7 @@ impl Module {
 
         let module_span = Span::zero(units[0].ident.span().file.as_ref().clone());
 
-        let mut root_ctx = Context::root(no_stdlib, module_span);
+        let mut root_ctx = Context::root(module_span);
         let mut typed_units = Vec::new();
 
         for unit in units {

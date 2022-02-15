@@ -7,8 +7,6 @@ pub struct Options {
     pub trace_heap: bool,
     pub trace_rc: bool,
     pub trace_ir: bool,
-
-    pub no_stdlib: bool,
 }
 
 pub fn translate(ir_module: &ir::Module, opts: Options) -> ast::Module {

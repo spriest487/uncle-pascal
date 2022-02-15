@@ -2,33 +2,13 @@ unit System;
 
 interface
 
-type Box[T] = class
-    value: T
-end;
-
-function Unbox[T](b: Box[T]): T
-begin
-    b.value
-end;
-
-function NewBox[T](value: T): Box[T]
-begin
-    Box(value: value)
-end;
-
 type String = class
     chars: ^Byte;
     len: Integer;
 end;
 
-type Option[T] = variant
-    Some: T;
-    None;
-end;
-
-type Result[T, E] = variant
-    Ok: T;
-    Error: E;
+type Disposable = interface
+    function Dispose(self: Self);
 end;
 
 function GetMem(count: Integer): ^Byte; external 'rt';
@@ -50,6 +30,34 @@ function NativeUIntToStr(i: NativeUInt): String; external 'rt';
 
 function StrToInt(s: String): Integer; external 'rt';
 
+function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
+
+{$IFNDEF NO_STDLIB}
+
+type Box[T] = class
+    value: T
+end;
+
+function Unbox[T](b: Box[T]): T
+begin
+    b.value
+end;
+
+function NewBox[T](value: T): Box[T]
+begin
+    Box(value: value)
+end;
+
+type Option[T] = variant
+    Some: T;
+    None;
+end;
+
+type Result[T, E] = variant
+    Ok: T;
+    Error: E;
+end;
+
 function UInt8ToStr(i: Byte): String
 begin
     ByteToStr(i)
@@ -58,12 +66,6 @@ end;
 function Int32ToStr(i: Integer): String
 begin
     IntToStr(i)
-end;
-
-function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
-
-type Disposable = interface
-    function Dispose(self: Self);
 end;
 
 function StringLen(s: String): Integer
@@ -280,6 +282,8 @@ begin
     end;
 end;
 
+{$ENDIF}
+
 implementation
 
 function Dispose of Disposable(self: String)
@@ -290,6 +294,8 @@ begin
     self.chars := nil;
     self.len := 0;
 end;
+
+{$IFNDEF NO_STDLIB}
 
 function Compare of Comparable(self: String; other: String): Integer
 begin
@@ -360,5 +366,7 @@ function ToString of Displayable(self: String): String
 begin
     self
 end;
+
+{$ENDIF}
 
 end.
