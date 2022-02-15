@@ -1,16 +1,18 @@
+mod args;
+mod compile_error;
+mod reporting;
+mod sources;
+
 use std::{
-    env,
     ffi::OsStr,
     fmt,
     fs::{self, File},
     io::{Read as _, Write as _},
     path::{PathBuf},
     process,
-    str::FromStr,
 };
-
+use linked_hash_map::{Entry, LinkedHashMap};
 use structopt::StructOpt;
-
 use pas_backend_c as backend_c;
 use pas_common::{span::*, BuildOptions};
 use pas_interpreter::{Interpreter, InterpreterOpts};
@@ -18,124 +20,16 @@ use pas_ir::{self as ir, IROptions};
 use pas_pp::{self as pp, PreprocessedUnit};
 use pas_syn::{ast, parse, IdentPath, TokenTree};
 use pas_typecheck as ty;
-
-use crate::compile_error::CompileError;
-
-mod compile_error;
-mod reporting;
-
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Copy, Clone)]
-enum Target {
-    Interpret,
-    Intermediate,
-    SyntaxAst,
-    TypecheckAst,
-    Preprocessed,
-}
-
-impl FromStr for Target {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, String> {
-        match s {
-            "i" | "interpret" => Ok(Target::Interpret),
-            "ir" | "intermediate" => Ok(Target::Intermediate),
-            "p" | "parse" => Ok(Target::SyntaxAst),
-            "t" | "typecheck" => Ok(Target::TypecheckAst),
-            "pp" | "preprocess" => Ok(Target::Preprocessed),
-            _ => Err(format!("invalid output kind: {}", s)),
-        }
-    }
-}
-
-#[derive(StructOpt, Debug)]
-struct Args {
-    /// source file of program/library main unit
-    #[structopt(name = "FILE", parse(from_os_str))]
-    file: PathBuf,
-
-    /// output file
-    /// If the output file extension matches a backend, the output from that backend will be written
-    /// to this path.
-    /// If no output path is provided the interpreter will be invoked.
-    #[structopt(name = "OUTPUT", short = "o", parse(from_os_str))]
-    output: Option<PathBuf>,
-
-    /// additional units to compile
-    #[structopt(name = "units", short = "u")]
-    units: Vec<String>,
-
-    /// source dir for unit source files
-    #[structopt(name= "search-dir", short = "s", parse(from_os_str))]
-    search_dirs: Vec<PathBuf>,
-
-    /// don't automatically reference the standard library units
-    #[structopt(long = "no-stdlib")]
-    no_stdlib: bool,
-
-    /// target stage. intermediate targets other than `interpret` will cause
-    /// compilation to stop at that stage and dump the output.
-    #[structopt(short = "t", long = "target", default_value = "interpret")]
-    target: Target,
-
-    /// interpreter: log RC heap usage
-    #[structopt(long = "trace-heap")]
-    trace_heap: bool,
-
-    /// interpreter: log RC retain/release operations
-    #[structopt(long = "trace-rc")]
-    trace_rc: bool,
-
-    /// interpreter: log executed IR instructions
-    #[structopt(long = "trace-ir")]
-    trace_ir: bool,
-
-    /// print compiler backtrace on compilation failure
-    #[structopt(long = "backtrace", short = "bt")]
-    backtrace: bool,
-
-    #[structopt(long = "verbose", short = "v")]
-    verbose: bool,
-
-    #[structopt(long = "ir-debug")]
-    ir_debug: bool,
-
-    #[structopt(long = "ir-scopes")]
-    ir_annotate_scopes: bool,
-}
-
-fn find_in_paths(filename: &PathBuf, search_paths: &[PathBuf]) -> Option<PathBuf> {
-    for search_path in search_paths.iter() {
-        if search_path.exists() && search_path.is_dir() {
-            let file_path = search_path.join(filename);
-
-            if file_path.exists() {
-                // try to canonicalize the filename (not the rest of the path)
-                let file_path_with_canon_name = file_path.canonicalize().ok()
-                    .and_then(|canon_path| {
-                        let canon_filename = canon_path.file_name()?;
-                        Some(file_path.with_file_name(canon_filename))
-                    })
-                    .unwrap_or(file_path);
-
-                return Some(file_path_with_canon_name);
-            }
-        }
-    }
-
-    None
-}
+use crate::{
+    args::*,
+    compile_error::*,
+    sources::*,
+};
 
 fn preprocess(
     filename: &PathBuf,
-    search_paths: &[PathBuf],
     opts: BuildOptions,
 ) -> Result<PreprocessedUnit, CompileError> {
-    let filename = find_in_paths(&filename, search_paths).unwrap_or_else(|| {
-        eprintln!("unit not found: {}", filename.display());
-        process::exit(1);
-    });
-
     let open_file = File::open(&filename).and_then(|mut f| {
         let mut src = String::new();
         f.read_to_string(&mut src)?;
@@ -203,7 +97,7 @@ fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(
         })
 }
 
-fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), CompileError> {
+fn compile(args: &Args) -> Result<(), CompileError> {
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
 
@@ -211,45 +105,73 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
         opts.define("NO_STDLIB".to_string());
     }
 
-    let all_filenames = units.into_iter().chain(vec![args.file.clone()]);
-    let source_dirs = source_dirs(args);
+    let mut sources = SourceCollection::new(args)?;
 
     if opts.verbose {
         println!("Unit source directories:");
-        for path in &source_dirs {
+        for path in sources.source_dirs() {
             println!("\t{}", path.display());
         }
     }
 
-    let pp_units: Vec<_> = all_filenames
-        .map(|unit_filename| preprocess(&unit_filename, &source_dirs, opts.clone()))
-        .collect::<Result<_, CompileError>>()?;
-
+    // if we just want preprocessor output, no unit refs need to be looked up, just process and
+    // print the units provided on the cli
     if args.target == Target::Preprocessed {
-        for unit in pp_units {
-            println!("{}", unit.source);
+        while let Some(source_path) = sources.next() {
+            let pp_unit = preprocess(&source_path, opts.clone())?;
+            println!("{}", pp_unit.source);
         }
         return Ok(());
     }
 
-    let parsed_units: Vec<_> = pp_units
-        .into_iter()
-        .map(|preprocessed| {
-            parse(
-                preprocessed.filename,
-                &preprocessed.source,
-                &preprocessed.opts,
-            )
-        })
-        .collect::<Result<_, CompileError>>()?;
+    let mut parsed_units = LinkedHashMap::new();
+
+    loop {
+        let unit_filename = match sources.next() {
+            None => break,
+            Some(f) => f,
+        };
+
+        let pp_unit = preprocess(&unit_filename, opts.clone())?;
+        let parsed_unit = parse(&pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
+
+        let uses_units: Vec<_> = parsed_unit.decls.iter()
+            .filter_map(|decl| match decl {
+                ast::UnitDecl::Uses { decl } => Some(decl.clone()),
+                _ => None,
+            })
+            .flat_map(|uses| uses.units)
+            .collect();
+
+        match parsed_units.entry(parsed_unit.ident.clone()) {
+            Entry::Occupied(..) => {
+                return Err(CompileError::DuplicateUnit {
+                    unit_ident: parsed_unit.ident,
+                    duplicate_path: unit_filename,
+                });
+            },
+
+            Entry::Vacant(entry) => {
+                entry.insert(parsed_unit);
+            }
+        }
+
+        for used_unit in uses_units {
+            if !parsed_units.contains_key(&used_unit) {
+                let filename = PathBuf::from(used_unit.to_string()).with_extension("pas");
+                sources.add(&filename, Some(used_unit.path_span()))?;
+            }
+        }
+    }
 
     if args.target == Target::SyntaxAst {
-        for unit in parsed_units {
+        for (_, unit) in parsed_units {
             println!("{}", unit);
         }
         return Ok(());
     }
 
+    let parsed_units: Vec<_> = parsed_units.into_iter().map(|(_path, unit)| unit).collect();
     let typed_module = ty::Module::typecheck(&parsed_units, args.no_stdlib)?;
 
     if args.target == Target::TypecheckAst {
@@ -302,37 +224,12 @@ fn compile(units: impl IntoIterator<Item = PathBuf>, args: &Args) -> Result<(), 
     Ok(())
 }
 
-fn source_dirs(args: &Args) -> Vec<PathBuf> {
-    args.search_dirs.iter()
-        .filter(|dir| dir.exists())
-        .cloned()
-        .chain({
-            let cwd = env::current_dir().ok();
-            let units_dir = env::var("PASCAL2_UNITS").ok().map(PathBuf::from);
-
-            [cwd, units_dir]
-                .iter()
-                .filter_map(|dir| dir.as_ref())
-                .filter(|dir| dir.exists())
-                .cloned()
-        })
-        .collect()
-}
-
 fn main() {
     let args: Args = Args::from_args();
 
     let print_bt = args.backtrace;
 
-    let mut unit_paths = if args.no_stdlib {
-        Vec::new()
-    } else {
-        vec![PathBuf::from("System.pas")]
-    };
-
-    unit_paths.extend(args.units.iter().map(PathBuf::from));
-
-    if let Err(err) = compile(unit_paths, &args) {
+    if let Err(err) = compile(&args) {
         if let Err(io_err) = reporting::report_err(&err) {
             eprintln!(
                 "error occurred displaying source for compiler message: {}",

@@ -1,11 +1,12 @@
 use std::{fmt, io};
+use std::path::PathBuf;
 
 use pas_common::span::Span;
 use pas_common::{Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use pas_interpreter::result::ExecError;
 use pas_pp::PreprocessorError;
 use pas_syn::parse::ParseError;
-use pas_syn::TokenizeError;
+use pas_syn::{IdentPath, TokenizeError};
 use pas_typecheck::TypecheckError;
 
 #[derive(Debug)]
@@ -15,6 +16,11 @@ pub enum CompileError {
     TypecheckError(TypecheckError),
     PreprocessorError(PreprocessorError),
     InvalidUnitFilename(Span),
+    DuplicateUnit {
+        unit_ident: IdentPath,
+        duplicate_path: PathBuf,
+    },
+    FileNotFound(PathBuf, Option<Span>),
     OutputFailed(Span, io::Error),
     ExecError(ExecError),
 }
@@ -76,6 +82,17 @@ impl DiagnosticOutput for CompileError {
                 label: None,
             },
             CompileError::ExecError(err) => err.main(),
+            CompileError::FileNotFound(path, span) => DiagnosticMessage {
+                title: format!("file not found: {}", path.display()),
+                label: span.as_ref().map(|span| DiagnosticLabel {
+                    text: None,
+                    span: span.clone(),
+                })
+            },
+            CompileError::DuplicateUnit { unit_ident, duplicate_path } => DiagnosticMessage {
+                title: format!("`{}` @ {} was already loaded", unit_ident, duplicate_path.display()),
+                label: None,
+            }
         }
     }
 
@@ -85,9 +102,7 @@ impl DiagnosticOutput for CompileError {
             CompileError::ParseError(err) => err.see_also(),
             CompileError::TypecheckError(err) => err.see_also(),
             CompileError::PreprocessorError(err) => err.see_also(),
-            CompileError::OutputFailed(..) => Vec::new(),
-            CompileError::InvalidUnitFilename(..) => Vec::new(),
-            CompileError::ExecError(..) => Vec::new(),
+            _ => Vec::new(),
         }
     }
 
@@ -95,11 +110,7 @@ impl DiagnosticOutput for CompileError {
         match self {
             CompileError::TokenizeError(err) => Some(&err.bt),
             CompileError::ParseError(err) => Some(&err.bt),
-            CompileError::TypecheckError(_) => None,
-            CompileError::PreprocessorError(_) => None,
-            CompileError::InvalidUnitFilename(_) => None,
-            CompileError::OutputFailed(..) => None,
-            CompileError::ExecError(..) => None,
+            _ => None,
         }
     }
 }
@@ -120,6 +131,8 @@ impl fmt::Display for CompileError {
                 write!(f, "writing to file {} failed: {}", span.file.display(), err,)
             }
             CompileError::ExecError(err) => write!(f, "{}", err),
+            CompileError::DuplicateUnit { .. } => write!(f, "Unit was already loaded"),
+            CompileError::FileNotFound(_, _) => write!(f, "File not found"),
         }
     }
 }

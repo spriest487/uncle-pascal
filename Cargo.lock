@@ -353,6 +353,7 @@ version = "0.1.0"
 dependencies = [
  "codespan",
  "codespan-reporting",
+ "linked-hash-map",
  "pas_backend_c",
  "pas_common",
  "pas_interpreter",

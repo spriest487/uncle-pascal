@@ -16,6 +16,7 @@ pas_backend_c = { path = "pas_backend_c" }
 structopt = "0.3.25"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
+linked-hash-map = "0.5.4"
 
 [workspace]
 members = [
