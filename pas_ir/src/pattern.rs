@@ -37,12 +37,22 @@ pub fn translate_pattern_match(pattern: &pas_ty::TypePattern, target_val: &Ref, 
             let bindings = match binding {
                 Some(binding) => {
                     let binding_name = binding.name.to_string();
-                    let binding_ref = target_val.clone();
+
+                    // this needs to create a cast, even for static non-ref types - the binding
+                    // will be of the supposed type even if the check will always fail, and the
+                    // instructions that follow must be valid
+                    let binding_val_ptr = builder.local_temp(Type::Nothing.ptr());
+                    builder.addr_of(binding_val_ptr.clone(), target_val.clone());
+
+                    let binding_ref_ptr = builder.local_temp(is_ty.clone().ptr());
+                    builder.cast(binding_ref_ptr.clone(), binding_val_ptr.clone(), is_ty.clone().ptr());
+
+                    let binding_ref = binding_ref_ptr.to_deref();
 
                     vec![PatternMatchBinding {
                         name: binding_name,
                         ty: is_ty,
-                        binding_ref
+                        binding_ref,
                     }]
                 },
                 None => Vec::new(),

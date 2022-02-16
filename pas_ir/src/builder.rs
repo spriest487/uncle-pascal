@@ -501,6 +501,13 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn addr_of(&mut self, out: impl Into<Ref>, a: impl Into<Ref>) {
+        self.append(Instruction::AddrOf {
+            out: out.into(),
+            a: a.into(),
+        })
+    }
+
     pub fn cast(&mut self, out: impl Into<Ref>, val: impl Into<Value>, ty: Type) {
         self.append(Instruction::Cast {
             out: out.into(),
