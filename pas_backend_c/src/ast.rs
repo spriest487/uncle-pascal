@@ -3,10 +3,7 @@ use crate::{
     ast::string_lit::StringLiteral,
     Options,
 };
-use pas_ir::{
-    self as ir,
-    metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}
-};
+use pas_ir::{self as ir, BUILTIN_SRC, metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}};
 use std::{
     borrow::Cow,
     collections::hash_map::{Entry, HashMap},
@@ -21,6 +18,7 @@ mod ty;
 
 pub struct Module {
     functions: Vec<FunctionDef>,
+    ffi_funcs: Vec<FfiFunction>,
 
     static_array_types: HashMap<ArraySig, Type>,
 
@@ -95,6 +93,8 @@ impl Module {
 
         let mut module = Module {
             functions: Vec::new(),
+            ffi_funcs: Vec::new(),
+
             type_defs: HashMap::new(),
             type_defs_order: TopologicalSort::new(),
 
@@ -223,9 +223,19 @@ impl Module {
         }
 
         for (id, func) in &module.functions {
-            if let ir::Function::Local(func_def) = func {
-                let c_func = FunctionDef::translate(*id, func_def, self);
-                self.functions.push(c_func);
+            match func {
+                ir::Function::Local(func_def) => {
+                    let c_func = FunctionDef::translate(*id, func_def, self);
+                    self.functions.push(c_func);
+                }
+
+                ir::Function::External(func_ref) if func_ref.src == BUILTIN_SRC => {
+                }
+
+                ir::Function::External(func_ref) => {
+                    let ffi_func = FfiFunction::translate(*id, func_ref, self);
+                    self.ffi_funcs.push(ffi_func);
+                }
             }
         }
 
@@ -246,7 +256,14 @@ impl Module {
             },
         };
 
+        let ffi_init_stmts: Vec<_> = self.ffi_funcs.iter()
+            .map(|ffi_func| ffi_func.init_statement())
+            .collect();
+
         let mut init_builder = Builder::new(self);
+
+        init_builder.stmts.extend(ffi_init_stmts);
+
         init_builder.translate_instructions(&module.init);
 
         init_func.body.extend(init_builder.stmts);
@@ -301,6 +318,11 @@ impl fmt::Display for Module {
 
         for func in &self.functions {
             writeln!(f, "{};", func.decl)?;
+            writeln!(f)?;
+        }
+
+        for ffi_func in &self.ffi_funcs {
+            writeln!(f, "{};", ffi_func.func_ptr_decl())?;
             writeln!(f)?;
         }
 

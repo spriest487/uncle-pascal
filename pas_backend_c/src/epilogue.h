@@ -1,5 +1,12 @@
 #include <inttypes.h>
 
+#if _WIN32
+#   define WIN32_LEAN_AND_MEAN
+#   include <windows.h>
+#else
+#   include <dlfcn.h>
+#endif
+
 #define STRING_STRUCT struct Struct_1
 #define STRING_CLASS Class_1
 #define STRING_PTR(s_rc) ((STRING_STRUCT*) s_rc->resource)
@@ -120,6 +127,28 @@ static struct Rc* System_ArraySetLengthInternal(
     array_class->alloc(new_arr, new_len, arr_rc, default_val, default_val_size);
 
     return new_arr;
+}
+
+static void* LoadSymbol(const char* src, const char* sym) {
+    void* sym_ptr = NULL;
+#if _WIN32
+    HINSTANCE lib = LoadLibrary(src);
+    if (lib) {
+        sym_ptr = GetProcAddress(lib, sym);
+    }
+#else
+    void* lib = dlopen(src, RTLD_LAZY);
+    if (lib) {
+        sym_ptr = dlsym(lib, sym);
+    }
+#endif
+
+    if (!sym_ptr) {
+        fprintf(stderr, "failed to load symbol: %s::%s\n", src, sym);
+        abort();
+    }
+
+    return sym_ptr;
 }
 
 #endif

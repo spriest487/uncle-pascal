@@ -1,4 +1,4 @@
-use crate::ast::{Builder, Module, Statement, Type};
+use crate::ast::{Builder, Expr, InfixOp, Module, Statement, Type};
 use pas_ir::{
     self as ir,
     metadata::{FunctionID, InterfaceID, MethodID},
@@ -12,6 +12,9 @@ pub enum FunctionName {
 
     // init function that all loaded modules append their init code into
     Init,
+
+    // function to initialize an external symbol at runtime
+    LoadSymbol,
 
     ID(FunctionID),
     Method(InterfaceID, MethodID),
@@ -50,6 +53,8 @@ impl fmt::Display for FunctionName {
         match self {
             FunctionName::Main => write!(f, "main"),
             FunctionName::Init => write!(f, "ModuleInit"),
+            FunctionName::LoadSymbol => write!(f, "LoadSymbol"),
+
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
 
@@ -188,5 +193,52 @@ impl fmt::Display for FunctionDef {
         }
 
         write!(f, "}}")
+    }
+}
+
+pub struct FfiFunction {
+    pub decl: FunctionDecl,
+    pub symbol: String,
+    pub src: String,
+}
+
+impl FfiFunction {
+    pub fn translate(id: FunctionID, func_ref: &ir::ExternalFunctionRef, module: &mut Module) -> Self {
+        let return_ty = Type::from_metadata(&func_ref.return_ty, module);
+        let mut params = Vec::new();
+        for param in &func_ref.params {
+            params.push(Type::from_metadata(param, module));
+        }
+
+        let decl = FunctionDecl {
+            name: FunctionName::ID(id),
+            return_ty,
+            params,
+            comment: Some(format!("external func {}::{}", func_ref.src, func_ref.symbol)),
+        };
+
+        FfiFunction {
+            decl,
+            src: func_ref.src.clone(),
+            symbol: func_ref.symbol.clone(),
+        }
+    }
+
+    pub fn init_statement(&self) -> Statement {
+        Statement::Expr(Expr::InfixOp {
+            lhs: Expr::Function(self.decl.name).into(),
+            op: InfixOp::Assign,
+            rhs: Expr::Call {
+                func: Expr::Function(FunctionName::LoadSymbol).into(),
+                args: vec![
+                    Expr::LitCString(self.src.clone()),
+                    Expr::LitCString(self.symbol.clone()),
+                ],
+            }.into(),
+        })
+    }
+
+    pub fn func_ptr_decl(&self) -> String {
+        self.decl.ptr_type().to_decl_string(&self.decl.name)
     }
 }

@@ -65,7 +65,8 @@ pub enum Expr {
     Function(FunctionName),
     Class(StructID),
     Deref(Box<Expr>),
-    LitString(StringID),
+    LitString(StringID), // string literal (System.String reference)
+    LitCString(String), // C string literal
     LitBool(bool),
     LitInt(i128),
     LitFloat(f64),
@@ -251,6 +252,7 @@ impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Expr::LitString(id) => write!(f, "&StringRc_{}", id.0),
+            Expr::LitCString(s) => write!(f, "\"{}\"", s.escape_default()),
             Expr::LitFloat(x) => write!(f, "{}", x),
             Expr::LitInt(i) => write!(f, "{}", i),
             Expr::LitBool(b) => write!(f, "{}", b),

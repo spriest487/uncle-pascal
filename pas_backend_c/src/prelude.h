@@ -222,7 +222,9 @@ struct Struct_1 {
     int32_t field_1;
 };
 
-void ModuleInit();
+static void ModuleInit();
+
+static void* LoadSymbol(const char* src, const char* sym);
 
 static void RuntimeExit(int code) {
 #if TRACE_HEAP

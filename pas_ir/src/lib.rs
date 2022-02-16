@@ -63,6 +63,8 @@ pub struct ExternalFunctionRef {
     pub src_span: Span,
 }
 
+pub const BUILTIN_SRC: &str = "rt";
+
 #[derive(Clone, Debug)]
 pub struct FunctionDef {
     pub debug_name: String,

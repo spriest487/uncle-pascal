@@ -7,10 +7,7 @@ use crate::{
     marshal::Marshaller,
     stack::StackFrame,
 };
-use pas_ir::{
-    Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label, LocalID,
-    metadata::*, Module, Ref, Type, Value,
-};
+use pas_ir::{BUILTIN_SRC, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label, LocalID, metadata::*, Module, Ref, Type, Value};
 use std::{collections::HashMap, rc::Rc};
 use std::borrow::Cow;
 use std::ops::{BitAnd, BitOr, BitXor};
@@ -1606,7 +1603,7 @@ impl Interpreter {
                     Some(ir_func)
                 },
 
-                IRFunction::External(external_ref) if external_ref.src == "rt" => {
+                IRFunction::External(external_ref) if external_ref.src == BUILTIN_SRC => {
                     None
                 }
 
