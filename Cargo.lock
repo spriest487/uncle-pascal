@@ -290,6 +290,7 @@ version = "0.1.0"
 dependencies = [
  "pas_common",
  "pas_ir",
+ "topological-sort",
 ]
 
 [[package]]

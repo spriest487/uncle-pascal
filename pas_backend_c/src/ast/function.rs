@@ -24,7 +24,17 @@ pub enum FunctionName {
     Raise,
 
     // builtins
+    Int8ToStr,
+    ByteToStr,
+    Int16ToStr,
+    UInt16ToStr,
     IntToStr,
+    UInt32ToStr,
+    Int64ToStr,
+    UInt64ToStr,
+    NativeIntToStr,
+    NativeUIntToStr,
+
     StrToInt,
     WriteLn,
     ReadLn,
@@ -51,10 +61,20 @@ impl fmt::Display for FunctionName {
 
             FunctionName::WriteLn => write!(f, "System_WriteLn"),
             FunctionName::ReadLn => write!(f, "System_ReadLn"),
-            FunctionName::IntToStr => write!(f, "System_IntToStr"),
             FunctionName::StrToInt => write!(f, "System_StrToInt"),
             FunctionName::GetMem => write!(f, "System_GetMem"),
             FunctionName::FreeMem => write!(f, "System_FreeMem"),
+
+            FunctionName::Int8ToStr => write!(f, "System_Int8ToStr"),
+            FunctionName::ByteToStr => write!(f, "System_ByteToStr"),
+            FunctionName::Int16ToStr => write!(f, "System_Int16ToStr"),
+            FunctionName::UInt16ToStr => write!(f, "System_UInt16ToStr"),
+            FunctionName::IntToStr => write!(f, "System_IntToStr"),
+            FunctionName::UInt32ToStr => write!(f, "System_UInt32ToStr"),
+            FunctionName::Int64ToStr => write!(f, "System_Int64ToStr"),
+            FunctionName::UInt64ToStr => write!(f, "System_UInt64ToStr"),
+            FunctionName::NativeIntToStr => write!(f, "System_NativeIntToStr"),
+            FunctionName::NativeUIntToStr => write!(f, "System_NativeUIntToStr"),
 
             FunctionName::ArrayLengthInternal => write!(f, "System_ArrayLengthInternal"),
             FunctionName::ArraySetLengthInternal => write!(f, "System_ArraySetLengthInternal"),

@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 pas_ir = { path = "../pas_ir" }
 pas_common = { path = "../pas_common" }
+
+topological-sort = "0.1.0"

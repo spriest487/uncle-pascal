@@ -12,6 +12,7 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     fmt,
 };
+use topological_sort::TopologicalSort;
 
 mod function;
 mod stmt;
@@ -23,7 +24,9 @@ pub struct Module {
 
     static_array_types: HashMap<ArraySig, Type>,
 
-    type_defs: Vec<TypeDef>,
+    type_defs: HashMap<StructName, TypeDef>,
+    type_defs_order: TopologicalSort<StructName>,
+
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
 
@@ -39,7 +42,17 @@ pub struct Module {
 impl Module {
     pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
         let system_funcs = &[
+            ("Int8ToStr", FunctionName::Int8ToStr),
+            ("ByteToStr", FunctionName::ByteToStr),
+            ("Int16ToStr", FunctionName::Int16ToStr),
+            ("UInt16ToStr", FunctionName::UInt16ToStr),
             ("IntToStr", FunctionName::IntToStr),
+            ("UInt32ToStr", FunctionName::UInt32ToStr),
+            ("Int64ToStr", FunctionName::Int64ToStr),
+            ("UInt64ToStr", FunctionName::UInt64ToStr),
+            ("NativeIntToStr", FunctionName::NativeIntToStr),
+            ("NativeUIntToStr", FunctionName::NativeUIntToStr),
+
             ("StrToInt", FunctionName::StrToInt),
             ("GetMem", FunctionName::GetMem),
             ("FreeMem", FunctionName::FreeMem),
@@ -82,7 +95,8 @@ impl Module {
 
         let mut module = Module {
             functions: Vec::new(),
-            type_defs: Vec::new(),
+            type_defs: HashMap::new(),
+            type_defs_order: TopologicalSort::new(),
 
             static_array_types: HashMap::new(),
 
@@ -150,9 +164,15 @@ impl Module {
                     comment: Some(format!("array[{}] of {}", dim, element.typename())),
                 };
 
-                self.type_defs.push(TypeDef::Struct(array_struct));
-                let array_struct_ty = Type::Struct(name);
+                self.type_defs.insert(name.clone(), TypeDef::Struct(array_struct));
+
+                let array_struct_ty = Type::Struct(name.clone());
                 entry.insert(array_struct_ty.clone());
+
+                self.type_defs_order.insert(name.clone());
+                for element_dep in element.type_def_deps() {
+                    self.type_defs_order.add_dependency(element_dep, name.clone());
+                }
 
                 array_struct_ty
             }
@@ -168,16 +188,38 @@ impl Module {
 
     pub fn add_ir(&mut self, module: &ir::Module) {
         for (id, type_def) in module.metadata.type_defs() {
+            let mut member_deps = Vec::new();
+
             let c_type_def = match type_def {
                 ir::metadata::TypeDef::Struct(struct_def) => {
-                    TypeDef::Struct(StructDef::translate(id, struct_def, self))
+                    let struct_def = StructDef::translate(id, struct_def, self);
+                    for member in &struct_def.members {
+                        member.ty.collect_type_def_deps(&mut member_deps);
+                    }
+
+                    TypeDef::Struct(struct_def)
                 }
 
                 ir::metadata::TypeDef::Variant(variant_def) => {
-                    TypeDef::Variant(VariantDef::translate(id, variant_def, self))
+                    let variant_def = VariantDef::translate(id, variant_def, self);
+                    for case in &variant_def.cases {
+                        if let Some(case_ty) = &case.ty {
+                            case_ty.collect_type_def_deps(&mut member_deps);
+                        }
+                    }
+
+                    TypeDef::Variant(variant_def)
                 }
             };
-            self.type_defs.push(c_type_def);
+
+            let c_def_name = c_type_def.decl().name.clone();
+
+            self.type_defs.insert(c_def_name.clone(), c_type_def);
+
+            self.type_defs_order.insert(c_def_name.clone());
+            for member_dep in member_deps {
+                self.type_defs_order.add_dependency(member_dep, c_def_name.clone());
+            }
         }
 
         for (id, func) in &module.functions {
@@ -225,16 +267,33 @@ impl fmt::Display for Module {
 
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
-        for def in &self.type_defs {
+        for def in self.type_defs.values() {
             writeln!(f, "{};", def.decl())?;
             writeln!(f)?;
         }
 
-        for def in &self.type_defs {
+        let ordered_type_defs: Vec<_> = self.type_defs_order.clone().into_iter().collect();
+        if ordered_type_defs.len() != self.type_defs_order.len() {
+            eprintln!("ordered defs ({}):", ordered_type_defs.len());
+            for def in ordered_type_defs {
+                eprintln!(" - {}", def);
+            }
+
+            eprintln!("type order sort {}:", self.type_defs_order.len());
+            for def in self.type_defs_order.clone().into_iter() {
+                eprintln!(" - {}", def);
+            }
+
+            panic!("type metadata contained illegal circular references");
+        }
+
+        for def_name in ordered_type_defs.iter() {
             // special case for System.String: we expect it to already be defined in the prelude
-            if def.decl().name == StructName::Struct(ir::metadata::STRING_ID) {
+            if *def_name == StructName::Struct(ir::metadata::STRING_ID) {
                 continue;
             }
+
+            let def = &self.type_defs[def_name];
 
             writeln!(f, "{}", def)?;
             writeln!(f)?;

@@ -194,7 +194,18 @@ static void Raise(struct Rc* msg_str_rc);
 // implementations of System.pas builtins
 
 static int32_t System_StrToInt(struct Rc* str_rc);
+
+static struct Rc* System_Int8ToStr(int8_t i);
+static struct Rc* System_ByteToStr(uint8_t i);
+static struct Rc* System_Int16ToStr(int16_t i);
+static struct Rc* System_UInt16ToStr(uint16_t i);
 static struct Rc* System_IntToStr(int32_t i);
+static struct Rc* System_UInt32ToStr(uint32_t i);
+static struct Rc* System_Int64ToStr(int64_t i);
+static struct Rc* System_UInt64ToStr(uint64_t i);
+static struct Rc* System_NativeIntToStr(ptrdiff_t i);
+static struct Rc* System_NativeUIntToStr(size_t i);
+
 static unsigned char* System_GetMem(int32_t len);
 static void System_FreeMem(unsigned char* mem);
 static void System_Write(struct Rc* str_rc);
@@ -204,6 +215,12 @@ static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
 static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len, void* default_val, int32_t default_val_len);
 
 // runtime start/stop
+
+// this needs to match what would ordinarily be generated for the System.String decl
+struct Struct_1 {
+    unsigned char* field_0;
+    int32_t field_1;
+};
 
 void ModuleInit();
 

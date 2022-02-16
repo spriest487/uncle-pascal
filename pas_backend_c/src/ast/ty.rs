@@ -4,6 +4,7 @@ use pas_ir::metadata;
 
 use crate::ast::{FunctionDecl, FunctionName, Module};
 use std::fmt::Write;
+use std::hash::{Hash, Hasher};
 use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, StructID, MethodID, RcBoilerplatePair, InterfaceID};
 use pas_ir::prelude::{ClassID, FieldID};
 
@@ -147,6 +148,31 @@ impl Type {
         }
     }
 
+    pub fn collect_type_def_deps(&self, deps: &mut Vec<StructName>) {
+        match self {
+            // direct structural reference
+            Type::Struct(name) => deps.push(name.clone()),
+            Type::SizedArray(element, ..) => element.collect_type_def_deps(deps),
+            Type::FunctionPointer {
+                params, return_ty
+            } => {
+                for param in params {
+                    param.collect_type_def_deps(deps);
+                }
+                return_ty.collect_type_def_deps(deps);
+            }
+
+            // no custom types or types referenced by pointer (can use forward decl)
+            _ => {},
+        }
+    }
+
+    pub fn type_def_deps(&self) -> Vec<StructName> {
+        let mut deps = Vec::new();
+        self.collect_type_def_deps(&mut deps);
+        deps
+    }
+
     pub fn to_decl_string<Name>(&self, name: &Name) -> String
     where
         Name: ?Sized + fmt::Display,
@@ -246,6 +272,7 @@ pub enum StructName {
     StaticArray(usize),
 }
 
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub struct StructDecl {
     pub name: StructName,
 }
@@ -256,6 +283,7 @@ impl fmt::Display for StructDecl {
     }
 }
 
+#[derive(Clone, Eq)]
 pub struct StructMember {
     pub name: FieldName,
     pub ty: Type,
@@ -263,11 +291,38 @@ pub struct StructMember {
     pub comment: Option<String>,
 }
 
+impl PartialEq for StructMember {
+    fn eq(&self, other: &Self) -> bool {
+        self.name == other.name && self.ty == other.ty
+    }
+}
+
+impl Hash for StructMember {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.name.hash(state);
+        self.ty.hash(state);
+    }
+}
+
+#[derive(Clone, Eq)]
 pub struct StructDef {
     pub decl: StructDecl,
     pub members: Vec<StructMember>,
 
     pub comment: Option<String>,
+}
+
+impl PartialEq for StructDef {
+    fn eq(&self, other: &Self) -> bool {
+        self.decl == other.decl && self.members == other.members
+    }
+}
+
+impl Hash for StructDef {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.decl.hash(state);
+        self.members.hash(state);
+    }
 }
 
 impl fmt::Display for StructName {
@@ -337,16 +392,43 @@ impl fmt::Display for StructDef {
     }
 }
 
+#[derive(Clone, Eq)]
 pub struct VariantCaseDef {
     pub ty: Option<Type>,
     pub comment: Option<String>,
 }
 
+impl PartialEq for VariantCaseDef {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty
+    }
+}
+
+impl Hash for VariantCaseDef {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ty.hash(state);
+    }
+}
+
+#[derive(Clone, Eq)]
 pub struct VariantDef {
     pub decl: StructDecl,
     pub cases: Vec<VariantCaseDef>,
 
     pub comment: Option<String>,
+}
+
+impl PartialEq for VariantDef {
+    fn eq(&self, other: &Self) -> bool {
+        self.decl == other.decl && self.cases == other.cases
+    }
+}
+
+impl Hash for VariantDef {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.decl.hash(state);
+        self.cases.hash(state);
+    }
 }
 
 impl VariantDef {
@@ -414,6 +496,7 @@ impl fmt::Display for VariantDef {
     }
 }
 
+#[derive(Clone, Eq, PartialEq, Hash)]
 pub enum TypeDef {
     Struct(StructDef),
     Variant(VariantDef),

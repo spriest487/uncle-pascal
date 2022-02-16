@@ -1,3 +1,5 @@
+#include <inttypes.h>
+
 #define STRING_STRUCT struct Struct_1
 #define STRING_CLASS Class_1
 #define STRING_PTR(s_rc) ((STRING_STRUCT*) s_rc->resource)
@@ -25,20 +27,32 @@ static int32_t System_StrToInt(struct Rc* str_rc) {
     return (int32_t) i;
 }
 
-static struct Rc* System_IntToStr(int32_t i) {
-    char buf[12];
-    sprintf(buf, "%d", i);
-
-    size_t len = strlen(buf);
-    unsigned char* chars = Alloc(len);
-    memcpy(chars, buf, len);
-
-    struct Rc* str_rc = RcAlloc(&STRING_CLASS);
-    STRING_LEN(str_rc) = len;
-    STRING_CHARS(str_rc) = chars;
-
-    return str_rc;
+#define INT_TO_STR_IMPL(FuncName, DataType, FormatString, BufSize) \
+static struct Rc* FuncName(DataType i) { \
+    char buf[BufSize]; \
+    sprintf(buf, "%" FormatString, i); \
+    \
+    size_t len = strlen(buf); \
+    unsigned char* chars = Alloc(len); \
+    memcpy(chars, buf, len); \
+    \
+    struct Rc* str_rc = RcAlloc(&STRING_CLASS); \
+    STRING_LEN(str_rc) = len; \
+    STRING_CHARS(str_rc) = chars; \
+    \
+    return str_rc; \
 }
+
+INT_TO_STR_IMPL(System_Int8ToStr, int8_t, PRId8, 4)
+INT_TO_STR_IMPL(System_ByteToStr, uint8_t, PRIu8, 4)
+INT_TO_STR_IMPL(System_Int16ToStr, int16_t, PRId16, 8)
+INT_TO_STR_IMPL(System_UInt16ToStr, uint16_t, PRIu16, 8)
+INT_TO_STR_IMPL(System_IntToStr, int32_t, PRId32, 12)
+INT_TO_STR_IMPL(System_UInt32ToStr, uint32_t, PRIu32, 12)
+INT_TO_STR_IMPL(System_Int64ToStr, int64_t, PRId64, 24)
+INT_TO_STR_IMPL(System_UInt64ToStr, uint64_t, PRIu64, 24)
+INT_TO_STR_IMPL(System_NativeIntToStr, ptrdiff_t, "zd", 24)
+INT_TO_STR_IMPL(System_NativeUIntToStr, size_t, "zu", 24)
 
 static unsigned char* System_GetMem(int32_t len) {
     return (unsigned char*) Alloc(len);

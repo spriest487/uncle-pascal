@@ -1,9 +1,6 @@
-* auto reference units by search path instead of requiring them all to be named on the cli
-* match! for events
+* type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
-* fmt_pretty in interpreter to format with debug type info - can default impl with Display::fmt
 * interpreter: marshalled globals
-* typechecker: rework namespaces/at least the find() logic so it does imports better
 * parser: newlines/escape chars in string literals
 * backend: c ffi
 
@@ -19,7 +16,7 @@
 * enums/sets/range types
 * match expression
 * generic interfaces/generic methods
-* @-attributes - replace `export`, `external` with these (eventually make them available at runtime but not now)
+* @-attributes - replace `external` etc with these (eventually make them available at runtime but not now)
 * proper function overloads (one declared name, multiple signatures)
 
 # todos
