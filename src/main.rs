@@ -3,17 +3,7 @@ mod compile_error;
 mod reporting;
 mod sources;
 
-use std::{
-    ffi::OsStr,
-    fmt,
-    fs::{self, File},
-    io::{Read as _, Write as _},
-    path::{PathBuf},
-    process,
-    collections::hash_map::{HashMap, Entry},
-};
-use structopt::StructOpt;
-use topological_sort::TopologicalSort;
+use crate::{args::*, compile_error::*, sources::*};
 use pas_backend_c as backend_c;
 use pas_common::{span::*, BuildOptions};
 use pas_interpreter::{Interpreter, InterpreterOpts};
@@ -21,16 +11,25 @@ use pas_ir::{self as ir, IROptions};
 use pas_pp::{self as pp, PreprocessedUnit};
 use pas_syn::{ast, parse, IdentPath, TokenTree};
 use pas_typecheck as ty;
-use crate::{
-    args::*,
-    compile_error::*,
-    sources::*,
+use std::{
+    collections::hash_map::{Entry, HashMap},
+    fs::{self, File},
+    io,
+    io::{Read as _},
+    path::PathBuf,
+    process,
 };
+use structopt::StructOpt;
+use topological_sort::TopologicalSort;
 
-fn preprocess(
-    filename: &PathBuf,
-    opts: BuildOptions,
-) -> Result<PreprocessedUnit, CompileError> {
+enum CompileOutput {
+    Preprocess(Vec<PreprocessedUnit>),
+    Parse(Vec<pas_syn::ast::Unit<Span>>),
+    Typecheck(ty::Module),
+    IR(ir::Module),
+}
+
+fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit, CompileError> {
     let open_file = File::open(&filename).and_then(|mut f| {
         let mut src = String::new();
         f.read_to_string(&mut src)?;
@@ -41,7 +40,7 @@ fn preprocess(
         Err(err) => {
             eprintln!("failed to open {}: {}", filename.display(), err);
             process::exit(1);
-        }
+        },
         Ok(file) => file,
     };
 
@@ -83,22 +82,7 @@ fn parse(
     Ok(unit)
 }
 
-fn write_output_file(out_path: &PathBuf, output: &impl fmt::Display) -> Result<(), CompileError> {
-    let create_dirs = match out_path.parent() {
-        Some(parent) => fs::create_dir_all(parent),
-        None => Ok(()),
-    };
-
-    create_dirs
-        .and_then(|_| File::create(out_path))
-        .and_then(|mut file| write!(file, "{}", output))
-        .map_err(|io_err| {
-            let span = Span::zero(out_path);
-            CompileError::OutputFailed(span, io_err)
-        })
-}
-
-fn compile(args: &Args) -> Result<(), CompileError> {
+fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
     let mut opts = BuildOptions::default();
     opts.verbose = args.verbose;
 
@@ -118,11 +102,12 @@ fn compile(args: &Args) -> Result<(), CompileError> {
     // if we just want preprocessor output, no unit refs need to be looked up, just process and
     // print the units provided on the cli
     if args.target == Target::Preprocessed {
+        let mut pp_units = Vec::new();
         while let Some(source_path) = sources.next() {
             let pp_unit = preprocess(&source_path, opts.clone())?;
-            println!("{}", pp_unit.source);
+            pp_units.push(pp_unit);
         }
-        return Ok(());
+        return Ok(CompileOutput::Preprocess(pp_units));
     }
 
     let mut parsed_units = HashMap::new();
@@ -138,7 +123,9 @@ fn compile(args: &Args) -> Result<(), CompileError> {
         let parsed_unit = parse(&pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
 
         let unit_ident = parsed_unit.ident.clone();
-        let uses_units: Vec<_> = parsed_unit.decls.iter()
+        let uses_units: Vec<_> = parsed_unit
+            .decls
+            .iter()
             .filter_map(|decl| match decl {
                 ast::UnitDecl::Uses { decl } => Some(decl.clone()),
                 _ => None,
@@ -157,7 +144,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
             Entry::Vacant(entry) => {
                 entry.insert(parsed_unit);
                 compilation_order.insert(unit_ident.clone());
-            }
+            },
         }
 
         for used_unit in uses_units {
@@ -173,7 +160,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
                     unit_ident,
                     used_unit,
                     span,
-                })
+                });
             }
 
             if !parsed_units.contains_key(&used_unit) {
@@ -183,10 +170,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
     }
 
     if args.target == Target::SyntaxAst {
-        for (_, unit) in parsed_units {
-            println!("{}", unit);
-        }
-        return Ok(());
+        return Ok(CompileOutput::Parse(parsed_units.into_values().collect()));
     }
 
     let mut compile_units = Vec::new();
@@ -206,10 +190,7 @@ fn compile(args: &Args) -> Result<(), CompileError> {
     let typed_module = ty::Module::typecheck(&compile_units)?;
 
     if args.target == Target::TypecheckAst {
-        for unit in &typed_module.units {
-            println!("{}", unit.unit);
-        }
-        return Ok(());
+        return Ok(CompileOutput::Typecheck(typed_module));
     }
 
     let ir_opts = IROptions {
@@ -219,38 +200,104 @@ fn compile(args: &Args) -> Result<(), CompileError> {
     };
 
     let module = ir::translate(&typed_module, ir_opts);
-    if args.target == Target::Intermediate {
-        println!("{}", module);
-        return Ok(());
-    }
+    Ok(CompileOutput::IR(module))
+}
 
-    if let Some(out_path) = &args.output {
-        let ext = out_path.extension().map(OsStr::to_string_lossy);
-        match ext.as_ref().map(AsRef::as_ref) {
-            Some("c") => {
-                let opts = backend_c::Options {
+fn write_output<F>(out_path: Option<&PathBuf>, f: F) -> Result<(), CompileError>
+where
+    F: FnOnce(&mut dyn io::Write) -> io::Result<()>,
+{
+    let out_span;
+
+    let io_result = match out_path {
+        Some(out_path) => {
+            let create_dirs = match out_path.parent() {
+                Some(parent) => fs::create_dir_all(parent),
+                None => Ok(()),
+            };
+
+            out_span = Span::zero(out_path.clone());
+
+            create_dirs
+                .and_then(|_| File::create(out_path))
+                .and_then(|mut file| f(&mut file))
+        },
+
+        None => {
+            let stdout = io::stdout();
+            let mut stdout_lock = stdout.lock();
+
+            out_span = Span::zero("stdout");
+
+            f(&mut stdout_lock)
+        },
+    };
+
+    io_result.map_err(|io_err| CompileError::OutputFailed(out_span, io_err))
+}
+
+fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError> {
+    match output {
+        CompileOutput::Preprocess(units) => write_output(args.output.as_ref(), |dst| {
+            for pp_unit in units {
+                write!(dst, "{}", pp_unit.source)?;
+            }
+            Ok(())
+        }),
+
+        CompileOutput::Parse(units) => write_output(args.output.as_ref(), |dst| {
+            for unit in units {
+                write!(dst, "{}", unit)?;
+            }
+
+            Ok(())
+        }),
+
+        CompileOutput::Typecheck(module) => write_output(args.output.as_ref(), |dst| {
+            for unit in &module.units {
+                write!(dst, "{}", unit.unit)?;
+            }
+
+            Ok(())
+        }),
+
+        CompileOutput::IR(module) if args.target == Target::Intermediate => {
+            write_output(args.output.as_ref(), |dst| write!(dst, "{}", module))
+        },
+
+        CompileOutput::IR(module) => {
+            let c_hint = args.output.as_ref()
+                .and_then(|out_path| out_path.extension())
+                .map(|ext| ext.to_string_lossy().eq_ignore_ascii_case("c"))
+                .unwrap_or(false);
+
+            if c_hint {
+                let c_opts = backend_c::Options {
                     trace_heap: args.trace_heap,
                     trace_rc: args.trace_rc,
                     trace_ir: args.trace_ir,
                 };
-                let module = backend_c::translate(&module, opts);
-                write_output_file(&out_path, &module)?;
+
+                let c_module = backend_c::translate(&module, c_opts);
+
+                write_output(args.output.as_ref(), |dst| {
+                    write!(dst, "{}", c_module)
+                })
+            } else {
+                let interpret_opts = InterpreterOpts {
+                    trace_rc: args.trace_rc,
+                    trace_heap: args.trace_heap,
+                    trace_ir: args.trace_ir,
+                };
+
+                let mut interpreter = Interpreter::new(&interpret_opts);
+                interpreter.load_module(&module)?;
+                interpreter.shutdown()?;
+
+                Ok(())
             }
-            _ => unimplemented!("backend supporting output file {}", out_path.display()),
         }
-    } else {
-        let interpret_opts = InterpreterOpts {
-            trace_rc: args.trace_rc,
-            trace_heap: args.trace_heap,
-            trace_ir: args.trace_ir,
-        };
-
-        let mut interpreter = Interpreter::new(&interpret_opts);
-        interpreter.load_module(&module)?;
-        interpreter.shutdown()?;
     }
-
-    Ok(())
 }
 
 fn main() {
@@ -258,7 +305,7 @@ fn main() {
 
     let print_bt = args.backtrace;
 
-    if let Err(err) = compile(&args) {
+    if let Err(err) = compile(&args).and_then(|output| handle_output(output, &args)) {
         if let Err(io_err) = reporting::report_err(&err) {
             eprintln!(
                 "error occurred displaying source for compiler message: {}",
@@ -271,13 +318,13 @@ fn main() {
             match err {
                 CompileError::TokenizeError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
                 CompileError::ParseError(err) => {
                     println!("{:?}", err.bt);
-                }
+                },
 
-                _ => {}
+                _ => {},
             }
         }
 
