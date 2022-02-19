@@ -138,22 +138,20 @@ end;
 
 function SubString(s: String; from: Integer; len: Integer): String
 begin
-    if from < 0
-    or len < 0
-    or from >= s.len
-    or (from + len) >= s.len then
-        raise 'invalid arguments to SubString';
+    if from < 0 then raise 'substring start index must be 0 or greater';
+    if len < 0 then raise 'substring length must be 0 or greater';
+    if from > s.len then raise 'substring start index must not exceed original string length';
+    if (from + len) > s.len then raise 'substring length must not exceed original string length';
 
     if len = 0 then
-        ''
-    else begin
-        var buf := GetMem(len);
-        for let i := 0 to len - 1 do begin
-            buf[i] := s.chars[from + i];
-        end;
+        exit '';
 
-        String(chars: buf; len: len)
-    end
+    var buf := GetMem(len);
+    for let i := 0 to len - 1 do begin
+        buf[i] := s.chars[from + i];
+    end;
+
+    String(chars: buf; len: len)
 end;
 
 function StringCharAt(s: String; at: Integer): Byte
