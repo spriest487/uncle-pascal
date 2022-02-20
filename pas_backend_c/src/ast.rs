@@ -1,3 +1,8 @@
+mod function;
+mod stmt;
+mod string_lit;
+mod ty;
+
 pub use self::{function::*, stmt::*, ty::*};
 use crate::{
     ast::string_lit::StringLiteral,
@@ -11,19 +16,14 @@ use std::{
 };
 use topological_sort::TopologicalSort;
 
-mod function;
-mod stmt;
-mod string_lit;
-mod ty;
-
 pub struct Module {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
 
     static_array_types: HashMap<ArraySig, Type>,
 
-    type_defs: HashMap<StructName, TypeDef>,
-    type_defs_order: TopologicalSort<StructName>,
+    type_defs: HashMap<TypeDefName, TypeDef>,
+    type_defs_order: TopologicalSort<TypeDefName>,
 
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
@@ -84,6 +84,7 @@ impl Module {
                 let ty = match ty_def {
                     ir::metadata::TypeDef::Variant(..) => ir::Type::Variant(id),
                     ir::metadata::TypeDef::Struct(..) => ir::Type::Struct(id),
+                    ir::metadata::TypeDef::Function(..) => ir::Type::Function(id),
                 };
 
                 let name = metadata.pretty_ty_name(&ty);
@@ -153,9 +154,9 @@ impl Module {
             Entry::Occupied(entry) => entry.get().clone(),
 
             Entry::Vacant(entry) => {
-                let name = StructName::StaticArray(next_id);
+                let name = TypeDefName::StaticArray(next_id);
                 let array_struct = StructDef {
-                    decl: StructDecl { name: name.clone() },
+                    decl: TypeDecl { name: name.clone() },
                     members: vec![StructMember {
                         name: FieldName::StaticArrayElements,
                         ty: element.clone().sized_array(dim),
@@ -166,7 +167,7 @@ impl Module {
 
                 self.type_defs.insert(name.clone(), TypeDef::Struct(array_struct));
 
-                let array_struct_ty = Type::Struct(name.clone());
+                let array_struct_ty = Type::DefinedType(name.clone());
                 entry.insert(array_struct_ty.clone());
 
                 self.type_defs_order.insert(name.clone());
@@ -209,6 +210,27 @@ impl Module {
                     }
 
                     TypeDef::Variant(variant_def)
+                }
+
+                ir::metadata::TypeDef::Function(func_def) => {
+                    let return_ty = Type::from_metadata(&func_def.return_ty, self);
+                    return_ty.collect_type_def_deps(&mut member_deps);
+
+                    let mut param_tys = Vec::new();
+                    for param_ty in &func_def.param_tys {
+                        let param_ty = Type::from_metadata(param_ty, self);
+                        param_ty.collect_type_def_deps(&mut member_deps);
+                        param_tys.push(param_ty);
+                    }
+
+                    let func_alias_def = FuncAliasDef {
+                        decl: TypeDecl { name: TypeDefName::FuncAlias(id) },
+                        param_tys,
+                        return_ty,
+                        comment: Some(func_def.to_string()),
+                    };
+
+                    TypeDef::FuncAlias(func_alias_def)
                 }
             };
 
@@ -306,13 +328,13 @@ impl fmt::Display for Module {
 
         for def_name in ordered_type_defs.iter() {
             // special case for System.String: we expect it to already be defined in the prelude
-            if *def_name == StructName::Struct(ir::metadata::STRING_ID) {
+            if *def_name == TypeDefName::Struct(ir::metadata::STRING_ID) {
                 continue;
             }
 
             let def = &self.type_defs[def_name];
 
-            writeln!(f, "{}", def)?;
+            writeln!(f, "{};", def)?;
             writeln!(f)?;
         }
 
@@ -341,7 +363,7 @@ impl fmt::Display for Module {
             let chars_field = FieldName::ID(STRING_CHARS_FIELD);
             let len_field = FieldName::ID(STRING_LEN_FIELD);
 
-            let string_name = StructName::Struct(ir::metadata::STRING_ID);
+            let string_name = TypeDefName::Struct(ir::metadata::STRING_ID);
             writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
             write!(f, "  .{} = {}", chars_field, lit)?;
             writeln!(f, ", ")?;
@@ -351,7 +373,7 @@ impl fmt::Display for Module {
             writeln!(
                 f,
                 "static struct {} StringRc_{} = {{",
-                StructName::Rc,
+                TypeDefName::Rc,
                 str_id.0
             )?;
             writeln!(f, "  .{} = &String_{},", FieldName::RcResource, str_id.0)?;

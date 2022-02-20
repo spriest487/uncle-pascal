@@ -642,6 +642,31 @@ pub fn typecheck_type(ty: &ast::TypeName, ctx: &mut Context) -> TypecheckResult<
             }
         },
 
+        ast::TypeName::Function(func_ty_name) => {
+            let return_ty = match &func_ty_name.return_ty {
+                Some(return_ty) => typecheck_type(return_ty, ctx)?,
+                None => Type::Nothing,
+            };
+
+            let mut params = Vec::new();
+            for param in &func_ty_name.params {
+                let param_ty = typecheck_type(&param.ty, ctx)?;
+
+                params.push(FunctionParamSig {
+                    ty: param_ty,
+                    modifier: param.modifier.clone(),
+                });
+            }
+
+            let sig = FunctionSig::new(return_ty, params, None);
+            let mut ty = Type::Function(Rc::new(sig));
+            for _ in 0..func_ty_name.indirection {
+                ty = ty.ptr();
+            }
+
+            Ok(ty)
+        }
+
         ast::TypeName::Unknown(_) => unreachable!("trying to resolve unknown type"),
     }
 }

@@ -1,6 +1,6 @@
 use pas_ir as ir;
 
-mod ast;
+pub mod ast;
 
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Options {

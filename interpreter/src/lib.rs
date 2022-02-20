@@ -10,6 +10,7 @@ use crate::{
 use pas_ir::{BUILTIN_SRC, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label, LocalID, metadata::*, Module, Ref, Type, Value};
 use std::{collections::HashMap, rc::Rc};
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::ops::{BitAnd, BitOr, BitXor};
 use cast::usize;
 
@@ -17,6 +18,7 @@ use crate::result::{ExecError, ExecResult};
 use pas_common::span::Span;
 use pas_ir::metadata::ty::{ClassID, FieldID};
 use crate::heap::NativeHeap;
+
 mod builtin;
 mod func;
 mod heap;
@@ -53,6 +55,8 @@ pub struct Interpreter {
     trace_ir: bool,
 
     debug_ctx_stack: Vec<Span>,
+
+    functions: BTreeMap<FunctionID, Rc<Function>>,
 }
 
 impl Interpreter {
@@ -76,6 +80,8 @@ impl Interpreter {
             trace_ir: opts.trace_ir,
 
             debug_ctx_stack: Vec::new(),
+
+            functions: BTreeMap::new(),
         }
     }
 
@@ -176,6 +182,10 @@ impl Interpreter {
                     data: Box::new(default_val),
                 }))
             },
+
+            Type::Function(..) => {
+                DynValue::Function(FunctionID(usize::MAX))
+            }
 
             _ => {
                 let msg = format!("can't initialize default value of type `{:?}`", ty);
@@ -380,7 +390,12 @@ impl Interpreter {
             })
     }
 
-    fn call(&mut self, func: &Function, args: &[DynValue], out: Option<&Ref>) -> ExecResult<()> {
+    fn call(&mut self, id: FunctionID, args: &[DynValue], out: Option<&Ref>) -> ExecResult<()> {
+        let func = self.functions.get(&id).ok_or_else(|| {
+            let msg = format!("missing function: {id}");
+            ExecError::illegal_state(msg)
+        })?.clone();
+
         let stack_size = func.stack_alloc_size(self.marshaller())?;
         self.push_stack(func.debug_name(), stack_size);
 
@@ -452,24 +467,17 @@ impl Interpreter {
             .metadata
             .find_impl(ty, DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX);
 
-        if let Some(dispose_func) = dispose_impl_id {
+        if let Some(dispose_func_id) = dispose_impl_id {
             let dispose_desc = self
                 .metadata
-                .func_desc(dispose_func)
-                .unwrap_or_else(|| dispose_func.to_string());
-            let disposed_name = self.metadata.pretty_ty_name(ty);
-
-            let dispose_ref = GlobalRef::Function(dispose_func);
-            let func = match self.globals.get(&dispose_ref).map(|c| &c.value) {
-                Some(DynValue::Function(func)) => func.clone(),
-                _ => panic!("missing {} for {}", dispose_desc, disposed_name),
-            };
+                .func_desc(dispose_func_id)
+                .unwrap_or_else(|| dispose_func_id.to_string());
 
             if self.trace_rc {
                 eprintln!("rc: invoking {}", dispose_desc);
             }
 
-            self.call(&func, &[val.clone()], None)?;
+            self.call(dispose_func_id, &[val.clone()], None)?;
         } else if self.trace_rc {
             eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
@@ -550,14 +558,8 @@ impl Interpreter {
             if !rc_val.resource_ptr.is_null() {
                 let rc_funcs = self.find_rc_boilerplate(&resource_ty)?;
 
-                let release_func = self.globals[&GlobalRef::Function(rc_funcs.release)]
-                    .value
-                    .as_function()
-                    .cloned()
-                    .unwrap();
-
                 let release_ptr = DynValue::Pointer(rc_val.resource_ptr.clone());
-                self.call(&release_func, &[release_ptr], None)?;
+                self.call(rc_funcs.release, &[release_ptr], None)?;
 
                 if self.trace_rc {
                     eprintln!(
@@ -1344,7 +1346,9 @@ impl Interpreter {
             .collect::<ExecResult<_>>()?;
 
         match self.evaluate(function)? {
-            DynValue::Function(function) => self.call(&function, &arg_vals, out.as_ref())?,
+            DynValue::Function(function) => {
+                self.call(function, &arg_vals, out.as_ref())?
+            },
 
             _ => {
                 let msg = format!("{} does not reference a function", function);
@@ -1381,7 +1385,7 @@ impl Interpreter {
             },
         };
 
-        self.call(&func, &arg_vals, out)?;
+        self.call(func, &arg_vals, out)?;
 
         Ok(())
     }
@@ -1516,15 +1520,19 @@ impl Interpreter {
             self.globals.insert(
                 GlobalRef::Function(func_id),
                 GlobalValue {
-                    value: DynValue::Function(Rc::new(Function::Builtin(BuiltinFunction {
-                        func,
-                        return_ty: ret,
-                        param_tys: params,
-                        debug_name: name.to_string(),
-                    }))),
+                    value: DynValue::Function(func_id),
                     ty: Type::Nothing,
                 },
             );
+
+            let func = Function::Builtin(BuiltinFunction {
+                func,
+                return_ty: ret,
+                param_tys: params,
+                debug_name: name.to_string(),
+            });
+
+            self.functions.insert(func_id, Rc::new(func));
         }
     }
 
@@ -1579,10 +1587,14 @@ impl Interpreter {
         for (id, type_def) in module.metadata.type_defs() {
             let def_result = match type_def {
                 TypeDef::Struct(struct_def) => {
-                    marshaller.add_struct(id, struct_def, &module.metadata)
+                    marshaller.add_struct(id, struct_def, &module.metadata).map(Some)
                 },
                 TypeDef::Variant(variant_def) => {
-                    marshaller.add_variant(id, variant_def, &module.metadata)
+                    marshaller.add_variant(id, variant_def, &module.metadata).map(Some)
+                }
+                TypeDef::Function(_func_def) => {
+                    // functions don't need special marshalling, we only marshal pointers to them
+                    Ok(None)
                 }
             };
 
@@ -1594,14 +1606,14 @@ impl Interpreter {
             })?;
         }
 
-        for (func_name, ir_func) in &module.functions {
-            let func_ref = GlobalRef::Function(*func_name);
+        for (func_id, ir_func) in &module.functions {
+            let func_ref = GlobalRef::Function(*func_id);
 
             let func = match ir_func {
-                IRFunction::Local(func_def) => {
-                    let ir_func = Function::IR(func_def.clone());
+                IRFunction::Local(ir_func_def) => {
+                    let ir_func = Function::IR(ir_func_def.clone());
                     Some(ir_func)
-                },
+                }
 
                 IRFunction::External(external_ref) if external_ref.src == BUILTIN_SRC => {
                     None
@@ -1620,10 +1632,12 @@ impl Interpreter {
                 self.globals.insert(
                     func_ref,
                     GlobalValue {
-                        value: DynValue::Function(Rc::new(func)),
+                        value: DynValue::Function(*func_id),
                         ty: Type::Nothing,
                     },
                 );
+
+                self.functions.insert(*func_id, Rc::new(func));
             }
         }
 

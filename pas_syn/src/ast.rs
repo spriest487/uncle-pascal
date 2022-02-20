@@ -65,7 +65,7 @@ impl Annotation for Span {
     type ConstIntegerExpr = Box<Expression<Span>>;
 }
 
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Debug, Eq)]
 pub struct IdentTypeName {
     pub ident: IdentPath,
     pub type_args: Option<TypeList<TypeName>>,
@@ -78,6 +78,14 @@ impl PartialEq for IdentTypeName {
         self.ident == other.ident
             && self.type_args == other.type_args
             && self.indirection == other.indirection
+    }
+}
+
+impl Hash for IdentTypeName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ident.hash(state);
+        self.type_args.hash(state);
+        self.indirection.hash(state);
     }
 }
 
@@ -95,21 +103,21 @@ impl fmt::Display for IdentTypeName {
         write!(f, "{}", self.ident)?;
 
         if let Some(type_args) = &self.type_args {
-            write!(f, "<")?;
+            write!(f, "[")?;
             for (i, arg) in type_args.items.iter().enumerate() {
                 if i > 0 {
                     write!(f, ", ")?;
                 }
                 write!(f, "{}", arg)?;
             }
-            write!(f, ">")?;
+            write!(f, "]")?;
         }
 
         Ok(())
     }
 }
 
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Debug, Eq)]
 pub struct ArrayTypeName {
     pub element: Box<TypeName>,
     pub dim: Option<Box<Expression<Span>>>,
@@ -122,6 +130,14 @@ impl PartialEq for ArrayTypeName {
         self.element == other.element
             && self.dim == other.dim
             && self.indirection == other.indirection
+    }
+}
+
+impl Hash for ArrayTypeName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.element.hash(state);
+        self.dim.hash(state);
+        self.indirection.hash(state);
     }
 }
 
@@ -140,6 +156,82 @@ impl fmt::Display for ArrayTypeName {
     }
 }
 
+#[derive(Clone, Debug, Eq)]
+pub struct FunctionTypeName {
+    pub params: Vec<FunctionTypeNameParam>,
+    pub return_ty: Option<Box<TypeName>>,
+
+    pub indirection: usize,
+
+    pub span: Span,
+}
+
+impl PartialEq for FunctionTypeName {
+    fn eq(&self, other: &Self) -> bool {
+        self.params == other.params && self.return_ty == other.return_ty
+    }
+}
+
+impl Hash for FunctionTypeName {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.params.hash(state);
+        self.return_ty.hash(state);
+    }
+}
+
+impl Spanned for FunctionTypeName {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
+impl fmt::Display for FunctionTypeName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "function(")?;
+        for (i, param_ty) in self.params.iter().enumerate() {
+            if i > 0 {
+                write!(f, "; ")?;
+            }
+            write!(f, "{}", param_ty)?;
+        }
+        write!(f, ")")?;
+
+        if let Some(return_ty) = &self.return_ty {
+            write!(f, ": {}",return_ty)?;
+        }
+
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq)]
+pub struct FunctionTypeNameParam {
+    pub ty: TypeName,
+    pub modifier: Option<FunctionParamMod>,
+}
+
+impl PartialEq for FunctionTypeNameParam {
+    fn eq(&self, other: &Self) -> bool {
+        self.ty == other.ty && self.modifier == other.modifier
+    }
+}
+
+impl Hash for FunctionTypeNameParam {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ty.hash(state);
+        self.modifier.hash(state);
+    }
+}
+
+impl fmt::Display for FunctionTypeNameParam {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(modifier) = &self.modifier {
+            write!(f, "{} ", modifier)?;
+        }
+        write!(f, "{}", self.ty)
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum TypeName {
     /// type is unknown or unnamed at parse time
@@ -147,6 +239,8 @@ pub enum TypeName {
 
     Ident(IdentTypeName),
     Array(ArrayTypeName),
+
+    Function(FunctionTypeName),
 }
 
 impl Spanned for TypeName {
@@ -155,6 +249,7 @@ impl Spanned for TypeName {
             TypeName::Ident(i) => i.span(),
             TypeName::Array(a) => a.span(),
             TypeName::Unknown(span) => span,
+            TypeName::Function(f) => f.span(),
         }
     }
 }
@@ -170,7 +265,7 @@ impl Typed for TypeName {
 
 impl TypeName {
     fn match_next() -> Matcher {
-        Keyword::Array.or(Matcher::AnyIdent)
+        Keyword::Array.or(Keyword::Function).or(Matcher::AnyIdent)
     }
 
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
@@ -186,13 +281,23 @@ impl TypeName {
 
         tokens.look_ahead().expect_one(Self::match_next())?;
 
-        match tokens.match_one_maybe(Keyword::Array) {
-            Some(array_kw) => Self::parse_array_type(
+        match tokens.match_one_maybe(Keyword::Array.or(Keyword::Function)) {
+            Some(array_kw) if array_kw.is_keyword(Keyword::Array) => Self::parse_array_type(
                 tokens,
                 array_kw.span(),
                 indirection,
-                indirection_span.as_ref(),
+                indirection_span,
             ),
+
+            Some(fn_kw) if fn_kw.is_keyword(Keyword::Function) => Self::parse_function_type(
+                tokens,
+                fn_kw.into_span(),
+                indirection,
+                indirection_span,
+            ),
+
+            Some(..) => unreachable!(),
+
             None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
         }
     }
@@ -201,7 +306,7 @@ impl TypeName {
         tokens: &mut TokenStream,
         array_kw_span: &Span,
         indirection: usize,
-        indirection_span: Option<&Span>,
+        indirection_span: Option<Span>,
     ) -> ParseResult<Self> {
         // `array of` means the array is dynamic (no dimension)
         let dim = match tokens.look_ahead().match_one(Keyword::Of) {
@@ -236,6 +341,69 @@ impl TypeName {
             indirection,
             element: Box::new(element),
         }))
+    }
+
+    fn parse_function_type(
+        tokens: &mut TokenStream,
+        kw_span: Span,
+        indirection: usize,
+        indirection_span: Option<Span>,
+    ) -> ParseResult<Self> {
+        let span_begin = indirection_span.unwrap_or_else(|| kw_span.clone());
+        let mut span_end = kw_span;
+
+        let mod_matcher = Keyword::Var.or(Keyword::Out);
+
+        let params = match tokens.match_one_maybe(DelimiterPair::Bracket) {
+            Some(TokenTree::Delimited { open, inner, close, .. }) => {
+                let mut params_tokens = TokenStream::new(inner, open);
+                let params = params_tokens.match_separated(Separator::Semicolon, |_i, param_tokens| {
+                    let modifier = match param_tokens.match_one_maybe(mod_matcher.clone()) {
+                        Some(tt) if tt.is_keyword(Keyword::Var) => Some(FunctionParamMod::Var),
+                        Some(tt) if tt.is_keyword(Keyword::Out) => Some(FunctionParamMod::Out),
+                        Some(..) => unreachable!(),
+                        None => None,
+                    };
+
+                    let ty = TypeName::parse(param_tokens)?;
+
+                    let param = FunctionTypeNameParam {
+                        ty,
+                        modifier,
+                    };
+
+                    Ok(Generate::Yield(param))
+                })?;
+
+                span_end = close;
+
+                params
+            },
+
+            Some(..) => unreachable!(),
+
+            None => Vec::new(),
+        };
+
+        let return_ty = match tokens.match_one_maybe(Separator::Colon) {
+            Some(..) => {
+                let return_ty = TypeName::parse(tokens)?;
+
+                span_end = return_ty.span().clone();
+
+                Some(Box::new(return_ty))
+            },
+            None => None,
+        };
+
+        let func_ty_name = FunctionTypeName {
+            indirection,
+            params,
+            span: span_begin.to(&span_end),
+            return_ty,
+        };
+
+        Ok(TypeName::Function(func_ty_name))
     }
 
     fn parse_named_type(
@@ -278,6 +446,7 @@ impl fmt::Display for TypeName {
         match self {
             TypeName::Ident(ident_type_name) => write!(f, "{}", ident_type_name),
             TypeName::Array(array_type_name) => write!(f, "{}", array_type_name),
+            TypeName::Function(func_type_name) => write!(f, "{}", func_type_name),
             TypeName::Unknown(_) => write!(f, "<unknown type>"),
         }
     }

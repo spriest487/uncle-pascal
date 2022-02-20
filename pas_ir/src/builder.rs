@@ -9,7 +9,7 @@ use crate::{
 use std::fmt;
 
 use self::scope::*;
-use crate::ty::{FieldID, Interface, Struct, Variant};
+use crate::ty::{FieldID, Interface, Struct};
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::TypeList;
 use pas_syn::Ident;
@@ -125,12 +125,6 @@ impl<'m> Builder<'m> {
             .translate_iface(iface_def, self.type_args().cloned().as_ref())
     }
 
-    #[allow(unused)]
-    pub fn translate_variant(&mut self, variant: &pas_ty::ast::Variant) -> Variant {
-        self.module
-            .translate_variant(variant, self.type_args().cloned().as_ref())
-    }
-
     pub fn translate_type(&mut self, src_ty: &pas_ty::Type) -> Type {
         self.module
             .translate_type(src_ty, self.type_args().cloned().as_ref())
@@ -196,21 +190,6 @@ impl<'m> Builder<'m> {
         self.module.metadata.get_iface_def(id)
     }
 
-    #[allow(unused)]
-    pub fn find_function(&self, name: &Symbol) -> Option<FunctionID> {
-        self.module.metadata.find_function(name)
-    }
-
-    #[allow(unused)]
-    pub fn find_impl(
-        &self,
-        ty: &Type,
-        iface_id: InterfaceID,
-        method_id: MethodID,
-    ) -> Option<FunctionID> {
-        self.module.metadata.find_impl(ty, iface_id, method_id)
-    }
-
     pub fn finish(mut self) -> Vec<Instruction> {
         while !self.scopes.is_empty() {
             self.end_scope();
@@ -272,7 +251,6 @@ impl<'m> Builder<'m> {
         self.append(Instruction::Comment(content.to_string()));
     }
 
-    #[allow(unused)]
     pub fn mov(&mut self, out: impl Into<Ref>, val: impl Into<Value>) {
         self.append(Instruction::Move {
             out: out.into(),
@@ -280,7 +258,6 @@ impl<'m> Builder<'m> {
         });
     }
 
-    #[allow(unused)]
     pub fn add(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Add {
             out: out.into(),
@@ -289,7 +266,6 @@ impl<'m> Builder<'m> {
         });
     }
 
-    #[allow(unused)]
     pub fn sub(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Sub {
             out: out.into(),
@@ -298,7 +274,6 @@ impl<'m> Builder<'m> {
         });
     }
 
-    #[allow(unused)]
     pub fn mul(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Mul {
             out: out.into(),
@@ -307,7 +282,6 @@ impl<'m> Builder<'m> {
         });
     }
 
-    #[allow(unused)]
     pub fn idiv(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::IDiv {
             out: out.into(),
@@ -355,7 +329,6 @@ impl<'m> Builder<'m> {
         });
     }
 
-    #[allow(unused)]
     pub fn eq(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Eq {
             out: out.into(),
@@ -364,7 +337,6 @@ impl<'m> Builder<'m> {
         })
     }
 
-    #[allow(unused)]
     pub fn gt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         self.append(Instruction::Gt {
             out: out.into(),
@@ -373,7 +345,6 @@ impl<'m> Builder<'m> {
         })
     }
 
-    #[allow(unused)]
     pub fn lt(&mut self, out: impl Into<Ref>, a: impl Into<Value>, b: impl Into<Value>) {
         let out = out.into();
         let a = a.into();

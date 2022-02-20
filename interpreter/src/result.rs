@@ -1,7 +1,7 @@
 use crate::{heap::NativeHeapError, marshal::MarshalError, Pointer};
 use pas_common::{span::Span, DiagnosticLabel, DiagnosticOutput};
 use std::fmt;
-use pas_ir::Instruction;
+use pas_ir::{Instruction, InstructionFormatter, RawInstructionFormatter};
 use crate::stack::StackError;
 
 #[derive(Debug)]
@@ -49,7 +49,7 @@ impl ExecError {
             ExecError::ZeroLengthAllocation => None,
             ExecError::StackError(err) => Some(err.to_string()),
             ExecError::IllegalInstruction(i) => Some(i.to_string()),
-            _ => None,
+            ExecError::WithDebugContext { err, .. } => err.label_text(),
         }
     }
 
@@ -59,13 +59,14 @@ impl ExecError {
             span: context,
         }
     }
-}
 
-impl fmt::Display for ExecError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    pub fn fmt_pretty<Pretty>(&self, f: &mut fmt::Formatter, pretty: &Pretty) -> fmt:: Result
+    where
+        Pretty: InstructionFormatter
+    {
         match self {
             ExecError::Raised { .. } => write!(f, "Runtime error raised"),
-            ExecError::MarshalError(err) => write!(f, "{}", err),
+            ExecError::MarshalError(err) => err.fmt_pretty(f, pretty),
             ExecError::StackError(err) => write!(f, "{}", err),
             ExecError::ExternSymbolLoadFailed { lib, symbol, .. } => {
                 write!(f, "Failed to load {}::{}", lib, symbol)
@@ -74,9 +75,15 @@ impl fmt::Display for ExecError {
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
             ExecError::NativeHeapError(err) => write!(f, "{}", err),
             ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
-            ExecError::WithDebugContext { .. } => write!(f, "Execution error"),
             ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
+            ExecError::WithDebugContext { err, .. } => err.fmt_pretty(f, pretty),
         }
+    }
+}
+
+impl fmt::Display for ExecError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.fmt_pretty(f, &RawInstructionFormatter)
     }
 }
 
@@ -93,6 +100,13 @@ impl DiagnosticOutput for ExecError {
             },
 
             _ => None,
+        }
+    }
+
+    fn notes(&self) -> Vec<String> {
+        match self {
+            ExecError::WithDebugContext { .. } => Vec::new(),
+            _ => self.label_text().map(|text| vec![text]).unwrap_or_else(Vec::new),
         }
     }
 }

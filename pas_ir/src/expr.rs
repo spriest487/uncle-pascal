@@ -365,20 +365,41 @@ fn translate_func_call(
     func_call: &pas_ty::ast::FunctionCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
-    let (_, full_name) = match func_call.target.annotation() {
+    let type_args = func_call.type_args.clone();
+
+    let (func_val, func_sig) = match func_call.target.annotation() {
         pas_ty::TypeAnnotation::Function(func) => {
-            (func.sig.as_ref(), func.ns.clone().child(func.name.clone()))
+            let full_name = func.ns.clone().child(func.name.clone());
+            let func = builder.translate_func(full_name, type_args, func_call.span());
+
+            let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
+            let func_sig = func.sig;
+
+            (func_val, func_sig)
         },
-        _ => panic!("type of function call expr must be a function"),
+
+        pas_ty::TypeAnnotation::TypedValue(val) => {
+            assert!(type_args.is_none());
+
+            let target_expr_val = translate_expr(&func_call.target, builder);
+
+            match &val.ty {
+                pas_ty::Type::Function(sig) => {
+                    let func_ref = Value::Ref(target_expr_val);
+
+                    (func_ref, sig.clone())
+                }
+
+                _ => panic!("value called as function must have function type"),
+            }
+        }
+
+        _ => panic!("type of function call expr must be a function or callable value"),
     };
 
-    let type_args = func_call.type_args.clone();
-    let func = builder.translate_func(full_name, type_args, func_call.span());
+    let call_target = CallTarget::Function(func_val);
 
-    let func_ref = Ref::Global(GlobalRef::Function(func.id));
-    let call_target = CallTarget::Function(Value::Ref(func_ref));
-
-    translate_call_with_args(call_target, &func_call.args, &func.sig, builder)
+    translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
 }
 
 fn translate_method_call(

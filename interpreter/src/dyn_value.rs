@@ -1,9 +1,7 @@
-use crate::func::Function;
 use crate::ptr::Pointer;
-use pas_ir::metadata::{ClassID, FieldID, StructID};
+use pas_ir::metadata::{ClassID, FieldID, FunctionID, StructID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
-use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
@@ -106,7 +104,7 @@ pub enum DynValue {
     USize(usize),
     F32(f32),
     Rc(Box<RcValue>),
-    Function(Rc<Function>),
+    Function(FunctionID),
     Structure(Box<StructValue>),
     Variant(Box<VariantValue>),
     Pointer(Pointer),
@@ -176,6 +174,8 @@ impl DynValue {
                 }
                 _ => None,
             }
+
+            | Type::Function(..) => None,
         }
     }
 
@@ -337,9 +337,9 @@ impl DynValue {
         }
     }
 
-    pub fn as_function(&self) -> Option<&Rc<Function>> {
+    pub fn as_function(&self) -> Option<FunctionID> {
         match self {
-            DynValue::Function(f) => Some(f),
+            DynValue::Function(f) => Some(*f),
             _ => None,
         }
     }

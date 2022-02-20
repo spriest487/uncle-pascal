@@ -1,9 +1,10 @@
-use crate::ast::{Builder, Expr, InfixOp, Module, Statement, Type};
+use crate::ast::{Builder, Expr, InfixOp, Module, Statement, TypeDecl, Type};
 use pas_ir::{
     self as ir,
     metadata::{FunctionID, InterfaceID, MethodID},
 };
 use std::fmt;
+use pas_ir::metadata::StructID;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {
@@ -240,5 +241,48 @@ impl FfiFunction {
 
     pub fn func_ptr_decl(&self) -> String {
         self.decl.ptr_type().to_decl_string(&self.decl.name)
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct FuncAliasDef {
+    pub decl: TypeDecl,
+
+    pub param_tys: Vec<Type>,
+    pub return_ty: Type,
+
+    pub comment: Option<String>,
+}
+
+impl fmt::Display for FuncAliasDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if let Some(comment) = &self.comment {
+            write!(f, "/** {} */", comment)?;
+        }
+
+        let ptr_type = self.to_pointer_type();
+        let decl_string = ptr_type.to_decl_string(&self.decl.name.to_string());
+
+        write!(f, "typedef {}", decl_string)?;
+
+        Ok(())
+    }
+}
+
+impl FuncAliasDef {
+    pub fn to_pointer_type(&self) -> Type {
+        Type::FunctionPointer {
+            return_ty: Box::new(self.return_ty.clone()),
+            params: self.param_tys.clone(),
+        }
+    }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct FuncAliasID(pub StructID);
+
+impl fmt::Display for FuncAliasID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "FunctionAlias_{}", self.0.0)
     }
 }

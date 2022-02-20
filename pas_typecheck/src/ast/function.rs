@@ -73,8 +73,10 @@ pub fn typecheck_func_decl(
 
     let (ident, impl_iface) = match &decl.impl_iface {
         Some(iface_impl) => {
+            let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
+
             let method_sig =
-                FunctionSig::new(return_ty.clone(), params.clone(), type_params.clone());
+                FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
 
             let iface_def = match typecheck_type(&iface_impl.iface, ctx)? {
                 Type::Interface(iface) => ctx.find_iface_def(&iface).map_err(|err| {

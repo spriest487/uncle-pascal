@@ -105,7 +105,9 @@ pub struct Metadata {
 
     dyn_array_structs: LinkedHashMap<Type, StructID>,
 
-    functions: LinkedHashMap<FunctionID, FunctionDecl>,
+    functions: LinkedHashMap<FunctionID, Rc<FunctionDecl>>,
+
+    function_types_by_sig: HashMap<pas_ty::FunctionSig, StructID>,
 
     rc_boilerplate_funcs: HashMap<Type, RcBoilerplatePair>,
 }
@@ -204,9 +206,9 @@ impl Metadata {
         match self.type_decls.get(&struct_id)? {
             TypeDecl::Reserved | TypeDecl::Forward(..) => None,
 
-            TypeDecl::Def(TypeDef::Variant(..)) => None,
-
             TypeDecl::Def(TypeDef::Struct(s)) => Some(s),
+
+            TypeDecl::Def(..) => None,
         }
     }
 
@@ -214,9 +216,9 @@ impl Metadata {
         match self.type_decls.get(&struct_id)? {
             TypeDecl::Reserved | TypeDecl::Forward(..) => None,
 
-            TypeDecl::Def(TypeDef::Struct(..)) => None,
-
             TypeDecl::Def(TypeDef::Variant(v)) => Some(v),
+
+            TypeDecl::Def(..) => None,
         }
     }
 
@@ -279,7 +281,9 @@ impl Metadata {
 
     pub fn insert_func(&mut self, global_name: Option<Symbol>) -> FunctionID {
         let id = self.next_function_id();
-        self.functions.insert(id, FunctionDecl { global_name });
+
+        let decl = FunctionDecl { global_name };
+        self.functions.insert(id, Rc::new(decl));
 
         id
     }
@@ -314,7 +318,7 @@ impl Metadata {
             .map(|(id, _func)| *id)
     }
 
-    pub fn get_function(&self, id: FunctionID) -> Option<&FunctionDecl> {
+    pub fn get_function(&self, id: FunctionID) -> Option<&Rc<FunctionDecl>> {
         self.functions.get(&id)
     }
 
@@ -346,16 +350,16 @@ impl Metadata {
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         match ty {
             Type::Struct(id) | Type::Variant(id) => {
-                let name = match self.type_decls.get(id) {
-                    Some(TypeDecl::Forward(name)) => Some(name),
-                    Some(TypeDecl::Def(def)) => Some(def.name()),
-                    Some(TypeDecl::Reserved) | None => None,
-                };
-
-                match name {
-                    None => Cow::Owned(id.to_string()),
-
-                    Some(name) => Cow::Owned(name.to_pretty_string(|ty| self.pretty_ty_name(ty))),
+                match self.type_decls.get(id) {
+                    Some(TypeDecl::Forward(name)) => {
+                        let pretty_name = name.to_pretty_string(|ty| self.pretty_ty_name(ty));
+                        Cow::Owned(pretty_name)
+                    },
+                    Some(TypeDecl::Def(def)) => {
+                        let pretty_name = def.to_pretty_str(|ty| self.pretty_ty_name(ty));
+                        Cow::Owned(pretty_name)
+                    },
+                    Some(TypeDecl::Reserved) | None => Cow::Owned(id.to_string()),
                 }
             }
 
@@ -435,7 +439,7 @@ impl Metadata {
             TypeDecl::Def(def) => {
                 assert_eq!(
                     def.name(),
-                    name,
+                    Some(name),
                     "can't declare same struct multiple times with different names"
                 );
             }
@@ -476,6 +480,30 @@ impl Metadata {
                 );
             }
         }
+    }
+
+    pub fn get_func_ptr_ty(&self, id: StructID) -> Option<&FunctionSig> {
+        self.type_decls.get(&id).and_then(|decl| match decl {
+            TypeDecl::Def(TypeDef::Function(ptr_def)) => Some(ptr_def),
+            _ => None,
+        })
+    }
+
+    pub fn find_func_ptr_ty(&self, sig: &pas_ty::FunctionSig) -> Option<StructID> {
+        self.function_types_by_sig.get(&sig).cloned()
+    }
+
+    pub fn define_func_ptr_ty(&mut self, sig: pas_ty::FunctionSig, func_ty: FunctionSig) -> StructID {
+        assert!(!self.function_types_by_sig.contains_key(&sig));
+
+        let id = self.next_struct_id();
+        self.function_types_by_sig.insert(sig, id);
+
+        let replaced = self.type_decls.insert(id, TypeDecl::Def(TypeDef::Function(func_ty)));
+        assert!(replaced.is_none());
+
+
+        id
     }
 
     pub fn ifaces(&self) -> impl Iterator<Item = (InterfaceID, &Interface)> {
@@ -701,7 +729,10 @@ impl Metadata {
             ),
 
             pas_ty::Type::Function(sig) => {
-                unimplemented!("No IR type exists to represent function: {}", sig)
+                match self.function_types_by_sig.get(sig) {
+                    Some(id) => Type::Function(*id),
+                    None => panic!("no type definition for function with sig {}", sig),
+                }
             }
 
             pas_ty::Type::Any => Type::RcPointer(None),

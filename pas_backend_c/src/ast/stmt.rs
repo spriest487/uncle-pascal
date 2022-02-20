@@ -2,7 +2,7 @@ use std::fmt;
 
 use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, StructID}, Label, LocalID};
 
-use crate::ast::{ty::FieldName, FunctionName, Module, StructName, Type};
+use crate::ast::{ty::FieldName, FunctionName, Module, TypeDefName, Type};
 
 #[allow(unused)]
 pub enum InfixOp {
@@ -207,7 +207,7 @@ impl Expr {
                 // pointer to RC containing pointer to class resource
                 let class_ty = match class_id {
                     Some(metadata::ClassID::Class(struct_id)) => {
-                        Type::Struct(StructName::Struct(*struct_id))
+                        Type::DefinedType(TypeDefName::Struct(*struct_id))
                     }
 
                     _ => panic!(
@@ -244,7 +244,7 @@ impl Expr {
     pub fn class_ptr(struct_id: StructID) -> Self {
         Expr::Class(struct_id)
             .addr_of()
-            .cast(Type::Struct(StructName::Class).ptr())
+            .cast(Type::DefinedType(TypeDefName::Class).ptr())
     }
 }
 

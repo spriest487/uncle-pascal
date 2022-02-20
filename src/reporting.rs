@@ -55,7 +55,8 @@ fn output_to_report_diag(
 
     Ok(Diagnostic::new(severity)
         .with_labels(labels)
-        .with_message(diag.title))
+        .with_message(diag.title)
+        .with_notes(diag.notes))
 }
 
 pub fn report_err(err: &impl DiagnosticOutput) -> Result<(), FileError> {
@@ -63,8 +64,10 @@ pub fn report_err(err: &impl DiagnosticOutput) -> Result<(), FileError> {
     let config = codespan_reporting::term::Config::default();
 
     let mut code_map = CodeMap::new();
+
+    let diag_msg = err.main();
     let main_diag = output_to_report_diag(
-        err.main(),
+        diag_msg,
         &mut code_map,
         LabelStyle::Primary,
         Severity::Error,

@@ -39,6 +39,15 @@ impl FunctionParamSig {
     }
 }
 
+impl From<FunctionParam> for FunctionParamSig {
+    fn from(param: FunctionParam) -> Self {
+        Self {
+            ty: param.ty,
+            modifier: param.modifier,
+        }
+    }
+}
+
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionSigTypeParam {
     pub is_ty: Type,
@@ -54,7 +63,7 @@ pub struct FunctionSig {
 impl FunctionSig {
     pub fn new(
         return_ty: Type,
-        params: Vec<FunctionParam>,
+        params: Vec<FunctionParamSig>,
         type_params: Option<TypeParamList>,
     ) -> Self {
         let params = params
@@ -95,7 +104,9 @@ impl FunctionSig {
 
     pub fn of_decl(decl: &FunctionDecl) -> Self {
         let return_ty = decl.return_ty.clone().unwrap_or(Type::Nothing);
-        Self::new(return_ty, decl.params.clone(), decl.type_params.clone())
+        let param_sigs = decl.params.iter().cloned().map(FunctionParamSig::from).collect();
+
+        Self::new(return_ty, param_sigs, decl.type_params.clone())
     }
 
     /// test if a list of type args that could be used to specialize this function are applicable

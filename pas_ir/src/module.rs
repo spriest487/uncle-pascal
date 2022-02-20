@@ -12,6 +12,7 @@ use pas_typecheck::ast::specialize_func_decl;
 use pas_typecheck::{builtin_string_name, Specializable, TypeList};
 use std::collections::HashMap;
 use std::fmt;
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -107,7 +108,7 @@ impl Module {
 
                         // cache the function before translating the instantiation, because
                         // it may recurse and instantiate itself in its own body
-                        let cached_func = FunctionInstance { id, sig };
+                        let cached_func = FunctionInstance { id, sig: Rc::new(sig) };
                         self.translated_funcs
                             .insert(key.clone(), cached_func.clone());
 
@@ -146,7 +147,7 @@ impl Module {
                             })
                             .collect();
 
-                        let cached_func = FunctionInstance { id, sig };
+                        let cached_func = FunctionInstance { id, sig: Rc::new(sig) };
 
                         let extern_src = extern_decl
                             .external_src()
@@ -229,7 +230,7 @@ impl Module {
                 // it may recurse and instantiate itself in its own body
                 let cached_func = FunctionInstance {
                     id,
-                    sig: pas_ty::FunctionSig::of_decl(&specialized_decl),
+                    sig: Rc::new(pas_ty::FunctionSig::of_decl(&specialized_decl)),
                 };
                 self.translated_funcs
                     .insert(key.clone(), cached_func.clone());
@@ -510,7 +511,8 @@ impl Module {
                 //                println!("{} <- {}", src_ty, ty);
 
                 let iface_meta = self.translate_iface(&iface_def, type_args);
-                self.metadata.define_iface(iface_meta);
+                let def_id = self.metadata.define_iface(iface_meta);
+                assert_eq!(def_id, id);
 
                 ty
             }
@@ -520,7 +522,23 @@ impl Module {
 
                 let ty = Type::RcPointer(Some(ClassID::Class(id)));
                 self.type_cache.insert(src_ty, ty.clone());
+
                 //                println!("{} <- {}", src_ty, ty);
+
+                ty
+            }
+
+            pas_ty::Type::Function(func_sig) => {
+                if let Some(id) = self.metadata.find_func_ptr_ty(&func_sig) {
+                    return Type::Function(id);
+                }
+
+                let ir_sig = self.translate_func_sig(&func_sig, type_args);
+                let id = self.metadata.define_func_ptr_ty((**func_sig).clone(), ir_sig);
+
+                let ty = Type::Function(id);
+
+                self.type_cache.insert(src_ty, ty.clone());
 
                 ty
             }
@@ -677,6 +695,26 @@ impl Module {
             None => self.metadata.define_dyn_array_struct(element_ty),
         }
     }
+
+    pub fn translate_func_sig(&mut self, sig: &pas_ty::FunctionSig, type_args: Option<&TypeList>) -> FunctionSig {
+        assert!(sig.type_params.is_none(), "cannot create type for a generic function pointer");
+
+        let return_ty = self.translate_type(&sig.return_ty, type_args);
+        let mut param_tys = Vec::new();
+        for param in &sig.params {
+            let mut ty = self.translate_type(&param.ty, type_args);
+            if param.is_by_ref() {
+                ty = ty.ptr();
+            }
+
+            param_tys.push(ty);
+        }
+
+        FunctionSig {
+            return_ty,
+            param_tys,
+        }
+    }
 }
 
 impl fmt::Display for Module {
@@ -730,6 +768,10 @@ impl fmt::Display for Module {
                         }
                         writeln!(f)?;
                     }
+                }
+
+                TypeDef::Function(def) => {
+                    write!(f, "{}", def)?;
                 }
             }
 

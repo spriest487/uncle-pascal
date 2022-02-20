@@ -1,4 +1,5 @@
 use std::fmt;
+use std::rc::Rc;
 use pas_common::span::Span;
 
 pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*};
@@ -94,7 +95,7 @@ impl Function {
 #[derive(Clone, Debug)]
 pub struct FunctionInstance {
     pub id: FunctionID,
-    pub sig: pas_ty::FunctionSig,
+    pub sig: Rc<pas_ty::FunctionSig>,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

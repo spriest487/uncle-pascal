@@ -5,7 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
 };
 use crate::ty::{Struct, TypeDef, Variant};
-use crate::Type;
+use crate::{FunctionSig, Type};
 
 // sort list of type defs to resolve deep structural dependencies on other defs.
 // struct, variant and static array fields count as structural dependencies (and are
@@ -53,6 +53,10 @@ fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<StructID> {
         TypeDef::Variant(variant_def) => {
             add_variant_deps(variant_def, &mut deps, metadata);
         }
+
+        TypeDef::Function(func_ty_def) => {
+            add_func_ty_deps(func_ty_def, &mut deps, metadata);
+        }
     }
 
     deps
@@ -69,6 +73,13 @@ fn add_variant_deps(variant_def: &Variant, deps: &mut HashSet<StructID>, metadat
         if let Some(case_ty) = &case.ty {
             add_dep(case_ty, deps, metadata);
         }
+    }
+}
+
+fn add_func_ty_deps(func_ty_def: &FunctionSig, deps: &mut HashSet<StructID>, metadata: &Metadata) {
+    add_dep(&func_ty_def.return_ty, deps, metadata);
+    for param_ty in &func_ty_def.param_tys {
+        add_dep(param_ty, deps, metadata);
     }
 }
 

@@ -2,7 +2,7 @@ use std::{collections::HashMap, fmt};
 
 use pas_ir::metadata;
 
-use crate::ast::{FunctionDecl, FunctionName, Module};
+use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
 use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, StructID, MethodID, RcBoilerplatePair, InterfaceID};
@@ -11,6 +11,7 @@ use pas_ir::prelude::{ClassID, FieldID};
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
+    // primitive tyeps
     Void,
     Int,
     Int16,
@@ -21,13 +22,19 @@ pub enum Type {
     UInt64,
     PtrDiffType,
     SizeType,
-    Struct(StructName),
-    Pointer(Box<Type>),
     Bool,
     Float,
     UChar,
     SChar,
+    Pointer(Box<Type>),
+
+    // custom type defined in source language
+    DefinedType(TypeDefName),
+
+    // fixed-size array type
     SizedArray(Box<Type>, usize),
+
+    // literal function pointer (mostly for internal use)
     FunctionPointer {
         return_ty: Box<Type>,
         params: Vec<Type>,
@@ -38,10 +45,11 @@ impl Type {
     pub fn from_metadata(ty: &metadata::Type, module: &mut Module) -> Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
-            metadata::Type::RcPointer(..) => Type::Struct(StructName::Rc).ptr(),
-            metadata::Type::RcObject(..) => Type::Struct(StructName::Rc),
-            metadata::Type::Struct(id) => Type::Struct(StructName::Struct(*id)),
-            metadata::Type::Variant(id) => Type::Struct(StructName::Variant(*id)),
+            metadata::Type::Function(id) => Type::DefinedType(TypeDefName::FuncAlias(*id)),
+            metadata::Type::RcPointer(..) => Type::DefinedType(TypeDefName::Rc).ptr(),
+            metadata::Type::RcObject(..) => Type::DefinedType(TypeDefName::Rc),
+            metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
+            metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
             metadata::Type::Bool => Type::Bool,
             metadata::Type::F32 => Type::Float,
@@ -120,9 +128,8 @@ impl Type {
                 left.push_str("ptrdiff_t");
             }
 
-            Type::Struct(name) => {
-                left.push_str("struct ");
-                left.push_str(&name.to_string());
+            Type::DefinedType(name) => {
+                name.build_decl_string(left, right);
             }
 
             Type::SizedArray(el, size) => {
@@ -148,10 +155,10 @@ impl Type {
         }
     }
 
-    pub fn collect_type_def_deps(&self, deps: &mut Vec<StructName>) {
+    pub fn collect_type_def_deps(&self, deps: &mut Vec<TypeDefName>) {
         match self {
             // direct structural reference
-            Type::Struct(name) => deps.push(name.clone()),
+            Type::DefinedType(name) => deps.push(name.clone()),
             Type::SizedArray(element, ..) => element.collect_type_def_deps(deps),
             Type::FunctionPointer {
                 params, return_ty
@@ -167,7 +174,7 @@ impl Type {
         }
     }
 
-    pub fn type_def_deps(&self) -> Vec<StructName> {
+    pub fn type_def_deps(&self) -> Vec<TypeDefName> {
         let mut deps = Vec::new();
         self.collect_type_def_deps(&mut deps);
         deps
@@ -197,7 +204,7 @@ impl Type {
             Type::UInt64 => "uint64_t".to_string(),
             Type::PtrDiffType => "ptrdiff_t".to_string(),
             Type::SizeType => "size_t".to_string(),
-            Type::Struct(name) => format!("struct {}", name),
+            Type::DefinedType(name) => format!("struct {}", name),
             Type::SizedArray(ty, ..) | Type::Pointer(ty) => format!("{}*", ty.typename()),
             Type::Bool => "bool".to_string(),
             Type::Float => "float".to_string(),
@@ -255,7 +262,7 @@ impl fmt::Display for FieldName {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub enum StructName {
+pub enum TypeDefName {
     // internal struct for implementation of RC pointers
     Rc,
 
@@ -268,16 +275,49 @@ pub enum StructName {
     // struct from variant def ID
     Variant(StructID),
 
+    FuncAlias(StructID),
+
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub struct StructDecl {
-    pub name: StructName,
+impl fmt::Display for TypeDefName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeDefName::Rc => write!(f, "Rc"),
+            TypeDefName::Class => write!(f, "Class"),
+            TypeDefName::Struct(id) => write!(f, "Struct_{}", id.0),
+            TypeDefName::Variant(id) => write!(f, "Variant_{}", id.0),
+            TypeDefName::StaticArray(i) => write!(f, "StaticArray_{}", i),
+            TypeDefName::FuncAlias(id) => write!(f, "FuncAlias_{}", id.0),
+        }
+    }
 }
 
-impl fmt::Display for StructDecl {
+impl TypeDefName {
+    pub fn build_decl_string(&self, left: &mut String, _right: &mut String) {
+        match self {
+            TypeDefName::Rc
+            | TypeDefName::Class
+            | TypeDefName::Struct(..)
+            | TypeDefName::Variant(..)
+            | TypeDefName::StaticArray(..) => {
+                left.push_str(&format!("struct {}", self.to_string()));
+            }
+
+            TypeDefName::FuncAlias(..) => {
+                left.push_str(&self.to_string());
+            }
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash)]
+pub struct TypeDecl {
+    pub name: TypeDefName,
+}
+
+impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "struct {}", self.name)
     }
@@ -306,7 +346,7 @@ impl Hash for StructMember {
 
 #[derive(Clone, Eq)]
 pub struct StructDef {
-    pub decl: StructDecl,
+    pub decl: TypeDecl,
     pub members: Vec<StructMember>,
 
     pub comment: Option<String>,
@@ -322,18 +362,6 @@ impl Hash for StructDef {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.decl.hash(state);
         self.members.hash(state);
-    }
-}
-
-impl fmt::Display for StructName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            StructName::Rc => write!(f, "Rc"),
-            StructName::Class => write!(f, "Class"),
-            StructName::Struct(id) => write!(f, "Struct_{}", id.0),
-            StructName::Variant(id) => write!(f, "Variant_{}", id.0),
-            StructName::StaticArray(i) => write!(f, "StaticArray_{}", i),
-        }
     }
 }
 
@@ -364,8 +392,8 @@ impl StructDef {
         let comment = module.pretty_type(&struct_ty).to_string();
 
         Self {
-            decl: StructDecl {
-                name: StructName::Struct(id),
+            decl: TypeDecl {
+                name: TypeDefName::Struct(id),
             },
             members,
             comment: Some(comment),
@@ -412,7 +440,7 @@ impl Hash for VariantCaseDef {
 
 #[derive(Clone, Eq)]
 pub struct VariantDef {
-    pub decl: StructDecl,
+    pub decl: TypeDecl,
     pub cases: Vec<VariantCaseDef>,
 
     pub comment: Option<String>,
@@ -452,8 +480,8 @@ impl VariantDef {
         let comment = module.pretty_type(&variant_ty).to_string();
 
         Self {
-            decl: StructDecl {
-                name: StructName::Variant(id),
+            decl: TypeDecl {
+                name: TypeDefName::Variant(id),
             },
             cases,
             comment: Some(comment),
@@ -500,13 +528,15 @@ impl fmt::Display for VariantDef {
 pub enum TypeDef {
     Struct(StructDef),
     Variant(VariantDef),
+    FuncAlias(FuncAliasDef),
 }
 
 impl TypeDef {
-    pub fn decl(&self) -> &StructDecl {
+    pub fn decl(&self) -> &TypeDecl {
         match self {
             TypeDef::Struct(s) => &s.decl,
             TypeDef::Variant(v) => &v.decl,
+            TypeDef::FuncAlias(f) => &f.decl,
         }
     }
 }
@@ -516,6 +546,7 @@ impl fmt::Display for TypeDef {
         match self {
             TypeDef::Struct(s) => write!(f, "{}", s),
             TypeDef::Variant(v) => write!(f, "{}", v),
+            TypeDef::FuncAlias(func) => write!(f, "{}", func),
         }
     }
 }
@@ -693,7 +724,7 @@ impl Class {
         writeln!(
             class_init,
             "  .size = sizeof(struct {}),",
-            StructName::Struct(self.struct_id)
+            TypeDefName::Struct(self.struct_id)
         )
         .unwrap();
 
@@ -726,7 +757,7 @@ impl Class {
         match &self.dyn_array_type_info {
             Some(dyn_array_ty_info) => {
                 let el_ty = if dyn_array_ty_info.el_rc {
-                    Type::Struct(StructName::Rc).ptr()
+                    Type::DefinedType(TypeDefName::Rc).ptr()
                 } else {
                     dyn_array_ty_info.el_ty.clone()
                 };
@@ -793,7 +824,7 @@ impl Class {
                         .length = DynArrayLength_{struct_id},
                     }};"#,
                     struct_id = self.struct_id,
-                    res_ty = Type::Struct(StructName::Struct(self.struct_id)).typename(),
+                    res_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id)).typename(),
                     el_ty = el_ty.typename(),
                     retain_el_proc = retain_el_proc,
                     class_init = class_init,

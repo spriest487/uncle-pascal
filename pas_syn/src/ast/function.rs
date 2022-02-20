@@ -6,7 +6,7 @@ use crate::{
     parse::prelude::*,
 };
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
     Var,
     Out,

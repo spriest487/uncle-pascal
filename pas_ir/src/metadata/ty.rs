@@ -1,152 +1,20 @@
-use std::collections::HashMap;
-use std::fmt;
-use std::rc::Rc;
+mod function;
+mod iface_def;
+mod struct_def;
+mod variant_def;
+
+pub use self::{function::*, iface_def::*, struct_def::*, variant_def::*};
+use crate::{
+    name_path::NamePath, InterfaceID, StructID,
+    STRING_ID,
+};
 use pas_common::span::Span;
-use crate::name_path::NamePath;
-use crate::{FunctionID, InterfaceID, MethodID, STRING_ID, StructID};
-
-#[derive(Clone, Debug)]
-pub struct Method {
-    pub name: String,
-    pub return_ty: Type,
-    pub params: Vec<Type>,
-}
-
-#[derive(Clone, Debug)]
-pub struct Interface {
-    pub name: NamePath,
-    pub methods: Vec<Method>,
-    pub impls: HashMap<Type, InterfaceImpl>,
-}
-
-impl Interface {
-    pub fn new(name: impl Into<NamePath>, methods: impl Into<Vec<Method>>) -> Self {
-        Self {
-            name: name.into(),
-            methods: methods.into(),
-            impls: HashMap::new(),
-        }
-    }
-
-    pub fn add_impl(&mut self, implementor: Type, method: MethodID, func_id: FunctionID) {
-        assert!(method.0 < self.methods.len());
-
-        let methods_len = self.methods.len();
-        let impl_entry = self
-            .impls
-            .entry(implementor.clone())
-            .or_insert_with(|| InterfaceImpl::new(methods_len));
-        assert!(
-            !impl_entry.methods.contains_key(&method),
-            "adding duplicate impl (func {}) of method {}.{} for {}, already defined as {}",
-            func_id,
-            self.name,
-            method.0,
-            implementor,
-            impl_entry.methods[&method],
-        );
-
-        impl_entry.methods.insert(method, func_id);
-    }
-
-    pub fn method_index(&self, name: &str) -> Option<MethodID> {
-        self.methods
-            .iter()
-            .position(|m| m.name.as_str() == name)
-            .map(MethodID)
-    }
-
-    pub fn get_method(&self, id: MethodID) -> Option<&Method> {
-        self.methods.get(id.0)
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct InterfaceImpl {
-    // method index -> method impl
-    pub methods: HashMap<MethodID, FunctionID>,
-}
-
-impl InterfaceImpl {
-    fn new(method_count: usize) -> Self {
-        Self {
-            methods: HashMap::with_capacity(method_count),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct StructFieldDef {
-    pub name: String,
-    pub ty: Type,
-    pub rc: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Struct {
-    pub name: NamePath,
-    pub fields: HashMap<FieldID, StructFieldDef>,
-
-    pub src_span: Option<Span>,
-}
-
-impl Struct {
-    pub fn find_field(&self, name: &str) -> Option<FieldID> {
-        self.fields.iter().find_map(|(id, field)| {
-            if field.name.as_str() == name {
-                Some(*id)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn get_field(&self, id: FieldID) -> Option<&StructFieldDef> {
-        self.fields.get(&id)
-    }
-
-    pub fn new(name: impl Into<NamePath>, src_span: Option<Span>) -> Self {
-        Self {
-            name: name.into(),
-            fields: HashMap::new(),
-            src_span,
-        }
-    }
-
-    pub fn with_field(mut self, name: impl Into<String>, ty: Type, rc: bool) -> Self {
-        let id = self
-            .fields
-            .keys()
-            .max_by_key(|id| id.0)
-            .map(|id| FieldID(id.0 + 1))
-            .unwrap_or(FieldID(0));
-
-        self.fields.insert(
-            id,
-            StructFieldDef {
-                name: name.into(),
-                ty,
-                rc,
-            },
-        );
-
-        self
-    }
-
-    pub fn with_fields(mut self, fields: HashMap<FieldID, StructFieldDef>) -> Self {
-        self.fields.extend(fields);
-        self
-    }
-}
-
-#[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
-pub struct FieldID(pub usize);
-
-impl fmt::Display for FieldID {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
+use std::{
+    fmt,
+    fmt::Write,
+    rc::Rc,
+    borrow::Cow
+};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ClassID {
@@ -173,21 +41,6 @@ impl fmt::Display for ClassID {
 }
 
 #[derive(Clone, Debug)]
-pub struct VariantCase {
-    pub name: String,
-    pub ty: Option<Type>,
-    pub rc: bool,
-}
-
-#[derive(Clone, Debug)]
-pub struct Variant {
-    pub name: NamePath,
-    pub cases: Vec<VariantCase>,
-
-    pub src_span: Option<Span>,
-}
-
-#[derive(Clone, Debug)]
 pub enum TypeDecl {
     Reserved,
     Forward(NamePath),
@@ -199,7 +52,7 @@ impl TypeDecl {
         match self {
             TypeDecl::Reserved => None,
             TypeDecl::Forward(name) => Some(name),
-            TypeDecl::Def(def) => Some(def.name()),
+            TypeDecl::Def(def) => def.name(),
         }
     }
 
@@ -216,7 +69,7 @@ impl fmt::Display for TypeDecl {
         match self {
             TypeDecl::Reserved => write!(f, "reserved type ID"),
             TypeDecl::Forward(name) => write!(f, "forward decl of `{}`", name),
-            TypeDecl::Def(def) => write!(f, "defined type `{}`", def.name()),
+            TypeDecl::Def(def) => write!(f, "defined type `{}`", def),
         }
     }
 }
@@ -225,13 +78,15 @@ impl fmt::Display for TypeDecl {
 pub enum TypeDef {
     Struct(Struct),
     Variant(Variant),
+    Function(FunctionSig),
 }
 
 impl TypeDef {
-    pub fn name(&self) -> &NamePath {
+    pub fn name(&self) -> Option<&NamePath> {
         match self {
-            TypeDef::Struct(s) => &s.name,
-            TypeDef::Variant(v) => &v.name,
+            TypeDef::Struct(s) => Some(&s.name),
+            TypeDef::Variant(v) => Some(&v.name),
+            TypeDef::Function(..) => None,
         }
     }
 
@@ -239,6 +94,54 @@ impl TypeDef {
         match self {
             TypeDef::Struct(def) => def.src_span.as_ref(),
             TypeDef::Variant(def) => def.src_span.as_ref(),
+            TypeDef::Function(..) => None,
+        }
+    }
+
+    pub fn to_pretty_str<'a, TyFormat>(&self, ty_format: TyFormat) -> String
+    where
+        TyFormat: Fn(&Type) -> Cow<'a, str>
+    {
+        match self {
+            TypeDef::Struct(def) => def.name.to_pretty_string(ty_format),
+            TypeDef::Variant(def) => def.name.to_pretty_string(ty_format),
+            TypeDef::Function(def) => {
+                let mut string = String::new();
+                let f = &mut string;
+                write!(f, "function (").unwrap();
+
+                for (i, param_ty) in def.param_tys.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ").unwrap();
+                    }
+                    write!(f, "{}", ty_format(param_ty).as_ref()).unwrap();
+                }
+
+                write!(f, "): {}", ty_format(&def.return_ty).as_ref()).unwrap();
+
+                string
+            }
+        }
+    }
+}
+
+impl fmt::Display for TypeDef {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeDef::Struct(s) => write!(f, "{}", s.name),
+            TypeDef::Variant(v) => write!(f, "{}", v.name),
+            TypeDef::Function(func_ty) => {
+                write!(f, "function (")?;
+
+                for (i, param_ty) in func_ty.param_tys.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, "; ")?;
+                    }
+                    write!(f, "{}", param_ty)?;
+                }
+
+                write!(f, "): {}", func_ty.return_ty)
+            }
         }
     }
 }
@@ -263,6 +166,8 @@ pub enum Type {
 
     /// RC shared object struct of known or unknown type
     RcObject(Option<StructID>),
+
+    Function(StructID),
 
     Bool,
     U8,
@@ -339,7 +244,7 @@ impl Type {
 
     pub fn is_complex(&self) -> bool {
         match self {
-            Type::Variant(..) | Type::Array {..} | Type::Struct(..) => true,
+            Type::Variant(..) | Type::Array { .. } | Type::Struct(..) => true,
             _ => false,
         }
     }
@@ -379,8 +284,9 @@ impl fmt::Display for Type {
             Type::RcObject(id) => match id {
                 Some(id) => write!(f, "{{rc {}}}", id),
                 None => write!(f, "{{rc}}"),
-            }
+            },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
+            Type::Function(id) => write!(f, "function {}", id),
         }
     }
 }

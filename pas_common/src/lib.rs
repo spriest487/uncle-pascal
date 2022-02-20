@@ -20,10 +20,19 @@ pub trait DiagnosticOutput: fmt::Display {
         None
     }
 
+    fn notes(&self) -> Vec<String> {
+        Vec::new()
+    }
+
     fn main(&self) -> DiagnosticMessage {
+        let title = self.title();
+        let label = self.label();
+        let notes = self.notes().to_vec();
+
         DiagnosticMessage {
-            title: self.title(),
-            label: self.label(),
+            title,
+            label,
+            notes,
         }
     }
 
@@ -45,6 +54,7 @@ pub struct DiagnosticLabel {
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct DiagnosticMessage {
     pub title: String,
+    pub notes: Vec<String>,
     pub label: Option<DiagnosticLabel>,
 }
 

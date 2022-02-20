@@ -385,6 +385,7 @@ impl DiagnosticOutput for TypecheckError {
                             text: None,
                             span: existing.span().clone(),
                         }),
+                        notes: Vec::new(),
                     }]
                 }
 
@@ -394,6 +395,7 @@ impl DiagnosticOutput for TypecheckError {
                         text: None,
                         span: existing.span().clone(),
                     }),
+                    notes: Vec::new(),
                 }],
 
                 NameError::AlreadyImplemented {
@@ -407,6 +409,7 @@ impl DiagnosticOutput for TypecheckError {
                         text: None,
                         span: existing.clone(),
                     }),
+                    notes: Vec::new(),
                 }],
 
                 NameError::Ambiguous { ident, options } => {
@@ -418,6 +421,7 @@ impl DiagnosticOutput for TypecheckError {
                                 text: None,
                                 span: option.last().span().clone(),
                             }),
+                            notes: Vec::new(),
                         })
                         .collect();
                     see_also.sort();
@@ -431,6 +435,7 @@ impl DiagnosticOutput for TypecheckError {
                             text: None,
                             span: decl.clone(),
                         }),
+                        notes: Vec::new(),
                     },
                     DiagnosticMessage {
                         title: format!("Conflicting definition of `{}`", ident),
@@ -438,6 +443,7 @@ impl DiagnosticOutput for TypecheckError {
                             text: None,
                             span: def.clone(),
                         }),
+                        notes: Vec::new(),
                     },
                 ],
 
@@ -452,6 +458,7 @@ impl DiagnosticOutput for TypecheckError {
                         text: Some("declared here".to_string()),
                         span: sym.span().clone(),
                     }),
+                    notes: Vec::new(),
                 })
                 .collect(),
 
@@ -461,6 +468,7 @@ impl DiagnosticOutput for TypecheckError {
                     text: Some("declared here".to_string()),
                     span: ident.span().clone(),
                 }),
+                notes: Vec::new(),
             }],
 
             TypecheckError::NotMutable {
@@ -472,6 +480,7 @@ impl DiagnosticOutput for TypecheckError {
                     text: Some("declared as immutable here".to_string()),
                     span: decl_span.clone(),
                 }),
+                notes: Vec::new(),
             }],
 
             TypecheckError::DuplicateNamedArg { name, previous, .. } => vec![DiagnosticMessage {
@@ -480,6 +489,7 @@ impl DiagnosticOutput for TypecheckError {
                     text: None,
                     span: previous.clone(),
                 }),
+                notes: Vec::new(),
             }],
 
             TypecheckError::AmbiguousFunction { candidates, .. } => {
@@ -491,6 +501,7 @@ impl DiagnosticOutput for TypecheckError {
                                 text: None,
                             }),
                             title: format!("may refer to {}", c),
+                            notes: Vec::new(),
                         }
                     })
                     .collect()

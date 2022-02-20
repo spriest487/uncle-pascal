@@ -75,6 +75,7 @@ impl DiagnosticOutput for CompileError {
                     err
                 ),
                 label: None,
+                notes: Vec::new(),
             },
             CompileError::InvalidUnitFilename(at) => DiagnosticMessage {
                 title: "Invalid unit filename".to_string(),
@@ -82,10 +83,12 @@ impl DiagnosticOutput for CompileError {
                     text: None,
                     span: at.clone(),
                 }),
+                notes: Vec::new(),
             },
             CompileError::ExecError(ExecError::Raised { msg, .. }) => DiagnosticMessage {
                 title: msg.clone(),
                 label: None,
+                notes: Vec::new(),
             },
             CompileError::ExecError(err) => err.main(),
             CompileError::FileNotFound(path, span) => DiagnosticMessage {
@@ -93,18 +96,21 @@ impl DiagnosticOutput for CompileError {
                 label: span.as_ref().map(|span| DiagnosticLabel {
                     text: None,
                     span: span.clone(),
-                })
+                }),
+                notes: Vec::new(),
             },
             CompileError::DuplicateUnit { unit_ident, duplicate_path } => DiagnosticMessage {
                 title: format!("`{}` @ {} was already loaded", unit_ident, duplicate_path.display()),
                 label: None,
+                notes: Vec::new(),
             },
             CompileError::CircularDependency { unit_ident, used_unit, span } => DiagnosticMessage {
                 title: format!("unit `{}` used from `{}` creates a circular reference", used_unit, unit_ident),
                 label: Some(DiagnosticLabel {
                     text: Some("unit used here".to_string()),
                     span: span.clone(),
-                })
+                }),
+                notes: Vec::new(),
             }
         }
     }
@@ -115,6 +121,7 @@ impl DiagnosticOutput for CompileError {
             CompileError::ParseError(err) => err.see_also(),
             CompileError::TypecheckError(err) => err.see_also(),
             CompileError::PreprocessorError(err) => err.see_also(),
+            CompileError::ExecError(err) => err.see_also(),
             _ => Vec::new(),
         }
     }

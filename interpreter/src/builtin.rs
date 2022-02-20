@@ -288,8 +288,8 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             if dyn_array_el_ty.is_rc() {
                 let el_rc_ref = state.load_indirect(&el_ptr)?.into_owned();
                 state.retain_dyn_val(&el_rc_ref)?;
-            } else if let Some((el_retain_func, _)) = &el_rc_funcs {
-                state.call(el_retain_func, &[DynValue::Pointer(el_ptr)], None)?;
+            } else if let Some((el_retain_func_id, _)) = &el_rc_funcs {
+                state.call(*el_retain_func_id, &[DynValue::Pointer(el_ptr)], None)?;
             }
         }
 

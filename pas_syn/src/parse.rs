@@ -185,6 +185,7 @@ impl DiagnosticOutput for ParseError {
                     span: existing.span().clone(),
                     text: Some(format!("`{}` appears here", existing.keyword())),
                 }),
+                notes: Vec::new(),
             }],
 
             _ => Vec::new(),
