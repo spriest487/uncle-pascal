@@ -248,12 +248,17 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
             decls.push(typecheck_unit_decl(decl, ctx)?);
         }
 
-        let mut init = Vec::new();
-        for stmt in &unit.init {
-            let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
-            expect_stmt_initialized(&stmt, ctx)?;
-            init.push(stmt);
-        }
+        // init statement is implicitly a block
+        let init = ctx.scope(Environment::Block { allow_unsafe: false}, |ctx| {
+            let mut init = Vec::new();
+            for stmt in &unit.init {
+                let stmt = typecheck_stmt(stmt, &Type::Nothing, ctx)?;
+                expect_stmt_initialized(&stmt, ctx)?;
+                init.push(stmt);
+            }
+
+            Ok(init)
+        })?;
 
         let undefined = ctx.undefined_syms();
         if !undefined.is_empty() {

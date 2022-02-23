@@ -16,9 +16,11 @@ impl<'s> Clone for ScopePathRef<'s> {
 
 impl<'s> ScopePathRef<'s> {
     pub fn find(&self, key: &Ident) -> Option<ScopeMemberRef<'s>> {
-        for i in (0..self.namespaces.len()).rev() {
-            let path = &self.namespaces[0..=i];
-            let scope = &path[path.len() - 1];
+        let mut current = self.namespaces.len() - 1;
+
+        loop {
+            let scope = &self.namespaces[current];
+            let path = &self.namespaces[0..=current];
 
             if scope.key() == Some(key) {
                 return Some(ScopeMemberRef::Scope {
@@ -47,6 +49,15 @@ impl<'s> ScopePathRef<'s> {
                         })
                     },
                 }
+            }
+
+            if current == 0 {
+                break;
+            }
+
+            current -= 1;
+            while current > 0 && !scope.can_access_members(self.namespaces[current]) {
+                current -= 1;
             }
         }
 

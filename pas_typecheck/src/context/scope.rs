@@ -152,6 +152,23 @@ impl Scope {
 
         Ok(())
     }
+
+    // does this scope have access to the decls in another scope? usually true
+    pub fn can_access_members(&self, other: &Scope) -> bool {
+        match (&self.env, &other.env) {
+            // function expressions nested within blocks or other functions cannot see the contents
+            // of their parent scopes the normal way - they need a closure
+            (
+                Environment::FunctionBody { .. },
+                Environment::Block { .. } | Environment::FunctionBody { .. }
+            ) => false,
+
+            // we could compare the IDs here to ensure deeper scopes can only reference shallower
+            // once, but this entire operation only makes sense for comparing scopes to their
+            // parents anyway
+            _ => true,
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

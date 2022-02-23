@@ -1,10 +1,17 @@
 uses System;
 
-let named := x;
+var greet: function(String): String;
 
-let greet := function(n: String)
-    begin
-        WriteLn('hello, ' + n);
-    end;
+greet := function(friend: String): String
+begin
+    'hello, ' + friend;
+end;
 
-greet('world');
+WriteLn(greet('world'));
+
+greet := function(enemy: String): String
+begin
+    'go away, ' + enemy;
+end;
+
+WriteLn(greet('world'));
