@@ -15,6 +15,7 @@ use crate::{
 use pas_common::span::*;
 use std::fmt;
 use std::rc::Rc;
+use crate::ast::{AnonymousFunctionDef};
 use crate::ast::match_block::MatchExpr;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -56,6 +57,7 @@ pub enum Expression<A: Annotation> {
     Case(Box<CaseExpr<A>>),
     Match(Box<MatchExpr<A>>),
     Cast(Box<Cast<A>>),
+    AnonymousFunction(Box<AnonymousFunctionDef<A>>)
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {
@@ -137,6 +139,12 @@ impl<A: Annotation> From<MatchExpr<A>> for Expression<A> {
     }
 }
 
+impl<A: Annotation> From<AnonymousFunctionDef<A>> for Expression<A> {
+    fn from(def: AnonymousFunctionDef<A>) -> Self {
+        Expression::AnonymousFunction(Box::new(def))
+    }
+}
+
 impl<A: Annotation> Expression<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -154,6 +162,7 @@ impl<A: Annotation> Expression<A> {
             Expression::Match(match_expr) => &match_expr.annotation,
             Expression::Exit(exit) => exit.annotation(),
             Expression::Cast(cast) => &cast.annotation,
+            Expression::AnonymousFunction(def) => &def.annotation,
         }
     }
 
@@ -173,6 +182,7 @@ impl<A: Annotation> Expression<A> {
             Expression::Match(match_expr) => &mut match_expr.annotation,
             Expression::Exit(exit) => exit.annotation_mut(),
             Expression::Cast(cast) => &mut cast.annotation,
+            Expression::AnonymousFunction(def) => &mut def.annotation,
         }
     }
 
@@ -256,6 +266,7 @@ impl<A: Annotation> fmt::Display for Expression<A> {
             Expression::Match(match_expr) => write!(f, "{}", match_expr),
             Expression::Exit(exit) => write!(f, "{}", exit),
             Expression::Cast(cast) => write!(f, "{}", cast),
+            Expression::AnonymousFunction(def) => write!(f, "{}", def),
         }
     }
 }

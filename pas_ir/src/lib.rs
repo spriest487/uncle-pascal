@@ -111,7 +111,7 @@ enum FunctionDeclKey {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct FunctionCacheKey {
+pub(crate) struct FunctionDefKey {
     decl_key: FunctionDeclKey,
     type_args: Option<pas_ty::TypeList>,
 }

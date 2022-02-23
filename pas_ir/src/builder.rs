@@ -1,7 +1,7 @@
 use pas_typecheck as pas_ty;
 
 use crate::{
-    metadata::*, Function, FunctionCacheKey, FunctionDeclKey, FunctionDef, FunctionInstance,
+    metadata::*, Function, FunctionDefKey, FunctionDeclKey, FunctionDef, FunctionInstance,
     GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
     Type, Value, EXIT_LABEL,
 };
@@ -166,12 +166,16 @@ impl<'m> Builder<'m> {
             (None, ..) => None,
         };
 
-        let key = FunctionCacheKey {
+        let key = FunctionDefKey {
             type_args: instance_type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
 
         self.module.instantiate_func(key)
+    }
+
+    pub fn translate_anonymous_func(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> FunctionInstance {
+        self.module.translate_anonymous_func(func, self.type_args.clone())
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {

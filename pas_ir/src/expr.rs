@@ -60,6 +60,11 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         ast::Expression::Match(match_expr) => translate_match_expr(match_expr, builder),
 
         ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
+
+        ast::Expression::AnonymousFunction(def) => {
+            let func_instance = builder.translate_anonymous_func(def);
+            Ref::Global(GlobalRef::Function(func_instance.id))
+        }
     };
 
     builder.pop_debug_context();

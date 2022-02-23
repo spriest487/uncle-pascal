@@ -10,6 +10,7 @@ pub type DeclMod = ast::DeclMod<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
+pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<TypeAnnotation>;
 
 fn typecheck_param(
     param: &ast::FunctionParam<Span>,
@@ -200,7 +201,21 @@ pub fn typecheck_func_def(
         ctx.declare_type_params(&decl_type_params)?;
     };
 
-    for param in &decl.params {
+    declare_func_params_in_body(&decl.params, ctx)?;
+
+    let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
+
+    ctx.pop_scope(body_scope);
+
+    Ok(FunctionDef {
+        decl,
+        body,
+        span: def.span.clone(),
+    })
+}
+
+fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> TypecheckResult<()> {
+    for param in params {
         let (kind, init) = match param.modifier {
             Some(ast::FunctionParamMod::Var) => (ValueKind::Mutable, true),
             Some(ast::FunctionParamMod::Out) => (ValueKind::Uninitialized, false),
@@ -221,15 +236,7 @@ pub fn typecheck_func_def(
         }
     }
 
-    let body = typecheck_block(&def.body, decl.return_ty.as_ref().unwrap(), ctx)?;
-
-    ctx.pop_scope(body_scope);
-
-    Ok(FunctionDef {
-        decl,
-        body,
-        span: def.span.clone(),
-    })
+    Ok(())
 }
 
 pub fn specialize_func_decl(
@@ -260,5 +267,47 @@ pub fn specialize_func_decl(
         params,
         return_ty,
         ..decl.clone()
+    })
+}
+
+pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<AnonymousFunctionDef> {
+    let mut params = Vec::new();
+    for param in &src_def.params {
+        let param = typecheck_param(param, ctx)?;
+        params.push(param);
+    }
+
+    let return_ty = match &src_def.return_ty {
+        Some(src_return_ty) => typecheck_type(src_return_ty, ctx)?,
+        None => Type::Nothing,
+    };
+
+    let sig_params = params.iter().map(|p| p.clone().into()).collect();
+
+    let sig = Rc::new(FunctionSig {
+        return_ty: return_ty.clone(),
+        params: sig_params,
+        type_params: None,
+    });
+
+    let body_env = Environment::FunctionBody { result_ty: return_ty.clone() };
+    let body = ctx.scope(body_env, |ctx| {
+        declare_func_params_in_body(&params, ctx)?;
+
+        typecheck_block(&src_def.body, &return_ty, ctx)
+    })?;
+
+    let annotation = TypedValueAnnotation {
+        decl: Some(src_def.span().clone()),
+        span: src_def.span().clone(),
+        ty: Type::Function(sig),
+        value_kind: ValueKind::Temporary,
+    }.into();
+
+    Ok(AnonymousFunctionDef {
+        params,
+        return_ty: Some(return_ty),
+        annotation,
+        body,
     })
 }

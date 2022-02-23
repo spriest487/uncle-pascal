@@ -1,7 +1,7 @@
 use crate::{
     jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
-    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionCacheKey, FunctionDeclKey,
-    FunctionDef, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
+    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef,
+    FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
     LocalID, Metadata, Ref, StructID, Type, TypeDef, EXIT_LABEL, RETURN_REF,
 };
 use linked_hash_map::LinkedHashMap;
@@ -25,7 +25,7 @@ pub struct Module {
     pub metadata: Metadata,
 
     pub functions: HashMap<FunctionID, Function>,
-    translated_funcs: HashMap<FunctionCacheKey, FunctionInstance>,
+    translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
     pub init: Vec<Instruction>,
 }
@@ -80,7 +80,7 @@ impl Module {
         self.functions.insert(id, function);
     }
 
-    pub(crate) fn instantiate_func(&mut self, key: FunctionCacheKey) -> FunctionInstance {
+    pub(crate) fn instantiate_func(&mut self, key: FunctionDefKey) -> FunctionInstance {
         if let Some(cached_func) = self.translated_funcs.get(&key) {
             return cached_func.clone();
         }
@@ -108,18 +108,28 @@ impl Module {
 
                         // cache the function before translating the instantiation, because
                         // it may recurse and instantiate itself in its own body
-                        let cached_func = FunctionInstance { id, sig: Rc::new(sig) };
+                        let cached_func = FunctionInstance {
+                            id,
+                            sig: Rc::new(sig),
+                        };
                         self.translated_funcs
                             .insert(key.clone(), cached_func.clone());
 
                         let debug_name = specialized_decl.to_string();
-                        let ir_func =
-                            self.translate_func_def(&func_def, key.type_args.clone(), debug_name);
+                        let ir_func = self.translate_func_def(
+                            &func_def.decl.params,
+                            func_def.decl.type_params.as_ref(),
+                            key.type_args.clone(),
+                            func_def.decl.return_ty.as_ref(),
+                            &func_def.body,
+                            func_def.span.clone(),
+                            debug_name
+                        );
 
                         self.functions.insert(id, Function::Local(ir_func));
 
                         cached_func
-                    }
+                    },
 
                     Some(pas_ty::Def::External(extern_decl)) => {
                         assert!(
@@ -133,21 +143,12 @@ impl Module {
                         let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
 
                         let return_ty = self.translate_type(&sig.return_ty, None);
-                        let params: Vec<_> = sig
-                            .params
-                            .iter()
-                            .map(|sig_param| {
-                                let param_ty = self.translate_type(&sig_param.ty, None);
-                                match sig_param.modifier {
-                                    None => param_ty,
-                                    Some(FunctionParamMod::Var | FunctionParamMod::Out) => {
-                                        param_ty.ptr()
-                                    }
-                                }
-                            })
-                            .collect();
+                        let params = self.translate_func_params(&sig);
 
-                        let cached_func = FunctionInstance { id, sig: Rc::new(sig) };
+                        let cached_func = FunctionInstance {
+                            id,
+                            sig: Rc::new(sig),
+                        };
 
                         let extern_src = extern_decl
                             .external_src()
@@ -168,11 +169,11 @@ impl Module {
                         self.translated_funcs.insert(key, cached_func.clone());
 
                         cached_func
-                    }
+                    },
 
                     _ => panic!("missing source def for function {}", name),
                 }
-            }
+            },
 
             FunctionDeclKey::Method {
                 iface,
@@ -192,7 +193,7 @@ impl Module {
                         let mut builder = Builder::new(self);
                         let iface_meta = builder.translate_iface(&iface_def);
                         self.metadata.define_iface(iface_meta)
-                    }
+                    },
                 };
 
                 let method_def = self
@@ -236,13 +237,64 @@ impl Module {
                     .insert(key.clone(), cached_func.clone());
 
                 let debug_name = specialized_decl.to_string();
-                let ir_func =
-                    self.translate_func_def(&method_def, key.type_args.clone(), debug_name);
+                let ir_func = self.translate_func_def(
+                    &method_def.decl.params,
+                    method_def.decl.type_params.as_ref(),
+                    key.type_args.clone(),
+                    method_def.decl.return_ty.as_ref(),
+                    &method_def.body,
+                    method_def.span().clone(),
+                    debug_name
+                );
                 self.functions.insert(id, Function::Local(ir_func));
 
                 cached_func
-            }
+            },
         }
+    }
+
+    fn translate_func_params(&mut self, sig: &pas_ty::FunctionSig) -> Vec<Type> {
+        sig.params
+            .iter()
+            .map(|sig_param| {
+                let param_ty = self.translate_type(&sig_param.ty, None);
+                match sig_param.modifier {
+                    None => param_ty,
+                    Some(FunctionParamMod::Var | FunctionParamMod::Out) => param_ty.ptr(),
+                }
+            })
+            .collect()
+    }
+
+    pub fn translate_anonymous_func(
+        &mut self,
+        func: &pas_ty::ast::AnonymousFunctionDef,
+        type_params: Option<pas_ty::TypeList>,
+    ) -> FunctionInstance {
+        let id = self.metadata.insert_func(None);
+
+        let sig = pas_ty::FunctionSig::of_anonymous_func(func);
+
+        // let return_ty = self.translate_type(&sig.return_ty, None);
+        // let params = self.translate_func_params(&sig);
+
+        let debug_name = "<anonymous function>".to_string();
+
+        let cached_func = FunctionInstance { id, sig };
+
+        let ir_func = self.translate_func_def(
+            &func.params,
+            None,
+            type_params,
+            func.return_ty.as_ref(),
+            &func.body,
+            func.span().clone(),
+            debug_name,
+        );
+
+        self.functions.insert(id, Function::Local(ir_func));
+
+        cached_func
     }
 
     // statically reference a method and get a function ID. interface methods are all translated
@@ -254,7 +306,7 @@ impl Module {
         method: pas_syn::Ident,
         self_ty: pas_ty::Type,
     ) -> FunctionInstance {
-        let key = FunctionCacheKey {
+        let key = FunctionDefKey {
             decl_key: FunctionDeclKey::Method {
                 iface,
                 method,
@@ -274,7 +326,7 @@ impl Module {
         func_name: IdentPath,
         type_args: Option<pas_ty::TypeList>,
     ) -> FunctionInstance {
-        let key = FunctionCacheKey {
+        let key = FunctionDefKey {
             type_args,
             decl_key: FunctionDeclKey::Function { name: func_name },
         };
@@ -284,13 +336,17 @@ impl Module {
 
     fn translate_func_def(
         &mut self,
-        func: &pas_ty::ast::FunctionDef,
-        type_args: Option<pas_ty::TypeList>,
+        def_params: &[pas_ty::ast::FunctionParam],
+        def_type_params: Option<&pas_ty::TypeParamList>,
+        def_type_args: Option<pas_ty::TypeList>,
+        def_return_ty: Option<&pas_ty::Type>,
+        def_body: &pas_ty::ast::Block,
+        src_span: Span,
         debug_name: String,
     ) -> FunctionDef {
-        let mut body_builder = match type_args {
+        let mut body_builder = match def_type_args {
             Some(type_args) => {
-                let type_params = match &func.decl.type_params {
+                let type_params = match def_type_params {
                     Some(params) if params.len() == type_args.len() => params,
                     Some(params) => panic!(
                         "type args in function body don't match params! expected {}, got {}",
@@ -308,11 +364,11 @@ impl Module {
                     builder.comment(&format!("{} = {}", type_param, type_arg));
                 }
                 builder
-            }
+            },
             None => Builder::new(self),
         };
 
-        let return_ty = match func.decl.return_ty.as_ref() {
+        let return_ty = match def_return_ty {
             None | Some(pas_ty::Type::Nothing) => Type::Nothing,
             Some(ty) => {
                 let return_ty = body_builder.translate_type(ty);
@@ -326,27 +382,27 @@ impl Module {
 
                 body_builder.bind_return(return_ty.clone());
                 return_ty
-            }
+            },
         };
 
         let param_id_offset = match &return_ty {
             Type::Nothing => 0,
             _ => {
-                assert!(func.decl.return_ty.is_some());
+                assert!(def_return_ty.is_some());
                 1
-            }
+            },
         };
 
-        let mut bound_params = Vec::with_capacity(func.decl.params.len());
+        let mut bound_params = Vec::with_capacity(def_params.len());
 
-        for (i, param) in func.decl.params.iter().enumerate() {
+        for (i, param) in def_params.iter().enumerate() {
             // if the function returns a value, $0 is the return pointer, and args start at $1
             let id = LocalID(i + param_id_offset);
 
             let (param_ty, by_ref) = match &param.modifier {
                 Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
                     (body_builder.translate_type(&param.ty).ptr(), true)
-                }
+                },
 
                 None => (body_builder.translate_type(&param.ty), false),
             };
@@ -370,7 +426,7 @@ impl Module {
             _ => RETURN_REF.clone(),
         };
 
-        translate_block(&func.body, body_block_out_ref, &mut body_builder);
+        translate_block(&def_body, body_block_out_ref, &mut body_builder);
         let mut body_instructions = body_builder.finish();
 
         // all functions should finish with the reserved EXIT label but to
@@ -385,7 +441,7 @@ impl Module {
             params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
             return_ty,
             debug_name,
-            src_span: func.decl.span().clone(),
+            src_span,
         }
     }
 
@@ -409,7 +465,7 @@ impl Module {
                     let iface_def = self.src_metadata.find_iface_def(iface).unwrap();
 
                     for method in &iface_def.methods {
-                        let cache_key = FunctionCacheKey {
+                        let cache_key = FunctionDefKey {
                             decl_key: FunctionDeclKey::Method {
                                 self_ty: real_ty.clone(),
                                 method: method.ident.single().clone(),
@@ -440,7 +496,7 @@ impl Module {
             Some(current_ty_args) => {
                 let src_ty = src_ty.clone().substitute_type_args(&current_ty_args);
                 src_ty
-            }
+            },
 
             None => src_ty.clone(),
         };
@@ -466,7 +522,7 @@ impl Module {
 
                 self.metadata.define_variant(id, variant_meta);
                 ty
-            }
+            },
 
             pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
                 // handle builtin types
@@ -498,7 +554,7 @@ impl Module {
                 self.metadata.define_struct(id, struct_meta);
 
                 ty
-            }
+            },
 
             pas_ty::Type::Interface(iface_def) => {
                 let iface_def = self.src_metadata.find_iface_def(iface_def).unwrap();
@@ -515,7 +571,7 @@ impl Module {
                 assert_eq!(def_id, id);
 
                 ty
-            }
+            },
 
             pas_ty::Type::DynArray { element } => {
                 let id = self.translate_dyn_array_struct(&element, type_args);
@@ -526,7 +582,7 @@ impl Module {
                 //                println!("{} <- {}", src_ty, ty);
 
                 ty
-            }
+            },
 
             pas_ty::Type::Function(func_sig) => {
                 if let Some(id) = self.metadata.find_func_ptr_ty(&func_sig) {
@@ -534,14 +590,16 @@ impl Module {
                 }
 
                 let ir_sig = self.translate_func_sig(&func_sig, type_args);
-                let id = self.metadata.define_func_ptr_ty((**func_sig).clone(), ir_sig);
+                let id = self
+                    .metadata
+                    .define_func_ptr_ty((**func_sig).clone(), ir_sig);
 
                 let ty = Type::Function(id);
 
                 self.type_cache.insert(src_ty, ty.clone());
 
                 ty
-            }
+            },
 
             real_ty => {
                 // nothing to be instantiated
@@ -550,7 +608,7 @@ impl Module {
                 //                println!("{} <- {}", src_ty, ty);
 
                 ty
-            }
+            },
         }
     }
 
@@ -606,7 +664,7 @@ impl Module {
                 Some(data_ty) => {
                     let case_ty = self.translate_type(data_ty, type_args);
                     (Some(case_ty), data_ty.is_rc_reference())
-                }
+                },
                 None => (None, false),
             };
 
@@ -696,8 +754,15 @@ impl Module {
         }
     }
 
-    pub fn translate_func_sig(&mut self, sig: &pas_ty::FunctionSig, type_args: Option<&TypeList>) -> FunctionSig {
-        assert!(sig.type_params.is_none(), "cannot create type for a generic function pointer");
+    pub fn translate_func_sig(
+        &mut self,
+        sig: &pas_ty::FunctionSig,
+        type_args: Option<&TypeList>,
+    ) -> FunctionSig {
+        assert!(
+            sig.type_params.is_none(),
+            "cannot create type for a generic function pointer"
+        );
 
         let return_ty = self.translate_type(&sig.return_ty, type_args);
         let mut param_tys = Vec::new();
@@ -756,7 +821,7 @@ impl fmt::Display for Module {
                             writeln!(f)?;
                         }
                     }
-                }
+                },
 
                 TypeDef::Variant(v) => {
                     writeln!(f, "{}: {}", id, v.name)?;
@@ -768,11 +833,11 @@ impl fmt::Display for Module {
                         }
                         writeln!(f)?;
                     }
-                }
+                },
 
                 TypeDef::Function(def) => {
                     write!(f, "{}", def)?;
-                }
+                },
             }
 
             writeln!(f)?;
@@ -817,20 +882,20 @@ impl fmt::Display for Module {
             match self.metadata.func_desc(*id) {
                 Some(desc_name) => {
                     writeln!(f, "{}", desc_name)?;
-                }
+                },
                 None => {
                     writeln!(f, " /* {} */", func.debug_name())?;
-                }
+                },
             }
 
             match func {
                 Function::Local(FunctionDef { body, .. }) => {
                     write_instruction_list(f, &self.metadata, body)?;
-                }
+                },
 
                 Function::External(ExternalFunctionRef { symbol, src, .. }) => {
                     writeln!(f, "<external function '{}' in module '{}'>", symbol, src)?;
-                }
+                },
             }
             writeln!(f)?;
         }

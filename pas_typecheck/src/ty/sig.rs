@@ -5,6 +5,8 @@ use crate::{
 use pas_common::span::Spanned;
 use pas_syn::ast::{self, FunctionParamMod};
 use std::fmt;
+use std::rc::Rc;
+use crate::ast::AnonymousFunctionDef;
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
 pub struct FunctionParamSig {
@@ -107,6 +109,12 @@ impl FunctionSig {
         let param_sigs = decl.params.iter().cloned().map(FunctionParamSig::from).collect();
 
         Self::new(return_ty, param_sigs, decl.type_params.clone())
+    }
+
+    pub fn of_anonymous_func(func: &AnonymousFunctionDef) -> Rc<Self> {
+        let func_ty = func.annotation.ty();
+        let sig = func_ty.as_func().expect("anonymous function must have function type");
+        sig.clone()
     }
 
     /// test if a list of type args that could be used to specialize this function are applicable

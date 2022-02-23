@@ -5,6 +5,7 @@ use crate::{
     ast::{Block, DeclMod, TypeList, TypeParam, WhereClause},
     parse::prelude::*,
 };
+use derivative::*;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -54,9 +55,14 @@ pub struct InterfaceImpl<A: Annotation> {
     pub iface: A::Type,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(PartialEq, Hash, Debug)]
 pub struct FunctionDecl<A: Annotation> {
     pub ident: IdentPath,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 
     pub params: Vec<FunctionParam<A>>,
@@ -143,7 +149,7 @@ impl FunctionDecl<Span> {
             Some(_) => {
                 // look for a return type
                 Some(TypeName::parse(tokens)?)
-            }
+            },
             None => None,
         };
 
@@ -156,7 +162,7 @@ impl FunctionDecl<Span> {
                 let err = ParseError::UnexpectedToken(Box::new(where_clause_tt), expected);
 
                 return Err(TracedError::trace(err));
-            }
+            },
 
             (Some(type_params_list), Some(..)) => {
                 let mut where_clause = WhereClause::parse(tokens)?;
@@ -189,14 +195,12 @@ impl FunctionDecl<Span> {
                     }));
                 }
 
-                Some(TypeList::new(
-                    type_params,
-                    type_params_list.span().clone())
-                )
-            }
+                Some(TypeList::new(type_params, type_params_list.span().clone()))
+            },
 
             (Some(type_params), None) => {
-                let items: Vec<_> = type_params.items
+                let items: Vec<_> = type_params
+                    .items
                     .iter()
                     .map(|ident| TypeParam {
                         ident: ident.clone(),
@@ -205,11 +209,9 @@ impl FunctionDecl<Span> {
                     .collect();
 
                 Some(TypeList::new(items, type_params.span().clone()))
-            }
+            },
 
-            (None, None) => {
-                None
-            }
+            (None, None) => None,
         };
 
         let sig_span = match &return_ty {
@@ -282,10 +284,15 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Hash, PartialEq, Debug)]
 pub struct FunctionDef<A: Annotation> {
     pub decl: FunctionDecl<A>,
     pub body: Block<A>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
@@ -299,5 +306,99 @@ impl<A: Annotation> fmt::Display for FunctionDef<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.decl)?;
         write!(f, "{}", self.body)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub struct AnonymousFunctionDef<A: Annotation> {
+    pub annotation: A,
+
+    pub params: Vec<FunctionParam<A>>,
+    pub return_ty: Option<A::Type>,
+
+    pub body: Block<A>,
+}
+
+impl<A: Annotation> fmt::Display for AnonymousFunctionDef<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "function (")?;
+
+        for (i, param) in self.params.iter().enumerate() {
+            if i > 0 {
+                write!(f, ";")?;
+            }
+            if let Some(modifier) = &param.modifier {
+                write!(f, "{} ", modifier)?;
+            }
+            write!(f, "{}: {}", param.ident, param.ty)?;
+        }
+
+        write!(f, ")")?;
+        if let Some(return_ty) = &self.return_ty {
+            write!(f, ": {}", return_ty)?;
+        }
+        write!(f, "end")
+    }
+}
+
+impl<A: Annotation> Spanned for AnonymousFunctionDef<A> {
+    fn span(&self) -> &Span {
+        self.annotation.span()
+    }
+}
+
+impl Parse for AnonymousFunctionDef<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+        let func_kw = tokens.match_one(Keyword::Function)?;
+        let (params_open, params_inner) = match tokens.match_one(DelimiterPair::Bracket)? {
+            TokenTree::Delimited { open, inner, .. } => (open, inner),
+            _ => unreachable!(),
+        };
+
+        let mut params_tokens = TokenStream::new(params_inner, params_open);
+        let params = params_tokens.match_separated(Separator::Semicolon, |_i, tokens| {
+            let (modifier, mod_span) = if let Some(tt) = tokens.match_one_maybe(Keyword::Var) {
+                (Some(FunctionParamMod::Out), Some(tt.into_span()))
+            } else if let Some(tt) = tokens.match_one_maybe(Keyword::Out) {
+                (Some(FunctionParamMod::Var), Some(tt.into_span()))
+            } else {
+                (None, None)
+            };
+
+            let ident = Ident::parse(tokens)?;
+            tokens.match_one(Separator::Colon)?;
+            let ty = TypeName::parse(tokens)?;
+
+            let span = mod_span.map(|s| s.to(&ty))
+                .unwrap_or_else(|| ident.span.to(&ty));
+
+            let param = FunctionParam {
+                ident,
+                ty,
+                modifier,
+                span,
+            };
+
+            Ok(Generate::Yield(param))
+        })?;
+        params_tokens.finish()?;
+
+        let return_ty = if tokens.match_one_maybe(Separator::Colon).is_some() {
+            let ty = TypeName::parse(tokens)?;
+            Some(ty)
+        } else {
+            None
+        };
+
+        let body = Block::parse(tokens)?;
+
+        let span = func_kw.span().to(body.span());
+
+        Ok(AnonymousFunctionDef {
+            annotation: span,
+            body,
+            params,
+            return_ty
+        })
     }
 }

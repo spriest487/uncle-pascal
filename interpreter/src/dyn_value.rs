@@ -2,6 +2,7 @@ use crate::ptr::Pointer;
 use pas_ir::metadata::{ClassID, FieldID, FunctionID, StructID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
+use cast::i128;
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
@@ -480,6 +481,7 @@ impl DynValue {
             DynValue::Pointer(ptr) => Some(ptr.addr as i128),
             DynValue::Bool(true) => Some(1),
             DynValue::Bool(false) => Some(0),
+            DynValue::F32(f) => i128(*f).ok(),
             _ => None,
         }
     }

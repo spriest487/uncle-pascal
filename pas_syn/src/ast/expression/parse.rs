@@ -10,7 +10,7 @@ use crate::{
 };
 use pas_common::{span::*, TracedError};
 use std::{cmp::Ordering};
-use crate::ast::{CaseExpr, Cast, Exit, Expression, Literal};
+use crate::ast::{AnonymousFunctionDef, CaseExpr, Cast, Exit, Expression, Literal};
 use crate::ast::match_block::MatchExpr;
 
 // anything which can appear at the start of an operand subexpr (not let bindings
@@ -21,6 +21,8 @@ pub fn match_operand_start() -> Matcher {
         .or(DelimiterPair::Bracket)
         // collection constructor
         .or(DelimiterPair::SquareBracket)
+        // inline function decl
+        .or(Keyword::Function)
         // block/control flow
         .or(DelimiterPair::BeginEnd)
         .or(DelimiterPair::CaseEnd)
@@ -534,6 +536,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             Some(TokenTree::RealNumber { .. }) => {
                 let expr = parse_literal_real(self.tokens)?;
                 self.push_operand(expr);
+            }
+
+            Some(tt) if tt.is_keyword(Keyword::Function) => {
+                let func_def = AnonymousFunctionDef::parse(self.tokens)?;
+                self.push_operand(Expression::from(func_def))
             }
 
             Some(x) => unreachable!("got {:?} which is excluded by pattern", x),

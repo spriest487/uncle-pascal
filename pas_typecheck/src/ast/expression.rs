@@ -206,6 +206,11 @@ pub fn typecheck_expr(
             let cast = typecheck_cast_expr(cast, ctx)?;
             Ok(ast::Expression::from(cast))
         }
+
+        ast::Expression::AnonymousFunction(def) => {
+            let anon_func = typecheck_func_expr(def, expect_ty, ctx)?;
+            Ok(ast::Expression::from(anon_func))
+        }
     }
 }
 
@@ -425,6 +430,8 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
         },
 
         ast::Expression::Cast(cast) => expect_expr_initialized(&cast.expr, ctx),
+
+        ast::Expression::AnonymousFunction(_) => Ok(()),
     }
 }
 
