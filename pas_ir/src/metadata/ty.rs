@@ -5,7 +5,7 @@ mod variant_def;
 
 pub use self::{function::*, iface_def::*, struct_def::*, variant_def::*};
 use crate::{
-    name_path::NamePath, InterfaceID, StructID,
+    name_path::NamePath, InterfaceID, TypeDefID,
     STRING_ID,
 };
 use pas_common::span::Span;
@@ -18,12 +18,12 @@ use std::{
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ClassID {
-    Class(StructID),
+    Class(TypeDefID),
     Interface(InterfaceID),
 }
 
 impl ClassID {
-    pub fn as_class(&self) -> Option<StructID> {
+    pub fn as_class(&self) -> Option<TypeDefID> {
         match self {
             ClassID::Class(id) => Some(*id),
             ClassID::Interface(..) => None,
@@ -152,8 +152,8 @@ pub enum Type {
     Nothing,
 
     Pointer(Rc<Type>),
-    Struct(StructID),
-    Variant(StructID),
+    Struct(TypeDefID),
+    Variant(TypeDefID),
     Array {
         element: Rc<Type>,
         dim: usize,
@@ -165,9 +165,9 @@ pub enum Type {
     RcPointer(Option<ClassID>),
 
     /// RC shared object struct of known or unknown type
-    RcObject(Option<StructID>),
+    RcObject(Option<TypeDefID>),
 
-    Function(StructID),
+    Function(TypeDefID),
 
     Bool,
     U8,
@@ -214,14 +214,14 @@ impl Type {
         }
     }
 
-    pub fn as_struct(&self) -> Option<StructID> {
+    pub fn as_struct(&self) -> Option<TypeDefID> {
         match self {
             Type::Struct(struct_id) => Some(*struct_id),
             _ => None,
         }
     }
 
-    pub fn is_struct(&self, id: StructID) -> bool {
+    pub fn is_struct(&self, id: TypeDefID) -> bool {
         match self {
             Type::Struct(ty_id) => *ty_id == id,
             _ => false,

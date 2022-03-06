@@ -1,12 +1,12 @@
 use crate::ptr::Pointer;
-use pas_ir::metadata::{ClassID, FieldID, FunctionID, StructID};
+use pas_ir::metadata::{ClassID, FieldID, FunctionID, TypeDefID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
 use cast::i128;
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
-    pub id: StructID,
+    pub id: TypeDefID,
     pub fields: Vec<DynValue>,
 }
 
@@ -48,7 +48,7 @@ impl PartialEq<Self> for StructValue {
 
 #[derive(Debug, Clone)]
 pub struct VariantValue {
-    pub id: StructID,
+    pub id: TypeDefID,
     pub tag: Box<DynValue>,
     pub data: Box<DynValue>,
 }
@@ -63,7 +63,7 @@ impl VariantValue {
 pub struct RcValue {
     pub resource_ptr: Pointer,
     pub ref_count: usize,
-    pub struct_id: StructID,
+    pub struct_id: TypeDefID,
 }
 
 #[derive(Debug, Clone)]
@@ -345,14 +345,14 @@ impl DynValue {
         }
     }
 
-    pub fn as_struct_mut(&mut self, struct_id: StructID) -> Option<&mut StructValue> {
+    pub fn as_struct_mut(&mut self, struct_id: TypeDefID) -> Option<&mut StructValue> {
         match self {
             DynValue::Structure(struct_val) if struct_id == struct_val.id => Some(struct_val),
             _ => None,
         }
     }
 
-    pub fn as_struct(&self, struct_id: StructID) -> Option<&StructValue> {
+    pub fn as_struct(&self, struct_id: TypeDefID) -> Option<&StructValue> {
         match self {
             DynValue::Structure(struct_val) if struct_id == struct_val.id => Some(struct_val),
             _ => None,
@@ -366,7 +366,7 @@ impl DynValue {
         }
     }
 
-    pub fn as_variant(&self, struct_id: StructID) -> Option<&VariantValue> {
+    pub fn as_variant(&self, struct_id: TypeDefID) -> Option<&VariantValue> {
         match self {
             DynValue::Variant(var_val) if struct_id == var_val.id => Some(var_val),
             _ => None,

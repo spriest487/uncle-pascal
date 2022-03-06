@@ -1,6 +1,6 @@
 use std::fmt;
 
-use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, StructID}, Label, LocalID};
+use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, TypeDefID}, Label, LocalID};
 
 use crate::ast::{ty::FieldName, FunctionName, Module, TypeDefName, Type};
 
@@ -63,7 +63,7 @@ impl fmt::Display for PrefixOp {
 pub enum Expr {
     Local(LocalID),
     Function(FunctionName),
-    Class(StructID),
+    Class(TypeDefID),
     Deref(Box<Expr>),
     LitString(StringID), // string literal (System.String reference)
     LitCString(String), // C string literal
@@ -241,7 +241,7 @@ impl Expr {
         }
     }
 
-    pub fn class_ptr(struct_id: StructID) -> Self {
+    pub fn class_ptr(struct_id: TypeDefID) -> Self {
         Expr::Class(struct_id)
             .addr_of()
             .cast(Type::DefinedType(TypeDefName::Class).ptr())
@@ -733,7 +733,7 @@ impl<'a> Builder<'a> {
         }));
     }
 
-    fn translate_rc_new(&mut self, out: &ir::Ref, struct_id: StructID) {
+    fn translate_rc_new(&mut self, out: &ir::Ref, struct_id: TypeDefID) {
         let ty_class_ptr = Expr::class_ptr(struct_id);
 
         let new_rc = Expr::Call {

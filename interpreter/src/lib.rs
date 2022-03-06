@@ -103,7 +103,7 @@ impl Interpreter {
         &self.marshaller
     }
 
-    fn init_struct(&self, id: StructID) -> ExecResult<DynValue> {
+    fn init_struct(&self, id: TypeDefID) -> ExecResult<DynValue> {
         let struct_def = self.metadata.get_struct_def(id).cloned()
             .ok_or_else(|| {
                 let msg = format!("missing struct definition in metadata: {}", id);
@@ -860,7 +860,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_rc_new(&mut self, out: &Ref, struct_id: &StructID) -> ExecResult<()> {
+    fn exec_rc_new(&mut self, out: &Ref, struct_id: &TypeDefID) -> ExecResult<()> {
         let struct_ty = Type::Struct(*struct_id);
 
         let default_val = self.default_init_dyn_val(&struct_ty)?;
@@ -1422,7 +1422,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn get_field_offset_and_ty(&self, struct_id: StructID, field: FieldID) -> ExecResult<(usize, Type)> {
+    fn get_field_offset_and_ty(&self, struct_id: TypeDefID, field: FieldID) -> ExecResult<(usize, Type)> {
         let field_def = self.metadata.get_struct_def(struct_id)
             .and_then(|def| def.fields.get(&field))
             .ok_or_else(|| {
@@ -1497,7 +1497,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn rc_alloc(&mut self, resource: DynValue, ty_id: StructID) -> ExecResult<Pointer> {
+    fn rc_alloc(&mut self, resource: DynValue, ty_id: TypeDefID) -> ExecResult<Pointer> {
         // if the resource is a zero-sized class, we don't need to allocate a resource at all
         let res_ty = Type::Struct(ty_id);
         let res_size = self.marshaller.get_ty(&res_ty)?.size();

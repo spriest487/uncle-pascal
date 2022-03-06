@@ -1,4 +1,4 @@
-use crate::metadata::{Metadata, StructID};
+use crate::metadata::{Metadata, TypeDefID};
 use linked_hash_map::LinkedHashMap;
 use std::{
     cmp::Ordering,
@@ -12,11 +12,11 @@ use crate::{FunctionSig, Type};
 // guaranteed from the pascal end to be non-recursive, because they must be declared
 // in order).
 // this will panic if any defs depend on themselves.
-pub fn sort_defs<Defs>(defs: Defs, metadata: &Metadata) -> LinkedHashMap<StructID, TypeDef>
+pub fn sort_defs<Defs>(defs: Defs, metadata: &Metadata) -> LinkedHashMap<TypeDefID, TypeDef>
 where
-    Defs: IntoIterator<Item = (StructID, TypeDef)>,
+    Defs: IntoIterator<Item = (TypeDefID, TypeDef)>,
 {
-    let defs: HashMap<StructID, TypeDef> = defs.into_iter().collect();
+    let defs: HashMap<TypeDefID, TypeDef> = defs.into_iter().collect();
     let mut ids: Vec<_> = defs.keys().map(|id| *id).collect();
 
     let mut def_deps = HashMap::new();
@@ -42,7 +42,7 @@ where
         .collect()
 }
 
-fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<StructID> {
+fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<TypeDefID> {
     let mut deps = HashSet::new();
 
     match def {
@@ -62,13 +62,13 @@ fn find_deps(def: &TypeDef, metadata: &Metadata) -> HashSet<StructID> {
     deps
 }
 
-fn add_struct_deps(struct_def: &Struct, deps: &mut HashSet<StructID>, metadata: &Metadata) {
+fn add_struct_deps(struct_def: &Struct, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
     for (_, field) in &struct_def.fields {
         add_dep(&field.ty, deps, metadata);
     }
 }
 
-fn add_variant_deps(variant_def: &Variant, deps: &mut HashSet<StructID>, metadata: &Metadata) {
+fn add_variant_deps(variant_def: &Variant, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
     for case in &variant_def.cases {
         if let Some(case_ty) = &case.ty {
             add_dep(case_ty, deps, metadata);
@@ -76,14 +76,14 @@ fn add_variant_deps(variant_def: &Variant, deps: &mut HashSet<StructID>, metadat
     }
 }
 
-fn add_func_ty_deps(func_ty_def: &FunctionSig, deps: &mut HashSet<StructID>, metadata: &Metadata) {
+fn add_func_ty_deps(func_ty_def: &FunctionSig, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
     add_dep(&func_ty_def.return_ty, deps, metadata);
     for param_ty in &func_ty_def.param_tys {
         add_dep(param_ty, deps, metadata);
     }
 }
 
-fn add_dep(ty: &Type, deps: &mut HashSet<StructID>, metadata: &Metadata) {
+fn add_dep(ty: &Type, deps: &mut HashSet<TypeDefID>, metadata: &Metadata) {
     match ty {
         Type::Variant(id) => {
             deps.insert(*id);
@@ -112,7 +112,7 @@ fn add_dep(ty: &Type, deps: &mut HashSet<StructID>, metadata: &Metadata) {
 #[cfg(test)]
 mod test {
     use crate::{
-        metadata::{StructID, TypeDef},
+        metadata::{TypeDefID, TypeDef},
         translate, IROptions,
     };
     use pas_common::{span::Span, BuildOptions};
@@ -126,7 +126,7 @@ mod test {
     use crate::metadata::NamePath;
     use crate::dep_sort::find_deps;
 
-    fn defs_from_src(src: &str) -> (HashMap<StructID, TypeDef>, Metadata) {
+    fn defs_from_src(src: &str) -> (HashMap<TypeDefID, TypeDef>, Metadata) {
         let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero("test"));
 
@@ -142,7 +142,7 @@ mod test {
         (defs, ir.metadata)
     }
 
-    fn get_id(metadata: &Metadata, name: &str) -> StructID {
+    fn get_id(metadata: &Metadata, name: &str) -> TypeDefID {
         let name_path = NamePath::from_parts(vec!["test".to_string(), name.to_string()]);
 
         match metadata.find_struct_def(&name_path) {

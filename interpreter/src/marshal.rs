@@ -28,13 +28,13 @@ pub enum MarshalError {
     UnsupportedValue(DynValue),
 
     VariantTagOutOfRange {
-        variant_id: StructID,
+        variant_id: TypeDefID,
         tag: DynValue,
     },
 
     InvalidStructID {
-        expected: StructID,
-        actual: StructID,
+        expected: TypeDefID,
+        actual: TypeDefID,
     },
 
     InvalidRefCountValue(DynValue),
@@ -221,8 +221,8 @@ pub struct Marshaller {
     types: HashMap<Type, ForeignType>,
     libs: HashMap<String, Rc<dlopen::Library>>,
 
-    struct_field_types: BTreeMap<StructID, Vec<Type>>,
-    variant_case_types: BTreeMap<StructID, Vec<Option<Type>>>,
+    struct_field_types: BTreeMap<TypeDefID, Vec<Type>>,
+    variant_case_types: BTreeMap<TypeDefID, Vec<Option<Type>>>,
 
     rc_val_type: ForeignType,
 }
@@ -267,7 +267,7 @@ impl Marshaller {
 
     pub fn add_struct(
         &mut self,
-        id: StructID,
+        id: TypeDefID,
         def: &Struct,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
@@ -298,7 +298,7 @@ impl Marshaller {
 
     pub fn add_variant(
         &mut self,
-        id: StructID,
+        id: TypeDefID,
         def: &Variant,
         metadata: &Metadata,
     ) -> MarshalResult<ForeignType> {
@@ -626,7 +626,7 @@ impl Marshaller {
                     UnmarshalledValue {
                         value: DynValue::Pointer(Pointer {
                             addr: raw_ptr.addr,
-                            ty: Type::RcObject(Some(StructID(struct_id))),
+                            ty: Type::RcObject(Some(TypeDefID(struct_id))),
                         }),
                         byte_count: size,
                     }
@@ -792,7 +792,7 @@ impl Marshaller {
 
     fn unmarshal_variant(
         &self,
-        variant_id: StructID,
+        variant_id: TypeDefID,
         in_bytes: &[u8],
     ) -> MarshalResult<UnmarshalledValue<VariantValue>> {
         let tag_val = self.unmarshal(in_bytes, &Type::I32)?;
@@ -861,7 +861,7 @@ impl Marshaller {
         let struct_id_bytes = unmarshal_bytes(&in_bytes[offset..])?;
         offset += struct_id_bytes.len();
 
-        let struct_id = StructID(usize::from_ne_bytes(struct_id_bytes));
+        let struct_id = TypeDefID(usize::from_ne_bytes(struct_id_bytes));
         let resource_ptr = resource_ptr.reinterpret(Type::Struct(struct_id));
 
         Ok(UnmarshalledValue {

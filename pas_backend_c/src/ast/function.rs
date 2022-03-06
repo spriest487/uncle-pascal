@@ -4,7 +4,7 @@ use pas_ir::{
     metadata::{FunctionID, InterfaceID, MethodID},
 };
 use std::fmt;
-use pas_ir::metadata::StructID;
+use pas_ir::metadata::TypeDefID;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {
@@ -279,7 +279,7 @@ impl FuncAliasDef {
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
-pub struct FuncAliasID(pub StructID);
+pub struct FuncAliasID(pub TypeDefID);
 
 impl fmt::Display for FuncAliasID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

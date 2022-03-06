@@ -6,9 +6,9 @@ fn rc_val_roundtrips_ok() {
         ref_count: 123,
         resource_ptr: Pointer {
             addr: 87873232,
-            ty: Type::Struct(StructID(9911)),
+            ty: Type::Struct(TypeDefID(9911)),
         },
-        struct_id: StructID(9911),
+        struct_id: TypeDefID(9911),
     };
 
     let marshaller = Marshaller::new();

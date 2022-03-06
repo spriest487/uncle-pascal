@@ -1,6 +1,6 @@
 use std::fmt;
 use pas_common::span::Span;
-use crate::{Ref, Value, Type, LocalID, InterfaceID, MethodID, FieldID, StructID, ClassID, RawInstructionFormatter, InstructionFormatter};
+use crate::{Ref, Value, Type, LocalID, InterfaceID, MethodID, FieldID, TypeDefID, ClassID, RawInstructionFormatter, InstructionFormatter};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
@@ -158,7 +158,7 @@ pub enum Instruction {
 
     RcNew {
         out: Ref,
-        struct_id: StructID,
+        struct_id: TypeDefID,
     },
 
     Release {

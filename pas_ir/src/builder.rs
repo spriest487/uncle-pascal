@@ -91,7 +91,7 @@ impl<'m> Builder<'m> {
         &'ty mut self,
         variant: &pas_ty::Symbol,
         case: &pas_syn::Ident,
-    ) -> (StructID, usize, Option<&'ty Type>) {
+    ) -> (TypeDefID, usize, Option<&'ty Type>) {
         let name_path = self.translate_name(variant);
 
         let (id, variant_struct) = match self.module.metadata.find_variant_def(&name_path) {
@@ -130,7 +130,7 @@ impl<'m> Builder<'m> {
             .translate_type(src_ty, self.type_args().cloned().as_ref())
     }
 
-    pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> StructID {
+    pub fn translate_dyn_array_struct(&mut self, element_ty: &pas_ty::Type) -> TypeDefID {
         self.module
             .translate_dyn_array_struct(element_ty, self.type_args().cloned().as_ref())
     }
@@ -186,7 +186,7 @@ impl<'m> Builder<'m> {
         self.module.metadata.find_or_insert_string(s)
     }
 
-    pub fn get_struct(&self, id: StructID) -> Option<&Struct> {
+    pub fn get_struct(&self, id: TypeDefID) -> Option<&Struct> {
         self.module.metadata.get_struct_def(id)
     }
 

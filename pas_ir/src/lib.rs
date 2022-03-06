@@ -134,7 +134,7 @@ fn write_instruction_list(
     Ok(())
 }
 
-fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: StructID) {
+fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID) {
     let array_class = ClassID::Class(struct_id);
     let array_ref_ty = Type::RcPointer(Some(array_class));
 

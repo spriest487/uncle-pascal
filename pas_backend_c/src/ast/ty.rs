@@ -5,7 +5,7 @@ use pas_ir::metadata;
 use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, StructID, MethodID, RcBoilerplatePair, InterfaceID};
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID};
 use pas_ir::prelude::{ClassID, FieldID};
 
 #[allow(unused)]
@@ -270,12 +270,12 @@ pub enum TypeDefName {
     Class,
 
     // struct from class def ID
-    Struct(StructID),
+    Struct(TypeDefID),
 
     // struct from variant def ID
-    Variant(StructID),
+    Variant(TypeDefID),
 
-    FuncAlias(StructID),
+    FuncAlias(TypeDefID),
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
@@ -367,7 +367,7 @@ impl Hash for StructDef {
 
 impl StructDef {
     pub fn translate(
-        id: metadata::StructID,
+        id: metadata::TypeDefID,
         ir_struct: &metadata::Struct,
         module: &mut Module,
     ) -> Self {
@@ -460,7 +460,7 @@ impl Hash for VariantDef {
 }
 
 impl VariantDef {
-    pub fn translate(id: StructID, variant: &metadata::Variant, module: &mut Module) -> Self {
+    pub fn translate(id: TypeDefID, variant: &metadata::Variant, module: &mut Module) -> Self {
         let cases = variant
             .cases
             .iter()
@@ -565,7 +565,7 @@ struct DynArrayTypeInfo {
 
 #[derive(Clone, Debug)]
 pub struct Class {
-    struct_id: StructID,
+    struct_id: TypeDefID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
     disposer: Option<FunctionName>,
     cleanup_func: FunctionName,
@@ -576,7 +576,7 @@ pub struct Class {
 
 impl Class {
     pub fn translate(
-        struct_id: StructID,
+        struct_id: TypeDefID,
         _struct_def: &metadata::Struct,
         metadata: &metadata::Metadata,
         module: &mut Module,

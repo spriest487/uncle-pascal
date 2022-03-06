@@ -2,7 +2,7 @@ use crate::{
     jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
     Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef,
     FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
-    LocalID, Metadata, Ref, StructID, Type, TypeDef, EXIT_LABEL, RETURN_REF,
+    LocalID, Metadata, Ref, TypeDefID, Type, TypeDef, EXIT_LABEL, RETURN_REF,
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
@@ -445,7 +445,7 @@ impl Module {
         }
     }
 
-    pub fn find_dyn_array_struct(&self, elem_ty: &Type) -> Option<StructID> {
+    pub fn find_dyn_array_struct(&self, elem_ty: &Type) -> Option<TypeDefID> {
         self.metadata.find_dyn_array_struct(elem_ty)
     }
 
@@ -506,14 +506,13 @@ impl Module {
         }
 
         // instantiate types which may contain generic params
-        match &src_ty {
+        let ty = match &src_ty {
             pas_ty::Type::Variant(variant) => {
                 let variant_def = self.src_metadata.instantiate_variant(variant).unwrap();
 
                 let id = self.metadata.reserve_new_struct();
                 let ty = Type::Variant(id);
                 self.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
 
                 let name_path = self.translate_name(&variant, type_args);
                 self.metadata.declare_struct(id, &name_path);
@@ -544,7 +543,6 @@ impl Module {
                 };
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
 
                 let name_path = self.translate_name(&name, type_args);
 
@@ -564,7 +562,6 @@ impl Module {
                 let ty = Type::RcPointer(Some(ClassID::Interface(id)));
 
                 self.type_cache.insert(src_ty, ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
 
                 let iface_meta = self.translate_iface(&iface_def, type_args);
                 let def_id = self.metadata.define_iface(iface_meta);
@@ -578,8 +575,6 @@ impl Module {
 
                 let ty = Type::RcPointer(Some(ClassID::Class(id)));
                 self.type_cache.insert(src_ty, ty.clone());
-
-                //                println!("{} <- {}", src_ty, ty);
 
                 ty
             },
@@ -605,11 +600,14 @@ impl Module {
                 // nothing to be instantiated
                 let ty = self.metadata.find_type(real_ty);
                 self.type_cache.insert(src_ty, ty.clone());
-                //                println!("{} <- {}", src_ty, ty);
 
                 ty
             },
-        }
+        };
+
+        // println!("{} <- {}", src_ty, self.pretty_ty_name(&ty));
+
+        ty
     }
 
     pub fn translate_name(
@@ -745,7 +743,7 @@ impl Module {
         &mut self,
         element_ty: &pas_ty::Type,
         type_args: Option<&TypeList>,
-    ) -> StructID {
+    ) -> TypeDefID {
         let element_ty = self.translate_type(element_ty, type_args);
 
         match self.metadata.find_dyn_array_struct(&element_ty) {
