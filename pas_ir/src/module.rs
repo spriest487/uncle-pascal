@@ -1,9 +1,4 @@
-use crate::{
-    jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
-    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef,
-    FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
-    LocalID, Metadata, Ref, TypeDefID, Type, TypeDef, EXIT_LABEL, RETURN_REF,
-};
+use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, TypeDefID, Type, TypeDef, EXIT_LABEL, RETURN_REF, FunctionDeclKey};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;

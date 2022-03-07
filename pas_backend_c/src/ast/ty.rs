@@ -5,8 +5,7 @@ use pas_ir::metadata;
 use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID};
-use pas_ir::prelude::{ClassID, FieldID};
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, ClassID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]

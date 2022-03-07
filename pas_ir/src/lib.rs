@@ -1,8 +1,6 @@
 use std::fmt;
-use std::rc::Rc;
-use pas_common::span::Span;
 
-pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*};
+pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*, function::*};
 use crate::ty::{ClassID, FieldID, TypeDef};
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 use pas_syn::IdentPath;
@@ -18,13 +16,7 @@ mod module;
 mod stmt;
 mod val;
 mod pattern;
-
-pub mod prelude {
-    pub use crate::{
-        instruction::*, metadata::ty::*, metadata::*, GlobalRef, Instruction, Label, Ref, Value,
-        RETURN_REF,
-    };
-}
+mod function;
 
 pub const RETURN_REF: Ref = Ref::Local(LocalID(0));
 pub const EXIT_LABEL: Label = Label(0);
@@ -51,69 +43,6 @@ impl Default for IROptions {
             debug_info: true,
         }
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct ExternalFunctionRef {
-    pub symbol: String,
-    pub src: String,
-
-    pub return_ty: Type,
-    pub params: Vec<Type>,
-
-    pub src_span: Span,
-}
-
-pub const BUILTIN_SRC: &str = "rt";
-
-#[derive(Clone, Debug)]
-pub struct FunctionDef {
-    pub debug_name: String,
-
-    pub body: Vec<Instruction>,
-    pub return_ty: Type,
-    pub params: Vec<Type>,
-
-    pub src_span: Span,
-}
-
-#[derive(Clone, Debug)]
-pub enum Function {
-    External(ExternalFunctionRef),
-    Local(FunctionDef),
-}
-
-impl Function {
-    pub fn debug_name(&self) -> &str {
-        match self {
-            Function::External(ExternalFunctionRef { symbol, .. }) => symbol.as_str(),
-            Function::Local(FunctionDef { debug_name, .. }) => debug_name.as_str(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct FunctionInstance {
-    pub id: FunctionID,
-    pub sig: Rc<pas_ty::FunctionSig>,
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-enum FunctionDeclKey {
-    Function {
-        name: IdentPath,
-    },
-    Method {
-        iface: IdentPath,
-        self_ty: pas_ty::Type,
-        method: pas_syn::Ident,
-    },
-}
-
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
-pub(crate) struct FunctionDefKey {
-    decl_key: FunctionDeclKey,
-    type_args: Option<pas_ty::TypeList>,
 }
 
 fn write_instruction_list(

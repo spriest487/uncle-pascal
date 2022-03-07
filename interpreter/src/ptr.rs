@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::fmt;
 use std::mem::size_of;
-use pas_ir::prelude::Metadata;
+use pas_ir::metadata::Metadata;
 use pas_ir::Type;
 
 /// pointer to native memory that is marshalled to/from value cells when accessed

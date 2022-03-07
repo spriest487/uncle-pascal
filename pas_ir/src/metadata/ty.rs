@@ -167,6 +167,7 @@ pub enum Type {
     /// RC shared object struct of known or unknown type
     RcObject(Option<TypeDefID>),
 
+    // Function pointer type for a function
     Function(TypeDefID),
 
     Bool,

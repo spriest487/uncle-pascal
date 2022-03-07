@@ -1,9 +1,12 @@
-use pas_common::span::Spanned;
-use crate::{prelude::*, translate_block, translate_exit, translate_call, translate_expr, Builder, Type, translate_if_cond_stmt};
-use pas_syn::ast;
-use pas_typecheck as pas_ty;
 use crate::expr::translate_raise;
 use crate::pattern::translate_pattern_match;
+use crate::{
+    jmp_exists, translate_block, translate_call, translate_exit, translate_expr,
+    translate_if_cond_stmt, Builder, Instruction, Ref, Type, Value,
+};
+use pas_common::span::Spanned;
+use pas_syn::ast;
+use pas_typecheck as pas_ty;
 
 pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     builder.push_debug_context(stmt.annotation().span().clone());
@@ -14,15 +17,15 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
     match stmt {
         ast::Statement::LocalBinding(binding) => {
             translate_binding(binding, builder);
-        }
+        },
 
         ast::Statement::Call(call) => {
             translate_call(call, builder);
-        }
+        },
 
         ast::Statement::Block(block) => {
             translate_block(block, Ref::Discard, builder);
-        }
+        },
 
         ast::Statement::Exit(exit) => {
             translate_exit(exit, builder);
@@ -30,43 +33,43 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 
         ast::Statement::ForLoop(for_loop) => {
             translate_for_loop(for_loop, builder);
-        }
+        },
 
         ast::Statement::WhileLoop(while_loop) => {
             translate_while_loop(while_loop, builder);
-        }
+        },
 
         ast::Statement::Assignment(assignment) => {
             translate_assignment(assignment, builder);
-        }
+        },
 
         ast::Statement::CompoundAssignment(assignment) => {
             translate_compound_assignment(assignment, builder);
-        }
+        },
 
         ast::Statement::If(if_stmt) => {
             translate_if_cond_stmt(if_stmt, builder);
-        }
+        },
 
         ast::Statement::Raise(raise) => {
             translate_raise(raise, builder);
-        }
+        },
 
         ast::Statement::Break(_) => {
             builder.break_loop();
-        }
+        },
 
         ast::Statement::Continue(_) => {
             builder.continue_loop();
-        }
+        },
 
         ast::Statement::Case(case) => {
             translate_case_stmt(case, builder);
-        }
+        },
 
         ast::Statement::Match(match_stmt) => {
             translate_match_stmt(match_stmt, builder);
-        }
+        },
     }
 
     builder.pop_debug_context()
@@ -143,9 +146,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
         builder.add(counter_val.clone(), counter_val.clone(), inc_val);
 
         // return to top of loop
-        builder.append(Instruction::Jump {
-            dest: top_label,
-        });
+        builder.append(Instruction::Jump { dest: top_label });
     });
 
     if jmp_exists(&loop_instructions, break_label) {
@@ -215,7 +216,10 @@ pub fn translate_assignment(assignment: &pas_ty::ast::Assignment, builder: &mut 
     });
 }
 
-pub fn translate_compound_assignment(assignment: &pas_ty::ast::CompoundAssignment, builder: &mut Builder) {
+pub fn translate_compound_assignment(
+    assignment: &pas_ty::ast::CompoundAssignment,
+    builder: &mut Builder,
+) {
     builder.scope(|builder| {
         let lhs = translate_expr(&assignment.lhs, builder);
         let rhs = translate_expr(&assignment.rhs, builder);
@@ -225,10 +229,18 @@ pub fn translate_compound_assignment(assignment: &pas_ty::ast::CompoundAssignmen
 
         let op_result = builder.local_temp(lhs_ty.clone());
         match assignment.op {
-            pas_syn::CompoundAssignmentOperator::AddAssign => builder.add(op_result.clone(), lhs.clone(), rhs.clone()),
-            pas_syn::CompoundAssignmentOperator::SubtractAssign => builder.sub(op_result.clone(), lhs.clone(), rhs.clone()),
-            pas_syn::CompoundAssignmentOperator::MultiplyAssign => builder.mul(op_result.clone(), lhs.clone(), rhs.clone()),
-            pas_syn::CompoundAssignmentOperator::DivideAssign => builder.idiv(op_result.clone(), lhs.clone(), rhs.clone()),
+            pas_syn::CompoundAssignmentOperator::AddAssign => {
+                builder.add(op_result.clone(), lhs.clone(), rhs.clone())
+            },
+            pas_syn::CompoundAssignmentOperator::SubtractAssign => {
+                builder.sub(op_result.clone(), lhs.clone(), rhs.clone())
+            },
+            pas_syn::CompoundAssignmentOperator::MultiplyAssign => {
+                builder.mul(op_result.clone(), lhs.clone(), rhs.clone())
+            },
+            pas_syn::CompoundAssignmentOperator::DivideAssign => {
+                builder.idiv(op_result.clone(), lhs.clone(), rhs.clone())
+            },
         };
 
         // the new value is being stored in a new location, release the old value and retain it
@@ -243,18 +255,15 @@ pub fn translate_compound_assignment(assignment: &pas_ty::ast::CompoundAssignmen
 }
 
 fn translate_case_stmt(case: &pas_ty::ast::CaseStatement, builder: &mut Builder) {
-    build_case_block(case, builder, |item, builder| {
-        translate_stmt(item, builder)
-    })
+    build_case_block(case, builder, |item, builder| translate_stmt(item, builder))
 }
 
 pub fn build_case_block<Item, ItemFn>(
     case: &pas_ty::ast::CaseBlock<Item>,
     builder: &mut Builder,
-    mut translate_item: ItemFn
-)
-where
-    ItemFn: FnMut(&Item, &mut Builder)
+    mut translate_item: ItemFn,
+) where
+    ItemFn: FnMut(&Item, &mut Builder),
 {
     builder.scope(|builder| {
         let cond_expr_val = translate_expr(&case.cond_expr, builder);
@@ -333,7 +342,8 @@ fn translate_match_stmt(match_stmt: &pas_ty::ast::MatchStmt, builder: &mut Build
                 // label to skip this branch if it isn't a match
                 let skip_label = builder.alloc_label();
 
-                let pattern_match = translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
+                let pattern_match =
+                    translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
 
                 // jump to skip label if pattern match return false
                 builder.not(is_skip.clone(), pattern_match.is_match.clone());

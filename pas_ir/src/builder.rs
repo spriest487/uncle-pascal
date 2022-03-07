@@ -1,10 +1,6 @@
 use pas_typecheck as pas_ty;
 
-use crate::{
-    metadata::*, Function, FunctionDefKey, FunctionDeclKey, FunctionDef, FunctionInstance,
-    GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref,
-    Type, Value, EXIT_LABEL,
-};
+use crate::{metadata::*, Function, FunctionDefKey, FunctionDef, FunctionInstance, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Type, Value, EXIT_LABEL, FunctionDeclKey};
 
 use std::fmt;
 

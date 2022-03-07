@@ -9,7 +9,7 @@ use libffi::{
     middle::{Builder as FfiBuilder, Type as FfiType},
     raw::FFI_TYPE_STRUCT,
 };
-use pas_ir::{prelude::*, ExternalFunctionRef, InstructionFormatter, RawInstructionFormatter};
+use pas_ir::{ExternalFunctionRef, Instruction, InstructionFormatter, RawInstructionFormatter, Type};
 use std::{
     cmp::max,
     collections::{BTreeMap, HashMap},
@@ -19,6 +19,7 @@ use std::{
     ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
     rc::Rc,
 };
+use pas_ir::metadata::{ClassID, FunctionID, Metadata, Struct, TypeDefID, Variant};
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {

@@ -1,4 +1,4 @@
-use crate::{build_case_block, prelude::*, translate_stmt, Builder, Type};
+use crate::{build_case_block, translate_stmt, Builder, Type, GlobalRef, Ref, Value, Instruction, DYNARRAY_LEN_FIELD, MethodID, DYNARRAY_PTR_FIELD, InterfaceID, RETURN_REF};
 use pas_common::span::*;
 use pas_syn as syn;
 use pas_syn::Ident;
