@@ -385,7 +385,10 @@ impl Metadata {
                     },
 
                     Some(ClassID::Closure(func_ty_id)) => {
-                        self.pretty_ty_name(&Type::Closure(*func_ty_id))
+                        Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
+                            Some(sig) => format!("closure of {}", sig),
+                            None => format!("closure of {}", *func_ty_id),
+                        })
                     }
 
                     Some(ClassID::Class(struct_id)) => {
@@ -403,13 +406,6 @@ impl Metadata {
                 },
                 None => Cow::Borrowed("rc_obj"),
             },
-
-            Type::Closure(func_ty_id) => {
-                Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
-                    Some(sig) => format!("closure of {}", sig),
-                    None => format!("closure of function {}", *func_ty_id),
-                })
-            }
 
             Type::Function(func_ty_id) => {
                 Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {

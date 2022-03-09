@@ -183,9 +183,6 @@ pub enum Type {
     // Function pointer type for a function
     Function(TypeDefID),
 
-    // closure state structure for function type with this typedef ID
-    Closure(TypeDefID),
-
     Bool,
     U8,
     I8,
@@ -305,7 +302,6 @@ impl fmt::Display for Type {
             },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
             Type::Function(id) => write!(f, "function {}", id),
-            Type::Closure(id) => write!(f, "closure {}", id),
         }
     }
 }

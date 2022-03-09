@@ -177,8 +177,6 @@ impl DynValue {
                 _ => None,
             },
 
-            Type::Closure(..) => None,
-
             Type::Function(..) => None,
         }
     }
