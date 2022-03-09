@@ -49,6 +49,7 @@ impl Type {
             metadata::Type::RcObject(..) => Type::DefinedType(TypeDefName::Rc),
             metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
+            metadata::Type::Closure(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             metadata::Type::Nothing => Type::Void,
             metadata::Type::Bool => Type::Bool,
             metadata::Type::F32 => Type::Float,

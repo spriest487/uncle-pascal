@@ -170,8 +170,34 @@ impl<'m> Builder<'m> {
         self.module.instantiate_func(key)
     }
 
-    pub fn translate_anonymous_func(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> FunctionInstance {
-        self.module.translate_anonymous_func(func, self.type_args.clone())
+    pub fn translate_func_ty(&mut self, func_sig: &pas_ty::FunctionSig) -> TypeDefID {
+        self.module.translate_func_ty(func_sig, self.type_args.as_ref())
+    }
+
+    pub fn translate_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
+        let closure = self.module.build_closure_instance(func, self.type_args.clone());
+
+        let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure.closure_id)));
+
+        let closure_ref = self.local_new(closure_ptr_ty.clone(), None);
+        self.scope(|builder| {
+            builder.append(Instruction::RcNew {
+                out: closure_ref.clone(),
+                struct_id: closure.closure_id,
+            });
+
+            let func_ty = Type::Function(closure.func_ty_id);
+            let func_field = builder.local_new(func_ty.ptr(), None);
+            builder.field(func_field.clone(), closure_ref.clone(), closure_ptr_ty.clone(), CLOSURE_PTR_FIELD);
+
+            // initialize closure reference to function
+            let func_ref = Ref::Global(GlobalRef::Function(closure.func_instance.id));
+            builder.mov(func_field.clone().to_deref(), func_ref);
+
+            // todo: initialize closure capture fields here
+        });
+
+        closure_ref
     }
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
@@ -446,13 +472,13 @@ impl<'m> Builder<'m> {
         &mut self,
         out: impl Into<Ref>,
         base: impl Into<Ref>,
-        base_ty: &Type,
+        base_ty: impl Into<Type>,
         field: FieldID,
     ) {
         self.append(Instruction::Field {
             out: out.into(),
             a: base.into(),
-            of_ty: base_ty.clone(),
+            of_ty: base_ty.into(),
             field,
         })
     }

@@ -603,7 +603,7 @@ impl Marshaller {
                         Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
 
                         // abstract pointer - no idea what the actual rc type was
-                        None | Some(ClassID::Interface(..)) => Type::RcObject(None),
+                        None | Some(ClassID::Interface(..) | ClassID::Closure(..)) => Type::RcObject(None),
                     };
 
                     UnmarshalledValue {

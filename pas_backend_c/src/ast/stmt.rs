@@ -702,6 +702,11 @@ impl<'a> Builder<'a> {
                 Expr::infix_op(actual_class_ptr, InfixOp::Eq, is_class_ptr)
             }
 
+            metadata::ClassID::Closure(_func_ty_id) => {
+                // TODO - can you use `is` on a function type?
+                Expr::LitBool(false)
+            }
+
             metadata::ClassID::Interface(iface_id) => {
                 let is_impl_func = Expr::Function(FunctionName::IsImpl);
 

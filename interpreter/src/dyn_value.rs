@@ -1,8 +1,8 @@
 use crate::ptr::Pointer;
+use cast::i128;
 use pas_ir::metadata::{ClassID, FieldID, FunctionID, TypeDefID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
-use cast::i128;
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
@@ -115,68 +115,71 @@ pub enum DynValue {
 impl DynValue {
     pub fn try_cast(&self, ty: &Type) -> Option<Self> {
         match ty {
-            | Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),
-            | Type::U8 => self.to_bigint().map(|x| x as u8).map(DynValue::U8),
-            | Type::I16 => self.to_bigint().map(|x| x as i16).map(DynValue::I16),
-            | Type::U16 => self.to_bigint().map(|x| x as u16).map(DynValue::U16),
-            | Type::I32 => self.to_bigint().map(|x| x as i32).map(DynValue::I32),
-            | Type::U32 => self.to_bigint().map(|x| x as u32).map(DynValue::U32),
-            | Type::I64 => self.to_bigint().map(|x| x as i64).map(DynValue::I64),
-            | Type::U64 => self.to_bigint().map(|x| x as u64).map(DynValue::U64),
-            | Type::ISize => self.to_bigint().map(|x| x as isize).map(DynValue::ISize),
-            | Type::USize => self.to_bigint().map(|x| x as usize).map(DynValue::USize),
-            | Type::Bool => self.to_bigint().map(|i| DynValue::Bool(i != 0)),
+            Type::I8 => self.to_bigint().map(|x| x as i8).map(DynValue::I8),
+            Type::U8 => self.to_bigint().map(|x| x as u8).map(DynValue::U8),
+            Type::I16 => self.to_bigint().map(|x| x as i16).map(DynValue::I16),
+            Type::U16 => self.to_bigint().map(|x| x as u16).map(DynValue::U16),
+            Type::I32 => self.to_bigint().map(|x| x as i32).map(DynValue::I32),
+            Type::U32 => self.to_bigint().map(|x| x as u32).map(DynValue::U32),
+            Type::I64 => self.to_bigint().map(|x| x as i64).map(DynValue::I64),
+            Type::U64 => self.to_bigint().map(|x| x as u64).map(DynValue::U64),
+            Type::ISize => self.to_bigint().map(|x| x as isize).map(DynValue::ISize),
+            Type::USize => self.to_bigint().map(|x| x as usize).map(DynValue::USize),
+            Type::Bool => self.to_bigint().map(|i| DynValue::Bool(i != 0)),
 
-            | Type::F32 => {
+            Type::F32 => {
                 if let DynValue::F32(..) = self {
                     return Some(self.clone());
                 }
 
                 self.to_bigint().map(|x| x as f32).map(DynValue::F32)
-            }
+            },
 
-            | Type::Pointer(deref_ty) => {
+            Type::Pointer(deref_ty) => {
                 let addr = cast::usize(self.to_bigint()?).ok()?;
                 let ptr = Pointer {
                     ty: (**deref_ty).clone(),
-                    addr
+                    addr,
                 };
                 Some(DynValue::Pointer(ptr))
-            }
+            },
 
-            | Type::RcObject(..)
-            | Type::Nothing => None,
+            Type::RcObject(..) | Type::Nothing => None,
 
-            | Type::RcPointer(class_id) => {
+            Type::RcPointer(class_id) => {
                 let addr = cast::usize(self.to_bigint()?).ok()?;
                 let ptr = Pointer {
                     addr,
                     ty: match class_id {
                         Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
-                        None | Some(ClassID::Interface(..)) => Type::RcObject(None),
-                    }
+                        None | Some(ClassID::Interface(..) | ClassID::Closure(..)) => {
+                            Type::RcObject(None)
+                        },
+                    },
                 };
                 Some(DynValue::Pointer(ptr))
-            }
+            },
 
-            | Type::Struct(id) => match self {
+            Type::Struct(id) => match self {
                 DynValue::Structure(s) if s.id == *id => Some(self.clone()),
                 _ => None,
-            }
+            },
 
-            | Type::Variant(id) => match self {
+            Type::Variant(id) => match self {
                 DynValue::Variant(v) if v.id == *id => Some(self.clone()),
                 _ => None,
-            }
+            },
 
-            | Type::Array { element, dim } => match self {
+            Type::Array { element, dim } => match self {
                 DynValue::Array(arr) if arr.el_ty == **element && arr.elements.len() == *dim => {
                     Some(self.clone())
-                }
+                },
                 _ => None,
-            }
+            },
 
-            | Type::Function(..) => None,
+            Type::Closure(..) => None,
+
+            Type::Function(..) => None,
         }
     }
 
@@ -222,7 +225,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a + b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a + b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a + b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_add(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_add(b.addr)))
+            },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a + b)),
 
@@ -242,7 +247,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a - b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a - b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a - b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_sub(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_sub(b.addr)))
+            },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a - b)),
 
@@ -262,7 +269,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a * b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a * b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a * b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_mul(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_mul(b.addr)))
+            },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a * b)),
 
@@ -282,7 +291,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a / b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a / b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a / b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_div(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_div(b.addr)))
+            },
 
             (DynValue::F32(a), DynValue::F32(b)) => Some(DynValue::F32(a / b)),
 
@@ -302,7 +313,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a << b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a << b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a << b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_shl(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_shl(b.addr)))
+            },
 
             _ => None,
         }
@@ -320,7 +333,9 @@ impl DynValue {
             (DynValue::U64(a), DynValue::U64(b)) => Some(DynValue::U64(a >> b)),
             (DynValue::ISize(a), DynValue::ISize(b)) => Some(DynValue::ISize(a >> b)),
             (DynValue::USize(a), DynValue::USize(b)) => Some(DynValue::USize(a >> b)),
-            (DynValue::Pointer(a), DynValue::Pointer(b)) => Some(DynValue::Pointer(a.addr_shr(b.addr))),
+            (DynValue::Pointer(a), DynValue::Pointer(b)) => {
+                Some(DynValue::Pointer(a.addr_shr(b.addr)))
+            },
 
             _ => None,
         }

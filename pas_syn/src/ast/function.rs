@@ -91,59 +91,14 @@ impl FunctionDecl<Span> {
             None => None,
         };
 
-        let args_tt = tokens.match_one(DelimiterPair::Bracket)?;
-
-        let args_span = args_tt.span().clone();
-
-        let mut params_tokens = match args_tt {
+        let params_group = tokens.match_one(DelimiterPair::Bracket)?;
+        let params_span = params_group.span().clone();
+        let mut params_tokens = match params_group {
             TokenTree::Delimited { inner, open, .. } => TokenStream::new(inner, open),
             _ => unreachable!(),
         };
 
-        let params = params_tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            let match_mod = Keyword::Var.or(Keyword::Out);
-            let modifier = match tokens.look_ahead().match_one(match_mod.clone()) {
-                Some(_) => match tokens.match_one(match_mod)? {
-                    TokenTree::Keyword {
-                        kw: Keyword::Var, ..
-                    } => Some(FunctionParamMod::Var),
-                    TokenTree::Keyword {
-                        kw: Keyword::Out, ..
-                    } => Some(FunctionParamMod::Out),
-                    tt => unreachable!("bad token parsing function param modifier: {:?}", tt),
-                },
-                None => None,
-            };
-
-            let idents = tokens.match_separated(Separator::Comma, |_, tokens| {
-                let ident = tokens.match_one(Matcher::AnyIdent)?;
-                Ok(Generate::Yield(ident))
-            })?;
-
-            if idents.is_empty() {
-                return Err(TracedError::trace(ParseError::UnexpectedEOF(
-                    Matcher::AnyIdent,
-                    tokens.context().clone(),
-                )));
-            }
-
-            tokens.match_one(Separator::Colon)?;
-            let ty = TypeName::parse(tokens)?;
-            let span = idents[0].span().to(ty.span());
-
-            let params: Vec<_> = idents
-                .into_iter()
-                .map(|ident| FunctionParam {
-                    modifier: modifier.clone(),
-                    ident: ident.into_ident().unwrap(),
-                    ty: ty.clone(),
-                    span: span.clone(),
-                })
-                .collect();
-
-            Ok(Generate::Yield(params))
-        })?;
-        params_tokens.finish()?;
+        let params = Self::parse_params(&mut params_tokens)?;
 
         let return_ty = match tokens.match_one_maybe(Separator::Colon) {
             Some(_) => {
@@ -216,7 +171,7 @@ impl FunctionDecl<Span> {
 
         let sig_span = match &return_ty {
             Some(return_ty) => func_kw.span().to(return_ty.span()),
-            None => func_kw.span().to(&args_span),
+            None => func_kw.span().to(&params_span),
         };
 
         let span = if mods.is_empty() {
@@ -237,10 +192,60 @@ impl FunctionDecl<Span> {
             impl_iface,
             span,
             return_ty,
-            params: params.into_iter().flat_map(|params| params).collect(),
+            params,
             type_params,
             mods,
         })
+    }
+
+    pub fn parse_params(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionParam<Span>>> {
+        let params = tokens.match_separated(Separator::Semicolon, |_, tokens| {
+            let match_mod = Keyword::Var.or(Keyword::Out);
+            let modifier = match tokens.look_ahead().match_one(match_mod.clone()) {
+                Some(_) => match tokens.match_one(match_mod)? {
+                    TokenTree::Keyword {
+                        kw: Keyword::Var, ..
+                    } => Some(FunctionParamMod::Var),
+                    TokenTree::Keyword {
+                        kw: Keyword::Out, ..
+                    } => Some(FunctionParamMod::Out),
+                    tt => unreachable!("bad token parsing function param modifier: {:?}", tt),
+                },
+                None => None,
+            };
+
+            let idents = tokens.match_separated(Separator::Comma, |_, tokens| {
+                let ident = tokens.match_one(Matcher::AnyIdent)?;
+                Ok(Generate::Yield(ident))
+            })?;
+
+            if idents.is_empty() {
+                return Err(TracedError::trace(ParseError::UnexpectedEOF(
+                    Matcher::AnyIdent,
+                    tokens.context().clone(),
+                )));
+            }
+
+            tokens.match_one(Separator::Colon)?;
+            let ty = TypeName::parse(tokens)?;
+            let span = idents[0].span().to(ty.span());
+
+            let params: Vec<_> = idents
+                .into_iter()
+                .map(|ident| FunctionParam {
+                    modifier: modifier.clone(),
+                    ident: ident.into_ident().unwrap(),
+                    ty: ty.clone(),
+                    span: span.clone(),
+                })
+                .collect();
+
+            Ok(Generate::Yield(params))
+        })?;
+
+        let params = params.into_iter().flatten().collect();
+
+        Ok(params)
     }
 }
 
@@ -356,31 +361,7 @@ impl Parse for AnonymousFunctionDef<Span> {
         };
 
         let mut params_tokens = TokenStream::new(params_inner, params_open);
-        let params = params_tokens.match_separated(Separator::Semicolon, |_i, tokens| {
-            let (modifier, mod_span) = if let Some(tt) = tokens.match_one_maybe(Keyword::Var) {
-                (Some(FunctionParamMod::Out), Some(tt.into_span()))
-            } else if let Some(tt) = tokens.match_one_maybe(Keyword::Out) {
-                (Some(FunctionParamMod::Var), Some(tt.into_span()))
-            } else {
-                (None, None)
-            };
-
-            let ident = Ident::parse(tokens)?;
-            tokens.match_one(Separator::Colon)?;
-            let ty = TypeName::parse(tokens)?;
-
-            let span = mod_span.map(|s| s.to(&ty))
-                .unwrap_or_else(|| ident.span.to(&ty));
-
-            let param = FunctionParam {
-                ident,
-                ty,
-                modifier,
-                span,
-            };
-
-            Ok(Generate::Yield(param))
-        })?;
+        let params = FunctionDecl::parse_params(&mut params_tokens)?;
         params_tokens.finish()?;
 
         let return_ty = if tokens.match_one_maybe(Separator::Colon).is_some() {

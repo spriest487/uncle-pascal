@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::Type;
+use crate::{FunctionInstance, Type, TypeDefID};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
@@ -20,4 +20,10 @@ impl fmt::Display for FunctionSig {
 
         Ok(())
     }
+}
+
+pub struct ClosureInstance {
+    pub func_instance: FunctionInstance,
+    pub func_ty_id: TypeDefID,
+    pub closure_id: TypeDefID,
 }

@@ -1,4 +1,8 @@
-use crate::{build_case_block, translate_stmt, Builder, Type, GlobalRef, Ref, Value, Instruction, DYNARRAY_LEN_FIELD, MethodID, DYNARRAY_PTR_FIELD, InterfaceID, RETURN_REF};
+use crate::pattern::{translate_pattern_match, PatternMatchOutput};
+use crate::{
+    build_case_block, translate_stmt, Builder, GlobalRef, Instruction, InterfaceID, MethodID, Ref,
+    Type, Value, CLOSURE_PTR_FIELD, DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD, RETURN_REF,
+};
 use pas_common::span::*;
 use pas_syn as syn;
 use pas_syn::Ident;
@@ -6,7 +10,6 @@ use pas_ty::{TypeAnnotation, ValueKind};
 use pas_typecheck as pas_ty;
 use std::convert::TryFrom;
 use syn::ast;
-use crate::pattern::{PatternMatchOutput, translate_pattern_match};
 
 use crate::ty::ClassID;
 
@@ -29,7 +32,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
         ast::Expression::Ident(ident, annotation) => translate_ident(ident, annotation, builder),
 
         ast::Expression::Call(call) => {
-            translate_call(call, builder).expect("call used in expression must have a return value")
+            build_call(call, builder).expect("call used in expression must have a return value")
         },
 
         ast::Expression::ObjectCtor(ctor) => translate_object_ctor(ctor, builder),
@@ -61,10 +64,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
 
         ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
 
-        ast::Expression::AnonymousFunction(def) => {
-            let func_instance = builder.translate_anonymous_func(def);
-            Ref::Global(GlobalRef::Function(func_instance.id))
-        }
+        ast::Expression::AnonymousFunction(def) => builder.translate_closure_expr(def),
     };
 
     builder.pop_debug_context();
@@ -117,13 +117,13 @@ fn translate_indexer(
             builder.field(
                 len_field_ptr.clone(),
                 base_ref.clone(),
-                &array_class_ty,
+                array_class_ty.clone(),
                 DYNARRAY_LEN_FIELD,
             );
             builder.field(
                 arr_field_ptr.clone(),
                 base_ref.clone(),
-                &array_class_ty,
+                array_class_ty,
                 DYNARRAY_PTR_FIELD,
             );
 
@@ -178,7 +178,10 @@ fn gen_bounds_check(index_val: impl Into<Value>, len_val: impl Into<Value>, buil
     builder.append(Instruction::Label(bounds_ok_label));
 }
 
-pub fn translate_if_cond_expr(if_cond: &pas_ty::ast::IfCondExpression, builder: &mut Builder) -> Option<Ref> {
+pub fn translate_if_cond_expr(
+    if_cond: &pas_ty::ast::IfCondExpression,
+    builder: &mut Builder,
+) -> Option<Ref> {
     translate_if_cond(if_cond, builder, |branch, out_ref, out_ty, builder| {
         let val = translate_expr(branch, builder);
 
@@ -192,7 +195,10 @@ pub fn translate_if_cond_expr(if_cond: &pas_ty::ast::IfCondExpression, builder: 
     })
 }
 
-pub fn translate_if_cond_stmt(if_cond: &pas_ty::ast::IfCondStatement, builder: &mut Builder) -> Option<Ref> {
+pub fn translate_if_cond_stmt(
+    if_cond: &pas_ty::ast::IfCondStatement,
+    builder: &mut Builder,
+) -> Option<Ref> {
     translate_if_cond(if_cond, builder, |branch, out_ref, _out_ty, builder| {
         assert!(
             out_ref.is_none(),
@@ -236,7 +242,7 @@ where
             None => PatternMatchOutput {
                 is_match: Value::Ref(cond_val),
                 bindings: Vec::new(),
-            }
+            },
         };
 
         builder.jmp_if(then_label, pattern_match.is_match.clone());
@@ -293,6 +299,10 @@ fn translate_call_with_args(
 
     let mut arg_vals = Vec::new();
 
+    if let CallTarget::Closure { closure_ptr, .. } = &call_target {
+        arg_vals.push(closure_ptr.clone());
+    }
+
     for (arg, param) in args.iter().zip(sig.params.iter()) {
         let arg_expr = if param.is_by_ref() {
             let arg_ref = translate_expr(arg, builder);
@@ -313,10 +323,12 @@ fn translate_call_with_args(
     }
 
     builder.append(match call_target {
-        CallTarget::Function(target_val) => Instruction::Call {
-            function: target_val,
-            args: arg_vals.clone(),
-            out: out_val.clone(),
+        CallTarget::Closure { function, .. } | CallTarget::Function(function) => {
+            Instruction::Call {
+                function,
+                args: arg_vals.clone(),
+                out: out_val.clone(),
+            }
         },
 
         CallTarget::Virtual { iface_id, method } => {
@@ -350,29 +362,34 @@ fn translate_call_with_args(
 
 enum CallTarget {
     Function(Value),
+    Closure {
+        function: Value,
+        closure_ptr: Value,
+    },
     Virtual {
         iface_id: InterfaceID,
         method: String,
     },
 }
 
-pub fn translate_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
+pub fn build_call(call: &pas_ty::ast::Call, builder: &mut Builder) -> Option<Ref> {
     match call {
-        ast::Call::Function(func_call) => translate_func_call(func_call, builder),
+        ast::Call::Function(func_call) => build_func_call(func_call, builder),
 
-        ast::Call::Method(method_call) => translate_method_call(method_call, builder),
+        ast::Call::Method(method_call) => build_method_call(method_call, builder),
 
-        ast::Call::VariantCtor(variant_ctor) => translate_variant_ctor_call(variant_ctor, builder),
+        ast::Call::VariantCtor(variant_ctor) => build_variant_ctor_call(variant_ctor, builder),
     }
 }
 
-fn translate_func_call(
+fn build_func_call(
     func_call: &pas_ty::ast::FunctionCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
     let type_args = func_call.type_args.clone();
 
-    let (func_val, func_sig) = match func_call.target.annotation() {
+    match func_call.target.annotation() {
+        // calling a function directly
         pas_ty::TypeAnnotation::Function(func) => {
             let full_name = func.ns.clone().child(func.name.clone());
             let func = builder.translate_func(full_name, type_args, func_call.span());
@@ -380,34 +397,54 @@ fn translate_func_call(
             let func_val = Value::Ref(Ref::Global(GlobalRef::Function(func.id)));
             let func_sig = func.sig;
 
-            (func_val, func_sig)
+            let call_target = CallTarget::Function(func_val);
+
+            translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
         },
 
+        // invoking a closure value that refers to a function
         pas_ty::TypeAnnotation::TypedValue(val) => {
-            assert!(type_args.is_none());
+            // it's impossible to invoke a closure with type args, so the typechecker should
+            // ensure this never happens
+            assert!(
+                type_args.is_none(),
+                "closure invocation cannot include type args"
+            );
 
+            // expr that evaluates to a closure pointer
             let target_expr_val = translate_expr(&func_call.target, builder);
+            let func_sig = val
+                .ty
+                .as_func()
+                .expect("target value of invocation must have function type");
+            let func_ty_id = builder.translate_func_ty(&func_sig);
 
-            match &val.ty {
-                pas_ty::Type::Function(sig) => {
-                    let func_ref = Value::Ref(target_expr_val);
+            // retrieve the actual function value
+            let func_field_ptr = builder.local_temp(Type::Function(func_ty_id).ptr());
 
-                    (func_ref, sig.clone())
-                }
+            builder.scope(|builder| {
+                let closure_ptr_ty = Type::RcPointer(Some(ClassID::Closure(func_ty_id)));
+                builder.field(
+                    func_field_ptr.clone(),
+                    target_expr_val.clone(),
+                    closure_ptr_ty,
+                    CLOSURE_PTR_FIELD,
+                );
+            });
 
-                _ => panic!("value called as function must have function type"),
-            }
-        }
+            let call_target = CallTarget::Closure {
+                function: func_field_ptr.to_deref().into(),
+                closure_ptr: target_expr_val.clone().into(),
+            };
+
+            translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
+        },
 
         _ => panic!("type of function call expr must be a function or callable value"),
-    };
-
-    let call_target = CallTarget::Function(func_val);
-
-    translate_call_with_args(call_target, &func_call.args, &func_sig, builder)
+    }
 }
 
-fn translate_method_call(
+fn build_method_call(
     method_call: &pas_ty::ast::MethodCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
@@ -449,7 +486,7 @@ fn translate_method_call(
     translate_call_with_args(call_target, &method_call.args, &method_sig, builder)
 }
 
-fn translate_variant_ctor_call(
+fn build_variant_ctor_call(
     variant_ctor: &pas_ty::ast::VariantCtorCall,
     builder: &mut Builder,
 ) -> Option<Ref> {
@@ -1233,12 +1270,10 @@ fn translate_ident(ident: &Ident, annotation: &TypeAnnotation, builder: &mut Bui
                         a: local_ref,
                     });
                     ref_temp.to_deref()
-                }
+                },
 
                 // ident rvalue - just evaluate it
-                ValueKind::Temporary => {
-                    local_ref
-                }
+                ValueKind::Temporary => local_ref,
             }
         },
 
@@ -1337,7 +1372,8 @@ fn translate_match_expr(match_expr: &pas_ty::ast::MatchExpr, builder: &mut Build
             let skip_label = builder.alloc_label();
 
             builder.scope(|builder| {
-                let pattern_match = translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
+                let pattern_match =
+                    translate_pattern_match(&branch.pattern, &cond_expr, &cond_ty, builder);
 
                 // jump to skip label if pattern match return false
                 builder.not(is_skip.clone(), pattern_match.is_match.clone());

@@ -315,7 +315,7 @@ pub trait InstructionFormatter {
             Instruction::RcNew { out, struct_id } => {
                 write!(f, "{:>width$} ", "rcnew", width = IX_WIDTH)?;
                 self.format_type(&Type::Struct(*struct_id), f)?;
-                write!(f, " at {}^", out)
+                write!(f, " at {}", out)
             }
 
             Instruction::Release { at } => {

@@ -1,7 +1,7 @@
 use std::{collections::hash_map::HashMap, fmt};
 
 use crate::dep_sort::sort_defs;
-use crate::formatter::{InstructionFormatter};
+use crate::formatter::InstructionFormatter;
 use linked_hash_map::LinkedHashMap;
 use pas_syn as syn;
 use pas_syn::{Ident, IdentPath};
@@ -10,12 +10,12 @@ use std::borrow::Cow;
 use std::rc::Rc;
 
 pub mod name_path;
-pub mod ty;
 pub mod symbol;
+pub mod ty;
 
-pub use ty::*;
 pub use name_path::*;
 pub use symbol::*;
+pub use ty::*;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -62,6 +62,8 @@ pub const STRING_TYPE: Type = Type::RcPointer(Some(STRING_CLASS_ID));
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
 
+pub const CLOSURE_PTR_FIELD: FieldID = FieldID(0);
+
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub struct FunctionID(pub usize);
 
@@ -106,6 +108,8 @@ pub struct Metadata {
     dyn_array_structs: LinkedHashMap<Type, TypeDefID>,
 
     functions: LinkedHashMap<FunctionID, Rc<FunctionDecl>>,
+
+    closures: Vec<TypeDefID>,
 
     function_types_by_sig: HashMap<pas_ty::FunctionSig, TypeDefID>,
 
@@ -229,7 +233,7 @@ impl Metadata {
         }
     }
 
-    fn next_struct_id(&mut self) -> TypeDefID {
+    fn next_type_def_id(&mut self) -> TypeDefID {
         (0..)
             .map(TypeDefID)
             .find(|id| !self.type_decls.contains_key(id) && *id != STRING_ID)
@@ -273,7 +277,7 @@ impl Metadata {
                     None => global_name,
                     Some(type_args) => global_name.with_ty_args(type_args.clone()),
                 })
-            }
+            },
         };
 
         self.insert_func(global_name)
@@ -349,24 +353,22 @@ impl Metadata {
 
     pub fn pretty_ty_name(&self, ty: &Type) -> Cow<str> {
         match ty {
-            Type::Struct(id) | Type::Variant(id) => {
-                match self.type_decls.get(id) {
-                    Some(TypeDecl::Forward(name)) => {
-                        let pretty_name = name.to_pretty_string(|ty| self.pretty_ty_name(ty));
-                        Cow::Owned(pretty_name)
-                    },
-                    Some(TypeDecl::Def(def)) => {
-                        let pretty_name = def.to_pretty_str(|ty| self.pretty_ty_name(ty));
-                        Cow::Owned(pretty_name)
-                    },
-                    Some(TypeDecl::Reserved) | None => Cow::Owned(id.to_string()),
-                }
-            }
+            Type::Struct(id) | Type::Variant(id) => match self.type_decls.get(id) {
+                Some(TypeDecl::Forward(name)) => {
+                    let pretty_name = name.to_pretty_string(|ty| self.pretty_ty_name(ty));
+                    Cow::Owned(pretty_name)
+                },
+                Some(TypeDecl::Def(def)) => {
+                    let pretty_name = def.to_pretty_str(|ty| self.pretty_ty_name(ty));
+                    Cow::Owned(pretty_name)
+                },
+                Some(TypeDecl::Reserved) | None => Cow::Owned(id.to_string()),
+            },
 
             Type::Array { element, dim } => {
                 let elem_name = self.pretty_ty_name(element);
                 Cow::Owned(format!("array [{}] of {}", dim, elem_name))
-            }
+            },
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
@@ -380,26 +382,40 @@ impl Metadata {
                                 .map(|def| def.name.to_pretty_string(|ty| self.pretty_ty_name(ty)))
                                 .unwrap_or_else(|| format!("<interface {}>", iface_id)),
                         )
+                    },
+
+                    Some(ClassID::Closure(func_ty_id)) => {
+                        self.pretty_ty_name(&Type::Closure(*func_ty_id))
                     }
 
                     Some(ClassID::Class(struct_id)) => {
                         self.pretty_ty_name(&Type::Struct(*struct_id))
-                    }
+                    },
                 };
 
                 Cow::Owned(format!("rc[{}]", resource_name))
+            },
+
+            Type::RcObject(rc_obj) => match rc_obj {
+                Some(struct_id) => {
+                    let struct_name = self.pretty_ty_name(&Type::Struct(*struct_id));
+                    Cow::Owned(format!("rc_obj[{}]", struct_name))
+                },
+                None => Cow::Borrowed("rc_obj"),
+            },
+
+            Type::Closure(func_ty_id) => {
+                Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
+                    Some(sig) => format!("closure of {}", sig),
+                    None => format!("closure of function {}", *func_ty_id),
+                })
             }
 
-            Type::RcObject(rc_obj) => {
-                match rc_obj {
-                    Some(struct_id) => {
-                        let struct_name = self.pretty_ty_name(&Type::Struct(*struct_id));
-                        Cow::Owned(format!("rc_obj[{}]", struct_name))
-                    }
-                    None => {
-                        Cow::Borrowed("rc_obj")
-                    }
-                }
+            Type::Function(func_ty_id) => {
+                Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
+                    Some(sig) => format!("{}", sig),
+                    None => format!("function {}", *func_ty_id),
+                })
             }
 
             Type::Pointer(ty) => Cow::Owned(format!("^{}", self.pretty_ty_name(ty))),
@@ -409,7 +425,7 @@ impl Metadata {
     }
 
     pub fn reserve_new_struct(&mut self) -> TypeDefID {
-        let id = self.next_struct_id();
+        let id = self.next_type_def_id();
         self.type_decls.insert(id, TypeDecl::Reserved);
         id
     }
@@ -427,14 +443,14 @@ impl Metadata {
         match &mut self.type_decls[&id] {
             reserved @ TypeDecl::Reserved => {
                 *reserved = TypeDecl::Forward(name.clone());
-            }
+            },
 
             TypeDecl::Forward(prev_name) => {
                 assert_eq!(
                     prev_name, name,
                     "can't declare same struct multiple times with different names"
                 );
-            }
+            },
 
             TypeDecl::Def(def) => {
                 assert_eq!(
@@ -442,25 +458,26 @@ impl Metadata {
                     Some(name),
                     "can't declare same struct multiple times with different names"
                 );
-            }
+            },
         }
     }
 
     pub fn define_struct(&mut self, id: TypeDefID, struct_def: Struct) {
         match &self.type_decls[&id] {
             TypeDecl::Forward(name) => {
-                assert_eq!(*name, struct_def.name);
+                assert_eq!(StructIdentity::Named(name.clone()), struct_def.identity);
+                let type_def = TypeDecl::Def(TypeDef::Struct(struct_def));
+                self.type_decls.insert(id, type_def);
+            },
 
-                self.type_decls
-                    .insert(id, TypeDecl::Def(TypeDef::Struct(struct_def)));
+            TypeDecl::Reserved => {
+                let type_def = TypeDecl::Def(TypeDef::Struct(struct_def));
+                self.type_decls.insert(id, type_def);
             }
 
             _other => {
-                panic!(
-                    "expected named declaration to exist when defining {}",
-                    struct_def.name
-                );
-            }
+                panic!("expected named declaration to exist when defining {}", struct_def);
+            },
         }
     }
 
@@ -471,15 +488,20 @@ impl Metadata {
 
                 self.type_decls
                     .insert(id, TypeDecl::Def(TypeDef::Variant(variant_def)));
-            }
+            },
 
             _other => {
                 panic!(
                     "expected named declaration to exist when defining {}",
                     variant_def.name
                 );
-            }
+            },
         }
+    }
+
+    pub fn define_closure_ty(&mut self, id: TypeDefID, closure_def: Struct) {
+        self.define_struct(id, closure_def);
+        self.closures.push(id);
     }
 
     pub fn get_func_ptr_ty(&self, id: TypeDefID) -> Option<&FunctionSig> {
@@ -489,19 +511,24 @@ impl Metadata {
         })
     }
 
-    pub fn find_func_ptr_ty(&self, sig: &pas_ty::FunctionSig) -> Option<TypeDefID> {
+    pub fn find_func_ty(&self, sig: &pas_ty::FunctionSig) -> Option<TypeDefID> {
         self.function_types_by_sig.get(&sig).cloned()
     }
 
-    pub fn define_func_ptr_ty(&mut self, sig: pas_ty::FunctionSig, func_ty: FunctionSig) -> TypeDefID {
+    pub fn define_func_ty(
+        &mut self,
+        sig: pas_ty::FunctionSig,
+        func_ty: FunctionSig,
+    ) -> TypeDefID {
         assert!(!self.function_types_by_sig.contains_key(&sig));
 
-        let id = self.next_struct_id();
+        let id = self.next_type_def_id();
         self.function_types_by_sig.insert(sig, id);
 
-        let replaced = self.type_decls.insert(id, TypeDecl::Def(TypeDef::Function(func_ty)));
+        let replaced = self
+            .type_decls
+            .insert(id, TypeDecl::Def(TypeDef::Function(func_ty)));
         assert!(replaced.is_none());
-
 
         id
     }
@@ -574,7 +601,7 @@ impl Metadata {
             Some(InterfaceDecl::Def(iface_def)) => {
                 let index = iface_def.method_index(&method_name).unwrap();
                 iface_def.add_impl(for_ty, index, func_id);
-            }
+            },
 
             Some(InterfaceDecl::Forward(name)) => panic!(
                 "trying to impl method {} for interface {} which isn't defined yet",
@@ -645,7 +672,7 @@ impl Metadata {
                 };
 
                 Type::RcPointer(Some(ClassID::Interface(iface_id)))
-            }
+            },
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
 
@@ -679,13 +706,13 @@ impl Metadata {
                     pas_ty::Type::Class(..) => {
                         let class_id = ClassID::Class(struct_id);
                         Type::RcPointer(Some(class_id))
-                    }
+                    },
 
                     pas_ty::Type::Record(..) => Type::Struct(struct_id),
 
                     _ => unreachable!(),
                 }
-            }
+            },
 
             pas_ty::Type::Array(array_ty) => {
                 let element = self.find_type(&array_ty.element_ty);
@@ -693,7 +720,7 @@ impl Metadata {
                     element: Rc::new(element),
                     dim: array_ty.dim,
                 }
-            }
+            },
 
             pas_ty::Type::DynArray { element } => {
                 let element = self.find_type(element.as_ref());
@@ -707,7 +734,7 @@ impl Metadata {
                 };
 
                 Type::RcPointer(Some(ClassID::Class(array_struct)))
-            }
+            },
 
             pas_ty::Type::Variant(variant) => {
                 expect_no_generic_args(&variant, variant.type_args.as_ref());
@@ -718,7 +745,7 @@ impl Metadata {
                     Some(id) => Type::Variant(id),
                     None => panic!("missing IR struct metadata for variant {}", variant),
                 }
-            }
+            },
 
             pas_ty::Type::MethodSelf => panic!("Self is not a real type in this context"),
 
@@ -728,12 +755,10 @@ impl Metadata {
                 pas_common::Backtrace::new()
             ),
 
-            pas_ty::Type::Function(sig) => {
-                match self.function_types_by_sig.get(sig) {
-                    Some(id) => Type::Function(*id),
-                    None => panic!("no type definition for function with sig {}", sig),
-                }
-            }
+            pas_ty::Type::Function(sig) => match self.function_types_by_sig.get(sig) {
+                Some(id) => Type::Function(*id),
+                None => panic!("no type definition for function with sig {}", sig),
+            },
 
             pas_ty::Type::Any => Type::RcPointer(None),
         }
@@ -753,7 +778,7 @@ impl Metadata {
         let name =
             NamePath::from_parts(vec![format!("array of {}", self.pretty_ty_name(&element))]);
 
-        let mut fields = HashMap::new();
+        let mut fields = LinkedHashMap::new();
         fields.insert(
             DYNARRAY_LEN_FIELD,
             StructFieldDef {
@@ -771,10 +796,14 @@ impl Metadata {
             },
         );
 
-        let struct_id = self.next_struct_id();
+        let struct_id = self.next_type_def_id();
         self.type_decls.insert(
             struct_id,
-            TypeDecl::Def(TypeDef::Struct(Struct { name, fields, src_span: None })),
+            TypeDecl::Def(TypeDef::Struct(Struct {
+                identity: StructIdentity::Named(name),
+                fields,
+                src_span: None,
+            })),
         );
 
         self.dyn_array_structs.insert(element, struct_id);
@@ -810,9 +839,16 @@ impl Metadata {
         Some(el_ty)
     }
 
+    pub fn closures(&self) -> &[TypeDefID] {
+        &self.closures
+    }
+
     pub fn find_type_decl(&self, name: &NamePath) -> Option<TypeDefID> {
         self.type_decls.iter().find_map(|(id, def)| match def {
-            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => Some(*id),
+            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name() == Some(name) =>
+            {
+                Some(*id)
+            },
 
             TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => Some(*id),
 
@@ -826,9 +862,10 @@ impl Metadata {
     // when this call is made, the definition part of the result will be None
     pub fn find_struct_def(&self, name: &NamePath) -> Option<(TypeDefID, &Struct)> {
         self.type_decls.iter().find_map(|(id, def)| match def {
-            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name == *name => {
+            TypeDecl::Def(TypeDef::Struct(struct_def)) if struct_def.name() == Some(name) =>
+            {
                 Some((*id, struct_def))
-            }
+            },
 
             _ => None,
         })
@@ -838,7 +875,7 @@ impl Metadata {
         self.type_decls.iter().find_map(|(id, def)| match def {
             TypeDecl::Def(TypeDef::Variant(variant_def)) if variant_def.name == *name => {
                 Some((*id, variant_def))
-            }
+            },
 
             _ => None,
         })
@@ -861,7 +898,7 @@ impl Metadata {
                     .unwrap_or(StringID(0));
                 self.string_literals.insert(next_id, s.to_string());
                 next_id
-            }
+            },
         }
     }
 
@@ -897,14 +934,14 @@ impl Metadata {
             match decl {
                 TypeDecl::Reserved => {
                     decls.insert(id, TypeDecl::Reserved);
-                }
+                },
                 TypeDecl::Forward(name) => {
                     decls.insert(id, TypeDecl::Forward(name));
-                }
+                },
 
                 TypeDecl::Def(def) => {
                     defs.push((id, def));
-                }
+                },
             }
         }
 

@@ -413,7 +413,7 @@ impl Interpreter {
 
         if args.len() != func.param_tys().len() {
             let msg = format!(
-                "arguments provided for function call are invalid (expected {} args, got {}",
+                "arguments provided for function call are invalid (expected {} args, got {})",
                 func.param_tys().len(),
                 args.len()
             );
@@ -1409,12 +1409,16 @@ impl Interpreter {
 
         let is = match class_id {
             ClassID::Class(struct_id) => rc_val.struct_id == *struct_id,
+
             ClassID::Interface(iface_id) => {
                 let resource_id = ClassID::Class(rc_val.struct_id);
                 let actual_ty = Type::RcPointer(Some(resource_id));
 
                 self.metadata.is_impl(&actual_ty, *iface_id)
             }
+
+            // todo: can `is` be used with closures?
+            ClassID::Closure(..) => false,
         };
 
         self.store(out, DynValue::Bool(is))?;

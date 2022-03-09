@@ -7,6 +7,7 @@ begin
     'hello, ' + friend;
 end;
 
+
 WriteLn(greet('world'));
 
 greet := function(enemy: String): String
@@ -15,3 +16,10 @@ begin
 end;
 
 WriteLn(greet('world'));
+
+{
+let add := function(a, b: Integer): Integer
+begin
+    a + b
+end;
+}

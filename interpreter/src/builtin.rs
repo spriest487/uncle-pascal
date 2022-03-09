@@ -1,21 +1,23 @@
+use crate::{DynValue, ExecError, ExecResult, Interpreter, Pointer, RcValue, StructValue};
+use pas_ir::{
+    metadata::{DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD},
+    GlobalRef, LocalID, Ref, Type, RETURN_REF,
+};
 use std::borrow::Cow;
 use std::fmt;
-use pas_ir::{RETURN_REF, metadata::DYNARRAY_LEN_FIELD, LocalID, Ref, GlobalRef, Type};
-use crate::{ExecError, ExecResult, Interpreter, DynValue, Pointer, RcValue, StructValue};
 use std::io::{self, BufRead};
-use pas_ir::metadata::DYNARRAY_PTR_FIELD;
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
-    where T: fmt::Display,
-          UnwrapFn: FnOnce(&DynValue) -> Option<T>
+where
+    T: fmt::Display,
+    UnwrapFn: FnOnce(&DynValue) -> Option<T>,
 {
     let arg_0 = Ref::Local(LocalID(1));
 
     let arg_0_dyn = state.load(&arg_0)?;
-    let value = unwrap_fn(&arg_0_dyn)
-        .ok_or_else(|| {
-            ExecError::illegal_state(format!("primitive_to_str argument is not the correct type"))
-        })?;
+    let value = unwrap_fn(&arg_0_dyn).ok_or_else(|| {
+        ExecError::illegal_state(format!("primitive_to_str argument is not the correct type"))
+    })?;
 
     let string = state.create_string(&value.to_string())?;
     state.store(&RETURN_REF, string)?;
@@ -78,10 +80,8 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));
 
     let string = state.read_string(&arg_0.to_deref())?;
-    let int: i32 = string.parse().map_err(|_| {
-        ExecError::Raised {
-            msg: format!("could not convert `{}` to Integer", string),
-        }
+    let int: i32 = string.parse().map_err(|_| ExecError::Raised {
+        msg: format!("could not convert `{}` to Integer", string),
     })?;
 
     state.store(&RETURN_REF, DynValue::I32(int))?;
@@ -144,7 +144,8 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
 
     let ptr_dyn = state.load(&arg_0)?.into_owned();
 
-    let ptr = ptr_dyn.as_pointer()
+    let ptr = ptr_dyn
+        .as_pointer()
         .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument"))?;
 
     state.dynfree(ptr)?;
@@ -163,7 +164,9 @@ fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<Cow<StructVa
     match state.deref_rc(&array_rc)? {
         Cow::Borrowed(DynValue::Structure(arr_struct)) => Ok(Cow::Borrowed(arr_struct.as_ref())),
         Cow::Owned(DynValue::Structure(arr_struct)) => Ok(Cow::Owned(*arr_struct)),
-        _ => Err(ExecError::illegal_state("value pointed to by dynarray pointer is not a dynarray")),
+        _ => Err(ExecError::illegal_state(
+            "value pointed to by dynarray pointer is not a dynarray",
+        )),
     }
 }
 
@@ -175,11 +178,10 @@ pub(super) fn array_length(state: &mut Interpreter) -> ExecResult<()> {
 
     // the type of %1 should be Any (pointer to an rc val)
     let len_val = &array_struct[DYNARRAY_LEN_FIELD];
-    let len = len_val.as_i32()
-        .ok_or_else(|| {
-            let msg = format!("array_length argument val not an I32");
-            ExecError::illegal_state(msg)
-        })?;
+    let len = len_val.as_i32().ok_or_else(|| {
+        let msg = format!("array_length argument val not an I32");
+        ExecError::illegal_state(msg)
+    })?;
 
     state.store(&RETURN_REF, DynValue::I32(len))?;
 
@@ -193,10 +195,13 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
     let default_val_arg = Ref::Local(LocalID(3));
     let default_val_len_arg = Ref::Local(LocalID(4));
 
-    let new_len = state.load(&new_len_arg)?.as_i32()
+    let new_len = state
+        .load(&new_len_arg)?
+        .as_i32()
         .ok_or_else(|| ExecError::illegal_state("len arg passed to set_length must be i32"))?;
 
-    let array_class_ptr = state.load(&array_arg)?
+    let array_class_ptr = state
+        .load(&array_arg)?
         .as_pointer()
         .cloned()
         .ok_or_else(|| {
@@ -204,7 +209,8 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg)
         })?;
 
-    let array_class = state.load_indirect(&array_class_ptr)?
+    let array_class = state
+        .load_indirect(&array_class_ptr)?
         .into_owned()
         .as_rc()
         .map(|rc_val| rc_val.struct_id)
@@ -213,30 +219,45 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg)
         })?;
 
-    let dyn_array_el_ty = state.metadata.dyn_array_element_ty(array_class).cloned().unwrap();
+    let dyn_array_el_ty = state
+        .metadata
+        .dyn_array_element_ty(array_class)
+        .cloned()
+        .unwrap();
 
     let default_val = state.load(&default_val_arg)?.into_owned();
-    let default_val_ptr = default_val.as_pointer()
+    let default_val_ptr = default_val
+        .as_pointer()
         .ok_or_else(|| ExecError::illegal_state("default value arg must be a pointer"))?
         .reinterpret(dyn_array_el_ty.clone());
-    let _default_val_len = state.load(&default_val_len_arg)?.as_i32()
+    let _default_val_len = state
+        .load(&default_val_len_arg)?
+        .as_i32()
         .ok_or_else(|| ExecError::illegal_state("default value len arg must be an i32"))?;
 
     let new_data = if new_len > 0 {
         let dyn_array_el_marshal_ty = state.marshaller.get_ty(&dyn_array_el_ty)?;
 
-        let el_rc_funcs = state.metadata.find_rc_boilerplate(&dyn_array_el_ty)
+        let el_rc_funcs = state
+            .metadata
+            .find_rc_boilerplate(&dyn_array_el_ty)
             .map(|rc_info| {
                 let retain_func_ref = GlobalRef::Function(rc_info.retain);
                 let retain_func = match state.globals.get(&retain_func_ref).map(|c| &c.value) {
                     Some(DynValue::Function(func)) => func.clone(),
-                    _ => panic!("missing element retain func for dynarray {}", dyn_array_el_ty),
+                    _ => panic!(
+                        "missing element retain func for dynarray {}",
+                        dyn_array_el_ty
+                    ),
                 };
 
                 let release_func_ref = GlobalRef::Function(rc_info.release);
                 let release_func = match state.globals.get(&release_func_ref).map(|c| &c.value) {
                     Some(DynValue::Function(func)) => func.clone(),
-                    _ => panic!("missing element release func for dynarray {}", dyn_array_el_ty),
+                    _ => panic!(
+                        "missing element release func for dynarray {}",
+                        dyn_array_el_ty
+                    ),
                 };
 
                 (retain_func, release_func)
@@ -244,12 +265,13 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
         let old_array_struct = get_dyn_array_struct(state, array_arg)?.into_owned();
         let len_field_val = &old_array_struct[DYNARRAY_LEN_FIELD];
-        let old_len =  len_field_val.as_i32().ok_or_else(|| {
+        let old_len = len_field_val.as_i32().ok_or_else(|| {
             let msg = format!("dynarray length is not I32");
             ExecError::illegal_state(msg)
         })?;
 
-        let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD].as_pointer()
+        let old_data_ptr = old_array_struct[DYNARRAY_PTR_FIELD]
+            .as_pointer()
             .ok_or_else(|| {
                 let msg = format!("dynarray ptr is not a valid ptr");
                 ExecError::illegal_state(msg)
@@ -309,18 +331,20 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
         id: array_class,
     };
 
-    let new_array_resource_ptr = state.dynalloc_init(&Type::Struct(array_class), vec![
-        DynValue::Structure(Box::new(new_array_struct)),
-    ])?;
+    let new_array_resource_ptr = state.dynalloc_init(
+        &Type::Struct(array_class),
+        vec![DynValue::Structure(Box::new(new_array_struct))],
+    )?;
 
     let new_array_rc = RcValue {
         struct_id: array_class,
         ref_count: 1,
-        resource_ptr: new_array_resource_ptr
+        resource_ptr: new_array_resource_ptr,
     };
 
     let new_array_val = DynValue::Rc(Box::new(new_array_rc));
-    let new_array_ptr = state.dynalloc_init(&Type::RcObject(Some(array_class)), vec![new_array_val])?;
+    let new_array_ptr =
+        state.dynalloc_init(&Type::RcObject(Some(array_class)), vec![new_array_val])?;
 
     state.store(&RETURN_REF, DynValue::Pointer(new_array_ptr))?;
     Ok(())

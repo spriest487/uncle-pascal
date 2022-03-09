@@ -1,7 +1,7 @@
 use crate::expr::translate_raise;
 use crate::pattern::translate_pattern_match;
 use crate::{
-    jmp_exists, translate_block, translate_call, translate_exit, translate_expr,
+    jmp_exists, translate_block, build_call, translate_exit, translate_expr,
     translate_if_cond_stmt, Builder, Instruction, Ref, Type, Value,
 };
 use pas_common::span::Spanned;
@@ -20,7 +20,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
         },
 
         ast::Statement::Call(call) => {
-            translate_call(call, builder);
+            build_call(call, builder);
         },
 
         ast::Statement::Block(block) => {

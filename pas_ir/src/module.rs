@@ -1,4 +1,9 @@
-use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, TypeDefID, Type, TypeDef, EXIT_LABEL, RETURN_REF, FunctionDeclKey};
+use crate::{
+    jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
+    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef,
+    FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
+    LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF,
+};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;
@@ -66,6 +71,10 @@ impl Module {
         })
     }
 
+    pub fn closure_types(&self) -> impl Iterator<Item = TypeDefID> + '_ {
+        self.metadata.closures().iter().cloned()
+    }
+
     pub fn insert_func(&mut self, id: FunctionID, function: Function) {
         assert!(
             self.metadata.get_function(id).is_some(),
@@ -117,8 +126,9 @@ impl Module {
                             key.type_args.clone(),
                             func_def.decl.return_ty.as_ref(),
                             &func_def.body,
+                            None,
                             func_def.span.clone(),
-                            debug_name
+                            debug_name,
                         );
 
                         self.functions.insert(id, Function::Local(ir_func));
@@ -238,8 +248,9 @@ impl Module {
                     key.type_args.clone(),
                     method_def.decl.return_ty.as_ref(),
                     &method_def.body,
+                    None,
                     method_def.span().clone(),
-                    debug_name
+                    debug_name,
                 );
                 self.functions.insert(id, Function::Local(ir_func));
 
@@ -261,17 +272,41 @@ impl Module {
             .collect()
     }
 
-    pub fn translate_anonymous_func(
+    pub fn translate_func_ty(
+        &mut self,
+        func_sig: &pas_ty::FunctionSig,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> TypeDefID {
+        let func_ty_id = match self.metadata.find_func_ty(&func_sig) {
+            Some(id) => id,
+            None => {
+                let ir_sig = self.translate_func_sig(func_sig, type_args);
+                self.metadata.define_func_ty(func_sig.clone(), ir_sig)
+            }
+        };
+
+        func_ty_id
+    }
+
+    pub fn build_closure_instance(
         &mut self,
         func: &pas_ty::ast::AnonymousFunctionDef,
-        type_params: Option<pas_ty::TypeList>,
-    ) -> FunctionInstance {
+        type_args: Option<pas_ty::TypeList>,
+    ) -> ClosureInstance {
         let id = self.metadata.insert_func(None);
 
         let sig = pas_ty::FunctionSig::of_anonymous_func(func);
+        let func_ty_id = self.translate_func_ty(&sig, type_args.as_ref());
 
-        // let return_ty = self.translate_type(&sig.return_ty, None);
-        // let params = self.translate_func_params(&sig);
+        let captures = Default::default(); // TODO
+
+        let closure_identity = ClosureIdentity {
+            func_ty_id,
+            module: func.span().file.display().to_string(),
+            line: func.span().start.line,
+            col: func.span().start.col,
+        };
+        let closure_id = self.translate_closure_struct(closure_identity, &captures, type_args.as_ref());
 
         let debug_name = "<anonymous function>".to_string();
 
@@ -280,16 +315,21 @@ impl Module {
         let ir_func = self.translate_func_def(
             &func.params,
             None,
-            type_params,
+            type_args,
             func.return_ty.as_ref(),
             &func.body,
+            Some(closure_id),
             func.span().clone(),
             debug_name,
         );
 
         self.functions.insert(id, Function::Local(ir_func));
 
-        cached_func
+        ClosureInstance {
+            func_instance: cached_func,
+            func_ty_id,
+            closure_id
+        }
     }
 
     // statically reference a method and get a function ID. interface methods are all translated
@@ -336,6 +376,7 @@ impl Module {
         def_type_args: Option<pas_ty::TypeList>,
         def_return_ty: Option<&pas_ty::Type>,
         def_body: &pas_ty::ast::Block,
+        closure_id: Option<TypeDefID>,
         src_span: Span,
         debug_name: String,
     ) -> FunctionDef {
@@ -380,15 +421,22 @@ impl Module {
             },
         };
 
-        let param_id_offset = match &return_ty {
-            Type::Nothing => 0,
-            _ => {
-                assert!(def_return_ty.is_some());
-                1
-            },
-        };
-
         let mut bound_params = Vec::with_capacity(def_params.len());
+
+        let mut param_id_offset = 0;
+        if return_ty != Type::Nothing {
+            assert!(def_return_ty.is_some());
+            param_id_offset += 1;
+        }
+
+        if let Some(closure_id) = closure_id {
+            let closure_ptr_local_id = LocalID(param_id_offset);
+            let closure_class = ClassID::Class(closure_id);
+            let closure_ptr_ty = Type::RcPointer(Some(closure_class));
+
+            bound_params.push((closure_ptr_local_id, closure_ptr_ty));
+            param_id_offset += 1;
+        }
 
         for (i, param) in def_params.iter().enumerate() {
             // if the function returns a value, $0 is the return pointer, and args start at $1
@@ -575,16 +623,16 @@ impl Module {
             },
 
             pas_ty::Type::Function(func_sig) => {
-                if let Some(id) = self.metadata.find_func_ptr_ty(&func_sig) {
+                if let Some(id) = self.metadata.find_func_ty(&func_sig) {
                     return Type::Function(id);
                 }
 
                 let ir_sig = self.translate_func_sig(&func_sig, type_args);
-                let id = self
+                let func_ty_id = self
                     .metadata
-                    .define_func_ptr_ty((**func_sig).clone(), ir_sig);
+                    .define_func_ty((**func_sig).clone(), ir_sig);
 
-                let ty = Type::Function(id);
+                let ty = Type::RcPointer(Some(ClassID::Closure(func_ty_id)));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
@@ -731,7 +779,53 @@ impl Module {
 
         let src_span = class_def.span().clone();
 
-        Struct::new(name_path, Some(src_span)).with_fields(fields)
+        let identity = StructIdentity::Named(name_path);
+
+        Struct::new(identity, Some(src_span)).with_fields(fields)
+    }
+
+    pub fn translate_closure_struct(
+        &mut self,
+        identity: ClosureIdentity,
+        captures: &HashMap<String, pas_ty::Type>,
+        type_args: Option<&pas_ty::TypeList>,
+    ) -> TypeDefID {
+        let id = self.metadata.reserve_new_struct();
+
+        let mut fields = LinkedHashMap::new();
+        let mut field_id = CLOSURE_PTR_FIELD;
+
+        fields.insert(field_id, StructFieldDef {
+            name: String::new(),
+            rc: false,
+            ty: Type::Function(identity.func_ty_id),
+        });
+
+        for (capture_name, capture_ty) in captures {
+            let ty = self.translate_type(capture_ty, type_args);
+
+            fields.insert(
+                field_id,
+                StructFieldDef {
+                    name: capture_name.clone(),
+                    ty,
+                    rc: capture_ty.is_rc_reference(),
+                },
+            );
+
+            field_id.0 += 1;
+        }
+
+        self.metadata.define_closure_ty(
+            id,
+            Struct {
+                identity: StructIdentity::Closure(identity),
+                src_span: None,
+                fields,
+            },
+        );
+
+        id
     }
 
     pub fn translate_dyn_array_struct(
@@ -784,8 +878,19 @@ impl fmt::Display for Module {
         for (id, def) in &defs {
             match def {
                 TypeDef::Struct(s) => {
-                    write!(f, "{}: ", id.0)?;
-                    self.metadata.format_name(&s.name, f)?;
+                    write!(f, "{} : ", id.0)?;
+
+                    match &s.identity {
+                        StructIdentity::Named(name) => {
+                            self.metadata.format_name(name, f)?;
+                        }
+
+                        StructIdentity::Closure(identity) => {
+                            let func_ty_name = self.metadata.pretty_ty_name(&Type::Function(identity.func_ty_id));
+                            write!(f, "closure of function {func_ty_name} @ {}:{}:{}", identity.module, identity.line, identity.col)?;
+                        }
+                    }
+
                     writeln!(f)?;
 
                     let max_field_id = s.fields.keys().max().cloned().unwrap_or(FieldID(0));

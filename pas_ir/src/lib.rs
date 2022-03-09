@@ -256,6 +256,10 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     for class_ty in ir_module.class_types().cloned().collect::<Vec<_>>() {
         gen_class_rc_boilerplate(&mut ir_module, &class_ty);
     }
+    for closure_id in ir_module.closure_types().collect::<Vec<_>>() {
+        let mut builder = Builder::new(&mut ir_module);
+        builder.gen_rc_boilerplate(&Type::Struct(closure_id));
+    }
 
     ir_module.metadata.sort_type_defs_by_deps();
 

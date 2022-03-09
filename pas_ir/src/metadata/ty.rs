@@ -18,15 +18,21 @@ use std::{
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub enum ClassID {
+    //instance of a known class whose layout is defined as the struct with this typedef ID
     Class(TypeDefID),
+
+    // instance of an unknown class that implements the interface with this interface ID
     Interface(InterfaceID),
+
+    // closure of an unknown structure that calls the function type with this typedef ID
+    Closure(TypeDefID),
 }
 
 impl ClassID {
     pub fn as_class(&self) -> Option<TypeDefID> {
         match self {
             ClassID::Class(id) => Some(*id),
-            ClassID::Interface(..) => None,
+            ClassID::Interface(..) | ClassID::Closure(..) => None,
         }
     }
 }
@@ -36,6 +42,7 @@ impl fmt::Display for ClassID {
         match self {
             ClassID::Class(struct_id) => write!(f, "{}", struct_id),
             ClassID::Interface(iface_id) => write!(f, "{}", iface_id),
+            ClassID::Closure(closure_id) => write!(f, "{}", closure_id),
         }
     }
 }
@@ -84,7 +91,7 @@ pub enum TypeDef {
 impl TypeDef {
     pub fn name(&self) -> Option<&NamePath> {
         match self {
-            TypeDef::Struct(s) => Some(&s.name),
+            TypeDef::Struct(s) => s.name(),
             TypeDef::Variant(v) => Some(&v.name),
             TypeDef::Function(..) => None,
         }
@@ -103,7 +110,13 @@ impl TypeDef {
         TyFormat: Fn(&Type) -> Cow<'a, str>
     {
         match self {
-            TypeDef::Struct(def) => def.name.to_pretty_string(ty_format),
+            TypeDef::Struct(def) => match &def.identity {
+                StructIdentity::Named(def_name) => def_name.to_pretty_string(ty_format),
+                StructIdentity::Closure(identity) => {
+                    let func_ty_name = ty_format(&Type::Function(identity.func_ty_id));
+                    format!("closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)
+                },
+            },
             TypeDef::Variant(def) => def.name.to_pretty_string(ty_format),
             TypeDef::Function(def) => {
                 let mut string = String::new();
@@ -128,7 +141,7 @@ impl TypeDef {
 impl fmt::Display for TypeDef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeDef::Struct(s) => write!(f, "{}", s.name),
+            TypeDef::Struct(s) => write!(f, "{}", s),
             TypeDef::Variant(v) => write!(f, "{}", v.name),
             TypeDef::Function(func_ty) => {
                 write!(f, "function (")?;
@@ -169,6 +182,9 @@ pub enum Type {
 
     // Function pointer type for a function
     Function(TypeDefID),
+
+    // closure state structure for function type with this typedef ID
+    Closure(TypeDefID),
 
     Bool,
     U8,
@@ -281,6 +297,7 @@ impl fmt::Display for Type {
                 None => write!(f, "any"),
                 Some(ClassID::Class(id)) => write!(f, "class {}", id),
                 Some(ClassID::Interface(id)) => write!(f, "iface {}", id),
+                Some(ClassID::Closure(id)) => write!(f, "closure {}", id),
             },
             Type::RcObject(id) => match id {
                 Some(id) => write!(f, "{{rc {}}}", id),
@@ -288,6 +305,7 @@ impl fmt::Display for Type {
             },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
             Type::Function(id) => write!(f, "function {}", id),
+            Type::Closure(id) => write!(f, "closure {}", id),
         }
     }
 }
