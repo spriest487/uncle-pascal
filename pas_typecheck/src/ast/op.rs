@@ -355,7 +355,7 @@ fn typecheck_member_of(
                     full_path.push(member_ident.clone());
 
                     match ctx.find_path(&full_path) {
-                        Some(member) => ns_member_ref_to_annotation(member, span, ctx),
+                        Some(member) => member_annotation(member, span, ctx),
                         None => {
                             let err = NameError::MemberNotFound {
                                 member: member_ident,

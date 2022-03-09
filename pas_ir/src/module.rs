@@ -7,7 +7,7 @@ use crate::{
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;
-use pas_syn::{ast, IdentPath};
+use pas_syn::{ast, Ident, IdentPath};
 use pas_typecheck::ast::specialize_func_decl;
 use pas_typecheck::{builtin_string_name, Specializable, TypeList};
 use std::collections::HashMap;
@@ -120,13 +120,12 @@ impl Module {
                             .insert(key.clone(), cached_func.clone());
 
                         let debug_name = specialized_decl.to_string();
-                        let ir_func = self.translate_func_def(
+                        let ir_func = self.build_func_def(
                             &func_def.decl.params,
                             func_def.decl.type_params.as_ref(),
                             key.type_args.clone(),
                             func_def.decl.return_ty.as_ref(),
                             &func_def.body,
-                            None,
                             func_def.span.clone(),
                             debug_name,
                         );
@@ -242,13 +241,12 @@ impl Module {
                     .insert(key.clone(), cached_func.clone());
 
                 let debug_name = specialized_decl.to_string();
-                let ir_func = self.translate_func_def(
+                let ir_func = self.build_func_def(
                     &method_def.decl.params,
                     method_def.decl.type_params.as_ref(),
                     key.type_args.clone(),
                     method_def.decl.return_ty.as_ref(),
                     &method_def.body,
-                    None,
                     method_def.span().clone(),
                     debug_name,
                 );
@@ -298,27 +296,21 @@ impl Module {
         let sig = pas_ty::FunctionSig::of_anonymous_func(func);
         let func_ty_id = self.translate_func_ty(&sig, type_args.as_ref());
 
-        let captures = Default::default(); // TODO
-
         let closure_identity = ClosureIdentity {
             func_ty_id,
             module: func.span().file.display().to_string(),
             line: func.span().start.line,
             col: func.span().start.col,
         };
-        let closure_id = self.translate_closure_struct(closure_identity, &captures, type_args.as_ref());
+        let closure_id = self.translate_closure_struct(closure_identity, &func.captures, type_args.as_ref());
 
         let debug_name = "<anonymous function>".to_string();
 
         let cached_func = FunctionInstance { id, sig };
 
-        let ir_func = self.translate_func_def(
-            &func.params,
-            None,
-            type_args,
-            func.return_ty.as_ref(),
-            &func.body,
-            Some(closure_id),
+        let ir_func = self.build_closure_function_def(
+            &func,
+            closure_id,
             func.span().clone(),
             debug_name,
         );
@@ -369,20 +361,14 @@ impl Module {
         self.instantiate_func(key)
     }
 
-    fn translate_func_def(
+    fn create_function_body_builder(
         &mut self,
-        def_params: &[pas_ty::ast::FunctionParam],
-        def_type_params: Option<&pas_ty::TypeParamList>,
-        def_type_args: Option<pas_ty::TypeList>,
-        def_return_ty: Option<&pas_ty::Type>,
-        def_body: &pas_ty::ast::Block,
-        closure_id: Option<TypeDefID>,
-        src_span: Span,
-        debug_name: String,
-    ) -> FunctionDef {
-        let mut body_builder = match def_type_args {
+        type_params: Option<&pas_ty::TypeParamList>,
+        type_args: Option<pas_ty::TypeList>
+    ) -> Builder {
+        match type_args {
             Some(type_args) => {
-                let type_params = match def_type_params {
+                let type_params = match type_params {
                     Some(params) if params.len() == type_args.len() => params,
                     Some(params) => panic!(
                         "type args in function body don't match params! expected {}, got {}",
@@ -402,75 +388,67 @@ impl Module {
                 builder
             },
             None => Builder::new(self),
-        };
+        }
+    }
 
-        let return_ty = match def_return_ty {
+    fn bind_function_return(return_ty: Option<&pas_ty::Type>, builder: &mut Builder) -> Type {
+        match return_ty {
             None | Some(pas_ty::Type::Nothing) => Type::Nothing,
-            Some(ty) => {
-                let return_ty = body_builder.translate_type(ty);
+            Some(return_ty) => {
+                let return_ty = builder.translate_type(return_ty);
 
                 // anonymous return binding at %0
-                body_builder.comment(&format!(
+                builder.comment(&format!(
                     "{} = {} (return slot)",
                     LocalID(0),
-                    body_builder.pretty_ty_name(&return_ty),
+                    builder.pretty_ty_name(&return_ty),
                 ));
 
-                body_builder.bind_return(return_ty.clone());
+                builder.bind_return(return_ty.clone());
                 return_ty
-            },
-        };
-
-        let mut bound_params = Vec::with_capacity(def_params.len());
-
-        let mut param_id_offset = 0;
-        if return_ty != Type::Nothing {
-            assert!(def_return_ty.is_some());
-            param_id_offset += 1;
+            }
         }
+    }
 
-        if let Some(closure_id) = closure_id {
-            let closure_ptr_local_id = LocalID(param_id_offset);
-            let closure_class = ClassID::Class(closure_id);
-            let closure_ptr_ty = Type::RcPointer(Some(closure_class));
+    fn bind_function_params(params: &[pas_ty::ast::FunctionParam], builder: &mut Builder) -> Vec<(LocalID, Type)> {
+        let mut bound_params = Vec::with_capacity(params.len());
 
-            bound_params.push((closure_ptr_local_id, closure_ptr_ty));
-            param_id_offset += 1;
-        }
-
-        for (i, param) in def_params.iter().enumerate() {
-            // if the function returns a value, $0 is the return pointer, and args start at $1
-            let id = LocalID(i + param_id_offset);
+        for param in params.iter() {
+            let id = builder.next_local_id();
 
             let (param_ty, by_ref) = match &param.modifier {
                 Some(ast::FunctionParamMod::Var) | Some(ast::FunctionParamMod::Out) => {
-                    (body_builder.translate_type(&param.ty).ptr(), true)
+                    (builder.translate_type(&param.ty).ptr(), true)
                 },
 
-                None => (body_builder.translate_type(&param.ty), false),
+                None => (builder.translate_type(&param.ty), false),
             };
 
-            body_builder.comment(&format!(
+            builder.comment(&format!(
                 "{} = {}",
                 id,
-                body_builder.pretty_ty_name(&param_ty)
+                builder.pretty_ty_name(&param_ty)
             ));
-            body_builder.bind_param(id, param_ty.clone(), param.ident.to_string(), by_ref);
+            builder.bind_param(id, param_ty.clone(), param.ident.to_string(), by_ref);
 
             bound_params.push((id, param_ty));
         }
 
         for (id, ty) in &bound_params {
-            body_builder.retain(Ref::Local(*id), ty);
+            builder.retain(Ref::Local(*id), ty);
         }
 
+        bound_params
+    }
+
+    fn build_func_body(body: &pas_ty::ast::Block, return_ty: &Type, mut builder: Builder) -> Vec<Instruction> {
         let body_block_out_ref = match return_ty {
             Type::Nothing => Ref::Discard,
             _ => RETURN_REF.clone(),
         };
 
-        translate_block(&def_body, body_block_out_ref, &mut body_builder);
-        let mut body_instructions = body_builder.finish();
+        translate_block(&body, body_block_out_ref, &mut builder);
+        let mut body_instructions = builder.finish();
 
         // all functions should finish with the reserved EXIT label but to
         // avoid writing unused label instructions, if none of the other instructions in the body
@@ -479,9 +457,78 @@ impl Module {
             body_instructions.push(Instruction::Label(EXIT_LABEL));
         }
 
+        body_instructions
+    }
+
+    fn build_func_def(
+        &mut self,
+        def_params: &[pas_ty::ast::FunctionParam],
+        def_type_params: Option<&pas_ty::TypeParamList>,
+        def_type_args: Option<pas_ty::TypeList>,
+        def_return_ty: Option<&pas_ty::Type>,
+        def_body: &pas_ty::ast::Block,
+        src_span: Span,
+        debug_name: String,
+    ) -> FunctionDef {
+        let mut body_builder = self.create_function_body_builder(def_type_params, def_type_args);
+
+        let return_ty = Self::bind_function_return(def_return_ty, &mut body_builder);
+
+        let bound_params = Self::bind_function_params(def_params, &mut body_builder);
+
+        let body = Self::build_func_body(def_body, &return_ty, body_builder);
+
         FunctionDef {
-            body: body_instructions,
+            body,
             params: bound_params.into_iter().map(|(_id, ty)| ty).collect(),
+            return_ty,
+            debug_name,
+            src_span,
+        }
+    }
+
+    pub fn build_closure_function_def(
+        &mut self,
+        func_def: &pas_ty::ast::AnonymousFunctionDef,
+        closure_id: TypeDefID,
+        src_span: Span,
+        debug_name: String,
+    ) -> FunctionDef {
+        let closure_def = self.metadata.get_struct_def(closure_id).cloned().unwrap();
+        let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure_id)));
+
+        let mut body_builder = self.create_function_body_builder(None, None);
+
+        let return_ty = Self::bind_function_return(func_def.return_ty.as_ref(), &mut body_builder);
+
+        // the pointer to the closure is included as a param but *not* bound since it can't be
+        // accessed directly from code, so allocate its id before any params
+        let closure_ptr_local_id = body_builder.bind_closure_ptr(closure_ptr_ty.clone());
+
+        let mut bound_params = Self::bind_function_params(&func_def.params, &mut body_builder);
+
+        bound_params.insert(0, (closure_ptr_local_id, closure_ptr_ty.clone()));
+
+        // copy closure members into the body scope
+        // the order doesn't need to match the closure struct field order (although it probably
+        // will), we just need to ensure all captures are bound to unique locals before we
+        // start letting the body code allocate its own locals
+        for (field_id, field_def) in closure_def.fields.iter() {
+            if *field_id == CLOSURE_PTR_FIELD {
+                continue;
+            }
+
+            let capture_val_ptr_ty = field_def.ty.clone().ptr();
+            let capture_val_ptr_ref = body_builder.local_closure_capture(capture_val_ptr_ty, field_def.name.clone());
+
+            body_builder.field(capture_val_ptr_ref.clone(), Ref::Local(closure_ptr_local_id), closure_ptr_ty.clone(), *field_id);
+        }
+
+        let body = Self::build_func_body(&func_def.body, &return_ty, body_builder);
+
+        FunctionDef {
+            body,
+            params: bound_params.into_iter().map(|(_, ty)| ty).collect(),
             return_ty,
             debug_name,
             src_span,
@@ -787,19 +834,19 @@ impl Module {
     pub fn translate_closure_struct(
         &mut self,
         identity: ClosureIdentity,
-        captures: &HashMap<String, pas_ty::Type>,
+        captures: &LinkedHashMap<Ident, pas_ty::Type>,
         type_args: Option<&pas_ty::TypeList>,
     ) -> TypeDefID {
         let id = self.metadata.reserve_new_struct();
 
         let mut fields = LinkedHashMap::new();
-        let mut field_id = CLOSURE_PTR_FIELD;
-
-        fields.insert(field_id, StructFieldDef {
+        fields.insert(CLOSURE_PTR_FIELD, StructFieldDef {
             name: String::new(),
             rc: false,
             ty: Type::Function(identity.func_ty_id),
         });
+
+        let mut field_id = FieldID(CLOSURE_PTR_FIELD.0 + 1);
 
         for (capture_name, capture_ty) in captures {
             let ty = self.translate_type(capture_ty, type_args);
@@ -807,7 +854,7 @@ impl Module {
             fields.insert(
                 field_id,
                 StructFieldDef {
-                    name: capture_name.clone(),
+                    name: (*capture_name.name).clone(),
                     ty,
                     rc: capture_ty.is_rc_reference(),
                 },

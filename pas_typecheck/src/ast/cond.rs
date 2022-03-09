@@ -53,7 +53,7 @@ fn create_then_branch_ctx(is_pattern: Option<&TypePattern>, ctx: &mut Context) -
                 Binding {
                     kind: ValueKind::Immutable,
                     ty: binding.ty.clone(),
-                    def: Some(binding.ident.span().clone()),
+                    def: Some(binding.ident.clone()),
                 },
             )?;
         }

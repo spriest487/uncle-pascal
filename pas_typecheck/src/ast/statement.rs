@@ -93,7 +93,7 @@ pub fn typecheck_local_binding(
             (false, _) => ValueKind::Immutable,
         },
         ty: binding_ty.clone(),
-        def: Some(binding.annotation.clone()),
+        def: Some(name.clone()),
     };
 
     ctx.declare_binding(name.clone(), binding)?;

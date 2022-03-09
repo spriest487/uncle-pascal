@@ -18,12 +18,13 @@ use std::{
     collections::hash_map::{Entry, HashMap},
     rc::Rc,
 };
+use linked_hash_map::LinkedHashMap;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
     pub ty: Type,
     pub kind: ValueKind,
-    pub def: Option<Span>,
+    pub def: Option<Ident>,
 }
 
 #[derive(Clone, Debug)]
@@ -75,6 +76,7 @@ pub enum Environment {
     TypeDecl,
     FunctionDecl,
     FunctionBody { result_ty: Type },
+    ClosureBody { result_ty: Type, captures: LinkedHashMap<Ident, Type> },
     Block { allow_unsafe: bool },
 }
 
@@ -149,16 +151,14 @@ impl Context {
         new_id
     }
 
-    pub fn pop_scope(&mut self, id: ScopeID) {
+    pub fn pop_scope(&mut self, id: ScopeID) -> Scope {
         assert_ne!(ScopeID(0), id, "can't pop the root scope");
 
         loop {
-            let popped_id = self.scopes.current_path().top().id();
+            let popped = self.scopes.pop_scope();
 
-            self.scopes.pop_scope();
-
-            if popped_id == id {
-                break;
+            if popped.id() == id {
+                break popped;
             }
         }
     }
@@ -305,8 +305,10 @@ impl Context {
 
     pub fn current_func_return_ty(&self) -> Option<&Type> {
         for scope in self.scopes.iter().rev() {
-            if let Environment::FunctionBody { result_ty } = scope.env() {
-                return Some(result_ty);
+            match scope.env() {
+                Environment::FunctionBody { result_ty } => return Some(result_ty),
+                Environment::ClosureBody { result_ty, .. } => return Some(result_ty),
+                _ => continue,
             }
         }
 
@@ -1166,6 +1168,31 @@ impl Context {
 
     pub fn root_scope(&self) -> &Scope {
         self.scopes.iter().nth(0).unwrap()
+    }
+
+    pub fn get_closure_scope(&self) -> Option<&Scope> {
+        for scope in self.scopes.iter().rev() {
+            if let Environment::ClosureBody { .. } = scope.env() {
+                return Some(scope);
+            }
+        }
+
+        None
+    }
+
+    pub fn add_closure_capture(&mut self, name: &Ident, ty: &Type) {
+        for scope in self.scopes.iter_mut().rev() {
+            if let Environment::ClosureBody { captures, .. } = scope.env_mut() {
+                if let Some(old_ty) = captures.insert(name.clone(), ty.clone()) {
+                    if old_ty != *ty {
+                        panic!("closure capture did not match previous type: {} (declared as {}, was previously {})", name, ty, old_ty)
+                    }
+                }
+                return;
+            }
+        }
+
+        panic!("called add_closure_capture without a closure scope active");
     }
 
     pub fn get_decl_scope(&self, id: &Ident) -> Option<&Scope> {

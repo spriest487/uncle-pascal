@@ -119,21 +119,35 @@ pub fn typecheck_expr(
         }
 
         ast::Expression::Ident(ident, _) => match ctx.find_name(&ident) {
+            // const values from any scope can be transformed directly into literals
             Some(ScopeMemberRef::Decl {
-                value: Decl::Const { ty, val, span, .. },
+                value: Decl::Const { ty, val, .. },
+                key,
                 ..
             }) => Ok(ast::Expression::Literal(
                 val.clone(),
                 TypedValueAnnotation {
                     ty: ty.clone(),
-                    decl: Some(span.clone()),
+                    decl: Some(key.clone()),
                     span: expr_node.span().clone(),
                     value_kind: ValueKind::Immutable,
                 }.into(),
             )),
 
             Some(member) => {
-                let annotation = ns_member_ref_to_annotation(member, ident.span().clone(), ctx);
+                let annotation = member_annotation(member, ident.span().clone(), ctx);
+
+                if let Some(decl_name) = annotation.decl() {
+                    if let Some(decl_scope) = ctx.get_decl_scope(decl_name) {
+                        let decl_scope_id = decl_scope.id();
+                        if let Some(closure_scope_id) = ctx.get_closure_scope().map(|s| s.id()) {
+                            if decl_scope_id < closure_scope_id {
+                                ctx.add_closure_capture(decl_name, &annotation.ty());
+                            }
+                        }
+                    }
+                }
+
                 Ok(ast::Expression::Ident(ident.clone(), annotation))
             }
 
@@ -257,7 +271,7 @@ fn try_map_primitive_int<F, T>(i: &IntConstant, primitive_ty: Primitive, f: F) -
     }
 }
 
-pub fn ns_member_ref_to_annotation(
+pub fn member_annotation(
     member: ScopeMemberRef,
     span: Span,
     ctx: &Context,
@@ -271,7 +285,7 @@ pub fn ns_member_ref_to_annotation(
                 .find_path(aliased)
                 .unwrap_or_else(|| panic!("invalid alias to {}", aliased));
 
-            ns_member_ref_to_annotation(alias_ref, span, ctx)
+            member_annotation(alias_ref, span, ctx)
         }
 
         ScopeMemberRef::Decl {
@@ -306,10 +320,11 @@ pub fn ns_member_ref_to_annotation(
 
         ScopeMemberRef::Decl {
             value: Decl::Const { ty, .. },
+            key,
             ..
         } => TypedValueAnnotation {
             ty: ty.clone(),
-            decl: Some(span.clone()),
+            decl: Some(key.clone()),
             span,
             value_kind: ValueKind::Immutable,
         }.into(),

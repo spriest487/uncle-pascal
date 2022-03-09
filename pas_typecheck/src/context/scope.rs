@@ -97,6 +97,14 @@ impl Scope {
         &self.env
     }
 
+    pub fn env_mut(&mut self) -> &mut Environment {
+        &mut self.env
+    }
+
+    pub fn into_env(self) -> Environment {
+        self.env
+    }
+
     pub fn members(&self) -> impl Iterator<Item = (&Ident, &ScopeMember)> {
         self.decls.iter()
     }

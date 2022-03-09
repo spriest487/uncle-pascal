@@ -228,7 +228,7 @@ fn typecheck_const_decl(
         ConstAnnotation {
             value: const_val_literal.clone(),
             span: span.clone(),
-            decl: Some(span.clone()),
+            decl: Some(decl.ident.clone()),
             ty: ty.clone(),
         }.into(),
     );

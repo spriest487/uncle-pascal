@@ -4,6 +4,7 @@ use crate::ast::prelude::*;
 
 use crate::ast::prelude::ast::TypeList;
 use std::rc::Rc;
+use linked_hash_map::LinkedHashMap;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type DeclMod = ast::DeclMod<TypeAnnotation>;
@@ -227,7 +228,7 @@ fn declare_func_params_in_body(params: &[FunctionParam], ctx: &mut Context) -> T
             Binding {
                 ty: param.ty.clone(),
                 kind,
-                def: Some(param.span().clone()),
+                def: Some(param.ident.clone()),
             },
         )?;
 
@@ -290,15 +291,21 @@ pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty
         type_params: None,
     });
 
-    let body_env = Environment::FunctionBody { result_ty: return_ty.clone() };
-    let body = ctx.scope(body_env, |ctx| {
-        declare_func_params_in_body(&params, ctx)?;
+    let body_scope_id =ctx.push_scope(Environment::ClosureBody {
+        result_ty: return_ty.clone(),
+        captures: LinkedHashMap::new()
+    });
 
-        typecheck_block(&src_def.body, &return_ty, ctx)
-    })?;
+    declare_func_params_in_body(&params, ctx)?;
+    let body = typecheck_block(&src_def.body, &return_ty, ctx)?;
+
+    let captures = match ctx.pop_scope(body_scope_id).into_env() {
+        Environment::ClosureBody { captures, .. } => captures,
+        _ => unreachable!()
+    };
 
     let annotation = TypedValueAnnotation {
-        decl: Some(src_def.span().clone()),
+        decl: None,
         span: src_def.span().clone(),
         ty: Type::Function(sig),
         value_kind: ValueKind::Temporary,
@@ -309,5 +316,6 @@ pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty
         return_ty: Some(return_ty),
         annotation,
         body,
+        captures,
     })
 }

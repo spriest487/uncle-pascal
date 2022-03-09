@@ -7,3 +7,5 @@ edition = "2018"
 [dependencies]
 pas_common = { path = "../pas_common" }
 pas_syn = { path = "../pas_syn" }
+
+linked-hash-map = "0.5.4"

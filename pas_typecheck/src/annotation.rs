@@ -155,7 +155,7 @@ pub struct TypedValueAnnotation  {
     pub span: Span,
     pub ty: Type,
     pub value_kind: ValueKind,
-    pub decl: Option<Span>,
+    pub decl: Option<Ident>,
 }
 
 impl From<TypedValueAnnotation> for TypeAnnotation {
@@ -167,7 +167,7 @@ impl From<TypedValueAnnotation> for TypeAnnotation {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ConstAnnotation {
     pub span: Span,
-    pub decl: Option<Span>,
+    pub decl: Option<Ident>,
 
     pub ty: Type,
     pub value: Literal,
@@ -275,7 +275,7 @@ impl TypeAnnotation {
         }
     }
 
-    pub fn decl(&self) -> Option<&Span> {
+    pub fn decl(&self) -> Option<&Ident> {
         match self {
             TypeAnnotation::Type(..) => None,
             TypeAnnotation::Function { .. } => None, // TODO
@@ -285,11 +285,11 @@ impl TypeAnnotation {
 
             TypeAnnotation::TypedValue(val) => val.decl.as_ref(),
             TypeAnnotation::Untyped(..) => None,
-            TypeAnnotation::Namespace(ident, ..) => Some(ident.last().span()),
+            TypeAnnotation::Namespace(ident, ..) => Some(ident.last()),
 
             TypeAnnotation::Const(const_val) => const_val.decl.as_ref(),
 
-            TypeAnnotation::VariantCtor(ctor) => Some(ctor.variant_name.span()),
+            TypeAnnotation::VariantCtor(ctor) => Some(ctor.variant_name.last()),
         }
     }
 

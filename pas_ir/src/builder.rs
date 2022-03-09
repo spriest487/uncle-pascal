@@ -176,6 +176,7 @@ impl<'m> Builder<'m> {
 
     pub fn translate_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
         let closure = self.module.build_closure_instance(func, self.type_args.clone());
+        let closure_def = self.module.metadata.get_struct_def(closure.closure_id).cloned().unwrap();
 
         let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure.closure_id)));
 
@@ -187,14 +188,25 @@ impl<'m> Builder<'m> {
             });
 
             let func_ty = Type::Function(closure.func_ty_id);
-            let func_field = builder.local_new(func_ty.ptr(), None);
-            builder.field(func_field.clone(), closure_ref.clone(), closure_ptr_ty.clone(), CLOSURE_PTR_FIELD);
+            let func_field_ptr = builder.local_new(func_ty.ptr(), None);
+            builder.field(func_field_ptr.clone(), closure_ref.clone(), closure_ptr_ty.clone(), CLOSURE_PTR_FIELD);
 
             // initialize closure reference to function
             let func_ref = Ref::Global(GlobalRef::Function(closure.func_instance.id));
-            builder.mov(func_field.clone().to_deref(), func_ref);
+            builder.mov(func_field_ptr.clone().to_deref(), func_ref);
 
-            // todo: initialize closure capture fields here
+            // initialize closure capture fields - copy from local scope into closure object
+            for (field_id, field_def) in closure_def.fields.iter() {
+                if *field_id == CLOSURE_PTR_FIELD {
+                    continue;
+                }
+
+                let capture_field_ptr = builder.local_temp(field_def.ty.clone().ptr());
+                builder.field(capture_field_ptr.clone(), closure_ref.clone(), closure_ptr_ty.clone(), *field_id);
+
+                let captured_local_id = builder.find_local(&field_def.name).unwrap().id();
+                builder.mov(capture_field_ptr.to_deref(), Ref::Local(captured_local_id));
+            }
         });
 
         closure_ref
@@ -534,12 +546,20 @@ impl<'m> Builder<'m> {
         self.current_scope_mut().bind_param(id, name, ty, by_ref);
     }
 
-    // binds a return local in %0 with the indicated type
+    // binds an anonymous return local in %0 with the indicated type
     pub fn bind_return(&mut self, ty: Type) {
         self.current_scope_mut().bind_return(ty);
     }
 
-    fn find_next_local_id(&self) -> LocalID {
+    // binds an anonymous local binding for the closure pointer of a function
+    pub fn bind_closure_ptr(&mut self, ty: Type) -> LocalID {
+        let id = self.next_local_id();
+        self.current_scope_mut().bind_temp(id, ty);
+
+        id
+    }
+
+    pub fn next_local_id(&self) -> LocalID {
         self.scopes
             .iter()
             .flat_map(|scope| scope.locals().iter())
@@ -566,7 +586,7 @@ impl<'m> Builder<'m> {
     pub fn local_temp(&mut self, ty: Type) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
-        let id = self.find_next_local_id();
+        let id = self.next_local_id();
         self.instructions
             .push(Instruction::LocalAlloc(id, ty.clone()));
 
@@ -579,7 +599,7 @@ impl<'m> Builder<'m> {
     pub fn local_new(&mut self, ty: Type, name: Option<String>) -> Ref {
         assert_ne!(Type::Nothing, ty);
 
-        let id = self.find_next_local_id();
+        let id = self.next_local_id();
         self.instructions
             .push(Instruction::LocalAlloc(id, ty.clone()));
 
@@ -593,6 +613,17 @@ impl<'m> Builder<'m> {
             .iter()
             .rev()
             .find_map(|scope| scope.local_by_name(name))
+    }
+
+    pub fn local_closure_capture(&mut self, ty: Type, name: String) -> Ref {
+        assert_ne!(Type::Nothing, ty);
+        let id = self.next_local_id();
+
+        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
+
+        self.current_scope_mut().bind_param(id, name, ty, true);
+
+        Ref::Local(id)
     }
 
     /// call `f` for every structural member of the object of type `ty` found at the `at`

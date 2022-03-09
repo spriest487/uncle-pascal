@@ -56,9 +56,9 @@ impl<'s> ScopePathRef<'s> {
             }
 
             current -= 1;
-            while current > 0 && !scope.can_access_members(self.namespaces[current]) {
-                current -= 1;
-            }
+            // while current > 0 && !scope.can_access_members(self.namespaces[current]) {
+            //     current -= 1;
+            // }
         }
 
         None

@@ -229,7 +229,7 @@ fn typecheck_func_overload(
             iface_ty,
             ident,
             sig,
-            decl,
+            ..
         } => {
             let self_type = match &overloaded.self_arg {
                 Some(self_arg) => self_arg.annotation().ty().into_owned(),
@@ -259,7 +259,7 @@ fn typecheck_func_overload(
             let return_annotation = TypedValueAnnotation {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
-                decl: Some(decl.span().clone()),
+                decl: Some(ident.clone()),
                 value_kind: ValueKind::Temporary,
             }
             .into();
@@ -282,7 +282,7 @@ fn typecheck_func_overload(
             let return_annotation = TypedValueAnnotation {
                 span: overloaded.span.clone(),
                 ty: sig.return_ty.clone(),
-                decl: Some(decl_name.span().clone()),
+                decl: Some(decl_name.last().clone()),
                 value_kind: ValueKind::Temporary,
             }
             .into();

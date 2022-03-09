@@ -55,12 +55,11 @@ where
         let branch = ctx.scope(branch_env, |branch_ctx| {
             let pattern = TypePattern::typecheck(&branch.pattern, cond_ty, branch_ctx)?;
             for binding in pattern.bindings(branch_ctx)? {
-                let binding_span = binding.ident.span().clone();
                 branch_ctx.declare_binding(
-                    binding.ident,
+                    binding.ident.clone(),
                     Binding {
                         ty: binding.ty,
-                        def: Some(binding_span),
+                        def: Some(binding.ident),
                         kind: ValueKind::Temporary,
                     },
                 )?;

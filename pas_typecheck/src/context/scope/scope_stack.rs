@@ -20,7 +20,7 @@ impl ScopeStack {
         self.scopes.push(ns)
     }
 
-    pub fn pop_scope(&mut self) {
+    pub fn pop_scope(&mut self) -> Scope {
         if self.scopes.len() == 1 {
             panic!("can't pop the root scope");
         }
@@ -33,7 +33,7 @@ impl ScopeStack {
         if let Some(popped_key) = popped.key().cloned() {
             let current = self.scopes.last_mut().unwrap();
             if current
-                .insert_member(popped_key, ScopeMember::Scope(popped))
+                .insert_member(popped_key, ScopeMember::Scope(popped.clone()))
                 .is_err()
             {
                 unreachable!(
@@ -41,6 +41,8 @@ impl ScopeStack {
                 );
             }
         }
+
+        popped
     }
 
     pub fn insert_decl(

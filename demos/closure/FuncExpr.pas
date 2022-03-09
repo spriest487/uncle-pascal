@@ -16,10 +16,3 @@ begin
 end;
 
 WriteLn(greet('world'));
-
-{
-let add := function(a, b: Integer): Integer
-begin
-    a + b
-end;
-}

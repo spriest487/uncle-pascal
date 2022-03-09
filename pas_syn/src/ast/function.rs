@@ -6,6 +6,7 @@ use crate::{
     parse::prelude::*,
 };
 use derivative::*;
+use linked_hash_map::LinkedHashMap;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum FunctionParamMod {
@@ -322,6 +323,7 @@ pub struct AnonymousFunctionDef<A: Annotation> {
     pub return_ty: Option<A::Type>,
 
     pub body: Block<A>,
+    pub captures: LinkedHashMap<Ident, A::Type>,
 }
 
 impl<A: Annotation> fmt::Display for AnonymousFunctionDef<A> {
@@ -379,7 +381,8 @@ impl Parse for AnonymousFunctionDef<Span> {
             annotation: span,
             body,
             params,
-            return_ty
+            return_ty,
+            captures: Default::default(),
         })
     }
 }

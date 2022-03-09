@@ -40,7 +40,7 @@ pub enum TypecheckError {
     },
     NotMutable {
         expr: Box<Expression>,
-        decl: Option<Span>,
+        decl: Option<Ident>,
     },
     NotAddressable {
         ty: Type,
@@ -472,13 +472,13 @@ impl DiagnosticOutput for TypecheckError {
             }],
 
             TypecheckError::NotMutable {
-                decl: Some(decl_span),
+                decl: Some(decl),
                 ..
             } => vec![DiagnosticMessage {
                 title: "modifying immutable value".to_string(),
                 label: Some(DiagnosticLabel {
                     text: Some("declared as immutable here".to_string()),
-                    span: decl_span.clone(),
+                    span: decl.span().clone(),
                 }),
                 notes: Vec::new(),
             }],
