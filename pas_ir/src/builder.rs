@@ -204,8 +204,12 @@ impl<'m> Builder<'m> {
                 let capture_field_ptr = builder.local_temp(field_def.ty.clone().ptr());
                 builder.field(capture_field_ptr.clone(), closure_ref.clone(), closure_ptr_ty.clone(), *field_id);
 
+                let capture_field = capture_field_ptr.to_deref();
+
                 let captured_local_id = builder.find_local(&field_def.name).unwrap().id();
-                builder.mov(capture_field_ptr.to_deref(), Ref::Local(captured_local_id));
+                builder.mov(capture_field.clone(), Ref::Local(captured_local_id));
+
+                builder.retain(capture_field.clone(), &field_def.ty);
             }
         });
 
