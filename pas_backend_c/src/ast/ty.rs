@@ -44,7 +44,7 @@ impl Type {
     pub fn from_metadata(ty: &metadata::Type, module: &mut Module) -> Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
-            metadata::Type::Function(id) => Type::DefinedType(TypeDefName::FuncAlias(*id)),
+            metadata::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
             metadata::Type::RcPointer(..) => Type::DefinedType(TypeDefName::Rc).ptr(),
             metadata::Type::RcObject(..) => Type::DefinedType(TypeDefName::Rc),
             metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
@@ -203,7 +203,10 @@ impl Type {
             Type::UInt64 => "uint64_t".to_string(),
             Type::PtrDiffType => "ptrdiff_t".to_string(),
             Type::SizeType => "size_t".to_string(),
-            Type::DefinedType(name) => format!("struct {}", name),
+            Type::DefinedType(name) => match name {
+                TypeDefName::Alias(..) => name.to_string(),
+                _ => format!("struct {}", name),
+            },
             Type::SizedArray(ty, ..) | Type::Pointer(ty) => format!("{}*", ty.typename()),
             Type::Bool => "bool".to_string(),
             Type::Float => "float".to_string(),
@@ -274,7 +277,8 @@ pub enum TypeDefName {
     // struct from variant def ID
     Variant(TypeDefID),
 
-    FuncAlias(TypeDefID),
+    // alias for another type
+    Alias(TypeDefID),
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
@@ -288,7 +292,7 @@ impl fmt::Display for TypeDefName {
             TypeDefName::Struct(id) => write!(f, "Struct_{}", id.0),
             TypeDefName::Variant(id) => write!(f, "Variant_{}", id.0),
             TypeDefName::StaticArray(i) => write!(f, "StaticArray_{}", i),
-            TypeDefName::FuncAlias(id) => write!(f, "FuncAlias_{}", id.0),
+            TypeDefName::Alias(id) => write!(f, "FuncAlias_{}", id.0),
         }
     }
 }
@@ -304,7 +308,7 @@ impl TypeDefName {
                 left.push_str(&format!("struct {}", self.to_string()));
             }
 
-            TypeDefName::FuncAlias(..) => {
+            TypeDefName::Alias(..) => {
                 left.push_str(&self.to_string());
             }
         }
@@ -318,7 +322,10 @@ pub struct TypeDecl {
 
 impl fmt::Display for TypeDecl {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "struct {}", self.name)
+        match &self.name {
+            TypeDefName::Alias(..) => write!(f, "{}", self.name),
+            _ => write!(f, "struct {}", self.name),
+        }
     }
 }
 
@@ -415,7 +422,7 @@ impl fmt::Display for StructDef {
             let name = format!("{}", member.name);
             writeln!(f, "{};", member.ty.to_decl_string(&name))?;
         }
-        write!(f, "}};")
+        write!(f, "}}")
     }
 }
 
@@ -536,6 +543,14 @@ impl TypeDef {
             TypeDef::Struct(s) => &s.decl,
             TypeDef::Variant(v) => &v.decl,
             TypeDef::FuncAlias(f) => &f.decl,
+        }
+    }
+
+    pub fn forward_decl(&self) -> Option<&TypeDecl> {
+        match self {
+            TypeDef::Struct(s) => Some(&s.decl),
+            TypeDef::Variant(v) => Some(&v.decl),
+            TypeDef::FuncAlias(..) => None,
         }
     }
 }

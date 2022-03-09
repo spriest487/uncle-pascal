@@ -217,6 +217,10 @@ impl Module {
                     return_ty.collect_type_def_deps(&mut member_deps);
 
                     let mut param_tys = Vec::new();
+
+                    // any function-type object needs a closure param
+                    param_tys.push(Type::DefinedType(TypeDefName::Rc).ptr());
+
                     for param_ty in &func_def.param_tys {
                         let param_ty = Type::from_metadata(param_ty, self);
                         param_ty.collect_type_def_deps(&mut member_deps);
@@ -224,7 +228,7 @@ impl Module {
                     }
 
                     let func_alias_def = FuncAliasDef {
-                        decl: TypeDecl { name: TypeDefName::FuncAlias(id) },
+                        decl: TypeDecl { name: TypeDefName::Alias(id) },
                         param_tys,
                         return_ty,
                         comment: Some(func_def.to_string()),
@@ -306,11 +310,6 @@ impl fmt::Display for Module {
 
         writeln!(f, "{}", include_str!("prelude.h"))?;
 
-        for def in self.type_defs.values() {
-            writeln!(f, "{};", def.decl())?;
-            writeln!(f)?;
-        }
-
         let ordered_type_defs: Vec<_> = self.type_defs_order.clone().into_iter().collect();
         if ordered_type_defs.len() != self.type_defs_order.len() {
             eprintln!("ordered defs ({}):", ordered_type_defs.len());
@@ -326,7 +325,14 @@ impl fmt::Display for Module {
             panic!("type metadata contained illegal circular references");
         }
 
-        for def_name in ordered_type_defs.iter() {
+        for def_name in &ordered_type_defs {
+            if let Some(forward_decl) = self.type_defs[def_name].forward_decl() {
+                writeln!(f, "{};", forward_decl)?;
+                writeln!(f)?;
+            }
+        }
+
+        for def_name in &ordered_type_defs {
             // special case for System.String: we expect it to already be defined in the prelude
             if *def_name == TypeDefName::Struct(ir::metadata::STRING_ID) {
                 continue;

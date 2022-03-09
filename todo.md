@@ -1,3 +1,4 @@
+* intrusive rc
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
 * interpreter: marshalled globals

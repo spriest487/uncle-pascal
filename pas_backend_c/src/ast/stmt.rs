@@ -1,6 +1,7 @@
 use std::fmt;
 
 use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, TypeDefID}, Label, LocalID};
+use pas_ir::metadata::CLOSURE_PTR_FIELD;
 
 use crate::ast::{ty::FieldName, FunctionName, Module, TypeDefName, Type};
 
@@ -204,8 +205,26 @@ impl Expr {
 
         match of_ty {
             metadata::Type::RcPointer(class_id) => {
+                let resource_ptr = Expr::Arrow {
+                    base: Box::new(a_expr),
+                    field: FieldName::RcResource,
+                };
+
                 // pointer to RC containing pointer to class resource
                 let class_ty = match class_id {
+                    // HACK: closures are of unknown type but we have enough info to know the type
+                    // of the function pointer, which is the only field that can be legally accessed
+                    // anyway.
+                    // the function pointer inside the closure must be the first member, so
+                    // we can simply cast the resource pointer to the function type and return
+                    // that as the value of the field expression
+                    Some(metadata::ClassID::Closure(func_ty_id)) if field_id == CLOSURE_PTR_FIELD => {
+                        let func_ty = Type::DefinedType(TypeDefName::Alias(*func_ty_id));
+
+                        return resource_ptr.cast(func_ty.ptr());
+                    }
+
+                    // normal class: resource pointer points to the known struct type for the class
                     Some(metadata::ClassID::Class(struct_id)) => {
                         Type::DefinedType(TypeDefName::Struct(*struct_id))
                     }
@@ -216,10 +235,6 @@ impl Expr {
                     ),
                 };
 
-                let resource_ptr = Expr::Arrow {
-                    base: Box::new(a_expr),
-                    field: FieldName::RcResource,
-                };
                 let class_ptr = resource_ptr.cast(class_ty.ptr());
 
                 let field_ref = Expr::Arrow {
