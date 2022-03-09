@@ -1,9 +1,28 @@
 use std::fmt;
 
 use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, TypeDefID}, Label, LocalID};
-use pas_ir::metadata::CLOSURE_PTR_FIELD;
+use pas_ir::metadata::{CLOSURE_PTR_FIELD, FunctionID};
 
 use crate::ast::{ty::FieldName, FunctionName, Module, TypeDefName, Type};
+
+pub enum GlobalName {
+    StringLiteral(StringID),
+    StringLiteralRef(StringID),
+
+    StaticClosure(FunctionID),
+    StaticClosureRef(FunctionID),
+}
+
+impl fmt::Display for GlobalName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
+            GlobalName::StringLiteralRef(id) => write!(f, "StringRc_{}", id.0),
+            GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
+            GlobalName::StaticClosureRef(id) => write!(f, "StaticClosureRc_{}", id.0),
+        }
+    }
+}
 
 #[allow(unused)]
 pub enum InfixOp {
@@ -66,7 +85,7 @@ pub enum Expr {
     Function(FunctionName),
     Class(TypeDefID),
     Deref(Box<Expr>),
-    LitString(StringID), // string literal (System.String reference)
+    Global(GlobalName), // global value
     LitCString(String), // C string literal
     LitBool(bool),
     LitInt(i128),
@@ -131,7 +150,14 @@ impl Expr {
                 let name = module.function_name(*id);
                 Expr::Function(name)
             }
-            ir::Ref::Global(ir::GlobalRef::StringLiteral(id)) => Expr::LitString(*id),
+            ir::Ref::Global(ir::GlobalRef::StringLiteral(id)) => {
+                let name = GlobalName::StringLiteralRef(*id);
+                Expr::Global(name).addr_of()
+            },
+            ir::Ref::Global(ir::GlobalRef::StaticClosure(id)) => {
+                let name = GlobalName::StaticClosureRef(*id);
+                Expr::Global(name).addr_of()
+            }
         }
     }
 
@@ -266,7 +292,7 @@ impl Expr {
 impl fmt::Display for Expr {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Expr::LitString(id) => write!(f, "&StringRc_{}", id.0),
+            Expr::Global(name) => write!(f, "{}", name),
             Expr::LitCString(s) => write!(f, "\"{}\"", s.escape_default()),
             Expr::LitFloat(x) => write!(f, "{}", x),
             Expr::LitInt(i) => write!(f, "{}", i),

@@ -19,6 +19,9 @@ use topological_sort::TopologicalSort;
 pub struct Module {
     functions: Vec<FunctionDef>,
     ffi_funcs: Vec<FfiFunction>,
+    builtin_funcs: HashMap<FunctionID, FunctionName>,
+
+    static_closures: Vec<StaticClosure>,
 
     static_array_types: HashMap<ArraySig, Type>,
 
@@ -27,8 +30,6 @@ pub struct Module {
 
     classes: Vec<Class>,
     ifaces: Vec<Interface>,
-
-    builtin_funcs: HashMap<FunctionID, FunctionName>,
 
     string_literals: HashMap<StringID, StringLiteral>,
 
@@ -39,37 +40,50 @@ pub struct Module {
 
 impl Module {
     pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
-        let system_funcs = &[
-            ("Int8ToStr", FunctionName::Int8ToStr),
-            ("ByteToStr", FunctionName::ByteToStr),
-            ("Int16ToStr", FunctionName::Int16ToStr),
-            ("UInt16ToStr", FunctionName::UInt16ToStr),
-            ("IntToStr", FunctionName::IntToStr),
-            ("UInt32ToStr", FunctionName::UInt32ToStr),
-            ("Int64ToStr", FunctionName::Int64ToStr),
-            ("UInt64ToStr", FunctionName::UInt64ToStr),
-            ("NativeIntToStr", FunctionName::NativeIntToStr),
-            ("NativeUIntToStr", FunctionName::NativeUIntToStr),
+        let rc_ty = Type::DefinedType(TypeDefName::Rc).ptr();
 
-            ("StrToInt", FunctionName::StrToInt),
-            ("GetMem", FunctionName::GetMem),
-            ("FreeMem", FunctionName::FreeMem),
-            ("WriteLn", FunctionName::WriteLn),
-            ("ReadLn", FunctionName::ReadLn),
-            ("ArrayLengthInternal", FunctionName::ArrayLengthInternal),
+        let system_funcs = &[
+            ("Int8ToStr", FunctionName::Int8ToStr, vec![Type::SChar], rc_ty.clone()),
+            ("ByteToStr", FunctionName::ByteToStr, vec![Type::UChar], rc_ty.clone()),
+            ("Int16ToStr", FunctionName::Int16ToStr, vec![Type::Int16], rc_ty.clone()),
+            ("UInt16ToStr", FunctionName::UInt16ToStr, vec![Type::UInt16], rc_ty.clone()),
+            ("IntToStr", FunctionName::IntToStr, vec![Type::Int32], rc_ty.clone()),
+            ("UInt32ToStr", FunctionName::UInt32ToStr, vec![Type::UInt32], rc_ty.clone()),
+            ("Int64ToStr", FunctionName::Int64ToStr, vec![Type::Int64], rc_ty.clone()),
+            ("UInt64ToStr", FunctionName::UInt64ToStr, vec![Type::UInt64], rc_ty.clone()),
+            ("NativeIntToStr", FunctionName::NativeIntToStr, vec![Type::PtrDiffType], rc_ty.clone()),
+            ("NativeUIntToStr", FunctionName::NativeUIntToStr, vec![Type::SizeType], rc_ty.clone()),
+
+            ("StrToInt", FunctionName::StrToInt, vec![rc_ty.clone()], Type::Int32),
+            ("GetMem", FunctionName::GetMem, vec![Type::Int32], Type::UChar.ptr()),
+            ("FreeMem", FunctionName::FreeMem, vec![Type::UChar.ptr()], Type::Void),
+            ("WriteLn", FunctionName::WriteLn, vec![rc_ty.clone()], Type::Void),
+            ("ReadLn", FunctionName::ReadLn, vec![], rc_ty.clone()),
+            ("ArrayLengthInternal", FunctionName::ArrayLengthInternal, vec![rc_ty.clone()], Type::Int32),
             (
                 "ArraySetLengthInternal",
                 FunctionName::ArraySetLengthInternal,
+                vec![rc_ty.clone(), Type::Int32, Type::Void.ptr(), Type::Int32],
+                rc_ty.clone(),
             ),
         ];
 
+        let mut static_closures = Vec::new();
+
         let mut builtin_funcs = HashMap::new();
-        for (pas_name, c_name) in system_funcs {
+        for (pas_name, c_name, params, return_ty) in system_funcs {
             let global_name = &Symbol::new(*pas_name, vec!["System"]);
 
             // if a function isn't used then it won't be included in the metadata
             if let Some(func_id) = metadata.find_function(global_name) {
                 builtin_funcs.insert(func_id, *c_name);
+
+                static_closures.push(StaticClosure::new(func_id, FunctionDecl {
+                    comment: None,
+                    name: c_name.clone(),
+                    params: params.clone(),
+                    return_ty: return_ty.clone(),
+                }));
             }
         }
 
@@ -95,18 +109,18 @@ impl Module {
         let mut module = Module {
             functions: Vec::new(),
             ffi_funcs: Vec::new(),
+            builtin_funcs,
 
             type_defs: HashMap::new(),
             type_defs_order: TopologicalSort::new(),
 
             static_array_types: HashMap::new(),
 
+            static_closures,
             string_literals,
 
             classes: Vec::new(),
             ifaces: Vec::new(),
-
-            builtin_funcs,
 
             opts,
 
@@ -252,6 +266,9 @@ impl Module {
             match func {
                 ir::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
+
+                    self.static_closures.push(StaticClosure::new(*id, c_func.decl.clone()));
+
                     self.functions.push(c_func);
                 }
 
@@ -260,6 +277,8 @@ impl Module {
 
                 ir::Function::External(func_ref) => {
                     let ffi_func = FfiFunction::translate(*id, func_ref, self);
+                    self.static_closures.push(StaticClosure::new(*id, ffi_func.decl.clone()));
+
                     self.ffi_funcs.push(ffi_func);
                 }
             }
@@ -344,6 +363,10 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
+        for static_closure in &self.static_closures {
+            writeln!(f, "{}", static_closure.decls_to_string())?;
+        }
+
         for func in &self.functions {
             writeln!(f, "{};", func.decl)?;
             writeln!(f)?;
@@ -370,19 +393,22 @@ impl fmt::Display for Module {
             let len_field = FieldName::ID(STRING_LEN_FIELD);
 
             let string_name = TypeDefName::Struct(ir::metadata::STRING_ID);
-            writeln!(f, "static struct {} String_{} = {{", string_name, str_id.0)?;
+            let lit_name = GlobalName::StringLiteral(*str_id);
+            writeln!(f, "static struct {} {} = {{", string_name, lit_name)?;
             write!(f, "  .{} = {}", chars_field, lit)?;
             writeln!(f, ", ")?;
             writeln!(f, "  .{} = {},", len_field, lit.as_str().len())?;
             writeln!(f, "}};")?;
 
+            let lit_ref_name = GlobalName::StringLiteralRef(*str_id);
+
             writeln!(
                 f,
-                "static struct {} StringRc_{} = {{",
+                "static struct {} {} = {{",
                 TypeDefName::Rc,
-                str_id.0
+                lit_ref_name
             )?;
-            writeln!(f, "  .{} = &String_{},", FieldName::RcResource, str_id.0)?;
+            writeln!(f, "  .{} = &{},", FieldName::RcResource, lit_name)?;
             writeln!(
                 f,
                 "  .{} = &Class_{},",
@@ -391,6 +417,10 @@ impl fmt::Display for Module {
             )?;
             writeln!(f, "  .{} = -1,", FieldName::RcRefCount)?;
             writeln!(f, "}};")?;
+        }
+
+        for static_closure in &self.static_closures {
+            writeln!(f, "{}", static_closure.wrapper_def_string())?;
         }
 
         for func in &self.functions {

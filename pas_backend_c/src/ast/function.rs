@@ -1,9 +1,9 @@
-use crate::ast::{Builder, Expr, InfixOp, Module, Statement, TypeDecl, Type};
+use crate::ast::{Builder, Expr, InfixOp, Module, Statement, TypeDecl, Type, TypeDefName, GlobalName, FieldName};
 use pas_ir::{
     self as ir,
     metadata::{FunctionID, InterfaceID, MethodID},
 };
-use std::fmt;
+use std::{fmt, fmt::Write};
 use pas_ir::metadata::TypeDefID;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
@@ -19,6 +19,9 @@ pub enum FunctionName {
 
     ID(FunctionID),
     Method(InterfaceID, MethodID),
+
+    // function wrapper for calling a function as a static closure
+    StaticClosureWrapper(FunctionID),
 
     // runtime functions
     RcAlloc,
@@ -59,6 +62,8 @@ impl fmt::Display for FunctionName {
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
 
+            FunctionName::StaticClosureWrapper(id) => write!(f, "Function_{}_StaticClosureWrapper", id.0),
+
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),
             FunctionName::RcRelease => write!(f, "RcRelease"),
@@ -88,6 +93,7 @@ impl fmt::Display for FunctionName {
     }
 }
 
+#[derive(Clone)]
 pub struct FunctionDecl {
     pub name: FunctionName,
     pub return_ty: Type,
@@ -284,5 +290,98 @@ pub struct FuncAliasID(pub TypeDefID);
 impl fmt::Display for FuncAliasID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "FunctionAlias_{}", self.0.0)
+    }
+}
+
+pub struct StaticClosure {
+    pub func_id: FunctionID,
+    pub func_decl: FunctionDecl,
+
+    wrapper_decl: FunctionDecl,
+}
+
+impl StaticClosure {
+    pub fn new(func_id: FunctionID, func_decl: FunctionDecl) -> Self {
+        let mut wrapper_params = func_decl.params.clone();
+        wrapper_params.insert(0, Type::DefinedType(TypeDefName::Rc).ptr());
+
+        StaticClosure {
+            wrapper_decl: FunctionDecl {
+                name: FunctionName::StaticClosureWrapper(func_id),
+                params: wrapper_params,
+                return_ty: func_decl.return_ty.clone(),
+                comment: None,
+            },
+
+            func_id,
+            func_decl,
+        }
+    }
+
+    pub fn decls_to_string(&self) -> String {
+        let mut init_string = String::with_capacity(256);
+
+        let rc_name = TypeDefName::Rc;
+
+        // let closure_ty_name = TypeDefName::StaticClosure(self.func_id);
+
+        // write the wrapper function decl
+        writeln!(init_string, "{};", self.wrapper_decl).unwrap();
+        writeln!(init_string).unwrap();
+
+        // the only requirement for a closure object is that the first member is a function pointer
+        // to the target func. that means our closure object can just be the pointer on its own
+        let closure_name = GlobalName::StaticClosure(self.func_id);
+
+        let wrapper_ptr_ty = self.wrapper_decl.ptr_type();
+        let func_ptr_decl = wrapper_ptr_ty.to_decl_string(&closure_name);
+        writeln!(init_string, "static {} = &{};", func_ptr_decl, self.wrapper_decl.name).unwrap();
+
+        // create the RC object that owns this closure
+
+        let ref_name = GlobalName::StaticClosureRef(self.func_id);
+
+        writeln!(init_string, "static struct {} {} = {{", rc_name, ref_name).unwrap();
+        writeln!(init_string, "  .{} = &{},", FieldName::RcResource, closure_name).unwrap();
+
+        // TODO, do closures need a class?
+        writeln!(init_string, "  .{} = {},", FieldName::RcClass, Expr::Null).unwrap();
+
+        // immortal reference
+        writeln!(init_string, "  .{} = -1,", FieldName::RcRefCount).unwrap();
+        writeln!(init_string, "}};").unwrap();
+
+        init_string
+    }
+
+    pub fn wrapper_def_string(&self) -> String {
+        let mut def_string = String::with_capacity(128);
+
+        writeln!(def_string, "{} {{", self.wrapper_decl).unwrap();
+
+        // call target func
+        write!(def_string, "  ").unwrap();
+        if self.func_decl.return_ty != Type::Void {
+            write!(def_string, "  return ").unwrap();
+        }
+        write!(def_string, "{}(", self.func_decl.name).unwrap();
+        for i in 0..self.func_decl.params.len() {
+            if i > 0 {
+                write!(def_string, ", ").unwrap();
+            }
+            // the first param is either 1 or 2 depending on if there's a return local allocated,
+            // since we also need to skip the closure param which is unused for static closures
+            let param_offset = match self.func_decl.return_ty {
+                Type::Void => 1,
+                _ => 2,
+            };
+            write!(def_string, "L{}", i + param_offset).unwrap();
+        }
+        writeln!(def_string, ");").unwrap();
+
+        writeln!(def_string, "}}").unwrap();
+        writeln!(def_string).unwrap();
+
+        def_string
     }
 }

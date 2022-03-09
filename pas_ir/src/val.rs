@@ -82,13 +82,15 @@ impl Value {
 pub enum GlobalRef {
     Function(FunctionID),
     StringLiteral(StringID),
+    StaticClosure(FunctionID),
 }
 
 impl fmt::Display for GlobalRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GlobalRef::Function(func_id) => write!(f, "{}", func_id),
-            GlobalRef::StringLiteral(id) => write!(f, "string `{}`", id),
+            GlobalRef::StringLiteral(id) => write!(f, "string literal `{}`", id),
+            GlobalRef::StaticClosure(id) => write!(f, "static closure of {}", id),
         }
     }
 }

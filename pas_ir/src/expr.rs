@@ -64,7 +64,7 @@ pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> 
 
         ast::Expression::Cast(cast) => translate_cast_expr(cast, builder),
 
-        ast::Expression::AnonymousFunction(def) => builder.translate_closure_expr(def),
+        ast::Expression::AnonymousFunction(def) => builder.build_closure_expr(def),
     };
 
     builder.pop_debug_context();

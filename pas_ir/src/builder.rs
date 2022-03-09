@@ -174,8 +174,12 @@ impl<'m> Builder<'m> {
         self.module.translate_func_ty(func_sig, self.type_args.as_ref())
     }
 
-    pub fn translate_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
+    pub fn build_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
         let closure = self.module.build_closure_instance(func, self.type_args.clone());
+        if func.captures.len() == 0 {
+            return Ref::Global(GlobalRef::StaticClosure(closure.func_instance.id));
+        }
+
         let closure_def = self.module.metadata.get_struct_def(closure.closure_id).cloned().unwrap();
 
         let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure.closure_id)));

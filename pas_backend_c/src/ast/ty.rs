@@ -5,7 +5,7 @@ use pas_ir::metadata;
 use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, ClassID};
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, ClassID, FunctionID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -282,6 +282,9 @@ pub enum TypeDefName {
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
+
+    // struct for the static closure for a function
+    StaticClosure(FunctionID),
 }
 
 impl fmt::Display for TypeDefName {
@@ -293,6 +296,7 @@ impl fmt::Display for TypeDefName {
             TypeDefName::Variant(id) => write!(f, "Variant_{}", id.0),
             TypeDefName::StaticArray(i) => write!(f, "StaticArray_{}", i),
             TypeDefName::Alias(id) => write!(f, "FuncAlias_{}", id.0),
+            TypeDefName::StaticClosure(id) => write!(f, "StaticClosure_{}", id),
         }
     }
 }
@@ -301,6 +305,7 @@ impl TypeDefName {
     pub fn build_decl_string(&self, left: &mut String, _right: &mut String) {
         match self {
             TypeDefName::Rc
+            | TypeDefName::StaticClosure(..)
             | TypeDefName::Class
             | TypeDefName::Struct(..)
             | TypeDefName::Variant(..)
