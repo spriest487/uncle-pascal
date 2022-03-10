@@ -1,9 +1,4 @@
-use crate::{
-    jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list,
-    Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef,
-    FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter,
-    LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF,
-};
+use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;
@@ -27,6 +22,8 @@ pub struct Module {
     pub functions: HashMap<FunctionID, Function>,
     translated_funcs: HashMap<FunctionDefKey, FunctionInstance>,
 
+    static_closures: Vec<StaticClosure>,
+
     pub init: Vec<Instruction>,
 }
 
@@ -42,6 +39,8 @@ impl Module {
 
             functions: HashMap::new(),
             translated_funcs: HashMap::new(),
+
+            static_closures: Vec::new(),
 
             metadata,
         }
@@ -306,7 +305,7 @@ impl Module {
 
         let debug_name = "<anonymous function>".to_string();
 
-        let cached_func = FunctionInstance { id, sig };
+        let cached_func = FunctionInstance { id, sig: sig };
 
         let ir_func = self.build_closure_function_def(
             &func,
@@ -322,6 +321,40 @@ impl Module {
             func_ty_id,
             closure_id
         }
+    }
+
+    pub fn build_static_closure_instance(
+        &mut self,
+        closure: ClosureInstance,
+    ) -> &StaticClosure {
+        let id = StaticClosureID(self.static_closures.len());
+
+        let mut init_builder = Builder::new(self);
+        let closure_ref = init_builder.build_closure_instance(closure.clone());
+        init_builder.retain(closure_ref.clone(), &closure.closure_ptr_ty());
+        init_builder.mov(Ref::Global(GlobalRef::StaticClosure(id)), closure_ref);
+
+        let init_body = init_builder.finish();
+
+        let init_func_id = self.metadata.insert_func(None);
+        self.insert_func(init_func_id, Function::Local(FunctionDef {
+            body: init_body,
+            debug_name: format!("static closure init for {}", closure),
+            params: Vec::new(),
+            return_ty: Type::Nothing,
+            src_span: Span::zero(""),
+        }));
+
+        self.static_closures.push(StaticClosure {
+            id,
+            init_func: init_func_id,
+        });
+
+        &self.static_closures[self.static_closures.len() - 1]
+    }
+
+    pub fn static_closures(&self) -> &[StaticClosure] {
+        &self.static_closures
     }
 
     // statically reference a method and get a function ID. interface methods are all translated
@@ -934,7 +967,7 @@ impl fmt::Display for Module {
 
                         StructIdentity::Closure(identity) => {
                             let func_ty_name = self.metadata.pretty_ty_name(&Type::Function(identity.func_ty_id));
-                            write!(f, "closure of function {func_ty_name} @ {}:{}:{}", identity.module, identity.line, identity.col)?;
+                            write!(f, "closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)?;
                         }
                     }
 

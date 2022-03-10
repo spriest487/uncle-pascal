@@ -176,13 +176,20 @@ impl<'m> Builder<'m> {
 
     pub fn build_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
         let closure = self.module.build_closure_instance(func, self.type_args.clone());
-        if func.captures.len() == 0 {
-            return Ref::Global(GlobalRef::StaticClosure(closure.func_instance.id));
-        }
 
+        if func.captures.len() == 0 {
+            let static_closure = self.module.build_static_closure_instance(closure);
+
+            Ref::Global(GlobalRef::StaticClosure(static_closure.id))
+        } else {
+            self.build_closure_instance(closure)
+        }
+    }
+
+    pub fn build_closure_instance(&mut self, closure: ClosureInstance) -> Ref {
         let closure_def = self.module.metadata.get_struct_def(closure.closure_id).cloned().unwrap();
 
-        let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure.closure_id)));
+        let closure_ptr_ty = closure.closure_ptr_ty();
 
         let closure_ref = self.local_new(closure_ptr_ty.clone(), None);
         self.scope(|builder| {

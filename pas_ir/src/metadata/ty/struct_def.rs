@@ -95,7 +95,7 @@ impl fmt::Display for Struct {
             StructIdentity::Named(struct_name) => write!(f, "{}", struct_name),
             StructIdentity::Closure(identity) => write!(
                 f,
-                "closure of function {} @ {}:{}:{}",
+                "closure of function type {} @ {}:{}:{}",
                 identity.func_ty_id, identity.module, identity.line, identity.col
             ),
         }

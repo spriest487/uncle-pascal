@@ -8,7 +8,7 @@ use crate::{
     ast::string_lit::StringLiteral,
     Options,
 };
-use pas_ir::{self as ir, BUILTIN_SRC, metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}};
+use pas_ir::{self as ir, BUILTIN_SRC, metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}, StaticClosureID};
 use std::{
     borrow::Cow,
     collections::hash_map::{Entry, HashMap},
@@ -21,8 +21,6 @@ pub struct Module {
     ffi_funcs: Vec<FfiFunction>,
     builtin_funcs: HashMap<FunctionID, FunctionName>,
 
-    static_closures: Vec<StaticClosure>,
-
     static_array_types: HashMap<ArraySig, Type>,
 
     type_defs: HashMap<TypeDefName, TypeDef>,
@@ -32,6 +30,7 @@ pub struct Module {
     ifaces: Vec<Interface>,
 
     string_literals: HashMap<StringID, StringLiteral>,
+    static_closures: Vec<StaticClosureID>,
 
     opts: Options,
 
@@ -68,22 +67,13 @@ impl Module {
             ),
         ];
 
-        let mut static_closures = Vec::new();
-
         let mut builtin_funcs = HashMap::new();
-        for (pas_name, c_name, params, return_ty) in system_funcs {
+        for (pas_name, c_name, _params, _return_ty) in system_funcs {
             let global_name = &Symbol::new(*pas_name, vec!["System"]);
 
             // if a function isn't used then it won't be included in the metadata
             if let Some(func_id) = metadata.find_function(global_name) {
                 builtin_funcs.insert(func_id, *c_name);
-
-                static_closures.push(StaticClosure::new(func_id, FunctionDecl {
-                    comment: None,
-                    name: c_name.clone(),
-                    params: params.clone(),
-                    return_ty: return_ty.clone(),
-                }));
             }
         }
 
@@ -116,11 +106,12 @@ impl Module {
 
             static_array_types: HashMap::new(),
 
-            static_closures,
             string_literals,
+            static_closures: Vec::new(),
 
             classes: Vec::new(),
             ifaces: Vec::new(),
+
 
             opts,
 
@@ -267,8 +258,6 @@ impl Module {
                 ir::Function::Local(func_def) => {
                     let c_func = FunctionDef::translate(*id, func_def, self);
 
-                    self.static_closures.push(StaticClosure::new(*id, c_func.decl.clone()));
-
                     self.functions.push(c_func);
                 }
 
@@ -277,11 +266,14 @@ impl Module {
 
                 ir::Function::External(func_ref) => {
                     let ffi_func = FfiFunction::translate(*id, func_ref, self);
-                    self.static_closures.push(StaticClosure::new(*id, ffi_func.decl.clone()));
 
                     self.ffi_funcs.push(ffi_func);
                 }
             }
+        }
+
+        for static_closure in module.static_closures() {
+            self.static_closures.push(static_closure.id);
         }
 
         let init_index = self
@@ -363,10 +355,6 @@ impl fmt::Display for Module {
             writeln!(f)?;
         }
 
-        for static_closure in &self.static_closures {
-            writeln!(f, "{}", static_closure.decls_to_string())?;
-        }
-
         for func in &self.functions {
             writeln!(f, "{};", func.decl)?;
             writeln!(f)?;
@@ -419,9 +407,13 @@ impl fmt::Display for Module {
             writeln!(f, "}};")?;
         }
 
-        for static_closure in &self.static_closures {
-            writeln!(f, "{}", static_closure.wrapper_def_string())?;
+        for static_closure_id in &self.static_closures {
+            let global_name = GlobalName::StaticClosureRef(*static_closure_id);
+            let decl_string = Type::DefinedType(TypeDefName::Rc).ptr().to_decl_string(&global_name);
+
+            writeln!(f, "{};", decl_string)?;
         }
+        writeln!(f)?;
 
         for func in &self.functions {
             writeln!(f, "{}", func)?;

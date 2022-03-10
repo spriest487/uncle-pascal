@@ -249,6 +249,18 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
         ir_module.translate_unit(&unit.unit);
     }
 
+    // add static closure init functions at top of init
+    let mut static_closures_init = Vec::new();
+    for static_closure in ir_module.static_closures() {
+        static_closures_init.push(Instruction::Call {
+            function: Value::Ref(Ref::Global(GlobalRef::Function(static_closure.init_func))),
+            args: Vec::new(),
+            out: None,
+        });
+    }
+    static_closures_init.append(&mut ir_module.init);
+    ir_module.init = static_closures_init;
+
     ir_module.gen_iface_impls();
     for (elem_ty, struct_id) in ir_module.metadata.dyn_array_structs().clone() {
         gen_dyn_array_rc_boilerplate(&mut ir_module, &elem_ty, struct_id);

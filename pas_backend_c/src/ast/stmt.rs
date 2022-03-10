@@ -1,7 +1,7 @@
 use std::fmt;
 
-use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, TypeDefID}, Label, LocalID};
-use pas_ir::metadata::{CLOSURE_PTR_FIELD, FunctionID};
+use pas_ir::{self as ir, metadata::ty::ClassID, metadata::{self, StringID, TypeDefID}, Label, LocalID, StaticClosureID};
+use pas_ir::metadata::CLOSURE_PTR_FIELD;
 
 use crate::ast::{ty::FieldName, FunctionName, Module, TypeDefName, Type};
 
@@ -9,8 +9,7 @@ pub enum GlobalName {
     StringLiteral(StringID),
     StringLiteralRef(StringID),
 
-    StaticClosure(FunctionID),
-    StaticClosureRef(FunctionID),
+    StaticClosureRef(StaticClosureID),
 }
 
 impl fmt::Display for GlobalName {
@@ -18,7 +17,6 @@ impl fmt::Display for GlobalName {
         match self {
             GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
             GlobalName::StringLiteralRef(id) => write!(f, "StringRc_{}", id.0),
-            GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
             GlobalName::StaticClosureRef(id) => write!(f, "StaticClosureRc_{}", id.0),
         }
     }
@@ -156,7 +154,7 @@ impl Expr {
             },
             ir::Ref::Global(ir::GlobalRef::StaticClosure(id)) => {
                 let name = GlobalName::StaticClosureRef(*id);
-                Expr::Global(name).addr_of()
+                Expr::Global(name)
             }
         }
     }

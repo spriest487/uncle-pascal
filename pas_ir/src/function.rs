@@ -1,3 +1,4 @@
+use std::fmt;
 use std::rc::Rc;
 use pas_common::span::Span;
 use pas_syn::IdentPath;
@@ -64,4 +65,19 @@ pub enum FunctionDeclKey {
 pub(crate) struct FunctionDefKey {
     pub decl_key: FunctionDeclKey,
     pub type_args: Option<pas_ty::TypeList>,
+}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub struct StaticClosureID(pub usize);
+
+impl fmt::Display for StaticClosureID {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "static closure #{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct StaticClosure {
+    pub id: StaticClosureID,
+    pub init_func: FunctionID,
 }

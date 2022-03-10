@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{FunctionID, StringID};
+use crate::{FunctionID, StaticClosureID, StringID};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Ref {
@@ -82,15 +82,15 @@ impl Value {
 pub enum GlobalRef {
     Function(FunctionID),
     StringLiteral(StringID),
-    StaticClosure(FunctionID),
+    StaticClosure(StaticClosureID),
 }
 
 impl fmt::Display for GlobalRef {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GlobalRef::Function(func_id) => write!(f, "{}", func_id),
-            GlobalRef::StringLiteral(id) => write!(f, "string literal `{}`", id),
-            GlobalRef::StaticClosure(id) => write!(f, "static closure of {}", id),
+            GlobalRef::StringLiteral(id) => write!(f, "{}", id),
+            GlobalRef::StaticClosure(id) => write!(f, "{}", id),
         }
     }
 }
