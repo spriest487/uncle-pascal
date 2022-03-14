@@ -1,4 +1,4 @@
-use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, ClassID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
+use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, VirtualTypeID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::ast::FunctionParamMod;
@@ -528,7 +528,7 @@ impl Module {
         debug_name: String,
     ) -> FunctionDef {
         let closure_def = self.metadata.get_struct_def(closure_id).cloned().unwrap();
-        let closure_ptr_ty = Type::RcPointer(Some(ClassID::Class(closure_id)));
+        let closure_ptr_ty = Type::RcPointer(VirtualTypeID::Class(closure_id));
 
         let mut body_builder = self.create_function_body_builder(None, None);
 
@@ -649,7 +649,7 @@ impl Module {
             pas_ty::Type::Record(name) | pas_ty::Type::Class(name) => {
                 // handle builtin types
                 if **name == builtin_string_name() {
-                    let string_ty = Type::RcPointer(Some(ClassID::Class(STRING_ID)));
+                    let string_ty = Type::RcPointer(VirtualTypeID::Class(STRING_ID));
 
                     self.type_cache.insert(src_ty, string_ty.clone());
 
@@ -661,7 +661,7 @@ impl Module {
                 let id = self.metadata.reserve_new_struct();
 
                 let ty = match class_def.kind {
-                    pas_syn::ast::ClassKind::Object => Type::RcPointer(Some(ClassID::Class(id))),
+                    pas_syn::ast::ClassKind::Object => Type::RcPointer(VirtualTypeID::Class(id)),
                     pas_syn::ast::ClassKind::Record => Type::Struct(id),
                 };
 
@@ -682,7 +682,7 @@ impl Module {
 
                 let iface_name = self.translate_name(&iface_def.name, type_args);
                 let id = self.metadata.declare_iface(&iface_name);
-                let ty = Type::RcPointer(Some(ClassID::Interface(id)));
+                let ty = Type::RcPointer(VirtualTypeID::Interface(id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
@@ -696,7 +696,7 @@ impl Module {
             pas_ty::Type::DynArray { element } => {
                 let id = self.translate_dyn_array_struct(&element, type_args);
 
-                let ty = Type::RcPointer(Some(ClassID::Class(id)));
+                let ty = Type::RcPointer(VirtualTypeID::Class(id));
                 self.type_cache.insert(src_ty, ty.clone());
 
                 ty
@@ -712,7 +712,7 @@ impl Module {
                     .metadata
                     .define_func_ty((**func_sig).clone(), ir_sig);
 
-                let ty = Type::RcPointer(Some(ClassID::Closure(func_ty_id)));
+                let ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));
 
                 self.type_cache.insert(src_ty, ty.clone());
 
@@ -817,7 +817,7 @@ impl Module {
             .methods
             .iter()
             .map(|method| {
-                let self_ty = Type::RcPointer(Some(ClassID::Interface(id)));
+                let self_ty = Type::RcPointer(VirtualTypeID::Interface(id));
 
                 Method {
                     name: method.ident.to_string(),
@@ -986,14 +986,14 @@ impl fmt::Display for Module {
                     }
 
                     let ty_as_struct = Type::Struct(*id);
-                    let ty_as_class = Type::RcPointer(Some(ClassID::Class(*id)));
+                    let ty_as_class = Type::RcPointer(VirtualTypeID::Class(*id));
                     let mut iface_impls = self.metadata.impls(&ty_as_struct);
                     iface_impls.extend(self.metadata.impls(&ty_as_class));
 
                     if !iface_impls.is_empty() {
                         writeln!(f, "interface impls:")?;
                         for iface_id in iface_impls {
-                            let iface_ty = Type::RcPointer(Some(ClassID::Interface(iface_id)));
+                            let iface_ty = Type::RcPointer(VirtualTypeID::Interface(iface_id));
                             write!(f, "  * ")?;
                             self.metadata.format_type(&iface_ty, f)?;
                             writeln!(f)?;

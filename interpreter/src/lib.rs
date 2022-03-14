@@ -1,24 +1,3 @@
-pub use self::{
-    ptr::Pointer,
-    dyn_value::*,
-};
-use crate::{
-    func::{BuiltinFn, BuiltinFunction, Function},
-    marshal::Marshaller,
-    stack::StackFrame,
-};
-use pas_ir::{BUILTIN_SRC, Function as IRFunction, GlobalRef, Instruction, InstructionFormatter, Label, LocalID, metadata::*, Module, Ref, Type, Value};
-use std::{collections::HashMap, rc::Rc};
-use std::borrow::Cow;
-use std::collections::BTreeMap;
-use std::ops::{BitAnd, BitOr, BitXor};
-use cast::usize;
-
-use crate::result::{ExecError, ExecResult};
-use pas_common::span::Span;
-use pas_ir::metadata::ty::{ClassID, FieldID};
-use crate::heap::NativeHeap;
-
 mod builtin;
 mod func;
 mod heap;
@@ -27,6 +6,41 @@ mod ptr;
 mod stack;
 mod marshal;
 pub mod result;
+
+pub use self::{
+    ptr::Pointer,
+    dyn_value::*,
+};
+use crate::{
+    func::{BuiltinFn, BuiltinFunction, Function},
+    marshal::Marshaller,
+    stack::StackFrame,
+    result::{ExecError, ExecResult},
+    heap::NativeHeap
+};
+use pas_ir::{
+    BUILTIN_SRC,
+    Function as IRFunction,
+    GlobalRef,
+    Instruction,
+    InstructionFormatter,
+    Label,
+    LocalID,
+    metadata::*,
+    Module,
+    Ref,
+    Type,
+    Value,
+    metadata::ty::{VirtualTypeID, FieldID}
+};
+use std::{
+    collections::{HashMap, BTreeMap},
+    rc::Rc,
+    borrow::Cow,
+    ops::{BitAnd, BitOr, BitXor}
+};
+use cast::usize;
+use pas_common::span::Span;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct InterpreterOpts {
@@ -119,7 +133,7 @@ impl Interpreter {
             fields[id.0] = self.default_init_dyn_val(&field.ty)?;
         }
 
-        let struct_val = StructValue { id, fields };
+        let struct_val = StructValue { type_id: id, fields, rc: None };
 
         Ok(DynValue::Structure(Box::new(struct_val)))
     }
@@ -143,8 +157,8 @@ impl Interpreter {
             Type::Struct(id) => self.init_struct(*id)?,
 
             Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
-                Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
-                _ => Type::RcObject(None),
+                VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
+                _ => Type::Nothing,
             })),
 
             Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
@@ -361,8 +375,9 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        let self_class_id = match self.load_indirect(self_ptr)?.as_ref()  {
-            DynValue::Rc(rc_val) => Ok(rc_val.struct_id),
+        let self_val = self.load_indirect(self_ptr)?;
+        let self_class_id = match self_val.as_ref() {
+            DynValue::Structure(struct_val) => Ok(struct_val.type_id),
             _ => {
                 let msg = format!(
                     "expected target of vcall {}.{} to be an rc value, but found {:?}",
@@ -372,14 +387,14 @@ impl Interpreter {
             }
         }?;
 
-        let instance_ty = Type::RcPointer(Some(ClassID::Class(self_class_id)));
+        let instance_ty = Type::RcPointer(VirtualTypeID::Class(self_class_id));
 
         self.metadata
             .find_impl(&instance_ty, iface_id, method)
             .ok_or_else(|| {
                 let mut err = "virtual call ".to_string();
 
-                let iface_ty = Type::RcPointer(Some(ClassID::Interface(iface_id)));
+                let iface_ty = Type::RcPointer(VirtualTypeID::Interface(iface_id));
                 let _ = self.metadata.format_type(&iface_ty, &mut err);
                 err.push('.');
                 let _ = self.metadata.format_method(iface_id, method, &mut err);
@@ -511,7 +526,7 @@ impl Interpreter {
     }
 
     fn release_dyn_val(&mut self, val: &DynValue) -> ExecResult<bool> {
-        let rc_ptr = val
+        let ptr = val
             .as_pointer()
             .ok_or_else(|| {
                 let msg = format!("released val was not a pointer, found: {:?}", val);
@@ -520,84 +535,89 @@ impl Interpreter {
 
         // NULL is a valid release target because we release uninitialized local RC pointers
         // just do nothing
-        if rc_ptr.is_null() {
+        if ptr.is_null() {
             return Ok(false);
         }
 
-        let rc_val = match self.load_indirect(&rc_ptr)?.into_owned() {
-            DynValue::Rc(rc_val) => *rc_val,
+        let mut struct_val = match self.load_indirect(&ptr)?.into_owned() {
+            DynValue::Structure(struct_val) => *struct_val,
             other => {
-                let msg = format!("released val was not an rc value, found: {:?}", other);
+                let msg = format!("released val was not a structure, found: {:?}", other);
                 return Err(ExecError::illegal_state(msg));
             }
         };
 
-        let resource_ty = Type::Struct(rc_val.struct_id);
+        let mut struct_rc = struct_val.rc.as_ref()
+            .cloned()
+            .ok_or_else(|| {
+                let msg = format!("unable to access rc state of released structure");
+                ExecError::illegal_state(msg)
+            })?;
 
-        let no_more_refs = rc_val.ref_count == 1;
-        if no_more_refs {
+        // release calls are totally ignored for immortal refs
+        if struct_rc.strong_count < 0 {
+            return Ok(false);
+        }
+
+        // are we releasing the last strong ref here?
+        let disposed = if struct_rc.strong_count == 1 {
             if self.trace_rc {
                 println!(
-                    "rc: no more refs to {}, freeing {}",
-                    rc_ptr.to_pretty_string(&self.metadata),
-                    self.rc_val_debug_string(&rc_val),
+                    "rc: no more strong refs to {}, disposing {}",
+                    ptr.to_pretty_string(&self.metadata),
+                    self.struct_debug_string(&struct_val),
                 );
             }
 
             // Dispose() the inner resource. For an RC type, interfaces are implemented
             // for the RC pointer type, not the resource type
-            let resource_id = ClassID::Class(rc_val.struct_id);
-            self.invoke_disposer(&val, &Type::RcPointer(Some(resource_id)))?;
+            let class_id = VirtualTypeID::Class(struct_val.type_id);
+            self.invoke_disposer(&val, &Type::RcPointer(class_id))?;
 
-            // Now release the fields of the resource struct as if it was a normal record.
-            // This could technically invoke another disposer, but it won't, because there's
-            // no way to declare a disposer for the inner resource type of an RC type
+            // Now release the fields of the struct as if it was a normal record
+            let rc_funcs = self.find_rc_boilerplate(&Type::Struct(struct_val.type_id))?;
+            self.call(rc_funcs.release, &[val.clone()], None)?;
 
-            // resource structs can be zero-sized, in which case there's nothing allocated,
-            // so we can skip the rc cleanup and dynfree in that case
-            if !rc_val.resource_ptr.is_null() {
-                let rc_funcs = self.find_rc_boilerplate(&resource_ty)?;
-
-                let release_ptr = DynValue::Pointer(rc_val.resource_ptr.clone());
-                self.call(rc_funcs.release, &[release_ptr], None)?;
-
+            // and finally deallocate the object
+            if struct_rc.weak_count == 0 {
                 if self.trace_rc {
                     eprintln!(
                         "rc: free @ {} of {}",
-                        rc_val.resource_ptr.to_pretty_string(&self.metadata),
-                        self.rc_val_debug_string(&rc_val),
+                        ptr.to_pretty_string(&self.metadata),
+                        self.struct_debug_string(&struct_val),
                     )
                 }
 
-                // zero-sized resource types will never have actually allocated anything as the resource
-                // pointer
-                self.dynfree(&rc_val.resource_ptr)?;
+                self.dynfree(ptr)?;
             }
 
-            if self.trace_rc {
-                eprintln!(
-                    "rc: free rc object @ {}",
-                    rc_ptr.to_pretty_string(&self.metadata),
-                )
-            }
-            self.dynfree(&rc_ptr)?;
+            true
         } else {
-            let ref_count = rc_val.ref_count - 1;
-            assert!(ref_count > 0);
+            false
+        };
+
+        // if the struct is still alive via either strong or weak ref (either ref > 0), decrement
+        // the reference count and store the result
+        if struct_rc.strong_count > 0 || struct_rc.weak_count > 0 {
+            struct_rc.strong_count -= 1;
+            assert!(struct_rc.strong_count > 0);
 
             if self.trace_rc {
                 eprintln!(
-                    "rc: release @ {} ({} more refs to {})",
-                    rc_val.resource_ptr.to_pretty_string(&self.metadata),
-                    ref_count,
-                    self.rc_val_debug_string(&rc_val),
+                    "rc: release @ {} ({}+{} more refs to {})",
+                    ptr.to_pretty_string(&self.metadata),
+                    struct_rc.strong_count,
+                    struct_rc.weak_count,
+                    self.struct_debug_string(&struct_val),
                 )
             }
 
-            self.store_indirect(&rc_ptr, DynValue::Rc(Box::new(RcValue { ref_count, ..rc_val })))?;
+            struct_val.rc = Some(struct_rc);
+
+            self.store_indirect(&ptr, DynValue::Structure(Box::new(struct_val)))?;
         }
 
-        Ok(no_more_refs)
+        Ok(disposed)
     }
 
     fn retain_dyn_val(&mut self, val: &DynValue) -> ExecResult<()> {
@@ -606,11 +626,12 @@ impl Interpreter {
                 let mut rc_val = self.load_indirect(ptr)?.into_owned();
 
                 match &mut rc_val {
-                    DynValue::Rc(rc) => {
-                        rc.ref_count += 1;
+                    DynValue::Structure(struct_val) if struct_val.rc.is_some() => {
+                        let struct_rc = struct_val.rc.as_mut().unwrap();
+                        struct_rc.strong_count += 1;
 
                         if self.trace_rc {
-                            eprintln!("rc: retain @ {} (ref count: {})", ptr.to_pretty_string(&self.metadata), rc.ref_count);
+                            eprintln!("rc: retain @ {} (ref count: {})", ptr.to_pretty_string(&self.metadata), struct_rc.strong_count);
                         }
                     }
 
@@ -631,21 +652,19 @@ impl Interpreter {
         }
     }
 
-    fn rc_val_debug_string(&self, rc_val: &RcValue) -> String {
+    fn struct_debug_string(&self, struct_val: &StructValue) -> String {
         // special case useful for debugging - print string values in rc trace output
-        let val_as_debug_str = (rc_val.struct_id == STRING_ID && !rc_val.resource_ptr.is_null())
-            .then(|| {
-                self.load_indirect(&rc_val.resource_ptr)
-            })
-            .and_then(|load_str| {
-                self.read_string_struct(load_str.ok()?.as_struct(STRING_ID)?).ok()
-            });
+        let val_as_debug_str = if struct_val.type_id == STRING_ID {
+            self.read_string_struct(struct_val).ok()
+        } else {
+            None
+        };
 
         if let Some(debug_str) = val_as_debug_str {
             format!("string '{}'", debug_str)
         } else {
-            let ty_name = self.metadata.pretty_ty_name(&Type::Struct(rc_val.struct_id));
-            format!("resource of type {}", ty_name)
+            let ty_name = self.metadata.pretty_ty_name(&Type::Struct(struct_val.type_id));
+            format!("struct of type {}", ty_name)
         }
     }
 
@@ -861,10 +880,7 @@ impl Interpreter {
     }
 
     fn exec_rc_new(&mut self, out: &Ref, struct_id: &TypeDefID) -> ExecResult<()> {
-        let struct_ty = Type::Struct(*struct_id);
-
-        let default_val = self.default_init_dyn_val(&struct_ty)?;
-        let rc_ptr = self.rc_alloc(default_val, *struct_id)?;
+        let rc_ptr = self.rc_alloc(*struct_id, [])?;
 
         self.store(out, DynValue::Pointer(rc_ptr))?;
 
@@ -1390,7 +1406,7 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &ClassID) -> ExecResult<()> {
+    fn exec_class_is(&mut self, out: &Ref, a: &Value, class_id: &VirtualTypeID) -> ExecResult<()> {
         let a_ptr = self.evaluate(a)?
             .as_pointer()
             .cloned()
@@ -1399,26 +1415,28 @@ impl Interpreter {
                 ExecError::illegal_state(msg)
             })?;
 
-        let rc_val = match self.load_indirect(&a_ptr)?.into_owned() {
-            DynValue::Rc(rc) => Ok(rc),
+        let a_val = match self.load_indirect(&a_ptr)?.into_owned() {
+            DynValue::Structure(struct_val) => Ok(struct_val),
             _ => {
-                let msg = "rc pointer target of ClassIs instruction must point to an rc value";
+                let msg = "pointer target of ClassIs instruction must point to a class type";
                 Err(ExecError::illegal_state(msg))
             }
         }?;
 
         let is = match class_id {
-            ClassID::Class(struct_id) => rc_val.struct_id == *struct_id,
+            VirtualTypeID::Any => true,
 
-            ClassID::Interface(iface_id) => {
-                let resource_id = ClassID::Class(rc_val.struct_id);
-                let actual_ty = Type::RcPointer(Some(resource_id));
+            VirtualTypeID::Class(type_id) => a_val.type_id == *type_id,
+
+            VirtualTypeID::Interface(iface_id) => {
+                let resource_id = VirtualTypeID::Class(a_val.type_id);
+                let actual_ty = Type::RcPointer(resource_id);
 
                 self.metadata.is_impl(&actual_ty, *iface_id)
             }
 
             // todo: can `is` be used with closures?
-            ClassID::Closure(..) => false,
+            VirtualTypeID::Closure(..) => false,
         };
 
         self.store(out, DynValue::Bool(is))?;
@@ -1458,23 +1476,38 @@ impl Interpreter {
                 }
             }
 
+            // assume the statically-provided type ID is correct, no need to load the actual value
+            // and check dynamically
+            Type::RcPointer(VirtualTypeID::Class(type_id)) => {
+                let val_ptr = self.addr_of_ref(&a.clone().to_deref())?;
+
+                let (field_offset, field_ty) = self.get_field_offset_and_ty(*type_id, *field)?;
+
+                Pointer {
+                    ty: field_ty,
+                    addr: val_ptr.addr + field_offset,
+                }
+            }
+
+            // virtual reference, we need to load the actual value behind the pointer to get the
+            // concrete type ID
             Type::RcPointer(..) => {
-                let target = self.load(&a.clone().to_deref())?;
-                let rc_val = match target.as_rc() {
-                    Some(rc_val) => rc_val,
-                    None => {
-                        let msg = format!("trying to read field pointer of rc type but target wasn't an rc value @ {} (target was: {:?}", a, target);
+                let val_ptr = self.addr_of_ref(&a.clone().to_deref())?;
+
+                let val = self.load_indirect(&val_ptr)?;
+                let struct_val = match val.as_ref() {
+                    DynValue::Structure(struct_val) => struct_val,
+                    val => {
+                        let msg = format!("trying to read field pointer of rc type but target wasn't an rc value @ {} (target was: {:?}", a, val);
                         return Err(ExecError::illegal_state(msg));
                     }
                 };
 
-                let struct_ptr = rc_val.resource_ptr.clone();
-
-                let (field_offset, field_ty) = self.get_field_offset_and_ty(rc_val.struct_id, *field)?;
+                let (field_offset, field_ty) = self.get_field_offset_and_ty(struct_val.type_id, *field)?;
 
                 Pointer {
                     ty: field_ty,
-                    addr: struct_ptr.addr + field_offset,
+                    addr: val_ptr.addr + field_offset,
                 }
             }
 
@@ -1501,24 +1534,6 @@ impl Interpreter {
         Ok(())
     }
 
-    fn rc_alloc(&mut self, resource: DynValue, ty_id: TypeDefID) -> ExecResult<Pointer> {
-        // if the resource is a zero-sized class, we don't need to allocate a resource at all
-        let res_ty = Type::Struct(ty_id);
-        let res_size = self.marshaller.get_ty(&res_ty)?.size();
-        let resource_ptr = match res_size {
-            0 => Pointer::null(res_ty),
-            _ => self.dynalloc_init(&res_ty, vec![resource])?,
-        };
-
-        let rc_val = DynValue::Rc(Box::new(RcValue {
-            ref_count: 1,
-            resource_ptr,
-            struct_id: ty_id,
-        }));
-
-        self.dynalloc_init(&Type::RcObject(Some(ty_id)), vec![rc_val])
-    }
-
     fn define_builtin(&mut self, name: Symbol, func: BuiltinFn, ret: Type, params: Vec<Type>) {
         if let Some(func_id) = self.metadata.find_function(&name) {
             self.globals.insert(
@@ -1540,6 +1555,25 @@ impl Interpreter {
         }
     }
 
+    fn rc_alloc(&mut self, type_id: TypeDefID, fields: impl IntoIterator<Item=DynValue>) -> ExecResult<Pointer> {
+        let res_ty = Type::Struct(type_id);
+
+        let res_struct = StructValue {
+            type_id,
+            fields: fields.into_iter().collect(),
+            rc: Some(RcState {
+                strong_count: 1,
+                weak_count: 0,
+            })
+        };
+
+        let res_ptr = self.dynalloc_init(&res_ty, vec![
+            DynValue::Structure(Box::new(res_struct))
+        ])?;
+
+        Ok(res_ptr)
+    }
+
     fn init_stdlib_globals(&mut self) {
         let system_funcs: &[(&str, BuiltinFn, Type, Vec<Type>)] = &[
             ("Int8ToStr", builtin::i8_to_str, Type::string_ptr(), vec![Type::I8]),
@@ -1558,14 +1592,14 @@ impl Interpreter {
             ("ReadLn", builtin::read_ln, Type::string_ptr(), vec![]),
             ("GetMem", builtin::get_mem, Type::U8.ptr(), vec![Type::I32]),
             ("FreeMem", builtin::free_mem, Type::Nothing, vec![Type::Nothing.ptr()]),
-            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(None)]),
+            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(VirtualTypeID::Any)]),
             (
                 //
                 "ArraySetLengthInternal",
                 builtin::set_length,
-                Type::RcPointer(None),
+                Type::RcPointer(VirtualTypeID::Any),
                 vec![
-                    Type::RcPointer(None),
+                    Type::RcPointer(VirtualTypeID::Any),
                     Type::I32,
                     Type::Nothing.ptr(),
                     Type::I32,
@@ -1661,7 +1695,7 @@ impl Interpreter {
                 str_ref,
                 GlobalValue {
                     value: str_val,
-                    ty: Type::RcPointer(Some(ClassID::Class(STRING_ID))),
+                    ty: Type::RcPointer(VirtualTypeID::Class(STRING_ID)),
                 },
             );
         }
@@ -1680,15 +1714,6 @@ impl Interpreter {
         Ok(())
     }
 
-    fn deref_rc(&self, rc_val: &DynValue) -> ExecResult<Cow<DynValue>> {
-        let rc = rc_val.as_rc().ok_or_else(|| {
-            let msg = format!("trying to deref RC ref but value was {:?}", rc_val);
-            ExecError::illegal_state(msg)
-        })?;
-
-        self.load_indirect(&rc.resource_ptr)
-    }
-
     fn create_string(&mut self, content: &str) -> ExecResult<DynValue> {
         let chars: Vec<_> = content.chars().map(|c| DynValue::U8(c as u8)).collect();
         let chars_len = cast::i32(chars.len()).map_err(|_| {
@@ -1702,29 +1727,20 @@ impl Interpreter {
             Pointer::null(Type::U8)
         };
 
-        let str_fields = vec![
-            // field 0: `chars: ^Byte`
+        let str_ptr = self.rc_alloc(STRING_ID, [
             DynValue::Pointer(chars_ptr),
-            // field 1: `len: Integer`
             DynValue::I32(chars_len),
-        ];
+        ])?;
 
-        let str_val = DynValue::Structure(Box::new(StructValue {
-            id: STRING_ID,
-            fields: str_fields,
-        }));
-
-        let str_ptr = self.rc_alloc(str_val, STRING_ID)?;
         Ok(DynValue::Pointer(str_ptr))
     }
 
     fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
-        let str_rc_ptr = self.load(str_ref)?;
-        let str_val = self.deref_rc(&str_rc_ptr)?;
+        let str_val = self.load(&str_ref.clone().to_deref())?;
 
         let str_struct = match str_val.as_struct(STRING_ID) {
-            Some(struct_val) => struct_val,
-            None => {
+            Some(struct_val) if struct_val.type_id == STRING_ID => struct_val,
+            _ => {
                 let msg = format!(
                     "tried to read string value from rc val which didn't contain a string struct: {:?}",
                     str_val,

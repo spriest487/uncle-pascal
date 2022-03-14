@@ -17,7 +17,10 @@ use std::{
 };
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum ClassID {
+pub enum VirtualTypeID {
+    // unknown type - may refer to any class type, only known at runtime
+    Any,
+
     //instance of a known class whose layout is defined as the struct with this typedef ID
     Class(TypeDefID),
 
@@ -28,21 +31,22 @@ pub enum ClassID {
     Closure(TypeDefID),
 }
 
-impl ClassID {
+impl VirtualTypeID {
     pub fn as_class(&self) -> Option<TypeDefID> {
         match self {
-            ClassID::Class(id) => Some(*id),
-            ClassID::Interface(..) | ClassID::Closure(..) => None,
+            VirtualTypeID::Class(id) => Some(*id),
+            VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => None,
         }
     }
 }
 
-impl fmt::Display for ClassID {
+impl fmt::Display for VirtualTypeID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ClassID::Class(struct_id) => write!(f, "{}", struct_id),
-            ClassID::Interface(iface_id) => write!(f, "{}", iface_id),
-            ClassID::Closure(closure_id) => write!(f, "{}", closure_id),
+            VirtualTypeID::Any => write!(f, "any"),
+            VirtualTypeID::Class(struct_id) => write!(f, "{}", struct_id),
+            VirtualTypeID::Interface(iface_id) => write!(f, "{}", iface_id),
+            VirtualTypeID::Closure(closure_id) => write!(f, "{}", closure_id),
         }
     }
 }
@@ -175,10 +179,7 @@ pub enum Type {
     /// pointer to an RC object somewhere on the heap, which can be dereferenced to yield a value
     /// of the inner type. the resource type is Some in the case that the type is known, and
     /// None for the Any type
-    RcPointer(Option<ClassID>),
-
-    /// RC shared object struct of known or unknown type
-    RcObject(Option<TypeDefID>),
+    RcPointer(VirtualTypeID),
 
     // Function pointer type for a function
     Function(TypeDefID),
@@ -202,16 +203,16 @@ impl Type {
         Type::Pointer(Rc::new(self))
     }
 
-    pub const fn rc_ptr_to(class: ClassID) -> Self {
-        Type::RcPointer(Some(class))
+    pub const fn rc_ptr_to(class: VirtualTypeID) -> Self {
+        Type::RcPointer(class)
     }
 
     pub const fn rc_ptr_any() -> Self {
-        Type::RcPointer(None)
+        Type::RcPointer(VirtualTypeID::Any)
     }
 
     pub const fn string_ptr() -> Self {
-        Type::rc_ptr_to(ClassID::Class(STRING_ID))
+        Type::rc_ptr_to(VirtualTypeID::Class(STRING_ID))
     }
 
     pub fn deref_ty(&self) -> Option<&Self> {
@@ -244,7 +245,7 @@ impl Type {
 
     pub fn as_iface(&self) -> Option<InterfaceID> {
         match self {
-            Type::RcPointer(Some(ClassID::Interface(id))) => Some(*id),
+            Type::RcPointer(VirtualTypeID::Interface(id)) => Some(*id),
             _ => None,
         }
     }
@@ -263,9 +264,9 @@ impl Type {
         }
     }
 
-    pub fn rc_resource_class_id(&self) -> Option<ClassID> {
+    pub fn rc_resource_class_id(&self) -> Option<VirtualTypeID> {
         match self {
-            Type::RcPointer(Some(class_id)) => Some(*class_id),
+            Type::RcPointer(class_id) => Some(*class_id),
             _ => None,
         }
     }
@@ -291,14 +292,10 @@ impl fmt::Display for Type {
             Type::Struct(id) => write!(f, "{{struct {}}}", id),
             Type::Variant(id) => write!(f, "{{variant {}}}", id),
             Type::RcPointer(id) => match id {
-                None => write!(f, "any"),
-                Some(ClassID::Class(id)) => write!(f, "class {}", id),
-                Some(ClassID::Interface(id)) => write!(f, "iface {}", id),
-                Some(ClassID::Closure(id)) => write!(f, "closure {}", id),
-            },
-            Type::RcObject(id) => match id {
-                Some(id) => write!(f, "{{rc {}}}", id),
-                None => write!(f, "{{rc}}"),
+                VirtualTypeID::Any => write!(f, "any"),
+                VirtualTypeID::Class(id) => write!(f, "class {}", id),
+                VirtualTypeID::Interface(id) => write!(f, "iface {}", id),
+                VirtualTypeID::Closure(id) => write!(f, "closure {}", id),
             },
             Type::Array { element, dim } => write!(f, "{}[{}]", element, dim),
             Type::Function(id) => write!(f, "function {}", id),

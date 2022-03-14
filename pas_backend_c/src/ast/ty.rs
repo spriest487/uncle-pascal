@@ -5,7 +5,7 @@ use pas_ir::metadata;
 use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
 use std::fmt::Write;
 use std::hash::{Hash, Hasher};
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, ClassID, FunctionID};
+use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, VirtualTypeID, FunctionID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -46,7 +46,6 @@ impl Type {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
             metadata::Type::RcPointer(..) => Type::DefinedType(TypeDefName::Rc).ptr(),
-            metadata::Type::RcObject(..) => Type::DefinedType(TypeDefName::Rc),
             metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
@@ -600,8 +599,8 @@ impl Class {
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
-        let class_id = ClassID::Class(struct_id);
-        let class_ty = metadata::Type::RcPointer(Some(class_id));
+        let class_id = VirtualTypeID::Class(struct_id);
+        let class_ty = metadata::Type::RcPointer(class_id);
         let mut impls = HashMap::new();
 
         for (iface_id, iface) in metadata.ifaces() {

@@ -1,11 +1,16 @@
-use crate::{DynValue, ExecError, ExecResult, Interpreter, Pointer, RcValue, StructValue};
+use crate::{DynValue, ExecError, ExecResult, Interpreter, Pointer, RcState, StructValue};
 use pas_ir::{
-    metadata::{DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD},
+    metadata::{
+        DYNARRAY_LEN_FIELD,
+        DYNARRAY_PTR_FIELD
+    },
     GlobalRef, LocalID, Ref, Type, RETURN_REF,
 };
-use std::borrow::Cow;
-use std::fmt;
-use std::io::{self, BufRead};
+use std::{
+    borrow::Cow,
+    fmt,
+    io::{self, BufRead},
+};
 
 fn primitive_to_str<T, UnwrapFn>(state: &mut Interpreter, unwrap_fn: UnwrapFn) -> ExecResult<()>
 where
@@ -154,14 +159,11 @@ pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
 }
 
 fn get_dyn_array_struct(state: &Interpreter, at: Ref) -> ExecResult<Cow<StructValue>> {
-    let array_ref_dyn = state.load(&at)?;
-    let array_ptr = array_ref_dyn
-        .as_pointer()
+    let array_ptr_val = state.load(&at)?.into_owned();
+    let array_ptr = array_ptr_val.as_pointer()
         .ok_or_else(|| ExecError::illegal_state("array_length: argument val must be pointer"))?;
 
-    let array_rc = state.load_indirect(array_ptr)?;
-
-    match state.deref_rc(&array_rc)? {
+    match state.load_indirect(array_ptr)? {
         Cow::Borrowed(DynValue::Structure(arr_struct)) => Ok(Cow::Borrowed(arr_struct.as_ref())),
         Cow::Owned(DynValue::Structure(arr_struct)) => Ok(Cow::Owned(*arr_struct)),
         _ => Err(ExecError::illegal_state(
@@ -209,19 +211,18 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
             ExecError::illegal_state(msg)
         })?;
 
-    let array_class = state
-        .load_indirect(&array_class_ptr)?
-        .into_owned()
-        .as_rc()
-        .map(|rc_val| rc_val.struct_id)
-        .ok_or_else(|| {
-            let msg = "array arg passed to set_length must point to an rc val";
-            ExecError::illegal_state(msg)
-        })?;
+    let array_val = state.load_indirect(&array_class_ptr)?.into_owned();
+    let array_ty_id = match &array_val {
+        DynValue::Structure(s) => s.type_id,
+        _ => {
+            let msg = "array arg passed to set_length must point to a struct";
+            return Err(ExecError::illegal_state(msg));
+        },
+    };
 
     let dyn_array_el_ty = state
         .metadata
-        .dyn_array_element_ty(array_class)
+        .dyn_array_element_ty(array_ty_id)
         .cloned()
         .unwrap();
 
@@ -322,29 +323,23 @@ pub(super) fn set_length(state: &mut Interpreter) -> ExecResult<()> {
 
     assert_eq!(new_data.is_null(), new_len == 0);
 
-    let mut new_struct_fields = Vec::new();
-    new_struct_fields.push(DynValue::I32(new_len)); // 0 = len
-    new_struct_fields.push(DynValue::Pointer(new_data)); // 1 = data ptr
+    let new_array_rc_state = RcState {
+        strong_count: 1,
+        weak_count: 0,
+    };
 
     let new_array_struct = StructValue {
-        fields: new_struct_fields,
-        id: array_class,
+        type_id: array_ty_id,
+        rc: Some(new_array_rc_state),
+        fields: vec![
+            DynValue::I32(new_len),
+            DynValue::Pointer(new_data)
+        ]
     };
 
-    let new_array_resource_ptr = state.dynalloc_init(
-        &Type::Struct(array_class),
-        vec![DynValue::Structure(Box::new(new_array_struct))],
-    )?;
+    let new_array_val = DynValue::Structure(Box::new(new_array_struct));
 
-    let new_array_rc = RcValue {
-        struct_id: array_class,
-        ref_count: 1,
-        resource_ptr: new_array_resource_ptr,
-    };
-
-    let new_array_val = DynValue::Rc(Box::new(new_array_rc));
-    let new_array_ptr =
-        state.dynalloc_init(&Type::RcObject(Some(array_class)), vec![new_array_val])?;
+    let new_array_ptr = state.dynalloc_init(&Type::Struct(array_ty_id), vec![new_array_val])?;
 
     state.store(&RETURN_REF, DynValue::Pointer(new_array_ptr))?;
     Ok(())

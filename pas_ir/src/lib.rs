@@ -1,7 +1,7 @@
 use std::fmt;
 
 pub use self::{formatter::*, instruction::*, metadata::ty::Type, module::*, val::*, function::*};
-use crate::ty::{ClassID, FieldID, TypeDef};
+use crate::ty::{VirtualTypeID, FieldID, TypeDef};
 use crate::{builder::Builder, expr::*, metadata::*, stmt::*};
 use pas_syn::IdentPath;
 use pas_typecheck as pas_ty;
@@ -64,8 +64,8 @@ fn write_instruction_list(
 }
 
 fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID) {
-    let array_class = ClassID::Class(struct_id);
-    let array_ref_ty = Type::RcPointer(Some(array_class));
+    let array_class = VirtualTypeID::Class(struct_id);
+    let array_ref_ty = Type::RcPointer(array_class);
 
     // the thing we're cleaning up is the internal struct, not the rc object itself,
     // so the parameter type of the releaser will be a pointer to that struct

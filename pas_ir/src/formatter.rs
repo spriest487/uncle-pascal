@@ -2,7 +2,7 @@ use std::{cell::Cell, fmt};
 
 use crate::{metadata::*, GlobalRef, Instruction, Ref, Value, Type};
 use crate::name_path::NamePath;
-use crate::ty::{ClassID, FieldID};
+use crate::ty::{VirtualTypeID, FieldID};
 
 pub trait InstructionFormatter {
     fn format_instruction<W: fmt::Write>(
@@ -212,7 +212,7 @@ pub trait InstructionFormatter {
 
                 self.format_val(self_arg, f)?;
                 write!(f, " as ")?;
-                self.format_type(&Type::RcPointer(Some(ClassID::Interface(*iface_id))), f)?;
+                self.format_type(&Type::RcPointer(VirtualTypeID::Interface(*iface_id)), f)?;
 
                 write!(f, ").")?;
                 self.format_method(*iface_id, *method, f)?;
@@ -234,7 +234,7 @@ pub trait InstructionFormatter {
                 write!(f, " := ")?;
                 self.format_val(a, f)?;
                 write!(f, " is ")?;
-                self.format_type(&Type::RcPointer(Some(*class_id)), f)
+                self.format_type(&Type::RcPointer(*class_id), f)
             }
 
             Instruction::AddrOf { out, a } => {
@@ -511,7 +511,7 @@ impl InstructionFormatter for Metadata {
         let field_name = of_ty
             .as_struct()
             .or_else(|| match of_ty.rc_resource_class_id()? {
-                ClassID::Class(struct_id) => Some(struct_id),
+                VirtualTypeID::Class(struct_id) => Some(struct_id),
                 _ => None,
             })
             .and_then(|struct_id| self.get_struct_def(struct_id))

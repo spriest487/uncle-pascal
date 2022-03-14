@@ -1,5 +1,5 @@
 use std::fmt;
-use crate::{ClassID, FunctionInstance, Type, TypeDefID};
+use crate::{VirtualTypeID, FunctionInstance, Type, TypeDefID};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
@@ -31,7 +31,7 @@ pub struct ClosureInstance {
 
 impl ClosureInstance {
     pub fn closure_ptr_ty(&self) -> Type {
-        Type::RcPointer(Some(ClassID::Closure(self.func_ty_id)))
+        Type::RcPointer(VirtualTypeID::Closure(self.func_ty_id))
     }
 }
 

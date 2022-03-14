@@ -1,18 +1,19 @@
 use crate::ptr::Pointer;
 use cast::i128;
-use pas_ir::metadata::{ClassID, FieldID, FunctionID, TypeDefID};
+use pas_ir::metadata::{VirtualTypeID, FieldID, FunctionID, TypeDefID};
 use pas_ir::Type;
 use std::ops::{Index, IndexMut};
 
 #[derive(Debug, Clone)]
 pub struct StructValue {
-    pub id: TypeDefID,
+    pub type_id: TypeDefID,
+    pub rc: Option<RcState>,
     pub fields: Vec<DynValue>,
 }
 
 impl StructValue {
     pub fn struct_ty(&self) -> Type {
-        Type::Struct(self.id)
+        Type::Struct(self.type_id)
     }
 }
 
@@ -32,7 +33,7 @@ impl IndexMut<FieldID> for StructValue {
 
 impl PartialEq<Self> for StructValue {
     fn eq(&self, other: &Self) -> bool {
-        if self.id != other.id || self.fields.len() != other.fields.len() {
+        if self.type_id != other.type_id || self.fields.len() != other.fields.len() {
             return false;
         }
 
@@ -47,6 +48,12 @@ impl PartialEq<Self> for StructValue {
 }
 
 #[derive(Debug, Clone)]
+pub struct RcState {
+    pub strong_count: i32,
+    pub weak_count: i32,
+}
+
+#[derive(Debug, Clone)]
 pub struct VariantValue {
     pub id: TypeDefID,
     pub tag: Box<DynValue>,
@@ -57,13 +64,6 @@ impl VariantValue {
     pub fn variant_ty(&self) -> Type {
         Type::Variant(self.id)
     }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RcValue {
-    pub resource_ptr: Pointer,
-    pub ref_count: usize,
-    pub struct_id: TypeDefID,
 }
 
 #[derive(Debug, Clone)]
@@ -104,7 +104,6 @@ pub enum DynValue {
     ISize(isize),
     USize(usize),
     F32(f32),
-    Rc(Box<RcValue>),
     Function(FunctionID),
     Structure(Box<StructValue>),
     Variant(Box<VariantValue>),
@@ -144,16 +143,22 @@ impl DynValue {
                 Some(DynValue::Pointer(ptr))
             },
 
-            Type::RcObject(..) | Type::Nothing => None,
+            Type::Nothing => None,
 
             Type::RcPointer(class_id) => {
+                // assume self is a pointer-compatible type, its int value be the address
                 let addr = cast::usize(self.to_bigint()?).ok()?;
+
                 let ptr = Pointer {
                     addr,
                     ty: match class_id {
-                        Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
-                        None | Some(ClassID::Interface(..) | ClassID::Closure(..)) => {
-                            Type::RcObject(None)
+                        VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
+
+                        // Any, interfaces and closure pointers only have virtual types so we
+                        // can't include any type info about the concrete type here - it's up to
+                        // the language to have the right info when it uses this pointer value
+                        VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => {
+                            Type::Nothing
                         },
                     },
                 };
@@ -161,7 +166,7 @@ impl DynValue {
             },
 
             Type::Struct(id) => match self {
-                DynValue::Structure(s) if s.id == *id => Some(self.clone()),
+                DynValue::Structure(s) if s.type_id == *id => Some(self.clone()),
                 _ => None,
             },
 
@@ -360,14 +365,14 @@ impl DynValue {
 
     pub fn as_struct_mut(&mut self, struct_id: TypeDefID) -> Option<&mut StructValue> {
         match self {
-            DynValue::Structure(struct_val) if struct_id == struct_val.id => Some(struct_val),
+            DynValue::Structure(struct_val) if struct_id == struct_val.type_id => Some(struct_val),
             _ => None,
         }
     }
 
     pub fn as_struct(&self, struct_id: TypeDefID) -> Option<&StructValue> {
         match self {
-            DynValue::Structure(struct_val) if struct_id == struct_val.id => Some(struct_val),
+            DynValue::Structure(struct_val) if struct_id == struct_val.type_id => Some(struct_val),
             _ => None,
         }
     }
@@ -382,20 +387,6 @@ impl DynValue {
     pub fn as_variant(&self, struct_id: TypeDefID) -> Option<&VariantValue> {
         match self {
             DynValue::Variant(var_val) if struct_id == var_val.id => Some(var_val),
-            _ => None,
-        }
-    }
-
-    pub fn as_rc_mut(&mut self) -> Option<&mut RcValue> {
-        match self {
-            DynValue::Rc(rc) => Some(rc),
-            _ => None,
-        }
-    }
-
-    pub fn as_rc(&self) -> Option<&RcValue> {
-        match self {
-            DynValue::Rc(rc) => Some(rc),
             _ => None,
         }
     }
@@ -504,11 +495,5 @@ impl DynValue {
             DynValue::Pointer(ptr) => Some(ptr),
             _ => None,
         }
-    }
-}
-
-impl From<RcValue> for DynValue {
-    fn from(rc_val: RcValue) -> Self {
-        DynValue::Rc(Box::new(rc_val))
     }
 }

@@ -53,11 +53,11 @@ pub const DISPOSABLE_DISPOSE_METHOD: &str = "Dispose";
 pub const DISPOSABLE_DISPOSE_INDEX: MethodID = MethodID(0);
 
 pub const STRING_ID: TypeDefID = TypeDefID(1);
-pub const STRING_CLASS_ID: ClassID = ClassID::Class(STRING_ID);
+pub const STRING_VTYPE_ID: VirtualTypeID = VirtualTypeID::Class(STRING_ID);
 pub const STRING_CHARS_FIELD: FieldID = FieldID(0);
 pub const STRING_LEN_FIELD: FieldID = FieldID(1);
 
-pub const STRING_TYPE: Type = Type::RcPointer(Some(STRING_CLASS_ID));
+pub const STRING_TYPE: Type = Type::RcPointer(STRING_VTYPE_ID);
 
 pub const DYNARRAY_LEN_FIELD: FieldID = FieldID(0);
 pub const DYNARRAY_PTR_FIELD: FieldID = FieldID(1);
@@ -372,9 +372,9 @@ impl Metadata {
 
             Type::RcPointer(class_id) => {
                 let resource_name = match class_id {
-                    None => Cow::Borrowed("any"),
+                    VirtualTypeID::Any => Cow::Borrowed("any"),
 
-                    Some(ClassID::Interface(iface_id)) => {
+                    VirtualTypeID::Interface(iface_id) => {
                         let iface = self.get_iface_def(*iface_id);
 
                         Cow::Owned(
@@ -384,27 +384,19 @@ impl Metadata {
                         )
                     },
 
-                    Some(ClassID::Closure(func_ty_id)) => {
+                    VirtualTypeID::Closure(func_ty_id) => {
                         Cow::Owned(match self.get_func_ptr_ty(*func_ty_id) {
                             Some(sig) => format!("closure of {}", sig),
                             None => format!("closure of {}", *func_ty_id),
                         })
                     }
 
-                    Some(ClassID::Class(struct_id)) => {
+                    VirtualTypeID::Class(struct_id) => {
                         self.pretty_ty_name(&Type::Struct(*struct_id))
                     },
                 };
 
                 Cow::Owned(format!("rc[{}]", resource_name))
-            },
-
-            Type::RcObject(rc_obj) => match rc_obj {
-                Some(struct_id) => {
-                    let struct_name = self.pretty_ty_name(&Type::Struct(*struct_id));
-                    Cow::Owned(format!("rc_obj[{}]", struct_name))
-                },
-                None => Cow::Borrowed("rc_obj"),
             },
 
             Type::Function(func_ty_id) => {
@@ -667,7 +659,7 @@ impl Metadata {
                     None => panic!("missing IR definition for interface {}", iface),
                 };
 
-                Type::RcPointer(Some(ClassID::Interface(iface_id)))
+                Type::RcPointer(VirtualTypeID::Interface(iface_id))
             },
 
             pas_ty::Type::Primitive(pas_ty::Primitive::Boolean) => Type::Bool,
@@ -700,8 +692,8 @@ impl Metadata {
 
                 match ty {
                     pas_ty::Type::Class(..) => {
-                        let class_id = ClassID::Class(struct_id);
-                        Type::RcPointer(Some(class_id))
+                        let class_id = VirtualTypeID::Class(struct_id);
+                        Type::RcPointer(class_id)
                     },
 
                     pas_ty::Type::Record(..) => Type::Struct(struct_id),
@@ -729,7 +721,7 @@ impl Metadata {
                     ),
                 };
 
-                Type::RcPointer(Some(ClassID::Class(array_struct)))
+                Type::RcPointer(VirtualTypeID::Class(array_struct))
             },
 
             pas_ty::Type::Variant(variant) => {
@@ -756,7 +748,7 @@ impl Metadata {
                 None => panic!("no type definition for function with sig {}", sig),
             },
 
-            pas_ty::Type::Any => Type::RcPointer(None),
+            pas_ty::Type::Any => Type::RcPointer(VirtualTypeID::Any),
         }
     }
 

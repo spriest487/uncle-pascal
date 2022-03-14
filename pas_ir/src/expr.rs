@@ -11,7 +11,7 @@ use pas_typecheck as pas_ty;
 use std::convert::TryFrom;
 use syn::ast;
 
-use crate::ty::ClassID;
+use crate::ty::VirtualTypeID;
 
 pub fn translate_expr(expr: &pas_ty::ast::Expression, builder: &mut Builder) -> Ref {
     builder.push_debug_context(expr.annotation().span().clone());
@@ -111,8 +111,8 @@ fn translate_indexer(
             let len_field_ptr = builder.local_temp(Type::I32.ptr());
 
             let array_struct = builder.translate_dyn_array_struct(&element);
-            let array_class = ClassID::Class(array_struct);
-            let array_class_ty = Type::RcPointer(Some(array_class));
+            let array_class = VirtualTypeID::Class(array_struct);
+            let array_class_ty = Type::RcPointer(array_class);
 
             builder.field(
                 len_field_ptr.clone(),
@@ -423,7 +423,7 @@ fn build_func_call(
             let func_field_ptr = builder.local_temp(Type::Function(func_ty_id).ptr());
 
             builder.scope(|builder| {
-                let closure_ptr_ty = Type::RcPointer(Some(ClassID::Closure(func_ty_id)));
+                let closure_ptr_ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));
                 builder.field(
                     func_field_ptr.clone(),
                     target_expr_val.clone(),
@@ -461,7 +461,7 @@ fn build_method_call(
     let method_sig = method_call.func_type.as_func().unwrap();
 
     let call_target = match &self_ty {
-        Type::RcPointer(Some(ClassID::Interface(iface_id))) => CallTarget::Virtual {
+        Type::RcPointer(VirtualTypeID::Interface(iface_id)) => CallTarget::Virtual {
             iface_id: *iface_id,
             method: method_call.ident.to_string(),
         },
@@ -696,7 +696,7 @@ fn translate_bin_op(
 
             let struct_id = match &of_ty {
                 Type::Struct(id) => *id,
-                Type::RcPointer(Some(ClassID::Class(id))) => *id,
+                Type::RcPointer(VirtualTypeID::Class(id)) => *id,
                 other => panic!(
                     "lhs ty of member binop must be a struct or class, was: {}",
                     other
@@ -1032,7 +1032,7 @@ fn translate_object_ctor(ctor: &pas_ty::ast::ObjectCtor, builder: &mut Builder) 
     let object_ty = builder.translate_type(&ctor.annotation.ty());
 
     let struct_id = match &object_ty {
-        Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
+        Type::RcPointer(VirtualTypeID::Class(struct_id)) => *struct_id,
         Type::Struct(struct_id) => *struct_id,
         _ => panic!(
             "type of object ctor expression `{}` must be a record or class",
@@ -1153,7 +1153,7 @@ fn translate_dyn_array_ctor(
     // should be a class rc-ptr to the unique class for this dyn array element type
     let array_ty = builder.translate_type(&ctor.annotation.ty());
     let struct_id = match &array_ty {
-        Type::RcPointer(Some(ClassID::Class(struct_id))) => *struct_id,
+        Type::RcPointer(VirtualTypeID::Class(struct_id)) => *struct_id,
         _ => unreachable!("dynamic array must have an rc class type"),
     };
 

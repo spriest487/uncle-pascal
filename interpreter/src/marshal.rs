@@ -2,7 +2,7 @@
 mod test;
 
 use crate::func::ffi::FfiInvoker;
-use crate::{ArrayValue, DynValue, Pointer, RcValue, StructValue, VariantValue};
+use crate::{ArrayValue, DynValue, Pointer, StructValue, VariantValue};
 use ::dlopen::{raw as dlopen, Error as DlopenError};
 use libffi::{
     low::ffi_type,
@@ -15,11 +15,11 @@ use std::{
     collections::{BTreeMap, HashMap},
     convert::TryInto,
     fmt, iter,
-    mem::transmute,
+    mem::{transmute, size_of},
     ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
     rc::Rc,
 };
-use pas_ir::metadata::{ClassID, FunctionID, Metadata, Struct, TypeDefID, Variant};
+use pas_ir::metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, Variant};
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -224,26 +224,16 @@ pub struct Marshaller {
 
     struct_field_types: BTreeMap<TypeDefID, Vec<Type>>,
     variant_case_types: BTreeMap<TypeDefID, Vec<Option<Type>>>,
-
-    rc_val_type: ForeignType,
 }
 
 impl Marshaller {
     pub fn new() -> Self {
-        let rc_val_type = ForeignType::structure(vec![
-            ForeignType::pointer(), // resource address
-            ForeignType::usize(),   // ref count
-            ForeignType::usize(),   // struct ID
-        ]);
-
         let mut marshaller = Self {
             types: HashMap::new(),
             libs: HashMap::new(),
 
             struct_field_types: BTreeMap::new(),
             variant_case_types: BTreeMap::new(),
-
-            rc_val_type,
         };
 
         marshaller.types.insert(Type::I8, ForeignType::i8());
@@ -425,8 +415,6 @@ impl Marshaller {
                 Ok(ForeignType::structure(el_tys))
             },
 
-            Type::RcObject(..) => Ok(self.rc_val_type.clone()),
-
             // all primitives/builtins should be in the cache already
             _ => Err(MarshalError::UnsupportedType(ty.clone())),
         }
@@ -449,8 +437,6 @@ impl Marshaller {
             },
 
             Type::Pointer(..) | Type::RcPointer(..) | Type::Function(..) => Ok(ForeignType::pointer()),
-
-            Type::RcObject(..) => Ok(self.rc_val_type.clone()),
 
             ty => match self.types.get(ty) {
                 Some(cached_ty) => Ok(cached_ty.clone()),
@@ -506,8 +492,6 @@ impl Marshaller {
             DynValue::Function(func_id) => {
                 marshal_bytes(&func_id.0.to_ne_bytes(), out_bytes)
             }
-
-            DynValue::Rc(rc_val) => self.marshal_rc(rc_val, out_bytes)?,
         };
 
         Ok(size)
@@ -519,7 +503,7 @@ impl Marshaller {
         Ok(len)
     }
 
-    fn unmarshal_ptr(&self, deref_ty: Type, in_bytes: &[u8]) -> MarshalResult<(Pointer, usize)> {
+    fn unmarshal_ptr(&self, deref_ty: Type, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<Pointer>> {
         let addr_bytes = unmarshal_bytes(in_bytes)?;
         let addr = usize::from_ne_bytes(addr_bytes);
         let ptr = Pointer {
@@ -527,7 +511,10 @@ impl Marshaller {
             ty: deref_ty.clone(),
         };
 
-        Ok((ptr, addr_bytes.len()))
+        Ok(UnmarshalledValue {
+            value: ptr,
+            byte_count: addr_bytes.len(),
+        })
     }
 
     pub fn unmarshal_from_ptr(&self, into_ptr: &Pointer) -> MarshalResult<DynValue> {
@@ -592,71 +579,42 @@ impl Marshaller {
             },
 
             Type::RcPointer(class_id) => {
-                let (raw_ptr, size) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
+                let raw_ptr_val = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
 
                 // null rcpointers can exist - e.g. uninitialized stack values
-                if raw_ptr.is_null() {
+                let ptr_ty = if raw_ptr_val.value.is_null() {
                     // it shouldn't really matter because you can't do anything with a null pointer,
                     // but let's try to return as correct a value as we can
                     let null_ty = match class_id {
                         // expected pointer to a concrete RC class object
-                        Some(ClassID::Class(struct_id)) => Type::RcObject(Some(*struct_id)),
+                        VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
 
                         // abstract pointer - no idea what the actual rc type was
-                        None | Some(ClassID::Interface(..) | ClassID::Closure(..)) => Type::RcObject(None),
+                        VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => Type::Nothing,
                     };
 
-                    UnmarshalledValue {
-                        value: DynValue::Pointer(Pointer::null(null_ty)),
-                        byte_count: size,
-                    }
+                    null_ty
                 } else {
-                    // the struct ID is the 3rd field after the ptr and the ref count
-                    let rc_fields = self.rc_val_type.elements();
-                    let struct_id_offset = rc_fields[0].size() + rc_fields[1].size();
-
-                    let rc_struct_bytes = unsafe {
-                        slice_from_raw_parts(raw_ptr.addr as *const u8, self.rc_val_type.size())
+                    // the struct ID is the first field so we can just access it directly here
+                    let struct_id_bytes = unsafe {
+                        slice_from_raw_parts(raw_ptr_val.value.addr as *const u8, size_of::<usize>())
                             .as_ref()
                             .unwrap()
                     };
+                    let struct_id = usize::from_ne_bytes(unmarshal_bytes(&struct_id_bytes)?);
 
-                    let struct_id_bytes = &rc_struct_bytes[struct_id_offset..];
-                    let struct_id = usize::from_ne_bytes(unmarshal_bytes(struct_id_bytes)?);
+                    Type::Struct(TypeDefID(struct_id))
+                };
 
-                    UnmarshalledValue {
-                        value: DynValue::Pointer(Pointer {
-                            addr: raw_ptr.addr,
-                            ty: Type::RcObject(Some(TypeDefID(struct_id))),
-                        }),
-                        byte_count: size,
-                    }
-                }
-            },
-
-            Type::RcObject(expect_id) => {
-                let rc_val = self.unmarshal_rc(in_bytes)?;
-
-                // we only need to check the rc type if we were expecting a particular concrete type
-                if let Some(expect_id) = expect_id {
-                    if rc_val.value.struct_id != *expect_id {
-                        return Err(MarshalError::InvalidStructID {
-                            expected: *expect_id,
-                            actual: rc_val.value.struct_id,
-                        });
-                    }
-                }
-
-                rc_val.map(Box::new).map(DynValue::Rc)
+                raw_ptr_val.map(|raw_ptr| {
+                    let ptr = raw_ptr.reinterpret(ptr_ty);
+                    DynValue::Pointer(ptr)
+                })
             },
 
             Type::Pointer(deref_ty) => {
-                let (ptr, size) = self.unmarshal_ptr((**deref_ty).clone(), in_bytes)?;
-
-                UnmarshalledValue {
-                    value: DynValue::Pointer(ptr),
-                    byte_count: size,
-                }
+                self.unmarshal_ptr((**deref_ty).clone(), in_bytes)?
+                    .map(DynValue::Pointer)
             },
 
             Type::Function(..) => {
@@ -685,29 +643,18 @@ impl Marshaller {
                 }
             },
 
-            // these need field offset/tag type info from the ffi cache so marshal/unmarshla should
+            // these need field offset/tag type info from the ffi cache so marshal/unmarshal should
             // be members
             Type::Struct(struct_id) => {
-                let field_tys = self
-                    .struct_field_types
-                    .get(struct_id)
-                    .ok_or_else(|| MarshalError::UnsupportedType(ty.clone()))?;
-
-                let mut offset = 0;
-                let mut fields = Vec::new();
-
-                for field_ty in field_tys {
-                    let field_val = self.unmarshal(&in_bytes[offset..], field_ty)?;
-                    offset += field_val.byte_count;
-                    fields.push(field_val.value);
-                }
+                let fields_val = self.unmarshal_struct_fields(*struct_id, in_bytes)?;
 
                 UnmarshalledValue {
                     value: DynValue::Structure(Box::new(StructValue {
-                        id: *struct_id,
-                        fields,
+                        type_id: *struct_id,
+                        rc: None,
+                        fields: fields_val.value,
                     })),
-                    byte_count: offset,
+                    byte_count: fields_val.byte_count,
                 }
             },
 
@@ -740,6 +687,27 @@ impl Marshaller {
 
         let size_sum = local_sizes.into_iter().sum();
         Ok(size_sum)
+    }
+
+    fn unmarshal_struct_fields(&self, struct_id: TypeDefID, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<Vec<DynValue>>> {
+        let field_tys = self
+            .struct_field_types
+            .get(&struct_id)
+            .ok_or_else(|| MarshalError::UnsupportedType(Type::Struct(struct_id)))?;
+
+        let mut offset = 0;
+        let mut fields = Vec::new();
+
+        for field_ty in field_tys {
+            let field_val = self.unmarshal(&in_bytes[offset..], field_ty)?;
+            offset += field_val.byte_count;
+            fields.push(field_val.value);
+        }
+
+        Ok(UnmarshalledValue {
+            byte_count: offset,
+            value: fields,
+        })
     }
 
     fn marshal_variant(
@@ -836,42 +804,6 @@ impl Marshaller {
                 tag: Box::new(DynValue::I32(tag as i32)),
                 data: Box::new(data_val.value),
             },
-        })
-    }
-
-    fn marshal_rc(&self, rc_val: &RcValue, out_bytes: &mut [u8]) -> MarshalResult<usize> {
-        let mut offset = self.marshal_ptr(&rc_val.resource_ptr, out_bytes)?;
-
-        let ref_count_bytes = rc_val.ref_count.to_ne_bytes();
-        offset += marshal_bytes(&ref_count_bytes, &mut out_bytes[offset..]);
-
-        let struct_id_bytes = rc_val.struct_id.0.to_ne_bytes();
-        offset += marshal_bytes(&struct_id_bytes, &mut out_bytes[offset..]);
-
-        Ok(offset)
-    }
-
-    fn unmarshal_rc(&self, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<RcValue>> {
-        let (resource_ptr, mut offset) = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
-
-        let ref_count_bytes = unmarshal_bytes(&in_bytes[offset..])?;
-        offset += ref_count_bytes.len();
-
-        let ref_count = usize::from_ne_bytes(ref_count_bytes);
-
-        let struct_id_bytes = unmarshal_bytes(&in_bytes[offset..])?;
-        offset += struct_id_bytes.len();
-
-        let struct_id = TypeDefID(usize::from_ne_bytes(struct_id_bytes));
-        let resource_ptr = resource_ptr.reinterpret(Type::Struct(struct_id));
-
-        Ok(UnmarshalledValue {
-            value: RcValue {
-                resource_ptr,
-                struct_id,
-                ref_count,
-            },
-            byte_count: offset,
         })
     }
 }

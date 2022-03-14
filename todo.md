@@ -3,7 +3,6 @@
 * stop outputting empty releaser funcs where there's nothing ot be released
 * interpreter: marshalled globals
 * parser: newlines/escape chars in string literals
-* backend: c ffi
 
 # critical
 
