@@ -453,7 +453,7 @@ impl Metadata {
     pub fn define_struct(&mut self, id: TypeDefID, struct_def: Struct) {
         match &self.type_decls[&id] {
             TypeDecl::Forward(name) => {
-                assert_eq!(StructIdentity::Named(name.clone()), struct_def.identity);
+                assert_eq!(Some(name), struct_def.name());
                 let type_def = TypeDecl::Def(TypeDef::Struct(struct_def));
                 self.type_decls.insert(id, type_def);
             },
@@ -788,7 +788,7 @@ impl Metadata {
         self.type_decls.insert(
             struct_id,
             TypeDecl::Def(TypeDef::Struct(Struct {
-                identity: StructIdentity::Named(name),
+                identity: StructIdentity::Class(name),
                 fields,
                 src_span: None,
             })),

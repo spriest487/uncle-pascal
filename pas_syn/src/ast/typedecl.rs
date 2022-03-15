@@ -6,37 +6,37 @@ use std::rc::Rc;
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Member<A: Annotation> {
+pub struct CompositeMember<A: Annotation> {
     pub ident: Ident,
     pub ty: A::Type,
     pub span: Span,
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum ClassKind {
+pub enum CompositeKind {
     /// heap-allocated, reference-counted type, passed by pointer. declared
     /// with the `class` keyword.
-    Object,
+    Class,
 
     /// locally-allocated value type. declared with the `record` keyword.
     Record,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Class<A: Annotation> {
-    pub kind: ClassKind,
+pub struct Composite<A: Annotation> {
+    pub kind: CompositeKind,
     pub name: A::Name,
-    pub members: Vec<Member<A>>,
+    pub members: Vec<CompositeMember<A>>,
     pub span: Span,
 }
 
-impl<A: Annotation> Class<A> {
-    pub fn find_member(&self, by_ident: &Ident) -> Option<&Member<A>> {
+impl<A: Annotation> Composite<A> {
+    pub fn find_member(&self, by_ident: &Ident) -> Option<&CompositeMember<A>> {
         self.members.iter().find(|m| m.ident == *by_ident)
     }
 }
 
-impl Class<Span> {
+impl Composite<Span> {
     fn match_kw() -> Matcher {
         Keyword::Class.or(Keyword::Record)
     }
@@ -55,7 +55,7 @@ impl Class<Span> {
 
             let ident = ident_token.into_ident().unwrap();
 
-            Ok(Generate::Yield(Member {
+            Ok(Generate::Yield(CompositeMember {
                 span: ident.span.to(&ty),
                 ty,
                 ident,
@@ -67,15 +67,15 @@ impl Class<Span> {
         let kind = match kw_token {
             TokenTree::Keyword {
                 kw: Keyword::Class, ..
-            } => ClassKind::Object,
+            } => CompositeKind::Class,
             TokenTree::Keyword {
                 kw: Keyword::Record,
                 ..
-            } => ClassKind::Record,
+            } => CompositeKind::Record,
             _ => unreachable!(),
         };
 
-        Ok(Class {
+        Ok(Composite {
             kind,
             name,
             members,
@@ -84,20 +84,20 @@ impl Class<Span> {
     }
 }
 
-impl<A: Annotation> Spanned for Class<A> {
+impl<A: Annotation> Spanned for Composite<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for Class<A> {
+impl<A: Annotation> fmt::Display for Composite<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,
             "{}",
             match self.kind {
-                ClassKind::Record => "record",
-                ClassKind::Object => "class",
+                CompositeKind::Record => "record",
+                CompositeKind::Class => "class",
             }
         )?;
         for member in &self.members {
@@ -238,7 +238,7 @@ impl<A: Annotation> Spanned for Variant<A> {
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
-    Class(Rc<Class<A>>),
+    Class(Rc<Composite<A>>),
     Interface(Rc<Interface<A>>),
     Variant(Rc<Variant<A>>),
 }
@@ -371,12 +371,12 @@ impl TypeDecl<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let class_matcher = Class::match_kw();
+        let class_matcher = Composite::match_kw();
         let decl_start_matcher = class_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
             Some(ref tt) if class_matcher.is_match(tt) => {
-                let class_decl = Class::parse(tokens, name)?;
+                let class_decl = Composite::parse(tokens, name)?;
                 Ok(TypeDecl::Class(Rc::new(class_decl)))
             }
 

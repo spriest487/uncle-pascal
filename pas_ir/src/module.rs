@@ -1,7 +1,7 @@
 use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, VirtualTypeID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::FunctionParamMod;
+use pas_syn::ast::{CompositeKind, FunctionParamMod};
 use pas_syn::{ast, Ident, IdentPath};
 use pas_typecheck::ast::specialize_func_decl;
 use pas_typecheck::{builtin_string_name, Specializable, TypeList};
@@ -656,13 +656,13 @@ impl Module {
                     return string_ty;
                 }
 
-                let class_def = self.src_metadata.instantiate_class(name).unwrap();
+                let def = self.src_metadata.instantiate_composite(name).unwrap();
 
                 let id = self.metadata.reserve_new_struct();
 
-                let ty = match class_def.kind {
-                    pas_syn::ast::ClassKind::Object => Type::RcPointer(VirtualTypeID::Class(id)),
-                    pas_syn::ast::ClassKind::Record => Type::Struct(id),
+                let ty = match def.kind {
+                    pas_syn::ast::CompositeKind::Class => Type::RcPointer(VirtualTypeID::Class(id)),
+                    pas_syn::ast::CompositeKind::Record => Type::Struct(id),
                 };
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
@@ -671,7 +671,7 @@ impl Module {
 
                 self.metadata.declare_struct(id, &name_path);
 
-                let struct_meta = self.translate_class(&class_def, type_args);
+                let struct_meta = self.translate_class(&def, type_args);
                 self.metadata.define_struct(id, struct_meta);
 
                 ty
@@ -843,7 +843,7 @@ impl Module {
 
     pub fn translate_class(
         &mut self,
-        class_def: &pas_ty::ast::Class,
+        class_def: &pas_ty::ast::Composite,
         type_args: Option<&pas_ty::TypeList>,
     ) -> Struct {
         let name_path = self.translate_name(&class_def.name, type_args);
@@ -859,7 +859,10 @@ impl Module {
 
         let src_span = class_def.span().clone();
 
-        let identity = StructIdentity::Named(name_path);
+        let identity = match class_def.kind {
+            CompositeKind::Class => StructIdentity::Class(name_path),
+            CompositeKind::Record => StructIdentity::Record(name_path),
+        };
 
         Struct::new(identity, Some(src_span)).with_fields(fields)
     }
@@ -961,7 +964,7 @@ impl fmt::Display for Module {
                     write!(f, "{} : ", id.0)?;
 
                     match &s.identity {
-                        StructIdentity::Named(name) => {
+                        StructIdentity::Class(name) | StructIdentity::Record(name) => {
                             self.metadata.format_name(name, f)?;
                         }
 

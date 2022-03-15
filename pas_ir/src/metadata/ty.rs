@@ -115,7 +115,9 @@ impl TypeDef {
     {
         match self {
             TypeDef::Struct(def) => match &def.identity {
-                StructIdentity::Named(def_name) => def_name.to_pretty_string(ty_format),
+                StructIdentity::Class(name) | StructIdentity::Record(name) => {
+                    name.to_pretty_string(ty_format)
+                },
                 StructIdentity::Closure(identity) => {
                     let func_ty_name = ty_format(&Type::Function(identity.func_ty_id));
                     format!("closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)
@@ -165,8 +167,11 @@ impl fmt::Display for TypeDef {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum Type {
-    /// no type or unknown type (used for raw pointers like void*)
+    /// no type (used for raw pointers like void*)
     Nothing,
+
+    // unknown virtual type
+    Any,
 
     Pointer(Rc<Type>),
     Struct(TypeDefID),
@@ -276,6 +281,7 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nothing => write!(f, "none"),
+            Type::Any => write!(f, "any"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),

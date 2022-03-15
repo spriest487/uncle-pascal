@@ -1,25 +1,36 @@
 #[cfg(test)]
 mod test;
 
-use crate::func::ffi::FfiInvoker;
-use crate::{ArrayValue, DynValue, Pointer, StructValue, VariantValue};
+use crate::{func::ffi::FfiInvoker, ArrayValue, DynValue, Pointer, StructValue, VariantValue, RcState};
 use ::dlopen::{raw as dlopen, Error as DlopenError};
 use libffi::{
     low::ffi_type,
     middle::{Builder as FfiBuilder, Type as FfiType},
     raw::FFI_TYPE_STRUCT,
 };
-use pas_ir::{ExternalFunctionRef, Instruction, InstructionFormatter, RawInstructionFormatter, Type};
+use pas_ir::{
+    metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, Variant},
+    ExternalFunctionRef,
+    Instruction,
+    InstructionFormatter,
+    RawInstructionFormatter,
+    Type
+};
 use std::{
     cmp::max,
-    collections::{BTreeMap, HashMap},
     convert::TryInto,
-    fmt, iter,
+    fmt,
+    iter,
     mem::{transmute, size_of},
     ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
     rc::Rc,
+    collections::{
+        BTreeSet,
+        BTreeMap,
+        HashMap
+    }
 };
-use pas_ir::metadata::{VirtualTypeID, FunctionID, Metadata, Struct, TypeDefID, Variant};
+use pas_ir::metadata::FieldID;
 
 #[derive(Clone, Debug)]
 pub enum MarshalError {
@@ -31,6 +42,10 @@ pub enum MarshalError {
     VariantTagOutOfRange {
         variant_id: TypeDefID,
         tag: DynValue,
+    },
+    FieldOutOfRange {
+        struct_id: TypeDefID,
+        field: FieldID,
     },
 
     InvalidStructID {
@@ -84,6 +99,11 @@ impl MarshalError {
                 f,
                 "tag {:?} for variant {} was out of range",
                 tag, variant_id
+            ),
+            MarshalError::FieldOutOfRange { struct_id, field } => write!(
+                f,
+                "field {} for struct {} was out of range",
+                struct_id, field
             ),
             MarshalError::InvalidRefCountValue(val) => {
                 write!(f, "value is not a valid ref count: {:?}", val)
@@ -218,12 +238,22 @@ impl ForeignType {
 }
 
 #[derive(Debug, Clone)]
+pub struct ForeignFieldInfo {
+    pub offset: usize,
+    pub ty: Type,
+    pub foreign_ty: ForeignType,
+}
+
+#[derive(Debug, Clone)]
 pub struct Marshaller {
     types: HashMap<Type, ForeignType>,
     libs: HashMap<String, Rc<dlopen::Library>>,
 
     struct_field_types: BTreeMap<TypeDefID, Vec<Type>>,
     variant_case_types: BTreeMap<TypeDefID, Vec<Option<Type>>>,
+
+    // structure types that need refcounting fields and type info for virtual calls
+    ref_types: BTreeSet<TypeDefID>,
 }
 
 impl Marshaller {
@@ -234,6 +264,8 @@ impl Marshaller {
 
             struct_field_types: BTreeMap::new(),
             variant_case_types: BTreeMap::new(),
+
+            ref_types: BTreeSet::new(),
         };
 
         marshaller.types.insert(Type::I8, ForeignType::i8());
@@ -275,6 +307,15 @@ impl Marshaller {
             .collect();
 
         let mut field_ffi_tys = Vec::with_capacity(def_field_tys.len());
+
+        if def.identity.is_ref_type() {
+            field_ffi_tys.push(ForeignType::usize()); // type ID
+            field_ffi_tys.push(ForeignType::i32()); // strong rc
+            field_ffi_tys.push(ForeignType::i32()); // weak rc
+
+            self.ref_types.insert(id);
+        }
+
         for def_field_ty in &def_field_tys {
             field_ffi_tys.push(self.build_marshalled_type(def_field_ty, metadata)?);
         }
@@ -445,6 +486,36 @@ impl Marshaller {
         }
     }
 
+    pub fn get_field_info(&self, type_id: TypeDefID, field: FieldID) -> MarshalResult<ForeignFieldInfo> {
+        let struct_marshal_ty = self.get_ty(&Type::Struct(type_id))?;
+
+        let fields = self.struct_field_types.get(&type_id)
+            .ok_or_else(|| MarshalError::UnsupportedType(Type::Struct(type_id)))?;
+        let field_ty = fields.get(field.0)
+            .ok_or_else(|| MarshalError::FieldOutOfRange { struct_id: type_id, field })?
+            .clone();
+
+        let field_index = if self.ref_types.contains(&type_id) {
+            field.0 + 3
+        } else {
+            field.0
+        };
+
+        let struct_elements = struct_marshal_ty.elements();
+        let field_offset = struct_elements
+            .iter()
+            .take(field_index)
+            .map(|field_ty| field_ty.size())
+            .sum();
+        let ffi_ty = struct_elements[field_index].clone();
+
+        Ok(ForeignFieldInfo {
+            offset: field_offset,
+            ty: field_ty,
+            foreign_ty: ffi_ty,
+        })
+    }
+
     pub fn marshal(&self, val: &DynValue, out_bytes: &mut [u8]) -> MarshalResult<usize> {
         let size = match val {
             DynValue::I8(x) => marshal_bytes(&x.to_ne_bytes(), out_bytes),
@@ -476,13 +547,7 @@ impl Marshaller {
             },
 
             DynValue::Structure(struct_val) => {
-                let mut fields_size = 0;
-                for field in &struct_val.fields {
-                    let field_bytes = &mut out_bytes[fields_size..];
-                    fields_size += self.marshal(field, field_bytes)?;
-                }
-
-                fields_size
+                self.marshal_struct(struct_val, out_bytes)?
             },
 
             DynValue::Variant(variant_val) => self.marshal_variant(variant_val, out_bytes)?,
@@ -579,21 +644,17 @@ impl Marshaller {
             },
 
             Type::RcPointer(class_id) => {
-                let raw_ptr_val = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
+                let raw_ptr_val = self.unmarshal_ptr(Type::Any, in_bytes)?;
 
                 // null rcpointers can exist - e.g. uninitialized stack values
                 let ptr_ty = if raw_ptr_val.value.is_null() {
-                    // it shouldn't really matter because you can't do anything with a null pointer,
-                    // but let's try to return as correct a value as we can
-                    let null_ty = match class_id {
-                        // expected pointer to a concrete RC class object
-                        VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
-
-                        // abstract pointer - no idea what the actual rc type was
-                        VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => Type::Nothing,
-                    };
-
-                    null_ty
+                    // if we have an expected concrete type, we can reinterpret the null pointer
+                    // as that type as a minor optimization for later
+                    if let VirtualTypeID::Class(type_id) = class_id {
+                        Type::Struct(*type_id)
+                    } else {
+                        Type::Any
+                    }
                 } else {
                     // the struct ID is the first field so we can just access it directly here
                     let struct_id_bytes = unsafe {
@@ -646,17 +707,22 @@ impl Marshaller {
             // these need field offset/tag type info from the ffi cache so marshal/unmarshal should
             // be members
             Type::Struct(struct_id) => {
-                let fields_val = self.unmarshal_struct_fields(*struct_id, in_bytes)?;
+                let struct_val = self.unmarshal_struct(*struct_id, in_bytes)?;
 
                 UnmarshalledValue {
-                    value: DynValue::Structure(Box::new(StructValue {
-                        type_id: *struct_id,
-                        rc: None,
-                        fields: fields_val.value,
-                    })),
-                    byte_count: fields_val.byte_count,
+                    value: DynValue::Structure(Box::new(struct_val.value)),
+                    byte_count: struct_val.byte_count,
                 }
             },
+
+            Type::Any => {
+                // peek the type ID
+                let type_id = unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?;
+
+                // read the real struct type from the original offset
+                self.unmarshal_struct(TypeDefID(type_id.value), in_bytes)?
+                    .map(|s| DynValue::Structure(Box::new(s)))
+            }
 
             Type::Variant(variant_id) => {
                 let variant_val = self.unmarshal_variant(*variant_id, in_bytes)?;
@@ -689,13 +755,49 @@ impl Marshaller {
         Ok(size_sum)
     }
 
-    fn unmarshal_struct_fields(&self, struct_id: TypeDefID, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<Vec<DynValue>>> {
+    fn marshal_struct(&self, struct_val: &StructValue, out_bytes: &mut [u8]) -> MarshalResult<usize> {
+        let mut offset = 0;
+        if let Some(rc_state) = struct_val.rc.as_ref() {
+            assert!(self.ref_types.contains(&struct_val.type_id));
+
+            offset += marshal_bytes(&struct_val.type_id.0.to_ne_bytes(), &mut out_bytes[offset..]);
+
+            offset += marshal_bytes(&rc_state.strong_count.to_ne_bytes(), &mut out_bytes[offset..]);
+            offset += marshal_bytes(&rc_state.weak_count.to_ne_bytes(), &mut out_bytes[offset..]);
+        }
+
+        for field in &struct_val.fields {
+            offset += self.marshal(field, &mut out_bytes[offset..])?;
+        }
+
+        Ok(offset)
+    }
+
+    fn unmarshal_struct(&self, struct_id: TypeDefID, in_bytes: &[u8]) -> MarshalResult<UnmarshalledValue<StructValue>> {
+        let mut offset = 0;
+
+        let rc = if self.ref_types.contains(&struct_id) {
+            // rc types start with a type ID we can skip
+            offset += size_of::<usize>();
+            let strong_count_val = unmarshal_from_ne_bytes(&in_bytes[offset..], i32::from_ne_bytes)?;
+            offset += strong_count_val.byte_count;
+
+            let weak_count_val = unmarshal_from_ne_bytes(&in_bytes[offset..], i32::from_ne_bytes)?;
+            offset += weak_count_val.byte_count;
+
+            Some(RcState {
+                strong_count: strong_count_val.value,
+                weak_count: weak_count_val.value,
+            })
+        } else {
+            None
+        };
+
         let field_tys = self
             .struct_field_types
             .get(&struct_id)
             .ok_or_else(|| MarshalError::UnsupportedType(Type::Struct(struct_id)))?;
 
-        let mut offset = 0;
         let mut fields = Vec::new();
 
         for field_ty in field_tys {
@@ -706,7 +808,11 @@ impl Marshaller {
 
         Ok(UnmarshalledValue {
             byte_count: offset,
-            value: fields,
+            value: StructValue {
+                fields,
+                type_id: struct_id,
+                rc,
+            },
         })
     }
 

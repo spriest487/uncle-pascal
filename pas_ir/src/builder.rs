@@ -111,7 +111,7 @@ impl<'m> Builder<'m> {
             .translate_name(name, self.type_args().cloned().as_ref())
     }
 
-    pub fn translate_class(&mut self, class_def: &pas_ty::ast::Class) -> Struct {
+    pub fn translate_class(&mut self, class_def: &pas_ty::ast::Composite) -> Struct {
         self.module
             .translate_class(class_def, self.type_args().cloned().as_ref())
     }

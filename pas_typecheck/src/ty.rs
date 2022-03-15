@@ -1,6 +1,6 @@
 pub use self::{pattern::*, primitive::*, sig::*, ty_param::*};
 use crate::{
-    ast::{const_eval_integer, typecheck_expr, Class, FunctionDecl, Member, Variant},
+    ast::{const_eval_integer, typecheck_expr, Composite, FunctionDecl, Member, Variant},
     context,
     result::*,
     Context, GenericError, GenericResult, GenericTarget, NameResult, Symbol, TypeAnnotation,
@@ -8,7 +8,7 @@ use crate::{
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, ArrayTypeName, ClassKind, IdentTypeName, Typed},
+    ast::{self, ArrayTypeName, CompositeKind, IdentTypeName, Typed},
     ident::*,
     Operator,
 };
@@ -93,7 +93,7 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDecl::Class(class) if class.kind == ClassKind::Record => {
+            ast::TypeDecl::Class(class) if class.kind == CompositeKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
             },
 
@@ -110,7 +110,7 @@ impl Type {
     pub fn find_data_member(&self, member: &Ident, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Class(class_name) | Type::Record(class_name) => {
-                let def = ctx.instantiate_class(class_name)?;
+                let def = ctx.instantiate_composite(class_name)?;
 
                 Ok(def.find_member(member).cloned())
             },
@@ -122,7 +122,7 @@ impl Type {
     pub fn get_member(&self, index: usize, ctx: &Context) -> NameResult<Option<Member>> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_class(class)?;
+                let class = ctx.instantiate_composite(class)?;
 
                 Ok(class.members.get(index).cloned())
             },
@@ -134,7 +134,7 @@ impl Type {
     pub fn members_len(&self, ctx: &Context) -> NameResult<usize> {
         match self {
             Type::Record(class) | Type::Class(class) => {
-                let class = ctx.instantiate_class(class)?;
+                let class = ctx.instantiate_composite(class)?;
                 Ok(class.members.len())
             },
 
@@ -698,7 +698,7 @@ pub fn specialize_generic_name(name: &Symbol, args: &TypeList) -> GenericResult<
     Ok(name)
 }
 
-pub fn specialize_class_def(class: &Class, ty_args: &TypeList) -> GenericResult<Class> {
+pub fn specialize_composite_def(class: &Composite, ty_args: &TypeList) -> GenericResult<Composite> {
     let parameterized_name = specialize_generic_name(&class.name, &ty_args)?;
 
     let members: Vec<_> = class
@@ -708,14 +708,14 @@ pub fn specialize_class_def(class: &Class, ty_args: &TypeList) -> GenericResult<
             //            let ty = specialize_member(&member.ty, &args, span)?;
             let ty = member.ty.clone().substitute_type_args(&ty_args);
 
-            Ok(ast::Member {
+            Ok(ast::CompositeMember {
                 ty,
                 ..member.clone()
             })
         })
         .collect::<GenericResult<_>>()?;
 
-    Ok(Class {
+    Ok(Composite {
         name: parameterized_name,
         members,
         span: class.span.clone(),

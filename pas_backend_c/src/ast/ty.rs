@@ -49,6 +49,7 @@ impl Type {
             metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
+            metadata::Type::Any => Type::Void,
             metadata::Type::Bool => Type::Bool,
             metadata::Type::F32 => Type::Float,
             metadata::Type::I8 => Type::SChar,

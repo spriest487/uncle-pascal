@@ -11,7 +11,7 @@ pub use self::{
     builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
 use crate::ast::Literal;
-use crate::{ast::{Class, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, specialize_class_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
+use crate::{ast::{Composite, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, specialize_composite_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -434,12 +434,12 @@ impl Context {
         Ok(())
     }
 
-    pub fn declare_class(&mut self, class: Rc<Class>, visibility: Visibility) -> TypecheckResult<()> {
+    pub fn declare_class(&mut self, class: Rc<Composite>, visibility: Visibility) -> TypecheckResult<()> {
         let name = class.name.decl_name.ident.clone();
 
         let class_ty = match class.kind {
-            pas_syn::ast::ClassKind::Object => Type::Class(Box::new(class.name.clone())),
-            pas_syn::ast::ClassKind::Record => Type::Record(Box::new(class.name.clone())),
+            pas_syn::ast::CompositeKind::Class => Type::Class(Box::new(class.name.clone())),
+            pas_syn::ast::CompositeKind::Record => Type::Record(Box::new(class.name.clone())),
         };
 
         self.declare_type(name.clone(), class_ty, visibility)?;
@@ -792,7 +792,7 @@ impl Context {
         self.defs.get(name)
     }
 
-    pub fn find_class_def(&self, name: &IdentPath) -> NameResult<Rc<Class>> {
+    pub fn find_composite_def(&self, name: &IdentPath) -> NameResult<Rc<Composite>> {
         match self.defs.get(name) {
             Some(Def::Class(class_def)) => Ok(class_def.clone()),
 
@@ -816,14 +816,14 @@ impl Context {
         }
     }
 
-    pub fn instantiate_class(&self, name: &Symbol) -> NameResult<Rc<Class>> {
+    pub fn instantiate_composite(&self, name: &Symbol) -> NameResult<Rc<Composite>> {
         name.expect_not_unspecialized()?;
 
-        let base_def = self.find_class_def(&name.qualified)?;
+        let base_def = self.find_composite_def(&name.qualified)?;
 
         let instance_def = match &name.type_args {
             Some(type_args) => {
-                let instance_def = specialize_class_def(base_def.as_ref(), type_args)?;
+                let instance_def = specialize_composite_def(base_def.as_ref(), type_args)?;
                 Rc::new(instance_def)
             }
             None => base_def,
@@ -1066,7 +1066,7 @@ impl Context {
             Type::Nothing | Type::MethodSelf => Ok(true),
 
             Type::Class(class) | Type::Record(class) => {
-                match self.find_class_def(&class.qualified) {
+                match self.find_composite_def(&class.qualified) {
                     Ok(..) => Ok(false),
                     Err(NameError::NotFound { .. }) => Ok(true),
                     Err(err) => Err(err),

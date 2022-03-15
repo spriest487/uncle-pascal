@@ -1,8 +1,8 @@
 use crate::ast::prelude::*;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
-pub type Class = ast::Class<TypeAnnotation>;
-pub type Member = ast::Member<TypeAnnotation>;
+pub type Composite = ast::Composite<TypeAnnotation>;
+pub type Member = ast::CompositeMember<TypeAnnotation>;
 pub type Interface = ast::Interface<TypeAnnotation>;
 pub type Variant = ast::Variant<TypeAnnotation>;
 
@@ -13,7 +13,7 @@ pub fn typecheck_type_decl(
 ) -> TypecheckResult<TypeDecl> {
     match type_decl {
         ast::TypeDecl::Class(class) => {
-            let class = typecheck_class(name, class, ctx)?;
+            let class = typecheck_composite(name, class, ctx)?;
             Ok(ast::TypeDecl::Class(Rc::new(class)))
         }
         ast::TypeDecl::Interface(iface) => {
@@ -28,14 +28,14 @@ pub fn typecheck_type_decl(
     }
 }
 
-pub fn typecheck_class(
+pub fn typecheck_composite(
     name: Symbol,
-    class: &ast::Class<Span>,
+    class: &ast::Composite<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<Class> {
+) -> TypecheckResult<Composite> {
     let self_ty = match class.kind {
-        ast::ClassKind::Record => Type::Record(Box::new(name.clone())),
-        ast::ClassKind::Object => Type::Class(Box::new(name.clone())),
+        ast::CompositeKind::Record => Type::Record(Box::new(name.clone())),
+        ast::CompositeKind::Class => Type::Class(Box::new(name.clone())),
     };
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(class.name.ident.clone(), self_ty, Visibility::Implementation)?;
@@ -62,7 +62,7 @@ pub fn typecheck_class(
         });
     }
 
-    Ok(Class {
+    Ok(Composite {
         kind: class.kind,
         name,
         span: class.span.clone(),

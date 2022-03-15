@@ -143,7 +143,7 @@ impl DynValue {
                 Some(DynValue::Pointer(ptr))
             },
 
-            Type::Nothing => None,
+            Type::Nothing | Type::Any => None,
 
             Type::RcPointer(class_id) => {
                 // assume self is a pointer-compatible type, its int value be the address
@@ -158,7 +158,7 @@ impl DynValue {
                         // can't include any type info about the concrete type here - it's up to
                         // the language to have the right info when it uses this pointer value
                         VirtualTypeID::Any | VirtualTypeID::Interface(..) | VirtualTypeID::Closure(..) => {
-                            Type::Nothing
+                            Type::Any
                         },
                     },
                 };

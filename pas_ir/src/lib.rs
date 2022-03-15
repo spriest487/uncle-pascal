@@ -220,7 +220,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     // if String is defined it needs to be defined in the metadata even if it isn't used,
     // for the benefit of the stdlib (it's not defined in the type context with --no-stdlib)
     let string_name = pas_ty::builtin_string_name();
-    if let Ok(string_class) = module.root_ctx.find_class_def(&string_name.qualified) {
+    if let Ok(string_class) = module.root_ctx.find_composite_def(&string_name.qualified) {
         let name = {
             let mut builder = Builder::new(&mut ir_module);
             let name = builder.translate_name(&string_name);

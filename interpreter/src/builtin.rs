@@ -84,7 +84,7 @@ pub(super) fn usize_to_str(state: &mut Interpreter) -> ExecResult<()> {
 pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(1));
 
-    let string = state.read_string(&arg_0.to_deref())?;
+    let string = state.read_string(&arg_0)?;
     let int: i32 = string.parse().map_err(|_| ExecError::Raised {
         msg: format!("could not convert `{}` to Integer", string),
     })?;
@@ -97,7 +97,7 @@ pub(super) fn str_to_int(state: &mut Interpreter) -> ExecResult<()> {
 /// %0: String -> Nothing
 pub(super) fn write_ln(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(0));
-    let string = state.read_string(&arg_0.to_deref())?;
+    let string = state.read_string(&arg_0)?;
 
     println!("{}", string);
 
@@ -147,9 +147,9 @@ pub(super) fn get_mem(state: &mut Interpreter) -> ExecResult<()> {
 pub(super) fn free_mem(state: &mut Interpreter) -> ExecResult<()> {
     let arg_0 = Ref::Local(LocalID(0));
 
-    let ptr_dyn = state.load(&arg_0)?.into_owned();
+    let ptr_val = state.load(&arg_0)?.into_owned();
 
-    let ptr = ptr_dyn
+    let ptr = ptr_val
         .as_pointer()
         .ok_or_else(|| ExecError::illegal_state("FreeMem expected heap pointer argument"))?;
 

@@ -158,7 +158,7 @@ impl Interpreter {
 
             Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
                 VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
-                _ => Type::Nothing,
+                VirtualTypeID::Closure(..) | VirtualTypeID::Any | VirtualTypeID::Interface(..) => Type::Any,
             })),
 
             Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
@@ -600,7 +600,6 @@ impl Interpreter {
         // the reference count and store the result
         if struct_rc.strong_count > 0 || struct_rc.weak_count > 0 {
             struct_rc.strong_count -= 1;
-            assert!(struct_rc.strong_count > 0);
 
             if self.trace_rc {
                 eprintln!(
@@ -1444,35 +1443,16 @@ impl Interpreter {
         Ok(())
     }
 
-    fn get_field_offset_and_ty(&self, struct_id: TypeDefID, field: FieldID) -> ExecResult<(usize, Type)> {
-        let field_def = self.metadata.get_struct_def(struct_id)
-            .and_then(|def| def.fields.get(&field))
-            .ok_or_else(|| {
-                let msg = format!("missing definition for struct field {}.{}", struct_id, field.0);
-                ExecError::illegal_state(msg)
-            })?;
-
-        let struct_marshal_ty = self.marshaller.get_ty(&Type::Struct(struct_id))?;
-
-        let field_offset = struct_marshal_ty.elements()
-            .iter()
-            .take(field.0)
-            .map(|field_ty| field_ty.size())
-            .sum();
-
-        Ok((field_offset, field_def.ty.clone()))
-    }
-
     fn exec_field(&mut self, out: &Ref, a: &Ref, field: &FieldID, of_ty: &Type) -> ExecResult<()> {
         let field_ptr = match of_ty {
             Type::Struct(struct_id) => {
                 let struct_ptr = self.addr_of_ref(a)?;
 
-                let (field_offset, field_ty) = self.get_field_offset_and_ty(*struct_id, *field)?;
+                let field_info = self.marshaller.get_field_info(*struct_id, *field)?;
 
                 Pointer {
-                    ty: field_ty,
-                    addr: struct_ptr.addr + field_offset,
+                    ty: field_info.ty,
+                    addr: struct_ptr.addr + field_info.offset,
                 }
             }
 
@@ -1481,11 +1461,11 @@ impl Interpreter {
             Type::RcPointer(VirtualTypeID::Class(type_id)) => {
                 let val_ptr = self.addr_of_ref(&a.clone().to_deref())?;
 
-                let (field_offset, field_ty) = self.get_field_offset_and_ty(*type_id, *field)?;
+                let field_info = self.marshaller.get_field_info(*type_id, *field)?;
 
                 Pointer {
-                    ty: field_ty,
-                    addr: val_ptr.addr + field_offset,
+                    ty: field_info.ty,
+                    addr: val_ptr.addr + field_info.offset,
                 }
             }
 
@@ -1503,11 +1483,11 @@ impl Interpreter {
                     }
                 };
 
-                let (field_offset, field_ty) = self.get_field_offset_and_ty(struct_val.type_id, *field)?;
+                let field_info = self.marshaller.get_field_info(struct_val.type_id, *field)?;
 
                 Pointer {
-                    ty: field_ty,
-                    addr: val_ptr.addr + field_offset,
+                    ty: field_info.ty,
+                    addr: val_ptr.addr + field_info.offset,
                 }
             }
 
@@ -1735,15 +1715,16 @@ impl Interpreter {
         Ok(DynValue::Pointer(str_ptr))
     }
 
+    // reads the string value stored in the string object that `str_ref` is a pointer to
     fn read_string(&self, str_ref: &Ref) -> ExecResult<String> {
-        let str_val = self.load(&str_ref.clone().to_deref())?;
+        let str_ptr = self.load(&str_ref.clone().to_deref())?;
 
-        let str_struct = match str_val.as_struct(STRING_ID) {
+        let str_struct = match str_ptr.as_struct(STRING_ID) {
             Some(struct_val) if struct_val.type_id == STRING_ID => struct_val,
             _ => {
                 let msg = format!(
                     "tried to read string value from rc val which didn't contain a string struct: {:?}",
-                    str_val,
+                    str_ptr,
                 );
                 return Err(ExecError::illegal_state(msg))
             },

@@ -13,8 +13,18 @@ pub struct StructFieldDef {
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum StructIdentity {
-    Named(NamePath),
+    Record(NamePath),
+    Class(NamePath),
     Closure(ClosureIdentity),
+}
+
+impl StructIdentity {
+    pub fn is_ref_type(&self) -> bool {
+        match self {
+            StructIdentity::Record(..) => false,
+            StructIdentity::Class(..) | StructIdentity::Closure(..) => true,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -58,7 +68,7 @@ impl Struct {
 
     pub fn name(&self) -> Option<&NamePath> {
         match &self.identity {
-            StructIdentity::Named(name) => Some(name),
+            StructIdentity::Class(name) | StructIdentity::Record(name) => Some(name),
             StructIdentity::Closure(..) => None,
         }
     }
@@ -92,7 +102,7 @@ impl Struct {
 impl fmt::Display for Struct {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.identity {
-            StructIdentity::Named(struct_name) => write!(f, "{}", struct_name),
+            StructIdentity::Class(name) | StructIdentity::Record(name) => write!(f, "{}", name),
             StructIdentity::Closure(identity) => write!(
                 f,
                 "closure of function type {} @ {}:{}:{}",
