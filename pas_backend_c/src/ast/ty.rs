@@ -5,7 +5,7 @@ use pas_ir::{
     metadata,
     metadata::{
         FieldID, InterfaceID, MethodID, RcBoilerplatePair, TypeDefID, VirtualTypeID,
-        DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD,
+        DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD, DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID,
     },
     LocalID,
 };
@@ -15,7 +15,6 @@ use std::{
     fmt::Write,
     hash::{Hash, Hasher},
 };
-use pas_ir::metadata::{DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -594,9 +593,85 @@ impl fmt::Display for TypeDef {
 struct MethodImplFunc {
     name: FunctionName,
 
-    // the original types from the interface method decl - we need to keep these to gen a wrapper
-    wrapper_params: Vec<Type>,
-    wrapper_return_ty: Type,
+    vcall_wrapper_decl: FunctionDecl,
+}
+
+impl MethodImplFunc {
+    fn from_metadata(
+        iface_id: InterfaceID,
+        self_ty_id: TypeDefID,
+        method_id: MethodID,
+        iface_method: &pas_ir::metadata::Method,
+        metadata: &metadata::Metadata,
+        module: &mut Module,
+    ) -> Self {
+        let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(self_ty_id));
+        let iface_ty = pas_ir::Type::RcPointer(VirtualTypeID::Interface(iface_id));
+
+        let impl_func = metadata.find_impl(&class_ty, iface_id, method_id).unwrap();
+        let impl_func_name = FunctionName::ID(impl_func);
+        let vcall_wrapper_name = FunctionName::MethodWrapper(iface_id, method_id, self_ty_id);
+
+        // generate virtual call wrapper with the param types of the virtually called iface method
+        let wrapper_param_tys: Vec<_> = iface_method.params.iter()
+            .map(|ty| Type::from_metadata(ty, module))
+            .collect();
+        let wrapper_return_ty = Type::from_metadata(&iface_method.return_ty, module);
+
+        Self {
+            name: impl_func_name,
+            vcall_wrapper_decl: FunctionDecl {
+                comment: Some(format!(
+                    "virtual call wrapper impl of {}.{} for {}",
+                    metadata.pretty_ty_name(&iface_ty),
+                    iface_method.name,
+                    metadata.pretty_ty_name(&class_ty),
+                )),
+                name: vcall_wrapper_name,
+                params: wrapper_param_tys,
+                return_ty: wrapper_return_ty,
+            },
+        }
+    }
+
+    fn gen_vcall_wrapper(&self, module: &Module) -> FunctionDef {
+        let mut next_param_local = LocalID(match &self.vcall_wrapper_decl.return_ty {
+            Type::Void => 0,
+            _ => 1,
+        });
+
+        let impl_func_def = module
+            .functions
+            .iter()
+            .find(|f| f.decl.name == self.name)
+            .unwrap();
+
+        let mut call_impl_func_args = Vec::with_capacity(self.vcall_wrapper_decl.params.len());
+
+        // forward the rest of the params as-is
+        for i in 0..self.vcall_wrapper_decl.params.len() {
+            let concrete_ty = &impl_func_def.decl.params[i];
+
+            call_impl_func_args.push(Expr::Local(next_param_local)
+                .cast(concrete_ty.clone()));
+            next_param_local.0 += 1;
+        }
+
+        let call_impl_func = Expr::call(
+            Expr::Function(self.name),
+            call_impl_func_args,
+        );
+
+        let body_stmt = match impl_func_def.decl.return_ty {
+            Type::Void => Statement::Expr(call_impl_func),
+            _ => Statement::Expr(Expr::assign(Expr::Local(LocalID(0)), call_impl_func)),
+        };
+
+        FunctionDef {
+            decl: self.vcall_wrapper_decl.clone(),
+            body: vec![body_stmt],
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -630,8 +705,6 @@ impl Class {
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
-        let class_id = VirtualTypeID::Class(struct_id);
-        let class_ty = metadata::Type::RcPointer(class_id);
         let mut impls = HashMap::new();
 
         for (iface_id, iface) in metadata.ifaces() {
@@ -641,17 +714,17 @@ impl Class {
                 .enumerate()
                 .filter_map(|(method_index, method)| {
                     let method_id = MethodID(method_index);
-                    let method_impl = metadata.find_impl(&class_ty, iface_id, method_id)?;
 
-                    let impl_method_func = MethodImplFunc {
-                        name: FunctionName::ID(method_impl),
-                        wrapper_params: method.params.iter()
-                            .map(|ty| Type::from_metadata(ty, module))
-                            .collect(),
-                        wrapper_return_ty: Type::from_metadata(&method.return_ty, module),
-                    };
+                    let impl_func = MethodImplFunc::from_metadata(
+                        iface_id,
+                        struct_id,
+                        method_id,
+                        method,
+                        metadata,
+                        module,
+                    );
 
-                    Some((method_id, impl_method_func))
+                    Some((method_id, impl_func))
                 })
                 .collect();
 
@@ -711,58 +784,15 @@ impl Class {
         }
     }
 
-    fn gen_method_wrapper(
-        iface_id: InterfaceID,
-        self_ty_id: TypeDefID,
-        method_id: MethodID,
-        impl_func: &MethodImplFunc,
-        module: &Module,
-    ) -> Option<FunctionDef> {
-        // FFI and builtin functions can't implement interfaces so we don't need to search those
-        let method_func_def = module
-            .functions
-            .iter()
-            .find(|f| f.decl.name == impl_func.name).unwrap();
-
-        let mut next_param_local = LocalID(match method_func_def.decl.return_ty {
-            Type::Void => 0,
-            _ => 1,
-        });
-
-        let mut call_impl_func_args = Vec::with_capacity(impl_func.wrapper_params.len());
-
-        // cast self arg back from `void*` to the real type
-        let self_ptr_ty = Type::DefinedType(TypeDefName::Struct(self_ty_id)).ptr();
-        call_impl_func_args.push(Expr::Local(next_param_local).cast(self_ptr_ty));
-        next_param_local.0 += 1;
-
-        // forward the rest of the params as-is
-        for _ in 1..impl_func.wrapper_params.len() {
-            call_impl_func_args.push(Expr::Local(next_param_local));
-            next_param_local.0 += 1;
+    pub fn gen_vcall_wrappers(&self, module: &Module) -> Vec<FunctionDef> {
+        let mut wrappers = Vec::new();
+        for (_iface_id, iface_impl) in &self.impls {
+            for (_method_id, method_impl) in &iface_impl.method_impls {
+                wrappers.push(method_impl.gen_vcall_wrapper(module));
+            }
         }
 
-        let call_impl_func = Expr::call(
-            Expr::Function(impl_func.name),
-            call_impl_func_args,
-        );
-
-        let body_stmt = match method_func_def.decl.return_ty {
-            Type::Void => Statement::Expr(call_impl_func),
-            _ => Statement::Expr(Expr::assign(Expr::Local(LocalID(0)), call_impl_func)),
-        };
-
-        let wrapper_def = FunctionDef {
-            decl: FunctionDecl {
-                comment: None,
-                name: FunctionName::MethodWrapper(iface_id, method_id, self_ty_id),
-                params: impl_func.wrapper_params.clone(),
-                return_ty: impl_func.wrapper_return_ty.clone(),
-            },
-            body: vec![body_stmt],
-        };
-
-        Some(wrapper_def)
+        wrappers
     }
 
     pub fn to_decl_string(&self) -> String {
@@ -798,21 +828,11 @@ impl Class {
         decls
     }
 
-    pub fn to_def_string(&self, module: &Module) -> String {
+    pub fn to_def_string(&self) -> String {
         let mut def = String::new();
 
         // impl method tables
         let impls: Vec<_> = self.impls.iter().enumerate().collect();
-
-        // impl method wrappers
-        for (_, (iface_id, iface_impl)) in &impls {
-            for (method_id, impl_func) in &iface_impl.method_impls {
-                if let Some(wrapper_func) = Class::gen_method_wrapper(**iface_id, self.struct_id, *method_id, impl_func, module) {
-                    def.push_str(&wrapper_func.to_string());
-                    def.push_str("\n");
-                }
-            }
-        }
 
         for (i, (iface_id, iface_impl)) in &impls {
             def.push_str(&format!(

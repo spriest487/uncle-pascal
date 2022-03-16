@@ -271,6 +271,8 @@ impl Module {
     }
 
     pub fn add_ir(&mut self, module: &ir::Module) {
+        let mut module_type_defs = Vec::new();
+
         for (id, type_def) in module.metadata.type_defs() {
             let mut member_deps = Vec::new();
 
@@ -325,6 +327,7 @@ impl Module {
 
             let c_def_name = c_type_def.decl().name.clone();
 
+            module_type_defs.push(c_type_def.clone());
             self.type_defs.insert(c_def_name.clone(), c_type_def);
 
             self.type_defs_order.insert(c_def_name.clone());
@@ -349,6 +352,13 @@ impl Module {
 
                     self.ffi_funcs.push(ffi_func);
                 },
+            }
+        }
+
+        // now that real functions are defined, we can generate method vcall wrappers
+        for class in self.classes.clone() {
+            for wrapper_func_def in class.gen_vcall_wrappers(self) {
+                self.functions.push(wrapper_func_def);
             }
         }
 
@@ -454,7 +464,7 @@ impl fmt::Display for Module {
 
         for class in &self.classes {
             writeln!(f, "{}", class.to_decl_string())?;
-            writeln!(f, "{}", class.to_def_string(self))?;
+            writeln!(f, "{}", class.to_def_string())?;
             writeln!(f)?;
         }
 
