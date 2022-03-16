@@ -609,13 +609,7 @@ impl Metadata {
         iface_id: InterfaceID,
         method: MethodID,
     ) -> Option<FunctionID> {
-        let iface = self.get_iface_def(iface_id).unwrap_or_else(|| {
-            panic!(
-                "missing metadata definition of iface {} - defined: {:#?}",
-                iface_id, self.ifaces
-            )
-        });
-
+        let iface = self.get_iface_def(iface_id)?;
         let ty_impl = iface.impls.get(ty)?;
 
         ty_impl.methods.get(&method).cloned()

@@ -15,6 +15,8 @@ use std::{
     fmt::Write,
     hash::{Hash, Hasher},
 };
+use std::collections::BTreeMap;
+use pas_ir::metadata::FunctionID;
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -393,27 +395,26 @@ impl StructDef {
         ir_struct: &metadata::Struct,
         module: &mut Module,
     ) -> Self {
-        // fields should be written in the numerical order of their field IDs in the IR
-        let mut sorted_fields: Vec<_> = ir_struct.fields.iter().collect();
-        sorted_fields.sort_by_key(|(id, _)| (id.0));
-
-        let mut members: Vec<_> = sorted_fields
-            .into_iter()
-            .map(|(id, field)| {
-                let ty = Type::from_metadata(&field.ty, module);
-
-                StructMember {
-                    name: FieldName::ID(*id),
-                    ty,
-                    comment: None,
-                }
-            })
-            .collect();
+        let mut members = Vec::new();
 
         if ir_struct.identity.is_ref_type() {
             members.push(StructMember {
                 name: FieldName::Rc,
                 ty: Type::Rc,
+                comment: None,
+            });
+        }
+
+        // fields should be written in the numerical order of their field IDs in the IR
+        let mut sorted_fields: Vec<_> = ir_struct.fields.iter().collect();
+        sorted_fields.sort_by_key(|(id, _)| (id.0));
+
+        for (id, field) in sorted_fields {
+            let ty = Type::from_metadata(&field.ty, module);
+
+            members.push(StructMember {
+                name: FieldName::ID(*id),
+                ty,
                 comment: None,
             });
         }
@@ -597,19 +598,19 @@ struct MethodImplFunc {
 }
 
 impl MethodImplFunc {
-    fn from_metadata(
+    fn new(
         iface_id: InterfaceID,
         self_ty_id: TypeDefID,
         method_id: MethodID,
         iface_method: &pas_ir::metadata::Method,
+        impl_func_id: FunctionID,
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
         let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(self_ty_id));
         let iface_ty = pas_ir::Type::RcPointer(VirtualTypeID::Interface(iface_id));
 
-        let impl_func = metadata.find_impl(&class_ty, iface_id, method_id).unwrap();
-        let impl_func_name = FunctionName::ID(impl_func);
+        let impl_func_name = FunctionName::ID(impl_func_id);
         let vcall_wrapper_name = FunctionName::MethodWrapper(iface_id, method_id, self_ty_id);
 
         // generate virtual call wrapper with the param types of the virtually called iface method
@@ -676,7 +677,7 @@ impl MethodImplFunc {
 
 #[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: HashMap<MethodID, MethodImplFunc>,
+    method_impls: BTreeMap<MethodID, MethodImplFunc>,
 }
 
 #[derive(Clone, Debug)]
@@ -705,28 +706,30 @@ impl Class {
         metadata: &metadata::Metadata,
         module: &mut Module,
     ) -> Self {
+        let class_ty = pas_ir::Type::RcPointer(VirtualTypeID::Class(struct_id));
+
         let mut impls = HashMap::new();
 
-        for (iface_id, iface) in metadata.ifaces() {
-            let method_impls: HashMap<_, _> = iface
-                .methods
-                .iter()
-                .enumerate()
-                .filter_map(|(method_index, method)| {
-                    let method_id = MethodID(method_index);
+        for (iface_id, iface_impl) in metadata.find_impls(&class_ty) {
+            let mut method_impls = BTreeMap::new();
 
-                    let impl_func = MethodImplFunc::from_metadata(
-                        iface_id,
-                        struct_id,
-                        method_id,
-                        method,
-                        metadata,
-                        module,
-                    );
+            let iface = metadata.get_iface_def(iface_id).unwrap();
 
-                    Some((method_id, impl_func))
-                })
-                .collect();
+            for (method_id, impl_func_id) in iface_impl.methods.iter() {
+                let method_def = iface.get_method(*method_id).unwrap();
+
+                let impl_func = MethodImplFunc::new(
+                    iface_id,
+                    struct_id,
+                    *method_id,
+                    method_def,
+                    *impl_func_id,
+                    metadata,
+                    module,
+                );
+
+                method_impls.insert(*method_id, impl_func);
+            }
 
             if method_impls.is_empty() {
                 continue;
