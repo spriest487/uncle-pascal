@@ -4,12 +4,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-struct Rc;
-
-typedef void (*Disposer)(struct Rc*);
+typedef void (*Disposer)(void*);
 
 typedef void (*RcCleanupFunc)(void*);
 typedef void (*RcRetainFunc)(void*);
+
+#define STRING_STRUCT struct Struct_1
+#define STRING_CLASS Class_1
+#define STRING_CHARS(str_ptr) (str_ptr->field_0)
+#define STRING_LEN(str_ptr) (str_ptr->field_1)
 
 // classes and interfaces runtime support
 
@@ -28,14 +31,16 @@ struct Class {
 };
 
 struct Rc {
-    void* resource;
     struct Class* class;
-
-    int count;
+    int32_t strong_count;
+    int32_t weak_count;
 };
 
-typedef void (*DynArrayAlloc)(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len);
-typedef int32_t (*DynArrayLength)(struct Rc* arr);
+// forward decl of string type
+STRING_STRUCT;
+
+typedef void (*DynArrayAlloc)(void* arr, int32_t len, void* copy_from, void* default_val, int32_t default_val_len);
+typedef int32_t (*DynArrayLength)(void* arr);
 
 struct DynArrayClass {
     struct Class base;
@@ -112,112 +117,115 @@ static void Free(void* mem) {
 
 // RC runtime functions
 
-static struct Rc* RcAlloc(struct Class* class) {
+static void* RcAlloc(struct Class* class) {
     if (!class) {
         abort();
     }
 
-    struct Rc* rc = Alloc(sizeof(struct Rc));
-    if (!rc) {
-        abort();
-    }
+    void* instance = Alloc(class->size);
 
-    rc->count = 1;
+    // the rc field should be the first member of any rc type
+    struct Rc* rc = (struct Rc*)instance;
     rc->class = class;
-    rc->resource = Alloc(class->size);
+    rc->strong_count = 1;
+    rc->weak_count = 0;
 
     return rc;
 }
 
-static void RcRetain(struct Rc* rc) {
-    if (!rc || !rc->count) {
+static void RcRetain(void* instance) {
+    struct Rc* rc = (struct Rc*)instance;
+    if (!rc || rc->strong_count == 0) {
         abort();
     }
 
     // don't retain immortal refs
-    if (rc->count < 0) {
+    if (rc->strong_count < 0) {
         return;
     }
 
 #if TRACE_RC
-    printf("rc: retained ref @ 0x%p\n", rc->resource);
+    printf("rc: retained ref @ 0x%p\n", instance);
 #endif
 
-    rc->count += 1;
+    rc->strong_count += 1;
 }
 
-static void RcRelease(struct Rc* rc) {
-    if (!rc) {
+static void RcRelease(void* instance) {
+    if (!instance) {
         // releasing NULL should be ignored
         return;
     }
 
-    if (!rc->count) {
+    struct Rc* rc = (struct Rc*)instance;
+
+    if (rc->strong_count == 0) {
         abort();
     }
 
-    if (rc->count < 0) {
+    if (rc->strong_count < 0) {
         // immortal
         return;
     }
 
-    if (rc->count > 1) {
-        rc->count -= 1;
+    if (rc->strong_count > 1) {
+        rc->strong_count -= 1;
 
 #if TRACE_RC
-        printf("rc: released ref @ 0x%p\n", rc->resource);
+        printf("rc: released ref @ 0x%p\n", instance);
 #endif
     } else {
         // run the disposer if present
         if (rc->class->disposer) {
 #if TRACE_RC
-            printf("rc: deleting disposable resource @ 0x%p\n", rc->resource);
+            printf("rc: deleting disposable resource @ 0x%p\n", instance);
 #endif
-            rc->class->disposer(rc);
+            rc->class->disposer(instance);
         } else {
 #if TRACE_RC
-            printf("rc: deleting resource without disposer @ 0x%p\n", rc->resource);
+            printf("rc: deleting resource without disposer @ 0x%p\n", instance);
 #endif
         }
 
         // invoke structural release to release struct fields
-        rc->class->cleanup(rc->resource);
+        rc->class->cleanup(instance);
 
         // free memory
-        Free(rc->resource);
-        Free(rc);
+        Free(instance);
     }
 }
 
-static void Raise(struct Rc* msg_str_rc);
+static void Raise(STRING_STRUCT* msg_str);
 
 // implementations of System.pas builtins
 
-static int32_t System_StrToInt(struct Rc* str_rc);
+static int32_t System_StrToInt(STRING_STRUCT* str);
 
-static struct Rc* System_Int8ToStr(int8_t i);
-static struct Rc* System_ByteToStr(uint8_t i);
-static struct Rc* System_Int16ToStr(int16_t i);
-static struct Rc* System_UInt16ToStr(uint16_t i);
-static struct Rc* System_IntToStr(int32_t i);
-static struct Rc* System_UInt32ToStr(uint32_t i);
-static struct Rc* System_Int64ToStr(int64_t i);
-static struct Rc* System_UInt64ToStr(uint64_t i);
-static struct Rc* System_NativeIntToStr(ptrdiff_t i);
-static struct Rc* System_NativeUIntToStr(size_t i);
+static STRING_STRUCT* System_Int8ToStr(int8_t i);
+static STRING_STRUCT* System_ByteToStr(uint8_t i);
+static STRING_STRUCT* System_Int16ToStr(int16_t i);
+static STRING_STRUCT* System_UInt16ToStr(uint16_t i);
+static STRING_STRUCT* System_IntToStr(int32_t i);
+static STRING_STRUCT* System_UInt32ToStr(uint32_t i);
+static STRING_STRUCT* System_Int64ToStr(int64_t i);
+static STRING_STRUCT* System_UInt64ToStr(uint64_t i);
+static STRING_STRUCT* System_NativeIntToStr(ptrdiff_t i);
+static STRING_STRUCT* System_NativeUIntToStr(size_t i);
 
 static unsigned char* System_GetMem(int32_t len);
 static void System_FreeMem(unsigned char* mem);
-static void System_Write(struct Rc* str_rc);
-static void System_WriteLn(struct Rc* str_rc);
-static struct Rc* System_ReadLn(void);
-static int32_t System_ArrayLengthInternal(struct Rc* arr_rc);
-static struct Rc* System_ArraySetLengthInternal(struct Rc* arr_rc, int32_t new_len, void* default_val, int32_t default_val_len);
+static void System_Write(STRING_STRUCT* str);
+static void System_WriteLn(STRING_STRUCT* str);
+static STRING_STRUCT* System_ReadLn(void);
+static int32_t System_ArrayLengthInternal(void* arr);
+static void* System_ArraySetLengthInternal(void* arr, int32_t new_len, void* default_val, int32_t default_val_len);
 
 // runtime start/stop
 
 // this needs to match what would ordinarily be generated for the System.String decl
-struct Struct_1 {
+STRING_STRUCT {
+    struct Rc rc;
+
     unsigned char* field_0;
     int32_t field_1;
 };

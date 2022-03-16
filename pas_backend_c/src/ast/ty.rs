@@ -1,11 +1,21 @@
-use std::{collections::HashMap, fmt};
-
-use pas_ir::metadata;
-
-use crate::ast::{FunctionDecl, FunctionName, FuncAliasDef, Module};
-use std::fmt::Write;
-use std::hash::{Hash, Hasher};
-use pas_ir::metadata::{DYNARRAY_PTR_FIELD, DYNARRAY_LEN_FIELD, TypeDefID, MethodID, RcBoilerplatePair, InterfaceID, FieldID, VirtualTypeID, FunctionID};
+use crate::ast::{
+    Expr, FuncAliasDef, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement,
+};
+use pas_ir::{
+    metadata,
+    metadata::{
+        FieldID, InterfaceID, MethodID, RcBoilerplatePair, TypeDefID, VirtualTypeID,
+        DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD,
+    },
+    LocalID,
+};
+use std::{
+    collections::HashMap,
+    fmt,
+    fmt::Write,
+    hash::{Hash, Hasher},
+};
+use pas_ir::metadata::{DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID};
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -27,6 +37,12 @@ pub enum Type {
     SChar,
     Pointer(Box<Type>),
 
+    // internal struct for class vtable etc
+    Class,
+
+    // rc state struct for ref types
+    Rc,
+
     // custom type defined in source language
     DefinedType(TypeDefName),
 
@@ -45,7 +61,10 @@ impl Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
-            metadata::Type::RcPointer(..) => Type::DefinedType(TypeDefName::Rc).ptr(),
+            metadata::Type::RcPointer(VirtualTypeID::Class(id)) => {
+                Type::DefinedType(TypeDefName::Struct(*id)).ptr()
+            },
+            metadata::Type::RcPointer(..) => Type::Void.ptr(),
             metadata::Type::Struct(id) => Type::DefinedType(TypeDefName::Struct(*id)),
             metadata::Type::Variant(id) => Type::DefinedType(TypeDefName::Variant(*id)),
             metadata::Type::Nothing => Type::Void,
@@ -66,7 +85,7 @@ impl Type {
             metadata::Type::Array { element, dim } => {
                 let element = Type::from_metadata(element, module);
                 module.make_array_type(element, *dim)
-            }
+            },
         }
     }
 
@@ -83,60 +102,60 @@ impl Type {
             Type::Pointer(ty) => {
                 ty.build_decl_string(left, right);
                 left.push('*');
-            }
+            },
             Type::Void => {
                 left.push_str("void");
-            }
+            },
             Type::Int => {
                 left.push_str("int");
-            }
+            },
             Type::Int16 => {
                 left.push_str("int16_t");
-            }
+            },
             Type::UInt16 => {
                 left.push_str("uint16_t");
-            }
+            },
             Type::Int32 => {
                 left.push_str("int32_t");
-            }
+            },
             Type::UInt32 => {
                 left.push_str("uint32_t");
-            }
+            },
             Type::Int64 => {
                 left.push_str("int64_t");
-            }
+            },
             Type::UInt64 => {
                 left.push_str("uint64_t");
-            }
+            },
             Type::Bool => {
                 left.push_str("bool");
-            }
+            },
             Type::Float => {
                 left.push_str("float");
-            }
+            },
             Type::UChar => {
                 left.push_str("unsigned char");
-            }
+            },
             Type::SChar => {
                 left.push_str("signed char");
-            }
+            },
             Type::SizeType => {
                 left.push_str("size_t");
-            }
+            },
             Type::PtrDiffType => {
                 left.push_str("ptrdiff_t");
-            }
+            },
 
             Type::DefinedType(name) => {
                 name.build_decl_string(left, right);
-            }
+            },
 
             Type::SizedArray(el, size) => {
                 el.build_decl_string(left, right);
                 right.push('[');
                 right.push_str(&size.to_string());
                 right.push(']');
-            }
+            },
 
             Type::FunctionPointer { return_ty, params } => {
                 left.push_str(&return_ty.typename());
@@ -150,7 +169,15 @@ impl Type {
                     right.push_str(&param.typename());
                 }
                 right.push(')');
-            }
+            },
+
+            Type::Rc => {
+                left.push_str(&format!("struct Rc"));
+            },
+
+            Type::Class => {
+                left.push_str(&format!("struct Class"));
+            },
         }
     }
 
@@ -159,14 +186,12 @@ impl Type {
             // direct structural reference
             Type::DefinedType(name) => deps.push(name.clone()),
             Type::SizedArray(element, ..) => element.collect_type_def_deps(deps),
-            Type::FunctionPointer {
-                params, return_ty
-            } => {
+            Type::FunctionPointer { params, return_ty } => {
                 for param in params {
                     param.collect_type_def_deps(deps);
                 }
                 return_ty.collect_type_def_deps(deps);
-            }
+            },
 
             // no custom types or types referenced by pointer (can use forward decl)
             _ => {},
@@ -207,6 +232,8 @@ impl Type {
                 TypeDefName::Alias(..) => name.to_string(),
                 _ => format!("struct {}", name),
             },
+            Type::Rc => "struct Rc".to_string(),
+            Type::Class => "struct Class".to_string(),
             Type::SizedArray(ty, ..) | Type::Pointer(ty) => format!("{}*", ty.typename()),
             Type::Bool => "bool".to_string(),
             Type::Float => "float".to_string(),
@@ -222,7 +249,7 @@ impl Type {
                 }
                 name.push(')');
                 name
-            }
+            },
         }
     }
 }
@@ -233,10 +260,12 @@ pub enum FieldName {
     // ID from metadata
     ID(FieldID),
 
+    // rc state for rc types
+    Rc,
+
     // builtin name: ref count field of RC internal struct
     RcRefCount,
-    // builtin name: resource pointer field of RC internal strut
-    RcResource,
+
     // builtin name: class info pointer field of RC internal struct
     RcClass,
 
@@ -252,8 +281,8 @@ impl fmt::Display for FieldName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             FieldName::ID(id) => write!(f, "field_{}", id.0),
-            FieldName::RcRefCount => write!(f, "count"),
-            FieldName::RcResource => write!(f, "resource"),
+            FieldName::Rc => write!(f, "rc"),
+            FieldName::RcRefCount => write!(f, "strong_count"),
             FieldName::RcClass => write!(f, "class"),
             FieldName::StaticArrayElements => write!(f, "elements"),
             FieldName::VariantTag => write!(f, "tag"),
@@ -265,12 +294,6 @@ impl fmt::Display for FieldName {
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub enum TypeDefName {
-    // internal struct for implementation of RC pointers
-    Rc,
-
-    // internal struct for class vtable etc
-    Class,
-
     // struct from class def ID
     Struct(TypeDefID),
 
@@ -282,21 +305,15 @@ pub enum TypeDefName {
 
     // struct for a fixed-size array with a generated unique ID
     StaticArray(usize),
-
-    // struct for the static closure for a function
-    StaticClosure(FunctionID),
 }
 
 impl fmt::Display for TypeDefName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TypeDefName::Rc => write!(f, "Rc"),
-            TypeDefName::Class => write!(f, "Class"),
             TypeDefName::Struct(id) => write!(f, "Struct_{}", id.0),
             TypeDefName::Variant(id) => write!(f, "Variant_{}", id.0),
             TypeDefName::StaticArray(i) => write!(f, "StaticArray_{}", i),
             TypeDefName::Alias(id) => write!(f, "FuncAlias_{}", id.0),
-            TypeDefName::StaticClosure(id) => write!(f, "StaticClosure_{}", id),
         }
     }
 }
@@ -304,18 +321,13 @@ impl fmt::Display for TypeDefName {
 impl TypeDefName {
     pub fn build_decl_string(&self, left: &mut String, _right: &mut String) {
         match self {
-            TypeDefName::Rc
-            | TypeDefName::StaticClosure(..)
-            | TypeDefName::Class
-            | TypeDefName::Struct(..)
-            | TypeDefName::Variant(..)
-            | TypeDefName::StaticArray(..) => {
+            TypeDefName::Struct(..) | TypeDefName::Variant(..) | TypeDefName::StaticArray(..) => {
                 left.push_str(&format!("struct {}", self.to_string()));
-            }
+            },
 
             TypeDefName::Alias(..) => {
                 left.push_str(&self.to_string());
-            }
+            },
         }
     }
 }
@@ -383,11 +395,11 @@ impl StructDef {
         module: &mut Module,
     ) -> Self {
         // fields should be written in the numerical order of their field IDs in the IR
-        let mut sorted_fields: Vec<_> = ir_struct.fields.iter()
-            .collect();
+        let mut sorted_fields: Vec<_> = ir_struct.fields.iter().collect();
         sorted_fields.sort_by_key(|(id, _)| (id.0));
 
-        let members = sorted_fields.into_iter()
+        let mut members: Vec<_> = sorted_fields
+            .into_iter()
             .map(|(id, field)| {
                 let ty = Type::from_metadata(&field.ty, module);
 
@@ -398,6 +410,14 @@ impl StructDef {
                 }
             })
             .collect();
+
+        if ir_struct.identity.is_ref_type() {
+            members.push(StructMember {
+                name: FieldName::Rc,
+                ty: Type::Rc,
+                comment: None,
+            });
+        }
 
         let struct_ty = metadata::Type::Struct(id);
         let comment = module.pretty_type(&struct_ty).to_string();
@@ -571,8 +591,17 @@ impl fmt::Display for TypeDef {
 }
 
 #[derive(Clone, Debug)]
+struct MethodImplFunc {
+    name: FunctionName,
+
+    // the original types from the interface method decl - we need to keep these to gen a wrapper
+    wrapper_params: Vec<Type>,
+    wrapper_return_ty: Type,
+}
+
+#[derive(Clone, Debug)]
 pub struct InterfaceImpl {
-    method_impls: HashMap<MethodID, FunctionName>,
+    method_impls: HashMap<MethodID, MethodImplFunc>,
 }
 
 #[derive(Clone, Debug)]
@@ -586,7 +615,8 @@ struct DynArrayTypeInfo {
 pub struct Class {
     struct_id: TypeDefID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
-    disposer: Option<FunctionName>,
+
+    disposer: Option<MethodImplFunc>,
     cleanup_func: FunctionName,
 
     // if this class is a dyn array, the RTTI for it
@@ -609,11 +639,19 @@ impl Class {
                 .methods
                 .iter()
                 .enumerate()
-                .filter_map(|(method_index, _method)| {
+                .filter_map(|(method_index, method)| {
                     let method_id = MethodID(method_index);
                     let method_impl = metadata.find_impl(&class_ty, iface_id, method_id)?;
 
-                    Some((method_id, FunctionName::ID(method_impl)))
+                    let impl_method_func = MethodImplFunc {
+                        name: FunctionName::ID(method_impl),
+                        wrapper_params: method.params.iter()
+                            .map(|ty| Type::from_metadata(ty, module))
+                            .collect(),
+                        wrapper_return_ty: Type::from_metadata(&method.return_ty, module),
+                    };
+
+                    Some((method_id, impl_method_func))
                 })
                 .collect();
 
@@ -673,6 +711,60 @@ impl Class {
         }
     }
 
+    fn gen_method_wrapper(
+        iface_id: InterfaceID,
+        self_ty_id: TypeDefID,
+        method_id: MethodID,
+        impl_func: &MethodImplFunc,
+        module: &Module,
+    ) -> Option<FunctionDef> {
+        // FFI and builtin functions can't implement interfaces so we don't need to search those
+        let method_func_def = module
+            .functions
+            .iter()
+            .find(|f| f.decl.name == impl_func.name).unwrap();
+
+        let mut next_param_local = LocalID(match method_func_def.decl.return_ty {
+            Type::Void => 0,
+            _ => 1,
+        });
+
+        let mut call_impl_func_args = Vec::with_capacity(impl_func.wrapper_params.len());
+
+        // cast self arg back from `void*` to the real type
+        let self_ptr_ty = Type::DefinedType(TypeDefName::Struct(self_ty_id)).ptr();
+        call_impl_func_args.push(Expr::Local(next_param_local).cast(self_ptr_ty));
+        next_param_local.0 += 1;
+
+        // forward the rest of the params as-is
+        for _ in 1..impl_func.wrapper_params.len() {
+            call_impl_func_args.push(Expr::Local(next_param_local));
+            next_param_local.0 += 1;
+        }
+
+        let call_impl_func = Expr::call(
+            Expr::Function(impl_func.name),
+            call_impl_func_args,
+        );
+
+        let body_stmt = match method_func_def.decl.return_ty {
+            Type::Void => Statement::Expr(call_impl_func),
+            _ => Statement::Expr(Expr::assign(Expr::Local(LocalID(0)), call_impl_func)),
+        };
+
+        let wrapper_def = FunctionDef {
+            decl: FunctionDecl {
+                comment: None,
+                name: FunctionName::MethodWrapper(iface_id, method_id, self_ty_id),
+                params: impl_func.wrapper_params.clone(),
+                return_ty: impl_func.wrapper_return_ty.clone(),
+            },
+            body: vec![body_stmt],
+        };
+
+        Some(wrapper_def)
+    }
+
     pub fn to_decl_string(&self) -> String {
         let mut decls = String::new();
         for (iface_id, _) in &self.impls {
@@ -686,27 +778,50 @@ impl Class {
 
         match self.dyn_array_type_info {
             Some(..) => {
-                writeln!(decls, "struct DynArrayClass Class_{};", self.struct_id).unwrap();
+                writeln!(
+                    decls,
+                    "struct DynArrayClass {};",
+                    GlobalName::ClassInstance(self.struct_id)
+                )
+                .unwrap();
             },
             None => {
-                writeln!(decls, "struct Class Class_{};", self.struct_id).unwrap();
-            }
+                writeln!(
+                    decls,
+                    "struct Class {};",
+                    GlobalName::ClassInstance(self.struct_id)
+                )
+                .unwrap();
+            },
         }
 
         decls
     }
 
-    pub fn to_def_string(&self) -> String {
+    pub fn to_def_string(&self, module: &Module) -> String {
         let mut def = String::new();
 
         // impl method tables
         let impls: Vec<_> = self.impls.iter().enumerate().collect();
+
+        // impl method wrappers
+        for (_, (iface_id, iface_impl)) in &impls {
+            for (method_id, impl_func) in &iface_impl.method_impls {
+                if let Some(wrapper_func) = Class::gen_method_wrapper(**iface_id, self.struct_id, *method_id, impl_func, module) {
+                    def.push_str(&wrapper_func.to_string());
+                    def.push_str("\n");
+                }
+            }
+        }
+
         for (i, (iface_id, iface_impl)) in &impls {
             def.push_str(&format!(
                 "struct MethodTable_{} ImplTable_{}_{} = {{\n",
                 iface_id.0, self.struct_id.0, iface_id.0
             ));
-            for (method_id, method_name) in &iface_impl.method_impls {
+            for (method_id, _method_name) in &iface_impl.method_impls {
+                let wrapper_name = FunctionName::MethodWrapper(**iface_id, *method_id, self.struct_id);
+
                 def.push_str("  .base = {\n");
 
                 def.push_str("    .iface = ");
@@ -720,7 +835,7 @@ impl Class {
                             "&ImplTable_{}_{}.base",
                             self.struct_id, next_impl_id
                         ));
-                    }
+                    },
                     None => def.push_str("NULL"),
                 }
 
@@ -730,7 +845,7 @@ impl Class {
                 def.push_str("  .method_");
                 def.push_str(&method_id.0.to_string());
                 def.push_str(" = &");
-                def.push_str(&method_name.to_string());
+                def.push_str(&wrapper_name.to_string());
                 def.push_str(",\n");
             }
             def.push_str("};\n\n");
@@ -747,8 +862,9 @@ impl Class {
         )
         .unwrap();
 
-        if let Some(disposer_func) = self.disposer {
-            writeln!(class_init, "  .disposer = &{},", disposer_func).unwrap();
+        if let Some(..) = &self.disposer {
+            let dispose_wrapper = FunctionName::MethodWrapper(DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX, self.struct_id);
+            writeln!(class_init, "  .disposer = &{},", dispose_wrapper).unwrap();
         } else {
             writeln!(class_init, "  .disposer = NULL,").unwrap();
         };
@@ -775,13 +891,11 @@ impl Class {
 
         match &self.dyn_array_type_info {
             Some(dyn_array_ty_info) => {
-                let el_ty = if dyn_array_ty_info.el_rc {
-                    Type::DefinedType(TypeDefName::Rc).ptr()
-                } else {
-                    dyn_array_ty_info.el_ty.clone()
-                };
+                let el_ty = dyn_array_ty_info.el_ty.clone();
 
-                let el_retain_func = dyn_array_ty_info.el_type_info.as_ref()
+                let el_retain_func = dyn_array_ty_info
+                    .el_type_info
+                    .as_ref()
                     .map(|type_info| FunctionName::ID(type_info.retain));
 
                 let retain_el_proc = if dyn_array_ty_info.el_rc {
@@ -837,12 +951,13 @@ impl Class {
                         return arr_resource->{len_field};
                     }}
 
-                    struct DynArrayClass Class_{struct_id} = {{
+                    struct DynArrayClass {class_name} = {{
                         .base = {class_init},
                         .alloc = DynArrayAlloc_{struct_id},
                         .length = DynArrayLength_{struct_id},
                     }};"#,
                     struct_id = self.struct_id,
+                    class_name = GlobalName::ClassInstance(self.struct_id),
                     res_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id)).typename(),
                     el_ty = el_ty.typename(),
                     retain_el_proc = retain_el_proc,
@@ -850,7 +965,7 @@ impl Class {
                     len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
                     data_field = FieldName::ID(DYNARRAY_PTR_FIELD),
                 ).unwrap();
-            }
+            },
 
             None => {
                 writeln!(
@@ -859,7 +974,7 @@ impl Class {
                     self.struct_id, class_init,
                 )
                 .unwrap();
-            }
+            },
         }
 
         def
@@ -931,14 +1046,16 @@ impl Interface {
             table.push_str(" {\n");
 
             let (self_arg_local, arg_offset) = match method.return_ty {
-                Type::Void => ("L0", 0),
-                _ => ("L1", 1),
+                Type::Void => (Expr::Local(LocalID(0)), 0),
+                _ => (Expr::Local(LocalID(1)), 1),
             };
+
+            let self_arg_rc = self_arg_local.cast(Type::Rc.ptr());
 
             // find the matching table
             table.push_str(&format!(
                 "  struct MethodTable* table = {}->class->iface_methods;\n",
-                self_arg_local
+                self_arg_rc
             ));
             table.push_str("  while (table) {\n");
             table.push_str(&format!("    if (table->iface == {}) {{\n", self.id.0));

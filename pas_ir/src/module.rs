@@ -236,8 +236,7 @@ impl Module {
                     id,
                     sig: Rc::new(pas_ty::FunctionSig::of_decl(&specialized_decl)),
                 };
-                self.translated_funcs
-                    .insert(key.clone(), cached_func.clone());
+                self.translated_funcs.insert(key.clone(), cached_func.clone());
 
                 let debug_name = specialized_decl.to_string();
                 let ir_func = self.build_func_def(
@@ -348,6 +347,8 @@ impl Module {
         self.static_closures.push(StaticClosure {
             id,
             init_func: init_func_id,
+            closure_id: closure.closure_id,
+            func_ty_id: closure.func_ty_id,
         });
 
         &self.static_closures[self.static_closures.len() - 1]

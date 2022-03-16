@@ -7,16 +7,10 @@
 #   include <dlfcn.h>
 #endif
 
-#define STRING_STRUCT struct Struct_1
-#define STRING_CLASS Class_1
-#define STRING_PTR(s_rc) ((STRING_STRUCT*) s_rc->resource)
-#define STRING_CHARS(s_rc) (STRING_PTR(s_rc)->field_0)
-#define STRING_LEN(s_rc) (STRING_PTR(s_rc)->field_1)
-
-static void Raise(struct Rc* msg_str_rc) {
-    if (msg_str_rc && msg_str_rc->resource) {
-        int32_t msg_len = STRING_LEN(msg_str_rc);
-        char* msg_chars = (char*) STRING_CHARS(msg_str_rc);
+static void Raise(STRING_STRUCT* msg_str) {
+    if (msg_str) {
+        int32_t msg_len = STRING_LEN(msg_str);
+        char* msg_chars = (char*) STRING_CHARS(msg_str);
 
         fprintf(stderr, "%.*s\n", (int) msg_len, msg_chars);
     }
@@ -25,17 +19,17 @@ static void Raise(struct Rc* msg_str_rc) {
 
 #if !NO_STDLIB
 
-static int32_t System_StrToInt(struct Rc* str_rc) {
-    if (!str_rc || !str_rc->resource) {
+static int32_t System_StrToInt(STRING_STRUCT* str) {
+    if (!str) {
         abort();
     }
 
-    int i = atoi((char*) STRING_CHARS(str_rc));
+    int i = atoi((char*) STRING_CHARS(str));
     return (int32_t) i;
 }
 
 #define INT_TO_STR_IMPL(FuncName, DataType, FormatString, BufSize) \
-static struct Rc* FuncName(DataType i) { \
+static STRING_STRUCT* FuncName(DataType i) { \
     char buf[BufSize]; \
     sprintf(buf, "%" FormatString, i); \
     \
@@ -43,11 +37,11 @@ static struct Rc* FuncName(DataType i) { \
     unsigned char* chars = Alloc(len); \
     memcpy(chars, buf, len); \
     \
-    struct Rc* str_rc = RcAlloc(&STRING_CLASS); \
-    STRING_LEN(str_rc) = len; \
-    STRING_CHARS(str_rc) = chars; \
+    STRING_STRUCT* str = (STRING_STRUCT*) RcAlloc(&STRING_CLASS); \
+    STRING_LEN(str) = len; \
+    STRING_CHARS(str) = chars; \
     \
-    return str_rc; \
+    return str; \
 }
 
 INT_TO_STR_IMPL(System_Int8ToStr, int8_t, PRId8, 4)
@@ -69,23 +63,23 @@ static void System_FreeMem(unsigned char* mem) {
     Free(mem);
 }
 
-static void System_Write(struct Rc* str_rc) {
-    if (!str_rc || !str_rc->resource) {
+static void System_Write(STRING_STRUCT* str) {
+    if (!str) {
         abort();
     }
 
-    int len = (int) STRING_LEN(str_rc);
-    char* chars = (char*) STRING_CHARS(str_rc);
+    int len = (int) STRING_LEN(str);
+    char* chars = (char*) STRING_CHARS(str);
 
     printf("%.*s", len, chars);
 }
 
-static void System_WriteLn(struct Rc* str_rc) {
-    System_Write(str_rc);
+static void System_WriteLn(STRING_STRUCT* str) {
+    System_Write(str);
     putchar('\n');
 }
 
-static struct Rc* System_ReadLn(void) {
+static STRING_STRUCT* System_ReadLn(void) {
     char buf[64];
     if (!fgets(buf, 64, stdin)) {
         fputs("ReadLn i/o failure\n", stderr);
@@ -93,16 +87,17 @@ static struct Rc* System_ReadLn(void) {
     }
 
     size_t len = strlen(buf);
-    struct Rc* str_rc = RcAlloc(&STRING_CLASS);
-    STRING_LEN(str_rc) = (int32_t) len;
-    STRING_CHARS(str_rc) = System_GetMem(len);
-    memcpy(STRING_CHARS(str_rc), buf, len);
+    STRING_STRUCT* str = (STRING_STRUCT*) RcAlloc(&STRING_CLASS);
+    STRING_LEN(str) = (int32_t) len;
+    STRING_CHARS(str) = System_GetMem(len);
+    memcpy(STRING_CHARS(str), buf, len);
 
-    return str_rc;
+    return str;
 }
 
-static int32_t System_ArrayLengthInternal(struct Rc* arr_rc) {
-    if (!arr_rc || !arr_rc->resource) {
+static int32_t System_ArrayLengthInternal(void* arr) {
+    struct Rc* arr_rc = (struct Rc*) arr;
+    if (!arr_rc) {
         abort();
     }
 
@@ -111,19 +106,20 @@ static int32_t System_ArrayLengthInternal(struct Rc* arr_rc) {
     return array_class->length(arr_rc);
 }
 
-static struct Rc* System_ArraySetLengthInternal(
-    struct Rc* arr_rc,
+static void* System_ArraySetLengthInternal(
+    void* arr,
     int32_t new_len,
     void* default_val,
     int32_t default_val_size
 ) {
-    if (!arr_rc || !arr_rc->resource) {
+    struct Rc* arr_rc = (struct Rc*) arr;
+    if (!arr_rc) {
         abort();
     }
 
     struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
 
-    struct Rc* new_arr = RcAlloc(arr_rc->class);
+    void* new_arr = RcAlloc(arr_rc->class);
     array_class->alloc(new_arr, new_len, arr_rc, default_val, default_val_size);
 
     return new_arr;

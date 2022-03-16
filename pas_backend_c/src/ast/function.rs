@@ -1,5 +1,5 @@
 use crate::ast::{Builder, Expr, InfixOp, Module, Statement, TypeDecl, Type};
-use pas_ir::{self as ir, metadata::{FunctionID, InterfaceID, MethodID}};
+use pas_ir::{self as ir, LocalID, metadata::{FunctionID, InterfaceID, MethodID}};
 use std::fmt;
 use pas_ir::metadata::TypeDefID;
 
@@ -16,6 +16,7 @@ pub enum FunctionName {
 
     ID(FunctionID),
     Method(InterfaceID, MethodID),
+    MethodWrapper(InterfaceID, MethodID, TypeDefID),
 
     // runtime functions
     RcAlloc,
@@ -55,6 +56,7 @@ impl fmt::Display for FunctionName {
 
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
+            FunctionName::MethodWrapper(iface, method, self_ty) => write!(f, "Method_{}_{}_Wrapper_{}", iface, method.0, self_ty),
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),
@@ -85,7 +87,7 @@ impl fmt::Display for FunctionName {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct FunctionDecl {
     pub name: FunctionName,
     pub return_ty: Type,
@@ -158,6 +160,7 @@ impl fmt::Display for FunctionDecl {
     }
 }
 
+#[derive(Clone, Debug)]
 pub struct FunctionDef {
     pub decl: FunctionDecl,
     pub body: Vec<Statement>,
@@ -188,7 +191,7 @@ impl fmt::Display for FunctionDef {
         }
 
         if self.decl.return_ty != Type::Void {
-            write!(f, "return L0;")?;
+            write!(f, "{}", Statement::Return(Expr::Local(LocalID(0))))?;
         }
 
         write!(f, "}}")

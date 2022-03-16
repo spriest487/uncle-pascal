@@ -2,7 +2,7 @@ use std::fmt;
 use std::rc::Rc;
 use pas_common::span::Span;
 use pas_syn::IdentPath;
-use crate::{FunctionID, Instruction, pas_ty, Type};
+use crate::{FunctionID, Instruction, pas_ty, Type, TypeDefID};
 
 #[derive(Clone, Debug)]
 pub struct ExternalFunctionRef {
@@ -80,4 +80,7 @@ impl fmt::Display for StaticClosureID {
 pub struct StaticClosure {
     pub id: StaticClosureID,
     pub init_func: FunctionID,
+
+    pub closure_id: TypeDefID,
+    pub func_ty_id: TypeDefID,
 }

@@ -16,24 +16,27 @@ use pas_ir::{
 
 use crate::ast::{ty::FieldName, FunctionName, Module, Type, TypeDefName};
 
+#[derive(Clone, Debug)]
 pub enum GlobalName {
-    StringLiteral(StringID),
-    StringLiteralRef(StringID),
+    ClassInstance(TypeDefID),
 
-    StaticClosureRef(StaticClosureID),
+    StringLiteral(StringID),
+
+    StaticClosure(StaticClosureID),
 }
 
 impl fmt::Display for GlobalName {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            GlobalName::ClassInstance(id) => write!(f, "Class_{}", id.0),
             GlobalName::StringLiteral(id) => write!(f, "String_{}", id.0),
-            GlobalName::StringLiteralRef(id) => write!(f, "StringRc_{}", id.0),
-            GlobalName::StaticClosureRef(id) => write!(f, "StaticClosureRc_{}", id.0),
+            GlobalName::StaticClosure(id) => write!(f, "StaticClosure_{}", id.0),
         }
     }
 }
 
 #[allow(unused)]
+#[derive(Clone, Debug)]
 pub enum InfixOp {
     Eq,
     Assign,
@@ -74,6 +77,7 @@ impl fmt::Display for InfixOp {
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum PrefixOp {
     Not,
     BitNot,
@@ -89,6 +93,7 @@ impl fmt::Display for PrefixOp {
 }
 
 #[allow(unused)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Local(LocalID),
     Function(FunctionName),
@@ -162,11 +167,11 @@ impl Expr {
                 Expr::Function(name)
             },
             ir::Ref::Global(ir::GlobalRef::StringLiteral(id)) => {
-                let name = GlobalName::StringLiteralRef(*id);
+                let name = GlobalName::StringLiteral(*id);
                 Expr::Global(name).addr_of()
             },
             ir::Ref::Global(ir::GlobalRef::StaticClosure(id)) => {
-                let name = GlobalName::StaticClosureRef(*id);
+                let name = GlobalName::StaticClosure(*id);
                 Expr::Global(name)
             },
         }
@@ -178,6 +183,13 @@ impl Expr {
 
     pub fn addr_of(self) -> Self {
         Expr::AddrOf(Box::new(self))
+    }
+
+    pub fn arrow(self, field: FieldName) -> Self {
+        Expr::Arrow {
+            base: Box::new(self),
+            field
+        }
     }
 
     pub fn infix_op(lhs: Self, op: InfixOp, rhs: Self) -> Self {
@@ -197,6 +209,14 @@ impl Expr {
 
     pub fn cast(self, ty: Type) -> Self {
         Expr::Cast(Box::new(self), ty)
+    }
+
+    pub fn assign(lhs: Self, rhs: Self) -> Self {
+        Expr::InfixOp {
+            lhs: Box::new(lhs),
+            op: InfixOp::Assign,
+            rhs: Box::new(rhs),
+        }
     }
 
     fn translate_infix_op(lhs: &ir::Value, op: InfixOp, rhs: &ir::Value, module: &Module) -> Self {
@@ -242,45 +262,38 @@ impl Expr {
 
         match of_ty {
             metadata::Type::RcPointer(class_id) => {
-                let resource_ptr = Expr::Arrow {
-                    base: Box::new(a_expr),
-                    field: FieldName::RcResource,
-                };
-
                 // pointer to RC containing pointer to class resource
-                let class_ty = match class_id {
-                    // HACK: closures are of unknown type but we have enough info to know the type
-                    // of the function pointer, which is the only field that can be legally accessed
-                    // anyway.
-                    // the function pointer inside the closure must be the first member, so
-                    // we can simply cast the resource pointer to the function type and return
-                    // that as the value of the field expression
+                match class_id {
+                    // HACK: closures are of unknown type, but we don't need a full vtable to call
+                    // them. each function type has a static closure type with a function pointer,
+                    // so we can cast to that type to access the function pointer
                     metadata::VirtualTypeID::Closure(func_ty_id)
                         if field_id == CLOSURE_PTR_FIELD =>
                     {
-                        let func_ty = Type::DefinedType(TypeDefName::Alias(*func_ty_id));
+                        let static_closure = module.static_closures.iter()
+                            .find(|x| x.func_ty_id == *func_ty_id)
+                            .unwrap_or_else(|| panic!("missing static closure type for function ID {}", func_ty_id));
 
-                        return resource_ptr.cast(func_ty.ptr());
+                        let static_closure_ty = Type::DefinedType(TypeDefName::Struct(static_closure.closure_id));
+
+                        a_expr
+                            .cast(static_closure_ty.ptr())
+                            .arrow(FieldName::ID(CLOSURE_PTR_FIELD))
+                            .addr_of()
                     },
 
-                    // normal class: resource pointer points to the known struct type for the class
-                    metadata::VirtualTypeID::Class(struct_id) => {
-                        Type::DefinedType(TypeDefName::Struct(*struct_id))
+                    // normal class: it's just a field accessed through this pointer
+                    metadata::VirtualTypeID::Class(..) => {
+                        a_expr
+                            .arrow(FieldName::ID(field_id))
+                            .addr_of()
                     },
 
                     _ => panic!(
                         "bad resource type {:?} in Field instruction target",
                         class_id
                     ),
-                };
-
-                let class_ptr = resource_ptr.cast(class_ty.ptr());
-
-                let field_ref = Expr::Arrow {
-                    base: Box::new(class_ptr),
-                    field: FieldName::ID(field_id),
-                };
-                field_ref.addr_of()
+                }
             },
 
             _ => {
@@ -298,7 +311,7 @@ impl Expr {
     pub fn class_ptr(struct_id: TypeDefID) -> Self {
         Expr::Class(struct_id)
             .addr_of()
-            .cast(Type::DefinedType(TypeDefName::Class).ptr())
+            .cast(Type::Class.ptr())
     }
 }
 
@@ -332,11 +345,12 @@ impl fmt::Display for Expr {
             Expr::Arrow { base, field } => write!(f, "({})->{}", base, field),
             Expr::Cast(value, ty) => write!(f, "(({}){})", ty.typename(), value),
             Expr::SizeOf(ty) => write!(f, "sizeof({})", ty.typename()),
-            Expr::Class(struct_id) => write!(f, "Class_{}", struct_id),
+            Expr::Class(struct_id) => write!(f, "{}", GlobalName::ClassInstance(*struct_id)),
         }
     }
 }
 
+#[derive(Clone, Debug)]
 pub enum Statement {
     VariableDecl {
         ty: Type,
@@ -353,6 +367,7 @@ pub enum Statement {
         cond: Expr,
         then: Box<Statement>,
     },
+    Return(Expr),
 }
 
 impl fmt::Display for Statement {
@@ -384,6 +399,8 @@ impl fmt::Display for Statement {
                 writeln!(f, "{}", then)?;
                 writeln!(f, "}}")
             },
+
+            Statement::Return(expr) => write!(f, "return {};", expr),
         }
     }
 }

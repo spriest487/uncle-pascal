@@ -4,11 +4,14 @@ mod string_lit;
 mod ty;
 
 pub use self::{function::*, stmt::*, ty::*};
-use crate::{
-    ast::string_lit::StringLiteral,
-    Options,
+use crate::{ast::string_lit::StringLiteral, Options};
+use pas_ir::{
+    metadata::STRING_ID,
+    self as ir,
+    metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD},
+    StaticClosure,
+    BUILTIN_SRC
 };
-use pas_ir::{self as ir, BUILTIN_SRC, metadata::{FunctionID, StringID, Symbol, STRING_CHARS_FIELD, STRING_LEN_FIELD}, StaticClosureID};
 use std::{
     borrow::Cow,
     collections::hash_map::{Entry, HashMap},
@@ -30,7 +33,7 @@ pub struct Module {
     ifaces: Vec<Interface>,
 
     string_literals: HashMap<StringID, StringLiteral>,
-    static_closures: Vec<StaticClosureID>,
+    static_closures: Vec<StaticClosure>,
 
     opts: Options,
 
@@ -39,31 +42,105 @@ pub struct Module {
 
 impl Module {
     pub fn new(metadata: &ir::metadata::Metadata, opts: Options) -> Self {
-        let rc_ty = Type::DefinedType(TypeDefName::Rc).ptr();
+        let string_ty = Type::DefinedType(TypeDefName::Struct(STRING_ID)).ptr();
 
         let system_funcs = &[
-            ("Int8ToStr", FunctionName::Int8ToStr, vec![Type::SChar], rc_ty.clone()),
-            ("ByteToStr", FunctionName::ByteToStr, vec![Type::UChar], rc_ty.clone()),
-            ("Int16ToStr", FunctionName::Int16ToStr, vec![Type::Int16], rc_ty.clone()),
-            ("UInt16ToStr", FunctionName::UInt16ToStr, vec![Type::UInt16], rc_ty.clone()),
-            ("IntToStr", FunctionName::IntToStr, vec![Type::Int32], rc_ty.clone()),
-            ("UInt32ToStr", FunctionName::UInt32ToStr, vec![Type::UInt32], rc_ty.clone()),
-            ("Int64ToStr", FunctionName::Int64ToStr, vec![Type::Int64], rc_ty.clone()),
-            ("UInt64ToStr", FunctionName::UInt64ToStr, vec![Type::UInt64], rc_ty.clone()),
-            ("NativeIntToStr", FunctionName::NativeIntToStr, vec![Type::PtrDiffType], rc_ty.clone()),
-            ("NativeUIntToStr", FunctionName::NativeUIntToStr, vec![Type::SizeType], rc_ty.clone()),
-
-            ("StrToInt", FunctionName::StrToInt, vec![rc_ty.clone()], Type::Int32),
-            ("GetMem", FunctionName::GetMem, vec![Type::Int32], Type::UChar.ptr()),
-            ("FreeMem", FunctionName::FreeMem, vec![Type::UChar.ptr()], Type::Void),
-            ("WriteLn", FunctionName::WriteLn, vec![rc_ty.clone()], Type::Void),
-            ("ReadLn", FunctionName::ReadLn, vec![], rc_ty.clone()),
-            ("ArrayLengthInternal", FunctionName::ArrayLengthInternal, vec![rc_ty.clone()], Type::Int32),
+            (
+                "Int8ToStr",
+                FunctionName::Int8ToStr,
+                vec![Type::SChar],
+                string_ty.clone(),
+            ),
+            (
+                "ByteToStr",
+                FunctionName::ByteToStr,
+                vec![Type::UChar],
+                string_ty.clone(),
+            ),
+            (
+                "Int16ToStr",
+                FunctionName::Int16ToStr,
+                vec![Type::Int16],
+                string_ty.clone(),
+            ),
+            (
+                "UInt16ToStr",
+                FunctionName::UInt16ToStr,
+                vec![Type::UInt16],
+                string_ty.clone(),
+            ),
+            (
+                "IntToStr",
+                FunctionName::IntToStr,
+                vec![Type::Int32],
+                string_ty.clone(),
+            ),
+            (
+                "UInt32ToStr",
+                FunctionName::UInt32ToStr,
+                vec![Type::UInt32],
+                string_ty.clone(),
+            ),
+            (
+                "Int64ToStr",
+                FunctionName::Int64ToStr,
+                vec![Type::Int64],
+                string_ty.clone(),
+            ),
+            (
+                "UInt64ToStr",
+                FunctionName::UInt64ToStr,
+                vec![Type::UInt64],
+                string_ty.clone(),
+            ),
+            (
+                "NativeIntToStr",
+                FunctionName::NativeIntToStr,
+                vec![Type::PtrDiffType],
+                string_ty.clone(),
+            ),
+            (
+                "NativeUIntToStr",
+                FunctionName::NativeUIntToStr,
+                vec![Type::SizeType],
+                string_ty.clone(),
+            ),
+            (
+                "StrToInt",
+                FunctionName::StrToInt,
+                vec![string_ty.clone()],
+                Type::Int32,
+            ),
+            (
+                "GetMem",
+                FunctionName::GetMem,
+                vec![Type::Int32],
+                Type::UChar.ptr(),
+            ),
+            (
+                "FreeMem",
+                FunctionName::FreeMem,
+                vec![Type::UChar.ptr()],
+                Type::Void,
+            ),
+            (
+                "WriteLn",
+                FunctionName::WriteLn,
+                vec![string_ty.clone()],
+                Type::Void,
+            ),
+            ("ReadLn", FunctionName::ReadLn, vec![], string_ty.clone()),
+            (
+                "ArrayLengthInternal",
+                FunctionName::ArrayLengthInternal,
+                vec![Type::Void.ptr()],
+                Type::Int32,
+            ),
             (
                 "ArraySetLengthInternal",
                 FunctionName::ArraySetLengthInternal,
-                vec![rc_ty.clone(), Type::Int32, Type::Void.ptr(), Type::Int32],
-                rc_ty.clone(),
+                vec![Type::Void.ptr(), Type::Int32, Type::Void.ptr(), Type::Int32],
+                Type::Void.ptr(),
             ),
         ];
 
@@ -111,7 +188,6 @@ impl Module {
 
             classes: Vec::new(),
             ifaces: Vec::new(),
-
 
             opts,
 
@@ -170,18 +246,20 @@ impl Module {
                     comment: Some(format!("array[{}] of {}", dim, element.typename())),
                 };
 
-                self.type_defs.insert(name.clone(), TypeDef::Struct(array_struct));
+                self.type_defs
+                    .insert(name.clone(), TypeDef::Struct(array_struct));
 
                 let array_struct_ty = Type::DefinedType(name.clone());
                 entry.insert(array_struct_ty.clone());
 
                 self.type_defs_order.insert(name.clone());
                 for element_dep in element.type_def_deps() {
-                    self.type_defs_order.add_dependency(element_dep, name.clone());
+                    self.type_defs_order
+                        .add_dependency(element_dep, name.clone());
                 }
 
                 array_struct_ty
-            }
+            },
         }
     }
 
@@ -204,7 +282,7 @@ impl Module {
                     }
 
                     TypeDef::Struct(struct_def)
-                }
+                },
 
                 ir::metadata::TypeDef::Variant(variant_def) => {
                     let variant_def = VariantDef::translate(id, variant_def, self);
@@ -215,7 +293,7 @@ impl Module {
                     }
 
                     TypeDef::Variant(variant_def)
-                }
+                },
 
                 ir::metadata::TypeDef::Function(func_def) => {
                     let return_ty = Type::from_metadata(&func_def.return_ty, self);
@@ -224,7 +302,7 @@ impl Module {
                     let mut param_tys = Vec::new();
 
                     // any function-type object needs a closure param
-                    param_tys.push(Type::DefinedType(TypeDefName::Rc).ptr());
+                    param_tys.push(Type::Void.ptr());
 
                     for param_ty in &func_def.param_tys {
                         let param_ty = Type::from_metadata(param_ty, self);
@@ -233,14 +311,16 @@ impl Module {
                     }
 
                     let func_alias_def = FuncAliasDef {
-                        decl: TypeDecl { name: TypeDefName::Alias(id) },
+                        decl: TypeDecl {
+                            name: TypeDefName::Alias(id),
+                        },
                         param_tys,
                         return_ty,
                         comment: Some(func_def.to_string()),
                     };
 
                     TypeDef::FuncAlias(func_alias_def)
-                }
+                },
             };
 
             let c_def_name = c_type_def.decl().name.clone();
@@ -249,7 +329,8 @@ impl Module {
 
             self.type_defs_order.insert(c_def_name.clone());
             for member_dep in member_deps {
-                self.type_defs_order.add_dependency(member_dep, c_def_name.clone());
+                self.type_defs_order
+                    .add_dependency(member_dep, c_def_name.clone());
             }
         }
 
@@ -259,21 +340,20 @@ impl Module {
                     let c_func = FunctionDef::translate(*id, func_def, self);
 
                     self.functions.push(c_func);
-                }
+                },
 
-                ir::Function::External(func_ref) if func_ref.src == BUILTIN_SRC => {
-                }
+                ir::Function::External(func_ref) if func_ref.src == BUILTIN_SRC => {},
 
                 ir::Function::External(func_ref) => {
                     let ffi_func = FfiFunction::translate(*id, func_ref, self);
 
                     self.ffi_funcs.push(ffi_func);
-                }
+                },
             }
         }
 
         for static_closure in module.static_closures() {
-            self.static_closures.push(static_closure.id);
+            self.static_closures.push(static_closure.clone());
         }
 
         let init_index = self
@@ -293,7 +373,9 @@ impl Module {
             },
         };
 
-        let ffi_init_stmts: Vec<_> = self.ffi_funcs.iter()
+        let ffi_init_stmts: Vec<_> = self
+            .ffi_funcs
+            .iter()
             .map(|ffi_func| ffi_func.init_statement())
             .collect();
 
@@ -372,7 +454,7 @@ impl fmt::Display for Module {
 
         for class in &self.classes {
             writeln!(f, "{}", class.to_decl_string())?;
-            writeln!(f, "{}", class.to_def_string())?;
+            writeln!(f, "{}", class.to_def_string(self))?;
             writeln!(f)?;
         }
 
@@ -383,33 +465,28 @@ impl fmt::Display for Module {
             let string_name = TypeDefName::Struct(ir::metadata::STRING_ID);
             let lit_name = GlobalName::StringLiteral(*str_id);
             writeln!(f, "static struct {} {} = {{", string_name, lit_name)?;
+
+            // rc state
+            writeln!(f, "  .{} = {{", FieldName::Rc)?;
+            writeln!(
+                f,
+                "    .{} = &{},",
+                FieldName::RcClass,
+                GlobalName::ClassInstance(ir::metadata::STRING_ID),
+            )?;
+            writeln!(f, "    .{} = -1,", FieldName::RcRefCount)?;
+            writeln!(f, "  }},")?;
+
             write!(f, "  .{} = {}", chars_field, lit)?;
             writeln!(f, ", ")?;
             writeln!(f, "  .{} = {},", len_field, lit.as_str().len())?;
             writeln!(f, "}};")?;
-
-            let lit_ref_name = GlobalName::StringLiteralRef(*str_id);
-
-            writeln!(
-                f,
-                "static struct {} {} = {{",
-                TypeDefName::Rc,
-                lit_ref_name
-            )?;
-            writeln!(f, "  .{} = &{},", FieldName::RcResource, lit_name)?;
-            writeln!(
-                f,
-                "  .{} = &Class_{},",
-                FieldName::RcClass,
-                ir::metadata::STRING_ID.0
-            )?;
-            writeln!(f, "  .{} = -1,", FieldName::RcRefCount)?;
-            writeln!(f, "}};")?;
         }
 
-        for static_closure_id in &self.static_closures {
-            let global_name = GlobalName::StaticClosureRef(*static_closure_id);
-            let decl_string = Type::DefinedType(TypeDefName::Rc).ptr().to_decl_string(&global_name);
+        for static_closure in &self.static_closures {
+            let global_name = GlobalName::StaticClosure(static_closure.id);
+            let decl_string = Type::DefinedType(TypeDefName::Struct(static_closure.closure_id))
+                .to_decl_string(&global_name);
 
             writeln!(f, "{};", decl_string)?;
         }
