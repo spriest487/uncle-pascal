@@ -495,6 +495,13 @@ impl<'m> Builder<'m> {
         }
     }
 
+    pub fn size_of(&mut self, out: impl Into<Ref>, ty: Type) {
+        self.append(Instruction::SizeOf {
+            out: out.into(),
+            ty,
+        });
+    }
+
     pub fn field(
         &mut self,
         out: impl Into<Ref>,
@@ -523,6 +530,30 @@ impl<'m> Builder<'m> {
             dest,
             test: cond.into(),
         })
+    }
+
+    pub fn call(&mut self, function: impl Into<Value>, args: impl IntoIterator<Item=Value>, out: Option<Ref>) {
+        self.append(Instruction::Call {
+            function: function.into(),
+            args: args.into_iter().collect(),
+            out,
+        })
+    }
+
+    pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
+        let global_name = &Symbol::new("GetMem", ["System"]);
+        let function = self.module.metadata.find_function(&global_name).unwrap();
+        let function_ref = Ref::Global(GlobalRef::Function(function));
+
+        self.call(function_ref, [count.into()], Some(out));
+    }
+
+    pub fn free_mem(&mut self, at: impl Into<Value>) {
+        let global_name = &Symbol::new("FreeMem", ["System"]);
+        let function = self.module.metadata.find_function(&global_name).unwrap();
+        let function_ref = Ref::Global(GlobalRef::Function(function));
+
+        self.call(function_ref, [at.into()], None);
     }
 
     pub fn addr_of(&mut self, out: impl Into<Ref>, a: impl Into<Ref>) {
@@ -1101,7 +1132,7 @@ mod test {
 
     #[test]
     fn end_loop_scope_ends_at_right_scope_level() {
-        let ctx = pas_ty::Context::root(true, Span::zero("test"));
+        let ctx = pas_ty::Context::root(Span::zero("test"));
         let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
@@ -1117,7 +1148,7 @@ mod test {
 
     #[test]
     fn break_cleans_up_loop_locals() {
-        let ctx = pas_ty::Context::root(true, Span::zero("test"));
+        let ctx = pas_ty::Context::root(Span::zero("test"));
         let mut module = Module::new(ctx, Metadata::default(), IROptions::default());
         let mut builder = Builder::new(&mut module);
 
@@ -1125,8 +1156,8 @@ mod test {
         let break_label = builder.alloc_label();
 
         builder.begin_loop_body_scope(continue_label, break_label);
-        builder.local_new(Type::RcPointer(None), Some("local1".to_string()));
-        builder.local_new(Type::RcPointer(None), Some("local2".to_string()));
+        builder.local_new(Type::RcPointer(VirtualTypeID::Any), Some("local1".to_string()));
+        builder.local_new(Type::RcPointer(VirtualTypeID::Any), Some("local2".to_string()));
 
         builder.comment("before_break");
         builder.break_loop();

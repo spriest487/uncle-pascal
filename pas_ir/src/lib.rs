@@ -146,9 +146,7 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     releaser_builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), Value::LiteralI32(0));
     releaser_builder.jmp_if(after_free, zero_elements);
 
-    releaser_builder.append(Instruction::DynFree {
-        at: arr_field_ptr.clone().to_deref(),
-    });
+    releaser_builder.free_mem(arr_field_ptr.clone());
 
     releaser_builder.append(Instruction::Label(after_free));
 

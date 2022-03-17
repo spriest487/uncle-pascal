@@ -39,7 +39,6 @@ use std::{
     borrow::Cow,
     ops::{BitAnd, BitOr, BitXor}
 };
-use cast::usize;
 use pas_common::span::Span;
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -836,13 +835,6 @@ impl Interpreter {
             Instruction::Release { at } => self.exec_release(at)?,
             Instruction::Retain { at } => self.exec_retain(at)?,
 
-            Instruction::DynAlloc {
-                out,
-                element_ty,
-                count: len,
-            } => self.exec_dynalloc(out, element_ty, len)?,
-
-            Instruction::DynFree { at } => self.exec_dynfree(at)?,
             Instruction::Raise { val } => self.exec_raise(&val)?,
             Instruction::SizeOf { out, ty } => self.exec_size_of(out, ty)?,
 
@@ -964,19 +956,6 @@ impl Interpreter {
         Ok(())
     }
 
-    fn exec_dynfree(&mut self, at: &Ref) -> ExecResult<()> {
-        match self.load(at)?.into_owned() {
-            DynValue::Pointer(ptr) => {
-                self.dynfree(&ptr)
-            }
-
-            x => {
-                let msg = format!("target of DynFree at {} must be pointer, was: {:?}", at, x);
-                Err(ExecError::illegal_state(msg))
-            },
-        }
-    }
-
     pub fn dynalloc_init(&mut self, ty: &Type, values: Vec<DynValue>) -> ExecResult<Pointer> {
         if values.len() == 0 {
             return Err(ExecError::ZeroLengthAllocation);
@@ -1005,21 +984,6 @@ impl Interpreter {
         let ptr = self.native_heap.alloc(ty.clone(), len)?;
 
         Ok(ptr)
-    }
-
-    fn exec_dynalloc(&mut self, out: &Ref, ty: &Type, count_val: &Value) -> ExecResult<()> {
-        let count = self
-            .evaluate(count_val)?
-            .as_i32()
-            .ok_or_else(|| ExecError::illegal_state("count value of DynAlloc must be i32"))?;
-
-        let count = usize(count)
-            .map_err(|_| ExecError::illegal_state("alloc length must be positive"))?;
-
-        let ptr = self.dynalloc(ty, count)?;
-        self.store(out, DynValue::Pointer(ptr))?;
-
-        Ok(())
     }
 
     fn exec_retain(&mut self, at: &Ref) -> ExecResult<()> {

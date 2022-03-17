@@ -168,15 +168,6 @@ pub enum Instruction {
         at: Ref,
     },
 
-    DynAlloc {
-        out: Ref,
-        element_ty: Type,
-        count: Value,
-    },
-    DynFree {
-        at: Ref,
-    },
-
     Raise {
         val: Ref,
     },
@@ -217,8 +208,7 @@ impl Instruction {
             // instructions that mutate state
             // discard if they operate on a discard ref
             | Instruction::Release { at }
-            | Instruction::Retain { at }
-            | Instruction::DynFree { at } => *at == Ref::Discard,
+            | Instruction::Retain { at } => *at == Ref::Discard,
 
             // mov: discard if either the origin or destination refs are discards
             | Instruction::Move { out: Ref::Discard, .. }
@@ -249,7 +239,6 @@ impl Instruction {
             | Instruction::Field { out, .. }
             | Instruction::ClassIs { out, .. }
             | Instruction::RcNew { out, .. }
-            | Instruction::DynAlloc { out, .. }
             | Instruction::Cast { out, .. }
             | Instruction::SizeOf { out, .. } => *out == Ref::Discard,
         }

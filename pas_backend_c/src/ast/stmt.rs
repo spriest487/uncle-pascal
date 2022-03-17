@@ -342,34 +342,6 @@ impl<'a> Builder<'a> {
                 self.stmts.push(Statement::Expr(call_release));
             },
 
-            ir::Instruction::DynAlloc {
-                out,
-                element_ty,
-                count: len,
-            } => {
-                let get_mem = Expr::Function(FunctionName::GetMem);
-
-                let el_ty = Type::from_metadata(&element_ty, self.module);
-                let sizeof_el = Expr::SizeOf(el_ty.clone());
-
-                let el_count = Expr::translate_val(len, self.module);
-                let total_len = Expr::infix_op(sizeof_el, InfixOp::Mul, el_count);
-
-                let call_get_mem = Expr::call(get_mem, vec![total_len]).cast(el_ty.ptr());
-                let assign_result = Expr::translate_assign(out, call_get_mem, self.module);
-
-                self.stmts.push(Statement::Expr(assign_result));
-            },
-
-            ir::Instruction::DynFree { at } => {
-                let free_mem = Expr::Function(FunctionName::FreeMem);
-                let at_ptr = Expr::translate_ref(at, self.module);
-                let as_u8 = at_ptr.cast(Type::UChar.ptr());
-                let call_free_mem = Expr::call(free_mem, vec![as_u8]);
-
-                self.stmts.push(Statement::Expr(call_free_mem));
-            },
-
             ir::Instruction::VirtualCall {
                 out,
                 iface_id,

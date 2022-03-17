@@ -1190,11 +1190,11 @@ fn translate_dyn_array_ctor(
 
         // allocate array storage
         if len > 0 {
-            builder.append(Instruction::DynAlloc {
-                out: arr_ptr.clone().to_deref(),
-                count: Value::LiteralI32(len),
-                element_ty: elem_ty.clone(),
-            });
+            let alloc_size = builder.local_temp(Type::I32);
+            builder.size_of(alloc_size.clone(), elem_ty.clone());
+            builder.mul(alloc_size.clone(), alloc_size.clone(), Value::LiteralI32(len));
+
+            builder.get_mem(alloc_size, arr_ptr.clone().to_deref());
 
             let el_ptr = builder.local_temp(elem_ty.clone().ptr());
 
