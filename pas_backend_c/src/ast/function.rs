@@ -1,7 +1,15 @@
-use crate::ast::{Builder, Expr, InfixOp, Module, Statement, TypeDecl, Type};
-use pas_ir::{self as ir, LocalID, metadata::{FunctionID, InterfaceID, MethodID}};
+use crate::ast::{Builder, Expr, InfixOp, Module, Statement, Type, TypeDecl};
+use pas_ir::{
+    self as ir,
+    metadata::{
+        FunctionID,
+        InterfaceID,
+        MethodID,
+        TypeDefID
+    },
+    LocalID,
+};
 use std::fmt;
-use pas_ir::metadata::TypeDefID;
 
 #[derive(Debug, Eq, PartialEq, Hash, Copy, Clone)]
 pub enum FunctionName {
@@ -56,7 +64,9 @@ impl fmt::Display for FunctionName {
 
             FunctionName::ID(id) => write!(f, "Function_{}", id.0),
             FunctionName::Method(iface, method) => write!(f, "Method_{}_{}", iface, method.0),
-            FunctionName::MethodWrapper(iface, method, self_ty) => write!(f, "Method_{}_{}_Wrapper_{}", iface, method.0, self_ty),
+            FunctionName::MethodWrapper(iface, method, self_ty) => {
+                write!(f, "Method_{}_{}_Wrapper_{}", iface, method.0, self_ty)
+            },
 
             FunctionName::RcAlloc => write!(f, "RcAlloc"),
             FunctionName::RcRetain => write!(f, "RcRetain"),
@@ -205,7 +215,11 @@ pub struct FfiFunction {
 }
 
 impl FfiFunction {
-    pub fn translate(id: FunctionID, func_ref: &ir::ExternalFunctionRef, module: &mut Module) -> Self {
+    pub fn translate(
+        id: FunctionID,
+        func_ref: &ir::ExternalFunctionRef,
+        module: &mut Module,
+    ) -> Self {
         let return_ty = Type::from_metadata(&func_ref.return_ty, module);
         let mut params = Vec::new();
         for param in &func_ref.params {
@@ -216,7 +230,10 @@ impl FfiFunction {
             name: FunctionName::ID(id),
             return_ty,
             params,
-            comment: Some(format!("external func {}::{}", func_ref.src, func_ref.symbol)),
+            comment: Some(format!(
+                "external func {}::{}",
+                func_ref.src, func_ref.symbol
+            )),
         };
 
         FfiFunction {
@@ -236,7 +253,8 @@ impl FfiFunction {
                     Expr::LitCString(self.src.clone()),
                     Expr::LitCString(self.symbol.clone()),
                 ],
-            }.into(),
+            }
+            .into(),
         })
     }
 
@@ -284,6 +302,6 @@ pub struct FuncAliasID(pub TypeDefID);
 
 impl fmt::Display for FuncAliasID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "FunctionAlias_{}", self.0.0)
+        write!(f, "FunctionAlias_{}", self.0 .0)
     }
 }

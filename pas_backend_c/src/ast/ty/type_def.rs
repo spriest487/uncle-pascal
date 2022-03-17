@@ -1,4 +1,5 @@
 use std::fmt;
+use pas_ir::metadata::TypeDefID;
 use crate::ast::{FuncAliasDef, StructDef, TypeDecl, VariantDef};
 
 #[derive(Clone, Eq, PartialEq, Hash)]
@@ -32,6 +33,46 @@ impl fmt::Display for TypeDef {
             TypeDef::Struct(s) => write!(f, "{}", s),
             TypeDef::Variant(v) => write!(f, "{}", v),
             TypeDef::FuncAlias(func) => write!(f, "{}", func),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub enum TypeDefName {
+    // struct from class def ID
+    Struct(TypeDefID),
+
+    // struct from variant def ID
+    Variant(TypeDefID),
+
+    // alias for another type
+    Alias(TypeDefID),
+
+    // struct for a fixed-size array with a generated unique ID
+    StaticArray(usize),
+}
+
+impl fmt::Display for TypeDefName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            TypeDefName::Struct(id) => write!(f, "Struct_{}", id.0),
+            TypeDefName::Variant(id) => write!(f, "Variant_{}", id.0),
+            TypeDefName::StaticArray(i) => write!(f, "StaticArray_{}", i),
+            TypeDefName::Alias(id) => write!(f, "FuncAlias_{}", id.0),
+        }
+    }
+}
+
+impl TypeDefName {
+    pub fn build_decl_string(&self, left: &mut String, _right: &mut String) {
+        match self {
+            TypeDefName::Struct(..) | TypeDefName::Variant(..) | TypeDefName::StaticArray(..) => {
+                left.push_str(&format!("struct {}", self.to_string()));
+            },
+
+            TypeDefName::Alias(..) => {
+                left.push_str(&self.to_string());
+            },
         }
     }
 }
