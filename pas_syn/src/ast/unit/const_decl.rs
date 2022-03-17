@@ -1,9 +1,16 @@
-use std::fmt;
-use std::hash::{Hash, Hasher};
+use std::{
+    fmt,
+    hash::{Hash, Hasher}
+};
 use pas_common::span::{Span, Spanned};
-use crate::ast::{Annotation, Expression, TypeName};
-use crate::{Ident, Keyword, Operator, Separator};
-use crate::parse::{ParseResult, TokenStream};
+use crate::{
+    ast::{Annotation, Expression, TypeName},
+    Ident,
+    Keyword,
+    Operator,
+    Separator,
+    parse::{ParseResult, TokenStream}
+};
 
 #[derive(Clone, Debug, Eq)]
 pub struct ConstDecl<A: Annotation> {
