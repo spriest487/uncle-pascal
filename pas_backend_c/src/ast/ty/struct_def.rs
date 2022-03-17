@@ -1,9 +1,10 @@
-use crate::ast::{FieldName, Module, Type, TypeDecl, TypeDefName};
+use crate::ast::{Module, Type, TypeDecl, TypeDefName};
 use pas_ir::metadata;
 use std::{
     fmt,
-    hash::{Hash, Hasher}
+    hash::{Hash, Hasher},
 };
+use pas_ir::metadata::FieldID;
 
 #[derive(Clone, Eq)]
 pub struct StructMember {
@@ -106,5 +107,43 @@ impl fmt::Display for StructDef {
             writeln!(f, "{};", member.ty.to_decl_string(&name))?;
         }
         write!(f, "}}")
+    }
+}
+
+#[allow(unused)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+pub enum FieldName {
+    // ID from metadata
+    ID(FieldID),
+
+    // rc state for rc types
+    Rc,
+
+    // builtin name: ref count field of RC internal struct
+    RcRefCount,
+
+    // builtin name: class info pointer field of RC internal struct
+    RcClass,
+
+    // builtin name: static array inner array
+    StaticArrayElements,
+
+    VariantTag,
+    VariantData,
+    VariantDataCase(usize),
+}
+
+impl fmt::Display for FieldName {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FieldName::ID(id) => write!(f, "field_{}", id.0),
+            FieldName::Rc => write!(f, "rc"),
+            FieldName::RcRefCount => write!(f, "strong_count"),
+            FieldName::RcClass => write!(f, "class"),
+            FieldName::StaticArrayElements => write!(f, "elements"),
+            FieldName::VariantTag => write!(f, "tag"),
+            FieldName::VariantData => write!(f, "data"),
+            FieldName::VariantDataCase(case) => write!(f, "data_{}", case),
+        }
     }
 }

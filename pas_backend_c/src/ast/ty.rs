@@ -5,7 +5,7 @@ mod variant_def;
 
 pub use self::{class_def::*, struct_def::*, type_def::*, variant_def::*};
 use crate::ast::Module;
-use pas_ir::metadata::{self, FieldID, VirtualTypeID};
+use pas_ir::metadata;
 use std::fmt;
 
 #[allow(unused)]
@@ -52,7 +52,7 @@ impl Type {
         match ty {
             metadata::Type::Pointer(target) => Type::from_metadata(target.as_ref(), module).ptr(),
             metadata::Type::Function(id) => Type::DefinedType(TypeDefName::Alias(*id)),
-            metadata::Type::RcPointer(VirtualTypeID::Class(id)) => {
+            metadata::Type::RcPointer(metadata::VirtualTypeID::Class(id)) => {
                 Type::DefinedType(TypeDefName::Struct(*id)).ptr()
             },
             metadata::Type::RcPointer(..) => Type::Void.ptr(),
@@ -241,44 +241,6 @@ impl Type {
                 name.push(')');
                 name
             },
-        }
-    }
-}
-
-#[allow(unused)]
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum FieldName {
-    // ID from metadata
-    ID(FieldID),
-
-    // rc state for rc types
-    Rc,
-
-    // builtin name: ref count field of RC internal struct
-    RcRefCount,
-
-    // builtin name: class info pointer field of RC internal struct
-    RcClass,
-
-    // builtin name: static array inner array
-    StaticArrayElements,
-
-    VariantTag,
-    VariantData,
-    VariantDataCase(usize),
-}
-
-impl fmt::Display for FieldName {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            FieldName::ID(id) => write!(f, "field_{}", id.0),
-            FieldName::Rc => write!(f, "rc"),
-            FieldName::RcRefCount => write!(f, "strong_count"),
-            FieldName::RcClass => write!(f, "class"),
-            FieldName::StaticArrayElements => write!(f, "elements"),
-            FieldName::VariantTag => write!(f, "tag"),
-            FieldName::VariantData => write!(f, "data"),
-            FieldName::VariantDataCase(case) => write!(f, "data_{}", case),
         }
     }
 }
