@@ -1,9 +1,10 @@
 mod function;
 mod stmt;
+mod expr;
 mod string_lit;
 mod ty;
 
-pub use self::{function::*, stmt::*, ty::*};
+pub use self::{function::*, stmt::*, ty::*, expr::*};
 use crate::{ast::string_lit::StringLiteral, Options};
 use pas_ir::{
     metadata::STRING_ID,
