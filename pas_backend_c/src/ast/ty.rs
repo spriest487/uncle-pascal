@@ -1,22 +1,26 @@
+mod type_def;
+
+pub use self::type_def::*;
 use crate::ast::{
-    Expr, FuncAliasDef, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement,
+    Expr, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement,
 };
 use pas_ir::{
-    metadata,
     metadata::{
-        FieldID, InterfaceID, MethodID, RcBoilerplatePair, TypeDefID, VirtualTypeID,
-        DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD, DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID,
+        self, FieldID, FunctionID, InterfaceID, MethodID, RcBoilerplatePair, TypeDefID,
+        VirtualTypeID, DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID, DYNARRAY_LEN_FIELD,
+        DYNARRAY_PTR_FIELD,
     },
     LocalID,
 };
 use std::{
-    collections::HashMap,
+    collections::{
+        BTreeMap,
+        HashMap
+    },
     fmt,
     fmt::Write,
     hash::{Hash, Hasher},
 };
-use std::collections::BTreeMap;
-use pas_ir::metadata::FunctionID;
 
 #[allow(unused)]
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -555,41 +559,6 @@ impl fmt::Display for VariantDef {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Hash)]
-pub enum TypeDef {
-    Struct(StructDef),
-    Variant(VariantDef),
-    FuncAlias(FuncAliasDef),
-}
-
-impl TypeDef {
-    pub fn decl(&self) -> &TypeDecl {
-        match self {
-            TypeDef::Struct(s) => &s.decl,
-            TypeDef::Variant(v) => &v.decl,
-            TypeDef::FuncAlias(f) => &f.decl,
-        }
-    }
-
-    pub fn forward_decl(&self) -> Option<&TypeDecl> {
-        match self {
-            TypeDef::Struct(s) => Some(&s.decl),
-            TypeDef::Variant(v) => Some(&v.decl),
-            TypeDef::FuncAlias(..) => None,
-        }
-    }
-}
-
-impl fmt::Display for TypeDef {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            TypeDef::Struct(s) => write!(f, "{}", s),
-            TypeDef::Variant(v) => write!(f, "{}", v),
-            TypeDef::FuncAlias(func) => write!(f, "{}", func),
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct MethodImplFunc {
     name: FunctionName,
@@ -614,7 +583,9 @@ impl MethodImplFunc {
         let vcall_wrapper_name = FunctionName::MethodWrapper(iface_id, method_id, self_ty_id);
 
         // generate virtual call wrapper with the param types of the virtually called iface method
-        let wrapper_param_tys: Vec<_> = iface_method.params.iter()
+        let wrapper_param_tys: Vec<_> = iface_method
+            .params
+            .iter()
             .map(|ty| Type::from_metadata(ty, module))
             .collect();
         let wrapper_return_ty = Type::from_metadata(&iface_method.return_ty, module);
@@ -653,15 +624,11 @@ impl MethodImplFunc {
         for i in 0..self.vcall_wrapper_decl.params.len() {
             let concrete_ty = &impl_func_def.decl.params[i];
 
-            call_impl_func_args.push(Expr::Local(next_param_local)
-                .cast(concrete_ty.clone()));
+            call_impl_func_args.push(Expr::Local(next_param_local).cast(concrete_ty.clone()));
             next_param_local.0 += 1;
         }
 
-        let call_impl_func = Expr::call(
-            Expr::Function(self.name),
-            call_impl_func_args,
-        );
+        let call_impl_func = Expr::call(Expr::Function(self.name), call_impl_func_args);
 
         let body_stmt = match impl_func_def.decl.return_ty {
             Type::Void => Statement::Expr(call_impl_func),
@@ -848,7 +815,8 @@ impl Class {
                 iface_id.0, self.struct_id.0, iface_id.0
             ));
             for (method_id, _method_name) in &iface_impl.method_impls {
-                let wrapper_name = FunctionName::MethodWrapper(**iface_id, *method_id, self.struct_id);
+                let wrapper_name =
+                    FunctionName::MethodWrapper(**iface_id, *method_id, self.struct_id);
 
                 def.push_str("  .base = {\n");
 
@@ -891,7 +859,11 @@ impl Class {
         .unwrap();
 
         if let Some(..) = &self.disposer {
-            let dispose_wrapper = FunctionName::MethodWrapper(DISPOSABLE_ID, DISPOSABLE_DISPOSE_INDEX, self.struct_id);
+            let dispose_wrapper = FunctionName::MethodWrapper(
+                DISPOSABLE_ID,
+                DISPOSABLE_DISPOSE_INDEX,
+                self.struct_id,
+            );
             writeln!(class_init, "  .disposer = &{},", dispose_wrapper).unwrap();
         } else {
             writeln!(class_init, "  .disposer = NULL,").unwrap();
