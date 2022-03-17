@@ -2,35 +2,43 @@ unit System;
 
 interface
 
+type ShortInt = Int8;
+type SmallInt = Int16;
+type Integer = Int32;
+
+type Byte = UInt8;
+type Word = UInt16;
+type Cardinal = UInt32;
+
 type String = class
     chars: ^Byte;
-    len: Integer;
+    len: Int32;
 end;
 
 type Disposable = interface
     function Dispose(self: Self);
 end;
 
-function GetMem(count: Integer): ^Byte; external 'rt';
+function GetMem(count: Int32): ^Byte; external 'rt';
 function FreeMem(mem: ^Byte); external 'rt';
 
 function WriteLn(line: String); external 'rt';
 function ReadLn(): String; external 'rt';
 
 function Int8ToStr(i: Int8): String; external 'rt';
-function ByteToStr(i: Byte): String; external 'rt';
+function UInt8ToStr(i: UInt8): String; external 'rt';
 function Int16ToStr(i: Int16): String; external 'rt';
 function UInt16ToStr(i: UInt16): String; external 'rt';
-function IntToStr(i: Integer): String; external 'rt';
+function Int32ToStr(i: Int32): String; external 'rt';
 function UInt32ToStr(i: UInt32): String; external 'rt';
 function Int64ToStr(i: Int64): String; external 'rt';
 function UInt64ToStr(i: UInt64): String; external 'rt';
 function NativeIntToStr(i: NativeInt): String; external 'rt';
 function NativeUIntToStr(i: NativeUInt): String; external 'rt';
 
-function StrToInt(s: String): Integer; external 'rt';
+function StrToInt(s: String): Int32; external 'rt';
 
-function ArrayLengthInternal(arr: Pointer): Integer; external 'rt';
+function ArrayLengthInternal(arr: Pointer): Int32; external 'rt';
 
 {$IFNDEF NO_STDLIB}
 
@@ -58,14 +66,14 @@ type Result[T, E] = variant
     Error: E;
 end;
 
-function UInt8ToStr(i: Byte): String
+function ByteToStr(i: Byte): String
 begin
-    ByteToStr(i)
+    UInt8ToStr(i)
 end;
 
-function Int32ToStr(i: Integer): String
+function IntToStr(i: Integer): String
 begin
-    IntToStr(i)
+    Int32ToStr(i)
 end;
 
 function StringLen(s: String): Integer

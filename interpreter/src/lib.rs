@@ -1557,10 +1557,10 @@ impl Interpreter {
     fn init_stdlib_globals(&mut self) {
         let system_funcs: &[(&str, BuiltinFn, Type, Vec<Type>)] = &[
             ("Int8ToStr", builtin::i8_to_str, Type::string_ptr(), vec![Type::I8]),
-            ("ByteToStr", builtin::u8_to_str, Type::string_ptr(), vec![Type::U8]),
+            ("UInt8ToStr", builtin::u8_to_str, Type::string_ptr(), vec![Type::U8]),
             ("Int16ToStr", builtin::i16_to_str, Type::string_ptr(), vec![Type::I16]),
             ("UInt16ToStr", builtin::u16_to_str, Type::string_ptr(), vec![Type::U16]),
-            ("IntToStr", builtin::i32_to_str, Type::string_ptr(), vec![Type::I32]),
+            ("Int32ToStr", builtin::i32_to_str, Type::string_ptr(), vec![Type::I32]),
             ("UInt32ToStr", builtin::u32_to_str, Type::string_ptr(), vec![Type::U32]),
             ("Int64ToStr", builtin::i64_to_str, Type::string_ptr(), vec![Type::I64]),
             ("UInt64ToStr", builtin::u64_to_str, Type::string_ptr(), vec![Type::U64]),

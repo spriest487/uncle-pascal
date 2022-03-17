@@ -1,5 +1,5 @@
 use crate::{
-    ast::{FunctionDecl, TypeList},
+    ast::{FunctionDecl, TypeList, unit::AliasDecl},
     parse::prelude::*,
 };
 use std::rc::Rc;
@@ -238,17 +238,19 @@ impl<A: Annotation> Spanned for Variant<A> {
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
-    Class(Rc<Composite<A>>),
+    Composite(Rc<Composite<A>>),
     Interface(Rc<Interface<A>>),
     Variant(Rc<Variant<A>>),
+    Alias(Rc<AliasDecl<A>>),
 }
 
 impl<A: Annotation> TypeDecl<A> {
     pub fn ident(&self) -> &A::Name {
         match self {
-            TypeDecl::Class(class) => &class.name,
+            TypeDecl::Composite(class) => &class.name,
             TypeDecl::Interface(iface) => &iface.name,
             TypeDecl::Variant(variant) => &variant.name,
+            TypeDecl::Alias(alias) => &alias.name,
         }
     }
 }
@@ -371,13 +373,13 @@ impl TypeDecl<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let class_matcher = Composite::match_kw();
-        let decl_start_matcher = class_matcher.clone().or(Keyword::Variant);
+        let composite_kw_matcher = Composite::match_kw();
+        let decl_start_matcher = composite_kw_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
-            Some(ref tt) if class_matcher.is_match(tt) => {
-                let class_decl = Composite::parse(tokens, name)?;
-                Ok(TypeDecl::Class(Rc::new(class_decl)))
+            Some(ref tt) if composite_kw_matcher.is_match(tt) => {
+                let composite_decl = Composite::parse(tokens, name)?;
+                Ok(TypeDecl::Composite(Rc::new(composite_decl)))
             }
 
             Some(TokenTree::Keyword {
@@ -396,10 +398,12 @@ impl TypeDecl<Span> {
                 Ok(TypeDecl::Variant(Rc::new(variant_decl)))
             }
 
-            Some(unexpected) => Err(TracedError::trace(ParseError::UnexpectedToken(
-                Box::new(unexpected),
-                Some(decl_start_matcher.clone()),
-            ))),
+            // if it isn't a type def keyword, then it must be the name of an existing type to
+            // declare an alias
+            Some(..) => {
+                let alias_decl = AliasDecl::parse(tokens, name)?;
+                Ok(TypeDecl::Alias(Rc::new(alias_decl)))
+            },
 
             None => Err(TracedError::trace(ParseError::UnexpectedEOF(
                 decl_start_matcher.clone(),
@@ -412,9 +416,10 @@ impl TypeDecl<Span> {
 impl<A: Annotation> Spanned for TypeDecl<A> {
     fn span(&self) -> &Span {
         match self {
-            TypeDecl::Class(class) => class.span(),
+            TypeDecl::Composite(class) => class.span(),
             TypeDecl::Interface(iface) => iface.span(),
             TypeDecl::Variant(variant) => variant.span(),
+            TypeDecl::Alias(alias) => alias.span(),
         }
     }
 }
@@ -424,9 +429,10 @@ impl<A: Annotation> fmt::Display for TypeDecl<A> {
         write!(f, "type {} = ", self.ident().as_local())?;
 
         match self {
-            TypeDecl::Class(class) => write!(f, "{}", class),
+            TypeDecl::Composite(class) => write!(f, "{}", class),
             TypeDecl::Interface(iface) => write!(f, "{}", iface),
             TypeDecl::Variant(variant) => write!(f, "{}", variant),
+            TypeDecl::Alias(alias) => write!(f, "{}", alias),
         }
     }
 }

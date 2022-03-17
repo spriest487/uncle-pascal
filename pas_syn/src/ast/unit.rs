@@ -1,8 +1,9 @@
 mod const_decl;
+mod alias_decl;
 
 use crate::{ast::*, parse::prelude::*};
 use std::fmt;
-pub use self::const_decl::ConstDecl;
+pub use self::{const_decl::ConstDecl, alias_decl::*};
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
 pub enum Visibility {

@@ -8,7 +8,7 @@ use std::rc::Rc;
 use crate::test::module_from_src;
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
-const BYTE: Type = Type::Primitive(Primitive::Byte);
+const BYTE: Type = Type::Primitive(Primitive::UInt8);
 
 fn unit_from_src(src: &'static str) -> Unit {
     let mut module = module_from_src("test", src);
@@ -18,7 +18,7 @@ fn unit_from_src(src: &'static str) -> Unit {
 fn classes_from_src(src: &'static str) -> Vec<Rc<Composite>> {
     let unit = unit_from_src(src);
     let decls = unit.type_decls().cloned().map(|t| match t {
-        ast::TypeDecl::Class(class) => class,
+        ast::TypeDecl::Composite(class) => class,
         _ => unreachable!(),
     });
 
@@ -158,7 +158,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
     let a_class = unit
         .type_decls()
         .filter_map(|d| match d {
-            ast::TypeDecl::Class(class) => Some(class.clone()),
+            ast::TypeDecl::Composite(class) => Some(class.clone()),
             _ => unreachable!(),
         })
         .next()

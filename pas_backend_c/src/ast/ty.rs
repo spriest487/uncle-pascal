@@ -665,7 +665,7 @@ impl MethodImplFunc {
 
         let body_stmt = match impl_func_def.decl.return_ty {
             Type::Void => Statement::Expr(call_impl_func),
-            
+
             _ => {
                 let result_expr = Expr::Local(LocalID(0));
                 let casted_result = call_impl_func.cast(self.vcall_wrapper_decl.return_ty.clone());

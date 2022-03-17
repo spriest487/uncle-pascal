@@ -52,7 +52,7 @@ pub fn builtin_string_class() -> ast::Composite {
         members: vec![
             ast::Member {
                 ident: Ident::new(STRING_CHARS_FIELD, builtin_span.clone()),
-                ty: Type::from(Primitive::Byte).ptr(),
+                ty: Type::from(Primitive::UInt8).ptr(),
                 span: builtin_span.clone(),
             },
             ast::Member {

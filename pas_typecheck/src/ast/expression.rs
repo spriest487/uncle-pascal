@@ -230,7 +230,7 @@ pub fn typecheck_expr(
 
 fn typecheck_literal_int(i: &IntConstant, expect_ty: &Type, span: Span) -> TypecheckResult<Expression> {
     let ty = match expect_ty {
-        Type::Primitive(Primitive::Byte) => try_map_primitive_int(i, Primitive::Byte, IntConstant::as_u8),
+        Type::Primitive(Primitive::UInt8) => try_map_primitive_int(i, Primitive::UInt8, IntConstant::as_u8),
         Type::Primitive(Primitive::Int8) => try_map_primitive_int(i, Primitive::Int8, IntConstant::as_i8),
         Type::Primitive(Primitive::Int16) => try_map_primitive_int(i, Primitive::Int16, IntConstant::as_i16),
         Type::Primitive(Primitive::UInt16) => try_map_primitive_int(i, Primitive::UInt16, IntConstant::as_u16),

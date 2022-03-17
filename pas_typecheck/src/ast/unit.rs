@@ -173,8 +173,12 @@ fn typecheck_unit_type_decl(
             ctx.declare_variant(variant.clone(), visibility)?;
         }
 
-        ast::TypeDecl::Class(class) => {
+        ast::TypeDecl::Composite(class) => {
             ctx.declare_class(class.clone(), visibility)?;
+        }
+
+        ast::TypeDecl::Alias(alias) => {
+            ctx.declare_type(alias.name.decl_name.ident.clone(), (*alias.ty).clone(), visibility)?;
         }
     }
 

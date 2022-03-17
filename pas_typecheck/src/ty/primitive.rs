@@ -3,7 +3,7 @@ use std::mem::size_of;
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
 pub enum Primitive {
     Boolean,
-    Byte,
+    UInt8,
     Int8,
     Int16,
     UInt16,
@@ -20,7 +20,7 @@ pub enum Primitive {
 impl Primitive {
     pub const ALL: [Primitive; 13] = [
         Primitive::Boolean,
-        Primitive::Byte,
+        Primitive::UInt8,
         Primitive::Int8,
         Primitive::Int16,
         Primitive::UInt16,
@@ -56,7 +56,7 @@ impl Primitive {
 
     pub fn is_integer(&self) -> bool {
         match self {
-            | Primitive::Byte
+            | Primitive::UInt8
             | Primitive::Int8
             | Primitive::Int16
             | Primitive::UInt16
@@ -74,7 +74,7 @@ impl Primitive {
 
     pub fn native_size(&self) -> usize {
         match self {
-            | Primitive::Byte => size_of::<u8>(),
+            | Primitive::UInt8 => size_of::<u8>(),
             | Primitive::Int8 => size_of::<i8>(),
             | Primitive::Int16 => size_of::<i16>(),
             | Primitive::UInt16 => size_of::<u16>(),
@@ -93,11 +93,11 @@ impl Primitive {
     pub fn name(&self) -> &str {
         match self {
             Primitive::Boolean => "Boolean",
-            Primitive::Byte => "Byte",
+            Primitive::UInt8 => "UInt8",
             Primitive::Int8 => "Int8",
             Primitive::Int16 => "Int16",
             Primitive::UInt16 => "UInt16",
-            Primitive::Int32 => "Integer",
+            Primitive::Int32 => "Int32",
             Primitive::UInt32 => "UInt32",
             Primitive::Int64 => "Int64",
             Primitive::UInt64 => "UInt64",
