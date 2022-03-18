@@ -73,7 +73,7 @@ impl ExecError {
             }
             ExecError::IllegalDereference { .. } => write!(f, "Illegal dereference"),
             ExecError::IllegalState { .. } => write!(f, "Illegal interpreter state"),
-            ExecError::NativeHeapError(err) => write!(f, "{}", err),
+            ExecError::NativeHeapError(..) => write!(f, "Heap error"),
             ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
             ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
             ExecError::WithDebugContext { err, .. } => err.fmt_pretty(f, pretty),
