@@ -1,18 +1,35 @@
-use pas_typecheck as pas_ty;
-
-use crate::{metadata::*, Function, FunctionDefKey, FunctionDef, FunctionInstance, GlobalRef, IROptions, IdentPath, Instruction, Label, LocalID, Module, RcBoilerplatePair, Ref, Type, Value, EXIT_LABEL, FunctionDeclKey};
-
-use std::fmt;
+pub mod scope;
 
 use self::scope::*;
-use crate::ty::{FieldID, Interface, Struct};
+use crate::{
+    ty::{FieldID, Interface, Struct},
+    metadata::*,
+    Function,
+    FunctionDeclKey,
+    FunctionDef,
+    FunctionDefKey,
+    FunctionInstance,
+    GlobalRef,
+    IROptions,
+    IdentPath,
+    Instruction,
+    Label,
+    LocalID,
+    Module,
+    RcBoilerplatePair,
+    Ref,
+    Type,
+    Value,
+    EXIT_LABEL
+};
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::TypeList;
-use pas_syn::Ident;
-use pas_typecheck::Specializable;
-use std::borrow::Cow;
-
-pub mod scope;
+use pas_syn::{ast::TypeList, Ident};
+use pas_typecheck::{self as pas_ty, Specializable, SYSTEM_UNIT_NAME};
+use
+std::{
+    borrow::Cow,
+    fmt
+};
 
 #[derive(Debug)]
 pub struct Builder<'m> {
@@ -155,7 +172,7 @@ impl<'m> Builder<'m> {
                     .map(|arg| arg.specialize_generic(&current_ty_args, span).unwrap());
 
                 Some(TypeList::new(items, func_ty_args.span().clone()))
-            }
+            },
 
             (Some(func_ty_args), None) => Some(func_ty_args),
 
@@ -171,11 +188,14 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_func_ty(&mut self, func_sig: &pas_ty::FunctionSig) -> TypeDefID {
-        self.module.translate_func_ty(func_sig, self.type_args.as_ref())
+        self.module
+            .translate_func_ty(func_sig, self.type_args.as_ref())
     }
 
     pub fn build_closure_expr(&mut self, func: &pas_ty::ast::AnonymousFunctionDef) -> Ref {
-        let closure = self.module.build_closure_instance(func, self.type_args.clone());
+        let closure = self
+            .module
+            .build_closure_instance(func, self.type_args.clone());
 
         if func.captures.len() == 0 {
             let static_closure = self.module.build_static_closure_instance(closure);
@@ -187,7 +207,12 @@ impl<'m> Builder<'m> {
     }
 
     pub fn build_closure_instance(&mut self, closure: ClosureInstance) -> Ref {
-        let closure_def = self.module.metadata.get_struct_def(closure.closure_id).cloned().unwrap();
+        let closure_def = self
+            .module
+            .metadata
+            .get_struct_def(closure.closure_id)
+            .cloned()
+            .unwrap();
 
         let closure_ptr_ty = closure.closure_ptr_ty();
 
@@ -200,7 +225,12 @@ impl<'m> Builder<'m> {
 
             let func_ty = Type::Function(closure.func_ty_id);
             let func_field_ptr = builder.local_new(func_ty.ptr(), None);
-            builder.field(func_field_ptr.clone(), closure_ref.clone(), closure_ptr_ty.clone(), CLOSURE_PTR_FIELD);
+            builder.field(
+                func_field_ptr.clone(),
+                closure_ref.clone(),
+                closure_ptr_ty.clone(),
+                CLOSURE_PTR_FIELD,
+            );
 
             // initialize closure reference to function
             let func_ref = Ref::Global(GlobalRef::Function(closure.func_instance.id));
@@ -213,7 +243,12 @@ impl<'m> Builder<'m> {
                 }
 
                 let capture_field_ptr = builder.local_temp(field_def.ty.clone().ptr());
-                builder.field(capture_field_ptr.clone(), closure_ref.clone(), closure_ptr_ty.clone(), *field_id);
+                builder.field(
+                    capture_field_ptr.clone(),
+                    closure_ref.clone(),
+                    closure_ptr_ty.clone(),
+                    *field_id,
+                );
 
                 let capture_field = capture_field_ptr.to_deref();
 
@@ -359,7 +394,7 @@ impl<'m> Builder<'m> {
                 let result = self.local_temp(Type::Bool);
                 self.and(result.clone(), a, b);
                 Value::Ref(result)
-            }
+            },
         }
     }
 
@@ -371,7 +406,7 @@ impl<'m> Builder<'m> {
                 let result = self.local_temp(Type::Bool);
                 self.not(result.clone(), other_val);
                 Value::Ref(result)
-            }
+            },
         }
     }
 
@@ -423,19 +458,19 @@ impl<'m> Builder<'m> {
         match (a.into(), b.into()) {
             (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
                 Value::LiteralBool(lit_a < lit_b)
-            }
+            },
             (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
                 Value::LiteralBool(lit_a < lit_b)
-            }
+            },
             (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
                 Value::LiteralBool(lit_a < lit_b)
-            }
+            },
 
             (a, b) => {
                 let result = self.local_temp(Type::Bool);
                 self.lt(result.clone(), a, b);
                 Value::Ref(result)
-            }
+            },
         }
     }
 
@@ -479,19 +514,19 @@ impl<'m> Builder<'m> {
         match (a.into(), b.into()) {
             (Value::LiteralI32(lit_a), Value::LiteralI32(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
-            }
+            },
             (Value::LiteralByte(lit_a), Value::LiteralByte(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
-            }
+            },
             (Value::LiteralF32(lit_a), Value::LiteralF32(lit_b)) => {
                 Value::LiteralBool(lit_a >= lit_b)
-            }
+            },
 
             (a, b) => {
                 let result = self.local_temp(Type::Bool);
                 self.gte(result.clone(), a, b);
                 Value::Ref(result)
-            }
+            },
         }
     }
 
@@ -532,7 +567,12 @@ impl<'m> Builder<'m> {
         })
     }
 
-    pub fn call(&mut self, function: impl Into<Value>, args: impl IntoIterator<Item=Value>, out: Option<Ref>) {
+    pub fn call(
+        &mut self,
+        function: impl Into<Value>,
+        args: impl IntoIterator<Item = Value>,
+        out: Option<Ref>,
+    ) {
         self.append(Instruction::Call {
             function: function.into(),
             args: args.into_iter().collect(),
@@ -540,19 +580,30 @@ impl<'m> Builder<'m> {
         })
     }
 
-    pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
-        let global_name = &Symbol::new("GetMem", ["System"]);
-        let function = self.module.metadata.find_function(&global_name).unwrap();
-        let function_ref = Ref::Global(GlobalRef::Function(function));
+    fn instantiate_system_func(&mut self, name: &str) -> FunctionID {
+        let zero_span = Span::zero("");
+        let ident_path = IdentPath::new(Ident::new(name, zero_span.clone()), [
+            Ident::new(SYSTEM_UNIT_NAME, zero_span),
+        ]);
 
+        let instance = self.module.instantiate_func(FunctionDefKey {
+            decl_key: FunctionDeclKey::Function {
+                name: ident_path,
+            },
+            type_args: None,
+        });
+        instance.id
+    }
+
+    pub fn get_mem(&mut self, count: impl Into<Value>, out: Ref) {
+        let get_mem_func_id = self.instantiate_system_func("GetMem");
+        let function_ref = Ref::Global(GlobalRef::Function(get_mem_func_id));
         self.call(function_ref, [count.into()], Some(out));
     }
 
     pub fn free_mem(&mut self, at: impl Into<Value>) {
-        let global_name = &Symbol::new("FreeMem", ["System"]);
-        let function = self.module.metadata.find_function(&global_name).unwrap();
-        let function_ref = Ref::Global(GlobalRef::Function(function));
-
+        let free_mem_func_id = self.instantiate_system_func("FreeMem");
+        let function_ref = Ref::Global(GlobalRef::Function(free_mem_func_id));
         self.call(function_ref, [at.into()], None);
     }
 
@@ -575,11 +626,17 @@ impl<'m> Builder<'m> {
         self.append(Instruction::VariantTag {
             out: out.into(),
             a: a.into(),
-            of_ty
+            of_ty,
         })
     }
 
-    pub fn variant_data(&mut self, out: impl Into<Ref>, a: impl Into<Ref>, of_ty: Type, tag: usize) {
+    pub fn variant_data(
+        &mut self,
+        out: impl Into<Ref>,
+        a: impl Into<Ref>,
+        of_ty: Type,
+        tag: usize,
+    ) {
         self.append(Instruction::VariantData {
             out: out.into(),
             a: a.into(),
@@ -665,7 +722,8 @@ impl<'m> Builder<'m> {
         assert_ne!(Type::Nothing, ty);
         let id = self.next_local_id();
 
-        self.instructions.push(Instruction::LocalAlloc(id, ty.clone()));
+        self.instructions
+            .push(Instruction::LocalAlloc(id, ty.clone()));
 
         self.current_scope_mut().bind_param(id, name, ty, true);
 
@@ -709,7 +767,7 @@ impl<'m> Builder<'m> {
                 }
 
                 result
-            }
+            },
 
             Type::Variant(id) => {
                 let cases = &self
@@ -759,7 +817,12 @@ impl<'m> Builder<'m> {
                         // incremented once per case
                         self.scope(|builder| {
                             let data_ptr = builder.local_temp(data_ty.clone().ptr());
-                            builder.variant_data(data_ptr.clone(), at.clone(), Type::Variant(*id), tag);
+                            builder.variant_data(
+                                data_ptr.clone(),
+                                at.clone(),
+                                Type::Variant(*id),
+                                tag,
+                            );
 
                             result |= builder.visit_deep(data_ptr.to_deref(), &data_ty, f);
                         });
@@ -775,7 +838,7 @@ impl<'m> Builder<'m> {
                 self.label(break_label);
 
                 result
-            }
+            },
 
             Type::Array { element, dim } => {
                 if !element.is_rc() && !element.is_complex() {
@@ -797,7 +860,7 @@ impl<'m> Builder<'m> {
                 }
 
                 result
-            }
+            },
 
             // field or element
             _ => f(self, ty, at),
@@ -881,18 +944,18 @@ impl<'m> Builder<'m> {
                 });
 
                 true
-            }
+            },
 
             _ if ty.is_rc() => {
                 self.append(Instruction::Retain { at });
 
                 true
-            }
+            },
 
             _ => {
                 // not an RC type, nor a complex type containing RC types
                 false
-            }
+            },
         }
     }
 
@@ -918,18 +981,18 @@ impl<'m> Builder<'m> {
                 });
 
                 true
-            }
+            },
 
             _ if ty.is_rc() => {
                 self.append(Instruction::Release { at });
 
                 true
-            }
+            },
 
             _ => {
                 // not an RC type, nor a complex type containing RC types
                 false
-            }
+            },
         }
     }
 
@@ -1058,21 +1121,21 @@ impl<'m> Builder<'m> {
                     if !by_ref {
                         self.release(Ref::Local(id), &ty);
                     }
-                }
+                },
 
                 Local::New { id, ty, .. } => {
                     self.release(Ref::Local(id), &ty);
-                }
+                },
 
                 Local::Temp { .. } => {
                     // no cleanup required
-                }
+                },
 
                 Local::Return { .. } => {
                     if self.opts().annotate_rc {
                         self.comment("expire return slot");
                     }
-                }
+                },
             }
         }
     }
@@ -1156,8 +1219,14 @@ mod test {
         let break_label = builder.alloc_label();
 
         builder.begin_loop_body_scope(continue_label, break_label);
-        builder.local_new(Type::RcPointer(VirtualTypeID::Any), Some("local1".to_string()));
-        builder.local_new(Type::RcPointer(VirtualTypeID::Any), Some("local2".to_string()));
+        builder.local_new(
+            Type::RcPointer(VirtualTypeID::Any),
+            Some("local1".to_string()),
+        );
+        builder.local_new(
+            Type::RcPointer(VirtualTypeID::Any),
+            Some("local2".to_string()),
+        );
 
         builder.comment("before_break");
         builder.break_loop();

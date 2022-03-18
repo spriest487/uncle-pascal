@@ -364,22 +364,19 @@ impl Class {
                 writeln!(
                     def,
                     r#"
-                void DynArrayAlloc_{struct_id}(struct Rc* arr, int32_t len, struct Rc* copy_from, void* default_val, int32_t default_val_len) {{
-                    if (!copy_from || !copy_from->resource) {{
-                        abort();
-                    }}
-
-                    {res_ty}* copy_arr_res = ({res_ty}*) copy_from->resource;
-                    int32_t copy_len = copy_arr_res->{len_field};
+                void DynArrayAlloc_{struct_id}(void* arr_ptr, int32_t len, void* copy_from_ptr, void* default_val, int32_t default_val_len) {{
+                    {arr_ty}* arr = ({arr_ty}*) arr_ptr;
+                    {arr_ty}* copy_from = ({arr_ty}*) copy_from_ptr;
+                    int32_t copy_len = copy_from->{len_field};
 
                     int32_t data_len = (int32_t) sizeof({el_ty}) * len;
-                    {el_ty}* data = ({el_ty}*) System_GetMem(data_len);
+                    {el_ty}* data = ({el_ty}*) {get_mem}(data_len);
 
                     if (len > 0) {{
                         int32_t copy_count = len < copy_len ? len : copy_len;
                         size_t copy_size = (size_t) copy_count * sizeof({el_ty});
 
-                        memcpy(data, copy_arr_res->{data_field}, copy_size);
+                        memcpy(data, copy_from->{data_field}, copy_size);
                     }}
 
                     for (int32_t i = 0; i < len; i += 1) {{
@@ -392,18 +389,13 @@ impl Class {
                         {retain_el_proc}
                     }}
 
-                    {res_ty}* arr_resource = ({res_ty}*) arr->resource;
-                    arr_resource->{len_field} = len;
-                    arr_resource->{data_field} = data;
+                    arr->{len_field} = len;
+                    arr->{data_field} = data;
                 }}
 
-                int32_t DynArrayLength_{struct_id}(struct Rc* arr) {{
-                    if (!arr || !arr->resource) {{
-                        abort();
-                    }}
-
-                    {res_ty}* arr_resource = ({res_ty}*) arr->resource;
-                    return arr_resource->{len_field};
+                int32_t DynArrayLength_{struct_id}(void* arr_ptr) {{
+                    {arr_ty}* arr = ({arr_ty}*) arr_ptr;
+                    return arr->{len_field};
                 }}
 
                 struct DynArrayClass {class_name} = {{
@@ -413,12 +405,13 @@ impl Class {
                 }};"#,
                     struct_id = self.struct_id,
                     class_name = GlobalName::ClassInstance(self.struct_id),
-                    res_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id)).typename(),
+                    arr_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id)).typename(),
                     el_ty = el_ty.typename(),
                     retain_el_proc = retain_el_proc,
                     class_init = class_init,
                     len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
                     data_field = FieldName::ID(DYNARRAY_PTR_FIELD),
+                    get_mem = FunctionName::GetMem,
                 ).unwrap();
             },
 

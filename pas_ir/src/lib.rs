@@ -88,6 +88,9 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     // pointer to the pointer field of the dynarray object
     let arr_field_ptr = releaser_builder.local_temp(elem_ty.clone().ptr().ptr());
 
+    // u8 pointer type field to cast the array memory into to call FreeMem
+    let arr_mem_ptr = releaser_builder.local_temp(Type::U8.ptr());
+
     // iteration vars
     let counter = releaser_builder.local_temp(Type::I32);
     let at_end = releaser_builder.local_temp(Type::Bool);
@@ -99,22 +102,10 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     let start_loop_label = releaser_builder.alloc_label();
     let end_loop_label = releaser_builder.alloc_label();
 
-
     let after_free = releaser_builder.alloc_label();
 
-    releaser_builder.append(Instruction::Field {
-        out: len_field_ptr.clone(),
-        of_ty: array_struct_ty.clone(),
-        field: DYNARRAY_LEN_FIELD,
-        a: self_arg.clone(),
-    });
-
-    releaser_builder.append(Instruction::Field {
-        out: arr_field_ptr.clone(),
-        of_ty: array_struct_ty.clone(),
-        field: DYNARRAY_PTR_FIELD,
-        a: self_arg,
-    });
+    releaser_builder.field(len_field_ptr.clone(), self_arg.clone(), array_struct_ty.clone(), DYNARRAY_LEN_FIELD);
+    releaser_builder.field(arr_field_ptr.clone(), self_arg, array_struct_ty.clone(), DYNARRAY_PTR_FIELD);
 
     // release every element
     releaser_builder.mov(counter.clone(), Value::LiteralI32(0));
@@ -146,7 +137,8 @@ fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: 
     releaser_builder.eq(zero_elements.clone(), len_field_ptr.clone().to_deref(), Value::LiteralI32(0));
     releaser_builder.jmp_if(after_free, zero_elements);
 
-    releaser_builder.free_mem(arr_field_ptr.clone());
+    releaser_builder.cast(arr_mem_ptr.clone(), arr_field_ptr.clone().to_deref(), Type::U8.ptr());
+    releaser_builder.free_mem(arr_mem_ptr);
 
     releaser_builder.append(Instruction::Label(after_free));
 

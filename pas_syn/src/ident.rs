@@ -222,6 +222,12 @@ impl IdentPath {
             _ => self.parts[0].span.to(&self.parts[self.parts.len() - 1].span),
         }
     }
+
+    pub fn to_string_path(&self) -> Path<String> {
+        Path {
+            parts: self.parts.iter().map(|p| (*p.name).clone()).collect()
+        }
+    }
 }
 
 impl fmt::Display for Path<Ident> {

@@ -1194,7 +1194,9 @@ fn translate_dyn_array_ctor(
             builder.size_of(alloc_size.clone(), elem_ty.clone());
             builder.mul(alloc_size.clone(), alloc_size.clone(), Value::LiteralI32(len));
 
-            builder.get_mem(alloc_size, arr_ptr.clone().to_deref());
+            let elements_mem = builder.local_temp(Type::U8.ptr());
+            builder.get_mem(alloc_size, elements_mem.clone());
+            builder.cast(arr_ptr.clone().to_deref(), elements_mem, elem_ty.clone().ptr());
 
             let el_ptr = builder.local_temp(elem_ty.clone().ptr());
 

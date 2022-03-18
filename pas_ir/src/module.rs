@@ -29,7 +29,7 @@ pub struct Module {
 
 impl Module {
     pub fn new(src_metadata: pas_ty::Context, metadata: Metadata, opts: IROptions) -> Self {
-        Self {
+        let module = Self {
             src_metadata,
             type_cache: Default::default(),
 
@@ -43,7 +43,11 @@ impl Module {
             static_closures: Vec::new(),
 
             metadata,
-        }
+        };
+
+        // module.insert_func()
+
+        module
     }
 
     pub fn module_span(&self) -> &Span {

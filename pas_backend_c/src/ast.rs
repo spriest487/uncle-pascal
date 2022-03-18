@@ -53,7 +53,7 @@ impl Module {
                 string_ty.clone(),
             ),
             (
-                "ByteToStr",
+                "UInt8ToStr",
                 FunctionName::ByteToStr,
                 vec![Type::UChar],
                 string_ty.clone(),
@@ -71,7 +71,7 @@ impl Module {
                 string_ty.clone(),
             ),
             (
-                "IntToStr",
+                "Int32ToStr",
                 FunctionName::IntToStr,
                 vec![Type::Int32],
                 string_ty.clone(),

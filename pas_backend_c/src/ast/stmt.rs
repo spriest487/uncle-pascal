@@ -417,10 +417,8 @@ impl<'a> Builder<'a> {
         let actual_expr = Expr::translate_val(a, self.module);
 
         // get class ptr from rc
-        let actual_class_ptr = Expr::Arrow {
-            base: Box::new(actual_expr),
-            field: FieldName::RcClass,
-        };
+        let rc_ptr = actual_expr.cast(Type::Rc.ptr());
+        let actual_class_ptr = rc_ptr.arrow(FieldName::RcClass);
 
         let is = match class_id {
             metadata::VirtualTypeID::Class(struct_id) => {
