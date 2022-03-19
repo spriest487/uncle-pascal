@@ -191,7 +191,11 @@ pub enum TypecheckError {
     MatchExprNotExhaustive {
         span: Span,
         missing_cases: Vec<Ident>,
-    }
+    },
+
+    InvalidExitWithValue {
+        span: Span,
+    },
 }
 
 impl TypecheckError {
@@ -260,6 +264,7 @@ impl Spanned for TypecheckError {
             TypecheckError::InvalidCast { span, .. } => span,
             TypecheckError::EmptyMatchBlock { span, .. } => span,
             TypecheckError::MatchExprNotExhaustive { span, .. } => span,
+            TypecheckError::InvalidExitWithValue { span, .. } => span,
         }
     }
 }
@@ -356,6 +361,7 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidCast { .. } => "Invalid cast".to_string(),
             TypecheckError::EmptyMatchBlock { .. } => "Empty match block".to_string(),
             TypecheckError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive".to_string(),
+            TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with valuel".to_string(),
         }
     }
 
@@ -731,6 +737,10 @@ impl fmt::Display for TypecheckError {
                     write!(f, ")")?;
                 }
                 Ok(())
+            }
+
+            TypecheckError::InvalidExitWithValue { .. } => {
+                write!(f, "cannot exit with a value in this context")
             }
         }
     }

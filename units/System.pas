@@ -275,6 +275,8 @@ function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): An
 
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
 begin
+    if arr.Length() = len then exit;
+
     // must put this in a mutable local variable to take its address (can't address immutable vars)
     var defaultValVar := defaultVal;
 

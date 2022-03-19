@@ -229,6 +229,11 @@ pub fn typecheck_exit(exit: &ast::Exit<Span>, expect_ty: &Type, ctx: &mut Contex
         },
 
         ast::Exit::WithValue(value, span) => {
+            if ret_ty == Type::Nothing {
+                return Err(TypecheckError::InvalidExitWithValue {
+                    span: exit.span().clone(),
+                });
+            }
             let value = typecheck_expr(value, &ret_ty, ctx)?;
             let value = implicit_conversion(value, &ret_ty, ctx)?;
 
