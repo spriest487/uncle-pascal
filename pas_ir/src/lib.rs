@@ -63,18 +63,190 @@ fn write_instruction_list(
     Ok(())
 }
 
-fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID) {
-    let array_class = VirtualTypeID::Class(struct_id);
-    let array_ref_ty = Type::RcPointer(array_class);
+fn gen_dyn_array_funcs(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID) {
+    let mut alloc_builder = Builder::new(module);
+    gen_dyn_array_alloc_func(&mut alloc_builder, elem_ty, struct_id);
+    let alloc_body = alloc_builder.finish();
 
-    // the thing we're cleaning up is the internal struct, not the rc object itself,
-    // so the parameter type of the releaser will be a pointer to that struct
+    let dyn_array_rtti = module.metadata.get_dynarray_runtime_type(elem_ty)
+        .expect("missing dynarray rtti for type");
+
+    module.insert_func(dyn_array_rtti.alloc, Function::Local(FunctionDef {
+        debug_name: format!("dynarray alloc function for element type {}", elem_ty),
+        params: vec![Type::any(), Type::I32, Type::any(), Type::any()],
+        return_ty: Type::Nothing,
+        body: alloc_body,
+        src_span: module.module_span().clone(),
+    }));
+
+    let mut length_builder = Builder::new(module);
+    gen_dyn_array_length_func(&mut length_builder, struct_id);
+    let length_body = length_builder.finish();
+
+    module.insert_func(dyn_array_rtti.length, Function::Local(FunctionDef {
+        debug_name: format!("dynarray length function for element type {}", elem_ty),
+        params: vec![Type::any()],
+        return_ty: Type::I32,
+        body: length_body,
+        src_span: module.module_span().clone(),
+    }));
+}
+
+fn gen_dyn_array_alloc_func(builder: &mut Builder, elem_ty: &Type, struct_id: TypeDefID) {
+    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
+    let el_ptr_ty = elem_ty.clone().ptr();
+
+    // bind params
+    let arr_arg = LocalID(0);
+    let len_arg = LocalID(1);
+    let src_arr_arg = LocalID(2);
+    let default_val_arg = LocalID(3);
+    builder.bind_param(arr_arg, Type::any(), "arr_ptr", false);
+    builder.bind_param(len_arg, Type::I32, "len", false);
+    builder.bind_param(src_arr_arg, Type::any(), "src_arr_ptr", false);
+    builder.bind_param(default_val_arg, Type::Nothing.ptr(), "default_val", false);
+
+    // retain the refs to the array params
+    builder.retain(Ref::Local(LocalID(0)), &Type::any());
+    builder.retain(Ref::Local(LocalID(2)), &Type::any());
+
+    // cast the array params to this array type
+    let arr = builder.local_temp(array_ref_ty.clone());
+    let src_arr = builder.local_temp(array_ref_ty.clone());
+    builder.cast(arr.clone(), Ref::Local(LocalID(0)), array_ref_ty.clone());
+    builder.cast(src_arr.clone(), Ref::Local(LocalID(2)), array_ref_ty.clone());
+
+    let default_el_ptr = builder.local_temp(el_ptr_ty.clone());
+    builder.cast(default_el_ptr.clone(), default_val_arg, el_ptr_ty.clone());
+
+    // copy_len := copy_from->length
+    let src_len = builder.local_temp(Type::I32);
+    builder.field_val(src_len.clone(), src_arr.clone(), array_ref_ty.clone(), DYNARRAY_LEN_FIELD, Type::I32);
+
+    // el_len := sizeof(elem_ty)
+    let el_len = builder.local_temp(Type::I32);
+    builder.size_of(el_len.clone(), elem_ty.clone());
+
+    // data_len := el_len * len
+    let data_len = builder.local_temp(Type::I32);
+    builder.mul(data_len.clone(), el_len.clone(), len_arg);
+
+    // data = GetMem(data_len) as ^elem_ty
+    let data_mem = builder.local_temp(Type::U8.ptr());
+    builder.get_mem(data_len, data_mem.clone());
+    let data = builder.local_temp(el_ptr_ty.clone());
+    builder.cast(data.clone(), data_mem, el_ptr_ty.clone());
+
+    // iteration counter for initializing elements
+    let counter = builder.local_temp(Type::I32);
+    builder.mov(counter.clone(), Value::LiteralI32(0));
+
+    // loop break flag we use in a couple of places later
+    let done = builder.local_temp(Type::Bool);
+
+    // copy elements from copied array
+    builder.scope(|builder| {
+        let copy_count = builder.local_temp(Type::I32);
+        let copy_count_ok = builder.local_temp(Type::Bool);
+
+        // copy_count := src_len
+        builder.mov(copy_count.clone(), src_len.clone());
+
+        // if there are more elements in the source than we want, copy `len` elements instead
+        // if not (len > copy_count) then copy_count := len
+        let copy_count_ok_label = builder.alloc_label();
+
+        builder.gt(copy_count_ok.clone(), len_arg, copy_count.clone());
+        builder.jmp_if(copy_count_ok_label, copy_count_ok);
+        builder.mov(copy_count.clone(), len_arg);
+        builder.label(copy_count_ok_label);
+
+        // for `copy_count` iterations, copy the value at copy_src[counter] to copy_dst[counter]
+        let copy_loop_label = builder.alloc_label();
+        let copy_break_label = builder.alloc_label();
+
+        // done := counter = copy_count
+        // if done then break
+        builder.eq(done.clone(), counter.clone(), copy_count.clone());
+        builder.jmp_if(copy_break_label, done.clone());
+
+        builder.label(copy_loop_label);
+        builder.scope(|builder| {
+            let copy_dst = builder.local_temp(el_ptr_ty.clone());
+            let copy_src = builder.local_temp(el_ptr_ty.clone());
+
+            // copy_dst := data + counter
+            builder.add(copy_dst.clone(), data.clone(), counter.clone());
+
+            // copy_src := src_arr->ptr + counter
+            builder.field_val(copy_src.clone(), src_arr.clone(), array_ref_ty.clone(), DYNARRAY_PTR_FIELD, el_ptr_ty.clone());
+            builder.add(copy_src.clone(), copy_src.clone(), counter.clone());
+
+            // copy_dst^ := copy_src^
+            builder.mov(copy_dst.clone().to_deref(), copy_src.to_deref());
+
+            builder.retain(copy_dst, elem_ty);
+        });
+
+        // counter += 1
+        builder.add(counter.clone(), counter.clone(), Value::LiteralI32(1));
+
+        builder.jmp(copy_loop_label);
+        builder.label(copy_break_label);
+    });
+
+    // while counter < len, default init next element
+    let init_break_label = builder.alloc_label();
+    let init_loop_label = builder.alloc_label();
+
+    builder.label(init_loop_label);
+
+    // done := counter = len
+    // if done then break
+    builder.eq(done.clone(), counter.clone(), len_arg);
+    builder.jmp_if(init_break_label, done);
+
+    builder.scope(|builder| {
+        // data[counter] := default_val_ptr^
+        let el_ptr = builder.local_temp(el_ptr_ty.clone());
+        builder.add(el_ptr.clone(), data.clone(), counter.clone());
+        builder.mov(el_ptr.to_deref(), default_el_ptr.clone().to_deref());
+    });
+
+    // counter += 1
+    builder.add(counter.clone(), counter.clone(), Value::LiteralI32(1));
+    builder.jmp(init_loop_label);
+
+    builder.label(init_break_label);
+
+    builder.set_field(arr.clone(), array_ref_ty.clone(), DYNARRAY_LEN_FIELD, Type::I32, len_arg);
+    builder.set_field(arr, array_ref_ty, DYNARRAY_PTR_FIELD, el_ptr_ty, data);
+}
+
+fn gen_dyn_array_length_func(builder: &mut Builder, struct_id: TypeDefID) {
+    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
+
+    // bind and retain params
+    builder.bind_return(Type::I32);
+    builder.bind_param(LocalID(1), Type::any(), "arr_ptr", false);
+    builder.retain(Ref::Local(LocalID(1)), &Type::any());
+
+    // cast pointer down to this array type
+    let arr = builder.local_temp(array_ref_ty.clone());
+    builder.cast(arr.clone(), Ref::Local(LocalID(1)), array_ref_ty.clone());
+
+    // evaluate length field into return ref
+    builder.field_val(RETURN_REF, arr, array_ref_ty, DYNARRAY_LEN_FIELD, Type::I32);
+}
+
+fn gen_dyn_array_rc_boilerplate(module: &mut Module, elem_ty: &Type, struct_id: TypeDefID) {
+    let array_ref_ty = Type::RcPointer(VirtualTypeID::Class(struct_id));
     let array_struct_ty = Type::Struct(struct_id);
 
     let rc_boilerplate = module
         .metadata
-        .find_rc_boilerplate(&array_struct_ty)
-        .expect("rc boilerplate function ids for dynarray inner struct must exist");
+        .get_runtime_type(&array_struct_ty)
+        .expect("rtti function ids for dynarray inner struct must exist");
 
     let mut releaser_builder = Builder::new(module);
 
@@ -254,6 +426,7 @@ pub fn translate(module: &pas_ty::Module, opts: IROptions) -> Module {
     ir_module.gen_iface_impls();
     for (elem_ty, struct_id) in ir_module.metadata.dyn_array_structs().clone() {
         gen_dyn_array_rc_boilerplate(&mut ir_module, &elem_ty, struct_id);
+        gen_dyn_array_funcs(&mut ir_module, &elem_ty, struct_id);
     }
     for class_ty in ir_module.class_types().cloned().collect::<Vec<_>>() {
         gen_class_rc_boilerplate(&mut ir_module, &class_ty);

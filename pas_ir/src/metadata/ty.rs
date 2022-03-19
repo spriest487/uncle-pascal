@@ -170,9 +170,6 @@ pub enum Type {
     /// no type (used for raw pointers like void*)
     Nothing,
 
-    // unknown virtual type
-    Any,
-
     Pointer(Rc<Type>),
     Struct(TypeDefID),
     Variant(TypeDefID),
@@ -206,6 +203,10 @@ pub enum Type {
 impl Type {
     pub fn ptr(self) -> Self {
         Type::Pointer(Rc::new(self))
+    }
+
+    pub fn any() -> Self {
+        Type::RcPointer(VirtualTypeID::Any)
     }
 
     pub const fn rc_ptr_to(class: VirtualTypeID) -> Self {
@@ -281,7 +282,6 @@ impl fmt::Display for Type {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Type::Nothing => write!(f, "none"),
-            Type::Any => write!(f, "any"),
             Type::F32 => write!(f, "f32"),
             Type::Bool => write!(f, "bool"),
             Type::U8 => write!(f, "u8"),

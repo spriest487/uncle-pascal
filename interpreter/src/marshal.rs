@@ -644,7 +644,7 @@ impl Marshaller {
             },
 
             Type::RcPointer(class_id) => {
-                let raw_ptr_val = self.unmarshal_ptr(Type::Any, in_bytes)?;
+                let raw_ptr_val = self.unmarshal_ptr(Type::Nothing, in_bytes)?;
 
                 // null rcpointers can exist - e.g. uninitialized stack values
                 let ptr_ty = if raw_ptr_val.value.is_null() {
@@ -653,7 +653,7 @@ impl Marshaller {
                     if let VirtualTypeID::Class(type_id) = class_id {
                         Type::Struct(*type_id)
                     } else {
-                        Type::Any
+                        Type::Nothing
                     }
                 } else {
                     // the struct ID is the first field so we can just access it directly here
@@ -714,15 +714,6 @@ impl Marshaller {
                     byte_count: struct_val.byte_count,
                 }
             },
-
-            Type::Any => {
-                // peek the type ID
-                let type_id = unmarshal_from_ne_bytes(in_bytes, usize::from_ne_bytes)?;
-
-                // read the real struct type from the original offset
-                self.unmarshal_struct(TypeDefID(type_id.value), in_bytes)?
-                    .map(|s| DynValue::Structure(Box::new(s)))
-            }
 
             Type::Variant(variant_id) => {
                 let variant_val = self.unmarshal_variant(*variant_id, in_bytes)?;

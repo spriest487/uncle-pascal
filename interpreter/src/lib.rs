@@ -64,8 +64,7 @@ pub struct Interpreter {
 
     marshaller: Rc<Marshaller>,
 
-    trace_rc: bool,
-    trace_ir: bool,
+    opts: InterpreterOpts,
 
     debug_ctx_stack: Vec<Span>,
 
@@ -73,7 +72,7 @@ pub struct Interpreter {
 }
 
 impl Interpreter {
-    pub fn new(opts: &InterpreterOpts) -> Self {
+    pub fn new(opts: InterpreterOpts) -> Self {
         let globals = HashMap::new();
 
         let marshaller = Rc::new(Marshaller::new());
@@ -89,8 +88,7 @@ impl Interpreter {
 
             marshaller,
 
-            trace_rc: opts.trace_rc,
-            trace_ir: opts.trace_ir,
+            opts,
 
             debug_ctx_stack: Vec::new(),
 
@@ -101,15 +99,19 @@ impl Interpreter {
     fn add_debug_ctx(&self, err: ExecError) -> ExecError {
         match err {
             err @ ExecError::WithDebugContext { .. } => err,
-            err => match self.debug_ctx_stack.last() {
-                Some(ctx) => ExecError::WithDebugContext {
-                    err: Box::new(err),
-                    span: ctx.clone(),
-                },
-
-                None => err,
+            err => ExecError::WithDebugContext {
+                err: Box::new(err),
+                span: self.debug_ctx_stack.last().cloned(),
+                stack_trace: self.stack_trace(),
             },
         }
+    }
+
+    fn stack_trace(&self) -> Vec<String> {
+        self.stack.iter()
+            .rev()
+            .map(|s| s.name().to_string())
+            .collect()
     }
 
     pub fn marshaller(&self) -> &Marshaller {
@@ -157,7 +159,7 @@ impl Interpreter {
 
             Type::RcPointer(class_id) => DynValue::Pointer(Pointer::null(match class_id {
                 VirtualTypeID::Class(struct_id) => Type::Struct(*struct_id),
-                VirtualTypeID::Closure(..) | VirtualTypeID::Any | VirtualTypeID::Interface(..) => Type::Any,
+                VirtualTypeID::Closure(..) | VirtualTypeID::Any | VirtualTypeID::Interface(..) => Type::Nothing,
             })),
 
             Type::Pointer(target) => DynValue::Pointer(Pointer::null((**target).clone())),
@@ -487,27 +489,27 @@ impl Interpreter {
                 .func_desc(dispose_func_id)
                 .unwrap_or_else(|| dispose_func_id.to_string());
 
-            if self.trace_rc {
+            if self.opts.trace_rc {
                 eprintln!("rc: invoking {}", dispose_desc);
             }
 
             self.call(dispose_func_id, &[val.clone()], None)?;
-        } else if self.trace_rc {
+        } else if self.opts.trace_rc {
             eprintln!("rc: no disposer for {}", self.metadata.pretty_ty_name(ty));
         }
 
         Ok(())
     }
 
-    fn find_rc_boilerplate(&self, resource_ty: &Type) -> ExecResult<RcBoilerplatePair> {
+    fn find_rc_boilerplate(&self, resource_ty: &Type) -> ExecResult<RuntimeType> {
         self
             .metadata
-            .find_rc_boilerplate(&resource_ty)
+            .get_runtime_type(&resource_ty)
             .ok_or_else(|| {
                 let name = self.metadata.pretty_ty_name(&resource_ty);
                 let funcs = self
                     .metadata
-                    .rc_boilerplate_funcs()
+                    .runtime_types()
                     .map(|(ty, funcs)| {
                         format!(
                             "  {}: release={}, retain={}",
@@ -560,7 +562,7 @@ impl Interpreter {
 
         // are we releasing the last strong ref here?
         let disposed = if struct_rc.strong_count == 1 {
-            if self.trace_rc {
+            if self.opts.trace_rc {
                 println!(
                     "rc: no more strong refs to {}, disposing {}",
                     ptr.to_pretty_string(&self.metadata),
@@ -579,7 +581,7 @@ impl Interpreter {
 
             // and finally deallocate the object
             if struct_rc.weak_count == 0 {
-                if self.trace_rc {
+                if self.opts.trace_rc {
                     eprintln!(
                         "rc: free @ {} of {}",
                         ptr.to_pretty_string(&self.metadata),
@@ -600,7 +602,7 @@ impl Interpreter {
         if struct_rc.strong_count > 0 || struct_rc.weak_count > 0 {
             struct_rc.strong_count -= 1;
 
-            if self.trace_rc {
+            if self.opts.trace_rc {
                 eprintln!(
                     "rc: release @ {} ({}+{} more refs to {})",
                     ptr.to_pretty_string(&self.metadata),
@@ -628,7 +630,7 @@ impl Interpreter {
                         let struct_rc = struct_val.rc.as_mut().unwrap();
                         struct_rc.strong_count += 1;
 
-                        if self.trace_rc {
+                        if self.opts.trace_rc {
                             eprintln!("rc: retain @ {} (ref count: {})", ptr.to_pretty_string(&self.metadata), struct_rc.strong_count);
                         }
                     }
@@ -702,13 +704,17 @@ impl Interpreter {
         }
     }
 
+    pub fn opts(&self) -> &InterpreterOpts {
+        &self.opts
+    }
+
     pub fn execute(&mut self, instructions: &[Instruction]) -> ExecResult<()> {
         let labels = find_labels(instructions);
         let line_count_width = instructions.len().to_string().len();
 
         let mut pc = 0;
         while pc < instructions.len() {
-            if self.trace_ir {
+            if self.opts.trace_ir {
                 let mut instruction_str = String::new();
                 self.metadata
                     .format_instruction(&instructions[pc], &mut instruction_str)
@@ -1535,18 +1541,16 @@ impl Interpreter {
             ("WriteLn", builtin::write_ln, Type::Nothing, vec![STRING_TYPE]),
             ("ReadLn", builtin::read_ln, Type::string_ptr(), vec![]),
             ("GetMem", builtin::get_mem, Type::U8.ptr(), vec![Type::I32]),
-            ("FreeMem", builtin::free_mem, Type::Nothing, vec![Type::Nothing.ptr()]),
-            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::RcPointer(VirtualTypeID::Any)]),
+            ("FreeMem", builtin::free_mem, Type::Nothing, vec![Type::U8.ptr()]),
+            ("ArrayLengthInternal", builtin::array_length, Type::I32, vec![Type::any()]),
             (
-                //
                 "ArraySetLengthInternal",
                 builtin::set_length,
-                Type::RcPointer(VirtualTypeID::Any),
+                Type::any(),
                 vec![
-                    Type::RcPointer(VirtualTypeID::Any),
+                    Type::any(),
                     Type::I32,
-                    Type::Nothing.ptr(),
-                    Type::I32,
+                    Type::any(),
                 ]
             ),
         ];
@@ -1580,12 +1584,7 @@ impl Interpreter {
                 }
             };
 
-            def_result.map_err(|err| {
-                match type_def.src_span() {
-                    Some(src_span) => ExecError::from(err).with_debug_ctx(src_span.clone()),
-                    None => ExecError::from(err),
-                }
-            })?;
+            def_result.map_err(|err| self.add_debug_ctx(err.into()))?;
         }
 
         for (func_id, ir_func) in &module.functions {
@@ -1603,8 +1602,10 @@ impl Interpreter {
 
                 IRFunction::External(external_ref) => {
                     let ffi_func = Function::new_ffi(external_ref, &mut marshaller, &self.metadata)
-                        .map_err(|err| {
-                            ExecError::from(err).with_debug_ctx(external_ref.src_span.clone())
+                        .map_err(|err| ExecError::WithDebugContext {
+                            err: Box::new(ExecError::MarshalError(err)),
+                            span: Some(external_ref.src_span.clone()),
+                            stack_trace: self.stack_trace(),
                         })?;
                     Some(ffi_func)
                 }
@@ -1630,7 +1631,8 @@ impl Interpreter {
             let str_val = self.create_string(literal)
                 .map_err(|err| ExecError::WithDebugContext {
                     err: err.into(),
-                    span: module.module_span().clone(),
+                    span: Some(module.module_span().clone()),
+                    stack_trace: self.stack_trace(),
                 })?;
 
             let str_ref = GlobalRef::StringLiteral(id);

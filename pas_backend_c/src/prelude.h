@@ -39,7 +39,7 @@ struct Rc {
 // forward decl of string type
 STRING_STRUCT;
 
-typedef void (*DynArrayAlloc)(void* arr, int32_t len, void* copy_from, void* default_val, int32_t default_val_len);
+typedef void (*DynArrayAlloc)(void* arr, int32_t len, void* copy_from, void* default_val);
 typedef int32_t (*DynArrayLength)(void* arr);
 
 struct DynArrayClass {
@@ -218,7 +218,7 @@ static void System_Write(STRING_STRUCT* str);
 static void System_WriteLn(STRING_STRUCT* str);
 static STRING_STRUCT* System_ReadLn(void);
 static int32_t System_ArrayLengthInternal(void* arr);
-static void* System_ArraySetLengthInternal(void* arr, int32_t new_len, void* default_val, int32_t default_val_len);
+static void* System_ArraySetLengthInternal(void* arr, int32_t new_len, void* default_val);
 
 // runtime start/stop
 

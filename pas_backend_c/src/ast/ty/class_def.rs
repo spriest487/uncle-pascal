@@ -1,11 +1,11 @@
 use crate::ast::{
-    Expr, FieldName, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement, Type,
+    Expr, FunctionDecl, FunctionDef, FunctionName, GlobalName, Module, Statement, Type,
     TypeDefName,
 };
 use pas_ir::{
     metadata::{
-        self, FunctionID, InterfaceID, MethodID, RcBoilerplatePair, TypeDefID, VirtualTypeID,
-        DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID, DYNARRAY_LEN_FIELD, DYNARRAY_PTR_FIELD,
+        self, FunctionID, InterfaceID, MethodID, TypeDefID, VirtualTypeID,
+        DISPOSABLE_DISPOSE_INDEX, DISPOSABLE_ID,
     },
     LocalID,
 };
@@ -13,6 +13,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
 };
+use pas_ir::metadata::DynArrayRuntimeType;
 
 #[derive(Clone, Debug)]
 struct MethodImplFunc {
@@ -108,13 +109,6 @@ pub struct InterfaceImpl {
 }
 
 #[derive(Clone, Debug)]
-struct DynArrayTypeInfo {
-    el_ty: Type,
-    el_rc: bool,
-    el_type_info: Option<RcBoilerplatePair>,
-}
-
-#[derive(Clone, Debug)]
 pub struct Class {
     struct_id: TypeDefID,
     impls: HashMap<InterfaceID, InterfaceImpl>,
@@ -123,7 +117,7 @@ pub struct Class {
     cleanup_func: FunctionName,
 
     // if this class is a dyn array, the RTTI for it
-    dyn_array_type_info: Option<DynArrayTypeInfo>,
+    dyn_array_type_info: Option<DynArrayRuntimeType>,
 }
 
 impl Class {
@@ -176,7 +170,7 @@ impl Class {
 
         let resource_ty = metadata::Type::Struct(struct_id);
         let cleanup_func = metadata
-            .find_rc_boilerplate(&resource_ty)
+            .get_runtime_type(&resource_ty)
             .map(|funcs| FunctionName::ID(funcs.release))
             .unwrap_or_else(|| {
                 panic!(
@@ -190,15 +184,7 @@ impl Class {
             .iter()
             .filter_map(|(el_ty, arr_struct_id)| {
                 if *arr_struct_id == struct_id {
-                    let el_rc = el_ty.is_rc();
-                    let el_type_info = metadata.find_rc_boilerplate(&el_ty);
-                    let el_ty = Type::from_metadata(el_ty, module);
-
-                    Some(DynArrayTypeInfo {
-                        el_type_info,
-                        el_ty,
-                        el_rc,
-                    })
+                    metadata.get_dynarray_runtime_type(el_ty)
                 } else {
                     None
                 }
@@ -346,72 +332,18 @@ impl Class {
 
         match &self.dyn_array_type_info {
             Some(dyn_array_ty_info) => {
-                let el_ty = dyn_array_ty_info.el_ty.clone();
-
-                let el_retain_func = dyn_array_ty_info
-                    .el_type_info
-                    .as_ref()
-                    .map(|type_info| FunctionName::ID(type_info.retain));
-
-                let retain_el_proc = if dyn_array_ty_info.el_rc {
-                    format!("{}(*el_ptr);", FunctionName::RcRetain)
-                } else if let Some(el_retain_func) = el_retain_func {
-                    format!("{}(el_ptr);", el_retain_func)
-                } else {
-                    String::new()
-                };
-
                 writeln!(
                     def,
                     r#"
-                void DynArrayAlloc_{struct_id}(void* arr_ptr, int32_t len, void* copy_from_ptr, void* default_val, int32_t default_val_len) {{
-                    {arr_ty}* arr = ({arr_ty}*) arr_ptr;
-                    {arr_ty}* copy_from = ({arr_ty}*) copy_from_ptr;
-                    int32_t copy_len = copy_from->{len_field};
-
-                    int32_t data_len = (int32_t) sizeof({el_ty}) * len;
-                    {el_ty}* data = ({el_ty}*) {get_mem}(data_len);
-
-                    if (len > 0) {{
-                        int32_t copy_count = len < copy_len ? len : copy_len;
-                        size_t copy_size = (size_t) copy_count * sizeof({el_ty});
-
-                        memcpy(data, copy_from->{data_field}, copy_size);
-                    }}
-
-                    for (int32_t i = 0; i < len; i += 1) {{
-                        {el_ty}* el_ptr = &data[i];
-
-                        if (i >= copy_len) {{
-                            memcpy(el_ptr, default_val, default_val_len);
-                        }}
-
-                        {retain_el_proc}
-                    }}
-
-                    arr->{len_field} = len;
-                    arr->{data_field} = data;
-                }}
-
-                int32_t DynArrayLength_{struct_id}(void* arr_ptr) {{
-                    {arr_ty}* arr = ({arr_ty}*) arr_ptr;
-                    return arr->{len_field};
-                }}
-
                 struct DynArrayClass {class_name} = {{
                     .base = {class_init},
-                    .alloc = DynArrayAlloc_{struct_id},
-                    .length = DynArrayLength_{struct_id},
+                    .alloc = {alloc_func},
+                    .length = {len_func},
                 }};"#,
-                    struct_id = self.struct_id,
                     class_name = GlobalName::ClassInstance(self.struct_id),
-                    arr_ty = Type::DefinedType(TypeDefName::Struct(self.struct_id)).typename(),
-                    el_ty = el_ty.typename(),
-                    retain_el_proc = retain_el_proc,
                     class_init = class_init,
-                    len_field = FieldName::ID(DYNARRAY_LEN_FIELD),
-                    data_field = FieldName::ID(DYNARRAY_PTR_FIELD),
-                    get_mem = FunctionName::GetMem,
+                    alloc_func = FunctionName::ID(dyn_array_ty_info.alloc),
+                    len_func = FunctionName::ID(dyn_array_ty_info.length),
                 ).unwrap();
             },
 

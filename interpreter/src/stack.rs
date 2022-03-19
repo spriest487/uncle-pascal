@@ -150,6 +150,10 @@ impl StackFrame {
         Ok(start_offset)
     }
 
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     pub fn get_local_ptr(&self, id: LocalID) -> StackResult<Pointer> {
         match self.locals.get(id.0) {
             Some(alloc) => {

@@ -140,7 +140,7 @@ impl Module {
             (
                 "ArraySetLengthInternal",
                 FunctionName::ArraySetLengthInternal,
-                vec![Type::Void.ptr(), Type::Int32, Type::Void.ptr(), Type::Int32],
+                vec![Type::Void.ptr(), Type::Int32, Type::Void.ptr()],
                 Type::Void.ptr(),
             ),
         ];

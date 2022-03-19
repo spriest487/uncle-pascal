@@ -271,18 +271,17 @@ type Displayable = interface
     function ToString(self: Self): String;
 end;
 
-function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer; defaultValLen: Integer): Any; external 'rt';
+function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): Any; external 'rt';
 
 function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
 begin
     // must put this in a mutable local variable to take its address (can't address immutable vars)
     var defaultValVar := defaultVal;
-    let defaultValSize := sizeof(T);
 
     unsafe begin
         let defaultValPtr: Pointer := @defaultValVar;
 
-        arr := if ArraySetLengthInternal(arr, len, defaultValPtr, defaultValSize) is array of T newArr
+        arr := if ArraySetLengthInternal(arr, len, defaultValPtr) is array of T newArr
             then newArr
             else raise 'unreachable';
     end;

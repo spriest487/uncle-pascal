@@ -31,7 +31,7 @@ static int32_t System_StrToInt(STRING_STRUCT* str) {
 #define INT_TO_STR_IMPL(FuncName, DataType, FormatString, BufSize) \
 static STRING_STRUCT* FuncName(DataType i) { \
     char buf[BufSize]; \
-    sprintf(buf, "%" FormatString, i); \
+    sprintf_s(buf, BufSize, "%" FormatString, i); \
     \
     size_t len = strlen(buf); \
     unsigned char* chars = Alloc(len); \
@@ -109,8 +109,7 @@ static int32_t System_ArrayLengthInternal(void* arr) {
 static void* System_ArraySetLengthInternal(
     void* arr,
     int32_t new_len,
-    void* default_val,
-    int32_t default_val_size
+    void* default_val
 ) {
     struct Rc* arr_rc = (struct Rc*) arr;
     if (!arr_rc) {
@@ -120,7 +119,7 @@ static void* System_ArraySetLengthInternal(
     struct DynArrayClass* array_class = (struct DynArrayClass*) arr_rc->class;
 
     void* new_arr = RcAlloc(arr_rc->class);
-    array_class->alloc(new_arr, new_len, arr_rc, default_val, default_val_size);
+    array_class->alloc(new_arr, new_len, arr_rc, default_val);
 
     return new_arr;
 }
@@ -128,7 +127,7 @@ static void* System_ArraySetLengthInternal(
 static void* LoadSymbol(const char* src, const char* sym) {
     void* sym_ptr = NULL;
 #if _WIN32
-    HINSTANCE lib = LoadLibrary(src);
+    HINSTANCE lib = LoadLibraryA(src);
     if (lib) {
         sym_ptr = GetProcAddress(lib, sym);
     }

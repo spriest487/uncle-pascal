@@ -1,21 +1,25 @@
-use std::{collections::hash_map::HashMap, fmt};
-
-use crate::dep_sort::sort_defs;
-use crate::formatter::InstructionFormatter;
-use linked_hash_map::LinkedHashMap;
-use pas_syn as syn;
-use pas_syn::{Ident, IdentPath};
-use pas_typecheck as pas_ty;
-use std::borrow::Cow;
-use std::rc::Rc;
-
 pub mod name_path;
 pub mod symbol;
 pub mod ty;
 
+use crate::dep_sort::sort_defs;
+use linked_hash_map::LinkedHashMap;
+use pas_syn::{
+    self as syn,
+    Ident,
+    IdentPath
+};
+use pas_typecheck as pas_ty;
+use std::{
+    borrow::Cow,
+    collections::hash_map::HashMap,
+    fmt,
+    rc::Rc
+};
 pub use name_path::*;
 pub use symbol::*;
 pub use ty::*;
+use crate::InstructionFormatter;
 
 #[derive(Eq, PartialEq, Hash, Clone, Copy, Debug, Ord, PartialOrd)]
 pub struct StringID(pub usize);
@@ -94,9 +98,15 @@ impl InterfaceDecl {
 }
 
 #[derive(Clone, Debug)]
-pub struct RcBoilerplatePair {
+pub struct RuntimeType {
     pub release: FunctionID,
     pub retain: FunctionID,
+}
+
+#[derive(Clone, Debug)]
+pub struct DynArrayRuntimeType {
+    pub alloc: FunctionID,
+    pub length: FunctionID,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -113,7 +123,8 @@ pub struct Metadata {
 
     function_types_by_sig: HashMap<pas_ty::FunctionSig, TypeDefID>,
 
-    rc_boilerplate_funcs: HashMap<Type, RcBoilerplatePair>,
+    runtime_types: HashMap<Type, RuntimeType>,
+    dyn_array_runtime_types: HashMap<Type, DynArrayRuntimeType>,
 }
 
 impl Metadata {
@@ -179,22 +190,29 @@ impl Metadata {
             self.functions.insert(*id, func_decl.clone());
         }
 
-        for (ty, funcs) in &other.rc_boilerplate_funcs {
-            if self.rc_boilerplate_funcs.contains_key(ty) {
+        for (ty, funcs) in &other.runtime_types {
+            if self.runtime_types.contains_key(ty) {
                 panic!("duplicate rc boilerplate definitions for type {}", ty);
             }
 
-            self.rc_boilerplate_funcs.insert(ty.clone(), funcs.clone());
+            self.runtime_types.insert(ty.clone(), funcs.clone());
+        }
+
+        for (sig, ty_id) in &other.function_types_by_sig {
+            if !self.function_types_by_sig.contains_key(sig) {
+                self.function_types_by_sig.insert(sig.clone(), *ty_id);
+            }
         }
 
         for (el_ty, struct_id) in &other.dyn_array_structs {
-            if self.dyn_array_structs.contains_key(el_ty) {
-                panic!(
-                    "duplicate dyn array type definition for element type {}",
-                    el_ty
-                );
+            if !self.dyn_array_structs.contains_key(el_ty) {
+                self.dyn_array_structs.insert(el_ty.clone(), *struct_id);
             }
-            self.dyn_array_structs.insert(el_ty.clone(), *struct_id);
+        }
+        for (el_ty, runtime_ty) in &other.dyn_array_runtime_types {
+            if !self.dyn_array_runtime_types.contains_key(el_ty) {
+                self.dyn_array_runtime_types.insert(el_ty.clone(), runtime_ty.clone());
+            }
         }
     }
 
@@ -292,27 +310,45 @@ impl Metadata {
         id
     }
 
-    pub fn declare_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
-        if self.rc_boilerplate_funcs.contains_key(ty) {
+    pub fn declare_runtime_type(&mut self, ty: &Type) -> RuntimeType {
+        if self.runtime_types.contains_key(ty) {
             panic!("duplicate rc boilerplate declaration for type {}", ty);
         }
 
-        let pair = RcBoilerplatePair {
+        let pair = RuntimeType {
             retain: self.insert_func(None),
             release: self.insert_func(None),
         };
 
-        self.rc_boilerplate_funcs.insert(ty.clone(), pair.clone());
+        self.runtime_types.insert(ty.clone(), pair.clone());
 
         pair
     }
 
-    pub fn find_rc_boilerplate(&self, ty: &Type) -> Option<RcBoilerplatePair> {
-        self.rc_boilerplate_funcs.get(ty).cloned()
+    pub fn declare_dynarray_runtime_type(&mut self, element_ty: &Type) -> DynArrayRuntimeType {
+        if self.dyn_array_runtime_types.contains_key(element_ty) {
+            panic!("duplicate rc boilerplate declaration for type {}", element_ty);
+        }
+
+        let runtime_type = DynArrayRuntimeType {
+            alloc: self.insert_func(None),
+            length: self.insert_func(None),
+        };
+
+        self.dyn_array_runtime_types.insert(element_ty.clone(), runtime_type.clone());
+        runtime_type
     }
 
-    pub fn rc_boilerplate_funcs(&self) -> impl Iterator<Item = (&Type, &RcBoilerplatePair)> {
-        self.rc_boilerplate_funcs.iter()
+    pub fn get_runtime_type(&self, ty: &Type) -> Option<RuntimeType> {
+        self.runtime_types.get(ty).cloned()
+    }
+
+    pub fn get_dynarray_runtime_type(&self, elem_ty: &Type) -> Option<DynArrayRuntimeType> {
+        self.dyn_array_runtime_types.get(elem_ty).cloned()
+    }
+
+    pub fn runtime_types(&self) -> impl Iterator<Item = (&Type, &RuntimeType)> {
+        self.runtime_types.iter()
     }
 
     pub fn find_function(&self, name: &Symbol) -> Option<FunctionID> {
@@ -788,12 +824,13 @@ impl Metadata {
             })),
         );
 
-        self.dyn_array_structs.insert(element, struct_id);
+        self.dyn_array_structs.insert(element.clone(), struct_id);
 
         // the rc boilerplate impls for a dynarray should be empty
         // dyn array structs are heap-allocated and don't need structural ref-counting
         // (but they do need custom finalization to clean up references they hold)
-        self.declare_rc_boilerplate(&Type::Struct(struct_id));
+        self.declare_runtime_type(&Type::Struct(struct_id));
+        self.declare_dynarray_runtime_type(&element);
 
         // we know it will have a disposer impl (and trust that the module
         // will generate the code for it if we give it an ID here)

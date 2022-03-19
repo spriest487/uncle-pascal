@@ -27,7 +27,8 @@ pub enum ExecError {
     ZeroLengthAllocation,
     WithDebugContext {
         err: Box<ExecError>,
-        span: Span,
+        span: Option<Span>,
+        stack_trace: Vec<String>,
     }
 }
 
@@ -53,10 +54,18 @@ impl ExecError {
         }
     }
 
-    pub fn with_debug_ctx(self, context: Span) -> Self {
+    pub fn with_debug_ctx(self, context: Span, stack_frames: Vec<String>) -> Self {
         ExecError::WithDebugContext {
             err: Box::new(self),
-            span: context,
+            span: Some(context),
+            stack_trace: stack_frames,
+        }
+    }
+
+    fn label_span(&self) -> Option<&Span> {
+        match self {
+            ExecError::WithDebugContext { span, .. } => span.as_ref(),
+            _ => None,
         }
     }
 
@@ -76,8 +85,22 @@ impl ExecError {
             ExecError::NativeHeapError(..) => write!(f, "Heap error"),
             ExecError::ZeroLengthAllocation => write!(f, "Dynamic allocation with length 0"),
             ExecError::IllegalInstruction(..) => write!(f, "Illegal instruction"),
-            ExecError::WithDebugContext { err, .. } => err.fmt_pretty(f, pretty),
+            ExecError::WithDebugContext { err, stack_trace, .. } => {
+                err.fmt_pretty(f, pretty)?;
+                for stack_trace_line in stack_trace {
+                    writeln!(f)?;
+                    write!(f, "\tat {}", stack_trace_line)?;
+                }
+                Ok(())
+            },
+        }?;
+
+        // if no spanned label will be shown, output the label text as part of the main message
+        if let (Some(label_text), None) = (self.label_text(), self.label_span()) {
+            write!(f, ": {}", label_text)?;
         }
+
+        Ok(())
     }
 }
 
@@ -90,7 +113,7 @@ impl fmt::Display for ExecError {
 impl DiagnosticOutput for ExecError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            ExecError::WithDebugContext { err, span } => {
+            ExecError::WithDebugContext { err, span: Some(span), .. } => {
                 let label_text = err.label_text();
 
                 Some(DiagnosticLabel {

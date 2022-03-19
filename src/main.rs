@@ -290,7 +290,7 @@ fn handle_output(output: CompileOutput, args: &Args) -> Result<(), CompileError>
                     trace_ir: args.trace_ir,
                 };
 
-                let mut interpreter = Interpreter::new(&interpret_opts);
+                let mut interpreter = Interpreter::new(interpret_opts);
                 interpreter.load_module(&module)?;
                 interpreter.shutdown()?;
 

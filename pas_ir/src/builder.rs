@@ -16,7 +16,7 @@ use crate::{
     Label,
     LocalID,
     Module,
-    RcBoilerplatePair,
+    RuntimeType,
     Ref,
     Type,
     Value,
@@ -552,6 +552,38 @@ impl<'m> Builder<'m> {
         })
     }
 
+    pub fn field_val(
+        &mut self,
+        out: impl Into<Ref>,
+        base: impl Into<Ref>,
+        base_ty: impl Into<Type>,
+        field: FieldID,
+        field_ty: Type,
+    ) {
+        self.scope(|builder| {
+            let field_ptr = builder.local_temp(field_ty.ptr());
+            builder.field(field_ptr.clone(), base, base_ty, field);
+
+            builder.mov(out, field_ptr.to_deref())
+        });
+    }
+
+    pub fn set_field(
+        &mut self,
+        base: impl Into<Ref>,
+        base_ty: impl Into<Type>,
+        field: FieldID,
+        field_ty: Type,
+        val: impl Into<Value>,
+    ) {
+        self.scope(|builder| {
+            let field_ptr = builder.local_temp(field_ty.ptr());
+            builder.field(field_ptr.clone(), base, base_ty, field);
+
+            builder.mov(field_ptr.to_deref(), val);
+        });
+    }
+
     pub fn label(&mut self, label: Label) {
         self.append(Instruction::Label(label))
     }
@@ -868,13 +900,13 @@ impl<'m> Builder<'m> {
     }
 
     // generate deep (retain, release) funcs for complex types
-    pub fn gen_rc_boilerplate(&mut self, ty: &Type) -> RcBoilerplatePair {
-        if let Some(boilerplate) = self.module.metadata.find_rc_boilerplate(ty) {
+    pub fn gen_rc_boilerplate(&mut self, ty: &Type) -> RuntimeType {
+        if let Some(boilerplate) = self.module.metadata.get_runtime_type(ty) {
             return boilerplate.clone();
         }
 
         // declare new func IDs then define them here
-        let funcs = self.module.metadata.declare_rc_boilerplate(ty);
+        let funcs = self.module.metadata.declare_runtime_type(ty);
 
         let release_body = {
             let mut release_builder = Builder::new(&mut self.module);

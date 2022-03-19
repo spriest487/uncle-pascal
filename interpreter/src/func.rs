@@ -80,7 +80,7 @@ impl Function {
     pub fn invoke(&self, state: &mut Interpreter) -> ExecResult<()> {
         match self {
             Function::Builtin(def) => {
-                if state.trace_ir {
+                if state.opts().trace_ir {
                     println!("calling {} (interpreter builtin)", def.debug_name);
                 }
                 (def.func)(state)?
@@ -89,11 +89,11 @@ impl Function {
             Function::External(def) => def.invoker.invoke(state)?,
 
             Function::IR(def) => {
-                if state.trace_ir {
+                if state.opts().trace_ir {
                     println!("entering {}", def.debug_name);
                 }
                 state.execute(&def.body)?;
-                if state.trace_ir {
+                if state.opts().trace_ir {
                     println!("exiting {}", def.debug_name);
                 }
             }

@@ -72,6 +72,18 @@ impl From<Ref> for Value {
     }
 }
 
+impl From<LocalID> for Value {
+    fn from(local_id: LocalID) -> Self {
+        Self::from(Ref::Local(local_id))
+    }
+}
+
+impl From<GlobalRef> for Value {
+    fn from(global_ref: GlobalRef) -> Self {
+        Self::from(Ref::Global(global_ref))
+    }
+}
+
 impl Value {
     pub fn deref(self) -> Ref {
         Ref::Deref(Box::new(self))
