@@ -99,14 +99,14 @@ begin
     else if a.len = 0 then b
     else if b.len = 0 then a
     else begin
-        let len := a.len + b.len;
+        var len := a.len + b.len;
 
         var bytes := GetMem(len);
 
-        for let i := 0 to a.len - 1 do
+        for var i := 0 to a.len - 1 do
             bytes[i] := a.chars[i];
 
-        for let i := 0 to b.len - 1 do
+        for var i := 0 to b.len - 1 do
             bytes[a.len + i] := b.chars[i];
 
         String(
@@ -123,7 +123,7 @@ begin
     else begin
         var strBytes: ^Byte := GetMem(len);
 
-        for let i: Integer := 0 to len - 1 do begin
+        for var i: Integer := 0 to len - 1 do begin
             strBytes[i] := bytes[i];
         end;
 
@@ -155,7 +155,7 @@ begin
         exit '';
 
     var buf := GetMem(len);
-    for let i := 0 to len - 1 do begin
+    for var i := 0 to len - 1 do begin
         buf[i] := s.chars[from + i];
     end;
 
@@ -175,14 +175,14 @@ begin
     if len = 0 or bytes = nil then
         exit;
 
-    let max := if len < s.len then
+    var max := if len < s.len then
         len
     else
         s.len;
 
     // need to make a mutable copy of this pointer since we're going to modify its contents
     var outBytes := bytes;
-    for let i := 0 to max - 1 do
+    for var i := 0 to max - 1 do
     begin
         outBytes[i] := s.chars[i];
     end;
@@ -200,8 +200,8 @@ begin
     var cmp: Integer := 0;
     while true do begin
         if aPos < a.len and bPos < b.len then begin
-            let aChar := a.chars[aPos];
-            let bChar := b.chars[bPos];
+            var aChar := a.chars[aPos];
+            var bChar := b.chars[bPos];
             cmp := if aChar > bChar then 1
                 else if bChar > aChar then -1
                 else 0;
@@ -242,7 +242,7 @@ begin
     while endAt > startAt and s.StringCharAt(endAt).IsWhiteSpace() do
         endAt -= 1;
 
-    let len := (endAt + 1) - startAt;
+    var len := (endAt + 1) - startAt;
     SubString(s, startAt, len)
 end;
 
@@ -281,7 +281,7 @@ begin
     var defaultValVar := defaultVal;
 
     unsafe begin
-        let defaultValPtr: Pointer := @defaultValVar;
+        var defaultValPtr: Pointer := @defaultValVar;
 
         arr := if ArraySetLengthInternal(arr, len, defaultValPtr) is array of T newArr
             then newArr

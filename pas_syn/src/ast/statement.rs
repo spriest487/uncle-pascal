@@ -177,8 +177,7 @@ impl Statement<Span> {
 }
 
 pub fn stmt_start_matcher() -> Matcher {
-    Matcher::Keyword(Keyword::Let)
-        .or(Keyword::Var)
+    Matcher::Keyword(Keyword::Var)
         .or(Keyword::For)
         .or(Keyword::While)
         .or(Keyword::Break)
@@ -198,8 +197,8 @@ impl Statement<Span> {
         let stmt_start = stmt_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
-            Some(tt) if tt.is_keyword(Keyword::Let) || tt.is_keyword(Keyword::Var) => {
-                let binding = LocalBinding::parse(tokens, true)?;
+            Some(tt) if tt.is_keyword(Keyword::Var) => {
+                let binding = LocalBinding::parse(tokens)?;
                 Ok(Statement::LocalBinding(Box::new(binding)))
             },
 

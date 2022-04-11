@@ -30,7 +30,7 @@ impl<A: Annotation> Spanned for ForLoop<A> {
 impl ForLoop<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let for_kw = tokens.match_one(Keyword::For)?;
-        let init_binding = LocalBinding::parse(tokens, false)?;
+        let init_binding = LocalBinding::parse(tokens)?;
 
         tokens.match_one(Keyword::To)?;
         let to_expr = Expression::parse(tokens)?;

@@ -83,14 +83,12 @@ pub fn typecheck_local_binding(
     }
 
     let name = binding.name.clone();
-    let mutable = binding.mutable;
     let span = binding.annotation.span().clone();
 
     let binding = Binding {
-        kind: match (binding.mutable, val.is_some()) {
-            (true, true) => ValueKind::Mutable,
-            (true, false) => ValueKind::Uninitialized,
-            (false, _) => ValueKind::Immutable,
+        kind: match &val {
+            Some(..) => ValueKind::Mutable,
+            None => ValueKind::Uninitialized,
         },
         ty: binding_ty.clone(),
         def: Some(name.clone()),
@@ -105,7 +103,6 @@ pub fn typecheck_local_binding(
         val_ty: binding_ty,
         val,
         annotation,
-        mutable,
     };
 
     Ok(local_binding)
