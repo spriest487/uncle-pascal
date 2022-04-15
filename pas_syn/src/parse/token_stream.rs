@@ -8,6 +8,8 @@ pub struct TokenStream {
     tokens: Box<dyn Iterator<Item = TokenTree>>,
     context: Span,
 
+    current: Option<TokenTree>,
+
     lookahead_buffer: VecDeque<TokenTree>,
 }
 
@@ -15,13 +17,19 @@ impl Iterator for TokenStream {
     type Item = TokenTree;
 
     fn next(&mut self) -> Option<TokenTree> {
-        self.lookahead_buffer
+        let tt = self.lookahead_buffer
             .pop_front()
             .or_else(|| self.tokens.next())
             .map(|next_token| {
                 self.context = next_token.span().clone();
                 next_token
-            })
+            });
+
+        if tt.is_some() {
+            self.current = tt.clone();
+        }
+
+        tt
     }
 }
 
@@ -32,6 +40,8 @@ impl TokenStream {
         TokenStream {
             tokens: token_iter,
             context,
+
+            current: None,
 
             lookahead_buffer: VecDeque::new(),
         }
@@ -46,6 +56,10 @@ impl TokenStream {
         for _ in 0..count {
             self.next();
         }
+    }
+
+    pub fn current(&self) -> Option<&TokenTree> {
+        self.current.as_ref()
     }
 
     pub fn finish(mut self) -> ParseResult<()> {
@@ -178,19 +192,15 @@ impl TokenStream {
                 Generate::Yield(result) => {
                     results.push(result);
 
-                    if self.look_ahead().match_one(sep).is_some() {
-                        self.advance(1);
-                    } else {
-                        // no separator means sequence must end here
+                    // no separator means sequence must end here
+                    if self.match_one_maybe(sep).is_none() {
                         break Ok(results);
                     }
                 }
 
                 Generate::Break => {
                     // separated sequence can be always optionally be terminated by the separator
-                    if self.look_ahead().match_one(sep).is_some() {
-                        self.advance(1);
-                    }
+                    self.match_one_maybe(sep);
 
                     break Ok(results);
                 }
@@ -308,6 +318,6 @@ impl<'tokens> Iterator for LookAheadTokenStream<'tokens> {
 }
 
 pub enum Generate<T> {
-    Yield(T),
     Break,
+    Yield(T),
 }

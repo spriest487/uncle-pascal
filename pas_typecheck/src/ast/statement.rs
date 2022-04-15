@@ -20,7 +20,7 @@ pub fn typecheck_local_binding(
     binding: &ast::LocalBinding<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<LocalBinding> {
-    let (val, binding_ty) = match &binding.val_ty {
+    let (val, binding_ty) = match &binding.ty {
         ast::TypeName::Unknown(_) => match &binding.val {
             None => {
                 return Err(TypecheckError::UninitBindingWithNoType {
@@ -100,7 +100,7 @@ pub fn typecheck_local_binding(
 
     let local_binding = LocalBinding {
         name,
-        val_ty: binding_ty,
+        ty: binding_ty,
         val,
         annotation,
     };

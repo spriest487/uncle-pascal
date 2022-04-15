@@ -1,5 +1,6 @@
 use crate::{keyword::*, operators::*, token_tree::*};
 use std::fmt;
+use crate::parse::{LookAheadTokenStream, ParseResult, TokenStream};
 
 #[derive(Clone, Debug)]
 pub enum Matcher {
@@ -111,6 +112,10 @@ impl Matcher {
         Matcher::OneOf(Operator::for_position(pos).map(Matcher::Operator).collect())
     }
 
+    pub fn one_of(matchers: impl IntoIterator<Item=Matcher>) -> Self {
+        Matcher::OneOf(matchers.into_iter().collect())
+    }
+
     pub fn is_match(&self, token: &TokenTree) -> bool {
         match self {
             Matcher::Separator(sep) => token.is_separator(*sep),
@@ -182,11 +187,11 @@ impl Matchable for Keyword {
     }
 }
 
-// impl Matchable for operators::Operator {
-//    fn as_matcher(&self) -> Matcher {
-//        Matcher::Operator(*self)
-//    }
-//}
+impl Matchable for Operator {
+   fn as_matcher(&self) -> Matcher {
+       Matcher::Operator(*self)
+   }
+}
 
 #[derive(Clone, Debug)]
 pub struct SequenceMatcher {
@@ -206,5 +211,29 @@ impl SequenceMatcher {
     pub fn and_then(mut self, next_matcher: impl Into<Matcher>) -> Self {
         self.sequence.push(next_matcher.into());
         self
+    }
+
+    pub fn of_one(matcher: impl Into<Matcher>) -> Self {
+        Self { sequence: vec![matcher.into()] }
+    }
+}
+
+pub trait ParseSeq : Sized {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self>;
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool;
+
+    fn parse_seq(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+        let mut results = Vec::new();
+
+        loop {
+            if !Self::has_more(&results, &mut tokens.look_ahead()) {
+                break;
+            }
+
+            let group_output = Self::parse_group(&results, tokens)?;
+            results.push(group_output);
+        }
+
+        Ok(results)
     }
 }

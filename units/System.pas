@@ -46,12 +46,12 @@ type Box[T] = class
     value: T
 end;
 
-function Unbox[T](b: Box[T]): T
+function Unbox[T](b: Box[T]): T;
 begin
     b.value
 end;
 
-function NewBox[T](value: T): Box[T]
+function NewBox[T](value: T): Box[T];
 begin
     Box(value: value)
 end;
@@ -66,22 +66,22 @@ type Result[T, E] = variant
     Error: E;
 end;
 
-function ByteToStr(i: Byte): String
+function ByteToStr(i: Byte): String;
 begin
     UInt8ToStr(i)
 end;
 
-function IntToStr(i: Integer): String
+function IntToStr(i: Integer): String;
 begin
     Int32ToStr(i)
 end;
 
-function StringLen(s: String): Integer
+function StringLen(s: String): Integer;
 begin
     s.len
 end;
 
-function IsWhiteSpace(char: Byte): Boolean
+function IsWhiteSpace(char: Byte): Boolean;
 begin
     char = 9
     or char = 10
@@ -92,7 +92,7 @@ begin
     or char = 160
 end;
 
-function StringConcat(a, b: String): String
+function StringConcat(a, b: String): String;
 begin
     if a.len = 0 and b.len = 0 then
         String(chars: nil; len: 0)
@@ -116,7 +116,7 @@ begin
     end
 end;
 
-function StringFromBytes(bytes: ^Byte; len: Integer): String
+function StringFromBytes(bytes: ^Byte; len: Integer): String;
 begin
     if len = 0 then
         String(chars: nil; len: 0)
@@ -131,7 +131,7 @@ begin
     end
 end;
 
-function StringLenNullTerminated(chars: ^Byte): Integer
+function StringLenNullTerminated(chars: ^Byte): Integer;
 begin
     if chars = nil then exit 0;
 
@@ -144,7 +144,7 @@ begin
     len
 end;
 
-function SubString(s: String; from: Integer; len: Integer): String
+function SubString(s: String; from: Integer; len: Integer): String;
 begin
     if from < 0 then raise 'substring start index must be 0 or greater';
     if len < 0 then raise 'substring length must be 0 or greater';
@@ -162,7 +162,7 @@ begin
     String(chars: buf; len: len)
 end;
 
-function StringCharAt(s: String; at: Integer): Byte
+function StringCharAt(s: String; at: Integer): Byte;
 begin
     if at < 0 or at >= s.len then
         raise 'invalid index: ' + IntToStr(at);
@@ -170,7 +170,7 @@ begin
     s.chars[at]
 end;
 
-function StringToBytes(s: String; bytes: ^Byte; len: Integer)
+function StringToBytes(s: String; bytes: ^Byte; len: Integer);
 begin
     if len = 0 or bytes = nil then
         exit;
@@ -188,7 +188,7 @@ begin
     end;
 end;
 
-function CompareStr(a, b: String): Integer
+function CompareStr(a, b: String): Integer;
 begin
     if a.len = 0 and b.len = 0 then begin
         exit 0;
@@ -228,7 +228,7 @@ begin
     cmp
 end;
 
-function StringTrim(s: String): String
+function StringTrim(s: String): String;
 begin
     if s.len = 0 then begin
         exit s;
@@ -246,7 +246,7 @@ begin
     SubString(s, startAt, len)
 end;
 
-function Length[T](arr: array of T): Integer
+function Length[T](arr: array of T): Integer;
 unsafe begin
     ArrayLengthInternal(arr)
 end;
@@ -256,13 +256,15 @@ type Comparable = interface
 end;
 
 function Max[T](a, b: T): T
-where T is Comparable
+where
+    T is Comparable;
 begin
     if a.Compare(b) > 0 then a else b
 end;
 
 function Min[T](a, b: T): T
-where T is Comparable
+where
+    T is Comparable;
 begin
     if a.Compare(b) < 0 then a else b
 end;
@@ -273,7 +275,7 @@ end;
 
 function ArraySetLengthInternal(arr: Any; len: Integer; defaultVal: Pointer): Any; external 'rt';
 
-function SetLength[T](var arr: array of T; len: Integer; defaultVal: T)
+function SetLength[T](var arr: array of T; len: Integer; defaultVal: T);
 begin
     if arr.Length() = len then exit;
 
@@ -293,7 +295,7 @@ end;
 
 implementation
 
-function Dispose of Disposable(self: String)
+function Dispose of Disposable(self: String);
 begin
     if self.len > 0 then
         FreeMem(self.chars);
@@ -304,72 +306,72 @@ end;
 
 {$IFNDEF NO_STDLIB}
 
-function Compare of Comparable(self: String; other: String): Integer
+function Compare of Comparable(self: String; other: String): Integer;
 begin
     CompareStr(self, other)
 end;
 
-function Compare of Comparable(self: Integer; other: Integer): Integer
+function Compare of Comparable(self: Integer; other: Integer): Integer;
 begin
     self - other
 end;
 
-function ToString of Displayable(self: Int8): String
+function ToString of Displayable(self: Int8): String;
 begin
     Int8ToStr(self)
 end;
 
-function ToString of Displayable(self: Byte): String
+function ToString of Displayable(self: Byte): String;
 begin
     ByteToStr(self)
 end;
 
-function ToString of Displayable(self: Int16): String
+function ToString of Displayable(self: Int16): String;
 begin
     Int16ToStr(self)
 end;
 
-function ToString of Displayable(self: UInt16): String
+function ToString of Displayable(self: UInt16): String;
 begin
     UInt16ToStr(self)
 end;
 
-function ToString of Displayable(self: Integer): String
+function ToString of Displayable(self: Integer): String;
 begin
     IntToStr(self)
 end;
 
-function ToString of Displayable(self: UInt32): String
+function ToString of Displayable(self: UInt32): String;
 begin
     UInt32ToStr(self)
 end;
 
-function ToString of Displayable(self: Int64): String
+function ToString of Displayable(self: Int64): String;
 begin
     Int64ToStr(self)
 end;
 
-function ToString of Displayable(self: UInt64): String
+function ToString of Displayable(self: UInt64): String;
 begin
     UInt64ToStr(self)
 end;
 
-function ToString of Displayable(self: NativeInt): String
+function ToString of Displayable(self: NativeInt): String;
 begin
     NativeIntToStr(self)
 end;
 
-function ToString of Displayable(self: NativeUInt): String
+function ToString of Displayable(self: NativeUInt): String;
 begin
     NativeUIntToStr(self)
 end;
 
-function ToString of Displayable(self: Boolean): String
+function ToString of Displayable(self: Boolean): String;
 begin
     if self then 'true' else 'false'
 end;
 
-function ToString of Displayable(self: String): String
+function ToString of Displayable(self: String): String;
 begin
     self
 end;

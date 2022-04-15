@@ -113,6 +113,9 @@ pub enum TypecheckError {
     UninitBindingWithNoType {
         binding: Box<ast::LocalBinding<Span>>,
     },
+    ConstDeclWithNoValue {
+        span: Span,
+    },
     BindingWithNoType {
         binding: Box<ast::LocalBinding<Span>>,
     },
@@ -265,6 +268,7 @@ impl Spanned for TypecheckError {
             TypecheckError::EmptyMatchBlock { span, .. } => span,
             TypecheckError::MatchExprNotExhaustive { span, .. } => span,
             TypecheckError::InvalidExitWithValue { span, .. } => span,
+            TypecheckError::ConstDeclWithNoValue { span, .. } => span,
         }
     }
 }
@@ -361,7 +365,8 @@ impl DiagnosticOutput for TypecheckError {
             TypecheckError::InvalidCast { .. } => "Invalid cast".to_string(),
             TypecheckError::EmptyMatchBlock { .. } => "Empty match block".to_string(),
             TypecheckError::MatchExprNotExhaustive { .. } => "Match expression is not exhaustive".to_string(),
-            TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with valuel".to_string(),
+            TypecheckError::InvalidExitWithValue { .. } => "Invalid exit with value".to_string(),
+            TypecheckError::ConstDeclWithNoValue { .. } => "Constant declaration without a value".to_string(),
         }
     }
 
@@ -741,6 +746,10 @@ impl fmt::Display for TypecheckError {
 
             TypecheckError::InvalidExitWithValue { .. } => {
                 write!(f, "cannot exit with a value in this context")
+            }
+
+            TypecheckError::ConstDeclWithNoValue { .. } => {
+                write!(f, "constant declaration must have a value")
             }
         }
     }

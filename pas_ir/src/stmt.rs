@@ -76,7 +76,7 @@ pub fn translate_stmt(stmt: &pas_ty::ast::Statement, builder: &mut Builder) {
 }
 
 fn translate_binding(binding: &pas_ty::ast::LocalBinding, builder: &mut Builder) {
-    let bound_ty = builder.translate_type(&binding.val_ty);
+    let bound_ty = builder.translate_type(&binding.ty);
 
     let binding_ref = builder.local_new(bound_ty.clone(), Some(binding.name.to_string()));
 
@@ -97,7 +97,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
 
     let loop_instructions = builder.scope(|builder| {
         // counter
-        let counter_ty = builder.translate_type(&for_loop.init_binding.val_ty);
+        let counter_ty = builder.translate_type(&for_loop.init_binding.ty);
         if counter_ty != Type::I32 {
             unimplemented!("non-i32 counters");
         }
@@ -109,7 +109,7 @@ pub fn translate_for_loop(for_loop: &pas_ty::ast::ForLoop, builder: &mut Builder
             .expect("for loop counter binding must have an init expr");
 
         assert!(
-            !for_loop.init_binding.val_ty.is_rc_reference(),
+            !for_loop.init_binding.ty.is_rc_reference(),
             "counter type must not be ref counted"
         );
 

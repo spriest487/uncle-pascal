@@ -5,7 +5,7 @@ use crate::parse::Parse;
 
 fn parse_case<Item>(s: &str) -> CaseBlock<Span, Item>
     where
-        Item: Parse
+        Item: Parse + Spanned
 {
     let src_tokens = TokenTree::tokenize("test", s, &BuildOptions::default()).unwrap();
     let mut token_stream = TokenStream::new(src_tokens, Span::zero("test"));

@@ -49,28 +49,9 @@ impl WhereClause<TypeName> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let where_kw = tokens.match_one(Keyword::Where)?;
 
-        let constraints = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if !tokens.look_ahead().match_one(Matcher::AnyIdent).is_some() {
-                return Ok(Generate::Break);
-            }
-
-            let param = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
-            tokens.match_one(Keyword::Is)?;
-            let is_ty_path = IdentPath::parse(tokens)?;
-
-            let is_ty = TypeName::Ident(IdentTypeName {
-                span: is_ty_path.span().clone(),
-                type_args: None,
-                ident: is_ty_path,
-                indirection: 0,
-            });
-
-            Ok(Generate::Yield(TypeConstraint {
-                span: param.span().to(is_ty.span()),
-                is_ty,
-                param_ident: param,
-            }))
-        })?;
+        let constraints: Vec<_> = WhereClauseItem::parse_seq(tokens)?.into_iter()
+            .map(|i| i.0)
+            .collect();
 
         let span = constraints.iter()
             .fold(where_kw.span().clone(), |span, constraint| {
@@ -87,6 +68,42 @@ impl WhereClause<TypeName> {
         } else {
             Ok(clause)
         }
+    }
+}
+
+struct WhereClauseItem(TypeConstraint<TypeName>);
+
+impl ParseSeq for WhereClauseItem {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if prev.len() > 0 {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let param_ident = Ident::parse(tokens)?;
+        tokens.match_one(Keyword::Is)?;
+
+        let is_ty_path = IdentPath::parse(tokens)?;
+
+        let is_ty = TypeName::Ident(IdentTypeName {
+            span: is_ty_path.span().clone(),
+            type_args: None,
+            ident: is_ty_path,
+            indirection: 0,
+        });
+
+        Ok(WhereClauseItem(TypeConstraint {
+            span: param_ident.span().to(is_ty.span()),
+            param_ident,
+            is_ty,
+        }))
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if prev.len() > 0 && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }
 

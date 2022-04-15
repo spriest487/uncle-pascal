@@ -8,7 +8,16 @@ use crate::{
     IdentPath,
     Keyword,
     Separator,
-    parse::{Generate, Matcher, MatchSequenceOf, ParseError, ParseResult, TokenStream}
+    parse::{
+        Generate,
+        Matcher,
+        MatchSequenceOf,
+        ParseError,
+        ParseResult,
+        TokenStream,
+        LookAheadTokenStream,
+        ParseSeq,
+    }
 };
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -24,7 +33,7 @@ pub enum UnitDecl<A: Annotation> {
         visibility: Visibility,
     },
     FunctionDef {
-        decl: FunctionDef<A>,
+        def: FunctionDef<A>,
         visibility: Visibility,
     },
     Type {
@@ -46,7 +55,7 @@ impl<A: Annotation> Spanned for UnitDecl<A> {
             UnitDecl::FunctionDecl {
                 decl: func_decl, ..
             } => func_decl.span(),
-            UnitDecl::FunctionDef { decl: func_def, .. } => func_def.span(),
+            UnitDecl::FunctionDef { def: func_def, .. } => func_def.span(),
             UnitDecl::Type {
                 decl: type_decl, ..
             } => type_decl.span(),
@@ -62,7 +71,7 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
             UnitDecl::FunctionDecl {
                 decl: func_decl, ..
             } => write!(f, "{}", func_decl),
-            UnitDecl::FunctionDef { decl: func_def, .. } => write!(f, "{}", func_def),
+            UnitDecl::FunctionDef { def: func_def, .. } => write!(f, "{}", func_def),
             UnitDecl::Type { decl: ty_decl, .. } => write!(f, "{}", ty_decl),
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),
             UnitDecl::Const { decl, .. } => write!(f, "{}", decl),
@@ -131,47 +140,40 @@ impl<A: Annotation> DeclMod<A> {
     }
 }
 
-impl DeclMod<Span> {
-    fn parse_external(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let kw = tokens.match_one(Self::EXTERNAL_WORD)?.into_ident().unwrap();
-        let src = Expression::parse(tokens)?;
+impl ParseSeq for DeclMod<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        tokens.match_one(Separator::Semicolon)?;
 
-        Ok(DeclMod::External {
-            span: kw.span().to(src.span()),
-            src: Box::new(src),
-        })
-    }
+        let word_token = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
 
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
-        let mut mods: Vec<Self> = Vec::new();
+        let new_mod = match word_token.name.as_str() {
+            Self::EXTERNAL_WORD => {
+                let src = Expression::parse(tokens)?;
+                DeclMod::External {
+                    span: word_token.span().to(src.span()),
+                    src: Box::new(src),
+                }
+            },
 
-        let mod_seq = Separator::Semicolon.and_then(Self::EXTERNAL_WORD);
+            _ => unreachable!("bad modified contextual keyword"),
+        };
 
-        while let Some(mut seq_tokens) = tokens.look_ahead().match_sequence(mod_seq.clone()) {
-            tokens.advance(1);
-
-            let word_token = seq_tokens.remove(1).into_ident().unwrap();
-
-            let new_mod = match word_token.name.as_str() {
-                Self::EXTERNAL_WORD => Self::parse_external(tokens)?,
-
-                _ => unreachable!("bad modified contextual keyword"),
-            };
-
-            let existing = mods.iter().find(|m| m.keyword() == new_mod.keyword());
-            if let Some(existing) = existing {
-                return Err(TracedError::trace(ParseError::DuplicateModifier {
-                    new: new_mod,
-                    existing: existing.clone(),
-                }));
-            }
-
-            mods.push(new_mod);
+        let existing = prev.iter().find(|m| m.keyword() == new_mod.keyword());
+        if let Some(existing) = existing {
+            return Err(TracedError::trace(ParseError::DuplicateModifier {
+                new: new_mod,
+                existing: existing.clone(),
+            }));
         }
 
-        Ok(mods)
+        Ok(new_mod)
+    }
+
+    fn has_more(_prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        tokens.match_sequence(Separator::Semicolon.and_then(Self::EXTERNAL_WORD)).is_some()
     }
 }
+
 
 impl<A: Annotation> fmt::Display for DeclMod<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

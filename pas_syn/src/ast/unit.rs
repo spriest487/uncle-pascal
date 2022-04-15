@@ -22,14 +22,14 @@ impl<A: Annotation> Unit<A> {
     pub fn func_decls(&self) -> impl Iterator<Item = &FunctionDecl<A>> {
         self.decls.iter().filter_map(|decl| match decl {
             UnitDecl::FunctionDecl { decl: func, .. } => Some(func),
-            UnitDecl::FunctionDef { decl: func_def, .. } => Some(&func_def.decl),
+            UnitDecl::FunctionDef { def: func_def, .. } => Some(&func_def.decl),
             _ => None,
         })
     }
 
     pub fn func_defs(&self) -> impl Iterator<Item = &FunctionDef<A>> {
         self.decls.iter().filter_map(|decl| match decl {
-            UnitDecl::FunctionDef { decl: func_def, .. } => Some(func_def),
+            UnitDecl::FunctionDef { def: func_def, .. } => Some(func_def),
             _ => None,
         })
     }
@@ -77,7 +77,16 @@ impl Unit<Span> {
         if has_interface || has_implementation || has_initialization {
             // it's a structured unit, we expect nothing after the defined sections
 
-            tokens.match_one(Keyword::End)?;
+            // if we get unexpected tokens here, we should suggest a semicolon after the last decl as a more
+            // helpful error - we know there are tokens, and we know the only way for anything other than "end"
+            // to be a legal token here is to separate them from the last decl with a semicolon
+            let last_pos = tokens.context().clone();
+            tokens.match_one(Keyword::End).map_err(|mut err| {
+                if let ParseError::UnexpectedToken(..) = &err.err {
+                    err.err = ParseError::ExpectedSeparator { span: last_pos, sep: Separator::Semicolon };
+                }
+                err
+            })?;
 
             // unit can optionally be terminated by a full stop, for tradition's sake
             tokens.match_one_maybe(Operator::Member);
@@ -132,29 +141,9 @@ fn parse_unit_decl(tokens: &mut TokenStream, visibility: Visibility) -> ParseRes
 
     let decl = match tokens.look_ahead().match_one(decl_start) {
         Some(tt) if tt.is_keyword(Keyword::Function) => {
-            let func_decl = FunctionDecl::parse(tokens)?;
+            let func_decl = parse_unit_func_decl(tokens, visibility)?;
 
-            let block_ahead = tokens
-                .look_ahead()
-                .match_one(DelimiterPair::BeginEnd.or(Keyword::Unsafe))
-                .is_some();
-            if block_ahead {
-                let body = Block::parse(tokens)?;
-
-                Some(UnitDecl::FunctionDef {
-                    decl: FunctionDef {
-                        span: func_decl.span().to(body.span()),
-                        decl: func_decl,
-                        body,
-                    },
-                    visibility,
-                })
-            } else {
-                Some(UnitDecl::FunctionDecl {
-                    decl: func_decl,
-                    visibility,
-                })
-            }
+            Some(func_decl)
         }
 
         Some(tt) if tt.is_keyword(Keyword::Type) => {
@@ -182,6 +171,31 @@ fn parse_unit_decl(tokens: &mut TokenStream, visibility: Visibility) -> ParseRes
     };
 
     Ok(decl)
+}
+
+fn parse_unit_func_decl(tokens: &mut TokenStream, visibility: Visibility) -> ParseResult<UnitDecl<Span>> {
+    let func_decl = FunctionDecl::parse(tokens)?;
+
+    let body_ahead = tokens.look_ahead()
+        .match_sequence(Separator::Semicolon
+            .and_then(FunctionDef::body_start_matcher()))
+        .is_some();
+
+    if body_ahead {
+        tokens.match_one(Separator::Semicolon)?;
+
+        let def = FunctionDef::parse_body_of_decl(func_decl, tokens)?;
+
+        Ok(UnitDecl::FunctionDef {
+            def,
+            visibility,
+        })
+    } else {
+        Ok(UnitDecl::FunctionDecl {
+            decl: func_decl,
+            visibility,
+        })
+    }
 }
 
 fn parse_init_section(tokens: &mut TokenStream) -> ParseResult<Vec<Statement<Span>>> {

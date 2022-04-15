@@ -1,10 +1,15 @@
-use pas_syn::Ident;
-
-use crate::ast::prelude::*;
-
-use crate::ast::prelude::ast::TypeList;
-use std::rc::Rc;
+use crate::{
+    ast::{const_eval_string, prelude::ast::TypeList, typecheck_block, typecheck_expr, Interface},
+    string_type, typecheck_type, typecheck_type_params, Binding, Context, Environment,
+    FunctionParamSig, FunctionSig, NameContainer, NameError, NameResult, Type, TypeAnnotation,
+    TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
+};
 use linked_hash_map::LinkedHashMap;
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast::Visibility;
+use pas_syn::{ast, Ident};
+use std::rc::Rc;
+use crate::ast::const_eval::ConstEval;
 
 pub type FunctionDecl = ast::FunctionDecl<TypeAnnotation>;
 pub type DeclMod = ast::DeclMod<TypeAnnotation>;
@@ -12,6 +17,7 @@ pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<TypeAnnotation>;
+pub type FunctionLocalDecl = ast::FunctionLocalDecl<TypeAnnotation>;
 
 fn typecheck_param(
     param: &ast::FunctionParam<Span>,
@@ -77,8 +83,7 @@ pub fn typecheck_func_decl(
         Some(iface_impl) => {
             let param_sigs = params.iter().cloned().map(FunctionParamSig::from).collect();
 
-            let method_sig =
-                FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
+            let method_sig = FunctionSig::new(return_ty.clone(), param_sigs, type_params.clone());
 
             let iface_def = match typecheck_type(&iface_impl.iface, ctx)? {
                 Type::Interface(iface) => ctx.find_iface_def(&iface).map_err(|err| {
@@ -89,7 +94,7 @@ pub fn typecheck_func_decl(
                     return Err(TypecheckError::InvalidMethodInterface {
                         ty: not_iface,
                         span: iface_impl.iface.span().clone(),
-                    })
+                    });
                 },
             };
 
@@ -189,6 +194,59 @@ pub fn typecheck_func_def(
         result_ty: decl.return_ty.clone().unwrap_or(Type::Nothing),
     });
 
+    let mut locals = Vec::new();
+    for local in &def.locals {
+        let ty = typecheck_type(&local.ty, ctx)?;
+
+        let initial_val = match &local.initial_val {
+            Some(expr) => {
+                let expr = typecheck_expr(expr, &ty, ctx)?;
+                Some(Box::new(expr))
+            },
+            None => None,
+        };
+
+        match local.kind {
+            ast::FunctionLocalDeclKind::Const => {
+                let val = match &initial_val {
+                    Some(expr) => {
+                        expr.const_eval(ctx).ok_or_else(|| TypecheckError::InvalidConstExpr {
+                            expr: expr.clone(),
+                        })?
+                    },
+                    None => {
+                        return Err(TypecheckError::ConstDeclWithNoValue { span: local.span.clone() });
+                    },
+                };
+
+                // the visibility doesn't really matter here because it's not a unit-level decl
+                let visiblity = Visibility::Interface;
+                ctx.declare_const(local.ident.clone(), val, ty.clone(), visiblity, local.span.clone())?;
+            },
+
+            ast::FunctionLocalDeclKind::Var => {
+                let binding_kind = match &initial_val {
+                    Some(..) => ValueKind::Mutable,
+                    None => ValueKind::Uninitialized,
+                };
+
+                ctx.declare_binding(local.ident.clone(), Binding {
+                    kind: binding_kind,
+                    ty: ty.clone(),
+                    def: Some(local.ident.clone()),
+                })?;
+            },
+        }
+
+        locals.push(FunctionLocalDecl {
+            ident: local.ident.clone(),
+            kind: local.kind,
+            initial_val,
+            ty,
+            span: local.span.clone(),
+        });
+    }
+
     // functions are always declared within their own bodies (allowing recursive calls)
     // but forward-declared functions may already be present in the scope - in which case we
     // don't need to declare it again
@@ -210,6 +268,7 @@ pub fn typecheck_func_def(
 
     Ok(FunctionDef {
         decl,
+        locals,
         body,
         span: def.span.clone(),
     })
@@ -271,7 +330,11 @@ pub fn specialize_func_decl(
     })
 }
 
-pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty: &Type, ctx: &mut Context) -> TypecheckResult<AnonymousFunctionDef> {
+pub fn typecheck_func_expr(
+    src_def: &ast::AnonymousFunctionDef<Span>,
+    _expect_ty: &Type,
+    ctx: &mut Context,
+) -> TypecheckResult<AnonymousFunctionDef> {
     let mut params = Vec::new();
     for param in &src_def.params {
         let param = typecheck_param(param, ctx)?;
@@ -291,9 +354,9 @@ pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty
         type_params: None,
     });
 
-    let body_scope_id =ctx.push_scope(Environment::ClosureBody {
+    let body_scope_id = ctx.push_scope(Environment::ClosureBody {
         result_ty: return_ty.clone(),
-        captures: LinkedHashMap::new()
+        captures: LinkedHashMap::new(),
     });
 
     declare_func_params_in_body(&params, ctx)?;
@@ -301,7 +364,7 @@ pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty
 
     let captures = match ctx.pop_scope(body_scope_id).into_env() {
         Environment::ClosureBody { captures, .. } => captures,
-        _ => unreachable!()
+        _ => unreachable!(),
     };
 
     let annotation = TypedValueAnnotation {
@@ -309,7 +372,8 @@ pub fn typecheck_func_expr(src_def: &ast::AnonymousFunctionDef<Span>, _expect_ty
         span: src_def.span().clone(),
         ty: Type::Function(sig),
         value_kind: ValueKind::Temporary,
-    }.into();
+    }
+    .into();
 
     Ok(AnonymousFunctionDef {
         params,

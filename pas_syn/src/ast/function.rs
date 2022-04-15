@@ -2,7 +2,7 @@
 mod test;
 
 use crate::{
-    ast::{Block, DeclMod, TypeList, TypeParam, WhereClause},
+    ast::{Block, DeclMod, TypeList, TypeParam, WhereClause, Expression},
     parse::prelude::*,
 };
 use derivative::*;
@@ -109,20 +109,15 @@ impl FunctionDecl<Span> {
             None => None,
         };
 
-        let mods = DeclMod::parse(tokens)?;
+        let mods = DeclMod::parse_seq(tokens)?;
 
         let where_clause_tt = tokens.look_ahead().match_one(Keyword::Where);
         let type_params = match (type_params_list, where_clause_tt) {
-            (None, Some(where_clause_tt)) => {
-                let expected = None;
-                let err = ParseError::UnexpectedToken(Box::new(where_clause_tt), expected);
-
-                return Err(TracedError::trace(err));
-            },
-
             (Some(type_params_list), Some(..)) => {
                 let mut where_clause = WhereClause::parse(tokens)?;
 
+                // match parsed constraints in the where clause to type params in the param list by
+                // ident. if a param has no constraint with the same ident, it gets a None constraint instead
                 let mut type_params = Vec::new();
                 for type_param_ident in &type_params_list.items {
                     let constraint_index = where_clause
@@ -130,12 +125,14 @@ impl FunctionDecl<Span> {
                         .iter()
                         .position(|c| c.param_ident == *type_param_ident);
 
+                    let constraint = match constraint_index {
+                        Some(i) => Some(where_clause.constraints.remove(i)),
+                        None => None,
+                    };
+
                     type_params.push(TypeParam {
                         ident: type_param_ident.clone(),
-                        constraint: match constraint_index {
-                            Some(i) => Some(where_clause.constraints.remove(i)),
-                            None => None,
-                        },
+                        constraint,
                     })
                 }
 
@@ -151,9 +148,21 @@ impl FunctionDecl<Span> {
                     }));
                 }
 
+                assert_eq!(type_params.len(), type_params_list.len());
+
                 Some(TypeList::new(type_params, type_params_list.span().clone()))
             },
 
+            // the function has no type param list so it's an error to write a where clause here
+            (None, Some(where_clause_tt)) => {
+                let expected = None;
+                let err = ParseError::UnexpectedToken(Box::new(where_clause_tt), expected);
+
+                return Err(TracedError::trace(err));
+            },
+
+            // the function has a type param list but no where clause, so the type
+            // constraints are None for every parameter
             (Some(type_params), None) => {
                 let items: Vec<_> = type_params
                     .items
@@ -167,6 +176,7 @@ impl FunctionDecl<Span> {
                 Some(TypeList::new(items, type_params.span().clone()))
             },
 
+            // the function has neither a type param list or a where clause
             (None, None) => None,
         };
 
@@ -290,16 +300,138 @@ impl<A: Annotation> fmt::Display for FunctionDecl<A> {
     }
 }
 
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FunctionLocalDeclKind {
+    Var,
+    Const,
+}
+
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Hash, PartialEq, Debug)]
+pub struct FunctionLocalDecl<A>
+    where A: Annotation
+{
+    pub kind: FunctionLocalDeclKind,
+
+    pub ident: Ident,
+    pub ty: A::Type,
+
+    pub initial_val: Option<Box<Expression<A>>>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
+}
+
+impl<A: Annotation> Spanned for FunctionLocalDecl<A> {
+    fn span(&self) -> &Span {
+        &self.span
+    }
+}
+
 #[derive(Clone, Eq, Derivative)]
 #[derivative(Hash, PartialEq, Debug)]
 pub struct FunctionDef<A: Annotation> {
     pub decl: FunctionDecl<A>,
+
+    pub locals: Vec<FunctionLocalDecl<A>>,
+
     pub body: Block<A>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
     #[derivative(Hash = "ignore")]
     pub span: Span,
+}
+
+impl FunctionDef<Span> {
+    pub fn parse_body_of_decl(decl: FunctionDecl<Span>, tokens: &mut TokenStream) -> ParseResult<Self> {
+        let body_start_matcher = Self::body_start_matcher();
+
+        let mut locals = Vec::new();
+
+        let body = loop {
+            match tokens.look_ahead().match_one(body_start_matcher.clone()) {
+                Some(tt) if tt.is_keyword(Keyword::Var) => {
+                    tokens.advance(1);
+                    locals.extend(
+                        Self::parse_locals_block(tokens, FunctionLocalDeclKind::Var)?
+                    );
+                },
+                Some(tt) if tt.is_keyword(Keyword::Const) => {
+                    tokens.advance(1);
+                    locals.extend(
+                        Self::parse_locals_block(tokens, FunctionLocalDeclKind::Const)?
+                    );
+                }
+
+                _ => {
+                    break Block::parse(tokens)?;
+                }
+            }
+        };
+
+        let span = decl.span.to(body.span());
+
+        Ok(FunctionDef {
+            decl,
+            locals,
+            body,
+            span,
+        })
+    }
+
+    fn parse_locals_block(tokens: &mut TokenStream, kind: FunctionLocalDeclKind) -> ParseResult<Vec<FunctionLocalDecl<Span>>> {
+        let decls_groups = tokens.match_separated(Separator::Semicolon, |_i, tokens| {
+            // can have multiple decls per entry
+            let idents = tokens.match_separated(Separator::Comma, |_i, tokens| {
+                let ident = Ident::parse(tokens)?;
+
+                Ok(Generate::Yield(ident))
+            })?;
+
+            tokens.match_one(Separator::Colon)?;
+
+            let ty = TypeName::parse(tokens)?;
+
+            let initial_val = match tokens.match_one_maybe(Operator::Equals) {
+                Some(..) => {
+                    let expr = Expression::parse(tokens)?;
+                    Some(Box::new(expr))
+                },
+                None => None,
+            };
+
+            let decls: Vec<_> = idents
+                .into_iter()
+                .map(|ident| {
+                    let span = ident.span.clone();
+
+                    FunctionLocalDecl {
+                        kind,
+                        ident,
+                        ty: ty.clone(),
+                        initial_val: initial_val.clone(),
+                        span,
+                    }
+                })
+                .collect();
+
+            Ok(Generate::Yield(decls))
+        })?;
+
+        let decls = decls_groups.into_iter().flatten().collect();
+
+        Ok(decls)
+    }
+
+    pub fn body_start_matcher() -> Matcher {
+        Keyword::Unsafe
+            .or(DelimiterPair::BeginEnd)
+            .or(Keyword::Var)
+            .or(Keyword::Const)
+    }
 }
 
 impl<A: Annotation> Spanned for FunctionDef<A> {
@@ -311,6 +443,24 @@ impl<A: Annotation> Spanned for FunctionDef<A> {
 impl<A: Annotation> fmt::Display for FunctionDef<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "{}", self.decl)?;
+
+        let mut last_local_kind = None;
+        for local in &self.locals {
+            if Some(local.kind) != last_local_kind {
+                match local.kind {
+                    FunctionLocalDeclKind::Var => writeln!(f, "var")?,
+                    FunctionLocalDeclKind::Const => writeln!(f, "const")?,
+                };
+                last_local_kind = Some(local.kind);
+            }
+
+            write!(f, "  {}: {}", local.ident, local.ty)?;
+            if let Some(initial_val) = &local.initial_val {
+                write!(f, " = {}", initial_val)?;
+            }
+            writeln!(f, ";")?;
+        }
+
         write!(f, "{}", self.body)
     }
 }

@@ -365,7 +365,7 @@ mod test {
         assert_eq!(1, result.len());
 
         match &result[0] {
-            TokenTree::String { value, .. } => assert_eq!("hello world!", value),
+            TokenTree::String { value, .. } => assert_eq!("hello world!", value.as_str()),
             _ => panic!("got {:#?}, expected a string", result),
         }
     }

@@ -17,7 +17,7 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
         }
 
         ast::UnitDecl::FunctionDef {
-            decl: func_def,
+            def: func_def,
             visibility,
         } => typecheck_unit_func_def(func_def, *visibility, ctx),
 
@@ -96,7 +96,7 @@ fn typecheck_unit_func_def(
     }
 
     Ok(UnitDecl::FunctionDef {
-        decl: func_def,
+        def: func_def,
         visibility,
     })
 }
