@@ -1,3 +1,6 @@
+* get rid of preludes
+* refactor TokenTree so it has separate types for groups, etc
+* refactor TokenStream so it can seek (make it a vec)
 * type cache so we don't need to construct/pass around type objects all the time in the typechecker (This is really slow)
 * stop outputting empty releaser funcs where there's nothing ot be released
 * parser: newlines/escape chars in string literals

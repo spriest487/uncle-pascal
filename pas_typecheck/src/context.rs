@@ -1135,7 +1135,7 @@ impl Context {
                         .child(ident.clone());
 
                     if self.defs.get(&decl_path).is_none() {
-                        eprintln!("undefined: {}", decl_path);
+                        // eprintln!("undefined: {}", decl_path);
                         syms.push(ident.clone());
                     }
                 }

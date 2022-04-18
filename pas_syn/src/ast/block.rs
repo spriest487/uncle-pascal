@@ -1,4 +1,9 @@
-use crate::{ast::{Annotation, Expression, Statement}, Keyword, parse::*, token_tree::*};
+use crate::{
+    ast::{stmt_start_matcher, Annotation, Expression, Statement},
+    parse::*,
+    token_tree::*,
+    Keyword,
+};
 use pas_common::span::*;
 use std::fmt;
 
@@ -37,7 +42,8 @@ impl<A: Annotation> Block<A> {
 
 impl Block<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let unsafe_kw = tokens.match_one_maybe(Keyword::Unsafe)
+        let unsafe_kw = tokens
+            .match_one_maybe(Keyword::Unsafe)
             .map(|unsafe_tt| unsafe_tt.into_span());
 
         let body_tt = tokens.match_one(DelimiterPair::BeginEnd)?;
@@ -51,18 +57,42 @@ impl Block<Span> {
             _ => unreachable!(),
         };
 
-        let mut body_tokens = TokenStream::new(inner.clone(), begin.clone());
+        let (statements, output_expr) = Self::parse_stmts(inner, &begin)?;
 
+        let block = Self {
+            statements,
+            annotation: span,
+
+            // we don't know until typechecking
+            output: output_expr,
+            begin,
+            end,
+
+            unsafe_kw,
+        };
+
+        Ok(block)
+    }
+
+    fn parse_stmts(
+        inner: Vec<TokenTree>,
+        context: &Span,
+    ) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
+        let mut statements = Vec::new();
         let mut output_expr: Option<Expression<_>> = None;
 
-        let statements = body_tokens.match_separated(Separator::Semicolon, |_, tokens| {
+        let mut tokens = TokenStream::new(inner.clone(), context.clone());
+
+        loop {
             let stmt_start_pos = match tokens.look_ahead().next() {
                 Some(tt) => tt.span().start,
-                None => return Ok(Generate::Break),
+                None => break,
             };
 
-            match Statement::parse(tokens) {
-                Ok(stmt) => Ok(Generate::Yield(stmt)),
+            match Statement::parse(&mut tokens) {
+                Ok(stmt) => {
+                    statements.push(stmt);
+                },
 
                 Err(traced_err) => match &traced_err.err {
                     // if the final statement is invalid as a statement but still a valid
@@ -74,7 +104,7 @@ impl Block<Span> {
                         // we need to re-parse the tokens used for this statement, so make a new
                         // stream out of the block's inner tokens and fast-forward it to where
                         // we started parsing this statement...
-                        let mut output_expr_tokens = TokenStream::new(inner.clone(), begin.clone());
+                        let mut output_expr_tokens = TokenStream::new(inner.to_vec(), context.clone());
                         while let Some(tt) = output_expr_tokens.look_ahead().next() {
                             let tt_start = tt.span().start;
                             if tt_start < stmt_start_pos {
@@ -96,29 +126,30 @@ impl Block<Span> {
                             tokens.advance(1);
                         }
 
-                        Ok(Generate::Break)
-                    }
+                        break;
+                    },
 
-                    _ => Err(traced_err),
+                    _ => return Err(traced_err),
                 },
             }
-        })?;
 
-        body_tokens.finish()?;
+            let has_more = tokens
+                .look_ahead()
+                .match_sequence(Separator::Semicolon.and_then(stmt_start_matcher()))
+                .is_some();
+            if !has_more {
+                break;
+            }
 
-        let block = Self {
-            statements,
-            annotation: span,
+            tokens.match_one(Separator::Semicolon)?;
+        }
 
-            // we don't know until typechecking
-            output: output_expr,
-            begin,
-            end,
+        // last block statement may be terminated with a redundant separator
+        tokens.match_one_maybe(Separator::Semicolon);
 
-            unsafe_kw,
-        };
+        tokens.finish()?;
 
-        Ok(block)
+        Ok((statements, output_expr))
     }
 
     // convert block-as-statement into an block-as-expression
@@ -129,9 +160,10 @@ impl Block<Span> {
             return Some(self.clone());
         }
 
-        let final_stmt_expr = self.statements.last().and_then(|final_stmt| {
-            final_stmt.clone().to_expr()
-        });
+        let final_stmt_expr = self
+            .statements
+            .last()
+            .and_then(|final_stmt| final_stmt.clone().to_expr());
 
         if let Some(output_expr) = final_stmt_expr {
             // block where we can reinterpret the final statement as an output expr

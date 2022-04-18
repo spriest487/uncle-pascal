@@ -131,8 +131,9 @@ mod test {
         let mut stream = TokenStream::new(tokens, Span::zero("test"));
 
         let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![Ident::new("test", Span::zero("test"))])).unwrap();
+        stream.finish().unwrap();
 
-        let module = ty::Module::typecheck(&[unit], true).unwrap();
+        let module = ty::Module::typecheck(&[unit]).unwrap();
         let ir = translate(&module, IROptions::default());
 
         let defs = ir.metadata.type_defs()

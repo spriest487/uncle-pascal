@@ -177,6 +177,7 @@ impl TokenStream {
         }
     }
 
+    #[deprecated]
     pub fn match_separated<T, F>(&mut self, sep: Separator, mut f: F) -> ParseResult<Vec<T>>
     where
         F: FnMut(usize, &mut TokenStream) -> ParseResult<Generate<T>>,

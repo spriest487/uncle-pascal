@@ -418,7 +418,7 @@ pub fn expect_expr_initialized(expr: &Expression, ctx: &Context) -> TypecheckRes
 
         ast::Expression::CollectionCtor(ctor) => {
             for el in &ctor.elements {
-                expect_expr_initialized(&el, ctx)?;
+                expect_expr_initialized(&el.value, ctx)?;
             }
             Ok(())
         }

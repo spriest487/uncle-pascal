@@ -79,7 +79,7 @@ impl<M: Into<Matcher>> MatchSequenceOf for M {
 impl fmt::Display for Matcher {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Matcher::Keyword(kw) => write!(f, "{}", kw),
+            Matcher::Keyword(kw) => write!(f, "keyword `{}`", kw),
             Matcher::Operator(op) => write!(f, "{}", op),
             Matcher::Separator(sep) => write!(f, "{}", sep),
             Matcher::Ident(name) => f.write_str(name),

@@ -1,4 +1,13 @@
-use crate::{ast::Expression, parse::prelude::*};
+use crate::{
+    ast::{match_operand_start, Annotation, Expression},
+    parse::{
+        LookAheadTokenStream, Matcher, ParseResult, ParseSeq,
+        TokenStream,
+    },
+    DelimiterPair, Ident, IdentPath, TokenTree, Separator,
+};
+use pas_common::span::{Span, Spanned};
+use std::fmt;
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {
@@ -16,6 +25,33 @@ impl<A: Annotation> fmt::Display for ObjectCtorMember<A> {
 impl<A: Annotation> Spanned for ObjectCtorMember<A> {
     fn span(&self) -> &Span {
         &self.span
+    }
+}
+
+impl ParseSeq for ObjectCtorMember<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let ident = Ident::parse(tokens)?;
+        tokens.match_one(Separator::Colon)?;
+
+        let value = Expression::parse(tokens)?;
+
+        Ok(ObjectCtorMember {
+            span: ident.span().to(value.span()),
+            ident,
+            value,
+        })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }
 
@@ -37,15 +73,9 @@ impl ObjectCtorArgs<Span> {
         };
 
         let mut members_tokens = TokenStream::new(inner, open.clone());
-        let members = members_tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            let ident = tokens.match_one(Matcher::AnyIdent)?.into_ident().unwrap();
-            tokens.match_one(Separator::Colon)?;
-            let value = Expression::parse(tokens)?;
+        let members = ObjectCtorMember::parse_seq(&mut members_tokens)?;
 
-            let span = ident.span().to(value.annotation());
-
-            Ok(Generate::Yield(ObjectCtorMember { ident, value, span }))
-        })?;
+        members_tokens.match_one_maybe(Separator::Semicolon);
         members_tokens.finish()?;
 
         Ok(ObjectCtorArgs {
@@ -75,6 +105,42 @@ impl<A: Annotation> fmt::Display for ObjectCtorArgs<A> {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct CollectionCtorElement<A: Annotation> {
+    pub value: Expression<A>,
+}
+
+impl<A: Annotation> fmt::Display for CollectionCtorElement<A> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.value)
+    }
+}
+
+impl<A: Annotation> Spanned for CollectionCtorElement<A> {
+    fn span(&self) -> &Span {
+        self.value.span()
+    }
+}
+
+impl ParseSeq for CollectionCtorElement<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Comma)?;
+        }
+
+        let value = Expression::parse(tokens)?;
+        Ok(CollectionCtorElement { value })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
+            return false;
+        }
+
+        tokens.match_one(match_operand_start()).is_some()
+    }
+}
+
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtor<A: Annotation> {
     pub ident: IdentPath,
@@ -90,7 +156,7 @@ impl<A: Annotation> fmt::Display for ObjectCtor<A> {
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct CollectionCtor<A: Annotation> {
-    pub elements: Vec<Expression<A>>,
+    pub elements: Vec<CollectionCtorElement<A>>,
     pub annotation: A,
 }
 
@@ -118,10 +184,10 @@ impl CollectionCtor<Span> {
                 _ => unreachable!(),
             };
 
-        let elements = elems_tokens.match_separated(Separator::Comma, |_, elem_tokens| {
-            let elem_expr = Expression::parse(elem_tokens)?;
-            Ok(Generate::Yield(elem_expr))
-        })?;
+        let elements = CollectionCtorElement::parse_seq(&mut elems_tokens)?;
+        elems_tokens.match_one_maybe(Separator::Colon);
+
+        elems_tokens.finish()?;
 
         Ok(Self {
             elements,

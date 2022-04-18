@@ -1,9 +1,18 @@
-use crate::ast::cast::implicit_conversion;
-use crate::ast::prelude::*;
+use crate::{
+    ast::{cast::implicit_conversion, typecheck_expr},
+    ArrayType, Context, GenericError, GenericTarget, GenericTypeHint, NameContainer, NameError,
+    Specializable, Type, TypeAnnotation, TypecheckError, TypecheckResult, TypedValueAnnotation,
+    ValueKind,
+};
+use pas_common::span::{Span, Spanned};
+use pas_syn::ast;
+use std::rc::Rc;
 
 pub type ObjectCtor = ast::ObjectCtor<TypeAnnotation>;
 pub type ObjectCtorMember = ast::ObjectCtorMember<TypeAnnotation>;
 pub type ObjectCtorArgs = ast::ObjectCtorArgs<TypeAnnotation>;
+pub type CollectionCtor = ast::CollectionCtor<TypeAnnotation>;
+pub type CollectionCtorElement = ast::CollectionCtorElement<TypeAnnotation>;
 
 pub fn typecheck_object_ctor(
     ctor: &ast::ObjectCtor<Span>,
@@ -11,12 +20,11 @@ pub fn typecheck_object_ctor(
     expect_ty: &Type,
     ctx: &mut Context,
 ) -> TypecheckResult<ObjectCtor> {
-    let (_, raw_ty) = ctx.find_type(&ctor.ident)
-        .map_err(|err| {
-            TypecheckError::NameError {
-                err,
-                span: ctor.ident.span().clone(),
-            }
+    let (_, raw_ty) = ctx
+        .find_type(&ctor.ident)
+        .map_err(|err| TypecheckError::NameError {
+            err,
+            span: ctor.ident.span().clone(),
         })?;
 
     let ty_name = raw_ty
@@ -66,8 +74,9 @@ pub fn typecheck_object_ctor(
         return Err(TypecheckError::PrivateConstructor { ty, span });
     }
 
-    let ty_members: Vec<_> = ty.members(ctx).map_err(|err| {
-        TypecheckError::NameError { err, span: span.clone() }
+    let ty_members: Vec<_> = ty.members(ctx).map_err(|err| TypecheckError::NameError {
+        err,
+        span: span.clone(),
     })?;
     let mut members: Vec<ObjectCtorMember> = Vec::new();
 
@@ -92,13 +101,13 @@ pub fn typecheck_object_ctor(
                     span: arg.span().clone(),
                     err,
                 });
-            }
+            },
         };
 
         let value = implicit_conversion(
             typecheck_expr(&arg.value, &member.ty, ctx)?,
             &member.ty,
-            ctx
+            ctx,
         )?;
 
         members.push(ObjectCtorMember {
@@ -108,7 +117,8 @@ pub fn typecheck_object_ctor(
         });
     }
 
-    let ty_members_len = ty.members_len(ctx)
+    let ty_members_len = ty
+        .members_len(ctx)
         .map_err(|err| TypecheckError::NameError {
             span: span.clone(),
             err,
@@ -137,7 +147,8 @@ pub fn typecheck_object_ctor(
         value_kind: ValueKind::Temporary,
         span,
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(ObjectCtor {
         ident: ty_name,
@@ -145,8 +156,6 @@ pub fn typecheck_object_ctor(
         annotation,
     })
 }
-
-pub type CollectionCtor = ast::CollectionCtor<TypeAnnotation>;
 
 pub fn typecheck_collection_ctor(
     ctor: &ast::CollectionCtor<Span>,
@@ -156,20 +165,21 @@ pub fn typecheck_collection_ctor(
     let (elements, elem_ty) = match expect_ty.index_element_ty() {
         None => {
             let elements = elements_for_inferred_ty(ctor, ctx)?;
-            let elem_ty = elements[0].annotation().ty().into_owned();
+            let elem_ty = elements[0].value.annotation().ty().into_owned();
             (elements, elem_ty)
-        }
+        },
 
         Some(elem_ty) => {
-            if false && elem_ty.contains_generic_params() {
+            // todo: why was the true branch made to never execute previously?
+            if elem_ty.contains_generic_params() {
                 let elements = elements_for_inferred_ty(ctor, ctx)?;
-                let elem_ty = elements[0].annotation().ty().into_owned();
+                let elem_ty = elements[0].value.annotation().ty().into_owned();
                 (elements, elem_ty)
             } else {
                 let elements = elements_for_expected_ty(ctor, elem_ty, ctx)?;
                 (elements, elem_ty.clone())
             }
-        }
+        },
     };
 
     let collection_ty = match expect_ty {
@@ -188,7 +198,8 @@ pub fn typecheck_collection_ctor(
         span: ctor.annotation.clone(),
         value_kind: ValueKind::Temporary,
         decl: None,
-    }.into();
+    }
+    .into();
 
     Ok(CollectionCtor {
         elements,
@@ -199,7 +210,7 @@ pub fn typecheck_collection_ctor(
 fn elements_for_inferred_ty(
     ctor: &ast::CollectionCtor<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<Expression>> {
+) -> TypecheckResult<Vec<CollectionCtorElement>> {
     // must have at at least one element to infer types
     if ctor.elements.is_empty() {
         return Err(TypecheckError::UnableToInferType {
@@ -208,16 +219,18 @@ fn elements_for_inferred_ty(
     }
 
     let mut elements = Vec::new();
-    let first_element = typecheck_expr(&ctor.elements[0], &Type::Nothing, ctx)?;
-    let expected_ty = first_element.annotation().ty().into_owned();
+    let first_element_val = typecheck_expr(&ctor.elements[0].value, &Type::Nothing, ctx)?;
+    let expected_ty = first_element_val.annotation().ty().into_owned();
 
-    elements.push(first_element);
+    elements.push(CollectionCtorElement {
+        value: first_element_val,
+    });
 
     for e in ctor.elements.iter().skip(1) {
-        let element = typecheck_expr(e, &expected_ty, ctx)?;
+        let element = typecheck_expr(&e.value, &expected_ty, ctx)?;
         element.annotation().expect_value(&expected_ty)?;
 
-        elements.push(element);
+        elements.push(CollectionCtorElement { value: element });
     }
 
     Ok(elements)
@@ -227,13 +240,13 @@ fn elements_for_expected_ty(
     ctor: &ast::CollectionCtor<Span>,
     expected_ty: &Type,
     ctx: &mut Context,
-) -> TypecheckResult<Vec<Expression>> {
+) -> TypecheckResult<Vec<CollectionCtorElement>> {
     let mut elements = Vec::new();
     for e in &ctor.elements {
-        let element = typecheck_expr(e, expected_ty, ctx)?;
-        element.annotation().expect_value(&expected_ty)?;
+        let value = typecheck_expr(&e.value, expected_ty, ctx)?;
+        value.annotation().expect_value(&expected_ty)?;
 
-        elements.push(element);
+        elements.push(CollectionCtorElement { value });
     }
 
     Ok(elements)

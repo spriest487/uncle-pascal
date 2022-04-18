@@ -199,19 +199,12 @@ fn parse_unit_func_decl(tokens: &mut TokenStream, visibility: Visibility) -> Par
 }
 
 fn parse_init_section(tokens: &mut TokenStream) -> ParseResult<Vec<Statement<Span>>> {
-    tokens.match_separated(Separator::Semicolon, |_, tokens| {
-        let stmt_next = tokens
-            .look_ahead()
-            .match_one(stmt_start_matcher())
-            .is_some();
+    let stmts = Statement::parse_seq(tokens)?;
 
-        if !stmt_next {
-            Ok(Generate::Break)
-        } else {
-            let stmt = Statement::parse(tokens)?;
-            Ok(Generate::Yield(stmt))
-        }
-    })
+    // the last statement may be optionally terminated with a redundant separator
+    tokens.match_one_maybe(Separator::Semicolon);
+
+    Ok(stmts)
 }
 
 impl<A: Annotation> fmt::Display for Unit<A> {

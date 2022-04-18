@@ -25,11 +25,12 @@ where
         let unit_ident = Ident::new(unit_name, Span::zero(unit_name));
 
         let unit = ast::Unit::parse(&mut stream, IdentPath::from_parts(vec![unit_ident])).unwrap();
+        stream.finish().unwrap();
 
         units.push(unit);
     }
 
-    Module::typecheck(&units, true).unwrap()
+    Module::typecheck(&units).unwrap()
 }
 
 pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {

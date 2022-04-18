@@ -1,8 +1,7 @@
-use crate::{
-    ast::{Annotation, Expression, TypeList},
-    parse::prelude::*,
-};
+use crate::{ast::{Annotation, Expression, TypeList, match_operand_start}, DelimiterPair, Ident, Separator, TokenTree};
 use std::{fmt};
+use pas_common::span::{Span, Spanned};
+use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -146,6 +145,27 @@ impl<A: Annotation> Call<A> {
     }
 }
 
+struct ArgListItem(Expression<Span>);
+
+impl ParseSeq for ArgListItem {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Comma)?;
+        }
+
+        let arg = Expression::parse(tokens)?;
+        Ok(ArgListItem(arg))
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
+            return false;
+        }
+
+        tokens.match_one(match_operand_start()).is_some()
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct ArgList<A: Annotation> {
     pub open: Span,
@@ -171,10 +191,10 @@ impl ArgList<Span> {
 
         let mut args_tokens = TokenStream::new(inner, span);
 
-        let args = args_tokens.match_separated(Separator::Comma, |_, tokens| {
-            let arg_expr = Expression::parse(tokens)?;
-            Ok(Generate::Yield(arg_expr))
-        })?;
+        let args = ArgListItem::parse_seq(&mut args_tokens)?
+            .into_iter()
+            .map(|a| a.0)
+            .collect();
 
         args_tokens.finish()?;
 

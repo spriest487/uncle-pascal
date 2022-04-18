@@ -1132,7 +1132,7 @@ fn translate_static_array_ctor(
             element: el_ty.clone(),
         });
 
-        let el_init = translate_expr(el, builder);
+        let el_init = translate_expr(&el.value, builder);
 
         builder.mov(el_ptr.clone().to_deref(), el_init);
         builder.end_scope();
@@ -1213,7 +1213,7 @@ fn translate_dyn_array_ctor(
                     });
 
                     // el_ptr^ := el
-                    let el = translate_expr(el, builder);
+                    let el = translate_expr(&el.value, builder);
                     builder.mov(el_ptr.clone().to_deref(), el);
 
                     // retain each element. we don't do this for static arrays because retaining

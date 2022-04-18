@@ -34,12 +34,6 @@ pub enum Statement<A: Annotation> {
     Match(Box<MatchStmt<A>>),
 }
 
-impl Parse for Statement<Span> {
-    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        Statement::parse(tokens)
-    }
-}
-
 impl<A: Annotation> Statement<A> {
     pub fn annotation(&self) -> &A {
         match self {
@@ -192,8 +186,8 @@ impl<A: Annotation> Spanned for Statement<A> {
     }
 }
 
-impl Statement<Span> {
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Statement<Span>> {
+impl Parse for Statement<Span> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Statement<Span>> {
         let stmt_start = stmt_start_matcher();
 
         match tokens.look_ahead().match_one(stmt_start.clone()) {
@@ -265,6 +259,24 @@ impl Statement<Span> {
                 None => ParseError::UnexpectedEOF(stmt_start, tokens.context().clone()),
             })),
         }
+    }
+}
+
+impl ParseSeq for Statement<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        Statement::parse(tokens)
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(stmt_start_matcher()).is_some()
     }
 }
 
