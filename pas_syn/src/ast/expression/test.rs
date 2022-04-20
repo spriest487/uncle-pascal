@@ -1,8 +1,10 @@
 use super::*;
-use crate::token_tree::TokenTree;
 use pas_common::{BuildOptions, TracedError};
-use crate::ast::{IdentTypeName, TypeName};
-use crate::Operator;
+use crate::{
+    ast::{IdentTypeName, TypeName},
+    token_tree::TokenTree,
+    Operator
+};
 
 fn tokenize(src: &str) -> TokenStream {
     let tokens = TokenTree::tokenize("test", src, &BuildOptions::default()).unwrap();

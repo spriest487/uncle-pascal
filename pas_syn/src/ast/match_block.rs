@@ -1,8 +1,13 @@
 use std::fmt;
 use pas_common::span::{Span, Spanned};
-use crate::ast::{Annotation, Expression, Statement, TypeNamePattern};
-use crate::{DelimiterPair, Keyword, Separator, TokenTree};
-use crate::parse::{Generate, Parse, ParseResult, TokenStream};
+use crate::{
+    DelimiterPair,
+    Keyword,
+    Separator,
+    TokenTree,
+    ast::{Annotation, Expression, Statement, TypeNamePattern},
+    parse::{LookAheadTokenStream, Parse, ParseResult, ParseSeq, TokenStream}
+};
 
 #[derive(Clone, Debug, Eq, Hash)]
 pub struct MatchBlock<A, B>
@@ -28,6 +33,40 @@ where
     pub pattern: A::Pattern,
     pub item: B,
     pub span: Span,
+}
+
+impl<B> ParseSeq for MatchBlockBranch<Span, B>
+where
+    B: Parse + Spanned
+{
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let pattern = TypeNamePattern::parse(tokens)?;
+
+        tokens.match_one(Separator::Colon)?;
+
+        let item = B::parse(tokens)?;
+
+        Ok(MatchBlockBranch {
+            span: pattern.span().to(item.span()),
+            pattern,
+            item,
+        })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        match tokens.next() {
+            Some(tt) if tt.is_keyword(Keyword::Else) => false,
+            _ => true,
+        }
+    }
 }
 
 impl<A, B> PartialEq for MatchBlock<A, B>
@@ -67,29 +106,19 @@ where
         let cond_expr = Expression::parse(&mut inner_tokens)?;
         inner_tokens.match_one(Keyword::Of)?;
 
-        let branches = inner_tokens.match_separated(Separator::Semicolon, |_i, branch_tokens| {
-            if branch_tokens.look_ahead().match_one(Keyword::Else).is_some() {
-                return Ok(Generate::Break);
-            }
-
-            let pattern = TypeNamePattern::parse(branch_tokens)?;
-
-            branch_tokens.match_one(Separator::Colon)?;
-
-            let item = B::parse(branch_tokens)?;
-
-            Ok(Generate::Yield(MatchBlockBranch {
-                span: pattern.span().to(item.span()),
-                pattern,
-                item,
-            }))
-        })?;
+        let branches = MatchBlockBranch::parse_seq(&mut inner_tokens)?;
+        if branches.len() > 0 {
+            inner_tokens.match_one_maybe(Separator::Semicolon);
+        }
 
         let else_branch = match inner_tokens.match_one_maybe(Keyword::Else) {
             Some(_else_tt) => Some(B::parse(&mut inner_tokens)?),
             None => None,
         };
 
+        if branches.len() > 0 {
+            inner_tokens.match_one_maybe(Separator::Semicolon);
+        }
         inner_tokens.finish()?;
 
         Ok(MatchBlock {

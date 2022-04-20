@@ -124,9 +124,8 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
 
         let unit_ident = parsed_unit.ident.clone();
         let uses_units: Vec<_> = parsed_unit
-            .decls
-            .iter()
-            .filter_map(|decl| match decl {
+            .all_decls()
+            .filter_map(|(_vis, decl)| match decl {
                 ast::UnitDecl::Uses { decl } => Some(decl.clone()),
                 _ => None,
             })

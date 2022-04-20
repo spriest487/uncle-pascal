@@ -226,12 +226,12 @@ pub trait ParseSeq : Sized {
         let mut results = Vec::new();
 
         loop {
+            let group_output = Self::parse_group(&results, tokens)?;
+            results.push(group_output);
+
             if !Self::has_more(&results, &mut tokens.look_ahead()) {
                 break;
             }
-
-            let group_output = Self::parse_group(&results, tokens)?;
-            results.push(group_output);
         }
 
         Ok(results)

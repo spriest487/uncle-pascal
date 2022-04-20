@@ -272,7 +272,7 @@ impl ParseSeq for Statement<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+        if tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
 

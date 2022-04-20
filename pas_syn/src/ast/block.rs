@@ -145,7 +145,9 @@ impl Block<Span> {
         }
 
         // last block statement may be terminated with a redundant separator
-        tokens.match_one_maybe(Separator::Semicolon);
+        if statements.len() > 0 {
+            tokens.match_one_maybe(Separator::Semicolon);
+        }
 
         tokens.finish()?;
 

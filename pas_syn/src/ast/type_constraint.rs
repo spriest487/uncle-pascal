@@ -99,7 +99,7 @@ impl ParseSeq for WhereClauseItem {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if prev.len() > 0 && tokens.match_one(Separator::Semicolon).is_none() {
+        if tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
 

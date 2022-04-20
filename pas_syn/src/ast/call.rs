@@ -158,7 +158,7 @@ impl ParseSeq for ArgListItem {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
+        if tokens.match_one(Separator::Comma).is_none() {
             return false;
         }
 

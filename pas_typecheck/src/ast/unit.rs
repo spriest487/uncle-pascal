@@ -6,7 +6,7 @@ pub type Unit = ast::Unit<TypeAnnotation>;
 pub type UnitDecl = ast::UnitDecl<TypeAnnotation>;
 pub type ConstDecl = ast::ConstDecl<TypeAnnotation>;
 
-fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> TypecheckResult<UnitDecl> {
+fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context, visibility: Visibility) -> TypecheckResult<UnitDecl> {
     match decl {
         ast::UnitDecl::Uses { decl: uses } => {
             for unit in &uses.units {
@@ -18,25 +18,21 @@ fn typecheck_unit_decl(decl: &ast::UnitDecl<Span>, ctx: &mut Context) -> Typeche
 
         ast::UnitDecl::FunctionDef {
             def: func_def,
-            visibility,
-        } => typecheck_unit_func_def(func_def, *visibility, ctx),
+        } => typecheck_unit_func_def(func_def, visibility, ctx),
 
         ast::UnitDecl::FunctionDecl {
             decl: func_decl,
-            visibility,
-        } => typecheck_unit_func_decl(func_decl, *visibility, ctx),
+        } => typecheck_unit_func_decl(func_decl, visibility, ctx),
 
         ast::UnitDecl::Type {
             decl: type_decl,
-            visibility,
-        } => typecheck_unit_type_decl(type_decl, *visibility, ctx),
+        } => typecheck_unit_type_decl(type_decl, visibility, ctx),
 
-        ast::UnitDecl::Const { decl, visibility } => {
-            let decl = typecheck_const_decl(decl, *visibility, ctx)?;
+        ast::UnitDecl::Const { decl } => {
+            let decl = typecheck_const_decl(decl, visibility, ctx)?;
 
             Ok(ast::UnitDecl::Const {
                 decl,
-                visibility: *visibility,
             })
         }
     }
@@ -97,7 +93,6 @@ fn typecheck_unit_func_def(
 
     Ok(UnitDecl::FunctionDef {
         def: func_def,
-        visibility,
     })
 }
 
@@ -118,7 +113,6 @@ fn typecheck_unit_func_decl(
 
     Ok(ast::UnitDecl::FunctionDecl {
         decl: func_decl,
-        visibility,
     })
 }
 
@@ -184,7 +178,6 @@ fn typecheck_unit_type_decl(
 
     Ok(ast::UnitDecl::Type {
         decl: type_decl,
-        visibility,
     })
 }
 
@@ -247,9 +240,14 @@ fn typecheck_const_decl(
 
 pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckResult<ModuleUnit> {
     ctx.unit_scope(unit.ident.clone(), |ctx| {
-        let mut decls = Vec::new();
-        for decl in &unit.decls {
-            decls.push(typecheck_unit_decl(decl, ctx)?);
+        let mut iface_decls = Vec::new();
+        for decl in &unit.iface_decls {
+            iface_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Interface)?);
+        }
+
+        let mut impl_decls = Vec::new();
+        for decl in &unit.impl_decls {
+            impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Interface)?);
         }
 
         // init statement is implicitly a block
@@ -277,7 +275,8 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
         let unit = Unit {
             ident: unit.ident.clone(),
             init,
-            decls,
+            iface_decls,
+            impl_decls,
         };
 
         Ok(ModuleUnit {

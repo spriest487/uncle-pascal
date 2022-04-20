@@ -4,7 +4,15 @@ use pas_common::{
     TracedError
 };
 use crate::{
-    ast::{Annotation, ConstDecl, Expression, FunctionDecl, FunctionDef, TypeDecl},
+    ast::{
+        unit::{parse_unit_decl},
+        Annotation,
+        ConstDecl,
+        Expression,
+        FunctionDecl,
+        FunctionDef,
+        TypeDecl
+    },
     IdentPath,
     Keyword,
     Separator,
@@ -17,7 +25,8 @@ use crate::{
         TokenStream,
         LookAheadTokenStream,
         ParseSeq,
-    }
+    },
+    parse::MatchOneOf
 };
 
 #[derive(Clone, Copy, Debug, Hash, Eq, PartialEq)]
@@ -30,22 +39,18 @@ pub enum Visibility {
 pub enum UnitDecl<A: Annotation> {
     FunctionDecl {
         decl: FunctionDecl<A>,
-        visibility: Visibility,
     },
     FunctionDef {
         def: FunctionDef<A>,
-        visibility: Visibility,
     },
     Type {
         decl: TypeDecl<A>,
-        visibility: Visibility,
     },
     Uses {
         decl: UseDecl,
     },
     Const {
         decl: ConstDecl<A>,
-        visibility: Visibility,
     },
 }
 
@@ -76,6 +81,30 @@ impl<A: Annotation> fmt::Display for UnitDecl<A> {
             UnitDecl::Uses { decl: uses } => write!(f, "{}", uses),
             UnitDecl::Const { decl, .. } => write!(f, "{}", decl),
         }
+    }
+}
+
+impl UnitDecl<Span> {
+    pub fn start_matcher() -> Matcher {
+        Keyword::Function
+            .or(Keyword::Uses)
+            .or(Keyword::Type)
+            .or(Keyword::Const)
+    }
+}
+
+impl ParseSeq for UnitDecl<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        parse_unit_decl(tokens)
+    }
+
+    fn has_more(_prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        tokens.match_sequence(Separator::Semicolon.and_then(UnitDecl::start_matcher()))
+            .is_some()
     }
 }
 

@@ -47,7 +47,7 @@ impl ParseSeq for ObjectCtorMember<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+        if tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
 
@@ -75,7 +75,10 @@ impl ObjectCtorArgs<Span> {
         let mut members_tokens = TokenStream::new(inner, open.clone());
         let members = ObjectCtorMember::parse_seq(&mut members_tokens)?;
 
-        members_tokens.match_one_maybe(Separator::Semicolon);
+        if members.len() > 0 {
+            members_tokens.match_one_maybe(Separator::Semicolon);
+        }
+
         members_tokens.finish()?;
 
         Ok(ObjectCtorArgs {
@@ -133,7 +136,7 @@ impl ParseSeq for CollectionCtorElement<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
+        if tokens.match_one(Separator::Comma).is_none() {
             return false;
         }
 
@@ -185,7 +188,9 @@ impl CollectionCtor<Span> {
             };
 
         let elements = CollectionCtorElement::parse_seq(&mut elems_tokens)?;
-        elems_tokens.match_one_maybe(Separator::Colon);
+        if elements.len() > 0 {
+            elems_tokens.match_one_maybe(Separator::Colon);
+        }
 
         elems_tokens.finish()?;
 
