@@ -19,7 +19,6 @@ use crate::{
     parse::{
         Generate,
         Matcher,
-        MatchSequenceOf,
         ParseError,
         ParseResult,
         TokenStream,
@@ -102,9 +101,12 @@ impl ParseSeq for UnitDecl<Span> {
         parse_unit_decl(tokens)
     }
 
-    fn has_more(_prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        tokens.match_sequence(Separator::Semicolon.and_then(UnitDecl::start_matcher()))
-            .is_some()
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(UnitDecl::start_matcher()).is_some()
     }
 }
 
@@ -199,7 +201,8 @@ impl ParseSeq for DeclMod<Span> {
     }
 
     fn has_more(_prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        tokens.match_sequence(Separator::Semicolon.and_then(Self::EXTERNAL_WORD)).is_some()
+        tokens.match_one(Separator::Semicolon).is_some()
+            && tokens.match_one(Self::EXTERNAL_WORD).is_some()
     }
 }
 

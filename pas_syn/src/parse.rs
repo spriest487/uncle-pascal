@@ -203,3 +203,7 @@ impl DiagnosticOutput for ParseError {
 pub trait Parse: Sized {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self>;
 }
+
+pub trait Match {
+    fn is_match(tokens: &mut LookAheadTokenStream) -> bool;
+}

@@ -1,10 +1,11 @@
 use std::fmt;
 use crate::{
-    ast::{match_operand_start, Annotation, Expression},
+    ast::{Annotation, Expression},
     parse::{ParseResult, TokenStream},
     Keyword,
 };
 use pas_common::span::{Span, Spanned};
+use crate::parse::Matcher;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Exit<A: Annotation> {
@@ -16,7 +17,7 @@ impl Exit<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let exit_tt = tokens.match_one(Keyword::Exit)?;
 
-        let exit = match tokens.look_ahead().match_one(match_operand_start()) {
+        let exit = match tokens.look_ahead().match_one(Matcher::ExprOperandStart) {
             None => Exit::WithoutValue(exit_tt.span().clone()),
 
             Some(..) => {

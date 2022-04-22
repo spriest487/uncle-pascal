@@ -91,24 +91,26 @@ pub fn builtin_disposable_name() -> Symbol {
     }
 }
 
-pub fn builtin_disposable_iface() -> ast::Interface {
+pub fn builtin_disposable_iface() -> ast::InterfaceDecl {
     let builtin_span = builtin_span();
 
-    ast::Interface {
+    ast::InterfaceDecl {
         name: builtin_disposable_name(),
-        methods: vec![ast::FunctionDecl {
-            ident: IdentPath::from(builtin_disposable_dispose_name()),
-            return_ty: None,
-            impl_iface: None,
-            mods: Vec::new(),
-            type_params: None,
-            params: vec![ast::FunctionParam {
-                ident: Ident::new("self", builtin_span.clone()),
-                ty: Type::MethodSelf,
-                modifier: None,
+        methods: vec![ast::InterfaceMethodDecl {
+            decl: ast::FunctionDecl {
+                ident: IdentPath::from(builtin_disposable_dispose_name()),
+                return_ty: None,
+                impl_iface: None,
+                mods: Vec::new(),
+                type_params: None,
+                params: vec![ast::FunctionParam {
+                    ident: Ident::new("self", builtin_span.clone()),
+                    ty: Type::MethodSelf,
+                    modifier: None,
+                    span: builtin_span.clone(),
+                }],
                 span: builtin_span.clone(),
-            }],
-            span: builtin_span.clone(),
+            }
         }],
         span: builtin_span,
     }

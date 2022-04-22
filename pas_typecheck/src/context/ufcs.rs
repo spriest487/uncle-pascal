@@ -40,7 +40,7 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
                 .iter()
                 .map(|method_decl| InstanceMethod::Method {
                     iface_ty: ty.clone(),
-                    decl: method_decl.clone(),
+                    decl: method_decl.decl.clone(),
                 })
                 .collect();
 
@@ -110,6 +110,7 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceM
 
         let iface_instance_methods = iface_def.methods.iter().filter(|method_decl| {
             method_decl
+                .decl
                 .params
                 .get(0)
                 .map(|arg_0| arg_0.ty == Type::MethodSelf)
@@ -121,7 +122,7 @@ fn find_iface_impl_methods(ty: &Type, ctx: &Context) -> NameResult<Vec<InstanceM
         for method in iface_instance_methods {
             methods.push(InstanceMethod::Method {
                 iface_ty: iface_ty.clone(),
-                decl: method.clone(),
+                decl: method.decl.clone(),
             });
         }
     }

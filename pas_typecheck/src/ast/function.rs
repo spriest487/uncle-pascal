@@ -1,5 +1,5 @@
 use crate::{
-    ast::{const_eval_string, prelude::ast::TypeList, typecheck_block, typecheck_expr, Interface},
+    ast::{const_eval_string, prelude::ast::TypeList, typecheck_block, typecheck_expr, InterfaceDecl},
     string_type, typecheck_type, typecheck_type_params, Binding, Context, Environment,
     FunctionParamSig, FunctionSig, NameContainer, NameError, NameResult, Type, TypeAnnotation,
     TypecheckError, TypecheckResult, TypedValueAnnotation, ValueKind,
@@ -16,6 +16,7 @@ pub type DeclMod = ast::DeclMod<TypeAnnotation>;
 pub type FunctionDef = ast::FunctionDef<TypeAnnotation>;
 pub type FunctionParam = ast::FunctionParam<TypeAnnotation>;
 pub type InterfaceImpl = ast::InterfaceImpl<TypeAnnotation>;
+pub type InterfaceMethodDecl = ast::InterfaceMethodDecl<TypeAnnotation>;
 pub type AnonymousFunctionDef = ast::AnonymousFunctionDef<TypeAnnotation>;
 pub type FunctionLocalDecl = ast::FunctionLocalDecl<TypeAnnotation>;
 
@@ -153,15 +154,15 @@ fn typecheck_decl_mods(
 }
 
 fn find_iface_impl(
-    iface_def: Rc<Interface>,
+    iface_def: Rc<InterfaceDecl>,
     method_ident: &Ident,
     sig: &FunctionSig,
 ) -> NameResult<InterfaceImpl> {
     let impl_for_types: Vec<_> = iface_def
         .methods
         .iter()
-        .filter(|method| *method.ident.single() == *method_ident)
-        .filter_map(|method| FunctionSig::of_decl(method).impl_ty(&sig))
+        .filter(|method| *method.ident() == *method_ident)
+        .filter_map(|method| FunctionSig::of_decl(&method.decl).impl_ty(&sig))
         .collect();
 
     match impl_for_types.len() {

@@ -361,8 +361,8 @@ impl Type {
                 let method_decl = iface_def
                     .methods
                     .iter()
-                    .find(|m| *m.ident.single() == *method)
-                    .cloned();
+                    .find(|m| *m.ident() == *method)
+                    .map(|m| m.decl.clone());
 
                 Ok(method_decl)
             },

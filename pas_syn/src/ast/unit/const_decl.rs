@@ -11,6 +11,7 @@ use crate::{
     Separator,
     parse::{ParseResult, TokenStream}
 };
+use crate::parse::Parse;
 
 #[derive(Clone, Debug, Eq)]
 pub struct ConstDecl<A: Annotation> {

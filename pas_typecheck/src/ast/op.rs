@@ -245,7 +245,7 @@ fn desugar_displayable_to_string(
         None => return None,
     };
 
-    let to_string_sig = Rc::new(FunctionSig::of_decl(to_string_method));
+    let to_string_sig = Rc::new(FunctionSig::of_decl(&to_string_method.decl));
 
     // make a call
     let displayable_call = Call::Method(MethodCall {
@@ -481,7 +481,7 @@ pub fn typecheck_member_value(
                 OverloadAnnotation::method(
                     iface_ty,
                     lhs.clone(),
-                    method_decl.clone(),
+                    method_decl.decl.clone(),
                     span.clone(),
                 )
             } else {
@@ -498,7 +498,8 @@ pub fn typecheck_member_value(
                                 let method_iface = ctx.find_iface_def(iface_ident)
                                     .map_err(|err| TypecheckError::from_name_err(err, span.clone()))?;
 
-                                method_iface.get_method(&method).cloned()
+                                method_iface.get_method(&method)
+                                    .map(|m| m.decl.clone())
                             }
                         }
                     }

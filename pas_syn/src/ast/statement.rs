@@ -10,7 +10,6 @@ pub use self::{
 use crate::{
     ast::{
         case::{CaseBlock, CaseStatement},
-        expression::match_operand_start,
         Block, Call, Expression, ForLoop, IfCond, Raise, WhileLoop, MatchStmt,
     },
     parse::prelude::*,
@@ -177,7 +176,7 @@ pub fn stmt_start_matcher() -> Matcher {
         .or(Keyword::Break)
         .or(Keyword::Continue)
         .or(Keyword::Exit)
-        .or(match_operand_start())
+        .or(Matcher::ExprOperandStart)
 }
 
 impl<A: Annotation> Spanned for Statement<A> {
@@ -272,7 +271,7 @@ impl ParseSeq for Statement<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if tokens.match_one(Separator::Semicolon).is_none() {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
 

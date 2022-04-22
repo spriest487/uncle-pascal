@@ -1,4 +1,4 @@
-use crate::{ast::{Annotation, Expression, TypeList, match_operand_start}, DelimiterPair, Ident, Separator, TokenTree};
+use crate::{ast::{Annotation, Expression, TypeList}, DelimiterPair, Ident, Separator, TokenTree};
 use std::{fmt};
 use pas_common::span::{Span, Spanned};
 use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
@@ -158,11 +158,11 @@ impl ParseSeq for ArgListItem {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if tokens.match_one(Separator::Comma).is_none() {
+        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
             return false;
         }
 
-        tokens.match_one(match_operand_start()).is_some()
+        tokens.match_one(Matcher::ExprOperandStart).is_some()
     }
 }
 

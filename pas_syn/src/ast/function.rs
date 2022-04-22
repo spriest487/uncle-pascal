@@ -506,7 +506,7 @@ impl<A: Annotation> Spanned for AnonymousFunctionDef<A> {
 
 impl Parse for AnonymousFunctionDef<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let func_kw = tokens.match_one(Keyword::Function)?;
+        let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure))?;
         let (params_open, params_inner) = match tokens.match_one(DelimiterPair::Bracket)? {
             TokenTree::Delimited { open, inner, .. } => (open, inner),
             _ => unreachable!(),

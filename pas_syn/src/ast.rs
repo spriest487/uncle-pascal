@@ -37,6 +37,7 @@ use crate::parse::prelude::*;
 use pas_common::TracedError;
 use std::hash::Hasher;
 use std::{fmt, hash::Hash};
+use derivative::*;
 
 pub trait Typed: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash {
     fn is_known(&self) -> bool;
@@ -263,12 +264,8 @@ impl Typed for TypeName {
     }
 }
 
-impl TypeName {
-    fn match_next() -> Matcher {
-        Keyword::Array.or(Keyword::Function).or(Matcher::AnyIdent)
-    }
-
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+impl Parse for TypeName {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let mut indirection = 0;
         let mut indirection_span = None;
 
@@ -279,9 +276,9 @@ impl TypeName {
             indirection += 1;
         }
 
-        tokens.look_ahead().expect_one(Self::match_next())?;
+        match tokens.match_one_maybe(Keyword::Array.or(Keyword::Function).or(Keyword::Procedure)) {
+            None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
 
-        match tokens.match_one_maybe(Keyword::Array.or(Keyword::Function)) {
             Some(array_kw) if array_kw.is_keyword(Keyword::Array) => Self::parse_array_type(
                 tokens,
                 array_kw.span(),
@@ -289,7 +286,7 @@ impl TypeName {
                 indirection_span,
             ),
 
-            Some(fn_kw) if fn_kw.is_keyword(Keyword::Function) => Self::parse_function_type(
+            Some(fn_kw) if fn_kw.is_keyword(Keyword::Function) || fn_kw.is_keyword(Keyword::Procedure) => Self::parse_function_type(
                 tokens,
                 fn_kw.into_span(),
                 indirection,
@@ -297,11 +294,22 @@ impl TypeName {
             ),
 
             Some(..) => unreachable!(),
-
-            None => Self::parse_named_type(tokens, indirection, indirection_span.as_ref()),
         }
     }
+}
 
+impl Match for TypeName {
+    fn is_match(tokens: &mut LookAheadTokenStream) -> bool {
+        let matcher = Keyword::Array
+            .or(Keyword::Function)
+            .or(Keyword::Procedure)
+            .or(Matcher::AnyIdent);
+
+        tokens.match_one(matcher).is_some()
+    }
+}
+
+impl TypeName {
     fn parse_array_type(
         tokens: &mut TokenStream,
         array_kw_span: &Span,
@@ -460,9 +468,14 @@ impl fmt::Display for TypeName {
 ///
 /// Generic because items may be type names (when they refer to real types in expressions)
 /// or idents only (when they are declaring type parameter names in type/function declarations)
-#[derive(Debug, Clone, Eq)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(PartialEq, Hash, Debug)]
 pub struct TypeList<Item> {
     pub items: Vec<Item>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     span: Span,
 }
 
@@ -482,24 +495,6 @@ impl<Item> TypeList<Item> {
 
     pub fn iter(&self) -> impl Iterator<Item = &Item> {
         self.items.iter()
-    }
-}
-
-impl<Item> PartialEq for TypeList<Item>
-where
-    Item: PartialEq,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.items.eq(&other.items)
-    }
-}
-
-impl<Item> Hash for TypeList<Item>
-where
-    Item: Hash,
-{
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.items.hash(state)
     }
 }
 
@@ -530,7 +525,7 @@ where
 
 impl TypeList<TypeName> {
     fn parse_type_args(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let type_args = Self::parse(tokens, TypeName::parse, TypeName::match_next())?;
+        let type_args = Self::parse(tokens)?;
 
         if type_args.items.len() == 0 {
             let err = ParseError::EmptyTypeArgList(type_args);
@@ -543,7 +538,7 @@ impl TypeList<TypeName> {
 
 impl TypeList<Ident> {
     fn parse_type_params(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let type_args = Self::parse(tokens, Ident::parse, Matcher::AnyIdent)?;
+        let type_args = Self::parse(tokens)?;
 
         if type_args.items.len() == 0 {
             let err = ParseError::EmptyTypeParamList(type_args);
@@ -554,42 +549,38 @@ impl TypeList<Ident> {
     }
 }
 
-impl<Item: Spanned> TypeList<Item> {
-    fn parse<ItemParser, ItemMatcher>(
-        tokens: &mut TokenStream,
-        mut item_parser: ItemParser,
-        item_next_matcher: ItemMatcher,
-    ) -> ParseResult<Self>
+impl<Item> TypeList<Item> {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self>
     where
-        ItemParser: FnMut(&mut TokenStream) -> ParseResult<Item>,
-        ItemMatcher: Into<Matcher>,
+        Item: Spanned + Parse + Match,
     {
-        let item_next_matcher = item_next_matcher.into();
-
-        let (items_tokens, span) = match tokens.match_one(DelimiterPair::SquareBracket)? {
+        let (items_inner, span) = match tokens.match_one(DelimiterPair::SquareBracket)? {
             TokenTree::Delimited { inner, span, .. } => (inner, span),
             _ => unreachable!(),
         };
 
         let items = {
-            let mut items_token_stream = TokenStream::new(items_tokens, span.clone());
+            let mut items_tokens = TokenStream::new(items_inner, span.clone());
 
-            let items = items_token_stream.match_separated(Separator::Comma, |i, tokens| {
-                // expect at least one item after `of`
-                if i > 0
-                    && tokens
-                        .look_ahead()
-                        .match_one(item_next_matcher.clone())
-                        .is_none()
-                {
-                    Ok(Generate::Break)
-                } else {
-                    let item = item_parser(tokens)?;
-                    Ok(Generate::Yield(item))
+            let mut items = Vec::new();
+            loop {
+                // empty type lists aren't valid so we must have 1+ items
+                let item = Item::parse(&mut items_tokens)?;
+                items.push(item);
+
+                if items_tokens.match_one_maybe(Separator::Comma).is_none() {
+                    break;
                 }
-            })?;
 
-            items_token_stream.finish()?;
+                if !Item::is_match(&mut items_tokens.look_ahead()) {
+                    break;
+                }
+            }
+
+            // allow redundant comma after final item
+            items_tokens.match_one_maybe(Separator::Comma);
+            items_tokens.finish()?;
+
             items
         };
 

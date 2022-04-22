@@ -3,7 +3,7 @@ use crate::ast::prelude::*;
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
 pub type Composite = ast::Composite<TypeAnnotation>;
 pub type Member = ast::CompositeMember<TypeAnnotation>;
-pub type Interface = ast::Interface<TypeAnnotation>;
+pub type InterfaceDecl = ast::Interface<TypeAnnotation>;
 pub type Variant = ast::Variant<TypeAnnotation>;
 pub type AliasDecl = ast::AliasDecl<TypeAnnotation>;
 
@@ -80,34 +80,36 @@ pub fn typecheck_iface(
     name: Symbol,
     iface: &ast::Interface<Span>,
     ctx: &mut Context,
-) -> TypecheckResult<Interface> {
+) -> TypecheckResult<InterfaceDecl> {
     // declare Self type - type decls are always in their own scope so we don't need to push
     // another one
     ctx.declare_self_ty(Type::MethodSelf, iface.name.span().clone())?;
 
-    let mut methods: Vec<FunctionDecl> = Vec::new();
+    let mut methods: Vec<InterfaceMethodDecl> = Vec::new();
     for method in &iface.methods {
-        if let Some(existing) = methods.iter().find(|other| other.ident == method.ident) {
-            let method_path = name.qualified.clone().child(method.ident.single().clone());
+        if let Some(existing) = methods.iter().find(|other| other.decl.ident == method.decl.ident) {
+            let method_path = name.qualified.clone().child(method.decl.ident.single().clone());
 
             return Err(TypecheckError::NameError {
                 err: NameError::AlreadyDefined {
                     ident: method_path,
                     existing: existing.span().clone(),
                 },
-                span: method.ident.span().clone(),
+                span: method.decl.ident.span().clone(),
             });
         }
 
-        let mut method_decl = typecheck_func_decl(method, ctx)?;
+        let mut method_decl = typecheck_func_decl(&method.decl, ctx)?;
         // todo: better type so we don't have to do this
         // methods don't have qualified names
-        method_decl.ident = method.ident.clone();
+        method_decl.ident = method.decl.ident.clone();
 
-        methods.push(method_decl);
+        methods.push(ast::InterfaceMethodDecl {
+            decl: method_decl,
+        });
     }
 
-    Ok(Interface {
+    Ok(InterfaceDecl {
         name,
         span: iface.span.clone(),
         methods,

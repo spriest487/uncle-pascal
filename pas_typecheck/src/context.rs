@@ -11,7 +11,7 @@ pub use self::{
     builtin::*, decl::*, def::*, result::*, scope::*, ufcs::InstanceMethod, value_kind::*,
 };
 use crate::ast::Literal;
-use crate::{ast::{Composite, FunctionDecl, FunctionDef, Interface, OverloadCandidate, Variant}, specialize_composite_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
+use crate::{ast::{Composite, FunctionDecl, FunctionDef, InterfaceDecl, OverloadCandidate, Variant}, specialize_composite_def, specialize_generic_variant, FunctionSig, Primitive, Symbol, Type, TypeParamList, TypeParamType, TypecheckResult, TypecheckError};
 use pas_common::span::*;
 use pas_syn::{ast::Visibility, ident::*};
 use std::{
@@ -395,7 +395,7 @@ impl Context {
 
     pub fn declare_iface(
         &mut self,
-        iface: Rc<Interface>,
+        iface: Rc<InterfaceDecl>,
         visibility: Visibility,
     ) -> TypecheckResult<()> {
         let name = iface.name.decl_name.ident.clone();
@@ -911,7 +911,7 @@ impl Context {
         }
     }
 
-    pub fn find_iface_def(&self, name: &IdentPath) -> NameResult<Rc<Interface>> {
+    pub fn find_iface_def(&self, name: &IdentPath) -> NameResult<Rc<InterfaceDecl>> {
         match self.defs.get(name) {
             Some(Def::Interface(iface_def)) => Ok(iface_def.clone()),
 
@@ -1104,7 +1104,7 @@ impl Context {
                 })?;
 
                 Ok(TypeMember::Method {
-                    decl: method_decl.clone(),
+                    decl: method_decl.decl.clone(),
                 })
             }
 

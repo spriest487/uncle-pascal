@@ -18,6 +18,9 @@ pub enum Matcher {
     AnyLiteralBoolean,
     Exact(TokenTree),
     OneOf(Vec<Matcher>),
+
+    ExprOperandStart,
+    AnyOperatorInPosition(Position),
 }
 
 impl From<TokenTree> for Matcher {
@@ -103,15 +106,19 @@ impl fmt::Display for Matcher {
                         .join(", ")
                 )
             },
+            Matcher::ExprOperandStart => {
+                write!(f, "operand")
+            }
+            Matcher::AnyOperatorInPosition(pos) => write!(f, "any {} operator", match pos {
+                Position::Prefix => "prefix",
+                Position::Postfix => "postfix",
+                Position::Binary => "infix",
+            })
         }
     }
 }
 
 impl Matcher {
-    pub fn any_operator_in_position(pos: Position) -> Self {
-        Matcher::OneOf(Operator::for_position(pos).map(Matcher::Operator).collect())
-    }
-
     pub fn one_of(matchers: impl IntoIterator<Item=Matcher>) -> Self {
         Matcher::OneOf(matchers.into_iter().collect())
     }
@@ -134,6 +141,57 @@ impl Matcher {
             }
             Matcher::Exact(exact_token) => *token == *exact_token,
             Matcher::OneOf(matchers) => matchers.iter().any(|matcher| matcher.is_match(token)),
+            Matcher::ExprOperandStart => match token {
+                TokenTree::Ident(..)
+                | TokenTree::IntNumber { .. }
+                | TokenTree::RealNumber { .. }
+                | TokenTree::String { .. }
+                => true,
+
+                TokenTree::Keyword { kw, .. } => match kw {
+                    | Keyword::Unsafe
+                    | Keyword::If
+                    | Keyword::Raise
+                    | Keyword::Exit
+
+                    // inline function decl
+                    | Keyword::Function
+                    | Keyword::Procedure
+
+                    // literals
+                    | Keyword::Nil
+                    | Keyword::SizeOf
+                    | Keyword::True
+                    | Keyword::False
+                    => true,
+
+                    _ => false,
+                }
+
+                TokenTree::Delimited { delim, .. } => match delim {
+                    // subexpr in brackets or object ctor
+                    | DelimiterPair::Bracket
+
+                    // collection constructor
+                    | DelimiterPair::SquareBracket
+
+                    // block/control flow
+                    | DelimiterPair::BeginEnd
+                    | DelimiterPair::CaseEnd
+                    | DelimiterPair::MatchEnd
+                    => true,
+                }
+
+                TokenTree::Operator { op, .. } => {
+                    // prefix operator applying to next operand
+                    Operator::for_position(Position::Prefix).any(|o| o == *op)
+                }
+
+                _ => false,
+            }
+            Matcher::AnyOperatorInPosition(pos) => {
+                Operator::for_position(*pos).any(|o| token.is_operator(o))
+            }
         }
     }
 
@@ -225,13 +283,9 @@ pub trait ParseSeq : Sized {
     fn parse_seq(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
         let mut results = Vec::new();
 
-        loop {
+        while Self::has_more(&results, &mut tokens.look_ahead()) {
             let group_output = Self::parse_group(&results, tokens)?;
             results.push(group_output);
-
-            if !Self::has_more(&results, &mut tokens.look_ahead()) {
-                break;
-            }
         }
 
         Ok(results)

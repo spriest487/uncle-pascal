@@ -596,7 +596,7 @@ impl Module {
                         let cache_key = FunctionDefKey {
                             decl_key: FunctionDeclKey::Method {
                                 self_ty: real_ty.clone(),
-                                method: method.ident.single().clone(),
+                                method: method.ident().clone(),
                                 iface: iface.clone(),
                             },
                             type_args: None,
@@ -810,7 +810,7 @@ impl Module {
 
     pub fn translate_iface(
         &mut self,
-        iface_def: &pas_ty::ast::Interface,
+        iface_def: &pas_ty::ast::InterfaceDecl,
         type_args: Option<&pas_ty::TypeList>,
     ) -> Interface {
         let name = self.translate_name(&iface_def.name, type_args);
@@ -825,13 +825,14 @@ impl Module {
                 let self_ty = Type::RcPointer(VirtualTypeID::Interface(id));
 
                 Method {
-                    name: method.ident.to_string(),
-                    return_ty: match &method.return_ty {
+                    name: method.ident().to_string(),
+                    return_ty: match &method.decl.return_ty {
                         Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
                         Some(return_ty) => self.translate_type(return_ty, type_args),
                         None => Type::Nothing,
                     },
                     params: method
+                        .decl
                         .params
                         .iter()
                         .map(|param| match &param.ty {

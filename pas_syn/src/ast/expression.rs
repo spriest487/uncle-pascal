@@ -2,21 +2,18 @@ mod parse;
 #[cfg(test)]
 pub(crate) mod test;
 
-pub use self::parse::match_operand_start;
 use crate::{
     ast::{
-        expression::parse::CompoundExpressionParser, Annotation, BinOp, Block, Call, CaseExpr,
-        Cast, CollectionCtor, Exit, IfCond, ObjectCtor, Raise, Typed, UnaryOp,
+        expression::parse::CompoundExpressionParser, match_block::MatchExpr, Annotation,
+        AnonymousFunctionDef, BinOp, Block, Call, CaseExpr, Cast, CollectionCtor, Exit, IfCond,
+        ObjectCtor, Raise, Typed, UnaryOp,
     },
     consts::*,
     ident::*,
     parse::*,
 };
 use pas_common::span::*;
-use std::fmt;
-use std::rc::Rc;
-use crate::ast::{AnonymousFunctionDef};
-use crate::ast::match_block::MatchExpr;
+use std::{fmt, rc::Rc};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Literal<T: Typed> {
@@ -57,7 +54,7 @@ pub enum Expression<A: Annotation> {
     Case(Box<CaseExpr<A>>),
     Match(Box<MatchExpr<A>>),
     Cast(Box<Cast<A>>),
-    AnonymousFunction(Box<AnonymousFunctionDef<A>>)
+    AnonymousFunction(Box<AnonymousFunctionDef<A>>),
 }
 
 impl<A: Annotation + From<Span>> From<Ident> for Expression<A> {

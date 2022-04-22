@@ -1,5 +1,5 @@
 use crate::{
-    ast::{match_operand_start, Annotation, Expression},
+    ast::{Annotation, Expression},
     parse::{
         LookAheadTokenStream, Matcher, ParseResult, ParseSeq,
         TokenStream,
@@ -8,6 +8,7 @@ use crate::{
 };
 use pas_common::span::{Span, Spanned};
 use std::fmt;
+use crate::parse::Parse;
 
 #[derive(Eq, PartialEq, Clone, Hash, Debug)]
 pub struct ObjectCtorMember<A: Annotation> {
@@ -47,7 +48,7 @@ impl ParseSeq for ObjectCtorMember<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if tokens.match_one(Separator::Semicolon).is_none() {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
             return false;
         }
 
@@ -136,11 +137,11 @@ impl ParseSeq for CollectionCtorElement<Span> {
     }
 
     fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
-        if tokens.match_one(Separator::Comma).is_none() {
+        if !prev.is_empty() && tokens.match_one(Separator::Comma).is_none() {
             return false;
         }
 
-        tokens.match_one(match_operand_start()).is_some()
+        tokens.match_one(Matcher::ExprOperandStart).is_some()
     }
 }
 

@@ -70,31 +70,10 @@ impl Unit<Span> {
         let mut impl_decls = Vec::new();
         let mut init = Vec::new();
 
-        let mut last_separated = true;
+        let has_interface = parse_decls_section(Keyword::Interface, &mut iface_decls, tokens)?;
+        let has_implementation = parse_decls_section(Keyword::Implementation, &mut impl_decls, tokens)?;
 
-        let has_interface = tokens.match_one_maybe(Keyword::Interface).is_some();
-        if has_interface {
-            let decls = UnitDecl::parse_seq(tokens)?;
-
-            if iface_decls.len() > 0 {
-                iface_decls.extend(decls);
-
-                last_separated = tokens.match_one_maybe(Separator::Semicolon).is_some();
-            }
-        }
-
-        let has_implementation = last_separated && tokens.match_one_maybe(Keyword::Implementation).is_some();
-        if has_implementation {
-            let decls = UnitDecl::parse_seq(tokens)?;
-
-            if impl_decls.len() > 0 {
-                impl_decls.extend(decls);
-
-                last_separated = tokens.match_one_maybe(Separator::Semicolon).is_some();
-            }
-        }
-
-        let has_initialization = last_separated && tokens.match_one_maybe(Keyword::Initialization).is_some();
+        let has_initialization = tokens.match_one_maybe(Keyword::Initialization).is_some();
         if has_initialization {
             let init_section = parse_init_section(tokens)?;
             init.extend(init_section);
@@ -135,7 +114,19 @@ impl Unit<Span> {
     }
 }
 
+fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, tokens: &mut TokenStream) -> ParseResult<bool> {
+    if !tokens.match_one_maybe(keyword).is_some() {
+        return Ok(false);
+    }
 
+    let decls = UnitDecl::parse_seq(tokens)?;
+
+    tokens.match_one(Separator::Semicolon)?;
+
+    out_decls.extend(decls);
+
+    Ok(true)
+}
 
 // can't use match_separated here because it doesn't play nicely
 // with the fact that type decls are also semicolon-separated lists

@@ -1,4 +1,4 @@
-use crate::parse::ParseResult;
+use crate::parse::{Parse, ParseResult};
 use crate::{
     ast::{Annotation, TypeDeclName, TypeName},
     parse::TokenStream,

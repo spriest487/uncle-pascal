@@ -48,11 +48,19 @@ impl Ident {
             span: span.into(),
         }
     }
+}
 
-    pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
+impl Parse for Ident {
+    fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens
             .match_one(Matcher::AnyIdent)
             .map(|tt| tt.into_ident().unwrap())
+    }
+}
+
+impl Match for Ident {
+    fn is_match(tokens: &mut LookAheadTokenStream) -> bool {
+        tokens.match_one(Matcher::AnyIdent).is_some()
     }
 }
 

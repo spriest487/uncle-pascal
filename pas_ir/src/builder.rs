@@ -133,7 +133,7 @@ impl<'m> Builder<'m> {
             .translate_class(class_def, self.type_args().cloned().as_ref())
     }
 
-    pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::Interface) -> Interface {
+    pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::InterfaceDecl) -> Interface {
         self.module
             .translate_iface(iface_def, self.type_args().cloned().as_ref())
     }
