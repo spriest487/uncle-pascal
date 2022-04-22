@@ -8,7 +8,7 @@ use crate::{
 };
 use pas_common::span::*;
 use pas_syn::{
-    ast::{self, ArrayTypeName, CompositeKind, IdentTypeName, Typed},
+    ast::{self, ArrayTypeName, CompositeTypeKind, IdentTypeName, Typed},
     ident::*,
     Operator,
 };
@@ -93,7 +93,7 @@ impl Type {
 
     pub fn of_decl(type_decl: &ast::TypeDecl<TypeAnnotation>) -> Self {
         match type_decl {
-            ast::TypeDecl::Composite(class) if class.kind == CompositeKind::Record => {
+            ast::TypeDecl::Composite(class) if class.kind == CompositeTypeKind::Record => {
                 Type::Record(Box::new(class.name.clone()))
             },
 

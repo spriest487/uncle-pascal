@@ -217,6 +217,40 @@ impl PartialEq for FunctionTypeNameParam {
     }
 }
 
+impl ParseSeq for FunctionTypeNameParam {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let modifier = match tokens.match_one_maybe(Keyword::Var.or(Keyword::Out)) {
+            Some(tt) if tt.is_keyword(Keyword::Var) => Some(FunctionParamMod::Var),
+            Some(tt) if tt.is_keyword(Keyword::Out) => Some(FunctionParamMod::Out),
+            Some(..) => unreachable!(),
+            None => None,
+        };
+
+        let ty = TypeName::parse(tokens)?;
+
+        Ok(FunctionTypeNameParam {
+            ty,
+            modifier,
+        })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(
+            Keyword::Var
+                .or(Keyword::Out)
+                .or(TypeName::start_matcher())
+        ).is_some()
+    }
+}
+
 impl Hash for FunctionTypeNameParam {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.ty.hash(state);
@@ -300,16 +334,18 @@ impl Parse for TypeName {
 
 impl Match for TypeName {
     fn is_match(tokens: &mut LookAheadTokenStream) -> bool {
-        let matcher = Keyword::Array
-            .or(Keyword::Function)
-            .or(Keyword::Procedure)
-            .or(Matcher::AnyIdent);
-
-        tokens.match_one(matcher).is_some()
+        tokens.match_one(Self::start_matcher()).is_some()
     }
 }
 
 impl TypeName {
+    pub fn start_matcher() -> Matcher {
+        Keyword::Array
+            .or(Keyword::Function)
+            .or(Keyword::Procedure)
+            .or(Matcher::AnyIdent)
+    }
+
     fn parse_array_type(
         tokens: &mut TokenStream,
         array_kw_span: &Span,
@@ -360,28 +396,11 @@ impl TypeName {
         let span_begin = indirection_span.unwrap_or_else(|| kw_span.clone());
         let mut span_end = kw_span;
 
-        let mod_matcher = Keyword::Var.or(Keyword::Out);
-
         let params = match tokens.match_one_maybe(DelimiterPair::Bracket) {
             Some(TokenTree::Delimited { open, inner, close, .. }) => {
                 let mut params_tokens = TokenStream::new(inner, open);
-                let params = params_tokens.match_separated(Separator::Semicolon, |_i, param_tokens| {
-                    let modifier = match param_tokens.match_one_maybe(mod_matcher.clone()) {
-                        Some(tt) if tt.is_keyword(Keyword::Var) => Some(FunctionParamMod::Var),
-                        Some(tt) if tt.is_keyword(Keyword::Out) => Some(FunctionParamMod::Out),
-                        Some(..) => unreachable!(),
-                        None => None,
-                    };
-
-                    let ty = TypeName::parse(param_tokens)?;
-
-                    let param = FunctionTypeNameParam {
-                        ty,
-                        modifier,
-                    };
-
-                    Ok(Generate::Yield(param))
-                })?;
+                let params = FunctionTypeNameParam::parse_seq(&mut params_tokens)?;
+                params_tokens.finish()?;
 
                 span_end = close;
 

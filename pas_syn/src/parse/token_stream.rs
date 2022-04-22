@@ -176,38 +176,6 @@ impl TokenStream {
             }
         }
     }
-
-    #[deprecated]
-    pub fn match_separated<T, F>(&mut self, sep: Separator, mut f: F) -> ParseResult<Vec<T>>
-    where
-        F: FnMut(usize, &mut TokenStream) -> ParseResult<Generate<T>>,
-    {
-        let mut results = Vec::new();
-
-        loop {
-            if self.look_ahead().next().is_none() {
-                return Ok(results);
-            }
-
-            match f(results.len(), self)? {
-                Generate::Yield(result) => {
-                    results.push(result);
-
-                    // no separator means sequence must end here
-                    if self.match_one_maybe(sep).is_none() {
-                        break Ok(results);
-                    }
-                }
-
-                Generate::Break => {
-                    // separated sequence can be always optionally be terminated by the separator
-                    self.match_one_maybe(sep);
-
-                    break Ok(results);
-                }
-            }
-        }
-    }
 }
 
 pub trait Parse

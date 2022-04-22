@@ -17,7 +17,6 @@ use crate::{
     Keyword,
     Separator,
     parse::{
-        Generate,
         Matcher,
         ParseError,
         ParseResult,
@@ -138,10 +137,16 @@ impl fmt::Display for UseDecl {
 impl UseDecl {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Uses)?;
-        let units = tokens.match_separated(Separator::Comma, |_, tokens| {
+
+        let mut units = Vec::new();
+        loop {
             let unit_path = IdentPath::parse(tokens)?;
-            Ok(Generate::Yield(unit_path))
-        })?;
+            units.push(unit_path);
+
+            if tokens.match_one_maybe(Separator::Comma).is_none() {
+                break;
+            }
+        }
 
         if units.is_empty() {
             return Err(TracedError::trace(match tokens.look_ahead().next() {

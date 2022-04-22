@@ -1,4 +1,4 @@
-* move spans out of nodes and into a generic wrapper type so we can create nodes without source??
+* properly initialize function local vars (IR)
 * get rid of preludes
 * refactor TokenTree so it has separate types for groups, etc
 * refactor TokenStream so it can seek (make it a vec)

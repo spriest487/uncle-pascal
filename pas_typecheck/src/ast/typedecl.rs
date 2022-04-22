@@ -1,9 +1,9 @@
 use crate::ast::prelude::*;
 
 pub type TypeDecl = ast::TypeDecl<TypeAnnotation>;
-pub type Composite = ast::Composite<TypeAnnotation>;
+pub type Composite = ast::CompositeTypeDecl<TypeAnnotation>;
 pub type Member = ast::CompositeMember<TypeAnnotation>;
-pub type InterfaceDecl = ast::Interface<TypeAnnotation>;
+pub type InterfaceDecl = ast::InterfaceDecl<TypeAnnotation>;
 pub type Variant = ast::Variant<TypeAnnotation>;
 pub type AliasDecl = ast::AliasDecl<TypeAnnotation>;
 
@@ -36,12 +36,12 @@ pub fn typecheck_type_decl(
 
 pub fn typecheck_composite(
     name: Symbol,
-    class: &ast::Composite<Span>,
+    class: &ast::CompositeTypeDecl<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<Composite> {
     let self_ty = match class.kind {
-        ast::CompositeKind::Record => Type::Record(Box::new(name.clone())),
-        ast::CompositeKind::Class => Type::Class(Box::new(name.clone())),
+        ast::CompositeTypeKind::Record => Type::Record(Box::new(name.clone())),
+        ast::CompositeTypeKind::Class => Type::Class(Box::new(name.clone())),
     };
     ctx.declare_self_ty(self_ty.clone(), name.span().clone())?;
     ctx.declare_type(class.name.ident.clone(), self_ty, Visibility::Implementation)?;
@@ -78,7 +78,7 @@ pub fn typecheck_composite(
 
 pub fn typecheck_iface(
     name: Symbol,
-    iface: &ast::Interface<Span>,
+    iface: &ast::InterfaceDecl<Span>,
     ctx: &mut Context,
 ) -> TypecheckResult<InterfaceDecl> {
     // declare Self type - type decls are always in their own scope so we don't need to push

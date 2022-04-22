@@ -1,7 +1,7 @@
 use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, VirtualTypeID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::{CompositeKind, FunctionParamMod};
+use pas_syn::ast::{CompositeTypeKind, FunctionParamMod};
 use pas_syn::{ast, Ident, IdentPath};
 use pas_typecheck::ast::specialize_func_decl;
 use pas_typecheck::{builtin_string_name, Specializable, TypeList};
@@ -666,8 +666,8 @@ impl Module {
                 let id = self.metadata.reserve_new_struct();
 
                 let ty = match def.kind {
-                    pas_syn::ast::CompositeKind::Class => Type::RcPointer(VirtualTypeID::Class(id)),
-                    pas_syn::ast::CompositeKind::Record => Type::Struct(id),
+                    pas_syn::ast::CompositeTypeKind::Class => Type::RcPointer(VirtualTypeID::Class(id)),
+                    pas_syn::ast::CompositeTypeKind::Record => Type::Struct(id),
                 };
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
@@ -866,8 +866,8 @@ impl Module {
         let src_span = class_def.span().clone();
 
         let identity = match class_def.kind {
-            CompositeKind::Class => StructIdentity::Class(name_path),
-            CompositeKind::Record => StructIdentity::Record(name_path),
+            CompositeTypeKind::Class => StructIdentity::Class(name_path),
+            CompositeTypeKind::Record => StructIdentity::Record(name_path),
         };
 
         Struct::new(identity, Some(src_span)).with_fields(fields)

@@ -2,18 +2,52 @@ use crate::{
     ast::{FunctionDecl, TypeList, unit::AliasDecl},
     parse::prelude::*,
 };
-use std::rc::Rc;
-use std::hash::{Hash, Hasher};
+use std::{
+    rc::Rc,
+    hash::{Hash, Hasher}
+};
+use derivative::*;
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct CompositeMember<A: Annotation> {
     pub ident: Ident,
     pub ty: A::Type,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
+impl ParseSeq for CompositeMember<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let ident = Ident::parse(tokens)?;
+        tokens.match_one(Separator::Colon)?;
+        let ty = TypeName::parse(tokens)?;
+
+        Ok(CompositeMember {
+            span: ident.span().to(&ty),
+            ty,
+            ident,
+        })
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-pub enum CompositeKind {
+pub enum CompositeTypeKind {
     /// heap-allocated, reference-counted type, passed by pointer. declared
     /// with the `class` keyword.
     Class,
@@ -22,60 +56,44 @@ pub enum CompositeKind {
     Record,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Composite<A: Annotation> {
-    pub kind: CompositeKind,
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
+pub struct CompositeTypeDecl<A: Annotation> {
+    pub kind: CompositeTypeKind,
     pub name: A::Name,
     pub members: Vec<CompositeMember<A>>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
-impl<A: Annotation> Composite<A> {
+impl<A: Annotation> CompositeTypeDecl<A> {
     pub fn find_member(&self, by_ident: &Ident) -> Option<&CompositeMember<A>> {
         self.members.iter().find(|m| m.ident == *by_ident)
     }
 }
 
-impl Composite<Span> {
+impl CompositeTypeDecl<Span> {
     fn match_kw() -> Matcher {
         Keyword::Class.or(Keyword::Record)
     }
 
     fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw_token = tokens.match_one(Self::match_kw())?;
-
-        let members = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if tokens.look_ahead().match_one(Keyword::End).is_some() {
-                return Ok(Generate::Break);
-            }
-
-            let ident_token = tokens.match_one(Matcher::AnyIdent)?;
-            tokens.match_one(Separator::Colon)?;
-            let ty = TypeName::parse(tokens)?;
-
-            let ident = ident_token.into_ident().unwrap();
-
-            Ok(Generate::Yield(CompositeMember {
-                span: ident.span.to(&ty),
-                ty,
-                ident,
-            }))
-        })?;
-
-        let end_token = tokens.match_one(Keyword::End)?;
-
-        let kind = match kw_token {
-            TokenTree::Keyword {
-                kw: Keyword::Class, ..
-            } => CompositeKind::Class,
-            TokenTree::Keyword {
-                kw: Keyword::Record,
-                ..
-            } => CompositeKind::Record,
+        let kind = match &kw_token {
+            tt if tt.is_keyword(Keyword::Class) => CompositeTypeKind::Class,
+            tt if tt.is_keyword(Keyword::Record) => CompositeTypeKind::Record,
             _ => unreachable!(),
         };
 
-        Ok(Composite {
+        let members = CompositeMember::parse_seq(tokens)?;
+        tokens.match_one_maybe(Separator::Semicolon);
+
+        let end_token = tokens.match_one(Keyword::End)?;
+
+        Ok(CompositeTypeDecl {
             kind,
             name,
             members,
@@ -84,20 +102,20 @@ impl Composite<Span> {
     }
 }
 
-impl<A: Annotation> Spanned for Composite<A> {
+impl<A: Annotation> Spanned for CompositeTypeDecl<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for Composite<A> {
+impl<A: Annotation> fmt::Display for CompositeTypeDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(
             f,
             "{}",
             match self.kind {
-                CompositeKind::Record => "record",
-                CompositeKind::Class => "class",
+                CompositeTypeKind::Record => "record",
+                CompositeTypeKind::Class => "class",
             }
         )?;
         for member in &self.members {
@@ -152,20 +170,25 @@ impl ParseSeq for InterfaceMethodDecl<Span> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
-pub struct Interface<A: Annotation> {
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
+pub struct InterfaceDecl<A: Annotation> {
     pub name: A::Name,
     pub methods: Vec<InterfaceMethodDecl<A>>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
-impl<A: Annotation> Interface<A> {
+impl<A: Annotation> InterfaceDecl<A> {
     pub fn get_method(&self, method: &Ident) -> Option<&InterfaceMethodDecl<A>> {
         self.methods.iter().find(|m| *m.ident() == *method)
     }
 }
 
-impl Interface<Span> {
+impl InterfaceDecl<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let iface_kw = tokens.match_one(Keyword::Interface)?;
 
@@ -174,7 +197,7 @@ impl Interface<Span> {
 
         let end = tokens.match_one(Keyword::End)?;
 
-        Ok(Interface {
+        Ok(InterfaceDecl {
             name,
             span: iface_kw.span().to(end.span()),
             methods,
@@ -182,13 +205,13 @@ impl Interface<Span> {
     }
 }
 
-impl<A: Annotation> Spanned for Interface<A> {
+impl<A: Annotation> Spanned for InterfaceDecl<A> {
     fn span(&self) -> &Span {
         &self.span
     }
 }
 
-impl<A: Annotation> fmt::Display for Interface<A> {
+impl<A: Annotation> fmt::Display for InterfaceDecl<A> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         writeln!(f, "interface")?;
         for method in &self.methods {
@@ -198,20 +221,67 @@ impl<A: Annotation> fmt::Display for Interface<A> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct Variant<A: Annotation> {
     pub name: A::Name,
     pub cases: Vec<VariantCase<A>>,
 
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct VariantCase<A: Annotation> {
     pub ident: Ident,
     pub data_ty: Option<A::Type>,
 
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
+}
+
+impl ParseSeq for VariantCase<Span> {
+    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self> {
+        if !prev.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        let ident = Ident::parse(tokens)?;
+
+        let case = match tokens.match_one_maybe(Separator::Colon) {
+            Some(..) => {
+                let ty = TypeName::parse(tokens)?;
+                let span = ident.span().to(ty.span());
+
+                VariantCase {
+                    span,
+                    ident,
+                    data_ty: Some(ty),
+                }
+            }
+
+            None => VariantCase {
+                span: ident.span.clone(),
+                ident,
+                data_ty: None,
+            }
+        };
+
+        Ok(case)
+    }
+
+    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool {
+        if !prev.is_empty() && tokens.match_one(Separator::Semicolon).is_none() {
+            return false;
+        }
+
+        tokens.match_one(Matcher::AnyIdent).is_some()
+    }
 }
 
 impl<A: Annotation> Variant<A> {
@@ -223,30 +293,9 @@ impl<A: Annotation> Variant<A> {
 impl Variant<Span> {
     pub fn parse(tokens: &mut TokenStream, name: TypeDeclName) -> ParseResult<Self> {
         let kw = tokens.match_one(Keyword::Variant)?;
-        let cases = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if tokens.look_ahead().match_one(Keyword::End).is_some() {
-                return Ok(Generate::Break);
-            }
 
-            let ident_tt = tokens.match_one(Matcher::AnyIdent)?;
-
-            let (data_ty, span) = match tokens.match_one_maybe(Separator::Colon) {
-                Some(..) => {
-                    let ty = TypeName::parse(tokens)?;
-                    let span = ident_tt.span().to(ty.span());
-                    (Some(ty), span)
-                }
-                None => (None, ident_tt.span().clone()),
-            };
-
-            let ident = ident_tt.into_ident().unwrap();
-
-            Ok(Generate::Yield(VariantCase {
-                ident,
-                data_ty,
-                span,
-            }))
-        })?;
+        let cases = VariantCase::parse_seq(tokens)?;
+        tokens.match_one_maybe(Separator::Semicolon);
 
         let end_kw = tokens.match_one(Keyword::End)?;
 
@@ -278,8 +327,8 @@ impl<A: Annotation> Spanned for Variant<A> {
 
 #[derive(Clone, Debug)]
 pub enum TypeDecl<A: Annotation> {
-    Composite(Rc<Composite<A>>),
-    Interface(Rc<Interface<A>>),
+    Composite(Rc<CompositeTypeDecl<A>>),
+    Interface(Rc<InterfaceDecl<A>>),
     Variant(Rc<Variant<A>>),
     Alias(Rc<AliasDecl<A>>),
 }
@@ -384,25 +433,6 @@ impl TypeDeclName {
 }
 
 impl TypeDecl<Span> {
-    /// a type decl block starts with the `type` keyword. each decl in the
-    /// block starts with an identifier then "=" and then the type definition.
-    /// the block can contain 1+ types, each of which is terminated by a
-    /// semicolon
-    #[allow(unused)]
-    pub fn parse_block(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
-        tokens.match_one(Keyword::Type)?;
-
-        let decls = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            if tokens.look_ahead().match_one(Matcher::AnyIdent).is_none() {
-                return Ok(Generate::Break);
-            }
-
-            Self::parse_decl(tokens).map(Generate::Yield)
-        })?;
-
-        Ok(decls)
-    }
-
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         tokens.match_one(Keyword::Type)?;
 
@@ -413,12 +443,12 @@ impl TypeDecl<Span> {
         let name = TypeDeclName::parse(tokens)?;
         tokens.match_one(Operator::Equals)?;
 
-        let composite_kw_matcher = Composite::match_kw();
+        let composite_kw_matcher = CompositeTypeDecl::match_kw();
         let decl_start_matcher = composite_kw_matcher.clone().or(Keyword::Variant);
 
         match tokens.look_ahead().next() {
             Some(ref tt) if composite_kw_matcher.is_match(tt) => {
-                let composite_decl = Composite::parse(tokens, name)?;
+                let composite_decl = CompositeTypeDecl::parse(tokens, name)?;
                 Ok(TypeDecl::Composite(Rc::new(composite_decl)))
             }
 
@@ -426,7 +456,7 @@ impl TypeDecl<Span> {
                 kw: Keyword::Interface,
                 ..
             }) => {
-                let iface_decl = Interface::parse(tokens, name)?;
+                let iface_decl = InterfaceDecl::parse(tokens, name)?;
                 Ok(TypeDecl::Interface(Rc::new(iface_decl)))
             }
 

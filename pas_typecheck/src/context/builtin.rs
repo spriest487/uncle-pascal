@@ -1,7 +1,7 @@
 use crate::{Primitive, Symbol};
 use crate::{ast, Type};
 use pas_common::span::*;
-use pas_syn::ast::{CompositeKind, TypeDeclName};
+use pas_syn::ast::{CompositeTypeKind, TypeDeclName};
 use pas_syn::ident::*;
 use std::rc::Rc;
 
@@ -61,7 +61,7 @@ pub fn builtin_string_class() -> ast::Composite {
                 span: builtin_span.clone(),
             },
         ],
-        kind: CompositeKind::Class,
+        kind: CompositeTypeKind::Class,
         span: builtin_span,
     }
 }

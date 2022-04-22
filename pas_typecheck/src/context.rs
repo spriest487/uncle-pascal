@@ -438,8 +438,8 @@ impl Context {
         let name = class.name.decl_name.ident.clone();
 
         let class_ty = match class.kind {
-            pas_syn::ast::CompositeKind::Class => Type::Class(Box::new(class.name.clone())),
-            pas_syn::ast::CompositeKind::Record => Type::Record(Box::new(class.name.clone())),
+            pas_syn::ast::CompositeTypeKind::Class => Type::Class(Box::new(class.name.clone())),
+            pas_syn::ast::CompositeTypeKind::Record => Type::Record(Box::new(class.name.clone())),
         };
 
         self.declare_type(name.clone(), class_ty, visibility)?;

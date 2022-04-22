@@ -128,8 +128,6 @@ fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, to
     Ok(true)
 }
 
-// can't use match_separated here because it doesn't play nicely
-// with the fact that type decls are also semicolon-separated lists
 fn parse_unit_decl(tokens: &mut TokenStream) -> ParseResult<UnitDecl<Span>> {
     let decl_start = UnitDecl::start_matcher();
 

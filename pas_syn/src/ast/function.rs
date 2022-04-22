@@ -27,12 +27,17 @@ impl fmt::Display for FunctionParamMod {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+#[derive(Clone, Eq, Derivative)]
+#[derivative(Debug, PartialEq, Hash)]
 pub struct FunctionParam<A: Annotation> {
     pub ident: Ident,
     pub ty: A::Type,
-    pub span: Span,
     pub modifier: Option<FunctionParamMod>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
+    pub span: Span,
 }
 
 impl<A: Annotation> fmt::Display for FunctionParam<A> {
@@ -210,51 +215,51 @@ impl FunctionDecl<Span> {
     }
 
     pub fn parse_params(tokens: &mut TokenStream) -> ParseResult<Vec<FunctionParam<Span>>> {
-        let params = tokens.match_separated(Separator::Semicolon, |_, tokens| {
-            let match_mod = Keyword::Var.or(Keyword::Out);
-            let modifier = match tokens.look_ahead().match_one(match_mod.clone()) {
-                Some(_) => match tokens.match_one(match_mod)? {
-                    TokenTree::Keyword {
-                        kw: Keyword::Var, ..
-                    } => Some(FunctionParamMod::Var),
-                    TokenTree::Keyword {
-                        kw: Keyword::Out, ..
-                    } => Some(FunctionParamMod::Out),
-                    tt => unreachable!("bad token parsing function param modifier: {:?}", tt),
-                },
-                None => None,
+        let mut params = Vec::new();
+
+        let match_mod = Keyword::Var.or(Keyword::Out);
+        let match_more = match_mod.clone().or(Matcher::AnyIdent);
+
+        loop {
+            if !params.is_empty() && tokens.match_one_maybe(Separator::Semicolon).is_none() {
+                break;
+            }
+
+            // check if there's another param ahead
+            if tokens.look_ahead().match_one(match_more.clone()).is_none() {
+                break;
+            }
+
+            // might start with a modifier keyword which applies to all params declared in this group
+            let modifier = match tokens.match_one_maybe(match_mod.clone()) {
+                Some(tt) if tt.is_keyword(Keyword::Var) => Some(FunctionParamMod::Var),
+                Some(tt) if tt.is_keyword(Keyword::Out) => Some(FunctionParamMod::Out),
+                _ => None,
             };
 
-            let idents = tokens.match_separated(Separator::Comma, |_, tokens| {
-                let ident = tokens.match_one(Matcher::AnyIdent)?;
-                Ok(Generate::Yield(ident))
-            })?;
+            // match comma-separated idents for this param type
+            let mut idents = Vec::new();
+            loop {
+                let ident = Ident::parse(tokens)?;
+                idents.push(ident);
 
-            if idents.is_empty() {
-                return Err(TracedError::trace(ParseError::UnexpectedEOF(
-                    Matcher::AnyIdent,
-                    tokens.context().clone(),
-                )));
+                if tokens.match_one_maybe(Separator::Comma).is_none() {
+                    break;
+                }
             }
 
             tokens.match_one(Separator::Colon)?;
             let ty = TypeName::parse(tokens)?;
-            let span = idents[0].span().to(ty.span());
 
-            let params: Vec<_> = idents
-                .into_iter()
-                .map(|ident| FunctionParam {
-                    modifier: modifier.clone(),
-                    ident: ident.into_ident().unwrap(),
+            for ident in idents {
+                params.push(FunctionParam {
+                    span: ident.span.clone(),
                     ty: ty.clone(),
-                    span: span.clone(),
+                    ident,
+                    modifier,
                 })
-                .collect();
-
-            Ok(Generate::Yield(params))
-        })?;
-
-        let params = params.into_iter().flatten().collect();
+            }
+        }
 
         Ok(params)
     }
@@ -383,13 +388,21 @@ impl FunctionDef<Span> {
     }
 
     fn parse_locals_block(tokens: &mut TokenStream, kind: FunctionLocalDeclKind) -> ParseResult<Vec<FunctionLocalDecl<Span>>> {
-        let decls_groups = tokens.match_separated(Separator::Semicolon, |_i, tokens| {
-            // can have multiple decls per entry
-            let idents = tokens.match_separated(Separator::Comma, |_i, tokens| {
-                let ident = Ident::parse(tokens)?;
+        let mut decls = Vec::new();
+        loop {
+            if !decls.is_empty() && tokens.match_one_maybe(Separator::Semicolon).is_none() {
+                break;
+            }
 
-                Ok(Generate::Yield(ident))
-            })?;
+            let mut idents = Vec::new();
+            loop {
+                if !idents.is_empty() && tokens.match_one_maybe(Separator::Comma).is_none() {
+                    break;
+                }
+
+                let ident = Ident::parse(tokens)?;
+                idents.push(ident);
+            }
 
             tokens.match_one(Separator::Colon)?;
 
@@ -403,25 +416,18 @@ impl FunctionDef<Span> {
                 None => None,
             };
 
-            let decls: Vec<_> = idents
-                .into_iter()
-                .map(|ident| {
-                    let span = ident.span.clone();
+            for ident in idents {
+                let span = ident.span.clone();
 
-                    FunctionLocalDecl {
-                        kind,
-                        ident,
-                        ty: ty.clone(),
-                        initial_val: initial_val.clone(),
-                        span,
-                    }
+                decls.push(FunctionLocalDecl {
+                    kind,
+                    ident,
+                    ty: ty.clone(),
+                    initial_val: initial_val.clone(),
+                    span,
                 })
-                .collect();
-
-            Ok(Generate::Yield(decls))
-        })?;
-
-        let decls = decls_groups.into_iter().flatten().collect();
+            }
+        }
 
         Ok(decls)
     }

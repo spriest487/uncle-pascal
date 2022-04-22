@@ -1,26 +1,19 @@
 use crate::parse::prelude::*;
 use std::{
     fmt::{self, Write},
-    hash::{Hash, Hasher},
+    rc::Rc
 };
-use std::rc::Rc;
+use derivative::*;
 
-#[derive(Eq, Clone)]
+#[derive(Eq, Clone, Derivative)]
+#[derivative(PartialEq, Debug, Hash)]
 pub struct Ident {
     pub name: Rc<String>,
+
+    #[derivative(Debug = "ignore")]
+    #[derivative(PartialEq = "ignore")]
+    #[derivative(Hash = "ignore")]
     pub span: Span,
-}
-
-impl fmt::Debug for Ident {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "\"{}\" @ {:?}", self.name, self.span)
-    }
-}
-
-impl PartialEq for Ident {
-    fn eq(&self, other: &Self) -> bool {
-        self.name == other.name
-    }
 }
 
 impl PartialEq<String> for Ident {
@@ -32,12 +25,6 @@ impl PartialEq<String> for Ident {
 impl PartialEq<str> for Ident {
     fn eq(&self, name: &str) -> bool {
         *self.name == name
-    }
-}
-
-impl Hash for Ident {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.name.hash(state)
     }
 }
 
