@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::{FunctionID, MethodID, Module, NamePath, pas_ty, Type, VirtualTypeID};
+use crate::{FunctionID, MethodID, Module, NamePath, pas_ty, translate_name, Type, VirtualTypeID};
 
 #[derive(Clone, Debug)]
 pub struct Method {
@@ -76,7 +76,7 @@ pub fn translate_iface(
     type_args: Option<&pas_ty::TypeList>,
     module: &mut Module,
 ) -> Interface {
-    let name = module.translate_name(&iface_def.name, type_args);
+    let name = translate_name(&iface_def.name, type_args, module);
 
     // it needs to be declared to reference its own ID in the Self type
     let id = module.metadata.declare_iface(&name);

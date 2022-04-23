@@ -1,8 +1,9 @@
 use std::borrow::Cow;
 use crate::metadata::ty::*;
-use crate::{InstructionFormatter, Metadata, pas_ty, RawInstructionFormatter};
+use crate::{InstructionFormatter, Metadata, Module, pas_ty, RawInstructionFormatter};
 use pas_syn::{self as syn, Path};
 use std::fmt;
+use pas_typecheck::Specializable;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NamePath {
@@ -77,5 +78,44 @@ impl NamePath {
         }
 
         buf
+    }
+}
+
+pub fn translate_name(
+    name: &pas_ty::Symbol,
+    type_args: Option<&pas_ty::TypeList>,
+    module: &mut Module,
+) -> NamePath {
+    if name.is_unspecialized_generic() {
+        panic!("can't translate unspecialized generic name: {}", name);
+    }
+
+    if let Some(name_type_args) = name.type_args.as_ref() {
+        if let Some(t) = name_type_args.items.iter().find(|t| t.is_generic_param()) {
+            panic!(
+                "can't translate name containing generic parameters (found {}): {}",
+                t, name
+            );
+        }
+    }
+
+    let path_parts = name
+        .qualified
+        .clone()
+        .into_parts()
+        .into_iter()
+        .map(|ident| ident.to_string());
+
+    let type_args = name.type_args.as_ref().map(|name_type_args_list| {
+        name_type_args_list
+            .items
+            .iter()
+            .map(|arg| module.translate_type(arg, type_args))
+            .collect()
+    });
+
+    NamePath {
+        path: pas_syn::Path::from_parts(path_parts),
+        type_args,
     }
 }

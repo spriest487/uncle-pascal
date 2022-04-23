@@ -124,8 +124,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_name(&mut self, name: &pas_ty::Symbol) -> NamePath {
-        self.module
-            .translate_name(name, self.type_args().cloned().as_ref())
+        translate_name(name, self.type_args().cloned().as_ref(), self.module)
     }
 
     pub fn translate_class(&mut self, class_def: &pas_ty::ast::Composite) -> Struct {

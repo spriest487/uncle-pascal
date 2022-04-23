@@ -1,4 +1,4 @@
-use crate::{Module, NamePath, pas_ty, Type, TypeDefID};
+use crate::{Module, NamePath, pas_ty, translate_name, Type, TypeDefID};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use std::collections::HashMap;
@@ -127,7 +127,7 @@ pub fn translate_class(
     type_args: Option<&pas_ty::TypeList>,
     module: &mut Module,
 ) -> Struct {
-    let name_path = module.translate_name(&class_def.name, type_args);
+    let name_path = translate_name(&class_def.name, type_args, module);
 
     let mut fields = HashMap::new();
     for (id, member) in class_def.members.iter().enumerate() {

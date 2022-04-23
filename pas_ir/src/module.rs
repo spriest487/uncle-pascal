@@ -8,7 +8,7 @@ use crate::{
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::{ast::FunctionParamMod, IdentPath};
-use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, Specializable, TypeList};
+use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, TypeList};
 use std::{collections::HashMap, fmt, rc::Rc};
 
 #[derive(Clone, Debug)]
@@ -472,10 +472,10 @@ impl Module {
                 let ty = Type::Variant(id);
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
-                let name_path = self.translate_name(&variant, type_args);
+                let name_path = translate_name(&variant, type_args, self);
                 self.metadata.declare_struct(id, &name_path);
 
-                let variant_meta = self.translate_variant(&variant_def, type_args);
+                let variant_meta = translate_variant(&variant_def, type_args, self);
 
                 self.metadata.define_variant(id, variant_meta);
                 ty
@@ -504,7 +504,7 @@ impl Module {
 
                 self.type_cache.insert(src_ty.clone(), ty.clone());
 
-                let name_path = self.translate_name(&name, type_args);
+                let name_path = translate_name(&name, type_args, self);
 
                 self.metadata.declare_struct(id, &name_path);
 
@@ -517,7 +517,7 @@ impl Module {
             pas_ty::Type::Interface(iface_def) => {
                 let iface_def = self.src_metadata.find_iface_def(iface_def).unwrap();
 
-                let iface_name = self.translate_name(&iface_def.name, type_args);
+                let iface_name = translate_name(&iface_def.name, type_args, self);
                 let id = self.metadata.declare_iface(&iface_name);
                 let ty = Type::RcPointer(VirtualTypeID::Interface(id));
 
@@ -568,75 +568,9 @@ impl Module {
         ty
     }
 
-    pub fn translate_name(
-        &mut self,
-        name: &pas_ty::Symbol,
-        type_args: Option<&pas_ty::TypeList>,
-    ) -> NamePath {
-        if name.is_unspecialized_generic() {
-            panic!("can't translate unspecialized generic name: {}", name);
-        }
 
-        if let Some(name_type_args) = name.type_args.as_ref() {
-            if let Some(t) = name_type_args.items.iter().find(|t| t.is_generic_param()) {
-                panic!(
-                    "can't translate name containing generic parameters (found {}): {}",
-                    t, name
-                );
-            }
-        }
 
-        let path_parts = name
-            .qualified
-            .clone()
-            .into_parts()
-            .into_iter()
-            .map(|ident| ident.to_string());
 
-        let type_args = name.type_args.as_ref().map(|name_type_args_list| {
-            name_type_args_list
-                .items
-                .iter()
-                .map(|arg| self.translate_type(arg, type_args))
-                .collect()
-        });
-
-        NamePath {
-            path: pas_syn::Path::from_parts(path_parts),
-            type_args,
-        }
-    }
-
-    pub fn translate_variant(
-        &mut self,
-        variant_def: &pas_ty::ast::Variant,
-        type_args: Option<&pas_ty::TypeList>,
-    ) -> Variant {
-        let name_path = self.translate_name(&variant_def.name, type_args);
-
-        let mut cases = Vec::new();
-        for case in &variant_def.cases {
-            let (case_ty, case_rc) = match case.data_ty.as_ref() {
-                Some(data_ty) => {
-                    let case_ty = self.translate_type(data_ty, type_args);
-                    (Some(case_ty), data_ty.is_rc_reference())
-                },
-                None => (None, false),
-            };
-
-            cases.push(VariantCase {
-                name: case.ident.to_string(),
-                ty: case_ty,
-                rc: case_rc,
-            });
-        }
-
-        Variant {
-            name: name_path,
-            src_span: Some(variant_def.span().clone()),
-            cases,
-        }
-    }
 
     pub fn translate_dyn_array_struct(
         &mut self,
