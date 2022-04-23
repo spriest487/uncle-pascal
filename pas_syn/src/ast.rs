@@ -55,6 +55,8 @@ pub trait Annotation: Spanned + Clone + PartialEq + Eq + Hash {
 
     type ConstStringExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
     type ConstIntegerExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
+
+    type ConstExpr: fmt::Debug + fmt::Display + Clone + PartialEq + Eq + Hash;
 }
 
 impl Annotation for Span {
@@ -64,6 +66,7 @@ impl Annotation for Span {
 
     type ConstStringExpr = Box<Expression<Span>>;
     type ConstIntegerExpr = Box<Expression<Span>>;
+    type ConstExpr = Box<Expression<Span>>;
 }
 
 #[derive(Clone, Debug, Eq)]

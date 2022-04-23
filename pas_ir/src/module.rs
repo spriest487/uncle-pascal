@@ -1,13 +1,19 @@
-use crate::{jmp_exists, metadata::*, pas_ty, translate_block, translate_stmt, write_instruction_list, Builder, VirtualTypeID, ExternalFunctionRef, FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, IROptions, Instruction, InstructionFormatter, LocalID, Metadata, Ref, Type, TypeDef, TypeDefID, EXIT_LABEL, RETURN_REF, StaticClosureID, StaticClosure, GlobalRef};
+use crate::{
+    jmp_exists, metadata::*, pas_ty, translate_block, translate_literal, translate_stmt,
+    write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function, FunctionDeclKey,
+    FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, GlobalRef, IROptions, Instruction,
+    InstructionFormatter, LocalID, Metadata, Ref, StaticClosure, StaticClosureID, Type, TypeDef,
+    TypeDefID, VirtualTypeID, EXIT_LABEL, RETURN_REF,
+};
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::ast::{CompositeTypeKind, FunctionParamMod};
-use pas_syn::{ast, Ident, IdentPath};
-use pas_typecheck::ast::specialize_func_decl;
-use pas_typecheck::{builtin_string_name, Specializable, TypeList};
-use std::collections::HashMap;
-use std::fmt;
-use std::rc::Rc;
+use pas_syn::{
+    ast,
+    ast::{CompositeTypeKind, FunctionParamMod},
+    Ident, IdentPath,
+};
+use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, Specializable, TypeList};
+use std::{collections::HashMap, fmt, rc::Rc};
 
 #[derive(Clone, Debug)]
 pub struct Module {
@@ -128,6 +134,7 @@ impl Module {
                             func_def.decl.type_params.as_ref(),
                             key.type_args.clone(),
                             func_def.decl.return_ty.as_ref(),
+                            &func_def.locals,
                             &func_def.body,
                             func_def.span.clone(),
                             debug_name,
@@ -240,7 +247,8 @@ impl Module {
                     id,
                     sig: Rc::new(pas_ty::FunctionSig::of_decl(&specialized_decl)),
                 };
-                self.translated_funcs.insert(key.clone(), cached_func.clone());
+                self.translated_funcs
+                    .insert(key.clone(), cached_func.clone());
 
                 let debug_name = specialized_decl.to_string();
                 let ir_func = self.build_func_def(
@@ -248,6 +256,7 @@ impl Module {
                     method_def.decl.type_params.as_ref(),
                     key.type_args.clone(),
                     method_def.decl.return_ty.as_ref(),
+                    &method_def.locals,
                     &method_def.body,
                     method_def.span().clone(),
                     debug_name,
@@ -282,7 +291,7 @@ impl Module {
             None => {
                 let ir_sig = self.translate_func_sig(func_sig, type_args);
                 self.metadata.define_func_ty(func_sig.clone(), ir_sig)
-            }
+            },
         };
 
         func_ty_id
@@ -304,32 +313,26 @@ impl Module {
             line: func.span().start.line,
             col: func.span().start.col,
         };
-        let closure_id = self.translate_closure_struct(closure_identity, &func.captures, type_args.as_ref());
+        let closure_id =
+            self.translate_closure_struct(closure_identity, &func.captures, type_args.as_ref());
 
         let debug_name = "<anonymous function>".to_string();
 
         let cached_func = FunctionInstance { id, sig: sig };
 
-        let ir_func = self.build_closure_function_def(
-            &func,
-            closure_id,
-            func.span().clone(),
-            debug_name,
-        );
+        let ir_func =
+            self.build_closure_function_def(&func, closure_id, func.span().clone(), debug_name);
 
         self.functions.insert(id, Function::Local(ir_func));
 
         ClosureInstance {
             func_instance: cached_func,
             func_ty_id,
-            closure_id
+            closure_id,
         }
     }
 
-    pub fn build_static_closure_instance(
-        &mut self,
-        closure: ClosureInstance,
-    ) -> &StaticClosure {
+    pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &StaticClosure {
         let id = StaticClosureID(self.static_closures.len());
 
         let mut init_builder = Builder::new(self);
@@ -340,13 +343,16 @@ impl Module {
         let init_body = init_builder.finish();
 
         let init_func_id = self.metadata.insert_func(None);
-        self.insert_func(init_func_id, Function::Local(FunctionDef {
-            body: init_body,
-            debug_name: format!("static closure init for {}", closure),
-            params: Vec::new(),
-            return_ty: Type::Nothing,
-            src_span: Span::zero(""),
-        }));
+        self.insert_func(
+            init_func_id,
+            Function::Local(FunctionDef {
+                body: init_body,
+                debug_name: format!("static closure init for {}", closure),
+                params: Vec::new(),
+                return_ty: Type::Nothing,
+                src_span: Span::zero(""),
+            }),
+        );
 
         self.static_closures.push(StaticClosure {
             id,
@@ -402,7 +408,7 @@ impl Module {
     fn create_function_body_builder(
         &mut self,
         type_params: Option<&pas_ty::TypeParamList>,
-        type_args: Option<pas_ty::TypeList>
+        type_args: Option<pas_ty::TypeList>,
     ) -> Builder {
         match type_args {
             Some(type_args) => {
@@ -444,11 +450,14 @@ impl Module {
 
                 builder.bind_return(return_ty.clone());
                 return_ty
-            }
+            },
         }
     }
 
-    fn bind_function_params(params: &[pas_ty::ast::FunctionParam], builder: &mut Builder) -> Vec<(LocalID, Type)> {
+    fn bind_function_params(
+        params: &[pas_ty::ast::FunctionParam],
+        builder: &mut Builder,
+    ) -> Vec<(LocalID, Type)> {
         let mut bound_params = Vec::with_capacity(params.len());
 
         for param in params.iter() {
@@ -462,11 +471,7 @@ impl Module {
                 None => (builder.translate_type(&param.ty), false),
             };
 
-            builder.comment(&format!(
-                "{} = {}",
-                id,
-                builder.pretty_ty_name(&param_ty)
-            ));
+            builder.comment(&format!("{} = {}", id, builder.pretty_ty_name(&param_ty)));
             builder.bind_param(id, param_ty.clone(), param.ident.to_string(), by_ref);
 
             bound_params.push((id, param_ty));
@@ -479,23 +484,42 @@ impl Module {
         bound_params
     }
 
-    fn build_func_body(body: &pas_ty::ast::Block, return_ty: &Type, mut builder: Builder) -> Vec<Instruction> {
+    fn init_function_locals(
+        locals: &[pas_ty::ast::FunctionLocalDecl],
+        builder: &mut Builder,
+    ) {
+        for local in locals {
+            if local.kind == pas_syn::ast::FunctionLocalDeclKind::Var {
+                let ty = builder.translate_type(&local.ty);
+
+                let local_ref = builder.local_new(ty, Some(local.ident.name.to_string()));
+
+                if let Some(initial_val) = &local.initial_val {
+                    let init_val = translate_literal(initial_val, &local.ty, builder);
+                    builder.mov(local_ref, init_val);
+                }
+            }
+        }
+    }
+
+    fn build_func_body(
+        body: &pas_ty::ast::Block,
+        return_ty: &Type,
+        builder: &mut Builder,
+    ) {
         let body_block_out_ref = match return_ty {
             Type::Nothing => Ref::Discard,
             _ => RETURN_REF.clone(),
         };
 
-        translate_block(&body, body_block_out_ref, &mut builder);
-        let mut body_instructions = builder.finish();
+        translate_block(&body, body_block_out_ref, builder);
 
         // all functions should finish with the reserved EXIT label but to
         // avoid writing unused label instructions, if none of the other instructions in the body
         // are jumps to the exit label, we can elide it
-        if jmp_exists(&body_instructions, EXIT_LABEL) {
-            body_instructions.push(Instruction::Label(EXIT_LABEL));
+        if jmp_exists(builder.instructions(), EXIT_LABEL) {
+            builder.label(EXIT_LABEL);
         }
-
-        body_instructions
     }
 
     fn build_func_def(
@@ -504,6 +528,7 @@ impl Module {
         def_type_params: Option<&pas_ty::TypeParamList>,
         def_type_args: Option<pas_ty::TypeList>,
         def_return_ty: Option<&pas_ty::Type>,
+        def_locals: &[pas_ty::ast::FunctionLocalDecl],
         def_body: &pas_ty::ast::Block,
         src_span: Span,
         debug_name: String,
@@ -514,7 +539,11 @@ impl Module {
 
         let bound_params = Self::bind_function_params(def_params, &mut body_builder);
 
-        let body = Self::build_func_body(def_body, &return_ty, body_builder);
+        Self::init_function_locals(def_locals, &mut body_builder);
+
+        Self::build_func_body(def_body, &return_ty, &mut body_builder);
+
+        let body = body_builder.finish();
 
         FunctionDef {
             body,
@@ -557,12 +586,20 @@ impl Module {
             }
 
             let capture_val_ptr_ty = field_def.ty.clone().ptr();
-            let capture_val_ptr_ref = body_builder.local_closure_capture(capture_val_ptr_ty, field_def.name.clone());
+            let capture_val_ptr_ref =
+                body_builder.local_closure_capture(capture_val_ptr_ty, field_def.name.clone());
 
-            body_builder.field(capture_val_ptr_ref.clone(), Ref::Local(closure_ptr_local_id), closure_ptr_ty.clone(), *field_id);
+            body_builder.field(
+                capture_val_ptr_ref.clone(),
+                Ref::Local(closure_ptr_local_id),
+                closure_ptr_ty.clone(),
+                *field_id,
+            );
         }
 
-        let body = Self::build_func_body(&func_def.body, &return_ty, body_builder);
+        Self::build_func_body(&func_def.body, &return_ty, &mut body_builder);
+
+        let body = body_builder.finish();
 
         FunctionDef {
             body,
@@ -666,7 +703,9 @@ impl Module {
                 let id = self.metadata.reserve_new_struct();
 
                 let ty = match def.kind {
-                    pas_syn::ast::CompositeTypeKind::Class => Type::RcPointer(VirtualTypeID::Class(id)),
+                    pas_syn::ast::CompositeTypeKind::Class => {
+                        Type::RcPointer(VirtualTypeID::Class(id))
+                    },
                     pas_syn::ast::CompositeTypeKind::Record => Type::Struct(id),
                 };
 
@@ -713,9 +752,7 @@ impl Module {
                 }
 
                 let ir_sig = self.translate_func_sig(&func_sig, type_args);
-                let func_ty_id = self
-                    .metadata
-                    .define_func_ty((**func_sig).clone(), ir_sig);
+                let func_ty_id = self.metadata.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));
 
@@ -882,11 +919,14 @@ impl Module {
         let id = self.metadata.reserve_new_struct();
 
         let mut fields = LinkedHashMap::new();
-        fields.insert(CLOSURE_PTR_FIELD, StructFieldDef {
-            name: String::new(),
-            rc: false,
-            ty: Type::Function(identity.func_ty_id),
-        });
+        fields.insert(
+            CLOSURE_PTR_FIELD,
+            StructFieldDef {
+                name: String::new(),
+                rc: false,
+                ty: Type::Function(identity.func_ty_id),
+            },
+        );
 
         let mut field_id = FieldID(CLOSURE_PTR_FIELD.0 + 1);
 
@@ -972,12 +1012,18 @@ impl fmt::Display for Module {
                     match &s.identity {
                         StructIdentity::Class(name) | StructIdentity::Record(name) => {
                             self.metadata.format_name(name, f)?;
-                        }
+                        },
 
                         StructIdentity::Closure(identity) => {
-                            let func_ty_name = self.metadata.pretty_ty_name(&Type::Function(identity.func_ty_id));
-                            write!(f, "closure of {} @ {}:{}:{}", func_ty_name, identity.module, identity.line, identity.col)?;
-                        }
+                            let func_ty_name = self
+                                .metadata
+                                .pretty_ty_name(&Type::Function(identity.func_ty_id));
+                            write!(
+                                f,
+                                "closure of {} @ {}:{}:{}",
+                                func_ty_name, identity.module, identity.line, identity.col
+                            )?;
+                        },
                     }
 
                     writeln!(f)?;

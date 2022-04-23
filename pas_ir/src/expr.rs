@@ -541,7 +541,7 @@ fn is_string_class(class: &pas_ty::Symbol) -> bool {
         && class.qualified.last().name.as_str() == "String"
 }
 
-fn translate_literal(
+pub fn translate_literal(
     lit: &ast::Literal<pas_ty::Type>,
     ty: &pas_ty::Type,
     builder: &mut Builder,

@@ -321,7 +321,7 @@ pub struct FunctionLocalDecl<A>
     pub ident: Ident,
     pub ty: A::Type,
 
-    pub initial_val: Option<Box<Expression<A>>>,
+    pub initial_val: Option<A::ConstExpr>,
 
     #[derivative(Debug = "ignore")]
     #[derivative(PartialEq = "ignore")]
@@ -355,27 +355,28 @@ impl FunctionDef<Span> {
         let body_start_matcher = Self::body_start_matcher();
 
         let mut locals = Vec::new();
-
-        let body = loop {
+        loop {
             match tokens.look_ahead().match_one(body_start_matcher.clone()) {
                 Some(tt) if tt.is_keyword(Keyword::Var) => {
                     tokens.advance(1);
                     locals.extend(
                         Self::parse_locals_block(tokens, FunctionLocalDeclKind::Var)?
                     );
+                    tokens.match_one_maybe(Separator::Semicolon);
                 },
                 Some(tt) if tt.is_keyword(Keyword::Const) => {
                     tokens.advance(1);
                     locals.extend(
                         Self::parse_locals_block(tokens, FunctionLocalDeclKind::Const)?
                     );
+                    tokens.match_one_maybe(Separator::Semicolon);
                 }
 
-                _ => {
-                    break Block::parse(tokens)?;
-                }
+                _ => break,
             }
-        };
+        }
+
+        let body = Block::parse(tokens)?;
 
         let span = decl.span.to(body.span());
 
@@ -390,8 +391,8 @@ impl FunctionDef<Span> {
     fn parse_locals_block(tokens: &mut TokenStream, kind: FunctionLocalDeclKind) -> ParseResult<Vec<FunctionLocalDecl<Span>>> {
         let mut decls = Vec::new();
         loop {
-            if !decls.is_empty() && tokens.match_one_maybe(Separator::Semicolon).is_none() {
-                break;
+            if !decls.is_empty() {
+                tokens.match_one(Separator::Semicolon)?;
             }
 
             let mut idents = Vec::new();
@@ -405,7 +406,6 @@ impl FunctionDef<Span> {
             }
 
             tokens.match_one(Separator::Colon)?;
-
             let ty = TypeName::parse(tokens)?;
 
             let initial_val = match tokens.match_one_maybe(Operator::Equals) {
@@ -416,16 +416,21 @@ impl FunctionDef<Span> {
                 None => None,
             };
 
-            for ident in idents {
-                let span = ident.span.clone();
-
-                decls.push(FunctionLocalDecl {
+            decls.extend(idents.into_iter()
+                .map(|ident| FunctionLocalDecl {
+                    span: ident.span.clone(),
                     kind,
                     ident,
                     ty: ty.clone(),
                     initial_val: initial_val.clone(),
-                    span,
-                })
+                }));
+
+            let mut look_ahead = tokens.look_ahead();
+            if !decls.is_empty() && look_ahead.match_one(Separator::Semicolon).is_none() {
+                break;
+            }
+            if look_ahead.match_one(Matcher::AnyIdent).is_none() {
+                break;
             }
         }
 

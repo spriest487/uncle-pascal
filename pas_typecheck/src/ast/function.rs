@@ -202,7 +202,11 @@ pub fn typecheck_func_def(
         let initial_val = match &local.initial_val {
             Some(expr) => {
                 let expr = typecheck_expr(expr, &ty, ctx)?;
-                Some(Box::new(expr))
+                let value = expr.const_eval(ctx).ok_or_else(|| TypecheckError::InvalidConstExpr {
+                    expr: Box::new(expr.clone()),
+                })?;
+
+                Some(value)
             },
             None => None,
         };
@@ -210,11 +214,7 @@ pub fn typecheck_func_def(
         match local.kind {
             ast::FunctionLocalDeclKind::Const => {
                 let val = match &initial_val {
-                    Some(expr) => {
-                        expr.const_eval(ctx).ok_or_else(|| TypecheckError::InvalidConstExpr {
-                            expr: expr.clone(),
-                        })?
-                    },
+                    Some(val) => val,
                     None => {
                         return Err(TypecheckError::ConstDeclWithNoValue { span: local.span.clone() });
                     },
@@ -222,7 +222,7 @@ pub fn typecheck_func_def(
 
                 // the visibility doesn't really matter here because it's not a unit-level decl
                 let visiblity = Visibility::Interface;
-                ctx.declare_const(local.ident.clone(), val, ty.clone(), visiblity, local.span.clone())?;
+                ctx.declare_const(local.ident.clone(), val.clone(), ty.clone(), visiblity, local.span.clone())?;
             },
 
             ast::FunctionLocalDeclKind::Var => {

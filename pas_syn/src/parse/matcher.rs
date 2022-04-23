@@ -276,11 +276,11 @@ impl SequenceMatcher {
     }
 }
 
-pub trait ParseSeq : Sized {
-    fn parse_group(prev: &[Self], tokens: &mut TokenStream) -> ParseResult<Self>;
-    fn has_more(prev: &[Self], tokens: &mut LookAheadTokenStream) -> bool;
+pub trait ParseSeq<T = Self> : Sized {
+    fn parse_group(prev: &[T], tokens: &mut TokenStream) -> ParseResult<T>;
+    fn has_more(prev: &[T], tokens: &mut LookAheadTokenStream) -> bool;
 
-    fn parse_seq(tokens: &mut TokenStream) -> ParseResult<Vec<Self>> {
+    fn parse_seq(tokens: &mut TokenStream) -> ParseResult<Vec<T>> {
         let mut results = Vec::new();
 
         while Self::has_more(&results, &mut tokens.look_ahead()) {

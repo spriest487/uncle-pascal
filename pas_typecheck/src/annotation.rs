@@ -339,6 +339,7 @@ impl Annotation for TypeAnnotation {
     type Pattern = TypePattern;
     type ConstStringExpr = String;
     type ConstIntegerExpr = IntConstant;
+    type ConstExpr = Literal;
 }
 
 #[derive(Eq, PartialEq, Hash, Clone, Debug)]
