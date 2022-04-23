@@ -121,7 +121,9 @@ fn parse_decls_section(keyword: Keyword, out_decls: &mut Vec<UnitDecl<Span>>, to
 
     let decls = UnitDecl::parse_seq(tokens)?;
 
-    tokens.match_one(Separator::Semicolon)?;
+    if !decls.is_empty() {
+        tokens.match_one(Separator::Semicolon)?;
+    }
 
     out_decls.extend(decls);
 
