@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::{FunctionID, MethodID, NamePath, Type};
+use crate::{FunctionID, MethodID, Module, NamePath, pas_ty, Type, VirtualTypeID};
 
 #[derive(Clone, Debug)]
 pub struct Method {
@@ -69,4 +69,43 @@ impl InterfaceImpl {
             methods: HashMap::with_capacity(method_count),
         }
     }
+}
+
+pub fn translate_iface(
+    iface_def: &pas_ty::ast::InterfaceDecl,
+    type_args: Option<&pas_ty::TypeList>,
+    module: &mut Module,
+) -> Interface {
+    let name = module.translate_name(&iface_def.name, type_args);
+
+    // it needs to be declared to reference its own ID in the Self type
+    let id = module.metadata.declare_iface(&name);
+
+    let methods: Vec<_> = iface_def
+        .methods
+        .iter()
+        .map(|method| {
+            let self_ty = Type::RcPointer(VirtualTypeID::Interface(id));
+
+            Method {
+                name: method.ident().to_string(),
+                return_ty: match &method.decl.return_ty {
+                    Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
+                    Some(return_ty) => module.translate_type(return_ty, type_args),
+                    None => Type::Nothing,
+                },
+                params: method
+                    .decl
+                    .params
+                    .iter()
+                    .map(|param| match &param.ty {
+                        pas_ty::Type::MethodSelf => self_ty.clone(),
+                        param_ty => module.translate_type(param_ty, type_args),
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+
+    Interface::new(name, methods)
 }

@@ -526,7 +526,7 @@ impl Module {
 
                 self.type_cache.insert(src_ty, ty.clone());
 
-                let iface_meta = self.translate_iface(&iface_def, type_args);
+                let iface_meta = translate_iface(&iface_def, type_args, self);
                 let def_id = self.metadata.define_iface(iface_meta);
                 assert_eq!(def_id, id);
 
@@ -639,45 +639,6 @@ impl Module {
             src_span: Some(variant_def.span().clone()),
             cases,
         }
-    }
-
-    pub fn translate_iface(
-        &mut self,
-        iface_def: &pas_ty::ast::InterfaceDecl,
-        type_args: Option<&pas_ty::TypeList>,
-    ) -> Interface {
-        let name = self.translate_name(&iface_def.name, type_args);
-
-        // it needs to be declared to reference its own ID in the Self type
-        let id = self.metadata.declare_iface(&name);
-
-        let methods: Vec<_> = iface_def
-            .methods
-            .iter()
-            .map(|method| {
-                let self_ty = Type::RcPointer(VirtualTypeID::Interface(id));
-
-                Method {
-                    name: method.ident().to_string(),
-                    return_ty: match &method.decl.return_ty {
-                        Some(pas_ty::Type::MethodSelf) => self_ty.clone(),
-                        Some(return_ty) => self.translate_type(return_ty, type_args),
-                        None => Type::Nothing,
-                    },
-                    params: method
-                        .decl
-                        .params
-                        .iter()
-                        .map(|param| match &param.ty {
-                            pas_ty::Type::MethodSelf => self_ty.clone(),
-                            param_ty => self.translate_type(param_ty, type_args),
-                        })
-                        .collect(),
-                }
-            })
-            .collect();
-
-        Interface::new(name, methods)
     }
 
     pub fn translate_class(
