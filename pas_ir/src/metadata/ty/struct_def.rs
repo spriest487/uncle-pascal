@@ -1,8 +1,9 @@
-use crate::{NamePath, Type, TypeDefID};
+use crate::{Module, NamePath, pas_ty, Type, TypeDefID};
 use linked_hash_map::LinkedHashMap;
-use pas_common::span::Span;
+use pas_common::span::{Span, Spanned};
 use std::collections::HashMap;
 use std::fmt;
+use pas_syn::ast::CompositeTypeKind;
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct StructFieldDef {
@@ -119,4 +120,30 @@ impl fmt::Display for FieldID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "{}", self.0)
     }
+}
+
+pub fn translate_class(
+    class_def: &pas_ty::ast::Composite,
+    type_args: Option<&pas_ty::TypeList>,
+    module: &mut Module,
+) -> Struct {
+    let name_path = module.translate_name(&class_def.name, type_args);
+
+    let mut fields = HashMap::new();
+    for (id, member) in class_def.members.iter().enumerate() {
+        let name = member.ident.to_string();
+        let ty = module.translate_type(&member.ty, type_args);
+        let rc = member.ty.is_rc_reference();
+
+        fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
+    }
+
+    let src_span = class_def.span().clone();
+
+    let identity = match class_def.kind {
+        CompositeTypeKind::Class => StructIdentity::Class(name_path),
+        CompositeTypeKind::Record => StructIdentity::Record(name_path),
+    };
+
+    Struct::new(identity, Some(src_span)).with_fields(fields)
 }

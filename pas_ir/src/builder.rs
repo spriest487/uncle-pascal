@@ -129,8 +129,7 @@ impl<'m> Builder<'m> {
     }
 
     pub fn translate_class(&mut self, class_def: &pas_ty::ast::Composite) -> Struct {
-        self.module
-            .translate_class(class_def, self.type_args().cloned().as_ref())
+        translate_class(class_def, self.type_args().cloned().as_ref(), self.module)
     }
 
     pub fn translate_iface(&mut self, iface_def: &pas_ty::ast::InterfaceDecl) -> Interface {

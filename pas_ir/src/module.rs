@@ -1,16 +1,13 @@
 use crate::{
-    build_closure_function_def, build_func_def, metadata::*, pas_ty,
-    translate_stmt, write_instruction_list, Builder, ExternalFunctionRef,
-    FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance,
-    GlobalRef, IROptions, Instruction, InstructionFormatter, Metadata, Ref, StaticClosure,
-    StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID,
+    build_closure_function_def, build_func_def, metadata::*, pas_ty, translate_stmt,
+    write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function, FunctionDeclKey,
+    FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, GlobalRef, IROptions, Instruction,
+    InstructionFormatter, Metadata, Ref, StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID,
+    VirtualTypeID,
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::{
-    ast::{CompositeTypeKind, FunctionParamMod},
-    IdentPath,
-};
+use pas_syn::{ast::FunctionParamMod, IdentPath};
 use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, Specializable, TypeList};
 use std::{collections::HashMap, fmt, rc::Rc};
 
@@ -314,7 +311,8 @@ impl Module {
             line: func.span().start.line,
             col: func.span().start.col,
         };
-        let closure_id = translate_closure_struct(closure_identity, &func.captures, type_args.as_ref(), self);
+        let closure_id =
+            translate_closure_struct(closure_identity, &func.captures, type_args.as_ref(), self);
 
         let debug_name = "<anonymous function>".to_string();
 
@@ -510,7 +508,7 @@ impl Module {
 
                 self.metadata.declare_struct(id, &name_path);
 
-                let struct_meta = self.translate_class(&def, type_args);
+                let struct_meta = translate_class(&def, type_args, self);
                 self.metadata.define_struct(id, struct_meta);
 
                 ty
@@ -638,32 +636,6 @@ impl Module {
             src_span: Some(variant_def.span().clone()),
             cases,
         }
-    }
-
-    pub fn translate_class(
-        &mut self,
-        class_def: &pas_ty::ast::Composite,
-        type_args: Option<&pas_ty::TypeList>,
-    ) -> Struct {
-        let name_path = self.translate_name(&class_def.name, type_args);
-
-        let mut fields = HashMap::new();
-        for (id, member) in class_def.members.iter().enumerate() {
-            let name = member.ident.to_string();
-            let ty = self.translate_type(&member.ty, type_args);
-            let rc = member.ty.is_rc_reference();
-
-            fields.insert(FieldID(id), StructFieldDef { name, ty, rc });
-        }
-
-        let src_span = class_def.span().clone();
-
-        let identity = match class_def.kind {
-            CompositeTypeKind::Class => StructIdentity::Class(name_path),
-            CompositeTypeKind::Record => StructIdentity::Record(name_path),
-        };
-
-        Struct::new(identity, Some(src_span)).with_fields(fields)
     }
 
     pub fn translate_dyn_array_struct(
