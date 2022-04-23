@@ -3,7 +3,8 @@ use std::{
     rc::Rc
 };
 use pas_common::span::Span;
-use pas_syn::{ast, IdentPath};
+use pas_syn::{ast, Ident, IdentPath};
+use pas_syn::ast::FunctionParamMod;
 use crate::{Builder, CLOSURE_PTR_FIELD, EXIT_LABEL, FunctionID, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID};
 
 #[derive(Clone, Debug)]
@@ -56,11 +57,14 @@ pub enum FunctionDeclKey {
     Function {
         name: IdentPath,
     },
-    Method {
-        iface: IdentPath,
-        self_ty: pas_ty::Type,
-        method: pas_syn::Ident,
-    },
+    Method(MethodDeclKey),
+}
+
+#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+pub struct MethodDeclKey {
+    pub iface: IdentPath,
+    pub self_ty: pas_ty::Type,
+    pub method: Ident,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
@@ -290,4 +294,17 @@ fn build_func_body(
     if jmp_exists(builder.instructions(), EXIT_LABEL) {
         builder.label(EXIT_LABEL);
     }
+}
+
+pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> Vec<Type> {
+    sig.params
+        .iter()
+        .map(|sig_param| {
+            let param_ty = module.translate_type(&sig_param.ty, None);
+            match sig_param.modifier {
+                None => param_ty,
+                Some(FunctionParamMod::Var | FunctionParamMod::Out) => param_ty.ptr(),
+            }
+        })
+        .collect()
 }

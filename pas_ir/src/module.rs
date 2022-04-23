@@ -1,13 +1,13 @@
 use crate::{
-    build_closure_function_def, build_func_def, metadata::*, pas_ty, translate_stmt,
-    write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function, FunctionDeclKey,
-    FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, GlobalRef, IROptions, Instruction,
-    InstructionFormatter, Metadata, Ref, StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID,
-    VirtualTypeID,
+    build_closure_function_def, build_func_def, metadata::*, pas_ty, translate_func_params,
+    translate_stmt, write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function,
+    FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, GlobalRef,
+    IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey, Ref, StaticClosure,
+    StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID,
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
-use pas_syn::{ast::FunctionParamMod, IdentPath};
+use pas_syn::{Ident, IdentPath};
 use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, TypeList};
 use std::{collections::HashMap, fmt, rc::Rc};
 
@@ -98,185 +98,201 @@ impl Module {
             FunctionDeclKey::Function { name } => {
                 match self.src_metadata.find_def(&name).cloned() {
                     Some(pas_ty::Def::Function(func_def)) => {
-                        let specialized_decl = match key.type_args.as_ref() {
-                            Some(key_type_args) => specialize_func_decl(
-                                &func_def.decl,
-                                key_type_args,
-                                func_def.span(),
-                                &self.src_metadata,
-                            )
-                            .expect("function specialization must be valid after typechecking"),
-                            None => func_def.decl.clone(),
-                        };
-
-                        let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
-
-                        let id = self
-                            .metadata
-                            .declare_func(&func_def.decl, key.type_args.as_ref());
-
-                        // cache the function before translating the instantiation, because
-                        // it may recurse and instantiate itself in its own body
-                        let cached_func = FunctionInstance {
-                            id,
-                            sig: Rc::new(sig),
-                        };
-                        self.translated_funcs
-                            .insert(key.clone(), cached_func.clone());
-
-                        let debug_name = specialized_decl.to_string();
-                        let ir_func = build_func_def(
-                            self,
-                            &func_def.decl.params,
-                            func_def.decl.type_params.as_ref(),
-                            key.type_args.clone(),
-                            func_def.decl.return_ty.as_ref(),
-                            &func_def.locals,
-                            &func_def.body,
-                            func_def.span.clone(),
-                            debug_name,
-                        );
-
-                        self.functions.insert(id, Function::Local(ir_func));
-
-                        cached_func
+                        self.instantiate_func_def(&func_def, key)
                     },
 
                     Some(pas_ty::Def::External(extern_decl)) => {
-                        assert!(
-                            key.type_args.is_none(),
-                            "external function must not be generic"
-                        );
-
-                        let id = self
-                            .metadata
-                            .declare_func(&extern_decl, key.type_args.as_ref());
-                        let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
-
-                        let return_ty = self.translate_type(&sig.return_ty, None);
-                        let params = self.translate_func_params(&sig);
-
-                        let cached_func = FunctionInstance {
-                            id,
-                            sig: Rc::new(sig),
-                        };
-
-                        let extern_src = extern_decl
-                            .external_src()
-                            .expect("function with external def must have an extern src");
-
-                        self.functions.insert(
-                            id,
-                            Function::External(ExternalFunctionRef {
-                                src: extern_src.to_string(),
-                                symbol: extern_decl.ident.last().to_string(),
-
-                                return_ty,
-                                params,
-
-                                src_span: extern_decl.span().clone(),
-                            }),
-                        );
-                        self.translated_funcs.insert(key, cached_func.clone());
-
-                        cached_func
+                        self.instantiate_func_external(&extern_decl, key)
                     },
 
                     _ => panic!("missing source def for function {}", name),
                 }
             },
 
-            FunctionDeclKey::Method {
-                iface,
-                self_ty,
-                method,
-            } => {
-                let method_name = method.to_string();
-
-                let iface_def = match self.src_metadata.find_iface_def(iface) {
-                    Ok(def) => def,
-                    Err(..) => panic!("missing interface def {}", iface),
-                };
-
-                let iface_id = match self.metadata.find_iface_decl(&iface_def.name.qualified) {
-                    Some(iface_id) => iface_id,
-                    None => {
-                        let mut builder = Builder::new(self);
-                        let iface_meta = builder.translate_iface(&iface_def);
-                        self.metadata.define_iface(iface_meta)
-                    },
-                };
-
-                let method_def = self
-                    .src_metadata
-                    .find_method_impl_def(&iface_def.name.qualified, self_ty, method)
-                    .cloned()
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "missing method def: {}.{} for {}",
-                            iface_def.name.qualified, method, self_ty,
-                        )
-                    });
-
-                let specialized_decl = match &key.type_args {
-                    Some(key_type_args) => specialize_func_decl(
-                        &method_def.decl,
-                        &key_type_args,
-                        &method_def.span(),
-                        &self.src_metadata,
-                    )
-                    .expect("method specialization failed in codegen"),
-                    None => method_def.decl.clone(),
-                };
-
-                let id = self
-                    .metadata
-                    .declare_func(&specialized_decl, key.type_args.as_ref());
-
-                let self_ty = self.metadata.find_type(self_ty);
-
-                self.metadata
-                    .impl_method(iface_id, self_ty, method_name, id);
-
-                // cache the function before translating the instantiation, because
-                // it may recurse and instantiate itself in its own body
-                let cached_func = FunctionInstance {
-                    id,
-                    sig: Rc::new(pas_ty::FunctionSig::of_decl(&specialized_decl)),
-                };
-                self.translated_funcs
-                    .insert(key.clone(), cached_func.clone());
-
-                let debug_name = specialized_decl.to_string();
-                let ir_func = build_func_def(
-                    self,
-                    &method_def.decl.params,
-                    method_def.decl.type_params.as_ref(),
-                    key.type_args.clone(),
-                    method_def.decl.return_ty.as_ref(),
-                    &method_def.locals,
-                    &method_def.body,
-                    method_def.span().clone(),
-                    debug_name,
-                );
-                self.functions.insert(id, Function::Local(ir_func));
-
-                cached_func
+            FunctionDeclKey::Method(method_key) => {
+                self.instantiate_method(method_key.clone(), key.type_args)
             },
         }
     }
 
-    fn translate_func_params(&mut self, sig: &pas_ty::FunctionSig) -> Vec<Type> {
-        sig.params
-            .iter()
-            .map(|sig_param| {
-                let param_ty = self.translate_type(&sig_param.ty, None);
-                match sig_param.modifier {
-                    None => param_ty,
-                    Some(FunctionParamMod::Var | FunctionParamMod::Out) => param_ty.ptr(),
-                }
-            })
-            .collect()
+    fn instantiate_func_def(
+        &mut self,
+        func_def: &pas_ty::ast::FunctionDef,
+        key: FunctionDefKey,
+    ) -> FunctionInstance {
+        let specialized_decl = match &key.type_args {
+            Some(key_type_args) => specialize_func_decl(
+                &func_def.decl,
+                key_type_args,
+                func_def.span(),
+                &self.src_metadata,
+            )
+            .expect("function specialization must be valid after typechecking"),
+            None => func_def.decl.clone(),
+        };
+
+        let sig = pas_ty::FunctionSig::of_decl(&specialized_decl);
+
+        let id = self
+            .metadata
+            .declare_func(&func_def.decl, key.type_args.as_ref());
+
+        // cache the function before translating the instantiation, because
+        // it may recurse and instantiate itself in its own body
+        let cached_func = FunctionInstance {
+            id,
+            sig: Rc::new(sig),
+        };
+
+        let type_args = key.type_args.clone();
+
+        self.translated_funcs.insert(key, cached_func.clone());
+
+        let debug_name = specialized_decl.to_string();
+        let ir_func = build_func_def(
+            self,
+            &func_def.decl.params,
+            func_def.decl.type_params.as_ref(),
+            type_args,
+            func_def.decl.return_ty.as_ref(),
+            &func_def.locals,
+            &func_def.body,
+            func_def.span.clone(),
+            debug_name,
+        );
+
+        self.functions.insert(id, Function::Local(ir_func));
+
+        cached_func
+    }
+
+    fn instantiate_func_external(
+        &mut self,
+        extern_decl: &pas_ty::ast::FunctionDecl,
+        key: FunctionDefKey,
+    ) -> FunctionInstance {
+        assert!(
+            key.type_args.is_none(),
+            "external function must not be generic"
+        );
+
+        let id = self.metadata.declare_func(&extern_decl, None);
+        let sig = pas_ty::FunctionSig::of_decl(&extern_decl);
+
+        let return_ty = self.translate_type(&sig.return_ty, None);
+        let params = translate_func_params(&sig, self);
+
+        let cached_func = FunctionInstance {
+            id,
+            sig: Rc::new(sig),
+        };
+
+        let extern_src = extern_decl
+            .external_src()
+            .expect("function with external def must have an extern src");
+
+        self.functions.insert(
+            id,
+            Function::External(ExternalFunctionRef {
+                src: extern_src.to_string(),
+                symbol: extern_decl.ident.last().to_string(),
+
+                return_ty,
+                params,
+
+                src_span: extern_decl.span().clone(),
+            }),
+        );
+
+        self.translated_funcs.insert(key, cached_func.clone());
+
+        cached_func
+    }
+
+    fn instantiate_method(
+        &mut self,
+        method_key: MethodDeclKey,
+        type_args: Option<pas_ty::TypeList>,
+    ) -> FunctionInstance {
+        let method_name = method_key.method.to_string();
+
+        let iface_def = match self.src_metadata.find_iface_def(&method_key.iface) {
+            Ok(def) => def,
+            Err(..) => panic!("missing interface def {}", method_key.iface),
+        };
+
+        let iface_id = match self.metadata.find_iface_decl(&iface_def.name.qualified) {
+            Some(iface_id) => iface_id,
+            None => {
+                let mut builder = Builder::new(self);
+                let iface_meta = builder.translate_iface(&iface_def);
+                self.metadata.define_iface(iface_meta)
+            },
+        };
+
+        let method_def = self
+            .src_metadata
+            .find_method_impl_def(
+                &iface_def.name.qualified,
+                &method_key.self_ty,
+                &method_key.method,
+            )
+            .cloned()
+            .unwrap_or_else(|| {
+                panic!(
+                    "missing method def: {}.{} for {}",
+                    iface_def.name.qualified, method_key.method, method_key.self_ty,
+                )
+            });
+
+        let specialized_decl = match type_args.as_ref() {
+            Some(key_type_args) => specialize_func_decl(
+                &method_def.decl,
+                &key_type_args,
+                &method_def.span(),
+                &self.src_metadata,
+            )
+            .expect("method specialization failed in codegen"),
+            None => method_def.decl.clone(),
+        };
+
+        let id = self
+            .metadata
+            .declare_func(&specialized_decl, type_args.as_ref());
+
+        let self_ty = self.metadata.find_type(&method_key.self_ty);
+
+        self.metadata
+            .impl_method(iface_id, self_ty, method_name, id);
+
+        // cache the function before translating the instantiation, because
+        // it may recurse and instantiate itself in its own body
+        let cached_func = FunctionInstance {
+            id,
+            sig: Rc::new(pas_ty::FunctionSig::of_decl(&specialized_decl)),
+        };
+
+        let key = FunctionDefKey {
+            decl_key: FunctionDeclKey::Method(method_key),
+            type_args: None,
+        };
+        self.translated_funcs.insert(key, cached_func.clone());
+
+        let debug_name = specialized_decl.to_string();
+        let ir_func = build_func_def(
+            self,
+            &method_def.decl.params,
+            method_def.decl.type_params.as_ref(),
+            type_args,
+            method_def.decl.return_ty.as_ref(),
+            &method_def.locals,
+            &method_def.body,
+            method_def.span().clone(),
+            debug_name,
+        );
+        self.functions.insert(id, Function::Local(ir_func));
+
+        cached_func
     }
 
     pub fn translate_func_ty(
@@ -372,15 +388,15 @@ impl Module {
     pub fn translate_method_impl(
         &mut self,
         iface: IdentPath,
-        method: pas_syn::Ident,
+        method: Ident,
         self_ty: pas_ty::Type,
     ) -> FunctionInstance {
         let key = FunctionDefKey {
-            decl_key: FunctionDeclKey::Method {
+            decl_key: FunctionDeclKey::Method(MethodDeclKey {
                 iface,
                 method,
                 self_ty,
-            },
+            }),
 
             // dynamic method calls can't have type args
             type_args: None,
@@ -424,11 +440,11 @@ impl Module {
 
                     for method in &iface_def.methods {
                         let cache_key = FunctionDefKey {
-                            decl_key: FunctionDeclKey::Method {
+                            decl_key: FunctionDeclKey::Method(MethodDeclKey {
                                 self_ty: real_ty.clone(),
                                 method: method.ident().clone(),
                                 iface: iface.clone(),
-                            },
+                            }),
                             type_args: None,
                         };
 
@@ -567,10 +583,6 @@ impl Module {
 
         ty
     }
-
-
-
-
 
     pub fn translate_dyn_array_struct(
         &mut self,
