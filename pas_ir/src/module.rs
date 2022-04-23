@@ -1,9 +1,9 @@
 use crate::{
-    build_closure_function_def, build_func_def, metadata::*, pas_ty, translate_func_params,
-    translate_stmt, write_instruction_list, Builder, ExternalFunctionRef, FieldID, Function,
-    FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance, GlobalRef,
-    IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey, Ref, StaticClosure,
-    StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID,
+    build_closure_function_def, build_func_def, build_static_closure, metadata::*, pas_ty,
+    translate_func_params, translate_stmt, write_instruction_list, Builder, ExternalFunctionRef,
+    FieldID, Function, FunctionDeclKey, FunctionDef, FunctionDefKey, FunctionID, FunctionInstance,
+    IROptions, Instruction, InstructionFormatter, Metadata, MethodDeclKey,
+    StaticClosure, StaticClosureID, Type, TypeDef, TypeDefID, VirtualTypeID,
 };
 use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
@@ -348,32 +348,9 @@ impl Module {
 
     pub fn build_static_closure_instance(&mut self, closure: ClosureInstance) -> &StaticClosure {
         let id = StaticClosureID(self.static_closures.len());
+        let instance = build_static_closure(closure, id, self);
 
-        let mut init_builder = Builder::new(self);
-        let closure_ref = init_builder.build_closure_instance(closure.clone());
-        init_builder.retain(closure_ref.clone(), &closure.closure_ptr_ty());
-        init_builder.mov(Ref::Global(GlobalRef::StaticClosure(id)), closure_ref);
-
-        let init_body = init_builder.finish();
-
-        let init_func_id = self.metadata.insert_func(None);
-        self.insert_func(
-            init_func_id,
-            Function::Local(FunctionDef {
-                body: init_body,
-                debug_name: format!("static closure init for {}", closure),
-                params: Vec::new(),
-                return_ty: Type::Nothing,
-                src_span: Span::zero(""),
-            }),
-        );
-
-        self.static_closures.push(StaticClosure {
-            id,
-            init_func: init_func_id,
-            closure_id: closure.closure_id,
-            func_ty_id: closure.func_ty_id,
-        });
+        self.static_closures.push(instance);
 
         &self.static_closures[self.static_closures.len() - 1]
     }

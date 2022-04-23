@@ -5,7 +5,7 @@ use std::{
 use pas_common::span::Span;
 use pas_syn::{ast, Ident, IdentPath};
 use pas_syn::ast::FunctionParamMod;
-use crate::{Builder, CLOSURE_PTR_FIELD, EXIT_LABEL, FunctionID, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID};
+use crate::{Builder, CLOSURE_PTR_FIELD, ClosureInstance, EXIT_LABEL, FunctionID, GlobalRef, Instruction, jmp_exists, LocalID, Module, pas_ty, Ref, RETURN_REF, translate_block, translate_literal, Type, TypeDefID, VirtualTypeID};
 
 #[derive(Clone, Debug)]
 pub struct ExternalFunctionRef {
@@ -307,4 +307,32 @@ pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> 
             }
         })
         .collect()
+}
+
+pub fn build_static_closure(closure: ClosureInstance, id: StaticClosureID, module: &mut Module) -> StaticClosure {
+    let mut init_builder = Builder::new(module);
+    let closure_ref = init_builder.build_closure_instance(closure.clone());
+    init_builder.retain(closure_ref.clone(), &closure.closure_ptr_ty());
+    init_builder.mov(Ref::Global(GlobalRef::StaticClosure(id)), closure_ref);
+
+    let init_body = init_builder.finish();
+
+    let init_func_id = module.metadata.insert_func(None);
+    module.insert_func(
+        init_func_id,
+        Function::Local(FunctionDef {
+            body: init_body,
+            debug_name: format!("static closure init for {}", closure),
+            params: Vec::new(),
+            return_ty: Type::Nothing,
+            src_span: Span::zero(""),
+        }),
+    );
+
+    StaticClosure {
+        id,
+        init_func: init_func_id,
+        closure_id: closure.closure_id,
+        func_ty_id: closure.func_ty_id,
+    }
 }
