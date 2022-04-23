@@ -100,7 +100,7 @@ impl FunctionDecl<Span> {
         let params_group = tokens.match_one(DelimiterPair::Bracket)?;
         let params_span = params_group.span().clone();
         let mut params_tokens = match params_group {
-            TokenTree::Delimited { inner, open, .. } => TokenStream::new(inner, open),
+            TokenTree::Delimited(group) => group.to_inner_tokens(),
             _ => unreachable!(),
         };
 
@@ -518,12 +518,11 @@ impl<A: Annotation> Spanned for AnonymousFunctionDef<A> {
 impl Parse for AnonymousFunctionDef<Span> {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let func_kw = tokens.match_one(Keyword::Function.or(Keyword::Procedure))?;
-        let (params_open, params_inner) = match tokens.match_one(DelimiterPair::Bracket)? {
-            TokenTree::Delimited { open, inner, .. } => (open, inner),
+        let mut params_tokens = match tokens.match_one(DelimiterPair::Bracket)? {
+            TokenTree::Delimited(group) => group.to_inner_tokens(),
             _ => unreachable!(),
         };
 
-        let mut params_tokens = TokenStream::new(params_inner, params_open);
         let params = FunctionDecl::parse_params(&mut params_tokens)?;
         params_tokens.finish()?;
 

@@ -2,6 +2,7 @@ use crate::{ast::{Annotation, Expression, TypeList}, DelimiterPair, Ident, Separ
 use std::{fmt};
 use pas_common::span::{Span, Spanned};
 use crate::parse::{LookAheadTokenStream, Matcher, ParseResult, ParseSeq, TokenStream};
+use crate::token_tree::DelimitedGroup;
 
 #[derive(Debug, Eq, PartialEq, Clone, Hash)]
 pub struct MethodCall<A: Annotation> {
@@ -177,19 +178,14 @@ impl ArgList<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let brackets = tokens.match_one(Matcher::Delimited(DelimiterPair::Bracket))?;
 
-        let (inner, span, open, close) = match brackets {
-            TokenTree::Delimited {
-                delim: DelimiterPair::Bracket,
-                inner,
-                span,
-                open,
-                close,
-            } => (inner, span, open, close),
-
+        let args_group = match brackets {
+            TokenTree::Delimited(group @ DelimitedGroup { delim: DelimiterPair::Bracket, .. }) => group,
             _ => unreachable!(),
         };
 
-        let mut args_tokens = TokenStream::new(inner, span);
+        let open = args_group.open.clone();
+        let close = args_group.close.clone();
+        let mut args_tokens = args_group.to_inner_tokens();
 
         let args = ArgListItem::parse_seq(&mut args_tokens)?
             .into_iter()

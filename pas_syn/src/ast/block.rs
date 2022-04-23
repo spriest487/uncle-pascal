@@ -50,14 +50,15 @@ impl Block<Span> {
 
         let span = body_tt.span().clone();
 
-        let (inner, begin, end) = match body_tt {
-            TokenTree::Delimited {
-                inner, open, close, ..
-            } => (inner, open, close),
+        let body_tt_group = match body_tt {
+            TokenTree::Delimited(group) => group,
             _ => unreachable!(),
         };
 
-        let (statements, output_expr) = Self::parse_stmts(inner, &begin)?;
+        let begin = body_tt_group.open.clone();
+        let end = body_tt_group.close.clone();
+
+        let (statements, output_expr) = Self::parse_stmts(body_tt_group)?;
 
         let block = Self {
             statements,
@@ -74,14 +75,11 @@ impl Block<Span> {
         Ok(block)
     }
 
-    fn parse_stmts(
-        inner: Vec<TokenTree>,
-        context: &Span,
-    ) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
+    fn parse_stmts(body_tt_group: DelimitedGroup) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
         let mut statements = Vec::new();
         let mut output_expr: Option<Expression<_>> = None;
 
-        let mut tokens = TokenStream::new(inner.clone(), context.clone());
+        let mut tokens = body_tt_group.clone().to_inner_tokens();
 
         loop {
             let stmt_start_pos = match tokens.look_ahead().next() {
@@ -104,7 +102,7 @@ impl Block<Span> {
                         // we need to re-parse the tokens used for this statement, so make a new
                         // stream out of the block's inner tokens and fast-forward it to where
                         // we started parsing this statement...
-                        let mut output_expr_tokens = TokenStream::new(inner.to_vec(), context.clone());
+                        let mut output_expr_tokens = body_tt_group.clone().to_inner_tokens();
                         while let Some(tt) = output_expr_tokens.look_ahead().next() {
                             let tt_start = tt.span().start;
                             if tt_start < stmt_start_pos {

@@ -96,12 +96,15 @@ where
     B: Parse + Spanned
 {
     fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let (inner_tts, kw_tt, end_tt) = match tokens.match_one(DelimiterPair::MatchEnd)? {
-            TokenTree::Delimited { inner, open, close, .. } => (inner, open, close),
+        let block_group = match tokens.match_one(DelimiterPair::MatchEnd)? {
+            TokenTree::Delimited(group) => group,
             _ => unreachable!(),
         };
 
-        let mut inner_tokens = TokenStream::new(inner_tts, kw_tt.span().clone());
+        let kw_span = block_group.open.clone();
+        let end_span = block_group.close.clone();
+
+        let mut inner_tokens = block_group.to_inner_tokens();
 
         let cond_expr = Expression::parse(&mut inner_tokens)?;
         inner_tokens.match_one(Keyword::Of)?;
@@ -125,7 +128,7 @@ where
             cond_expr,
             branches,
             else_branch,
-            annotation: kw_tt.to(&end_tt),
+            annotation: kw_span.to(&end_span),
         })
     }
 }

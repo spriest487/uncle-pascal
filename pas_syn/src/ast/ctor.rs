@@ -65,15 +65,15 @@ pub struct ObjectCtorArgs<A: Annotation> {
 
 impl ObjectCtorArgs<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let args_group = tokens.match_one(DelimiterPair::Bracket)?;
-        let (open, inner, close) = match args_group {
-            TokenTree::Delimited {
-                open, inner, close, ..
-            } => (open, inner, close),
+        let args_group = match tokens.match_one(DelimiterPair::Bracket)? {
+            TokenTree::Delimited(group) => group,
             _ => unreachable!(),
         };
 
-        let mut members_tokens = TokenStream::new(inner, open.clone());
+        let open = args_group.open.clone();
+        let close = args_group.close.clone();
+
+        let mut members_tokens = args_group.to_inner_tokens();
         let members = ObjectCtorMember::parse_seq(&mut members_tokens)?;
 
         if members.len() > 0 {
@@ -181,9 +181,7 @@ impl CollectionCtor<Span> {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
         let (span, mut elems_tokens) =
             match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
-                TokenTree::Delimited {
-                    span, inner, open, ..
-                } => (span, TokenStream::new(inner, open)),
+                TokenTree::Delimited(group) => (group.span.clone(), group.to_inner_tokens()),
 
                 _ => unreachable!(),
             };

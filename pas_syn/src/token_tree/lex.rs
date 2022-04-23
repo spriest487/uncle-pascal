@@ -8,6 +8,7 @@ use crate::{
 use pas_common::{span::*, BuildOptions, TracedError};
 use std::{path::PathBuf, rc::Rc};
 use crate::operators::CompoundAssignmentOperator;
+use crate::token_tree::DelimitedGroup;
 
 pub fn lex(
     file_name: impl Into<PathBuf>,
@@ -391,13 +392,13 @@ impl Lexer {
                 },
             )),
 
-            Some(group) => Ok(TokenTree::Delimited {
+            Some(group) => Ok(TokenTree::Delimited(DelimitedGroup {
                 delim,
                 inner: group.inner,
                 span: group.open.to(&close_span),
                 open: group.open,
                 close: close_span,
-            }),
+            })),
         }
     }
 

@@ -360,8 +360,8 @@ impl TypeName {
             Some(_) => None,
 
             None => match tokens.match_one(Matcher::Delimited(DelimiterPair::SquareBracket))? {
-                TokenTree::Delimited { inner, open, .. } => {
-                    let mut dim_tokens = TokenStream::new(inner, open);
+                TokenTree::Delimited(group) => {
+                    let mut dim_tokens = group.to_inner_tokens();
                     let dim_expr = Expression::parse(&mut dim_tokens)?;
                     dim_tokens.finish()?;
 
@@ -400,12 +400,12 @@ impl TypeName {
         let mut span_end = kw_span;
 
         let params = match tokens.match_one_maybe(DelimiterPair::Bracket) {
-            Some(TokenTree::Delimited { open, inner, close, .. }) => {
-                let mut params_tokens = TokenStream::new(inner, open);
+            Some(TokenTree::Delimited(group)) => {
+                span_end = group.close.clone();
+
+                let mut params_tokens = group.to_inner_tokens();
                 let params = FunctionTypeNameParam::parse_seq(&mut params_tokens)?;
                 params_tokens.finish()?;
-
-                span_end = close;
 
                 params
             },
@@ -576,14 +576,12 @@ impl<Item> TypeList<Item> {
     where
         Item: Spanned + Parse + Match,
     {
-        let (items_inner, span) = match tokens.match_one(DelimiterPair::SquareBracket)? {
-            TokenTree::Delimited { inner, span, .. } => (inner, span),
+        let (span, mut items_tokens) = match tokens.match_one(DelimiterPair::SquareBracket)? {
+            TokenTree::Delimited(group) => (group.span.clone(), group.to_inner_tokens()),
             _ => unreachable!(),
         };
 
         let items = {
-            let mut items_tokens = TokenStream::new(items_inner, span.clone());
-
             let mut items = Vec::new();
             loop {
                 // empty type lists aren't valid so we must have 1+ items

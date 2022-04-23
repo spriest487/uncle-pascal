@@ -78,12 +78,14 @@ where
     B: Parse + Spanned
 {
     pub fn parse(tokens: &mut TokenStream) -> ParseResult<Self> {
-        let (case_kw, case_inner, end_kw) = match tokens.match_one(DelimiterPair::CaseEnd)? {
-            TokenTree::Delimited { open, inner, close, .. } => { (open, inner, close) },
+        let group = match tokens.match_one(DelimiterPair::CaseEnd)? {
+            TokenTree::Delimited(group) => group,
             _ => unreachable!("matcher failed"),
         };
 
-        let mut group_tokens = TokenStream::new(case_inner, case_kw.clone());
+        let case_kw = group.open.clone();
+        let end_kw = group.close.clone();
+        let mut group_tokens = group.to_inner_tokens();
 
         let result = Self::parse_group(&mut group_tokens, case_kw, end_kw)?;
 

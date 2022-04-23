@@ -1,5 +1,6 @@
 mod lex;
 
+use crate::parse::TokenStream;
 use crate::{
     consts::{IntConstant, RealConstant},
     ident::Ident,
@@ -7,11 +8,11 @@ use crate::{
     operators::Operator,
 };
 use pas_common::{span::*, BuildOptions, DiagnosticLabel, DiagnosticOutput, TracedError};
+use std::rc::Rc;
 use std::{
     fmt::{self, Write as _},
     path::PathBuf,
 };
-use std::rc::Rc;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
@@ -72,39 +73,33 @@ impl fmt::Display for Separator {
 }
 
 #[derive(Eq, PartialEq, Clone, Debug, Hash)]
+pub struct DelimitedGroup {
+    pub delim: DelimiterPair,
+
+    pub open: Span,
+    pub close: Span,
+
+    pub inner: Vec<TokenTree>,
+
+    pub span: Span,
+}
+
+impl DelimitedGroup {
+    pub fn to_inner_tokens(self) -> TokenStream {
+        TokenStream::new(self.inner, self.open)
+    }
+}
+
+#[derive(Eq, PartialEq, Clone, Debug, Hash)]
 pub enum TokenTree {
     Ident(Ident),
-    IntNumber {
-        value: IntConstant,
-        span: Span,
-    },
-    RealNumber {
-        value: RealConstant,
-        span: Span,
-    },
-    String {
-        value: Rc<String>,
-        span: Span,
-    },
-    Keyword {
-        kw: Keyword,
-        span: Span,
-    },
-    Operator {
-        op: Operator,
-        span: Span,
-    },
-    Separator {
-        sep: Separator,
-        span: Span,
-    },
-    Delimited {
-        delim: DelimiterPair,
-        inner: Vec<TokenTree>,
-        open: Span,
-        close: Span,
-        span: Span,
-    },
+    IntNumber { value: IntConstant, span: Span },
+    RealNumber { value: RealConstant, span: Span },
+    String { value: Rc<String>, span: Span },
+    Keyword { kw: Keyword, span: Span },
+    Operator { op: Operator, span: Span },
+    Separator { sep: Separator, span: Span },
+    Delimited(DelimitedGroup),
 }
 
 impl TokenTree {
@@ -117,7 +112,7 @@ impl TokenTree {
             TokenTree::Keyword { span, .. } => span,
             TokenTree::Operator { span, .. } => span,
             TokenTree::Separator { span, .. } => span,
-            TokenTree::Delimited { span, .. } => span,
+            TokenTree::Delimited(DelimitedGroup { span, .. }) => span,
         }
     }
 
@@ -130,7 +125,7 @@ impl TokenTree {
             TokenTree::Keyword { span, .. } => span,
             TokenTree::Operator { span, .. } => span,
             TokenTree::Separator { span, .. } => span,
-            TokenTree::Delimited { span, .. } => span,
+            TokenTree::Delimited(DelimitedGroup { span, .. }) => span,
         }
     }
 
@@ -171,9 +166,9 @@ impl TokenTree {
 
     pub fn is_delimited(&self, delim: DelimiterPair) -> bool {
         match self {
-            TokenTree::Delimited {
+            TokenTree::Delimited(DelimitedGroup {
                 delim: token_delim, ..
-            } => *token_delim == delim,
+            }) => *token_delim == delim,
             _ => false,
         }
     }
@@ -241,9 +236,9 @@ impl TokenTree {
             TokenTree::IntNumber { value, .. } => write!(f, "integer number `{}`", value)?,
             TokenTree::String { value, .. } => write!(f, "string '{}'", value)?,
 
-            TokenTree::Delimited { delim, .. } => {
+            TokenTree::Delimited(DelimitedGroup { delim, .. }) => {
                 write!(f, "{}-delimited group", delim)?;
-            }
+            },
         }
 
         Ok(())
@@ -279,7 +274,7 @@ impl fmt::Display for TokenizeError {
 
             TokenizeError::UnexpectedCloseDelimited { .. } => {
                 write!(f, "unexpected close delimiter")
-            }
+            },
         }
     }
 }
@@ -354,7 +349,7 @@ mod test {
             Ok(result) => result,
             Err(err) => {
                 panic!("{} @ {:#?}", err.err, err.bt);
-            }
+            },
         }
     }
 
@@ -428,7 +423,7 @@ mod test {
                     TokenTree::Ident(ident) => assert_eq!("a", ident.name.as_str()),
                     _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                 }
-            }
+            },
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -456,7 +451,7 @@ mod test {
                     },
                     _ => panic!("expected begin/end delimited tree, found {:#?}", inner[0]),
                 }
-            }
+            },
 
             _ => panic!("expected bracket-delimited group, got {:#?}", result),
         }
@@ -496,7 +491,7 @@ end",
                 assert_eq!(&test_span((2, 0), (2, 2)), close, "span of close token");
                 assert_eq!(&test_span((0, 0), (2, 2)), span, "total span");
                 assert_eq!(3, inner.len());
-            }
+            },
 
             _ => panic!("expectefd begin/end delim group, got {:?}", result[0]),
         }

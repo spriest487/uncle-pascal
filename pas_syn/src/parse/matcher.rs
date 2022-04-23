@@ -168,7 +168,7 @@ impl Matcher {
                     _ => false,
                 }
 
-                TokenTree::Delimited { delim, .. } => match delim {
+                TokenTree::Delimited(DelimitedGroup { delim, .. }) => match delim {
                     // subexpr in brackets or object ctor
                     | DelimiterPair::Bracket
 

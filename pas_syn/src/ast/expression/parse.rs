@@ -82,14 +82,13 @@ fn parse_literal_bool(tokens: &mut TokenStream) -> ParseResult<Expression<Span>>
 fn parse_size_of(tokens: &mut TokenStream) -> ParseResult<Expression<Span>> {
     let kw = tokens.match_one(Keyword::SizeOf)?;
 
-    let (ty_tokens, close_bracket) = match tokens.match_one(DelimiterPair::Bracket)? {
-        TokenTree::Delimited { inner, close, .. } => (inner, close),
+    let (close_bracket, mut ty_tokens) = match tokens.match_one(DelimiterPair::Bracket)? {
+        TokenTree::Delimited(group) => (group.close.clone(), group.to_inner_tokens()),
         _ => unreachable!(),
     };
 
-    let mut ty_token_stream = TokenStream::new(ty_tokens, kw.span().clone());
-    let ty = TypeName::parse(&mut ty_token_stream)?;
-    ty_token_stream.finish()?;
+    let ty = TypeName::parse(&mut ty_tokens)?;
+    ty_tokens.finish()?;
 
     let span = kw.span().to(close_bracket.span());
 
@@ -199,13 +198,11 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
         let mut look_ahead = self.tokens.look_ahead();
         match look_ahead.match_one(Matcher::ExprOperandStart) {
-            Some(TokenTree::Delimited {
-                delim, inner, open, ..
-            }) => {
-                match delim {
+            Some(TokenTree::Delimited(group)) => {
+                match group.delim {
                     // operand is a () group: must be a sub-expression
                     DelimiterPair::Bracket => {
-                        let mut group_tokens = TokenStream::new(inner.clone(), open.clone());
+                        let mut group_tokens = group.to_inner_tokens();
                         let sub_expr = Expression::parse(&mut group_tokens)?;
                         group_tokens.finish()?;
                         self.tokens.advance(1);
@@ -349,7 +346,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
 
         let match_arg_list = Matcher::Delimited(DelimiterPair::Bracket);
         let mut inner_tokens = match self.tokens.look_ahead().next() {
-            Some(TokenTree::Delimited { inner, open, .. }) => TokenStream::new(inner, open),
+            Some(TokenTree::Delimited(group)) => group.to_inner_tokens(),
 
             Some(bad) => {
                 return Err(TracedError::trace(ParseError::UnexpectedToken(
@@ -435,10 +432,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         match look_ahead.match_one(match_after_operand) {
             // a bracket group starting in operator position is always a call or a ctor call
             // e.g. x.y.z(a, b, c) or A(b: 2)
-            Some(TokenTree::Delimited {
-                delim: DelimiterPair::Bracket,
-                ..
-            }) => {
+            Some(tt) if tt.is_delimited(DelimiterPair::Bracket) => {
                 let ty_args = None;
                 self.parse_invocation(ty_args)?;
             },
@@ -450,10 +444,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
             // or a type param list:
             // * `x := A[Integer]();`
             // * `DoSomething[Byte](255);`
-            Some(TokenTree::Delimited {
-                delim: DelimiterPair::SquareBracket,
-                ..
-            }) => {
+            Some(tt) if tt.is_delimited(DelimiterPair::SquareBracket) => {
                 // if the square bracket group is followed by a bracket group, it must be a generic
                 // function invocation or ctor call
                 if look_ahead.match_one(DelimiterPair::Bracket).is_some() {
@@ -510,15 +501,15 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
     }
 
     fn parse_indexer(&mut self) -> ParseResult<()> {
-        let (inner, open, _close) = match self.tokens.match_one(DelimiterPair::SquareBracket)? {
-            TokenTree::Delimited {
-                inner, open, close, ..
-            } => (inner, open, close),
+        let index_group = match self.tokens.match_one(DelimiterPair::SquareBracket)? {
+            TokenTree::Delimited(group) => group,
             _ => unreachable!(),
         };
 
+        let index_span = index_group.span.clone();
+
         let index = {
-            let mut index_tokens = TokenStream::new(inner, open.clone());
+            let mut index_tokens = index_group.to_inner_tokens();
             let index_expr = Expression::parse(&mut index_tokens)?;
             index_tokens.finish()?;
 
@@ -528,7 +519,7 @@ impl<'tokens> CompoundExpressionParser<'tokens> {
         let indexer_part = OperatorPart::OperatorSymbol(SymbolOperator {
             op: Operator::Index,
             pos: Position::Binary,
-            span: open,
+            span: index_span,
         });
         self.parts
             .push(CompoundExpressionPart::Operator(indexer_part));
