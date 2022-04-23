@@ -1,49 +1,32 @@
-use std::collections::VecDeque;
-
 use pas_common::{span::*, TracedError};
 
 use crate::{parse::*, token_tree::*};
 
 pub struct TokenStream {
-    tokens: Box<dyn Iterator<Item = TokenTree>>,
+    tokens: Vec<TokenTree>,
     context: Span,
 
-    current: Option<TokenTree>,
-
-    lookahead_buffer: VecDeque<TokenTree>,
+    position: usize,
 }
 
 impl Iterator for TokenStream {
     type Item = TokenTree;
 
     fn next(&mut self) -> Option<TokenTree> {
-        let tt = self.lookahead_buffer
-            .pop_front()
-            .or_else(|| self.tokens.next())
-            .map(|next_token| {
-                self.context = next_token.span().clone();
-                next_token
-            });
-
-        if tt.is_some() {
-            self.current = tt.clone();
-        }
-
-        tt
+        let tt = self.tokens.get(self.position).cloned()?;
+        self.position += 1;
+        self.context = tt.span().clone();
+        Some(tt)
     }
 }
 
 impl TokenStream {
-    pub fn new(tokens: impl IntoIterator<Item = TokenTree> + 'static, context: Span) -> Self {
-        let token_iter = Box::new(tokens.into_iter());
-
+    pub fn new(tokens: impl IntoIterator<Item = TokenTree>, context: Span) -> Self {
         TokenStream {
-            tokens: token_iter,
+            tokens: tokens.into_iter().collect(),
             context,
 
-            current: None,
-
-            lookahead_buffer: VecDeque::new(),
+            position: 0,
         }
     }
 
@@ -59,7 +42,15 @@ impl TokenStream {
     }
 
     pub fn current(&self) -> Option<&TokenTree> {
-        self.current.as_ref()
+        self.tokens.get(self.position)
+    }
+
+    pub fn seek(&mut self, position: usize) {
+        if position >= self.tokens.len() {
+            panic!("seeking token stream of length {} to out-of-range position {}", self.tokens.len(), position);
+        }
+
+        self.position = position;
     }
 
     pub fn finish(mut self) -> ParseResult<()> {
@@ -143,7 +134,7 @@ impl TokenStream {
     pub fn look_ahead(&mut self) -> LookAheadTokenStream {
         LookAheadTokenStream {
             tokens: self,
-            pos: 0,
+            offset: 0,
             limit: None,
         }
     }
@@ -187,7 +178,8 @@ where
 
 pub struct LookAheadTokenStream<'tokens> {
     tokens: &'tokens mut TokenStream,
-    pos: usize,
+
+    offset: usize,
     limit: Option<usize>,
 }
 
@@ -198,11 +190,7 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
     }
 
     pub fn context(&self) -> &Span {
-        if self.pos == 0 {
-            self.tokens.context()
-        } else {
-            &self.tokens.lookahead_buffer[self.pos - 1].span()
-        }
+        self.tokens.tokens[self.tokens.position + self.offset].span()
     }
 
     pub fn match_one(&mut self, matcher: impl Into<Matcher>) -> Option<TokenTree> {
@@ -268,21 +256,15 @@ impl<'tokens> Iterator for LookAheadTokenStream<'tokens> {
 
     fn next(&mut self) -> Option<TokenTree> {
         if let Some(limit) = self.limit {
-            if self.pos >= limit {
+            if self.offset >= limit {
                 return None;
             }
         }
 
-        let next = if self.pos < self.tokens.lookahead_buffer.len() {
-            self.tokens.lookahead_buffer.get(self.pos).cloned()
-        } else {
-            let next_token = self.tokens.tokens.next()?;
-            self.tokens.lookahead_buffer.push_back(next_token.clone());
-            Some(next_token)
-        };
 
-        self.pos += 1;
-        next
+        let next_token = self.tokens.tokens.get(self.tokens.position + self.offset)?.clone();
+        self.offset += 1;
+        Some(next_token)
     }
 }
 
