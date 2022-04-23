@@ -63,8 +63,8 @@ where
         }
 
         match tokens.next() {
-            Some(tt) if tt.is_keyword(Keyword::Else) => false,
-            _ => true,
+            Some(tt) if !tt.is_keyword(Keyword::Else) => true,
+            _ => false,
         }
     }
 }
@@ -110,7 +110,7 @@ where
         inner_tokens.match_one(Keyword::Of)?;
 
         let branches = MatchBlockBranch::parse_seq(&mut inner_tokens)?;
-        if branches.len() > 0 {
+        if !branches.is_empty() {
             inner_tokens.match_one_maybe(Separator::Semicolon);
         }
 
@@ -119,7 +119,7 @@ where
             None => None,
         };
 
-        if branches.len() > 0 {
+        if else_branch.is_some() {
             inner_tokens.match_one_maybe(Separator::Semicolon);
         }
         inner_tokens.finish()?;
