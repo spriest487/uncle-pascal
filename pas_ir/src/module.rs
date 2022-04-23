@@ -290,7 +290,7 @@ impl Module {
         let func_ty_id = match self.metadata.find_func_ty(&func_sig) {
             Some(id) => id,
             None => {
-                let ir_sig = self.translate_func_sig(func_sig, type_args);
+                let ir_sig = translate_func_sig(func_sig, type_args, self);
                 self.metadata.define_func_ty(func_sig.clone(), ir_sig)
             },
         };
@@ -547,7 +547,7 @@ impl Module {
                     return Type::Function(id);
                 }
 
-                let ir_sig = self.translate_func_sig(&func_sig, type_args);
+                let ir_sig = translate_func_sig(&func_sig, type_args, self);
                 let func_ty_id = self.metadata.define_func_ty((**func_sig).clone(), ir_sig);
 
                 let ty = Type::RcPointer(VirtualTypeID::Closure(func_ty_id));
@@ -724,33 +724,6 @@ impl Module {
         match self.metadata.find_dyn_array_struct(&element_ty) {
             Some(id) => id,
             None => self.metadata.define_dyn_array_struct(element_ty),
-        }
-    }
-
-    pub fn translate_func_sig(
-        &mut self,
-        sig: &pas_ty::FunctionSig,
-        type_args: Option<&TypeList>,
-    ) -> FunctionSig {
-        assert!(
-            sig.type_params.is_none(),
-            "cannot create type for a generic function pointer"
-        );
-
-        let return_ty = self.translate_type(&sig.return_ty, type_args);
-        let mut param_tys = Vec::new();
-        for param in &sig.params {
-            let mut ty = self.translate_type(&param.ty, type_args);
-            if param.is_by_ref() {
-                ty = ty.ptr();
-            }
-
-            param_tys.push(ty);
-        }
-
-        FunctionSig {
-            return_ty,
-            param_tys,
         }
     }
 }
