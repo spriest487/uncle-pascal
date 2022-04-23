@@ -9,7 +9,7 @@ use linked_hash_map::LinkedHashMap;
 use pas_common::span::{Span, Spanned};
 use pas_syn::{
     ast::{CompositeTypeKind, FunctionParamMod},
-    Ident, IdentPath,
+    IdentPath,
 };
 use pas_typecheck::{ast::specialize_func_decl, builtin_string_name, Specializable, TypeList};
 use std::{collections::HashMap, fmt, rc::Rc};
@@ -314,8 +314,7 @@ impl Module {
             line: func.span().start.line,
             col: func.span().start.col,
         };
-        let closure_id =
-            self.translate_closure_struct(closure_identity, &func.captures, type_args.as_ref());
+        let closure_id = translate_closure_struct(closure_identity, &func.captures, type_args.as_ref(), self);
 
         let debug_name = "<anonymous function>".to_string();
 
@@ -665,53 +664,6 @@ impl Module {
         };
 
         Struct::new(identity, Some(src_span)).with_fields(fields)
-    }
-
-    pub fn translate_closure_struct(
-        &mut self,
-        identity: ClosureIdentity,
-        captures: &LinkedHashMap<Ident, pas_ty::Type>,
-        type_args: Option<&pas_ty::TypeList>,
-    ) -> TypeDefID {
-        let id = self.metadata.reserve_new_struct();
-
-        let mut fields = LinkedHashMap::new();
-        fields.insert(
-            CLOSURE_PTR_FIELD,
-            StructFieldDef {
-                name: String::new(),
-                rc: false,
-                ty: Type::Function(identity.func_ty_id),
-            },
-        );
-
-        let mut field_id = FieldID(CLOSURE_PTR_FIELD.0 + 1);
-
-        for (capture_name, capture_ty) in captures {
-            let ty = self.translate_type(capture_ty, type_args);
-
-            fields.insert(
-                field_id,
-                StructFieldDef {
-                    name: (*capture_name.name).clone(),
-                    ty,
-                    rc: capture_ty.is_rc_reference(),
-                },
-            );
-
-            field_id.0 += 1;
-        }
-
-        self.metadata.define_closure_ty(
-            id,
-            Struct {
-                identity: StructIdentity::Closure(identity),
-                src_span: None,
-                fields,
-            },
-        );
-
-        id
     }
 
     pub fn translate_dyn_array_struct(

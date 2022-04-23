@@ -1,5 +1,10 @@
+use crate::{
+    pas_ty, ClosureIdentity, FieldID, FunctionInstance, Module, Struct, StructFieldDef,
+    StructIdentity, Type, TypeDefID, VirtualTypeID, CLOSURE_PTR_FIELD,
+};
+use linked_hash_map::LinkedHashMap;
+use pas_syn::Ident;
 use std::fmt;
-use crate::{VirtualTypeID, FunctionInstance, Type, TypeDefID, pas_ty, Module};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct FunctionSig {
@@ -64,6 +69,57 @@ impl ClosureInstance {
 
 impl fmt::Display for ClosureInstance {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "closure {} of {} ({})", self.closure_id, self.func_ty_id, self.func_instance.sig)
+        write!(
+            f,
+            "closure {} of {} ({})",
+            self.closure_id, self.func_ty_id, self.func_instance.sig
+        )
     }
+}
+
+pub fn translate_closure_struct(
+    identity: ClosureIdentity,
+    captures: &LinkedHashMap<Ident, pas_ty::Type>,
+    type_args: Option<&pas_ty::TypeList>,
+    module: &mut Module,
+) -> TypeDefID {
+    let id = module.metadata.reserve_new_struct();
+
+    let mut fields = LinkedHashMap::new();
+    fields.insert(
+        CLOSURE_PTR_FIELD,
+        StructFieldDef {
+            name: String::new(),
+            rc: false,
+            ty: Type::Function(identity.func_ty_id),
+        },
+    );
+
+    let mut field_id = FieldID(CLOSURE_PTR_FIELD.0 + 1);
+
+    for (capture_name, capture_ty) in captures {
+        let ty = module.translate_type(capture_ty, type_args);
+
+        fields.insert(
+            field_id,
+            StructFieldDef {
+                name: (*capture_name.name).clone(),
+                ty,
+                rc: capture_ty.is_rc_reference(),
+            },
+        );
+
+        field_id.0 += 1;
+    }
+
+    module.metadata.define_closure_ty(
+        id,
+        Struct {
+            identity: StructIdentity::Closure(identity),
+            src_span: None,
+            fields,
+        },
+    );
+
+    id
 }
