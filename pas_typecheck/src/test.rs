@@ -1,9 +1,21 @@
+use std::{
+    fs::File,
+    io::Read,
+    path::PathBuf
+};
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
-
-use pas_common::span::Span;
-use pas_common::BuildOptions;
-use pas_syn::parse::TokenStream;
-use pas_syn::{ast, Ident, IdentPath, TokenTree};
+use pas_common::{
+    span::Span,
+    BuildOptions
+};
+use pas_pp::Preprocessor;
+use pas_syn::{
+    parse::TokenStream,
+    ast,
+    Ident,
+    IdentPath,
+    TokenTree
+};
 
 const INT32: Type = Type::Primitive(Primitive::Int32);
 const BOOL: Type = Type::Primitive(Primitive::Boolean);
@@ -18,8 +30,24 @@ where
 {
     let mut units = Vec::new();
 
+    // always include the system unit from the configure unit path
+    let unit_path = PathBuf::from(env!("PASCAL2_UNITS"));
+    let mut system_src = String::new();
+    File::open(unit_path.join("System.pas"))
+        .unwrap()
+        .read_to_string(&mut system_src)
+        .unwrap();
+
+    let unit_srcs = vec![("System", system_src)]
+        .into_iter()
+        .chain(unit_srcs.into_iter()
+            .map(|(unit_name, unit_src)| (unit_name, unit_src.to_string())));
+
     for (unit_name, src) in unit_srcs {
-        let tokens = TokenTree::tokenize(unit_name, src, &BuildOptions::default()).unwrap();
+        let pp = Preprocessor::new(format!("{}.pas", unit_name), BuildOptions::default());
+        let pp_unit = pp.preprocess(&src).unwrap();
+
+        let tokens = TokenTree::tokenize(unit_name, &pp_unit.source, &pp_unit.opts).unwrap();
         let mut stream = TokenStream::new(tokens, Span::zero(unit_name));
 
         let unit_ident = Ident::new(unit_name, Span::zero(unit_name));

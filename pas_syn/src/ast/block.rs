@@ -1,5 +1,5 @@
 use crate::{
-    ast::{stmt_start_matcher, Annotation, Expression, Statement},
+    ast::{Annotation, Expression, Statement},
     parse::*,
     token_tree::*,
     Keyword,
@@ -58,7 +58,11 @@ impl Block<Span> {
         let begin = body_tt_group.open.clone();
         let end = body_tt_group.close.clone();
 
-        let (statements, output_expr) = Self::parse_stmts(body_tt_group)?;
+        let mut stmt_tokens = body_tt_group.clone().to_inner_tokens();
+
+        let (statements, output_expr) = parse_block_stmts(&mut stmt_tokens)?;
+
+        stmt_tokens.finish()?;
 
         let block = Self {
             statements,
@@ -73,83 +77,6 @@ impl Block<Span> {
         };
 
         Ok(block)
-    }
-
-    fn parse_stmts(body_tt_group: DelimitedGroup) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
-        let mut statements = Vec::new();
-        let mut output_expr: Option<Expression<_>> = None;
-
-        let mut tokens = body_tt_group.clone().to_inner_tokens();
-
-        loop {
-            let stmt_start_pos = match tokens.look_ahead().next() {
-                Some(tt) => tt.span().start,
-                None => break,
-            };
-
-            match Statement::parse(&mut tokens) {
-                Ok(stmt) => {
-                    statements.push(stmt);
-                },
-
-                Err(traced_err) => match &traced_err.err {
-                    // if the final statement is invalid as a statement but still a valid
-                    // expression, assume it's the block output. some expressions (eg calls) are
-                    // always valid as statements regardless of type, so in some cases the block
-                    // output can't be determined until typechecking
-                    ParseError::InvalidStatement(InvalidStatement(_invalid)) => {
-                        // NASTY HACK ZONE
-                        // we need to re-parse the tokens used for this statement, so make a new
-                        // stream out of the block's inner tokens and fast-forward it to where
-                        // we started parsing this statement...
-                        let mut output_expr_tokens = body_tt_group.clone().to_inner_tokens();
-                        while let Some(tt) = output_expr_tokens.look_ahead().next() {
-                            let tt_start = tt.span().start;
-                            if tt_start < stmt_start_pos {
-                                output_expr_tokens.advance(1);
-                            } else {
-                                break;
-                            }
-                        }
-
-                        output_expr = Some(Expression::parse(&mut output_expr_tokens)?);
-                        output_expr_tokens.match_one_maybe(Separator::Semicolon);
-
-                        // then check we used all the tokens here, while fast-forwarding the original
-                        // stream as if we read it properly (safe because the output expression
-                        // must be the last token before the end of the block)
-                        output_expr_tokens.finish()?;
-
-                        while tokens.look_ahead().next().is_some() {
-                            tokens.advance(1);
-                        }
-
-                        break;
-                    },
-
-                    _ => return Err(traced_err),
-                },
-            }
-
-            let has_more = tokens
-                .look_ahead()
-                .match_sequence(Separator::Semicolon.and_then(stmt_start_matcher()))
-                .is_some();
-            if !has_more {
-                break;
-            }
-
-            tokens.match_one(Separator::Semicolon)?;
-        }
-
-        // last block statement may be terminated with a redundant separator
-        if statements.len() > 0 {
-            tokens.match_one_maybe(Separator::Semicolon);
-        }
-
-        tokens.finish()?;
-
-        Ok((statements, output_expr))
     }
 
     // convert block-as-statement into an block-as-expression
@@ -183,6 +110,53 @@ impl Block<Span> {
         // block that doesn't work as an expr
         None
     }
+}
+
+fn parse_block_stmts(
+    tokens: &mut TokenStream,
+) -> ParseResult<(Vec<Statement<Span>>, Option<Expression<Span>>)> {
+    let mut statements = Vec::new();
+    let mut output_expr: Option<Expression<_>> = None;
+
+    loop {
+        if output_expr.is_some() || !Statement::has_more(&statements, &mut tokens.look_ahead()) {
+            break;
+        }
+
+        if !statements.is_empty() {
+            tokens.match_one(Separator::Semicolon)?;
+        }
+
+        // record the start position of this statement, because if it fails to parse as a statement we can
+        // take a second attempt at parsing the same tokens as an output expression
+        let stmt_start_pos = tokens.position();
+
+        match Statement::parse(tokens) {
+            Ok(stmt) => {
+                statements.push(stmt);
+            },
+
+            Err(traced_err) => match &traced_err.err {
+                // if the final statement is invalid as a statement but still a valid
+                // expression, assume it's the block output. some expressions (eg calls) are
+                // always valid as statements regardless of type, so in some cases the block
+                // output can't be determined until typechecking
+                ParseError::InvalidStatement(InvalidStatement(_invalid)) => {
+                    tokens.seek(stmt_start_pos);
+                    output_expr = Some(Expression::parse(tokens)?);
+                },
+
+                // failed for other reasons, this is an actual error
+                _ => return Err(traced_err),
+            },
+        }
+    }
+
+    if !statements.is_empty() || output_expr.is_some() {
+        tokens.match_one_maybe(Separator::Semicolon);
+    }
+
+    Ok((statements, output_expr))
 }
 
 impl<A: Annotation> fmt::Display for Block<A> {

@@ -359,6 +359,7 @@ version = "0.1.0"
 dependencies = [
  "linked-hash-map",
  "pas_common",
+ "pas_pp",
  "pas_syn",
 ]
 

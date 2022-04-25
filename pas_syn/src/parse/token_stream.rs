@@ -9,17 +9,6 @@ pub struct TokenStream {
     position: usize,
 }
 
-impl Iterator for TokenStream {
-    type Item = TokenTree;
-
-    fn next(&mut self) -> Option<TokenTree> {
-        let tt = self.tokens.get(self.position).cloned()?;
-        self.position += 1;
-        self.context = tt.span().clone();
-        Some(tt)
-    }
-}
-
 impl TokenStream {
     pub fn new(tokens: impl IntoIterator<Item = TokenTree>, context: Span) -> Self {
         TokenStream {
@@ -41,8 +30,19 @@ impl TokenStream {
         }
     }
 
+    pub fn position(&self) -> usize {
+        self.position
+    }
+
     pub fn current(&self) -> Option<&TokenTree> {
         self.tokens.get(self.position)
+    }
+
+    pub fn next(&mut self) -> Option<TokenTree> {
+        let tt = self.tokens.get(self.position).cloned()?;
+        self.position += 1;
+        self.context = tt.span().clone();
+        Some(tt)
     }
 
     pub fn seek(&mut self, position: usize) {
@@ -135,7 +135,6 @@ impl TokenStream {
         LookAheadTokenStream {
             tokens: self,
             offset: 0,
-            limit: None,
         }
     }
 
@@ -180,13 +179,13 @@ pub struct LookAheadTokenStream<'tokens> {
     tokens: &'tokens mut TokenStream,
 
     offset: usize,
-    limit: Option<usize>,
 }
 
 impl<'tokens> LookAheadTokenStream<'tokens> {
-    pub fn limit(mut self, limit: usize) -> Self {
-        self.limit = Some(limit);
-        self
+    pub fn next(&mut self) -> Option<TokenTree> {
+        let next_token = self.tokens.tokens.get(self.tokens.position + self.offset)?.clone();
+        self.offset += 1;
+        Some(next_token)
     }
 
     pub fn context(&self) -> &Span {
@@ -248,23 +247,6 @@ impl<'tokens> LookAheadTokenStream<'tokens> {
                 }
             };
         }
-    }
-}
-
-impl<'tokens> Iterator for LookAheadTokenStream<'tokens> {
-    type Item = TokenTree;
-
-    fn next(&mut self) -> Option<TokenTree> {
-        if let Some(limit) = self.limit {
-            if self.offset >= limit {
-                return None;
-            }
-        }
-
-
-        let next_token = self.tokens.tokens.get(self.tokens.position + self.offset)?.clone();
-        self.offset += 1;
-        Some(next_token)
     }
 }
 

@@ -1,3 +1,4 @@
+use std::mem;
 use pas_syn::{
     ast::Visibility,
     Ident, IdentPath
@@ -161,36 +162,39 @@ impl ScopeStack {
 
     pub fn visit_members<Predicate, Visitor>(&self, predicate: Predicate, mut visitor: Visitor)
         where
-            Visitor: FnMut(&[Ident], &Ident, &Decl),
-            Predicate: Fn(&[Ident], &Ident, &ScopeMember) -> bool,
+            Visitor: FnMut(&IdentPath, &Decl),
+            Predicate: Fn(&IdentPath, &ScopeMember) -> bool,
     {
-        let mut ns_path = Vec::with_capacity(8);
+        // reused IdentPath instance so we don't need to reallocate this for every single entry
+        // we can't make an empty IdentPath so we create this in the first iteration for each scope
+        let mut member_path_parts = Vec::new();
 
         for ns_index in (0..self.scopes.len()).rev() {
-            ns_path.clear();
-            ns_path.extend(
-                self.scopes[0..=ns_index]
-                    .iter()
-                    .filter_map(|ns| ns.key())
-                    .cloned(),
-            );
+            let ns_keys = self.scopes[0..=ns_index]
+                .iter()
+                .filter_map(|ns| ns.key())
+                .cloned();
+            member_path_parts.clear();
+            member_path_parts.extend(ns_keys);
 
-            let ns = &self.scopes[ns_index];
-            let ns_keys = ns.keys().into_iter().filter_map(|k| ns.get_member(&k));
+            for (key, member) in self.scopes[ns_index].members() {
+                member_path_parts.push(key.clone());
 
-            for (key, member) in ns_keys {
-                visit_member(key, member, &mut ns_path, &predicate, &mut visitor);
+                let mut member_path = IdentPath::from_vec(member_path_parts);
+                visit_member(&mut member_path, member, &predicate, &mut visitor);
+                member_path_parts = member_path.into_vec();
+
+                member_path_parts.pop();
             }
         }
     }
 
     pub fn visit_visible<Visitor>(&self, visitor: Visitor)
         where
-            Visitor: FnMut(&[Ident], &Ident, &Decl),
+            Visitor: FnMut(&IdentPath, &Decl),
     {
         self.visit_members(
-            |ns_path, key, _member| {
-                let member_path = IdentPath::new(key.clone(), ns_path.to_vec());
+            |member_path, _member| {
                 self.is_accessible(&member_path)
             },
             visitor,
@@ -247,33 +251,41 @@ impl ScopeStack {
 }
 
 fn visit_member<Predicate, Visitor>(
-    key: &Ident,
+    member_path: &mut IdentPath,
     member: &ScopeMember,
-    ns_path: &mut Vec<Ident>,
     predicate: &Predicate,
     visitor: &mut Visitor,
 ) where
-    Visitor: FnMut(&[Ident], &Ident, &Decl),
-    Predicate: Fn(&[Ident], &Ident, &ScopeMember) -> bool,
+    Visitor: FnMut(&IdentPath, &Decl),
+    Predicate: Fn(&IdentPath, &ScopeMember) -> bool,
 {
-    if !predicate(ns_path, key, member) {
+    if !predicate(member_path, member) {
         return;
     }
 
     match member {
         ScopeMember::Decl(value) => {
-            visitor(ns_path, key, value);
+            visitor(member_path, value);
         }
 
         ScopeMember::Scope(ns) => {
-            let nested_ns_keys = ns.keys();
-            let nested_ns_members = nested_ns_keys.into_iter().filter_map(|k| ns.get_member(&k));
+            let mut child_path = unsafe { IdentPath::empty() };
+            mem::swap(&mut child_path, member_path);
 
-            ns_path.push(key.clone());
-            for (key, member) in nested_ns_members {
-                visit_member(key, member, ns_path, predicate, visitor);
+            let mut child_member_path_parts = child_path.into_vec();
+
+            for (key, member) in ns.members() {
+                child_member_path_parts.push(key.clone());
+                let mut child_member_path = IdentPath::from_vec(child_member_path_parts);
+                visit_member(&mut child_member_path, member, predicate, visitor);
+
+                child_member_path_parts = child_member_path.into_vec();
+                child_member_path_parts.pop();
             }
-            ns_path.pop();
+
+            child_path = IdentPath::from_vec(child_member_path_parts);
+
+            mem::swap(member_path, &mut child_path);
         }
     }
 }

@@ -140,9 +140,7 @@ pub fn build_func_def(
 
     init_function_locals(def_locals, &mut body_builder);
 
-    build_func_body(def_body, &return_ty, &mut body_builder);
-
-    let body = body_builder.finish();
+    let body = build_func_body(def_body, &return_ty, body_builder);
 
     FunctionDef {
         body,
@@ -196,9 +194,7 @@ pub fn build_closure_function_def(
         );
     }
 
-    build_func_body(&func_def.body, &return_ty, &mut body_builder);
-
-    let body = body_builder.finish();
+    let body = build_func_body(&func_def.body, &return_ty, body_builder);
 
     FunctionDef {
         body,
@@ -279,21 +275,25 @@ fn init_function_locals(
 fn build_func_body(
     body: &pas_ty::ast::Block,
     return_ty: &Type,
-    builder: &mut Builder,
-) {
+    mut builder: Builder,
+) -> Vec<Instruction> {
     let body_block_out_ref = match return_ty {
         Type::Nothing => Ref::Discard,
         _ => RETURN_REF.clone(),
     };
 
-    translate_block(&body, body_block_out_ref, builder);
+    translate_block(&body, body_block_out_ref, &mut builder);
+
+    let mut instructions = builder.finish();
 
     // all functions should finish with the reserved EXIT label but to
     // avoid writing unused label instructions, if none of the other instructions in the body
     // are jumps to the exit label, we can elide it
-    if jmp_exists(builder.instructions(), EXIT_LABEL) {
-        builder.label(EXIT_LABEL);
+    if jmp_exists(&instructions, EXIT_LABEL) {
+        instructions.push(Instruction::Label(EXIT_LABEL));
     }
+
+    instructions
 }
 
 pub fn translate_func_params(sig: &pas_ty::FunctionSig, module: &mut Module) -> Vec<Type> {

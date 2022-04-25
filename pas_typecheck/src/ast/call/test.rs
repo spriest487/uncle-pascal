@@ -28,7 +28,7 @@ fn candidates_from_src(src: &'static str) -> (Vec<OverloadCandidate>, Context) {
 
     let unit = module.units.remove(0);
 
-    let candidates = unit.unit.func_defs().map(|func| {
+    let candidates = unit.unit.func_defs().map(|(_vis, func)| {
         let sig = FunctionSig::of_decl(&func.decl);
 
         match &func.decl.impl_iface {

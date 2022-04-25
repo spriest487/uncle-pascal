@@ -17,8 +17,8 @@ fn unit_from_src(src: &'static str) -> Unit {
 
 fn classes_from_src(src: &'static str) -> Vec<Rc<Composite>> {
     let unit = unit_from_src(src);
-    let decls = unit.type_decls().cloned().map(|t| match t {
-        ast::TypeDecl::Composite(class) => class,
+    let decls = unit.type_decls().map(|(_vis, t)| match t {
+        ast::TypeDecl::Composite(c) => c.clone(),
         _ => unreachable!(),
     });
 
@@ -114,9 +114,9 @@ fn specialized_fn_has_right_sig() {
 
     let span = Span::zero("test");
 
-    let ctx = Context::root(true, span.clone());
+    let ctx = Context::root(span.clone());
 
-    let a_func = unit.func_defs().next().unwrap();
+    let (_, a_func) = unit.func_defs().next().unwrap();
     let a_sig = FunctionSig::of_decl(&a_func.decl);
 
     let type_args = TypeList::new([INT32], span.clone());
@@ -157,7 +157,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
 
     let a_class = unit
         .type_decls()
-        .filter_map(|d| match d {
+        .filter_map(|(_vis, d)| match d {
             ast::TypeDecl::Composite(class) => Some(class.clone()),
             _ => unreachable!(),
         })
@@ -168,10 +168,10 @@ fn specialized_fn_with_specialized_params_has_right_params() {
         .map(|class| Type::Record(Box::new(class.name)))
         .unwrap();
 
-    let b_func = unit.func_defs().next().unwrap();
+    let (_, b_func) = unit.func_defs().next().unwrap();
     let b_sig = FunctionSig::of_decl(&b_func.decl);
 
-    let ctx = Context::root(true, span.clone());
+    let ctx = Context::root(span.clone());
 
     let b_int_sig = b_sig.specialize_generic(&int_params, &ctx).unwrap();
 

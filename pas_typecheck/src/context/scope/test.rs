@@ -336,10 +336,9 @@ fn visit_all_to_vec(namespaces: &ScopeStack) -> Vec<(String, Decl)> {
     let mut visited = Vec::new();
 
     namespaces.visit_members(
-        |_ns_path, _key, _member| true,
-        |path, key, val| {
-            let full_path = IdentPath::new(key.clone(), path.to_vec());
-            visited.push((full_path.to_string(), val.clone()));
+        |_path, _member| true,
+        |path, val| {
+            visited.push((path.to_string(), val.clone()));
         },
     );
 

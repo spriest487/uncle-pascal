@@ -76,9 +76,23 @@ impl<Part: fmt::Debug> Path<Part> {
         Self { parts: path }
     }
 
+    // paths should never be empty
+    pub unsafe fn empty() -> Self {
+        Self { parts: Vec::new() }
+    }
+
     pub fn from_parts(parts: impl IntoIterator<Item = Part>) -> Self {
         let parts: Vec<_> = parts.into_iter().collect();
         Self { parts }
+    }
+
+    pub fn from_vec(parts: Vec<Part>) -> Self {
+        assert!(parts.len() >= 1);
+        Self { parts }
+    }
+
+    pub fn into_vec(self) -> Vec<Part> {
+        self.parts
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Part> {
@@ -99,6 +113,21 @@ impl<Part: fmt::Debug> Path<Part> {
         self.parts.push(part);
     }
 
+    pub fn pop(&mut self) -> Part {
+        if self.len() == 1 {
+            panic!("can't pop the last part from a path");
+        }
+
+        self.parts.pop().unwrap()
+    }
+
+    pub fn set(&mut self, parts: impl IntoIterator<Item=Part>) {
+        self.parts.clear();
+        self.parts.extend(parts);
+
+        assert!(self.parts.len() >= 1)
+    }
+
     pub fn extend(&mut self, parts: impl IntoIterator<Item=Part>) {
         self.parts.extend(parts)
     }
@@ -113,6 +142,10 @@ impl<Part: fmt::Debug> Path<Part> {
 
     pub fn last(&self) -> &Part {
         self.parts.last().unwrap()
+    }
+
+    pub fn last_mut(&mut self) -> &mut Part {
+        self.parts.last_mut().unwrap()
     }
 
     pub fn single(&self) -> &Part {
@@ -136,7 +169,7 @@ impl<Part: fmt::Debug> Path<Part> {
 }
 
 impl<Part: fmt::Debug + PartialEq> Path<Part> {
-    pub fn is_parent_of(self, other: &Self) -> bool {
+    pub fn is_parent_of(&self, other: &Self) -> bool {
         self.parts.len() < other.parts.len()
             && &other.parts[0..self.parts.len()] == self.parts.as_slice()
     }

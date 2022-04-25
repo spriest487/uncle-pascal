@@ -332,10 +332,6 @@ impl<'m> Builder<'m> {
         self.instructions.push(instruction);
     }
 
-    pub fn instructions(&self) -> &[Instruction] {
-        &self.instructions
-    }
-
     pub fn comment(&mut self, content: &(impl fmt::Display + ?Sized)) {
         self.append(Instruction::Comment(content.to_string()));
     }

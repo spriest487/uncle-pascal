@@ -65,30 +65,28 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
 
 fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     // the namespaces we look for UFCS methods in - the current NS and any used NSs
-    let mut namespaces = vec![ctx.namespace()];
-    namespaces.extend(ctx.scopes.current_path().all_used_units());
+    let mut search_namespaces = vec![ctx.namespace()];
+    search_namespaces.extend(ctx.scopes.current_path().all_used_units());
 
     let mut methods = Vec::new();
 
-    ctx.scopes.visit_visible(|ns_path, key, decl| {
+    ctx.scopes.visit_visible(|decl_path, decl| {
+        // ignore decls that aren't members of one of the search namespaces
+        if !search_namespaces.iter().any(|search_ns| search_ns.is_parent_of(decl_path)) {
+            return;
+        }
+
         let sig = match decl {
             Decl::Function { sig, .. } if sig.params.len() > 0 => sig.clone(),
             _ => return,
         };
-
-        if !namespaces.iter().any(|ns| ns.as_slice() == ns_path) {
-            return;
-        }
-
         let self_param = &sig.params[0];
 
         if self_param.ty == *ty
             || (self_param.ty.contains_generic_params() && self_param.ty.same_decl_type(ty))
         {
-            let func_name = IdentPath::new(key.clone(), ns_path.to_vec());
-
             methods.push(InstanceMethod::FreeFunction {
-                func_name,
+                func_name: decl_path.clone(),
                 sig: sig.clone(),
             })
         }
@@ -145,14 +143,15 @@ mod test {
             type UFCSTarget = class
             end;
 
-            function TargetMethod(t: UFCSTarget)
+            function TargetMethod(t: UFCSTarget);
             begin
             end;
 
             end",
         );
 
-        let target = Type::of_decl(&unit.unit.type_decls().next().unwrap());
+        let (_, target_decl) = unit.unit.type_decls().next().unwrap();
+        let target = Type::of_decl(target_decl);
         assert_eq!(target.full_path().unwrap().last().name.as_str(), "UFCSTarget");
 
         let methods = find_ufcs_free_functions(&target, &unit.context);
@@ -163,15 +162,23 @@ mod test {
 
     #[test]
     fn finds_exported_ufcs_func_from_other_unit() {
-        let a_src = r"interface
+        let a_src = r"
+            unit A;
+            interface
+
             type UFCSTarget = class
             end
+
             end";
 
-        let b_src = r"interface
-            function TargetMethod(t: A.UFCSTarget)
+        let b_src = r"
+            unit B;
+            interface
+
+            function TargetMethod(t: A.UFCSTarget);
             begin
             end
+
             end";
 
         let c_src = "uses A;uses B;";
@@ -181,7 +188,8 @@ mod test {
         let a = &units[0];
         let c = &units[2];
 
-        let target = Type::of_decl(&a.unit.type_decls().next().unwrap());
+        let (_, target_decl) = a.unit.type_decls().next().unwrap();
+        let target = Type::of_decl(target_decl);
         let methods = find_ufcs_free_functions(&target, &c.context);
 
         assert_eq!(methods.len(), 1);
@@ -196,9 +204,11 @@ mod test {
 
         let b_src = r"
             implementation
-            function TargetMethod(t: A.UFCSTarget)
+
+            function TargetMethod(t: A.UFCSTarget);
             begin
             end;
+
             end.";
 
         let c_src = "uses A;uses B;";
@@ -208,7 +218,7 @@ mod test {
         let a = &units[0];
         let c = &units[2];
 
-        let target = Type::of_decl(&a.unit.type_decls().next().unwrap());
+        let target = Type::of_decl(&a.unit.type_decls().next().unwrap().1);
         let methods = find_ufcs_free_functions(&target, &c.context);
 
         assert_eq!(methods.len(), 0);
