@@ -577,32 +577,36 @@ impl<Item> TypeList<Item> {
         Item: Spanned + Parse + Match,
     {
         let (span, mut items_tokens) = match tokens.match_one(DelimiterPair::SquareBracket)? {
-            TokenTree::Delimited(group) => (group.span.clone(), group.to_inner_tokens()),
+            TokenTree::Delimited(group) => {
+                (group.span.clone(), group.to_inner_tokens())
+            },
             _ => unreachable!(),
         };
 
-        let items = {
-            let mut items = Vec::new();
-            loop {
-                // empty type lists aren't valid so we must have 1+ items
-                let item = Item::parse(&mut items_tokens)?;
-                items.push(item);
-
-                if items_tokens.match_one_maybe(Separator::Comma).is_none() {
-                    break;
-                }
-
-                if !Item::is_match(&mut items_tokens.look_ahead()) {
-                    break;
-                }
+        // empty type lists aren't valid, but we parse them first then check that later
+        // so accept them for now
+        let mut items = Vec::new();
+        loop {
+            let mut items_tokens_ahead = items_tokens.look_ahead();
+            if !items.is_empty() && items_tokens_ahead.match_one(Separator::Comma).is_none() {
+                break;
             }
 
-            // allow redundant comma after final item
-            items_tokens.match_one_maybe(Separator::Comma);
-            items_tokens.finish()?;
+            if !Item::is_match(&mut items_tokens_ahead) {
+                break;
+            }
 
-            items
-        };
+            if !items.is_empty() {
+                items_tokens.match_one(Separator::Comma)?;
+            }
+
+            let item = Item::parse(&mut items_tokens)?;
+            items.push(item);
+        }
+
+        // allow redundant comma after final item
+        items_tokens.match_one_maybe(Separator::Comma);
+        items_tokens.finish()?;
 
         Ok(TypeList { items, span })
     }

@@ -11,7 +11,6 @@ pub mod test;
 pub use self::{annotation::*, context::*, result::*, ty::*};
 use ast::typecheck_unit;
 use pas_common::span::*;
-use pas_syn::IdentPath;
 
 #[derive(Debug, Clone)]
 pub struct ModuleUnit {
@@ -23,10 +22,6 @@ pub struct ModuleUnit {
 pub struct Module {
     pub units: Vec<ModuleUnit>,
     pub root_ctx: Box<Context>,
-
-    // language builtins
-    pub string_class: Box<Symbol>,
-    pub disposable_iface: IdentPath,
 }
 
 impl Module {
@@ -50,26 +45,9 @@ impl Module {
             typed_units.push(typecheck_unit(&unit, &mut root_ctx)?);
         }
 
-        let string_name = Box::new(context::builtin_string_name());
-        let (_, string_ty) = root_ctx
-            .find_type(&string_name.qualified)
-            .expect("string class must exist");
-        let string_class = string_ty
-            .clone()
-            .as_class()
-            .map(|c| Box::new(c.clone()))
-            .expect("string class must be a class");
-
-        let disposable_name = Box::new(context::builtin_disposable_name());
-        let disposable_iface = root_ctx
-            .find_iface(&disposable_name.qualified)
-            .expect("disposable interface must exist");
-
         Ok(Module {
             units: typed_units,
             root_ctx: Box::new(root_ctx),
-            string_class,
-            disposable_iface,
         })
     }
 }

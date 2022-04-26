@@ -1,8 +1,4 @@
-use std::{
-    fs::File,
-    io::Read,
-    path::PathBuf
-};
+use std::{fs::File, io::Read, iter, path::PathBuf};
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
 use pas_common::{
     span::Span,
@@ -38,8 +34,7 @@ where
         .read_to_string(&mut system_src)
         .unwrap();
 
-    let unit_srcs = vec![("System", system_src)]
-        .into_iter()
+    let unit_srcs = iter::once(("System", system_src))
         .chain(unit_srcs.into_iter()
             .map(|(unit_name, unit_src)| (unit_name, unit_src.to_string())));
 

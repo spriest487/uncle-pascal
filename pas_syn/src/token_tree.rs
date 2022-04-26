@@ -413,11 +413,11 @@ mod test {
         let result = tokenize("(a)", false);
 
         match &result[0] {
-            TokenTree::Delimited {
+            TokenTree::Delimited(DelimitedGroup {
                 delim: DelimiterPair::Bracket,
                 inner,
                 ..
-            } => {
+            }) => {
                 assert_eq!(1, inner.len());
                 match &inner[0] {
                     TokenTree::Ident(ident) => assert_eq!("a", ident.name.as_str()),
@@ -434,18 +434,18 @@ mod test {
         let result = tokenize("(begin a end)", false);
 
         match &result[0] {
-            TokenTree::Delimited {
+            TokenTree::Delimited(DelimitedGroup {
                 delim: DelimiterPair::Bracket,
                 inner,
                 ..
-            } => {
+            }) => {
                 assert_eq!(1, inner.len(), "expected one inner token, got {:#?}", inner);
                 match &inner[0] {
-                    TokenTree::Delimited {
+                    TokenTree::Delimited(DelimitedGroup {
                         delim: DelimiterPair::BeginEnd,
                         inner,
                         ..
-                    } => match &inner[0] {
+                    }) => match &inner[0] {
                         TokenTree::Ident(ident) => assert_eq!("a", ident.name.as_str()),
                         _ => panic!("expected ident `a`, found {:#?}", inner[0]),
                     },
@@ -480,13 +480,13 @@ end",
             false,
         );
         match &result[0] {
-            TokenTree::Delimited {
+            TokenTree::Delimited(DelimitedGroup {
                 delim: DelimiterPair::BeginEnd,
                 inner,
                 open,
                 close,
                 span,
-            } => {
+            }) => {
                 assert_eq!(&test_span((0, 0), (0, 4)), open, "span of open token");
                 assert_eq!(&test_span((2, 0), (2, 2)), close, "span of close token");
                 assert_eq!(&test_span((0, 0), (2, 2)), span, "total span");

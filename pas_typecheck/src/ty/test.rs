@@ -30,7 +30,7 @@ fn specialize_class_has_correct_member_types() {
     let tys = classes_from_src(
         r"  type A[T] = class
                 t: T;
-                x: Byte;
+                x: UInt8;
             end;
         ",
     );
@@ -98,14 +98,14 @@ fn specialize_class_with_deep_params() {
     let result = specialize_composite_def(&tys[1], &type_args).unwrap();
 
     let a_name = result.members[0].ty.as_record().unwrap();
-    assert_eq!("test.A[Integer, Integer]", a_name.to_string());
+    assert_eq!("test.A[Int32, Int32]", a_name.to_string());
     assert_eq!(INT32, result.members[1].ty);
 }
 
 #[test]
 fn specialized_fn_has_right_sig() {
     let unit = unit_from_src(
-        r"  function A[T](t: T): T
+        r"  function A[T](t: T): T;
             begin
                 t
             end;
@@ -146,7 +146,7 @@ fn specialized_fn_with_specialized_params_has_right_params() {
                 a: AT;
             end;
 
-            function B[BT](a: A[BT]): A[BT]
+            function B[BT](a: A[BT]): A[BT];
             begin
                 a
             end;
