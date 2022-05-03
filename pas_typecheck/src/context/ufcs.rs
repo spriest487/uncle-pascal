@@ -170,7 +170,7 @@ mod test {
             interface
 
             type UFCSTarget = class
-            end
+            end;
 
             end";
 
@@ -180,7 +180,7 @@ mod test {
 
             function TargetMethod(t: A.UFCSTarget);
             begin
-            end
+            end;
 
             end";
 
@@ -188,8 +188,8 @@ mod test {
 
         let units = units_from_src(vec![("A", a_src), ("B", b_src), ("C", c_src)]);
 
-        let a = &units[0];
-        let c = &units[2];
+        let a = &units["A"];
+        let c = &units["C"];
 
         let (_, target_decl) = a.unit.type_decls().next().unwrap();
         let target = Type::of_decl(target_decl);
@@ -218,8 +218,8 @@ mod test {
 
         let units = units_from_src(vec![("A", a_src), ("B", b_src), ("C", c_src)]);
 
-        let a = &units[0];
-        let c = &units[2];
+        let a = &units["A"];
+        let c = &units["C"];
 
         let target = Type::of_decl(&a.unit.type_decls().next().unwrap().1);
         let methods = find_ufcs_free_functions(&target, &c.context);

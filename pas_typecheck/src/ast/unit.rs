@@ -247,7 +247,7 @@ pub fn typecheck_unit(unit: &ast::Unit<Span>, ctx: &mut Context) -> TypecheckRes
 
         let mut impl_decls = Vec::new();
         for decl in &unit.impl_decls {
-            impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Interface)?);
+            impl_decls.push(typecheck_unit_decl(decl, ctx, Visibility::Implementation)?);
         }
 
         // init statement is implicitly a block

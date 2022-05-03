@@ -205,25 +205,19 @@ impl ScopeStack {
         let current_path = self.current_path();
 
         match self.resolve_path(name) {
-            Some(ScopeMemberRef::Decl {
-                     parent_path, value, ..
-                 }) => match value {
-                Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
-                    let current_ns = current_path.to_namespace();
+            Some(ScopeMemberRef::Decl { parent_path, value, .. }) => {
+                let current_ns = current_path.to_namespace();
 
-                    match visibility {
-                        Visibility::Interface => true,
-                        Visibility::Implementation => {
-                            let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                match value.visibility() {
+                    Visibility::Interface => {
+                        true
+                    },
 
-                            current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
-                        }
+                    Visibility::Implementation => {
+                        let decl_unit_ns = IdentPath::from_parts(parent_path.keys().cloned());
+                        current_ns == decl_unit_ns || current_ns.is_parent_of(&decl_unit_ns)
                     }
                 }
-
-                Decl::Alias(..) => false,
-
-                _ => true,
             },
 
             Some(ScopeMemberRef::Scope { .. }) => {
@@ -231,7 +225,7 @@ impl ScopeStack {
                 current_uses.contains(&name)
             }
 
-            _ => true,
+            None => false,
         }
     }
 }

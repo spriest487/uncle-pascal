@@ -1,4 +1,5 @@
 use std::{fs::File, io::Read, iter, path::PathBuf};
+use std::collections::HashMap;
 use crate::{FunctionParamSig, FunctionSig, Module, ModuleUnit, Primitive, Type};
 use pas_common::{
     span::Span,
@@ -62,12 +63,18 @@ pub fn unit_from_src(unit_name: &'static str, src: &'static str) -> ModuleUnit {
     module.units.pop().unwrap()
 }
 
-pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> Vec<ModuleUnit>
+pub fn units_from_src<UnitSources>(unit_srcs: UnitSources) -> HashMap<String, ModuleUnit>
 where
     UnitSources: IntoIterator<Item = (&'static str, &'static str)>,
 {
     let module = module_from_srcs(unit_srcs);
-    module.units
+
+    let mut units = HashMap::new();
+    for unit in module.units {
+        units.insert(unit.unit.ident.to_string(), unit);
+    }
+
+    units
 }
 
 #[test]
