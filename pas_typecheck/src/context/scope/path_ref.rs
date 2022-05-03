@@ -105,7 +105,14 @@ impl<'s> ScopePathRef<'s> {
     }
 
     pub fn is_parent_of(&self, other: &ScopePathRef) -> bool {
-        self.namespaces.len() < other.namespaces.len() && other.namespaces[0..self.namespaces.len()] == self.namespaces
+        if self.namespaces.len() >= other.namespaces.len() {
+            return false;
+        }
+
+        other.namespaces
+            .iter()
+            .zip(self.namespaces.iter())
+            .all(|(a, b)| a.id == b.id)
     }
 }
 
