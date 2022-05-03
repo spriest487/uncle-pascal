@@ -90,18 +90,26 @@ impl<'s> ScopePathRef<'s> {
         IdentPath::from_parts(namespace)
     }
 
-    pub fn all_used_units(&self) -> Vec<IdentPath> {
+    pub fn all_used_units(&self) -> Vec<&IdentPath> {
         let mut unit_paths = Vec::new();
 
         for scope in self.as_slice().iter().rev() {
             for used_unit in scope.use_units() {
-                if !unit_paths.contains(used_unit) {
-                    unit_paths.push(used_unit.clone());
+                if !unit_paths.contains(&used_unit) {
+                    unit_paths.push(used_unit);
                 }
             }
         }
 
         unit_paths
+    }
+
+    pub fn is_used_unit(&self, unit_name: &IdentPath) -> bool {
+        self.as_slice()
+            .iter()
+            .rev()
+            .flat_map(|scope| scope.use_units.iter())
+            .any(|used_unit| used_unit == unit_name)
     }
 
     pub fn is_parent_of(&self, other: &ScopePathRef) -> bool {

@@ -65,8 +65,11 @@ pub fn find_instance_methods_of(ty: &Type, ctx: &Context) -> NameResult<Vec<Inst
 
 fn find_ufcs_free_functions(ty: &Type, ctx: &Context) -> Vec<InstanceMethod> {
     // the namespaces we look for UFCS methods in - the current NS and any used NSs
-    let mut search_namespaces = vec![ctx.namespace()];
-    search_namespaces.extend(ctx.scopes.current_path().all_used_units());
+    let current_ns = ctx.namespace();
+    let current_path = ctx.scopes.current_path();
+
+    let mut search_namespaces = vec![&current_ns];
+    search_namespaces.extend(current_path.all_used_units());
 
     let mut methods = Vec::new();
 

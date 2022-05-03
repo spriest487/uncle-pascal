@@ -279,14 +279,15 @@ impl Context {
             Some(member_ref) => Some(member_ref),
 
             None if path.len() == 1 => {
-                // try it as a qualified name in a used namespaces
-                let current_use_units = self.scopes.current_used_units();
+                let current_path = self.scopes.current_path();
 
+                // try it as a qualified name in a used namespaces
                 // there can be multiple used units that declare the same name - if there's one
                 // result, we use that, otherwise it's ambiguous
-                let results: Vec<_> = current_use_units.into_iter()
+                let results: Vec<_> = current_path.all_used_units()
+                    .into_iter()
                     .filter_map(|use_unit| {
-                        let mut path_in_unit = use_unit;
+                        let mut path_in_unit = use_unit.clone();
                         path_in_unit.extend(path.iter().cloned());
 
                         self.find_path(&path_in_unit)

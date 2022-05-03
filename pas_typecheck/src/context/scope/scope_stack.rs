@@ -203,14 +203,14 @@ impl ScopeStack {
 
     pub fn is_accessible(&self, name: &IdentPath) -> bool {
         let current_path = self.current_path();
-        let current_ns = current_path.to_namespace();
-        let current_uses = current_path.all_used_units();
 
         match self.resolve_path(name) {
             Some(ScopeMemberRef::Decl {
                      parent_path, value, ..
                  }) => match value {
                 Decl::Type { visibility, .. } | Decl::Function { visibility, .. } => {
+                    let current_ns = current_path.to_namespace();
+
                     match visibility {
                         Visibility::Interface => true,
                         Visibility::Implementation => {
@@ -227,26 +227,12 @@ impl ScopeStack {
             },
 
             Some(ScopeMemberRef::Scope { .. }) => {
-                current_uses.contains(name)
+                let current_uses = current_path.all_used_units();
+                current_uses.contains(&name)
             }
 
             _ => true,
         }
-    }
-
-    // collect the used units for the current scope
-    pub fn current_used_units(&self) -> Vec<IdentPath> {
-        let mut current_use_units = Vec::new();
-
-        for scope in self.current_path().as_slice().iter().rev() {
-            for use_unit in scope.use_units() {
-                if !current_use_units.contains(use_unit) {
-                    current_use_units.push(use_unit.clone());
-                }
-            }
-        }
-
-        current_use_units
     }
 }
 
