@@ -1,0 +1,122 @@
+use regex::Regex;
+use pas_common::Mode;
+
+pub enum Directive {
+    Define(String),
+    Undef(String),
+    IfDef(String),
+    IfNDef(String),
+    EndIf,
+    Else,
+    ElseIf(String),
+    Mode(Mode),
+    Switches(Vec<(String, bool)>),
+    LinkLib(String),
+    Include(String),
+}
+
+pub struct DirectiveParser {
+    define_pattern: Regex,
+    undef_pattern: Regex,
+    ifdef_pattern: Regex,
+    ifndef_pattern: Regex,
+    endif_pattern: Regex,
+    else_pattern: Regex,
+    elseif_pattern: Regex,
+    mode_pattern: Regex,
+    switch_pattern: Regex,
+    linklib_pattern: Regex,
+    include_pattern: Regex,
+}
+
+impl DirectiveParser {
+    pub fn new() -> Self {
+        Self {
+            define_pattern: Regex::new(r"(?i)^define\s+(\w+)$").unwrap(),
+            undef_pattern: Regex::new(r"(?i)^undef\s+(\w+)$").unwrap(),
+            ifdef_pattern: Regex::new(r"(?i)^ifdef\s+(\w+)$").unwrap(),
+            ifndef_pattern: Regex::new(r"(?i)^ifndef\s+(\w+)$").unwrap(),
+            endif_pattern: Regex::new("(?i)^endif$").unwrap(),
+            else_pattern: Regex::new("(?i)^else$").unwrap(),
+            elseif_pattern: Regex::new(r"(?i)^elseif\s+(\w+)$").unwrap(),
+            mode_pattern: Regex::new(r"(?i)^mode\s+(\w+)$").unwrap(),
+            switch_pattern: Regex::new(r"(?i)^([a-zA-Z]+)([+-])$").unwrap(),
+            linklib_pattern: Regex::new(r"(?i)^linklib\s+(.+)$").unwrap(),
+            include_pattern: Regex::new(r"(?i)^i(nclude)?\s+(.+)$").unwrap(),
+        }
+    }
+
+    fn match_switches(&self, s: &str) -> Option<Vec<(String, bool)>> {
+        let switches: Vec<_> = s
+            .split(',')
+            .map(|switch| {
+                if let Some(switch_capture) = self.switch_pattern.captures(&switch.trim()) {
+                    let switch_name = switch_capture[1].to_string();
+                    let switch_val = match &switch_capture[2] {
+                        "+" => true,
+                        "-" => false,
+                        _ => unreachable!("excluded by pattern: {}", &switch_capture[2]),
+                    };
+
+                    Some((switch_name, switch_val))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if switches.iter().any(Option::is_none) {
+            None
+        } else {
+            Some(switches.into_iter().map(Option::unwrap).collect())
+        }
+    }
+
+    pub fn parse(&self, s: &str) -> Option<Directive> {
+        if let Some(define_captures) = self.define_pattern.captures(s) {
+            let symbol = define_captures[1].to_string();
+
+            Some(Directive::Define(symbol))
+        } else if let Some(undef_captures) = self.undef_pattern.captures(s) {
+            let symbol = undef_captures[1].to_string();
+
+            Some(Directive::Undef(symbol))
+        } else if let Some(ifdef_captures) = self.ifdef_pattern.captures(s) {
+            let symbol = ifdef_captures[1].to_string();
+
+            Some(Directive::IfDef(symbol))
+        } else if let Some(ifndef_captures) = self.ifndef_pattern.captures(s) {
+            let symbol = ifndef_captures[1].to_string();
+
+            Some(Directive::IfNDef(symbol))
+        } else if self.endif_pattern.is_match(s) {
+            Some(Directive::EndIf)
+        } else if self.else_pattern.is_match(s) {
+            Some(Directive::Else)
+        } else if let Some(elseif_captures) = self.elseif_pattern.captures(s) {
+            let symbol = elseif_captures[1].to_string();
+
+            Some(Directive::ElseIf(symbol))
+        } else if let Some(mode_captures) = self.mode_pattern.captures(s) {
+            let mode = match mode_captures[1].to_uppercase().as_str() {
+                "FPC" => Mode::Fpc,
+                "UNCLE" => Mode::Default,
+                "DELPHI" => Mode::Delphi,
+                unrecognized => {
+                    eprintln!("unrecognized mode: {}", unrecognized);
+                    return None;
+                }
+            };
+
+            Some(Directive::Mode(mode))
+        } else if let Some(switches) = self.match_switches(s) {
+            Some(Directive::Switches(switches))
+        } else if let Some(linklib) = self.linklib_pattern.captures(s) {
+            Some(Directive::LinkLib(linklib[1].to_string()))
+        } else if let Some(include) = self.include_pattern.captures(s) {
+            Some(Directive::Include(include[2].to_string()))
+        } else {
+            None
+        }
+    }
+}

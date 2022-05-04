@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use pas_common::span::Span;
 use pas_common::{Backtrace, DiagnosticLabel, DiagnosticMessage, DiagnosticOutput, TracedError};
 use pas_interpreter::result::ExecError;
-use pas_pp::PreprocessorError;
+use pas_pp::error::PreprocessorError;
 use pas_syn::parse::ParseError;
 use pas_syn::{IdentPath, TokenizeError};
 use pas_typecheck::TypecheckError;
