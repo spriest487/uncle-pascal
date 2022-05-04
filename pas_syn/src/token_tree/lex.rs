@@ -150,7 +150,7 @@ impl Lexer {
     fn literal_hex(&mut self) -> TokenizeResult<TokenTree> {
         let start_loc = Location {
             line: self.location.line,
-            col: self.location.col - 1, // include $ sigil
+            col: self.location.col, // include $ sigil
         };
 
         let line_after_sigil = &self.line[self.location.col + 1..];

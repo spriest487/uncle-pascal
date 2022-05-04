@@ -120,7 +120,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         };
 
         let pp_unit = preprocess(&unit_filename, opts.clone())?;
-        let parsed_unit = parse(&pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
+        let parsed_unit = parse(pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
 
         let unit_ident = parsed_unit.ident.clone();
         let uses_units: Vec<_> = parsed_unit

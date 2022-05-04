@@ -1,11 +1,19 @@
-use pas_common::{span::*, BuildOptions, DiagnosticOutput, Mode};
+use pas_common::{span::*, BuildOptions, DiagnosticOutput, Mode, DiagnosticLabel};
 use regex::*;
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    io,
+    path::PathBuf,
+    fs::File
+};
+use std::io::Read;
+use std::rc::Rc;
 
 #[derive(Debug)]
 pub enum PreprocessorError {
     SymbolNotDefined { name: String, at: Span },
     IllegalDirective { directive: String, at: Span },
+    IncludeError { filename: String, err: io::Error, at: Span },
     UnexpectedEndIf(Span),
     UnterminatedCondition(Span),
 }
@@ -28,6 +36,10 @@ impl fmt::Display for PreprocessorError {
             PreprocessorError::UnterminatedCondition(_) => {
                 write!(f, "unterminated conditional block")
             }
+
+            PreprocessorError::IncludeError { err, .. } => {
+                write!(f, "{}", err)
+            }
         }
     }
 }
@@ -39,11 +51,24 @@ impl Spanned for PreprocessorError {
             PreprocessorError::IllegalDirective { at, .. } => at,
             PreprocessorError::UnexpectedEndIf(at) => at,
             PreprocessorError::UnterminatedCondition(at) => at,
+            PreprocessorError::IncludeError { at, .. } => at,
         }
     }
 }
 
-impl DiagnosticOutput for PreprocessorError {}
+impl DiagnosticOutput for PreprocessorError {
+    fn label(&self) -> Option<DiagnosticLabel> {
+        Some(DiagnosticLabel {
+            span: self.span().clone(),
+            text: match self {
+                PreprocessorError::IncludeError { filename, .. } => {
+                    Some(format!("failed to read include file {}", filename))
+                },
+                _ => None,
+            },
+        })
+    }
+}
 
 enum Directive {
     Define(String),
@@ -56,6 +81,7 @@ enum Directive {
     Mode(Mode),
     Switches(Vec<(String, bool)>),
     LinkLib(String),
+    Include(String),
 }
 
 struct DirectiveParser {
@@ -69,6 +95,7 @@ struct DirectiveParser {
     mode_pattern: Regex,
     switch_pattern: Regex,
     linklib_pattern: Regex,
+    include_pattern: Regex,
 }
 
 impl DirectiveParser {
@@ -83,7 +110,8 @@ impl DirectiveParser {
             elseif_pattern: Regex::new(r"(?i)^elseif\s+(\w+)$").unwrap(),
             mode_pattern: Regex::new(r"(?i)^mode\s+(\w+)$").unwrap(),
             switch_pattern: Regex::new(r"(?i)^([a-zA-Z]+)([+-])$").unwrap(),
-            linklib_pattern: Regex::new(r"(?i)linklib\s+(\w+)$").unwrap(),
+            linklib_pattern: Regex::new(r"(?i)^linklib\s+(.+)$").unwrap(),
+            include_pattern: Regex::new(r"(?i)^i(nclude)?\s+(.+)$").unwrap(),
         }
     }
 
@@ -154,6 +182,8 @@ impl DirectiveParser {
             Some(Directive::Switches(switches))
         } else if let Some(linklib) = self.linklib_pattern.captures(s) {
             Some(Directive::LinkLib(linklib[1].to_string()))
+        } else if let Some(include) = self.include_pattern.captures(s) {
+            Some(Directive::Include(include[2].to_string()))
         } else {
             None
         }
@@ -171,15 +201,20 @@ pub struct Preprocessor {
 
     condition_stack: Vec<SymbolCondition>,
 
-    filename: PathBuf,
+    filename: Rc<PathBuf>,
 
     output: String,
-    comment_block: String,
+    comment_block: Option<CommentBlock>,
 
     current_line: usize,
     last_char: char,
 
     opts: BuildOptions,
+}
+
+struct CommentBlock {
+    text: String,
+    span: Span,
 }
 
 #[derive(Clone, Debug)]
@@ -193,7 +228,7 @@ pub struct PreprocessedUnit {
 impl Preprocessor {
     pub fn new(filename: impl Into<PathBuf>, opts: BuildOptions) -> Self {
         Preprocessor {
-            filename: filename.into(),
+            filename: Rc::new(filename.into()),
 
             directive_parser: DirectiveParser::new(),
 
@@ -202,7 +237,7 @@ impl Preprocessor {
             opts,
 
             output: String::new(),
-            comment_block: String::new(),
+            comment_block: None,
 
             current_line: 0,
 
@@ -210,37 +245,38 @@ impl Preprocessor {
         }
     }
 
-    fn current_span(&self) -> Span {
+    fn current_line_span(&self, col: usize) -> Span {
         let loc = Location {
             line: self.current_line,
-            col: 0,
+            col,
         };
-        Span::new(self.filename.clone(), loc, loc)
+
+        Span { file: self.filename.clone(), start: loc, end: loc }
     }
 
     pub fn preprocess(mut self, source: &str) -> Result<PreprocessedUnit, PreprocessorError> {
         for (line_num, line) in source.lines().enumerate() {
-            self.current_line = line_num + 1;
-
             self.process_line(line.to_string())?;
+
+            self.current_line = line_num + 1;
         }
 
         if let Some(condition) = self.condition_stack.last() {
-            return Err(PreprocessorError::UnterminatedCondition(Span::new(
-                self.filename.clone(),
-                Location {
+            return Err(PreprocessorError::UnterminatedCondition(Span {
+                file: self.filename.clone(),
+                start: Location {
                     line: condition.start_line,
                     col: 0,
                 },
-                Location {
+                end: Location {
                     line: condition.start_line,
                     col: 0,
                 },
-            )));
+            }));
         }
 
         Ok(PreprocessedUnit {
-            filename: self.filename,
+            filename: (*self.filename).clone(),
             source: self.output,
             opts: self.opts,
         })
@@ -252,28 +288,41 @@ impl Preprocessor {
             line.truncate(comment_pos);
         };
 
-        for line_char in line.chars() {
-            if !self.comment_block.is_empty() {
+        for (col, line_char) in line.chars().enumerate() {
+            if let Some(comment_block) = &mut self.comment_block {
                 // continuing an existing comment
-                self.comment_block.push(line_char);
+                comment_block.text.push(line_char);
+                comment_block.span.end = Location {
+                    col,
+                    line: self.current_line,
+                };
 
-                let comment_starter = self.comment_block.chars().next().unwrap();
+                let comment_starter = comment_block.text.chars().next().unwrap();
 
                 // did it terminate the comment this block was started with?
                 let terminated = (line_char == '}' && comment_starter == '{')
                     || (line_char == ')' && self.last_char == '*' && comment_starter == '(');
 
                 if terminated {
+                    let comment_block = self.comment_block.take().unwrap();
                     if line_char == '}' {
-                        self.process_directive()?;
+                        self.process_directive(comment_block, col)?;
                     }
-                    self.comment_block.clear();
+                    self.comment_block = None;
                 }
             } else if line_char == '{' {
                 // start a new { } comment block
-                self.comment_block.push(line_char);
+                self.comment_block = Some(CommentBlock {
+                    text: "{".to_string(),
+                    span: self.current_line_span(col),
+                })
             } else if self.last_char == '(' && line_char == '*' {
-                self.comment_block.push_str("(*");
+                // start a new (* *) comment block
+                self.comment_block = Some(CommentBlock {
+                    text: "(*".to_string(),
+                    span: self.current_line_span(col),
+                });
+                // it's a two character comment sequence so pop the (
                 self.output.pop();
             } else if self.condition_active() {
                 self.output.push(line_char);
@@ -282,7 +331,14 @@ impl Preprocessor {
             self.last_char = line_char;
         }
 
+        // new line at end of real line
         self.output.push('\n');
+
+        // if we're currently building a comment, add the newline to the comment text too
+        if let Some(comment_block) = &mut self.comment_block {
+            comment_block.text.push('\n');
+        }
+
         Ok(())
     }
 
@@ -310,34 +366,27 @@ impl Preprocessor {
         Ok(())
     }
 
-    fn pop_condition(&mut self) -> Result<(), PreprocessorError> {
+    fn pop_condition(&mut self, col: usize) -> Result<(), PreprocessorError> {
         match self.condition_stack.pop() {
             Some(_) => Ok(()),
-            None => Err(PreprocessorError::UnexpectedEndIf(Span::new(
-                self.filename.clone(),
-                Location {
-                    line: self.current_line,
-                    col: 0,
-                },
-                Location {
-                    line: self.current_line,
-                    col: 0,
-                },
-            ))),
+            None => Err(PreprocessorError::UnexpectedEndIf(self.current_line_span(col))),
         }
     }
 
-    fn process_directive(&mut self) -> Result<(), PreprocessorError> {
-        if self.comment_block.chars().nth(1) != Some('$') {
+    fn process_directive(&mut self, comment_block: CommentBlock, current_col: usize) -> Result<(), PreprocessorError> {
+        if comment_block.text.chars().nth(1) != Some('$') {
+            // no directive, just an empty brace comment
             return Ok(());
         }
 
+        let directive_span = comment_block.span.clone();
+
         // skip 2 for `{$` and take 1 less for the closing `}`
-        let directive_name = self
-            .comment_block
+        let directive_name = comment_block
+            .text
             .chars()
             .skip(2)
-            .take(self.comment_block.len() - 3)
+            .take(comment_block.text.len() - 3)
             .collect::<String>()
             .trim()
             .to_string();
@@ -357,7 +406,7 @@ impl Preprocessor {
                 } else {
                     Err(PreprocessorError::SymbolNotDefined {
                         name: symbol,
-                        at: self.current_span(),
+                        at: comment_block.span.clone(),
                     })
                 }
             }
@@ -367,7 +416,7 @@ impl Preprocessor {
             Some(Directive::IfNDef(symbol)) => self.push_condition(&symbol, false),
 
             Some(Directive::Else) => match self.condition_stack.last_mut() {
-                None => Err(PreprocessorError::UnexpectedEndIf(self.current_span())),
+                None => Err(PreprocessorError::UnexpectedEndIf(directive_span)),
                 Some(condition) => {
                     condition.value = !condition.value;
                     Ok(())
@@ -375,11 +424,11 @@ impl Preprocessor {
             },
 
             Some(Directive::ElseIf(symbol)) => {
-                self.pop_condition()?;
+                self.pop_condition(current_col)?;
                 self.push_condition(&symbol, true)
             }
 
-            Some(Directive::EndIf) => self.pop_condition(),
+            Some(Directive::EndIf) => self.pop_condition(current_col),
 
             Some(Directive::Switches(switches)) => {
                 if self.condition_active() {
@@ -404,6 +453,26 @@ impl Preprocessor {
                 Ok(())
             }
 
+            Some(Directive::Include(filename)) => {
+                let full_path = match self.filename.parent() {
+                    Some(parent) => parent.join(&filename),
+                    None => PathBuf::from(&filename),
+                };
+
+                let include_src = self.read_include(&full_path)
+                    .map_err(|err| PreprocessorError::IncludeError {
+                        filename,
+                        err,
+                        at: directive_span,
+                    })?;
+
+                let pp = Preprocessor::new(full_path, self.opts.clone());
+                let include_output = pp.preprocess(&include_src)?;
+
+                self.output += include_output.source.as_str();
+                Ok(())
+            }
+
             None => {
                 if !self.condition_active() {
                     Ok(())
@@ -415,10 +484,18 @@ impl Preprocessor {
                 } else {
                     Err(PreprocessorError::IllegalDirective {
                         directive: directive_name,
-                        at: self.current_span(),
+                        at: directive_span,
                     })
                 }
             }
         }
+    }
+
+    fn read_include(&mut self, filename: &PathBuf) -> io::Result<String> {
+        let mut file = File::open(filename)?;
+        let mut src = String::new();
+        file.read_to_string(&mut src)?;
+
+        Ok(src)
     }
 }
