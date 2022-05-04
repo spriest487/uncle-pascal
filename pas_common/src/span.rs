@@ -7,6 +7,15 @@ pub struct Location {
     pub col: usize,
 }
 
+impl Location {
+    pub fn zero() -> Self {
+        Location {
+            line: 0,
+            col: 0,
+        }
+    }
+}
+
 impl Ord for Location {
     fn cmp(&self, other: &Self) -> Ordering {
         match self.line.cmp(&other.line) {
