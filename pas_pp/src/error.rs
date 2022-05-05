@@ -12,6 +12,7 @@ pub enum PreprocessorError {
     IncludeError { filename: String, err: io::Error, at: Span },
     UnexpectedEndIf(Span),
     UnterminatedCondition(Span),
+    UnterminatedComment(Span),
 }
 
 impl fmt::Display for PreprocessorError {
@@ -33,6 +34,10 @@ impl fmt::Display for PreprocessorError {
                 write!(f, "unterminated conditional block")
             }
 
+            PreprocessorError::UnterminatedComment(_) => {
+                write!(f, "unterminated comment")
+            }
+
             PreprocessorError::IncludeError { err, .. } => {
                 write!(f, "{}", err)
             }
@@ -47,6 +52,7 @@ impl Spanned for PreprocessorError {
             PreprocessorError::IllegalDirective { at, .. } => at,
             PreprocessorError::UnexpectedEndIf(at) => at,
             PreprocessorError::UnterminatedCondition(at) => at,
+            PreprocessorError::UnterminatedComment(at) => at,
             PreprocessorError::IncludeError { at, .. } => at,
         }
     }

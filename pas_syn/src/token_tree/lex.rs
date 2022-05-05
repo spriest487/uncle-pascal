@@ -4,29 +4,31 @@ use crate::{
     keyword::Keyword,
     operators::Operator,
     token_tree::{DelimiterPair, Separator, TokenTree, TokenizeError, TokenizeResult},
+    operators::CompoundAssignmentOperator,
+    token_tree::DelimitedGroup
 };
-use pas_common::{span::*, BuildOptions, TracedError};
-use std::{path::PathBuf, rc::Rc};
-use crate::operators::CompoundAssignmentOperator;
-use crate::token_tree::DelimitedGroup;
+use pas_common::{span::*, TracedError};
+use pas_pp::PreprocessedUnit;
+use std::{rc::Rc};
+use pas_common::source_map::SourceMap;
 
 pub fn lex(
-    file_name: impl Into<PathBuf>,
-    source: &str,
-    opts: &BuildOptions,
+    unit: PreprocessedUnit,
 ) -> TokenizeResult<Vec<TokenTree>> {
     let mut lexer = Lexer {
-        file: Rc::new(file_name.into()),
+        source_map: unit.source_map,
+
+        case_sensitive: unit.opts.case_sensitive,
+
         line: Vec::new(),
         location: Location { line: 0, col: 0 },
-        case_sensitive: opts.case_sensitive,
 
         line_buf: Vec::new(),
         delim_stack: Vec::new(),
     };
 
     let mut tokens = Vec::new();
-    for (line_num, line) in source.lines().enumerate() {
+    for (line_num, line) in unit.source.lines().enumerate() {
         lexer.line = line.chars().collect();
         lexer.location = Location {
             line: line_num,
@@ -43,7 +45,7 @@ pub fn lex(
 
     if let Some(unmatched) = lexer.delim_stack.pop() {
         return Err(TracedError::trace(TokenizeError::UnmatchedDelimiter {
-            span: lexer.span_to_current(unmatched.open.start),
+            span: lexer.src_span_from(unmatched.open.start),
             to_match: unmatched.open,
             delim: unmatched.delim,
         }));
@@ -61,8 +63,10 @@ struct DelimGroupBuilder {
 struct Lexer {
     line: Vec<char>,
     location: Location,
-    file: Rc<PathBuf>,
+
     case_sensitive: bool,
+
+    source_map: SourceMap,
 
     line_buf: Vec<TokenTree>,
     delim_stack: Vec<DelimGroupBuilder>,
@@ -76,39 +80,43 @@ fn find_ahead(s: &[char], predicate: impl Fn(char) -> bool) -> Option<usize> {
 }
 
 impl Lexer {
-    fn span_to_current(&self, start: Location) -> Span {
-        Span {
-            file: self.file.clone(),
-            start,
-            end: Location {
-                line: self.location.line,
-                col: if self.location.col == 0 {
-                    0
-                } else {
-                    self.location.col - 1
-                },
+    // lookup the source span for the given range
+    fn src_span(&self, start: Location, end: Location) -> Span {
+        self.source_map.lookup(start, end)
+    }
+
+    // lookup the source span from `start` to the current position
+    fn src_span_from(&self, start: Location) -> Span {
+        self.src_span(start, Location {
+            line: self.location.line,
+            col: if self.location.col == 0 {
+                0
+            } else {
+                self.location.col - 1
             },
-        }
+        })
     }
 
     fn make_float_token(&mut self, len: Option<usize>) -> TokenizeResult<TokenTree> {
-        let chars = match len {
+        let float_chars = match len {
             None => &self.line[self.location.col..],
             Some(len) => &self.line[self.location.col..self.location.col + len],
         };
 
         let start_loc = self.location;
 
-        self.location.col += chars.len();
+        self.location.col += float_chars.len();
 
-        let span = self.span_to_current(start_loc);
+        let span = self.src_span_from(start_loc);
 
-        RealConstant::parse_str(&chars.iter().collect::<String>())
+        let float_str = float_chars.iter().collect::<String>();
+
+        RealConstant::parse_str(&float_str)
             .map(|value| TokenTree::RealNumber {
                 value,
                 span: span.clone(),
             })
-            .ok_or_else(|| TracedError::trace(TokenizeError::IllegalToken(span)))
+            .ok_or_else(|| TracedError::trace(TokenizeError::IllegalToken(float_str, span)))
     }
 
     fn literal_float(&mut self) -> TokenizeResult<TokenTree> {
@@ -160,20 +168,22 @@ impl Lexer {
         });
 
         // this needs to include the $ because IntConstant::parse expects it
-        let int_str = match next_non_hex {
+        let int_chars = match next_non_hex {
             Some(end) => &self.line[self.location.col..=self.location.col + end],
             None => &self.line[self.location.col..],
         };
 
-        self.location.col += int_str.len();
-        let span = self.span_to_current(start_loc);
+        self.location.col += int_chars.len();
+        let span = self.src_span_from(start_loc);
 
-        match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
+        let int_str = int_chars.iter().collect::<String>();
+
+        match IntConstant::parse_str(&int_str) {
             Some(value) => {
                 let int_token = TokenTree::IntNumber { value, span };
                 Ok(int_token)
             }
-            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
+            None => Err(TracedError::trace(TokenizeError::IllegalToken(int_str, span))),
         }
     }
 
@@ -208,20 +218,22 @@ impl Lexer {
             }
         }
 
-        let int_str = match next_non_num {
+        let int_chars = match next_non_num {
             Some(end) => &self.line[self.location.col..self.location.col + end + sigil_len],
             None => &self.line[self.location.col..],
         };
 
-        self.location.col += int_str.len();
-        let span = self.span_to_current(start_loc);
+        self.location.col += int_chars.len();
+        let span = self.src_span_from(start_loc);
 
-        match IntConstant::parse_str(&int_str.iter().collect::<String>()) {
+        let int_string = int_chars.iter().collect::<String>();
+
+        match IntConstant::parse_str(&int_string) {
             Some(value) => {
                 let int_token = TokenTree::IntNumber { value, span };
                 Ok(int_token)
             }
-            None => Err(TracedError::trace(TokenizeError::IllegalToken(span))),
+            None => Err(TracedError::trace(TokenizeError::IllegalToken(int_string, span))),
         }
     }
 
@@ -235,11 +247,8 @@ impl Lexer {
             match self.line.get(next_col) {
                 // todo: better error for unterminated string literal
                 None => {
-                    return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
-                        file: self.file.clone(),
-                        start: start_loc,
-                        end: self.location,
-                    })));
+                    let span = self.src_span_from(start_loc);
+                    return Err(TracedError::trace(TokenizeError::UnterminatedStringLiteral(span)));
                 }
 
                 // depends on the token after this one
@@ -261,7 +270,7 @@ impl Lexer {
         }
 
         self.location.col = next_col + 1;
-        let span = self.span_to_current(start_loc);
+        let span = self.src_span_from(start_loc);
 
         let str_token = TokenTree::String {
             value: Rc::new(contents),
@@ -284,11 +293,7 @@ impl Lexer {
                         token_str.push(*c);
                     } else {
                         // can't start with a number
-                        return Err(TracedError::trace(TokenizeError::IllegalToken(Span {
-                            file: self.file.clone(),
-                            start: start_loc,
-                            end: self.location,
-                        })));
+                        return Err(TracedError::trace(TokenizeError::IllegalToken(c.to_string(), self.src_span_from(start_loc))));
                     }
                 }
 
@@ -303,7 +308,7 @@ impl Lexer {
         }
 
         self.location.col = next_col;
-        let span = self.span_to_current(start_loc);
+        let span = self.src_span_from(start_loc);
 
         let token = if let Some(kw) = Keyword::try_parse(&token_str, self.case_sensitive) {
             TokenTree::Keyword { kw, span }
@@ -319,7 +324,7 @@ impl Lexer {
     fn operator_token(&mut self, op: impl Into<Operator>, len: usize) -> TokenTree {
         let start_loc = self.location;
         self.location.col += len;
-        let span = self.span_to_current(start_loc);
+        let span = self.src_span_from(start_loc);
 
         TokenTree::Operator { op: op.into(), span }
     }
@@ -334,7 +339,7 @@ impl Lexer {
     fn separator_token(&mut self, sep: Separator, len: usize) -> TokenTree {
         let start_loc = self.location;
         self.location.col += len;
-        let span = self.span_to_current(start_loc);
+        let span = self.src_span_from(start_loc);
 
         TokenTree::Separator { sep, span }
     }
@@ -345,7 +350,7 @@ impl Lexer {
         let (open_token, _close_token) = delim.tokens();
 
         // after passing `consume` chars we should be at the end of the open delim
-        let open_span = self.span_to_current(Location {
+        let open_span = self.src_span_from(Location {
             col: self.location.col - open_token.len(),
             line: self.location.line,
         });
@@ -366,7 +371,7 @@ impl Lexer {
         self.location.col += consume;
 
         let (_, close_token) = delim.tokens();
-        let close_span = self.span_to_current(Location {
+        let close_span = self.src_span_from(Location {
             line: start_loc.line,
             col: if start_loc.col < close_token.len() {
                 0
@@ -514,11 +519,11 @@ impl Lexer {
                 }
             }
 
-            _ => {
+            bad => {
                 let err_start = self.location;
                 self.location.col += 1;
-                let err_span = self.span_to_current(err_start);
-                return Err(TracedError::trace(TokenizeError::IllegalToken(err_span)));
+                let err_span = self.src_span_from(err_start);
+                return Err(TracedError::trace(TokenizeError::IllegalToken(bad.to_string(), err_span)));
             }
         };
 

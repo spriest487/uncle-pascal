@@ -8,6 +8,10 @@ pub struct Location {
 }
 
 impl Location {
+    pub fn new(line: usize, col: usize) -> Self {
+        Self { line, col }
+    }
+
     pub fn zero() -> Self {
         Location {
             line: 0,

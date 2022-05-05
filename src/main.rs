@@ -9,7 +9,7 @@ use pas_common::{span::*, BuildOptions};
 use pas_interpreter::{Interpreter, InterpreterOpts};
 use pas_ir::{self as ir, IROptions};
 use pas_pp::{self as pp, PreprocessedUnit};
-use pas_syn::{ast, parse, IdentPath, TokenTree};
+use pas_syn::{ast, parse, IdentPath, TokenTree, Ident};
 use pas_typecheck as ty;
 use std::{
     collections::hash_map::{Entry, HashMap},
@@ -50,30 +50,27 @@ fn preprocess(filename: &PathBuf, opts: BuildOptions) -> Result<PreprocessedUnit
     Ok(preprocessed)
 }
 
-fn parse(
-    unit_path: impl Into<PathBuf>,
-    src: &str,
-    opts: &BuildOptions,
-) -> Result<ast::Unit<Span>, CompileError> {
-    let unit_path = unit_path.into();
-    let file_span = Span::zero(unit_path.clone());
+fn parse(unit: PreprocessedUnit) -> Result<ast::Unit<Span>, CompileError> {
+    let file_span = Span {
+        file: unit.filename.clone(),
+        start: Location::zero(),
+        end: Location::zero()
+    };
 
-    let unit_ident = unit_path
+    let unit_ident = unit.filename
         .with_extension("")
         .file_name()
         .and_then(|file_name| {
-            let file_name = file_name.to_str()?;
+            let unit_ident = IdentPath::from_parts(file_name
+                .to_string_lossy()
+                .split('.')
+                .map(|part| Ident::new(part, file_span.clone())));
 
-            let tokens = TokenTree::tokenize(&unit_path, file_name, opts).ok()?;
-            let mut stream = parse::TokenStream::new(tokens, file_span.clone());
-            let ident = IdentPath::parse(&mut stream).ok()?;
-            stream.finish().ok()?;
-
-            Some(ident)
+            Some(unit_ident)
         })
         .ok_or_else(|| CompileError::InvalidUnitFilename(file_span.clone()))?;
 
-    let tokens = TokenTree::tokenize(unit_path.clone(), src, opts)?;
+    let tokens = TokenTree::tokenize(unit)?;
 
     let mut token_stream = parse::TokenStream::new(tokens, file_span);
     let unit = ast::Unit::parse(&mut token_stream, unit_ident)?;
@@ -120,7 +117,7 @@ fn compile(args: &Args) -> Result<CompileOutput, CompileError> {
         };
 
         let pp_unit = preprocess(&unit_filename, opts.clone())?;
-        let parsed_unit = parse(pp_unit.filename, &pp_unit.source, &pp_unit.opts)?;
+        let parsed_unit = parse(pp_unit)?;
 
         let unit_ident = parsed_unit.ident.clone();
         let uses_units: Vec<_> = parsed_unit

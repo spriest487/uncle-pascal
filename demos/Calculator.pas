@@ -5,6 +5,8 @@ var subCommand: Byte := 45; // '-'
 var mulCommand: Byte := 42; // '*'
 var divCommand: Byte := 47; // '/'
 
+{$I ./Empty.pas}
+
 WriteLn('Enter an expression e.g. ''2*3'', ''4/2'' or ''exit''.');
 
 while true do begin

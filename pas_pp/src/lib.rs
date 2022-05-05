@@ -9,6 +9,7 @@ use std::{
     fs::File,
     rc::Rc
 };
+use pas_common::source_map::{SourceMap, SourceMapBuilder};
 use crate::{
     directive::{Directive, DirectiveParser},
     error::PreprocessorError
@@ -27,13 +28,15 @@ pub struct Preprocessor {
 
     filename: Rc<PathBuf>,
 
-    output: String,
+    output_lines: Vec<String>,
     comment_block: Option<CommentBlock>,
 
     current_line: usize,
     last_char: char,
 
     opts: BuildOptions,
+
+    pub source_map: SourceMapBuilder,
 }
 
 struct CommentBlock {
@@ -43,16 +46,19 @@ struct CommentBlock {
 
 #[derive(Clone, Debug)]
 pub struct PreprocessedUnit {
-    pub filename: PathBuf,
+    pub filename: Rc<PathBuf>,
     pub source: String,
 
     pub opts: BuildOptions,
+
+    pub source_map: SourceMap,
 }
 
 impl Preprocessor {
     pub fn new(filename: impl Into<PathBuf>, opts: BuildOptions) -> Self {
+        let filename = Rc::new(filename.into());
         Preprocessor {
-            filename: Rc::new(filename.into()),
+            filename: filename.clone(),
 
             directive_parser: DirectiveParser::new(),
 
@@ -60,12 +66,14 @@ impl Preprocessor {
 
             opts,
 
-            output: String::new(),
+            output_lines: Vec::new(),
             comment_block: None,
 
             current_line: 0,
 
             last_char: ' ',
+
+            source_map: SourceMapBuilder::new(filename),
         }
     }
 
@@ -99,27 +107,33 @@ impl Preprocessor {
             }));
         }
 
+        if let Some(comment) = self.comment_block {
+            return Err(PreprocessorError::UnterminatedComment(comment.span));
+        }
+
         Ok(PreprocessedUnit {
-            filename: (*self.filename).clone(),
-            source: self.output,
+            filename: self.filename,
+            source: self.output_lines.join("\n"),
             opts: self.opts,
+
+            source_map: self.source_map.build(),
         })
     }
 
     fn process_line(&mut self, mut line: String) -> Result<(), PreprocessorError> {
+        let mut output = String::new();
+
         // line comments never contain pp directives, just discard them
         if let Some(comment_pos) = line.find("//") {
             line.truncate(comment_pos);
         };
 
         for (col, line_char) in line.chars().enumerate() {
+            let col = col + 1;
             if let Some(comment_block) = &mut self.comment_block {
                 // continuing an existing comment
                 comment_block.text.push(line_char);
-                comment_block.span.end = Location {
-                    col,
-                    line: self.current_line,
-                };
+                comment_block.span.end = Location::new(self.current_line, col + 1);
 
                 let comment_starter = comment_block.text.chars().next().unwrap();
 
@@ -130,7 +144,7 @@ impl Preprocessor {
                 if terminated {
                     let comment_block = self.comment_block.take().unwrap();
                     if line_char == '}' {
-                        self.process_directive(comment_block, col)?;
+                        self.process_directive(comment_block, col, &mut output)?;
                     }
                     self.comment_block = None;
                 }
@@ -144,19 +158,30 @@ impl Preprocessor {
                 // start a new (* *) comment block
                 self.comment_block = Some(CommentBlock {
                     text: "(*".to_string(),
-                    span: self.current_line_span(col),
+                    span: self.current_line_span(col.saturating_sub("(*".len())),
                 });
                 // it's a two character comment sequence so pop the (
-                self.output.pop();
+                output.pop();
             } else if self.condition_active() {
-                self.output.push(line_char);
+                output.push(line_char);
             }
 
             self.last_char = line_char;
         }
 
+        let output_line_num = self.output_lines.len();
+        self.source_map.add(
+            Location::new(output_line_num, 1),
+            Location::new(output_line_num, output.len() + 1),
+            Span {
+                start: Location::new(self.current_line, 1),
+                end: Location::new(self.current_line, line.len() + 1),
+                file: self.filename.clone(),
+            }
+        );
+
         // new line at end of real line
-        self.output.push('\n');
+        self.output_lines.push(output);
 
         // if we're currently building a comment, add the newline to the comment text too
         if let Some(comment_block) = &mut self.comment_block {
@@ -197,7 +222,7 @@ impl Preprocessor {
         }
     }
 
-    fn process_directive(&mut self, comment_block: CommentBlock, current_col: usize) -> Result<(), PreprocessorError> {
+    fn process_directive(&mut self, comment_block: CommentBlock, current_col: usize, output: &mut String) -> Result<(), PreprocessorError> {
         if comment_block.text.chars().nth(1) != Some('$') {
             // no directive, just an empty brace comment
             return Ok(());
@@ -293,7 +318,27 @@ impl Preprocessor {
                 let pp = Preprocessor::new(full_path, self.opts.clone());
                 let include_output = pp.preprocess(&include_src)?;
 
-                self.output += include_output.source.as_str();
+                let line_offset = self.output_lines.len();
+                for (i, mapping) in include_output.source_map.into_iter().enumerate() {
+                    let mut start = mapping.start;
+                    let mut end = mapping.end;
+
+                    start.line += line_offset;
+                    end.line += line_offset;
+
+                    if i == 0 {
+                        start.col += current_col;
+                    }
+
+                    self.source_map.add(start, end, mapping.src);
+                }
+
+                for include_source_line in include_output.source.lines() {
+                    output.push_str(include_source_line);
+                    self.output_lines.push(output.clone());
+                    output.clear();
+                }
+
                 Ok(())
             }
 

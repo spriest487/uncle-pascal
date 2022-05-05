@@ -1,4 +1,5 @@
 pub mod span;
+pub mod source_map;
 
 use crate::span::*;
 use std::{

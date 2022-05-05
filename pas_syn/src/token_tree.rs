@@ -7,12 +7,12 @@ use crate::{
     keyword::Keyword,
     operators::Operator,
 };
-use pas_common::{span::*, BuildOptions, DiagnosticLabel, DiagnosticOutput, TracedError};
+use pas_common::{span::*, DiagnosticLabel, DiagnosticOutput, TracedError};
 use std::rc::Rc;
 use std::{
     fmt::{self, Write as _},
-    path::PathBuf,
 };
+use pas_pp::PreprocessedUnit;
 
 #[derive(Eq, PartialEq, Copy, Clone, Debug, Hash)]
 pub enum DelimiterPair {
@@ -253,7 +253,7 @@ impl fmt::Display for TokenTree {
 
 #[derive(Debug)]
 pub enum TokenizeError {
-    IllegalToken(Span),
+    IllegalToken(String, Span),
     UnmatchedDelimiter {
         delim: DelimiterPair,
         to_match: Span,
@@ -263,18 +263,21 @@ pub enum TokenizeError {
         delim: DelimiterPair,
         span: Span,
     },
+    UnterminatedStringLiteral(Span),
 }
 
 impl fmt::Display for TokenizeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            TokenizeError::IllegalToken(..) => write!(f, "Illegal token"),
+            TokenizeError::IllegalToken(token, ..) => write!(f, "Illegal token: `{}`", token),
 
             TokenizeError::UnmatchedDelimiter { .. } => write!(f, "unmatched delimiter"),
 
             TokenizeError::UnexpectedCloseDelimited { .. } => {
                 write!(f, "unexpected close delimiter")
             },
+
+            TokenizeError::UnterminatedStringLiteral(..) => write!(f, "unterminated string literal"),
         }
     }
 }
@@ -282,9 +285,10 @@ impl fmt::Display for TokenizeError {
 impl Spanned for TokenizeError {
     fn span(&self) -> &Span {
         match self {
-            TokenizeError::IllegalToken(span) => span,
+            TokenizeError::IllegalToken(_, span) => span,
             TokenizeError::UnmatchedDelimiter { span, .. } => span,
             TokenizeError::UnexpectedCloseDelimited { span, .. } => span,
+            TokenizeError::UnterminatedStringLiteral(span) => span,
         }
     }
 }
@@ -292,7 +296,7 @@ impl Spanned for TokenizeError {
 impl DiagnosticOutput for TokenizeError {
     fn label(&self) -> Option<DiagnosticLabel> {
         match self {
-            TokenizeError::IllegalToken(span) => Some(DiagnosticLabel {
+            TokenizeError::IllegalToken(_, span) => Some(DiagnosticLabel {
                 span: span.clone(),
                 text: None,
             }),
@@ -320,6 +324,11 @@ impl DiagnosticOutput for TokenizeError {
                     ))
                 },
             }),
+
+            TokenizeError::UnterminatedStringLiteral(span) => Some(DiagnosticLabel {
+                span: span.clone(),
+                text: None,
+            })
         }
     }
 }
@@ -327,25 +336,40 @@ impl DiagnosticOutput for TokenizeError {
 pub type TokenizeResult<T> = Result<T, TracedError<TokenizeError>>;
 
 impl TokenTree {
-    pub fn tokenize(
-        filename: impl Into<PathBuf>,
-        source: &str,
-        opts: &BuildOptions,
-    ) -> TokenizeResult<Vec<Self>> {
-        lex::lex(filename, source, opts)
+    pub fn tokenize(unit: PreprocessedUnit) -> TokenizeResult<Vec<Self>> {
+        lex::lex(unit)
     }
 }
 
 #[cfg(test)]
 mod test {
-    use super::*;
-    use std::rc::Rc;
+    use std::{
+        path::PathBuf,
+        rc::Rc
+    };
+    use pas_common::{
+        BuildOptions,
+        source_map::SourceMapBuilder
+    };
+    use pas_common::span::{Location, Span};
+    use pas_pp::PreprocessedUnit;
+    use crate::{DelimiterPair, Keyword, TokenTree};
+    use crate::token_tree::DelimitedGroup;
 
     fn tokenize(s: &str, case_sensitive: bool) -> Vec<TokenTree> {
         let mut opts = BuildOptions::default();
         opts.case_sensitive = case_sensitive;
 
-        match TokenTree::tokenize("test", s, &opts) {
+        let filename = PathBuf::from("test");
+
+        let unit = PreprocessedUnit {
+            opts,
+            source: s.to_string(),
+            source_map: SourceMapBuilder::new(Rc::new(filename.clone())).build(),
+            filename: Rc::new(filename),
+        };
+
+        match TokenTree::tokenize(unit) {
             Ok(result) => result,
             Err(err) => {
                 panic!("{} @ {:#?}", err.err, err.bt);
