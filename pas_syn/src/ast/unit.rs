@@ -98,7 +98,11 @@ impl Unit<Span> {
         } else {
             // no structured segments, it's a freeform unit - everything is in the interface
             // and we don't expect an end keyword after all decls/init
-            let freeform_decls = UnitDecl::parse_seq(tokens)?;
+            let freeform_decls = if UnitDecl::has_more(&iface_decls, &mut tokens.look_ahead()) {
+                UnitDecl::parse_seq(tokens)?
+            } else {
+                vec![]
+            };
 
             if freeform_decls.len() > 0 {
                 iface_decls.extend(freeform_decls);
@@ -107,6 +111,9 @@ impl Unit<Span> {
                     let init_after_decls = parse_init_section(tokens)?;
                     init.extend(init_after_decls);
                 }
+            } else {
+                let init_after_decls = parse_init_section(tokens)?;
+                init.extend(init_after_decls);
             }
         }
 
